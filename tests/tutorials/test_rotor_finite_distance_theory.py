@@ -3,12 +3,13 @@ import pytest
 from scipy import special
 from scipy.integrate import quad
 
-from tutorials.vpm.rotor_flow.assets.finite_distance_theory import (
-    _complete_elliptic_pi,
-    build_system,
-    induced_velocity,
-    right_cylinder_influence,
-)
+from tests._tutorial_helpers import load_tutorial_module
+
+_theory = load_tutorial_module("vpm/rotor_flow", "assets.finite_distance_theory")
+_complete_elliptic_pi = _theory._complete_elliptic_pi
+build_system = _theory.build_system
+induced_velocity = _theory.induced_velocity
+right_cylinder_influence = _theory.right_cylinder_influence
 
 
 def test_complete_elliptic_pi_reduces_to_first_kind_when_n_is_zero():

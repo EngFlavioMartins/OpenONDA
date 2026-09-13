@@ -69,7 +69,7 @@ def test_sphere_refinement_does_not_refine_disjoint_boxes_inside_its_aabb():
 @pytest.mark.slow
 def test_cartesian_build_preserves_declared_patch_names_and_reports_effective_sizes():
     surface = msh.STLSurface(
-        REPOSITORY_ROOT / "tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl", patch="body"
+        REPOSITORY_ROOT / "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl", patch="body"
     )
     mesher = msh.CartesianMesher(
         domain=_domain(),

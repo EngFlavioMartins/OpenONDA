@@ -23,7 +23,9 @@ CYLINDER_STL = CASE_DIR / "assets" / "cylinder_long.stl"
 
 # Physics
 DIAMETER = 1.0
-CYLINDER_LENGTH = 4.0
+# This finite-cylinder setup includes the complete supplied z=-6..6 surface.
+# Force coefficients must use its actual projected area D * L.
+CYLINDER_LENGTH = 12.0
 REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0
 FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]

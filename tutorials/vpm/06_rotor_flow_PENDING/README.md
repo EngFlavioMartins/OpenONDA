@@ -1,5 +1,27 @@
 # Wind-turbine wake
 
+Production status: **unqualified**. The September 2026 VLM audit found concrete
+backup/sampling defects and repaired them, but the retained rotor run still
+fails its timestep health check and does not establish converged induction.
+See [the production audit](../../../docs/development/vlm_production_audit.md)
+for the measured blockers and test evidence.
+The [implementation follow-up](../../../docs/development/vlm_production_repair_results.md)
+records the repaired row closure, kernel precision, observer performance,
+CPU/Metal agreement and downstream-wake diagnosis. These repairs do not yet
+qualify the full rotor's stability, CT/CP or developed induction fields.
+
+The setup now also samples four streamwise lines at design `r/R = 0, 0.25,
+0.65, 1.1`, from `x/D = -1` to `3`, every `0.06 s`. Their native
+`streamwise_r*.csv` files retain `time`, `step`, positions, and all three signed
+velocity components. The output owner appends these records across accepted
+steps and restarts. An older single-snapshot CSV cannot be resumed into this
+schema; use a fresh output namespace to preserve the original data.
+
+`assets/plot_rotor_streamwise.py` plots axial deficit `1 - ux/U` and signed
+`uy/U`, `uz/U` versus `x/D`, using an exactly bracketed five-revolution time
+mean. It refuses missing or incomplete histories. `allplot.sh` includes this
+figure; old retained results without the new lines will need a fresh run.
+
 From this directory, run `./allrun.sh` (which uses the canonical fresh
 `completion` namespace) and then `./allplot.sh`; use `./allplot.sh pdf` for
 vector figures. To choose another preserved namespace, invoke

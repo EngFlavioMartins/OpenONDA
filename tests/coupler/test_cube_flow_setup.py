@@ -11,7 +11,7 @@ import pytest
 
 from source.coupler.vorticity_transfer import VorticityTransfer
 
-CASE_DIR = Path(__file__).resolve().parents[2] / "tutorials" / "coupled_fvm_vpm" / "cube_flow"
+CASE_DIR = Path(__file__).resolve().parents[2] / "tutorials" / "coupled_fvm_vpm" / "02_cube_flow"
 
 
 def _load_setup(path: Path, module_name: str):

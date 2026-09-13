@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-SETUP_PATH = (
-    Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "vortex_interactions" / "setup.py"
-)
-CASE_DIR = SETUP_PATH.parent
+from openonda.tutorial_runner import load_case_module
+
+CASE_DIR = Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions_PENDING"
 
 
 def _load_setup():
-    spec = importlib.util.spec_from_file_location("vortex_interactions_tutorial", SETUP_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_case_module(CASE_DIR)
 
 
 def test_ring_pair_is_a_translated_symmetric_toroidal_cloud():

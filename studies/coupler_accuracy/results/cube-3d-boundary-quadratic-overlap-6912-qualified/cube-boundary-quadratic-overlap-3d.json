@@ -1,0 +1,392 @@
+{
+  "schema": "openonda-cube-boundary-quadratic-overlap-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "small_fvm_cells": 2840,
+  "small_fvm_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "body_panels": 6912,
+  "physical_time": 0.5,
+  "source_names": [
+    "constant_volume_control",
+    "linear_face_moment_control",
+    "native_gamma_quadratic_cell_only_moments",
+    "native_gamma_quadratic_wall_observations_moments",
+    "quadratic_wall_gamma_and_moments"
+  ],
+  "target_slices": {
+    "near_body": [
+      0,
+      256
+    ],
+    "held_outer": [
+      256,
+      584
+    ],
+    "wake": [
+      584,
+      840
+    ],
+    "wall": [
+      840,
+      2376
+    ],
+    "boundary": [
+      2376,
+      3240
+    ],
+    "plus": [
+      3240,
+      4104
+    ],
+    "minus": [
+      4104,
+      4968
+    ],
+    "check_plus": [
+      4968,
+      5000
+    ],
+    "check_minus": [
+      5000,
+      5032
+    ],
+    "collocation": [
+      5032,
+      5140
+    ],
+    "plus2": [
+      5140,
+      6004
+    ],
+    "minus2": [
+      6004,
+      6868
+    ],
+    "plus_half": [
+      6868,
+      7732
+    ],
+    "minus_half": [
+      7732,
+      8596
+    ]
+  },
+  "derivative_steps": [
+    1.25e-05,
+    6.25e-06
+  ],
+  "stencil_diagnostics": {
+    "cell_only": {
+      "maximum_condition": 9.649720659062824,
+      "maximum_rings": 2
+    },
+    "wall_observations": {
+      "maximum_condition": 9.649720659062824,
+      "maximum_rings": 2,
+      "cells_with_wall_observations": 1536
+    }
+  },
+  "records": [
+    {
+      "name": "constant_volume_control",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.17126500928668076,
+        "held_outer": 0.004166819958743189,
+        "wake": 0.0030095124427166582
+      },
+      "baseline_maximum_velocity_difference": 0.0,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003950074608795738,
+      "boundary_native_tangential_gradient_rms_error": {
+        "centred": 0.021033235294282606,
+        "centred_half": 0.021033235353567607,
+        "exterior": 0.02103323542766246,
+        "interior": 0.02103323547236233,
+        "exterior_half": 0.021033235432943033,
+        "interior_half": 0.02103323539276239
+      },
+      "derivative_step_halving_maximum_difference": {
+        "centred": 4.565239561382661e-09,
+        "exterior": 1.2647663749643101e-08,
+        "interior": 1.063150523172851e-08
+      },
+      "body_source_flux": 2.5396351688300456e-15,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002518635689567894,
+        "raw_relative": 4.656052847113201e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.658975974216848e-06,
+        "corrected_mismatch": 7.095435350379375e-13
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.04846463695307133,
+      "wall_tangential_velocity_rms_over_Uinf": 0.24481471654166598,
+      "total_circulation_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "circulation_change_L1": 0.0
+    },
+    {
+      "name": "linear_face_moment_control",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.12146993602277054,
+        "held_outer": 0.0030422563788869835,
+        "wake": 0.0023994718720909167
+      },
+      "baseline_maximum_velocity_difference": 1.124100812432971e-14,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003510122131294109,
+      "boundary_native_tangential_gradient_rms_error": {
+        "centred": 0.021678866701130294,
+        "centred_half": 0.02167886677353172,
+        "exterior": 0.02167886699130836,
+        "interior": 0.021678866607662377,
+        "exterior_half": 0.021678866947536922,
+        "interior_half": 0.021678866744344164
+      },
+      "derivative_step_halving_maximum_difference": {
+        "centred": 2.0713632846273977e-08,
+        "exterior": 6.576196885489465e-08,
+        "interior": 7.524110817464652e-08
+      },
+      "body_source_flux": 2.230854390106174e-15,
+      "boundary_flux": {
+        "raw_mismatch": 0.0001831071157030184,
+        "raw_relative": 3.385178334134049e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.3871180985085886e-06,
+        "corrected_mismatch": 5.158096172408477e-13
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.055715880869298844,
+      "wall_tangential_velocity_rms_over_Uinf": 0.2191676557646004,
+      "total_circulation_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "circulation_change_L1": 0.0
+    },
+    {
+      "name": "native_gamma_quadratic_cell_only_moments",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.11524005452576333,
+        "held_outer": 0.0029530697719091655,
+        "wake": 0.00237020992354502
+      },
+      "baseline_maximum_velocity_difference": null,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0034604792396970055,
+      "boundary_native_tangential_gradient_rms_error": {
+        "centred": 0.021607278052556633,
+        "centred_half": 0.02160727806027339,
+        "exterior": 0.021607278033588622,
+        "interior": 0.021607278227151066,
+        "exterior_half": 0.021607277892496356,
+        "interior_half": 0.021607278243498163
+      },
+      "derivative_step_halving_maximum_difference": {
+        "centred": 2.1470256002763255e-08,
+        "exterior": 7.233347342535529e-08,
+        "interior": 7.734238678669403e-08
+      },
+      "body_source_flux": 2.321060010856968e-15,
+      "boundary_flux": {
+        "raw_mismatch": 0.0001841932489220488,
+        "raw_relative": 3.4052418235036494e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.407209406645057e-06,
+        "corrected_mismatch": 5.186961971048731e-13
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.05493071224419935,
+      "wall_tangential_velocity_rms_over_Uinf": 0.21838689064757644,
+      "total_circulation_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "circulation_change_L1": 0.0
+    },
+    {
+      "name": "native_gamma_quadratic_wall_observations_moments",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.11281186573679361,
+        "held_outer": 0.0035261265004731777,
+        "wake": 0.0026889084144646686
+      },
+      "baseline_maximum_velocity_difference": null,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003623176413022976,
+      "boundary_native_tangential_gradient_rms_error": {
+        "centred": 0.021942645908164138,
+        "centred_half": 0.02194264599900844,
+        "exterior": 0.021942646074008438,
+        "interior": 0.021942645935926486,
+        "exterior_half": 0.021942646305457385,
+        "interior_half": 0.0219426458742589
+      },
+      "derivative_step_halving_maximum_difference": {
+        "centred": 1.90512434855572e-08,
+        "exterior": 5.7276747745735324e-08,
+        "interior": 5.950833830738189e-08
+      },
+      "body_source_flux": 2.525757381022231e-15,
+      "boundary_flux": {
+        "raw_mismatch": 0.00016711387111756348,
+        "raw_relative": 3.089259357202587e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.0912748267641477e-06,
+        "corrected_mismatch": 4.709566070459914e-13
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.05764723590816333,
+      "wall_tangential_velocity_rms_over_Uinf": 0.23504312575715441,
+      "total_circulation_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "circulation_change_L1": 0.0
+    },
+    {
+      "name": "quadratic_wall_gamma_and_moments",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.10567214156784821,
+        "held_outer": 0.002559453340781023,
+        "wake": 0.002191965123472539
+      },
+      "baseline_maximum_velocity_difference": null,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0034449338823579066,
+      "boundary_native_tangential_gradient_rms_error": {
+        "centred": 0.021105761089121745,
+        "centred_half": 0.021105761199788152,
+        "exterior": 0.02110576113150578,
+        "interior": 0.02110576132838316,
+        "exterior_half": 0.021105761195390562,
+        "interior_half": 0.021105761425529956
+      },
+      "derivative_step_halving_maximum_difference": {
+        "centred": 2.220410953712726e-08,
+        "exterior": 6.314524896716689e-08,
+        "interior": 5.7358087592052076e-08
+      },
+      "body_source_flux": 2.2412627309620348e-15,
+      "boundary_flux": {
+        "raw_mismatch": 0.0001919926552679252,
+        "raw_relative": 3.5497773851401894e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.55148293905429e-06,
+        "corrected_mismatch": 5.411227022023013e-13
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.05245612931792819,
+      "wall_tangential_velocity_rms_over_Uinf": 0.21023493989848932,
+      "total_circulation_change": [
+        1.3793245159777307e-06,
+        -3.0574585229167e-05,
+        3.27456968614579e-05
+      ],
+      "circulation_change_L1": 1.787108201464307
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_quadratic_overlap_3d.py",
+      "sha256": "35324afec5cf00dc9059e892e5218ef3208ff234d969ef2eb384b9bda1b575fb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/refined-cube.stl",
+      "sha256": "be555a3b9a49116152d7c1aeb33977db49b4ee0032414b5409558deaa601afac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/volume-induction-comparison-fields.npz",
+      "sha256": "0f018ebfec7f50fed3601e6db15eb59d31870706614734281b4c68099a5c9f95"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reconstructed-moment-overlap/moment-overlap-induction-checkpoint.npz",
+      "sha256": "2cf2b1a33e333c31bb56dd5e3305d9ecc5e640a6b2a55c07e2844d16f8b47d39"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/cube-moment-panel-resolution-3d.json",
+      "sha256": "a7a3c63dbfd24c20d716b460f8ecbd0f610ca988536a58a90d5d08f7cb83715b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/moment-panel-resolution-fields.npz",
+      "sha256": "fe951beae7e51cf514d97e9e8f40f540cbb721ca3e7662496bd062336cffa9eb"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+      "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+      "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+      "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/induction_derivatives_3d.py",
+      "sha256": "74d8043a18b7e1eeeea4dd384ff7a16c78f5965da81d1fab5a0e6ee55c9e1dd3"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "tests/coupler/test_native_boundary_quadratic_3d.py",
+      "sha256": "c927319f7746e10cc007ead6646b1c77071fb05a392e6ba3fc719153b6fe09d2"
+    }
+  ],
+  "elapsed_seconds": 328.17126733400073,
+  "limitations": [
+    "Frozen physical cube induction; no time advance, force validation or particle emission.",
+    "Every source retains the same Gaussian complements, 68 exterior particles and native-volume taper inside the unchanged small FVM box.",
+    "Only the final state changes weighted native circulation, using its shared quadratic wall-fit Stokes sum. Earlier states retain all original Gamma.",
+    "The physical cell values are treated as point inputs to this candidate; this does not assert that FVM values are exact physical point samples.",
+    "The cell stencils use only the small FVM mesh and prescribed cube velocity; outer placeholder traces cannot touch active source faces.",
+    "Both previous physical controls are reproduced through the actual constrained linear Neumann response, with exact source-panel velocity evaluation."
+  ]
+}

@@ -1,0 +1,275 @@
+{
+  "schema": "openonda-cube-partitioned-volume-induction-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "near_volume_cells": 2840,
+  "near_volume_triangles": 38808,
+  "exterior_particles": {
+    "all": 14752,
+    "seed": 68
+  },
+  "body_panels": 108,
+  "small_fvm_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "target_slices": {
+    "near_body": [
+      0,
+      256
+    ],
+    "held_outer": [
+      256,
+      584
+    ],
+    "wake": [
+      584,
+      840
+    ],
+    "wall": [
+      840,
+      2376
+    ],
+    "boundary": [
+      2376,
+      3240
+    ],
+    "plus": [
+      3240,
+      4104
+    ],
+    "minus": [
+      4104,
+      4968
+    ],
+    "check_plus": [
+      4968,
+      5000
+    ],
+    "check_minus": [
+      5000,
+      5032
+    ],
+    "collocation": [
+      5032,
+      5140
+    ]
+  },
+  "records": [
+    {
+      "representation": "near_volume_outer_gaussian_all",
+      "completion": "freestream",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.1802172076891804,
+        "held_outer": 0.0028549950311575565,
+        "wake": 0.002278465425217548
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.12356327685791409,
+      "wall_tangential_velocity_rms_over_Uinf": 0.1175597404355512,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0037569804798960322,
+      "boundary_native_tangential_gradient_rms_error": 0.019778391747481167,
+      "derivative_step_check_maximum_difference": 3.7874564595696825e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002623893292721391,
+        "raw_relative": 4.850289980424801e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.853681642141345e-06,
+        "corrected_mismatch": 7.392975120978917e-13
+      },
+      "panel_source_flux": null
+    },
+    {
+      "representation": "near_volume_outer_gaussian_all",
+      "completion": "panel108",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.16885040132171497,
+        "held_outer": 0.0038339493292705532,
+        "wake": 0.0028358114908901234
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.09254708090702395,
+      "wall_tangential_velocity_rms_over_Uinf": 0.19247320610783894,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003813922940569045,
+      "boundary_native_tangential_gradient_rms_error": 0.01948848740678108,
+      "derivative_step_check_maximum_difference": 3.787040125935448e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002587097124071569,
+        "raw_relative": 4.781947434577431e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.785616035673201e-06,
+        "corrected_mismatch": 7.294165271787278e-13
+      },
+      "panel_source_flux": 4.164509533106186e-17
+    },
+    {
+      "representation": "near_volume_outer_gaussian_seed",
+      "completion": "freestream",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.180323986590016,
+        "held_outer": 0.002976501492541139,
+        "wake": 0.0023100993590176267
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.12346344610715167,
+      "wall_tangential_velocity_rms_over_Uinf": 0.11743092176346936,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0037524377766528475,
+      "boundary_native_tangential_gradient_rms_error": 0.019810216721540163,
+      "derivative_step_check_maximum_difference": 3.782807400654065e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.00026330628398285594,
+        "raw_relative": 4.868124670332077e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.870643483762067e-06,
+        "corrected_mismatch": 7.422951142643797e-13
+      },
+      "panel_source_flux": null
+    },
+    {
+      "representation": "near_volume_outer_gaussian_seed",
+      "completion": "panel108",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.16898960983093494,
+        "held_outer": 0.003892032285268155,
+        "wake": 0.002849303426012221
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.09250011992100944,
+      "wall_tangential_velocity_rms_over_Uinf": 0.1922559451218975,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003862496860074042,
+      "boundary_native_tangential_gradient_rms_error": 0.019520347715525244,
+      "derivative_step_check_maximum_difference": 3.782321678080791e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002596268953399816,
+        "raw_relative": 4.799773997744841e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.802582098949805e-06,
+        "corrected_mismatch": 7.314149286230531e-13
+      },
+      "panel_source_flux": 2.0915381706239827e-17
+    },
+    {
+      "representation": "near_gaussian_outer_volume_control",
+      "completion": "freestream",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.20174907925998584,
+        "held_outer": 0.0028476269363893426,
+        "wake": 0.002277004092152872
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.16687077528897143,
+      "wall_tangential_velocity_rms_over_Uinf": 0.32393092973379234,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0037565281436050747,
+      "boundary_native_tangential_gradient_rms_error": 0.019950469203123877,
+      "derivative_step_check_maximum_difference": 2.5979218776228663e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002524555683680596,
+        "raw_relative": 4.666574874231638e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.669926787966063e-06,
+        "corrected_mismatch": 7.109868249699502e-13
+      },
+      "panel_source_flux": null
+    },
+    {
+      "representation": "near_gaussian_outer_volume_control",
+      "completion": "panel108",
+      "cell_velocity_rms_over_Uinf": {
+        "near_body": 0.17931162817882493,
+        "held_outer": 0.005031797056664259,
+        "wake": 0.003450347767099181
+      },
+      "wall_normal_velocity_rms_over_Uinf": 0.11986807700372819,
+      "wall_tangential_velocity_rms_over_Uinf": 0.4111094543137602,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004346909830598781,
+      "boundary_native_tangential_gradient_rms_error": 0.01980189045441103,
+      "derivative_step_check_maximum_difference": 2.6045832157706172e-09,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002492636027606743,
+        "raw_relative": 4.606902982655239e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.6108817615776455e-06,
+        "corrected_mismatch": 7.027711745877241e-13
+      },
+      "panel_source_flux": 5.658835768796764e-18
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_partitioned_volume_induction_3d.py",
+      "sha256": "910d90802e606a259e54b1c94cac07ce39e9abd5032833ff7cca617517fe9c32"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/cube-native-volume-induction-3d.json",
+      "sha256": "d548a50b2d2ba46ef3f98ee7c7731a009892e9bec1c30074e9bd8010b659cf30"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/native-induction-fields.npz",
+      "sha256": "81287fd0f48197c881a41d089c4c7577dffa574319beca96a670e08a434bcb56"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/volume-induction-comparison-fields.npz",
+      "sha256": "0f018ebfec7f50fed3601e6db15eb59d31870706614734281b4c68099a5c9f95"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_snapshot_induction.py",
+      "sha256": "30c5d9371460b527b3194c0134bcf7d4b4e9168811d107d54070a7b10edd524b"
+    },
+    {
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "fb40eb90f5fd78985b8a9833b940321c929f6e2e4bc3b71cc60c571b16247843"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    }
+  ],
+  "elapsed_seconds": 43.425002749994746,
+  "limitations": [
+    "A frozen induction partition only; no particle injection, advection, FVM update or force calculation.",
+    "Near-volume cells preserve each original omega*V_FVM. All other cell fields are represented by Gaussian particles of radius 0.125.",
+    "The seed variant keeps only exterior sources with |omega| >= 0.02 and rounds their positions/strengths to the original f32 seed representation.",
+    "The reversed partition is a diagnostic control and uses unavailable full-domain exterior volume data.",
+    "The exterior particle states are initially seeded from the full FVM oracle, as in the preceding frozen experiments."
+  ]
+}

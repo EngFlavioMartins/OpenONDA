@@ -1,0 +1,156 @@
+{
+  "schema": "openonda-frozen-boundary-operator-3d/1",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "full_cells": 53752,
+  "small_cells": 16936,
+  "results": [
+    {
+      "name": "interpolated_lsq",
+      "momentum_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.118979921802345,
+        "laplacian": 1.518981569960033e-05,
+        "transpose_stress": 0.00024239948498478556,
+        "pressure": 0.0003824689969488132,
+        "total": 0.11897520364670405
+      },
+      "cut_owner_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.23609019768181913,
+        "laplacian": 3.1049490838071577e-05,
+        "transpose_stress": 0.000495488566985658,
+        "pressure": 0.0007818045887779486,
+        "total": 0.2360802619884518
+      },
+      "convection_cut_flux_density_difference_rms": 0.02321522921999536,
+      "convection_cut_tangential_flux_density_difference_rms": 0.0232117795643909,
+      "laplacian_cut_flux_density_difference_rms": 3.697201672529073e-06,
+      "laplacian_cut_tangential_flux_density_difference_rms": 3.697028001130456e-06
+    },
+    {
+      "name": "native_flux_lsq",
+      "momentum_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.11876212031316889,
+        "laplacian": 2.5230670830266635e-07,
+        "transpose_stress": 0.00024106506164159655,
+        "pressure": 0.0003824689969488132,
+        "total": 0.11875627182613731
+      },
+      "cut_owner_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.23567132892944545,
+        "laplacian": 5.157399477888102e-07,
+        "transpose_stress": 0.0004927608731815891,
+        "pressure": 0.0007818045887779486,
+        "total": 0.23565901385559326
+      },
+      "convection_cut_flux_density_difference_rms": 0.02318171727696926,
+      "convection_cut_tangential_flux_density_difference_rms": 0.02317826263373258,
+      "laplacian_cut_flux_density_difference_rms": 3.583526488141836e-08,
+      "laplacian_cut_tangential_flux_density_difference_rms": 7.652590284117371e-19
+    },
+    {
+      "name": "native_flux_native_flux",
+      "momentum_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.11876212031316889,
+        "laplacian": 2.5230670830266635e-07,
+        "transpose_stress": 0.00024106506164159655,
+        "pressure": 9.37434592656041e-06,
+        "total": 0.11876117139436197
+      },
+      "cut_owner_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.23567132892944545,
+        "laplacian": 5.157399477888102e-07,
+        "transpose_stress": 0.0004927608731815891,
+        "pressure": 1.916209345239464e-05,
+        "total": 0.23566933038731655
+      },
+      "convection_cut_flux_density_difference_rms": 0.02318171727696926,
+      "convection_cut_tangential_flux_density_difference_rms": 0.02317826263373258,
+      "laplacian_cut_flux_density_difference_rms": 3.583526488141836e-08,
+      "laplacian_cut_tangential_flux_density_difference_rms": 7.652590284117371e-19
+    },
+    {
+      "name": "native_value_native_value",
+      "momentum_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.11876228473635768,
+        "laplacian": 3.236983890402195e-07,
+        "transpose_stress": 0.00024106583453155112,
+        "pressure": 3.6574144136762356e-17,
+        "total": 0.11876129777375889
+      },
+      "cut_owner_acceleration_rms_over_Uinf_squared_per_D": {
+        "convection": 0.23567161673975348,
+        "laplacian": 6.616716296928787e-07,
+        "transpose_stress": 0.0004927624530415448,
+        "pressure": 6.435475530244419e-17,
+        "total": 0.23566953809242286
+      },
+      "convection_cut_flux_density_difference_rms": 0.023181737783839234,
+      "convection_cut_tangential_flux_density_difference_rms": 0.023178283143659033,
+      "laplacian_cut_flux_density_difference_rms": 4.94602762665037e-08,
+      "laplacian_cut_tangential_flux_density_difference_rms": 3.409036108987263e-08
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/boundary_operator_audit_3d.py",
+      "sha256": "ad65e517d50b3aa828608c8ab368907dcc49c68a838f186bf4af8d7ca88962ee"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "485ac5237b3a2966d7cf6125c4776b190df4bd7abb7a997be71903fe73768dd8"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/diffusion.py",
+      "sha256": "4ecdc68539777ec2f445f5fe03fbe929eeb855dea58cdccd4ea1209f81103de2"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "275f2ce7ee353bb7f866566a5795dea04fe19efaa85641fd632e3dd0c052124e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-native-flux-oracle/initial-cut-traces.npz",
+      "sha256": "96f962395b26fde3a7b0389ba839237bcc7d857d09824e72a5d3de310d0d4e5c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+      "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d"
+    }
+  ],
+  "limitations": [
+    "Frozen identical primitive fields and face fluxes; no pressure correction, time advance or particles.",
+    "Laminar constant viscosity 0.001; all rows prescribe the indicated pressure trace.",
+    "Terms are momentum accelerations, not accumulated velocity/force errors or a complete nonlinear residual."
+  ]
+}

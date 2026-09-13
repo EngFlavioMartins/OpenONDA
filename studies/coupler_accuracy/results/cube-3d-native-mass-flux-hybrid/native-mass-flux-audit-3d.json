@@ -1,0 +1,234 @@
+{
+  "schema": "openonda-native-mass-flux-audit-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "records": [
+    {
+      "name": "cube-3d-medium-laminar-sampled-face-control",
+      "solver_time": 1.0000000000000007,
+      "solver_step": 100,
+      "physical_time": null,
+      "mesh_cells": 16936,
+      "shared_cells": 16936,
+      "shared_interior_faces": 49008,
+      "regions": {
+        "all_shared": {
+          "cells": 16936,
+          "stored_flux_divergence_rms": 1.2105238836469778e-15,
+          "stored_flux_divergence_maximum": 3.9713683567226453e-14,
+          "interior_velocity_flux_divergence_rms": 0.2095198334276965,
+          "interior_velocity_flux_divergence_maximum": 8.506123503847537
+        },
+        "near_body": {
+          "cells": 4840,
+          "stored_flux_divergence_rms": 1.2622549082609347e-15,
+          "stored_flux_divergence_maximum": 1.110819712082461e-14,
+          "interior_velocity_flux_divergence_rms": 0.6883248662621139,
+          "interior_velocity_flux_divergence_maximum": 8.506123503847537
+        },
+        "overlap": {
+          "cells": 6272,
+          "stored_flux_divergence_rms": 1.1518902747076967e-15,
+          "stored_flux_divergence_maximum": 3.555054524218129e-15,
+          "interior_velocity_flux_divergence_rms": 0.04239597635295099,
+          "interior_velocity_flux_divergence_maximum": 0.23964867505632895
+        },
+        "outer_shared": {
+          "cells": 5824,
+          "stored_flux_divergence_rms": 1.260378637138696e-15,
+          "stored_flux_divergence_maximum": 3.9713683567226453e-14,
+          "interior_velocity_flux_divergence_rms": 0.03839063521424772,
+          "interior_velocity_flux_divergence_maximum": 0.3779404482828708
+        }
+      },
+      "interior_normal_velocity_difference_rms": 0.005775846216451893,
+      "interior_normal_velocity_difference_maximum": 0.19630643638610454,
+      "maximum_vorticity_change_from_normal_flux_correction": 1.2457255930623333e-14,
+      "global_stored_flux_imbalance": -4.440892098500626e-16,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-native-mass-flux-hybrid/cube-3d-medium-laminar-sampled-face-control-flux-fields.npz",
+        "sha256": "151feb8a97ba98623a49ba7a5a99a56a851eccd4c96185dab1ea734672ca98cc"
+      }
+    },
+    {
+      "name": "cube-3d-medium-laminar-sampled-face-gradient",
+      "solver_time": 1.0000000000000007,
+      "solver_step": 100,
+      "physical_time": null,
+      "mesh_cells": 16936,
+      "shared_cells": 16936,
+      "shared_interior_faces": 49008,
+      "regions": {
+        "all_shared": {
+          "cells": 16936,
+          "stored_flux_divergence_rms": 1.1613955847914643e-15,
+          "stored_flux_divergence_maximum": 2.0722572601860724e-14,
+          "interior_velocity_flux_divergence_rms": 0.20953266004712726,
+          "interior_velocity_flux_divergence_maximum": 8.506666335960631
+        },
+        "near_body": {
+          "cells": 4840,
+          "stored_flux_divergence_rms": 1.2373076440998437e-15,
+          "stored_flux_divergence_maximum": 1.0445157686208422e-14,
+          "interior_velocity_flux_divergence_rms": 0.6883692156372541,
+          "interior_velocity_flux_divergence_maximum": 8.506666335960631
+        },
+        "overlap": {
+          "cells": 6272,
+          "stored_flux_divergence_rms": 1.143690482123056e-15,
+          "stored_flux_divergence_maximum": 3.555054524218129e-15,
+          "interior_velocity_flux_divergence_rms": 0.04239485728904363,
+          "interior_velocity_flux_divergence_maximum": 0.23965639749278003
+        },
+        "outer_shared": {
+          "cells": 5824,
+          "stored_flux_divergence_rms": 1.1643195105609626e-15,
+          "stored_flux_divergence_maximum": 2.0722572601860724e-14,
+          "interior_velocity_flux_divergence_rms": 0.03838931075301432,
+          "interior_velocity_flux_divergence_maximum": 0.3793101233078991
+        }
+      },
+      "interior_normal_velocity_difference_rms": 0.005776380694196438,
+      "interior_normal_velocity_difference_maximum": 0.19632152488739393,
+      "maximum_vorticity_change_from_normal_flux_correction": 1.2137754445840967e-14,
+      "global_stored_flux_imbalance": 8.881784197001252e-16,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-native-mass-flux-hybrid/cube-3d-medium-laminar-sampled-face-gradient-flux-fields.npz",
+        "sha256": "a310b1276d8837719b4f3f6b578de40f17a4758c2182ee5c5f5219f5eeda7e71"
+      }
+    },
+    {
+      "name": "cube-3d-medium-laminar-sampled-face-both",
+      "solver_time": 1.0000000000000007,
+      "solver_step": 100,
+      "physical_time": null,
+      "mesh_cells": 16936,
+      "shared_cells": 16936,
+      "shared_interior_faces": 49008,
+      "regions": {
+        "all_shared": {
+          "cells": 16936,
+          "stored_flux_divergence_rms": 3.380533397158733e-15,
+          "stored_flux_divergence_maximum": 3.6443144920513686e-13,
+          "interior_velocity_flux_divergence_rms": 0.20938912800937828,
+          "interior_velocity_flux_divergence_maximum": 8.5028839883564
+        },
+        "near_body": {
+          "cells": 4840,
+          "stored_flux_divergence_rms": 1.2886538616841045e-15,
+          "stored_flux_divergence_maximum": 9.550710942153176e-15,
+          "interior_velocity_flux_divergence_rms": 0.6880291159913738,
+          "interior_velocity_flux_divergence_maximum": 8.5028839883564
+        },
+        "overlap": {
+          "cells": 6272,
+          "stored_flux_divergence_rms": 1.1678274546680128e-15,
+          "stored_flux_divergence_maximum": 3.552630058745125e-15,
+          "interior_velocity_flux_divergence_rms": 0.04240323661912917,
+          "interior_velocity_flux_divergence_maximum": 0.2394400833562364
+        },
+        "outer_shared": {
+          "cells": 5824,
+          "stored_flux_divergence_rms": 4.926635804290097e-15,
+          "stored_flux_divergence_maximum": 3.6443144920513686e-13,
+          "interior_velocity_flux_divergence_rms": 0.03783333825965476,
+          "interior_velocity_flux_divergence_maximum": 0.37478120285561883
+        }
+      },
+      "interior_normal_velocity_difference_rms": 0.005769267651101489,
+      "interior_normal_velocity_difference_maximum": 0.19621398508893334,
+      "maximum_vorticity_change_from_normal_flux_correction": 1.429484543601748e-14,
+      "global_stored_flux_imbalance": 1.3322676295501878e-15,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-native-mass-flux-hybrid/cube-3d-medium-laminar-sampled-face-both-flux-fields.npz",
+        "sha256": "350740fe29cbe7403df432548e592939566baf622ab85dd7f146b7ecc65c196d"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/native_mass_flux_audit_3d.py",
+      "sha256": "6105c4e93ff14669d32792a82cdc622de89659f735146c99aa23584c2f4a5746"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+      "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "c492fd01f5637cd1a316abe1b38d71bb289aa5e564191595a8f9fdd8cba926fd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/latest-comparison-fields.npz",
+      "sha256": "baf11dc79c542fe687a09dd824e31c11c587c2ea6db0826d3e1107f480f215b5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "e6c4cd9ca2eb38e04996a96b3a0798fcf980d409a7f20ea658efcbf7ebb042ff"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/latest-comparison-fields.npz",
+      "sha256": "9ab4713523483e10aee029ad2c397cc20cd7f9bf18c1c9c1354724a6f0c6c466"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "609250ab3e1d73226a7cd90c7e6d40e06942c9b27c76b45f74cc294875f8b055"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/latest-comparison-fields.npz",
+      "sha256": "af23f5d7ffe5b54d5be489f37f5b6bcc7e33bd7fde4d62a4196bdfc34fa1d95d"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    }
+  ],
+  "limitations": [
+    "Every reported region uses the same mapped small-domain native cells and cell volumes, including for the fully meshed reference.",
+    "The comparison replaces only interior face fluxes by linear interpolation of cell velocity. Stored physical-boundary fluxes remain fixed.",
+    "Nonzero divergence of that interpolated field is a discrete representation difference, not compressible flow or proof of a pressure-solver error.",
+    "Correcting a face velocity only along its native normal enforces the stored flux without changing its native Gauss circulation. This does not define a unique continuous velocity field.",
+    "The reset-initial reference snapshot reproduces an initial-state reset, not an accepted pressure-corrected time step.",
+    "These observations do not establish which representation difference dominates the advancing force error."
+  ]
+}

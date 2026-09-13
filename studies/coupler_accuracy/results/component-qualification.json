@@ -1,0 +1,45 @@
+{
+  "schema": "openonda-numerical-qualification-v1",
+  "tests": [
+    {
+      "duration_seconds": 0.3259735419997014,
+      "metrics": {
+        "constant_vorticity_max_error": 3.552713678800501e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_anisotropic_donors_preserve_constant_vorticity_target[cell_spacing0]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.29537049999999,
+      "metrics": {
+        "constant_vorticity_max_error": 2.6645352591003757e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_anisotropic_donors_preserve_constant_vorticity_target[cell_spacing1]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0004731250010081567,
+      "metrics": {
+        "physical_gaussian_max_error": 1.7763568394002505e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[0.5]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0003216659988538595,
+      "metrics": {
+        "physical_gaussian_max_error": 2.220446049250313e-16
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[1.0]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0003198750000592554,
+      "metrics": {
+        "physical_gaussian_max_error": 2.7755575615628914e-17
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[1.7]",
+      "outcome": "passed"
+    }
+  ]
+}

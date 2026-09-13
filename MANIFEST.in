@@ -18,7 +18,7 @@ prune tutorials/*/*/.matplotlib
 prune tutorials/*/*/*/solution
 prune tutorials/*/*/*/samples
 prune tutorials/*/*/*/figures
-prune tutorials/vpm/rotor_flow/assets/animation
+prune tutorials/vpm/06_rotor_flow_PENDING/assets/animation
 
 global-exclude .DS_Store *.py[cod] *.gif *.png *.pdf *.pvsm *.msh *.pvd *.vts *.so
 global-exclude paraview_state.py paraview_tracer.py

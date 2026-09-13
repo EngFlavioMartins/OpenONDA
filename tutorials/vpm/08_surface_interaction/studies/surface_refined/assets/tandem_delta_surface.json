@@ -1,0 +1,57 @@
+{
+  "uid": "qualification_delta",
+  "wings": [
+    {
+      "uid": "main_wing",
+      "symmetry": 2,
+      "segments": [
+        {
+          "uid": "segment_0",
+          "vertex_position": {
+            "a": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "b": [
+              0.44562063093370663,
+              0.45,
+              -0.06262789543202944
+            ],
+            "c": [
+              0.5248420764330322,
+              0.45,
+              -0.07376174350883467
+            ],
+            "d": [
+              0.5941608412449422,
+              0.0,
+              -0.08350386057603926
+            ]
+          },
+          "n_chordwise_panels": 4,
+          "n_spanwise_panels": 6,
+          "airfoils": {
+            "inner": "flat",
+            "outer": "flat"
+          }
+        }
+      ]
+    }
+  ],
+  "refs": {
+    "area": 0.306,
+    "chord": 0.6,
+    "span": 0.9,
+    "geometry_centre": [
+      0.3,
+      0.0,
+      0.0
+    ],
+    "reference_point": [
+      0.3,
+      0.0,
+      0.0
+    ]
+  }
+}

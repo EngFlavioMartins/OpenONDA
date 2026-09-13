@@ -89,9 +89,11 @@ def discover(samples_dir, study_dir, runs=None):
                 ).replace("LAGRANGE6", "Lagrange-6")
             label = (
                 f"{settings.get('method', 'baseline').replace('p_moments', 'weak realignment').replace('_', ' ').capitalize()}\n"
-                f"{scheme}, {settings.get('integrator', 'SSPRK3')}\n"
+                f"{scheme}, {settings.get('integrator', 'SSPRK3')}, Cs={settings['smagorinsky']:g}\n"
                 rf"$h/R_0={settings['spacing']:g}$, $\Delta t={settings['dt']:g}$"
             )
+            if name.startswith("study_"):
+                label = label.replace("Baseline", name)
             if name == "cs_breakdown_coverage_h05_fixed_sigma_cpu_t6_continuation":
                 label = label.replace("Baseline", "Fixed-core coverage")
             elif name == "cs_breakdown_filter_cs020_cpu_t6_step080":
@@ -224,14 +226,21 @@ def main():
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures/core_sections")
     parser.add_argument("--runs", nargs="+")
     parser.add_argument("--times", nargs="+", type=float)
+    parser.add_argument("--include-final", action="store_true",
+                        help="Include each selected run's actual final saved time")
     parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
     records = discover(args.samples_dir, args.study_dir, args.runs)
     if args.times:
+        final_times = {
+            run: max(r["time"] for r in records if r["run"] == run)
+            for run in {r["run"] for r in records}
+        } if args.include_final else {}
         records = [
             r
             for r in records
             if any(np.isclose(r["time"], t, atol=1e-8, rtol=0) for t in args.times)
+            or r["time"] == final_times.get(r["run"])
         ]
     render(records, args.output, ("pdf", "png") if args.format == "both" else (args.format,))
 

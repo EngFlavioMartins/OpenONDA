@@ -125,11 +125,18 @@ def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
         observed_step = None
         observed_time = None
         if status in finished_statuses:
+            state = metadata.get("state")
             try:
                 observed_step = int(
-                    metadata.get("state", {}).get("step", metadata["completed_steps"])
+                    state.get("step", metadata.get("completed_steps"))
+                    if state
+                    else metadata["completed_steps"]
                 )
-                observed_time = float(metadata.get("state", {}).get("time", metadata["final_time"]))
+                observed_time = float(
+                    state.get("time", metadata.get("final_time"))
+                    if state
+                    else metadata["final_time"]
+                )
             except (KeyError, TypeError, ValueError):
                 continue
         else:

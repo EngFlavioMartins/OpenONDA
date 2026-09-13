@@ -41,6 +41,41 @@ def relative_drift(values):
     return abs(values[:half].mean() - values[half:].mean()) / max(abs(values.mean()), 1e-12)
 
 
+def _annulus_profile(coordinates, edges, values):
+    """Mean of ``values`` inside each annular bin, indexed by ``coordinates``.
+
+    ``coordinates`` are normalized radial positions against ``edges`` (radial
+    bounds in the same units).  Bins with no samples receive NaN:
+    the surrounding consumers mask those annuli before combining plots.
+    """
+    coordinates = np.asarray(coordinates, dtype=float)
+    edges = np.asarray(edges, dtype=float)
+    values = np.asarray(values, dtype=float)
+    radius = 0.5 * (edges[1:] + edges[:-1])
+    indices = np.digitize(coordinates, edges) - 1
+    valid = (indices >= 0) & (indices < len(radius))
+    counts = np.bincount(indices[valid], minlength=len(radius))
+    sums = np.bincount(indices[valid], weights=values[valid], minlength=len(radius))
+    return radius, np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0)
+
+
+def _plane_statistics(grid, *, freestream_speed, rotor_radius, radial_edges):
+    """Annulus-averaged axial velocity of one published native plane.
+
+    ``grid`` is the PyVista plane as written by the surface sampler: point
+    coordinates with the axial station on axis 0 and point data ``velocity``.
+    Returns the mean axial velocity (normalized by ``freestream_speed``) per
+    radial bin and its arithmetic mean over the whole plane.
+    """
+    points = np.asarray(grid.points, dtype=float)
+    velocity = np.asarray(grid.point_data["velocity"], dtype=float)
+    axial = velocity[:, 0] / freestream_speed
+    radial = np.linalg.norm(points[:, 1:], axis=1) / rotor_radius
+    _, profile = _annulus_profile(radial, np.asarray(radial_edges, dtype=float), axial)
+    disc_mean = float(np.mean(axial[np.isfinite(axial)]))
+    return profile, disc_mean
+
+
 def _interpolate_native_value(times, values, target):
     """Interpolate a recorded value at a bracketed boundary, never extrapolate."""
     tolerance = max(1.0e-12, abs(target) * 1.0e-12)
@@ -442,23 +477,19 @@ def plane_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
         # Use only complete annuli within the native square sampling plane.
         extent = min(-points[:, 1:].min(axis=0).max(), points[:, 1:].max(axis=0).min())
         edges = np.linspace(0, extent / p.rotor_radius, 49)
-        radius = 0.5 * (edges[1:] + edges[:-1])
         r = np.linalg.norm(points[:, 1:], axis=1) / p.rotor_radius
         velocity = plane["velocity"][:, :, 0] / p.freestream_speed
-        indices = np.digitize(r, edges) - 1
-        valid = (indices >= 0) & (indices < len(radius))
-        counts = np.bincount(indices[valid], minlength=len(radius))
         if "window_mean_velocity" in plane:
             mean_velocity = plane["window_mean_velocity"][:, 0] / p.freestream_speed
         else:
             mean_velocity = np.trapezoid(velocity, plane["times"], axis=0) / np.ptp(plane["times"])
-        sums = np.bincount(indices[valid], weights=mean_velocity[valid], minlength=len(radius))
+        radius, mean = _annulus_profile(r, edges, mean_velocity)
         records.append(
             dict(
                 name=plane["name"],
                 x=points[0, 0],
                 radius=radius,
-                mean=np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0),
+                mean=mean,
                 times=plane["times"],
                 complete=plane["complete"],
                 induced_field_drift=plane["induced_field_drift"],

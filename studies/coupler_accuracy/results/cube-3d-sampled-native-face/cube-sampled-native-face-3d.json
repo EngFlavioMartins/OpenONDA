@@ -1,0 +1,1460 @@
+{
+  "schema": "openonda-cube-sampled-native-face-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "small_fvm_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "full_fvm_cells": 17592,
+  "small_fvm_cells": 2840,
+  "boundary_faces": 864,
+  "sample_cells": 3088,
+  "gradient_cells": 1592,
+  "source_names": [
+    "constant_volume_control",
+    "linear_face_moment_control",
+    "native_gamma_quadratic_cell_only_moments",
+    "native_gamma_quadratic_wall_observations_moments",
+    "quadratic_wall_gamma_and_moments"
+  ],
+  "body_counts": [
+    108,
+    1728,
+    6912
+  ],
+  "reference_gradient_replay_maximum_difference": 0.0,
+  "reference_face_velocity_flux_replay_maximum_difference": 4.440892098500626e-16,
+  "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+  "records": [
+    {
+      "panels": 108,
+      "name": "constant_volume_control",
+      "boundary_velocity_replay_maximum_difference": 1.1102230246251565e-16,
+      "continuous_gradient_error_rms": 0.020938323865640762,
+      "native_gradient_error_rms": 0.017650050008680217,
+      "gradient_observation_change_rms": 0.005145359903934502,
+      "error_dot_observation_change": -7.668193476728295e-05,
+      "value_vs_flux_gradient_rms": 0.00010899219992333986,
+      "nonorthogonal_gradient_correction_rms": 0.00010899219992333803,
+      "point_normal_velocity_error_rms": 0.003856518744896572,
+      "native_normal_velocity_error_rms": 0.003486022800407598,
+      "normal_velocity_observation_change_rms": 0.001235628400622956,
+      "face_velocity_observation_change_rms": 0.0016950011352540482,
+      "gradient_input_cell_velocity_error_rms": 0.006451020208421218,
+      "body_source_flux": 6.396985951881477e-17,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.000252605505868142,
+          "raw_relative": 4.669880835479424e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 4.67270033403075e-06,
+          "corrected_mismatch": 7.118750033896504e-13
+        },
+        "native": {
+          "raw_mismatch": 0.000944378192408224,
+          "raw_relative": 1.7456571427143176e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.7469121585262307e-05,
+          "corrected_mismatch": 2.6618707238412753e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.005522439378613524,
+          "native_gradient_error_rms": 0.0052808684919013246,
+          "gradient_observation_change_rms": 0.0014469085990581594,
+          "point_normal_velocity_error_rms": 0.0051898821995218026,
+          "native_normal_velocity_error_rms": 0.005106332435416491
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04179790009886038,
+          "native_gradient_error_rms": 0.031555686680639405,
+          "gradient_observation_change_rms": 0.012413877056693742,
+          "point_normal_velocity_error_rms": 0.006172540896825442,
+          "native_normal_velocity_error_rms": 0.004605587680966418
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014669516936004583,
+          "native_gradient_error_rms": 0.01461050326109785,
+          "gradient_observation_change_rms": 0.0008013777820396709,
+          "point_normal_velocity_error_rms": 0.0024228026646666697,
+          "native_normal_velocity_error_rms": 0.0024980623203009053
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014511068080732078,
+          "native_gradient_error_rms": 0.014449982184417058,
+          "gradient_observation_change_rms": 0.0008000397735243046,
+          "point_normal_velocity_error_rms": 0.002493547892521126,
+          "native_normal_velocity_error_rms": 0.0025623859589132564
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01467244101852087,
+          "native_gradient_error_rms": 0.014613245714501667,
+          "gradient_observation_change_rms": 0.0008015589412248305,
+          "point_normal_velocity_error_rms": 0.002423067865823532,
+          "native_normal_velocity_error_rms": 0.0024981884906610575
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014527557314321525,
+          "native_gradient_error_rms": 0.014466224096981862,
+          "gradient_observation_change_rms": 0.0008006113452201625,
+          "point_normal_velocity_error_rms": 0.002494392284750884,
+          "native_normal_velocity_error_rms": 0.0025632705957408073
+        }
+      }
+    },
+    {
+      "panels": 108,
+      "name": "linear_face_moment_control",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021793113750892504,
+      "native_gradient_error_rms": 0.01834062262559275,
+      "gradient_observation_change_rms": 0.005138365808916208,
+      "error_dot_observation_change": -8.248208592558718e-05,
+      "value_vs_flux_gradient_rms": 0.0001039672111161957,
+      "nonorthogonal_gradient_correction_rms": 0.00010396721111623656,
+      "point_normal_velocity_error_rms": 0.0036441111616759827,
+      "native_normal_velocity_error_rms": 0.0027065838712464125,
+      "normal_velocity_observation_change_rms": 0.0011931302784570312,
+      "face_velocity_observation_change_rms": 0.0016349881677607872,
+      "gradient_input_cell_velocity_error_rms": 0.006116316667309097,
+      "body_source_flux": 7.890910052523224e-17,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00018174983947349954,
+          "raw_relative": 3.360213182976156e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.36201118300709e-06,
+          "corrected_mismatch": 5.123679258645097e-13
+        },
+        "native": {
+          "raw_mismatch": 0.000679581336461732,
+          "raw_relative": 1.2562828028873521e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2570905479563748e-05,
+          "corrected_mismatch": 1.9150236951759325e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.007286849006246687,
+          "native_gradient_error_rms": 0.006048899895971003,
+          "gradient_observation_change_rms": 0.0013597954637106255,
+          "point_normal_velocity_error_rms": 0.004656734234246713,
+          "native_normal_velocity_error_rms": 0.0039156724955395385
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.042434072347517705,
+          "native_gradient_error_rms": 0.03162098056644436,
+          "gradient_observation_change_rms": 0.012412225279502028,
+          "point_normal_velocity_error_rms": 0.006673321106312298,
+          "native_normal_velocity_error_rms": 0.004454764887866867
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01582498383278808,
+          "native_gradient_error_rms": 0.015717799133466447,
+          "gradient_observation_change_rms": 0.0007784780859093073,
+          "point_normal_velocity_error_rms": 0.0018081911846468738,
+          "native_normal_velocity_error_rms": 0.001455598155334565
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01570918175686469,
+          "native_gradient_error_rms": 0.015599328945995188,
+          "gradient_observation_change_rms": 0.0007766818811052551,
+          "point_normal_velocity_error_rms": 0.0018563653918327165,
+          "native_normal_velocity_error_rms": 0.0015041148801283862
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015827374709532226,
+          "native_gradient_error_rms": 0.015719969652690728,
+          "gradient_observation_change_rms": 0.0007786436016573374,
+          "point_normal_velocity_error_rms": 0.0018093842472878285,
+          "native_normal_velocity_error_rms": 0.0014566177475588697
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015727215836193374,
+          "native_gradient_error_rms": 0.015617288951301154,
+          "gradient_observation_change_rms": 0.0007772907433495711,
+          "point_normal_velocity_error_rms": 0.0018559061282798306,
+          "native_normal_velocity_error_rms": 0.0015039683028297969
+        }
+      }
+    },
+    {
+      "panels": 108,
+      "name": "native_gamma_quadratic_cell_only_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021727920080706935,
+      "native_gradient_error_rms": 0.01826816350853171,
+      "gradient_observation_change_rms": 0.005127336274751784,
+      "error_dot_observation_change": -8.233314516676172e-05,
+      "value_vs_flux_gradient_rms": 0.00010438399385309762,
+      "nonorthogonal_gradient_correction_rms": 0.00010438399385311212,
+      "point_normal_velocity_error_rms": 0.0036373908848378726,
+      "native_normal_velocity_error_rms": 0.002672399480319503,
+      "normal_velocity_observation_change_rms": 0.0011980265892460628,
+      "face_velocity_observation_change_rms": 0.0016393553297697015,
+      "gradient_input_cell_velocity_error_rms": 0.006087228140805734,
+      "body_source_flux": 2.6586065496308998e-17,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00018269526655201318,
+          "raw_relative": 3.377703974554675e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.3794997069028376e-06,
+          "corrected_mismatch": 5.145883719137601e-13
+        },
+        "native": {
+          "raw_mismatch": 0.000680838211982282,
+          "raw_relative": 1.2586110458342357e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2594155181285509e-05,
+          "corrected_mismatch": 1.919464587274433e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.006786139818718619,
+          "native_gradient_error_rms": 0.00555293431218512,
+          "gradient_observation_change_rms": 0.001375793089669021,
+          "point_normal_velocity_error_rms": 0.004473046655184835,
+          "native_normal_velocity_error_rms": 0.003710269297204327
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.042566365170866746,
+          "native_gradient_error_rms": 0.031782245834886855,
+          "gradient_observation_change_rms": 0.012383156267315561,
+          "point_normal_velocity_error_rms": 0.006773540016663579,
+          "native_normal_velocity_error_rms": 0.004514341006734877
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01565838147392971,
+          "native_gradient_error_rms": 0.01555710482213615,
+          "gradient_observation_change_rms": 0.0007782783544063699,
+          "point_normal_velocity_error_rms": 0.0018046920559823833,
+          "native_normal_velocity_error_rms": 0.0014435488506476112
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01553731373848473,
+          "native_gradient_error_rms": 0.015432665622581302,
+          "gradient_observation_change_rms": 0.0007762599631037903,
+          "point_normal_velocity_error_rms": 0.0018645007582789776,
+          "native_normal_velocity_error_rms": 0.0015038787880594432
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015660730256957234,
+          "native_gradient_error_rms": 0.015559237643523365,
+          "gradient_observation_change_rms": 0.000778446084212662,
+          "point_normal_velocity_error_rms": 0.001805853114460084,
+          "native_normal_velocity_error_rms": 0.0014445599290745957
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015555608665161943,
+          "native_gradient_error_rms": 0.015450891489255046,
+          "gradient_observation_change_rms": 0.0007768557027348907,
+          "point_normal_velocity_error_rms": 0.001864079814671482,
+          "native_normal_velocity_error_rms": 0.0015037352790281781
+        }
+      }
+    },
+    {
+      "panels": 108,
+      "name": "native_gamma_quadratic_wall_observations_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.02198771489062146,
+      "native_gradient_error_rms": 0.018622788865449557,
+      "gradient_observation_change_rms": 0.005117052951505257,
+      "error_dot_observation_change": -8.141778594632673e-05,
+      "value_vs_flux_gradient_rms": 0.00010754074912137292,
+      "nonorthogonal_gradient_correction_rms": 0.0001075407491213844,
+      "point_normal_velocity_error_rms": 0.003552996478479307,
+      "native_normal_velocity_error_rms": 0.0027989064395397213,
+      "normal_velocity_observation_change_rms": 0.0012100083525476287,
+      "face_velocity_observation_change_rms": 0.0016577669489943523,
+      "gradient_input_cell_velocity_error_rms": 0.006068067755536388,
+      "body_source_flux": 3.967447505859932e-17,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00016626192963964392,
+          "raw_relative": 3.0736356959768345e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.0755156008725027e-06,
+          "corrected_mismatch": 4.688471832992036e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006225406212976292,
+          "raw_relative": 1.1507464340846887e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.1515765498015662e-05,
+          "corrected_mismatch": 1.7542634012102098e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.004810025227216187,
+          "native_gradient_error_rms": 0.003994027786746218,
+          "gradient_observation_change_rms": 0.0014373746829309066,
+          "point_normal_velocity_error_rms": 0.004292171333292588,
+          "native_normal_velocity_error_rms": 0.0038841696012349067
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04288869721060179,
+          "native_gradient_error_rms": 0.032119545268764156,
+          "gradient_observation_change_rms": 0.012347962567336522,
+          "point_normal_velocity_error_rms": 0.006764697119041445,
+          "native_normal_velocity_error_rms": 0.004644455760943791
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016156384546683247,
+          "native_gradient_error_rms": 0.01612281547368842,
+          "gradient_observation_change_rms": 0.0007887178154732352,
+          "point_normal_velocity_error_rms": 0.0016762457432547683,
+          "native_normal_velocity_error_rms": 0.0015907696785482587
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01604106089844198,
+          "native_gradient_error_rms": 0.01600478987183817,
+          "gradient_observation_change_rms": 0.0007867610874615246,
+          "point_normal_velocity_error_rms": 0.0017190189342548836,
+          "native_normal_velocity_error_rms": 0.0016231115679184052
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01615833247939701,
+          "native_gradient_error_rms": 0.01612454015323666,
+          "gradient_observation_change_rms": 0.0007888722892897706,
+          "point_normal_velocity_error_rms": 0.001677129843532222,
+          "native_normal_velocity_error_rms": 0.0015912371862486405
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016059383661400865,
+          "native_gradient_error_rms": 0.016023016151791705,
+          "gradient_observation_change_rms": 0.000787351576023904,
+          "point_normal_velocity_error_rms": 0.0017192092337768611,
+          "native_normal_velocity_error_rms": 0.0016237049718384737
+        }
+      }
+    },
+    {
+      "panels": 108,
+      "name": "quadratic_wall_gamma_and_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021289748557734377,
+      "native_gradient_error_rms": 0.017755575807890632,
+      "gradient_observation_change_rms": 0.005148704432925979,
+      "error_dot_observation_change": -8.225103935971675e-05,
+      "value_vs_flux_gradient_rms": 0.00010173199931379505,
+      "nonorthogonal_gradient_correction_rms": 0.00010173199931379235,
+      "point_normal_velocity_error_rms": 0.0037658103002527893,
+      "native_normal_velocity_error_rms": 0.0027450092993898017,
+      "normal_velocity_observation_change_rms": 0.0011986814000251277,
+      "face_velocity_observation_change_rms": 0.0016396157666300093,
+      "gradient_input_cell_velocity_error_rms": 0.006151644711050399,
+      "body_source_flux": 8.398222326327309e-17,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00019138660042761213,
+          "raw_relative": 3.5387374592597597e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.5402721277735177e-06,
+          "corrected_mismatch": 5.38680211548126e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0007125867334629721,
+          "raw_relative": 1.3174308088540031e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.3181439794967845e-05,
+          "corrected_mismatch": 2.007727317732133e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.006542742154672968,
+          "native_gradient_error_rms": 0.005273596681967296,
+          "gradient_observation_change_rms": 0.0013962590640459824,
+          "point_normal_velocity_error_rms": 0.004296967162096321,
+          "native_normal_velocity_error_rms": 0.0034351266707737947
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.041997250792278035,
+          "native_gradient_error_rms": 0.031169439414394505,
+          "gradient_observation_change_rms": 0.012437355589922478,
+          "point_normal_velocity_error_rms": 0.0067650562958079695,
+          "native_normal_velocity_error_rms": 0.004447510980854977
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015133603853546307,
+          "native_gradient_error_rms": 0.01496597080450378,
+          "gradient_observation_change_rms": 0.0007644193631614228,
+          "point_normal_velocity_error_rms": 0.0022635891447111258,
+          "native_normal_velocity_error_rms": 0.0018261005753667995
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01505751168936042,
+          "native_gradient_error_rms": 0.014887478262524772,
+          "gradient_observation_change_rms": 0.0007624696607197651,
+          "point_normal_velocity_error_rms": 0.002300144352425507,
+          "native_normal_velocity_error_rms": 0.0018636113868599309
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015135997335998385,
+          "native_gradient_error_rms": 0.014968105808423044,
+          "gradient_observation_change_rms": 0.0007645587617296223,
+          "point_normal_velocity_error_rms": 0.0022654951600153458,
+          "native_normal_velocity_error_rms": 0.0018279944728469204
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015075403741268322,
+          "native_gradient_error_rms": 0.014905319822113844,
+          "gradient_observation_change_rms": 0.0007630614215944126,
+          "point_normal_velocity_error_rms": 0.002299364033933123,
+          "native_normal_velocity_error_rms": 0.0018629757558204503
+        }
+      }
+    },
+    {
+      "panels": 1728,
+      "name": "constant_volume_control",
+      "boundary_velocity_replay_maximum_difference": 1.1102230246251565e-16,
+      "continuous_gradient_error_rms": 0.021036970045809355,
+      "native_gradient_error_rms": 0.017816485067059733,
+      "gradient_observation_change_rms": 0.005146989401939756,
+      "error_dot_observation_change": -7.580923423359884e-05,
+      "value_vs_flux_gradient_rms": 0.000110015619135367,
+      "nonorthogonal_gradient_correction_rms": 0.00011001561913536399,
+      "point_normal_velocity_error_rms": 0.003961178158191608,
+      "native_normal_velocity_error_rms": 0.003674098704547506,
+      "normal_velocity_observation_change_rms": 0.0012418083435321533,
+      "face_velocity_observation_change_rms": 0.00170338582895654,
+      "gradient_input_cell_velocity_error_rms": 0.006622664516932241,
+      "body_source_flux": -1.033895191682177e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.0002518405496970688,
+          "raw_relative": 4.655618100026385e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 4.658550163614597e-06,
+          "corrected_mismatch": 7.093214904330125e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0009417569930655345,
+          "raw_relative": 1.740765023328412e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.74206346015679e-05,
+          "corrected_mismatch": 2.6539881403664367e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.005688767618867878,
+          "native_gradient_error_rms": 0.0055433303343194375,
+          "gradient_observation_change_rms": 0.0014508820079521046,
+          "point_normal_velocity_error_rms": 0.005446478096106816,
+          "native_normal_velocity_error_rms": 0.005415822146808973
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04171363991103893,
+          "native_gradient_error_rms": 0.03155819216875065,
+          "gradient_observation_change_rms": 0.012416898369005063,
+          "point_normal_velocity_error_rms": 0.006255823203695103,
+          "native_normal_velocity_error_rms": 0.004855696925663144
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014866811486319778,
+          "native_gradient_error_rms": 0.014827710927970479,
+          "gradient_observation_change_rms": 0.0008036124354506152,
+          "point_normal_velocity_error_rms": 0.002514005194177314,
+          "native_normal_velocity_error_rms": 0.002647018440403324
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014823850217847488,
+          "native_gradient_error_rms": 0.014785441753370123,
+          "gradient_observation_change_rms": 0.0008021856765592638,
+          "point_normal_velocity_error_rms": 0.0025179726377361072,
+          "native_normal_velocity_error_rms": 0.0026510053476260487
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014870012375038388,
+          "native_gradient_error_rms": 0.014830782743548928,
+          "gradient_observation_change_rms": 0.0008038047278850611,
+          "point_normal_velocity_error_rms": 0.0025143302592775616,
+          "native_normal_velocity_error_rms": 0.002647329652803397
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014840325989953251,
+          "native_gradient_error_rms": 0.014801627674381024,
+          "gradient_observation_change_rms": 0.0008027456282723234,
+          "point_normal_velocity_error_rms": 0.002518508513046933,
+          "native_normal_velocity_error_rms": 0.0026514669317687207
+        }
+      }
+    },
+    {
+      "panels": 1728,
+      "name": "linear_face_moment_control",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021669624919942995,
+      "native_gradient_error_rms": 0.018309058909506484,
+      "gradient_observation_change_rms": 0.005147039157768087,
+      "error_dot_observation_change": -8.042150905541683e-05,
+      "value_vs_flux_gradient_rms": 0.00010603546719163164,
+      "nonorthogonal_gradient_correction_rms": 0.00010603546719166259,
+      "point_normal_velocity_error_rms": 0.0035012178678137168,
+      "native_normal_velocity_error_rms": 0.002708698325154013,
+      "normal_velocity_observation_change_rms": 0.0012090125237820795,
+      "face_velocity_observation_change_rms": 0.0016572437669926544,
+      "gradient_input_cell_velocity_error_rms": 0.006007002223296782,
+      "body_source_flux": -8.187894806610529e-16,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00018319789150444965,
+          "raw_relative": 3.386845870248825e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.3887972706082303e-06,
+          "corrected_mismatch": 5.166977956605479e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006849671312032513,
+          "raw_relative": 1.266184331579822e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2670531989291744e-05,
+          "corrected_mismatch": 1.9308998844280723e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.006499236498360036,
+          "native_gradient_error_rms": 0.0053694911061827515,
+          "gradient_observation_change_rms": 0.001378605023682705,
+          "point_normal_velocity_error_rms": 0.004629066101755763,
+          "native_normal_velocity_error_rms": 0.004050074712671947
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.041977054176650486,
+          "native_gradient_error_rms": 0.031295816386654275,
+          "gradient_observation_change_rms": 0.012429432117818879,
+          "point_normal_velocity_error_rms": 0.006380060409617736,
+          "native_normal_velocity_error_rms": 0.00430505714632585
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015925631694366654,
+          "native_gradient_error_rms": 0.015849694681504573,
+          "gradient_observation_change_rms": 0.0007872691521869233,
+          "point_normal_velocity_error_rms": 0.0016861053125736465,
+          "native_normal_velocity_error_rms": 0.0015043406855491726
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015880960745373006,
+          "native_gradient_error_rms": 0.015805484955257427,
+          "gradient_observation_change_rms": 0.0007858047912242698,
+          "point_normal_velocity_error_rms": 0.0016891351150666507,
+          "native_normal_velocity_error_rms": 0.0015077049737083892
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01592842738601775,
+          "native_gradient_error_rms": 0.015852376494494298,
+          "gradient_observation_change_rms": 0.0007874739397918183,
+          "point_normal_velocity_error_rms": 0.0016865547799665595,
+          "native_normal_velocity_error_rms": 0.0015048720487256194
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015898812006704347,
+          "native_gradient_error_rms": 0.015823163487605804,
+          "gradient_observation_change_rms": 0.0007863834884708034,
+          "point_normal_velocity_error_rms": 0.0016893651682369196,
+          "native_normal_velocity_error_rms": 0.0015080021917896608
+        }
+      }
+    },
+    {
+      "panels": 1728,
+      "name": "native_gamma_quadratic_cell_only_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021596954119683005,
+      "native_gradient_error_rms": 0.018254054711170267,
+      "gradient_observation_change_rms": 0.005138104633215197,
+      "error_dot_observation_change": -7.980901653558137e-05,
+      "value_vs_flux_gradient_rms": 0.00010685764235268554,
+      "nonorthogonal_gradient_correction_rms": 0.00010685764235272159,
+      "point_normal_velocity_error_rms": 0.0034494874040364365,
+      "native_normal_velocity_error_rms": 0.002654549849829104,
+      "normal_velocity_observation_change_rms": 0.001217159658529098,
+      "face_velocity_observation_change_rms": 0.0016660942613867858,
+      "gradient_input_cell_velocity_error_rms": 0.005947142414018526,
+      "body_source_flux": -8.534839501805891e-16,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00018425385780784787,
+          "raw_relative": 3.4063520722669474e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.4083305506990835e-06,
+          "corrected_mismatch": 5.193623309196482e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006866506187861443,
+          "raw_relative": 1.2692903356007321e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2701673167168632e-05,
+          "corrected_mismatch": 1.935118731921648e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.005901197228130346,
+          "native_gradient_error_rms": 0.004816732002713933,
+          "gradient_observation_change_rms": 0.001397494846758228,
+          "point_normal_velocity_error_rms": 0.004462551591355588,
+          "native_normal_velocity_error_rms": 0.0039005661752074075
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04198393567381863,
+          "native_gradient_error_rms": 0.03135733374406493,
+          "gradient_observation_change_rms": 0.012404844879345234,
+          "point_normal_velocity_error_rms": 0.006369221250279333,
+          "native_normal_velocity_error_rms": 0.004258775702293381
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01583080953324384,
+          "native_gradient_error_rms": 0.01576818077070569,
+          "gradient_observation_change_rms": 0.0007883860388951859,
+          "point_normal_velocity_error_rms": 0.0016481453935859225,
+          "native_normal_velocity_error_rms": 0.0014910930404967793
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015786051691220684,
+          "native_gradient_error_rms": 0.01572390045052461,
+          "gradient_observation_change_rms": 0.0007869614765511825,
+          "point_normal_velocity_error_rms": 0.0016514450495084634,
+          "native_normal_velocity_error_rms": 0.0014948005748550636
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015833555641188306,
+          "native_gradient_error_rms": 0.015770813232898397,
+          "gradient_observation_change_rms": 0.0007885899733321148,
+          "point_normal_velocity_error_rms": 0.0016485960022926734,
+          "native_normal_velocity_error_rms": 0.001491608522202338
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015804229906502987,
+          "native_gradient_error_rms": 0.015741911044311857,
+          "gradient_observation_change_rms": 0.0007875285008658038,
+          "point_normal_velocity_error_rms": 0.0016516374758577467,
+          "native_normal_velocity_error_rms": 0.0014950411850178967
+        }
+      }
+    },
+    {
+      "panels": 1728,
+      "name": "native_gamma_quadratic_wall_observations_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021935810261143586,
+      "native_gradient_error_rms": 0.018689494069016706,
+      "gradient_observation_change_rms": 0.005126712387290596,
+      "error_dot_observation_change": -7.908288157954016e-05,
+      "value_vs_flux_gradient_rms": 0.00010980355263793356,
+      "nonorthogonal_gradient_correction_rms": 0.00010980355263798215,
+      "point_normal_velocity_error_rms": 0.003633376038046837,
+      "native_normal_velocity_error_rms": 0.003103590612007074,
+      "normal_velocity_observation_change_rms": 0.0012280377180521112,
+      "face_velocity_observation_change_rms": 0.0016830694721121306,
+      "gradient_input_cell_velocity_error_rms": 0.006241155132004131,
+      "body_source_flux": -1.0061396160665481e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00016719342606130727,
+          "raw_relative": 3.090719620357188e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.0927464352745315e-06,
+          "corrected_mismatch": 4.706235401386039e-13
+        },
+        "native": {
+          "raw_mismatch": 0.000626090789955791,
+          "raw_relative": 1.1572548167218386e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.1581436569664898e-05,
+          "corrected_mismatch": 1.7641443861293737e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.0046264492388331975,
+          "native_gradient_error_rms": 0.004287595589239561,
+          "gradient_observation_change_rms": 0.0014624366740818451,
+          "point_normal_velocity_error_rms": 0.004701650101124171,
+          "native_normal_velocity_error_rms": 0.004531948729696946
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04241515522278525,
+          "native_gradient_error_rms": 0.03179843440426348,
+          "gradient_observation_change_rms": 0.012366550062555918,
+          "point_normal_velocity_error_rms": 0.006579299842030868,
+          "native_normal_velocity_error_rms": 0.004681430478352969
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01634057268682779,
+          "native_gradient_error_rms": 0.016340862932339495,
+          "gradient_observation_change_rms": 0.0007981127229417905,
+          "point_normal_velocity_error_rms": 0.0018548859434624966,
+          "native_normal_velocity_error_rms": 0.0019556288811098917
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016295819101738242,
+          "native_gradient_error_rms": 0.016296667318313217,
+          "gradient_observation_change_rms": 0.0007967193923542937,
+          "point_normal_velocity_error_rms": 0.0018584302566219978,
+          "native_normal_velocity_error_rms": 0.0019589915790468875
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01634338540615577,
+          "native_gradient_error_rms": 0.01634356773326973,
+          "gradient_observation_change_rms": 0.0007983071372691609,
+          "point_normal_velocity_error_rms": 0.0018553581366221766,
+          "native_normal_velocity_error_rms": 0.0019561015178053147
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01631383382857197,
+          "native_gradient_error_rms": 0.016314491013017345,
+          "gradient_observation_change_rms": 0.0007972809997021984,
+          "point_normal_velocity_error_rms": 0.0018587152253330486,
+          "native_normal_velocity_error_rms": 0.0019592793877241488
+        }
+      }
+    },
+    {
+      "panels": 1728,
+      "name": "quadratic_wall_gamma_and_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021087444569502338,
+      "native_gradient_error_rms": 0.01766567192937057,
+      "gradient_observation_change_rms": 0.005159647133414715,
+      "error_dot_observation_change": -7.961315614851847e-05,
+      "value_vs_flux_gradient_rms": 0.00010432529610438954,
+      "nonorthogonal_gradient_correction_rms": 0.00010432529610440601,
+      "point_normal_velocity_error_rms": 0.003423418225831304,
+      "native_normal_velocity_error_rms": 0.002524884767876998,
+      "normal_velocity_observation_change_rms": 0.0012191726737776692,
+      "face_velocity_observation_change_rms": 0.001668425645031994,
+      "gradient_input_cell_velocity_error_rms": 0.005816205243132774,
+      "body_source_flux": -7.216449660063518e-16,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.0001920762621355765,
+          "raw_relative": 3.5513133517960357e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.5530295001122484e-06,
+          "corrected_mismatch": 5.413447468072263e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0007153033913864792,
+          "raw_relative": 1.3223841292816524e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.3231692572883325e-05,
+          "corrected_mismatch": 2.0162760350217468e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.005270346510435116,
+          "native_gradient_error_rms": 0.004161372325235148,
+          "gradient_observation_change_rms": 0.0014253097189614015,
+          "point_normal_velocity_error_rms": 0.004096654803182031,
+          "native_normal_velocity_error_rms": 0.0034566961841104313
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04138309852694389,
+          "native_gradient_error_rms": 0.030710076096541306,
+          "gradient_observation_change_rms": 0.012458400966284254,
+          "point_normal_velocity_error_rms": 0.006227491073672105,
+          "native_normal_velocity_error_rms": 0.003994798234932226
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015240106100060971,
+          "native_gradient_error_rms": 0.015113943327931567,
+          "gradient_observation_change_rms": 0.0007756531984119831,
+          "point_normal_velocity_error_rms": 0.0019173124078403795,
+          "native_normal_velocity_error_rms": 0.001605240563908898
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015195306440681474,
+          "native_gradient_error_rms": 0.015069436561424386,
+          "gradient_observation_change_rms": 0.0007741743110463085,
+          "point_normal_velocity_error_rms": 0.0019207099333336728,
+          "native_normal_velocity_error_rms": 0.0016090303294291123
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015243034173268164,
+          "native_gradient_error_rms": 0.015116739839187205,
+          "gradient_observation_change_rms": 0.0007758365831047688,
+          "point_normal_velocity_error_rms": 0.0019179585737516026,
+          "native_normal_velocity_error_rms": 0.0016059431093757817
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015213345511276255,
+          "native_gradient_error_rms": 0.015087321912408982,
+          "gradient_observation_change_rms": 0.0007747353418968859,
+          "point_normal_velocity_error_rms": 0.0019208775782237216,
+          "native_normal_velocity_error_rms": 0.00160926249870924
+        }
+      }
+    },
+    {
+      "panels": 6912,
+      "name": "constant_volume_control",
+      "boundary_velocity_replay_maximum_difference": 1.1102230246251565e-16,
+      "continuous_gradient_error_rms": 0.021033235353567607,
+      "native_gradient_error_rms": 0.017807406438172003,
+      "gradient_observation_change_rms": 0.005146704076331291,
+      "error_dot_observation_change": -7.589091411682087e-05,
+      "value_vs_flux_gradient_rms": 0.00010992792319770563,
+      "nonorthogonal_gradient_correction_rms": 0.00010992792319772189,
+      "point_normal_velocity_error_rms": 0.003950074608795738,
+      "native_normal_velocity_error_rms": 0.0036556473428350418,
+      "normal_velocity_observation_change_rms": 0.0012411759583474075,
+      "face_velocity_observation_change_rms": 0.0017024989635401311,
+      "gradient_input_cell_velocity_error_rms": 0.006606130096622944,
+      "body_source_flux": 2.5396351688300456e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.0002518635689567894,
+          "raw_relative": 4.656052847113201e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 4.658975974216848e-06,
+          "corrected_mismatch": 7.095435350379375e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0009418331465971264,
+          "raw_relative": 1.7409093854410543e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.742204329070666e-05,
+          "corrected_mismatch": 2.6544322295762868e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.0056727029788779275,
+          "native_gradient_error_rms": 0.005514641286265091,
+          "gradient_observation_change_rms": 0.0014501797737664507,
+          "point_normal_velocity_error_rms": 0.005421956967703449,
+          "native_normal_velocity_error_rms": 0.005385328112612172
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04172326213759675,
+          "native_gradient_error_rms": 0.031560368703767556,
+          "gradient_observation_change_rms": 0.012416382105667114,
+          "point_normal_velocity_error_rms": 0.006248576381719857,
+          "native_normal_velocity_error_rms": 0.004835176951325624
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014850810993671961,
+          "native_gradient_error_rms": 0.014809983876984456,
+          "gradient_observation_change_rms": 0.0008031874108409644,
+          "point_normal_velocity_error_rms": 0.0025074113708146023,
+          "native_normal_velocity_error_rms": 0.002635365777632299
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014813509444921047,
+          "native_gradient_error_rms": 0.014773425805119495,
+          "gradient_observation_change_rms": 0.0008017520656443844,
+          "point_normal_velocity_error_rms": 0.002507661508512501,
+          "native_normal_velocity_error_rms": 0.0026358736223919795
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.014854035387557871,
+          "native_gradient_error_rms": 0.014813081137896754,
+          "gradient_observation_change_rms": 0.0008033801755169168,
+          "point_normal_velocity_error_rms": 0.002507740995595527,
+          "native_normal_velocity_error_rms": 0.0026356868274255126
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01482998367216649,
+          "native_gradient_error_rms": 0.01478960869198215,
+          "gradient_observation_change_rms": 0.0008023113834488056,
+          "point_normal_velocity_error_rms": 0.002508192037876653,
+          "native_normal_velocity_error_rms": 0.0026363245013856958
+        }
+      }
+    },
+    {
+      "panels": 6912,
+      "name": "linear_face_moment_control",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.02167886677353172,
+      "native_gradient_error_rms": 0.018307962504367815,
+      "gradient_observation_change_rms": 0.005145993692964179,
+      "error_dot_observation_change": -8.063651230561342e-05,
+      "value_vs_flux_gradient_rms": 0.00010585822240136396,
+      "nonorthogonal_gradient_correction_rms": 0.00010585822240138163,
+      "point_normal_velocity_error_rms": 0.003510122131294107,
+      "native_normal_velocity_error_rms": 0.0027028463231419174,
+      "normal_velocity_observation_change_rms": 0.0012074673773576185,
+      "face_velocity_observation_change_rms": 0.001655108138344121,
+      "gradient_input_cell_velocity_error_rms": 0.00601035510296961,
+      "body_source_flux": 2.230854390106174e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.0001831071157030184,
+          "raw_relative": 3.385178334134049e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.3871180985085886e-06,
+          "corrected_mismatch": 5.160316618457728e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006846287363766468,
+          "raw_relative": 1.2655630438774046e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2664272356850737e-05,
+          "corrected_mismatch": 1.929567616798522e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.006556285595243735,
+          "native_gradient_error_rms": 0.005414849119444748,
+          "gradient_observation_change_rms": 0.001377030719843282,
+          "point_normal_velocity_error_rms": 0.004623686501639516,
+          "native_normal_velocity_error_rms": 0.004030341170266373
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04202839167308099,
+          "native_gradient_error_rms": 0.031331931608193364,
+          "gradient_observation_change_rms": 0.01242716716398746,
+          "point_normal_velocity_error_rms": 0.006406489145633914,
+          "native_normal_velocity_error_rms": 0.004313924729784611
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015902163896270236,
+          "native_gradient_error_rms": 0.01582340835626316,
+          "gradient_observation_change_rms": 0.0007866398417254801,
+          "point_normal_velocity_error_rms": 0.0016941708899379333,
+          "native_normal_velocity_error_rms": 0.0014971090692942736
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01586256894095103,
+          "native_gradient_error_rms": 0.015784379097163723,
+          "gradient_observation_change_rms": 0.0007851951327080593,
+          "point_normal_velocity_error_rms": 0.001693857341291683,
+          "native_normal_velocity_error_rms": 0.001497153993387125
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015905249714548736,
+          "native_gradient_error_rms": 0.015826388114175537,
+          "gradient_observation_change_rms": 0.0007868444717937713,
+          "point_normal_velocity_error_rms": 0.0016944888282367958,
+          "native_normal_velocity_error_rms": 0.001497510362771228
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015880307669171922,
+          "native_gradient_error_rms": 0.015801943419868115,
+          "gradient_observation_change_rms": 0.0007857737368658396,
+          "point_normal_velocity_error_rms": 0.0016941527300287408,
+          "native_normal_velocity_error_rms": 0.0014975172718477323
+        }
+      }
+    },
+    {
+      "panels": 6912,
+      "name": "native_gamma_quadratic_cell_only_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.02160727806027339,
+      "native_gradient_error_rms": 0.018252254804212338,
+      "gradient_observation_change_rms": 0.005136822413236528,
+      "error_dot_observation_change": -8.005830212060428e-05,
+      "value_vs_flux_gradient_rms": 0.00010667272258000508,
+      "nonorthogonal_gradient_correction_rms": 0.00010667272257999523,
+      "point_normal_velocity_error_rms": 0.003460479239697,
+      "native_normal_velocity_error_rms": 0.0026496060392843315,
+      "normal_velocity_observation_change_rms": 0.001215420304219573,
+      "face_velocity_observation_change_rms": 0.001663701327333495,
+      "gradient_input_cell_velocity_error_rms": 0.00595133558768668,
+      "body_source_flux": 2.321060010856968e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.0001841932489216047,
+          "raw_relative": 3.4052418234954404e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.407209406636842e-06,
+          "corrected_mismatch": 5.189182417097982e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006864222264806319,
+          "raw_relative": 1.268872253028457e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.2697448362968144e-05,
+          "corrected_mismatch": 1.9344525981068728e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.0059628932095426,
+          "native_gradient_error_rms": 0.0048630456949646335,
+          "gradient_observation_change_rms": 0.0013956525078555107,
+          "point_normal_velocity_error_rms": 0.0044561486270517665,
+          "native_normal_velocity_error_rms": 0.0038780695083632973
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.042046769468339594,
+          "native_gradient_error_rms": 0.03140251845627595,
+          "gradient_observation_change_rms": 0.012402000501868288,
+          "point_normal_velocity_error_rms": 0.006403226948749576,
+          "native_normal_velocity_error_rms": 0.004274524484590234
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01580189265770912,
+          "native_gradient_error_rms": 0.015736395069559785,
+          "gradient_observation_change_rms": 0.0007878514837912466,
+          "point_normal_velocity_error_rms": 0.0016558282221158299,
+          "native_normal_velocity_error_rms": 0.0014830332425657918
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015762039766020725,
+          "native_gradient_error_rms": 0.01569711711184731,
+          "gradient_observation_change_rms": 0.0007864474045018237,
+          "point_normal_velocity_error_rms": 0.0016556401996852604,
+          "native_normal_velocity_error_rms": 0.001483277185266176
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01580493968316489,
+          "native_gradient_error_rms": 0.015739333956283165,
+          "gradient_observation_change_rms": 0.0007880546429579251,
+          "point_normal_velocity_error_rms": 0.001656130947477277,
+          "native_normal_velocity_error_rms": 0.0014833905575870636
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015780114876829742,
+          "native_gradient_error_rms": 0.01571502637726175,
+          "gradient_observation_change_rms": 0.0007870153850499825,
+          "point_normal_velocity_error_rms": 0.0016559040754305801,
+          "native_normal_velocity_error_rms": 0.001483604040565795
+        }
+      }
+    },
+    {
+      "panels": 6912,
+      "name": "native_gamma_quadratic_wall_observations_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.02194264599900844,
+      "native_gradient_error_rms": 0.018682442447392797,
+      "gradient_observation_change_rms": 0.0051252858403599555,
+      "error_dot_observation_change": -7.935730629152561e-05,
+      "value_vs_flux_gradient_rms": 0.00010959853219438648,
+      "nonorthogonal_gradient_correction_rms": 0.00010959853219444218,
+      "point_normal_velocity_error_rms": 0.0036231764130229788,
+      "native_normal_velocity_error_rms": 0.0030722767094434516,
+      "normal_velocity_observation_change_rms": 0.0012260790379710245,
+      "face_velocity_observation_change_rms": 0.0016803554321950143,
+      "gradient_input_cell_velocity_error_rms": 0.00622004525958223,
+      "body_source_flux": 2.525757381022231e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00016711387111745246,
+          "raw_relative": 3.0892593572005347e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.091274826762094e-06,
+          "corrected_mismatch": 4.711786516509164e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0006257937409857028,
+          "raw_relative": 1.156709946229878e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.1575941753481124e-05,
+          "corrected_mismatch": 1.7641443861293737e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.0046225524860440985,
+          "native_gradient_error_rms": 0.0042382011403209515,
+          "gradient_observation_change_rms": 0.0014600453385768858,
+          "point_normal_velocity_error_rms": 0.0046581134745357555,
+          "native_normal_velocity_error_rms": 0.00446880008124869
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04247895161147225,
+          "native_gradient_error_rms": 0.03184254306607246,
+          "gradient_observation_change_rms": 0.01236346747099193,
+          "point_normal_velocity_error_rms": 0.0065983807390199555,
+          "native_normal_velocity_error_rms": 0.004673749180959209
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016310482785811462,
+          "native_gradient_error_rms": 0.016307768631953143,
+          "gradient_observation_change_rms": 0.0007973981919617777,
+          "point_normal_velocity_error_rms": 0.0018369624811578678,
+          "native_normal_velocity_error_rms": 0.0019234442052113714
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01627087470385873,
+          "native_gradient_error_rms": 0.01626881089517677,
+          "gradient_observation_change_rms": 0.0007960269808516925,
+          "point_normal_velocity_error_rms": 0.0018373831216022445,
+          "native_normal_velocity_error_rms": 0.0019242075946026142
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016313569349017187,
+          "native_gradient_error_rms": 0.016310750822355495,
+          "gradient_observation_change_rms": 0.00079759181196692,
+          "point_normal_velocity_error_rms": 0.0018372958534328973,
+          "native_normal_velocity_error_rms": 0.0019237869289736307
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.016288826456568102,
+          "native_gradient_error_rms": 0.016286574820866696,
+          "gradient_observation_change_rms": 0.0007965896157850919,
+          "point_normal_velocity_error_rms": 0.001837745003220993,
+          "native_normal_velocity_error_rms": 0.0019245772047934858
+        }
+      }
+    },
+    {
+      "panels": 6912,
+      "name": "quadratic_wall_gamma_and_moments",
+      "boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+      "continuous_gradient_error_rms": 0.021105761199788152,
+      "native_gradient_error_rms": 0.017672020664277262,
+      "gradient_observation_change_rms": 0.00515821416489276,
+      "error_dot_observation_change": -7.98800074173704e-05,
+      "value_vs_flux_gradient_rms": 0.00010413407264461807,
+      "nonorthogonal_gradient_correction_rms": 0.00010413407264463507,
+      "point_normal_velocity_error_rms": 0.0034449338823579066,
+      "native_normal_velocity_error_rms": 0.0025329717767991894,
+      "normal_velocity_observation_change_rms": 0.0012172783129249173,
+      "face_velocity_observation_change_rms": 0.0016658012277339493,
+      "gradient_input_cell_velocity_error_rms": 0.005833499210925941,
+      "body_source_flux": 2.2412627309620348e-15,
+      "boundary_flux": {
+        "point": {
+          "raw_mismatch": 0.00019199265526781417,
+          "raw_relative": 3.549777385138137e-06,
+          "acceptance_limit": 0.001,
+          "applied_correction": 3.5514829390522364e-06,
+          "corrected_mismatch": 5.413447468072263e-13
+        },
+        "native": {
+          "raw_mismatch": 0.0007149932446204321,
+          "raw_relative": 1.32181475598591e-05,
+          "acceptance_limit": 0.001,
+          "applied_correction": 1.3225955473478756e-05,
+          "corrected_mismatch": 2.014832745089734e-12
+        }
+      },
+      "face_groups": {
+        "xmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.00535737191234115,
+          "native_gradient_error_rms": 0.004228638647330993,
+          "gradient_observation_change_rms": 0.0014228734638113921,
+          "point_normal_velocity_error_rms": 0.004100796681411083,
+          "native_normal_velocity_error_rms": 0.0034411560162474274
+        },
+        "xmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.04145264330082071,
+          "native_gradient_error_rms": 0.030761339444922025,
+          "gradient_observation_change_rms": 0.012455270041506148,
+          "point_normal_velocity_error_rms": 0.006273443867050058,
+          "native_normal_velocity_error_rms": 0.004027567897753998
+        },
+        "ymin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015220984649712948,
+          "native_gradient_error_rms": 0.01509196818595789,
+          "gradient_observation_change_rms": 0.000775038724589362,
+          "point_normal_velocity_error_rms": 0.0019370827648162866,
+          "native_normal_velocity_error_rms": 0.001614088156728381
+        },
+        "ymax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015180613163912738,
+          "native_gradient_error_rms": 0.015052015304348808,
+          "gradient_observation_change_rms": 0.0007735866847702982,
+          "point_normal_velocity_error_rms": 0.001937022818726447,
+          "native_normal_velocity_error_rms": 0.0016141360015428778
+        },
+        "zmin": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.01522420031570109,
+          "native_gradient_error_rms": 0.015095057655719848,
+          "gradient_observation_change_rms": 0.0007752208008920797,
+          "point_normal_velocity_error_rms": 0.0019375942826142963,
+          "native_normal_velocity_error_rms": 0.0016146293273537552
+        },
+        "zmax": {
+          "faces": 144,
+          "continuous_gradient_error_rms": 0.015198558880059674,
+          "native_gradient_error_rms": 0.015069809791230366,
+          "gradient_observation_change_rms": 0.0007741487285246142,
+          "point_normal_velocity_error_rms": 0.0019372438581087509,
+          "native_normal_velocity_error_rms": 0.0016144399378350042
+        }
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/diffusion.py",
+      "sha256": "4ecdc68539777ec2f445f5fe03fbe929eeb855dea58cdccd4ea1209f81103de2"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/fvm/solve/simple_solver.py",
+      "sha256": "48de8cbc44d987ed359763bb77fdb64d04e43ad0aa9654fcd0ecbe9710193eac"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/stl_io.py",
+      "sha256": "b6f429bdfd0094adc496dad93fecb8c84b8c09e4f9e59e30bad2bd396f094949"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_panel_resolution_3d.py",
+      "sha256": "80889d93ac897802c4a959f2ff77fdeebdbdf4881ccb8a6f7f023849d75abc2c"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_sampled_native_face_3d.py",
+      "sha256": "fde3acc981a5ac62a7fe7d3fdd3491cc00272aedbbc146e072ca0b81ae661524"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_velocity_sampling_3d.py",
+      "sha256": "3b8fee2307024b08adef16ce8b012a356b38917ac9d27f2507ea7eb965ebe99d"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-108-qualified/cube-boundary-quadratic-overlap-3d.json",
+      "sha256": "d31cae79368c986408187022b65468294542fc21c97c505186c3a0ff342b86e9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-108-qualified/physical-boundary-quadratic-checkpoint.npz",
+      "sha256": "79b8eaeb9b57d516b3235cde8dcb1fe9b1ee9c4c1c29577fea16beb517c874d4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-108-qualified/physical-boundary-quadratic-fields.npz",
+      "sha256": "4b7f001cf563a464ab31d9de44b746a5d8dab7990810df90823bb6fa3f538286"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-1728-qualified/cube-boundary-quadratic-overlap-3d.json",
+      "sha256": "b5e460b8e97548f2c2bcdb4fbdc5166bd1d2964634679c045414d5e7f7071264"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-1728-qualified/physical-boundary-quadratic-checkpoint.npz",
+      "sha256": "e7b3f10883e1a7ecb6fc4ff06c527ecd500c7d9460d2cd7f939ea7e1786de7cd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-1728-qualified/physical-boundary-quadratic-fields.npz",
+      "sha256": "f59d5ab4237d98522a42fa39dcc27111a9d3bb12a6d8ad0fd0aeb0e0a554f31e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-6912-qualified/cube-boundary-quadratic-overlap-3d.json",
+      "sha256": "72899d0a84bb846e5f668225afaf946a13104bc64605305ca8cdb5299aef63c1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-6912-qualified/physical-boundary-quadratic-checkpoint.npz",
+      "sha256": "992d51e26026cf08b54304bb3c539a1a8ff5f5b9667e0b27c260b11f68031913"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-6912-qualified/physical-boundary-quadratic-fields.npz",
+      "sha256": "4a29d9596fbaeee34a2c97bddff940212b76304a9c18cfd20a0c2ff7828c33a5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/cube-moment-panel-resolution-3d.json",
+      "sha256": "80ab78e2f0336621689ce6daf2a0d7066afae1871f8557222f688c1d45b98a51"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/moment-panel-resolution-fields.npz",
+      "sha256": "363b71740caf0399f8d285157d37bc95e4fe3878d2ff276cdd7af1c22c14e33f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/cube-moment-panel-resolution-3d.json",
+      "sha256": "5957d22bbaabfbcd56bb64f96789851083e3e7cc392d1258cc6f9f0b64c9c392"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/moment-panel-resolution-fields.npz",
+      "sha256": "e6cde3a5d14fa5035d893e02ae278e0696e4db22dc86a47bf9bf4bb498e69687"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/refined-cube.stl",
+      "sha256": "b00755c32aa9538f79fdfc3b6cee64e70d8c2d58af961e3d3c9354511893172b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/cube-moment-panel-resolution-3d.json",
+      "sha256": "a7a3c63dbfd24c20d716b460f8ecbd0f610ca988536a58a90d5d08f7cb83715b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/moment-panel-resolution-fields.npz",
+      "sha256": "fe951beae7e51cf514d97e9e8f40f540cbb721ca3e7662496bd062336cffa9eb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-6912/refined-cube.stl",
+      "sha256": "be555a3b9a49116152d7c1aeb33977db49b4ee0032414b5409558deaa601afac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/volume-induction-comparison-fields.npz",
+      "sha256": "0f018ebfec7f50fed3601e6db15eb59d31870706614734281b4c68099a5c9f95"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cell-and-face-map.npz",
+      "sha256": "cfc29835c86a9a7e52dd1d4044ed770a0fbde83900a0775d12587a969203328c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-volume-overlap/induction-checkpoint.npz",
+      "sha256": "c7ad81f1412897dfab81adc17a374c9f1f57da8ca4616ce5ea27f0872af07d35"
+    },
+    {
+      "path": "tests/coupler/test_native_face_velocity_sampling_3d.py",
+      "sha256": "2199b61ca5170b1da5a16cba612e2fe41e86f083be66fc58ab04f027db151b82"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    }
+  ],
+  "elapsed_seconds": 109.84308812499512,
+  "limitations": [
+    "Frozen coarse physical cube; no advancing boundary condition, force validation or emission change.",
+    "Native observations use VPM velocities sampled at full-mesh cell centres on both sides of the cut. Exterior reference velocities do not enter the source field.",
+    "The sampled gradient uses the actual FVM Gauss kernel and the flux uses its actual diffusion kernel. Remote zero patch placeholders cannot influence selected gradients.",
+    "Continuous derivatives are the qualified centred half-step observations of the identical saved source/body field, with every boundary point velocity replayed.",
+    "The native normal-velocity observation uses face interpolation followed by the same global mass correction as the point observation. It does not reproduce a pressure-corrected advancing Rhie--Chow flux.",
+    "Saved source-panel strengths are evaluated with the exact production triangular kernel. No body re-solve or fitted correction is used."
+  ]
+}

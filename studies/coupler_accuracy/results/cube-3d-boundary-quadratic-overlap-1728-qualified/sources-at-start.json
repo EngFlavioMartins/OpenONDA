@@ -1,0 +1,90 @@
+[
+  {
+    "path": "studies/coupler_accuracy/cube_boundary_quadratic_overlap_3d.py",
+    "sha256": "35324afec5cf00dc9059e892e5218ef3208ff234d969ef2eb384b9bda1b575fb"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/refined-cube.stl",
+    "sha256": "b00755c32aa9538f79fdfc3b6cee64e70d8c2d58af961e3d3c9354511893172b"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+    "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/volume-induction-comparison-fields.npz",
+    "sha256": "0f018ebfec7f50fed3601e6db15eb59d31870706614734281b4c68099a5c9f95"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+    "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-reconstructed-moment-overlap/moment-overlap-induction-checkpoint.npz",
+    "sha256": "2cf2b1a33e333c31bb56dd5e3305d9ecc5e640a6b2a55c07e2844d16f8b47d39"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/cube-moment-panel-resolution-3d.json",
+    "sha256": "5957d22bbaabfbcd56bb64f96789851083e3e7cc392d1258cc6f9f0b64c9c392"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-1728/moment-panel-resolution-fields.npz",
+    "sha256": "e6cde3a5d14fa5035d893e02ae278e0696e4db22dc86a47bf9bf4bb498e69687"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+    "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+    "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+    "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+    "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+    "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+  },
+  {
+    "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+    "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+  },
+  {
+    "path": "studies/coupler_accuracy/induction_derivatives_3d.py",
+    "sha256": "74d8043a18b7e1eeeea4dd384ff7a16c78f5965da81d1fab5a0e6ee55c9e1dd3"
+  },
+  {
+    "path": "source/coupler/boundary.py",
+    "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+  },
+  {
+    "path": "source/solvers/fvm/mesh/geometry.py",
+    "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+  },
+  {
+    "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+    "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+  },
+  {
+    "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+    "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+  },
+  {
+    "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+    "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+  },
+  {
+    "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+    "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+  },
+  {
+    "path": "tests/coupler/test_native_boundary_quadratic_3d.py",
+    "sha256": "c927319f7746e10cc007ead6646b1c77071fb05a392e6ba3fc719153b6fe09d2"
+  }
+]

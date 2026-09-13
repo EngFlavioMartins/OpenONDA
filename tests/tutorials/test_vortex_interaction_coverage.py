@@ -9,7 +9,7 @@ import pytest
 
 from openonda.tutorial_runner import load_case_module
 
-CASE_DIRECTORY = Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "vortex_interactions"
+CASE_DIRECTORY = Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions_PENDING"
 MATCHED_SMAGORINSKY = 0.24080542149013215
 
 

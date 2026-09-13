@@ -1,0 +1,26 @@
+[
+  {
+    "coupling_step": 0,
+    "elapsed_flow_time": 0.0,
+    "physical_time": 0.5,
+    "fvm_velocity_rms_over_Uinf": 0.0,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+    "full_drag_coefficient": 1.586677942360705,
+    "hybrid_drag_coefficient": 1.586677942360705,
+    "drag_coefficient_difference": 0.0,
+    "particles": 6429
+  },
+  {
+    "coupling_step": 1,
+    "elapsed_flow_time": 0.05,
+    "physical_time": 0.55,
+    "fvm_velocity_rms_over_Uinf": 0.002654296953372906,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0008179570454949871,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.03677996756851475,
+    "full_drag_coefficient": 1.5090799958339747,
+    "hybrid_drag_coefficient": 1.4945066911180593,
+    "drag_coefficient_difference": -0.014573304715915336,
+    "particles": 22030
+  }
+]

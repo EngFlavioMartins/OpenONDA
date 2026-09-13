@@ -7,7 +7,9 @@ import pytest
 
 import openonda.vpm as vpm
 from source.solvers.vpm.io.manifest import _manifest_value
-from tutorials.vpm.flat_plate.assets.results import load_forces
+from tests._tutorial_helpers import load_tutorial_module
+
+load_forces = load_tutorial_module("vpm/flat_plate", "assets.results").load_forces
 
 
 @pytest.mark.parametrize("moving", [False, True])

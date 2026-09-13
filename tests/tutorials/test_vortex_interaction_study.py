@@ -5,7 +5,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
+from tests._tutorial_helpers import load_tutorial_module
+
+study = load_tutorial_module("vpm/vortex_interactions", "assets.study")
+build_experiment = study.build_experiment
+parser = study.parser
 
 
 def test_initial_gaussian_tail_does_not_amplify_the_core_peak():
@@ -32,7 +36,7 @@ def test_initial_gaussian_tail_does_not_amplify_the_core_peak():
 
 
 def test_fixed_core_diffusion_control_preserves_the_physical_viscosity():
-    from tutorials.vpm.vortex_interactions import setup
+    setup = load_tutorial_module("vpm/vortex_interactions")
 
     args = parser().parse_args(["--diffusion", "GBD", "--core-ratio", "1", "--smagorinsky", "0"])
     case = build_experiment(args, Path("/tmp/interaction-config-test"))

@@ -13,7 +13,7 @@
   },
   "surfaces": [
     {
-      "path": "../../../tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl",
+      "path": "../../../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_long.stl",
       "patch": "body"
     }
   ],

@@ -1,0 +1,8 @@
+{
+  "status": "INCOMPLETE_WALL_TIME_LIMIT",
+  "step": 3,
+  "time": 0.018,
+  "particles": 405,
+  "wall_seconds": 235.0391314160006,
+  "requested_steps": 10
+}

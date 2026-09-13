@@ -23,7 +23,7 @@ def _load_lamb_oseen_setup():
 
     from openonda.tutorial_runner import load_case_module
 
-    return load_case_module(Path(files("tutorials")) / "vpm/lamb_oseen_vortex")
+    return load_case_module(Path(files("tutorials")) / "vpm/01_lamb_oseen_vortex")
 
 
 def test_catalog_has_every_maintained_launcher() -> None:
@@ -32,8 +32,8 @@ def test_catalog_has_every_maintained_launcher() -> None:
     root = Path(files("tutorials"))
     maintained = {str(path.parent.relative_to(root)) for path in root.rglob("allrun.sh")}
     # Retained experiments can be reproduced, but are not public tutorials.
-    maintained.discard("vpm/quadcopter/studies")
-    assert {tutorial.name for tutorial in TUTORIALS} == maintained
+    maintained.discard("vpm/07_quadcopter_PENDING/studies")
+    assert {tutorial.relative_path.as_posix() for tutorial in TUTORIALS} == maintained
 
 
 def test_materializer_never_overwrites_existing_case(tmp_path: Path) -> None:
@@ -254,7 +254,7 @@ def test_all_vpm_tutorials_construct_cases_with_the_installed_api(tmp_path, monk
         raise CaseCapturedError(case)
 
     builders = {
-        "delta_wing": lambda setup: setup.run(),
+        "delta_wing": lambda setup: setup.vpm.VPMSolver(setup.build_case()),
         "quadcopter": lambda setup: setup.run(),
         "flat_plate": lambda setup: setup.run("static", 8),
         "rotor_flow": lambda setup: setup.run(),
@@ -328,7 +328,7 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         assert result.returncode == (23 if fail_first else 0), (original, result.stderr)
         assert len(calls) == (1 if fail_first else expected_count), original
         assert (output / "existing.txt").read_text() == "keep"
-        if original.parent.name == "lamb_oseen_vortex" and not fail_first:
+        if original.parent.name == "01_lamb_oseen_vortex" and not fail_first:
             assert [call[:3] for call in calls] == [
                 arguments
                 for physics in ("vortex", "dipole", "merging")

@@ -1,0 +1,208 @@
+{
+  "schema": "openonda-panel-derivative-precision-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "panels": 108,
+  "boundary_points": 864,
+  "particle_spacing": 0.125,
+  "difference_step": 0.000125,
+  "physical_seed_time": 0.5,
+  "source_small_cells": 2840,
+  "original_body_replay_maximum_difference": 0.0,
+  "quadrature_order_check_maximum_difference": 1.5699247457590104e-16,
+  "records": [
+    {
+      "mode": "runtime_f64_evaluation_float64",
+      "source_name": "constant_volume_control",
+      "velocity_error_rms": 3.1246679595535393e-17,
+      "gradient_error_rms": 5.188729802935968e-11,
+      "gradient_half_step_error_rms": 1.2969813577739754e-11,
+      "gradient_step_halving_change_rms": 3.891871814040968e-11,
+      "one_ulp_strength_response_rms": 1.4375566171988362e-09,
+      "quadrature_one_ulp_strength_response_rms": 1.4375565501122801e-09,
+      "one_ulp_strength_response_error_rms": 1.0986609200711946e-14
+    },
+    {
+      "mode": "runtime_f64_evaluation_float64",
+      "source_name": "circulation_lsq_moments",
+      "velocity_error_rms": 2.6201193762925964e-17,
+      "gradient_error_rms": 3.285938797460708e-11,
+      "gradient_half_step_error_rms": 8.215532931170004e-12,
+      "gradient_step_halving_change_rms": 2.4645332800713735e-11,
+      "one_ulp_strength_response_rms": 1.1076147914262402e-09,
+      "quadrature_one_ulp_strength_response_rms": 1.1076152136601358e-09,
+      "one_ulp_strength_response_error_rms": 8.166148635170077e-15
+    },
+    {
+      "mode": "runtime_f64_evaluation_float64",
+      "source_name": "native_face_moments",
+      "velocity_error_rms": 1.399095323961298e-17,
+      "gradient_error_rms": 1.949125726245914e-11,
+      "gradient_half_step_error_rms": 4.874503554995835e-12,
+      "gradient_step_halving_change_rms": 1.4617254543610146e-11,
+      "one_ulp_strength_response_rms": 4.388735022282961e-10,
+      "quadrature_one_ulp_strength_response_rms": 4.3887342380449655e-10,
+      "one_ulp_strength_response_error_rms": 4.339586777452668e-15
+    },
+    {
+      "mode": "runtime_f64_evaluation_float64",
+      "source_name": "linear_face_moments",
+      "velocity_error_rms": 1.1473609621293467e-17,
+      "gradient_error_rms": 1.5099834604568767e-11,
+      "gradient_half_step_error_rms": 3.775997875311031e-12,
+      "gradient_step_halving_change_rms": 1.1324543264280063e-11,
+      "one_ulp_strength_response_rms": 4.5515689079955687e-10,
+      "quadrature_one_ulp_strength_response_rms": 4.5515685775477635e-10,
+      "one_ulp_strength_response_error_rms": 3.1931402478578364e-15
+    },
+    {
+      "mode": "runtime_f32_evaluation_float32",
+      "source_name": "constant_volume_control",
+      "velocity_error_rms": 9.279510832488252e-09,
+      "gradient_error_rms": 3.87122853714465e-05,
+      "gradient_half_step_error_rms": 7.74448070914069e-05,
+      "gradient_step_halving_change_rms": 8.47412938633877e-05,
+      "one_ulp_strength_response_rms": 2.8364938702223642e-06,
+      "quadrature_one_ulp_strength_response_rms": 1.4375565501122801e-09,
+      "one_ulp_strength_response_error_rms": 2.8364696466446714e-06
+    },
+    {
+      "mode": "runtime_f32_evaluation_float32",
+      "source_name": "circulation_lsq_moments",
+      "velocity_error_rms": 8.151184518234195e-09,
+      "gradient_error_rms": 3.351562141225725e-05,
+      "gradient_half_step_error_rms": 6.727336724374795e-05,
+      "gradient_step_halving_change_rms": 7.325243860678193e-05,
+      "one_ulp_strength_response_rms": 2.047205862763305e-06,
+      "quadrature_one_ulp_strength_response_rms": 1.1076152136601358e-09,
+      "one_ulp_strength_response_error_rms": 2.047204234939723e-06
+    },
+    {
+      "mode": "runtime_f32_evaluation_float32",
+      "source_name": "native_face_moments",
+      "velocity_error_rms": 3.7508588083256105e-09,
+      "gradient_error_rms": 1.477798234357411e-05,
+      "gradient_half_step_error_rms": 3.0366923136305828e-05,
+      "gradient_step_halving_change_rms": 3.293008115884587e-05,
+      "one_ulp_strength_response_rms": 9.409223364642028e-07,
+      "quadrature_one_ulp_strength_response_rms": 4.3887342380449655e-10,
+      "one_ulp_strength_response_error_rms": 9.409188964257375e-07
+    },
+    {
+      "mode": "runtime_f32_evaluation_float32",
+      "source_name": "linear_face_moments",
+      "velocity_error_rms": 3.993570378974094e-09,
+      "gradient_error_rms": 1.548409750913549e-05,
+      "gradient_half_step_error_rms": 3.141979477043293e-05,
+      "gradient_step_halving_change_rms": 3.404213156477767e-05,
+      "one_ulp_strength_response_rms": 8.693240442150293e-07,
+      "quadrature_one_ulp_strength_response_rms": 4.5515685775477635e-10,
+      "one_ulp_strength_response_error_rms": 8.693250160873251e-07
+    },
+    {
+      "mode": "runtime_f32_evaluation_float64",
+      "source_name": "constant_volume_control",
+      "velocity_error_rms": 6.863059704084975e-11,
+      "gradient_error_rms": 5.0481727608245005e-11,
+      "gradient_half_step_error_rms": 7.013701582322193e-11,
+      "gradient_step_halving_change_rms": 3.891701701823319e-11,
+      "one_ulp_strength_response_rms": 1.4375567766345225e-09,
+      "quadrature_one_ulp_strength_response_rms": 1.4375565501122801e-09,
+      "one_ulp_strength_response_error_rms": 1.1125174075848773e-14
+    },
+    {
+      "mode": "runtime_f32_evaluation_float64",
+      "source_name": "circulation_lsq_moments",
+      "velocity_error_rms": 3.214256075301075e-11,
+      "gradient_error_rms": 2.585958029506632e-11,
+      "gradient_half_step_error_rms": 3.5180539472425766e-11,
+      "gradient_step_halving_change_rms": 2.4643894741585052e-11,
+      "one_ulp_strength_response_rms": 1.1076147472112316e-09,
+      "quadrature_one_ulp_strength_response_rms": 1.1076152136601358e-09,
+      "one_ulp_strength_response_error_rms": 7.874740222841e-15
+    },
+    {
+      "mode": "runtime_f32_evaluation_float64",
+      "source_name": "native_face_moments",
+      "velocity_error_rms": 2.3317404625844086e-11,
+      "gradient_error_rms": 1.70132079103813e-11,
+      "gradient_half_step_error_rms": 2.4154381679804616e-11,
+      "gradient_step_halving_change_rms": 1.4617374647637422e-11,
+      "one_ulp_strength_response_rms": 4.3887341291744337e-10,
+      "quadrature_one_ulp_strength_response_rms": 4.3887342380449655e-10,
+      "one_ulp_strength_response_error_rms": 4.2871543891653925e-15
+    },
+    {
+      "mode": "runtime_f32_evaluation_float64",
+      "source_name": "linear_face_moments",
+      "velocity_error_rms": 1.1452069173786724e-11,
+      "gradient_error_rms": 1.0150616745661395e-11,
+      "gradient_half_step_error_rms": 1.3390623037494445e-11,
+      "gradient_step_halving_change_rms": 1.1323984087798416e-11,
+      "one_ulp_strength_response_rms": 4.551568686039352e-10,
+      "quadrature_one_ulp_strength_response_rms": 4.5515685775477635e-10,
+      "one_ulp_strength_response_error_rms": 3.4447759358913634e-15
+    }
+  ],
+  "fields": {
+    "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse/panel-derivative-precision-fields.npz",
+    "sha256": "1b398e3e072326049be60aae578bb88706fe35bf4c69b974e4cd24e153e44f4c"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/panel_derivative_precision_3d.py",
+      "sha256": "0412330d88ba9fd9d3b5d68bfbd03d6665dc788db66ce614722d100ebc390dcb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/cube-moment-panel-resolution-3d.json",
+      "sha256": "80ab78e2f0336621689ce6daf2a0d7066afae1871f8557222f688c1d45b98a51"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/moment-panel-resolution-fields.npz",
+      "sha256": "363b71740caf0399f8d285157d37bc95e4fe3878d2ff276cdd7af1c22c14e33f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/stl_io.py",
+      "sha256": "b6f429bdfd0094adc496dad93fecb8c84b8c09e4f9e59e30bad2bd396f094949"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    }
+  ],
+  "elapsed_seconds": 4.3505217080019065,
+  "limitations": [
+    "Frozen coarse physical body strengths, with the same rounded geometry and strengths for both evaluation precisions; no body re-solve or evolving flow.",
+    "The independent reference differentiates the surface-integral kernel and compares tensor-product Duffy quadrature orders 8 and 12.",
+    "One-ULP strength perturbations diagnose operator sensitivity. They are not measured strength changes from an interface sweep.",
+    "This test does not by itself identify the source of the live iteration floor or demonstrate improved coupled forces or velocity profiles."
+  ]
+}

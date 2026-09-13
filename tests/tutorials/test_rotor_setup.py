@@ -9,9 +9,11 @@ import sys
 
 import numpy as np
 
-from tutorials.vpm.rotor_flow import setup
-from tutorials.vpm.rotor_flow.assets import run_matched_stabilization_pair as matched_pair
-from tutorials.vpm.rotor_flow.assets import run_restart_pilot as pilot
+from tests._tutorial_helpers import load_tutorial_module
+
+setup = load_tutorial_module("vpm/rotor_flow")
+matched_pair = load_tutorial_module("vpm/rotor_flow", "assets.run_matched_stabilization_pair")
+pilot = load_tutorial_module("vpm/rotor_flow", "assets.run_restart_pilot")
 
 
 def test_ordinary_rotor_case_keeps_native_controls() -> None:
@@ -37,13 +39,9 @@ def test_ordinary_rotor_case_keeps_native_controls() -> None:
     backup_time = case.backup.interval_steps * setup.TIME_STEP_SIZE
     assert backup_time <= 1.0 / 30.0
     assert setup.ANGULAR_VELOCITY * backup_time <= np.deg2rad(12.0)
-    assert [type(item.schedule).__name__ for item in case.samplers.samples] == [
-        "EveryTime",
-        "EveryTime",
-        "EveryTime",
-    ]
+    assert all(type(item.schedule).__name__ == "EveryTime" for item in case.samplers.samples)
     assert all(type(item).__name__ != "VLMSampler" for item in case.samplers.samples)
-    assert [item.file_name for item in case.samplers.samples[1:]] == ["wake_1D", "wake_2D"]
+    assert [item.file_name for item in case.samplers.samples[1:3]] == ["wake_1D", "wake_2D"]
 
 
 def test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius() -> None:
@@ -59,12 +57,24 @@ def test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius() -> N
         for segment in wing["segments"]
     )
     case = setup.build_case()
-    planes = case.samplers.samples[1:]
+    planes = case.samplers.samples[1:3]
 
     assert np.isclose(mesh_tip_radius, 6.005739216519047)
     assert setup.STATION_REFERENCE_RADIUS == 6.0
     assert not np.isclose(mesh_tip_radius, setup.STATION_REFERENCE_RADIUS)
     assert [sampler.point[0] for sampler in planes] == [12.0, 24.0]
+
+
+def test_streamwise_lines_resolve_signed_fields_through_rotor_and_wake() -> None:
+    lines = setup.build_case().samplers.samples[3:]
+    assert len(lines) == 4
+    for line, fraction in zip(lines, (0.0, 0.25, 0.65, 1.1), strict=True):
+        assert type(line).__name__ == "LineSampler"
+        np.testing.assert_allclose(line.start, [-12.0, fraction * 6.0, 0.0])
+        np.testing.assert_allclose(line.end, [36.0, fraction * 6.0, 0.0])
+        assert np.max(np.diff(line.line_points[:, 0])) <= line.spacing * 1.001
+        assert line.include_derivatives is False
+        assert line.schedule.interval == setup.FIELD_SAMPLE_INTERVAL_TIME
 
 
 def test_restart_pilot_is_explicitly_bounded_and_cpu_selected() -> None:
@@ -121,7 +131,7 @@ def test_restart_preflight_caps_steps_near_authored_endpoint() -> None:
 
 
 def test_restart_pilot_help_is_lightweight() -> None:
-    script = Path(__file__).parents[2] / "tutorials/vpm/rotor_flow/assets/run_restart_pilot.py"
+    script = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/assets/run_restart_pilot.py"
     result = subprocess.run(
         [sys.executable, str(script), "--help"],
         cwd=script.parent.parent,
@@ -162,5 +172,5 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
 
 
 def test_allrun_keeps_literal_completion_launcher() -> None:
-    launcher = Path(__file__).parents[2] / "tutorials/vpm/rotor_flow/allrun.sh"
+    launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/allrun.sh"
     assert launcher.read_text() == "#!/bin/bash -e\n\npython setup.py --output-tag completion\n"

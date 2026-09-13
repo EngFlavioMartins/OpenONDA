@@ -1,0 +1,114 @@
+{
+  "schema": "openonda-frozen-native-curl-3d/1",
+  "spatial_dimensions": 3,
+  "native_stencil_replay_max_error": 2.9778345350813754e-15,
+  "boundary_faces": 864,
+  "boundary_derivative_step": 1.25e-05,
+  "boundary_derivative_step_halving_relative_difference": 1.193482093680218e-09,
+  "results": [
+    {
+      "name": "donor_volume_vorticity",
+      "held_native_curl_relative_error": 3.3458983800185518,
+      "held_native_vs_continuous_curl_relative_difference": 3.0666189201727203,
+      "wall_tangential_velocity_rms_over_Uinf": 0.360034785786877,
+      "wall_normal_velocity_rms_over_Uinf": 0.0024069922429914045,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004499757387388932,
+      "boundary_tangential_normal_gradient_rms_error": 0.016362101654112303,
+      "boundary_flux": {
+        "raw_mismatch": 0.00024833001727342374,
+        "raw_relative": 4.590462252960812e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.593612283609897e-06,
+        "corrected_mismatch": 7.003286839335487e-13
+      }
+    },
+    {
+      "name": "original_unregularized_fit",
+      "held_native_curl_relative_error": 15.99669253172083,
+      "held_native_vs_continuous_curl_relative_difference": 8.22053843068185,
+      "wall_tangential_velocity_rms_over_Uinf": 0.12388614169915632,
+      "wall_normal_velocity_rms_over_Uinf": 0.0005384598926330274,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.007516487711624016,
+      "boundary_tangential_normal_gradient_rms_error": 0.030878196906928754,
+      "boundary_flux": {
+        "raw_mismatch": 0.00038278485918830096,
+        "raw_relative": 7.079535459790246e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 7.080759911562427e-06,
+        "corrected_mismatch": 1.0791367799356522e-12
+      }
+    },
+    {
+      "name": "raw_vorticity",
+      "held_native_curl_relative_error": 3.499101165703782,
+      "held_native_vs_continuous_curl_relative_difference": 3.1396574149307486,
+      "wall_tangential_velocity_rms_over_Uinf": 0.10276205491529673,
+      "wall_normal_velocity_rms_over_Uinf": 0.0005193903252855808,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004247913841036404,
+      "boundary_tangential_normal_gradient_rms_error": 0.019487246970272643,
+      "boundary_flux": {
+        "raw_mismatch": 0.00017449854196605052,
+        "raw_relative": 3.22622831154476e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.2278765758900934e-06,
+        "corrected_mismatch": 4.917177776064818e-13
+      }
+    },
+    {
+      "name": "raw_vorticity_velocity",
+      "held_native_curl_relative_error": 2.75484498585394,
+      "held_native_vs_continuous_curl_relative_difference": 2.400101562498324,
+      "wall_tangential_velocity_rms_over_Uinf": 0.20802928118870773,
+      "wall_normal_velocity_rms_over_Uinf": 0.0007545718419991759,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004442438584148524,
+      "boundary_tangential_normal_gradient_rms_error": 0.018188166378621525,
+      "boundary_flux": {
+        "raw_mismatch": 0.00016450057554229236,
+        "raw_relative": 3.0417993489450334e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.0429340470747905e-06,
+        "corrected_mismatch": 4.636291350834654e-13
+      }
+    },
+    {
+      "name": "raw_vorticity_velocity_moments",
+      "held_native_curl_relative_error": 3.0343009180996945,
+      "held_native_vs_continuous_curl_relative_difference": 2.6529797026710353,
+      "wall_tangential_velocity_rms_over_Uinf": 0.21911284607121384,
+      "wall_normal_velocity_rms_over_Uinf": 0.0007335044462991588,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.005121251845398913,
+      "boundary_tangential_normal_gradient_rms_error": 0.01833801623077156,
+      "boundary_flux": {
+        "raw_mismatch": 0.00012644774780912194,
+        "raw_relative": 2.3381234858977347e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 2.339032284330098e-06,
+        "corrected_mismatch": 3.5627056860221273e-13
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/native_curl_3d.py",
+      "sha256": "199a47b4d74088bd1a7bc9ed3dd0a8865f45d34daeca5fd13c9be710b521372e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-all-donor-reconstruction/held-fields.npz",
+      "sha256": "b0bd3f524b2674f674261ddd7ce7306ae56a0a9b445749c44f40b60d04301f8c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-all-donor-reconstruction/native-reconstruction-3d.json",
+      "sha256": "eea223cb22325726d759cab1c1c9c1a5e3b02853b393dc34e800b634fc8ab85d"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    }
+  ],
+  "limitations": [
+    "The native curl uses prescribed no-slip wall values even if the particle velocity slips.",
+    "Boundary targets use the same full-FVM flux and gradient trace as the boundary oracle.",
+    "Particle derivatives are centred differences of f64 complete velocity, with a step check.",
+    "This is a frozen coarse-cube diagnostic, not a new transfer method."
+  ]
+}

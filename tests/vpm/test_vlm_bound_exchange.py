@@ -217,6 +217,10 @@ def test_failed_stage_does_not_publish_exchange_or_change_accepted_particles():
         )
     assert not vlm._bound_transport_ready
     assert provider._stage_weights is None
+    np.testing.assert_array_equal(
+        vlm._transported_bound.to_numpy(),
+        np.zeros_like(vlm._transported_bound.to_numpy()),
+    )
     np.testing.assert_array_equal(position.to_numpy(), before[0])
     np.testing.assert_array_equal(strength.to_numpy(), before[1])
 

@@ -1,0 +1,124 @@
+{
+  "schema": "openonda-continuous-curl-verification-3d/1",
+  "status": "passed",
+  "spatial_dimensions": 3,
+  "source_records": 32,
+  "checks": 40,
+  "maximum_difference": 1.7763568394002505e-15,
+  "component_tests_passed": 5,
+  "source_results": [
+    {
+      "directory": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-coarse",
+      "source_records": 16,
+      "records": [
+        {
+          "name": "point_continuous_curl",
+          "maximum_edge_stokes_difference": 1.3877787807814457e-17,
+          "maximum_normal_curl_jump": 5.224987109642143e-15,
+          "maximum_cell_integral_difference": 2.439454888092385e-19,
+          "maximum_global_first_moment_difference": 5.620504062164855e-16
+        },
+        {
+          "name": "cell_average_continuous_curl",
+          "maximum_edge_stokes_difference": 1.3877787807814457e-17,
+          "maximum_normal_curl_jump": 3.774758283725532e-15,
+          "maximum_cell_integral_difference": 3.083199928005653e-19,
+          "maximum_global_first_moment_difference": 3.01332075450526e-16
+        }
+      ]
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-medium-laminar",
+      "source_records": 16,
+      "records": [
+        {
+          "name": "point_continuous_curl",
+          "maximum_edge_stokes_difference": 1.0408340855860843e-17,
+          "maximum_normal_curl_jump": 1.3766765505351941e-14,
+          "maximum_cell_integral_difference": 6.776263578034403e-20,
+          "maximum_global_first_moment_difference": 6.106226635438361e-16
+        },
+        {
+          "name": "cell_average_continuous_curl",
+          "maximum_edge_stokes_difference": 8.673617379884035e-18,
+          "maximum_normal_curl_jump": 1.1102230246251565e-14,
+          "maximum_cell_integral_difference": 7.951521792349744e-20,
+          "maximum_global_first_moment_difference": 1.361014258256616e-16
+        }
+      ]
+    }
+  ],
+  "experiments": [],
+  "checks_by_category": {
+    "cell_circulation": {
+      "count": 4,
+      "maximum_difference": 0.0
+    },
+    "cell_first_moment": {
+      "count": 4,
+      "maximum_difference": 2.168404344971009e-19
+    },
+    "cell_integral": {
+      "count": 4,
+      "maximum_difference": 3.083199928005653e-19
+    },
+    "edge_stokes_flux": {
+      "count": 8,
+      "maximum_difference": 1.3877787807814457e-17
+    },
+    "global_circulation": {
+      "count": 4,
+      "maximum_difference": 8.516628293439923e-16
+    },
+    "global_first_moment": {
+      "count": 4,
+      "maximum_difference": 6.106226635438361e-16
+    },
+    "normal_jump": {
+      "count": 4,
+      "maximum_difference": 1.7763568394002505e-15
+    },
+    "reported_metric": {
+      "count": 8,
+      "maximum_difference": 1.1171619185290638e-15
+    }
+  },
+  "artifacts": [
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-coarse/cube-continuous-curl-sources-3d.json",
+      "sha256": "5f925cfbb3d958585b70522b17620fba62f00f966592c1ba33bf4a108de3a54a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-coarse/continuous-curl-source-fields.npz",
+      "sha256": "f8ef379b6cad0afb4813636d9282f587f33d254362e949ba7397596ec9e1231f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-medium-laminar/cube-continuous-curl-sources-3d.json",
+      "sha256": "a4b8a7bbe45f8f33b3135c800fdbc6b57d00f9598e2f4ab930b349c8dbf9f1e3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-sources-medium-laminar/continuous-curl-source-fields.npz",
+      "sha256": "c3ad7541ee013d86ad3fd848fb45be8fde82f18096b1dbe467c8c9d6a96c6f47"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/3d-continuous-velocity-curl-regression.xml",
+      "sha256": "06bb7ef3e11ab9363692237b411a548ab6750d734baec77507dc064f4405db2e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/continuous-curl-source-verification-3d-sources/studies/coupler_accuracy/verify_continuous_curl_3d.py",
+      "sha256": "bbb5715ac2744067994b8c5cb9ef38a2d6a30345b7605ddf0d3035778616604a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/continuous-curl-source-verification-3d-sources/studies/coupler_accuracy/verify_sampled_native_face_3d.py",
+      "sha256": "1a5d72d7fe6cd49776cc9ef904aa9bbd915d93ebc0ac28fe5382e2d3372c5d27"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/continuous-curl-source-verification-3d-sources/studies/coupler_accuracy/verify_shared_trace_induction_3d.py",
+      "sha256": "4ba1f65de98138406462f3e7d55174b78b5f4303716f367ff7ed450d34c2e830"
+    }
+  ],
+  "limitations": [
+    "This qualifies frozen sources and observations, not advancing particle transfer, forces or velocity profiles.",
+    "Induction retains its component volume-quadrature qualification; full physical induction is not rerun by this verifier."
+  ]
+}

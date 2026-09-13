@@ -2,15 +2,26 @@
 
 import hashlib
 from pathlib import Path
-from runpy import run_path
 
 import h5py
 import numpy as np
 import pytest
 
-AUDIT_SCRIPT = Path(__file__).resolve().parents[2] / "docs/reviews/vpm-delta-checkpoint-audit.py"
-audit_checkpoint = run_path(str(AUDIT_SCRIPT))["audit_checkpoint"]
+from source.solvers.vpm.io.checkpoint_audit import _vtp_time, audit_checkpoint
+
 CLOCKS = [(400, 1.0), (800, 2.0), (1200, 3.0), (1600, 4.0)]
+
+
+def test_native_binary_vtp_clock_is_readable(tmp_path):
+    import pyvista as pv
+
+    from source.vtk_output import write_vtk_dataset
+
+    mesh = pv.PolyData(np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]), faces=[3, 0, 1, 2])
+    mesh.field_data["TimeValue"] = np.array([.123456789012], dtype=np.float64)
+    path = tmp_path / "native.vtp"
+    write_vtk_dataset(mesh, path)
+    assert _vtp_time(path) == .123456789012
 
 
 def _write_xdmf(directory: Path, step: int, time: float) -> None:

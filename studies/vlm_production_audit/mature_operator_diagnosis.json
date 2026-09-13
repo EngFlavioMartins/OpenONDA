@@ -1,0 +1,158 @@
+{
+  "source_checkpoint": "/Users/flaviomartins/OpenONDA/tutorials/vpm/06_rotor_flow_PENDING/solution/vpm_001152.h5",
+  "scope": "fixed source operator; no time convergence claim",
+  "targets": 64,
+  "selection": "32 largest free-wake strain norms plus 32 seeded random particles",
+  "tree_vs_direct": {
+    "velocity": {
+      "relative_l2": 6.932542153491965e-05,
+      "maximum_absolute": 0.0007617339261498657
+    },
+    "gradient": {
+      "relative_l2": 6.909262000467998e-05,
+      "maximum_absolute": 0.0007561683808529895
+    },
+    "rate": {
+      "relative_l2": 3.5309841320372124e-05,
+      "maximum_absolute": 0.00092880862600353
+    }
+  },
+  "largest_strain": [
+    {
+      "index": 4627,
+      "position_m": [
+        30.90186882019043,
+        -0.9347506165504456,
+        0.32018738985061646
+      ],
+      "radius_from_axis_m": 0.9880681554228882,
+      "core_radius_m": 0.5984525680541992,
+      "particle_volume_m3": 0.0018945492338389158,
+      "effective_viscosity_m2_per_s": 0.005661783739924431,
+      "free_wake_strain_norm_per_s": 9.023694936591884,
+      "strain_times_dt006": 0.0541421696195513,
+      "relative_strength_growth_per_s": 6.004158163504085,
+      "diffusive_relative_core_growth_per_s": 0.03161722884135548,
+      "strength_curl_cosine": -0.982823444339451
+    },
+    {
+      "index": 7435,
+      "position_m": [
+        31.092302322387695,
+        -1.0454325675964355,
+        0.977199912071228
+      ],
+      "radius_from_axis_m": 1.431030719985875,
+      "core_radius_m": 0.6003509163856506,
+      "particle_volume_m3": 0.002100454643368721,
+      "effective_viscosity_m2_per_s": 0.005884841084480286,
+      "free_wake_strain_norm_per_s": 8.756664004713164,
+      "strain_times_dt006": 0.05253998402827898,
+      "relative_strength_growth_per_s": 3.113042462828575,
+      "diffusive_relative_core_growth_per_s": 0.03265535274909549,
+      "strength_curl_cosine": -0.9874190722229387
+    },
+    {
+      "index": 8494,
+      "position_m": [
+        33.5413818359375,
+        -0.18742060661315918,
+        0.9506639838218689
+      ],
+      "radius_from_axis_m": 0.9689625864393894,
+      "core_radius_m": 0.6058598160743713,
+      "particle_volume_m3": 0.005901016294956207,
+      "effective_viscosity_m2_per_s": 0.011455873027443886,
+      "free_wake_strain_norm_per_s": 8.57225347213064,
+      "strain_times_dt006": 0.051433520832783845,
+      "relative_strength_growth_per_s": 5.3339306465925835,
+      "diffusive_relative_core_growth_per_s": 0.062418580768956254,
+      "strength_curl_cosine": 0.25281940953501436
+    },
+    {
+      "index": 8500,
+      "position_m": [
+        33.508731842041016,
+        -0.7238747477531433,
+        -0.6366211771965027
+      ],
+      "radius_from_axis_m": 0.9639923099743782,
+      "core_radius_m": 0.6057952642440796,
+      "particle_volume_m3": 0.00590088777244091,
+      "effective_viscosity_m2_per_s": 0.011401095427572727,
+      "free_wake_strain_norm_per_s": 8.531333321997332,
+      "strain_times_dt006": 0.051187999931983995,
+      "relative_strength_growth_per_s": 5.344679155891509,
+      "diffusive_relative_core_growth_per_s": 0.062133358401354095,
+      "strength_curl_cosine": 0.2594884401023802
+    },
+    {
+      "index": 4855,
+      "position_m": [
+        40.721832275390625,
+        2.8683624267578125,
+        1.0463896989822388
+      ],
+      "radius_from_axis_m": 3.0532661877687812,
+      "core_radius_m": 0.5986649394035339,
+      "particle_volume_m3": 0.002733096480369568,
+      "effective_viscosity_m2_per_s": 0.006819272413849831,
+      "free_wake_strain_norm_per_s": 8.51658372255847,
+      "strain_times_dt006": 0.05109950233535082,
+      "relative_strength_growth_per_s": 2.9332032929670553,
+      "diffusive_relative_core_growth_per_s": 0.038054006350111226,
+      "strength_curl_cosine": -0.371999678664135
+    },
+    {
+      "index": 4848,
+      "position_m": [
+        40.722591400146484,
+        -0.5319187641143799,
+        -3.0031301975250244
+      ],
+      "radius_from_axis_m": 3.049873530968729,
+      "core_radius_m": 0.598678469657898,
+      "particle_volume_m3": 0.0027331167366355658,
+      "effective_viscosity_m2_per_s": 0.006815771572291851,
+      "free_wake_strain_norm_per_s": 8.51215981013753,
+      "strain_times_dt006": 0.051072958860825184,
+      "relative_strength_growth_per_s": 2.920252575095917,
+      "diffusive_relative_core_growth_per_s": 0.0380327512340889,
+      "strength_curl_cosine": -0.3702432008206182
+    },
+    {
+      "index": 4850,
+      "position_m": [
+        40.72210693359375,
+        -2.3352508544921875,
+        1.962145209312439
+      ],
+      "radius_from_axis_m": 3.0501492382888817,
+      "core_radius_m": 0.5986701250076294,
+      "particle_volume_m3": 0.0027330745942890644,
+      "effective_viscosity_m2_per_s": 0.0068129594437778,
+      "free_wake_strain_norm_per_s": 8.508728907465786,
+      "strain_times_dt006": 0.05105237344479471,
+      "relative_strength_growth_per_s": 2.9296630247162967,
+      "diffusive_relative_core_growth_per_s": 0.03801811906920696,
+      "strength_curl_cosine": -0.37117056497036793
+    },
+    {
+      "index": 8499,
+      "position_m": [
+        33.62147521972656,
+        -0.7962509989738464,
+        -0.5078645348548889
+      ],
+      "radius_from_axis_m": 0.9444268310092747,
+      "core_radius_m": 0.607269287109375,
+      "particle_volume_m3": 0.005697723012417555,
+      "effective_viscosity_m2_per_s": 0.011088951490819454,
+      "free_wake_strain_norm_per_s": 8.493538969502087,
+      "strain_times_dt006": 0.05096123381701252,
+      "relative_strength_growth_per_s": 5.031236075048206,
+      "diffusive_relative_core_growth_per_s": 0.06013922749707117,
+      "strength_curl_cosine": -0.41156815549971854
+    }
+  ]
+}

@@ -193,6 +193,12 @@ mutations; use them between accepted stages, not while an RK stage is evaluating
 (`RWM`), diffusion via a vortex heat-kernel grid (`DVH`), or grid-based diffusion
 (`GBD`). `RWM` assumes spatially uniform effective viscosity. `DVH` also has a scalar
 viscosity/heat-grid contract; `GBD` is the path for LES variable effective viscosity.
+GBD applies the componentwise operator `div(nu_eff grad(omega))`, using
+conservative arithmetic-face viscosities. With variable viscosity this differs
+from `curl(div(2 nu_eff S))`, the complete incompressible stress source used by
+FVM. Matching SGS constants alone does not establish FVM–VPM model equivalence;
+the [fully 3D coupling study](../studies/coupler_accuracy/cube-3d-findings.md)
+separates this difference from transfer and boundary errors.
 The solver validates the relevant `nu`, spacing, kernel, grid, and time-step criteria
 at case construction/runtime boundaries.
 
@@ -280,6 +286,90 @@ the bound midpoint; integrated moments and per-surface torque/power include it.
 `VLMSetup.logging_interval_steps` controls force/distribution CSV cadence
 independently of `VLMSampler` geometry output and `Backup` cadence.
 The pressure term does not provide separation, stall or viscous skin friction.
+
+### Surface interaction contract
+
+The coupled VLM field is a global, all-surface bound horseshoe solve.  Internal
+horseshoe legs terminate at the strip trailing edge; the VPM owner supplies the
+advected downstream wake.  The selected bound representation is the existing
+finite-segment/point-trace field with one named numerical safeguard,
+`field_contract.numerical_epsilon` (currently `VLM_EPSILON`).  This is not a
+physical vortex core.  A finite VPM particle target uses
+`max(particle_core_radius, numerical_epsilon)`, while arbitrary point/probe
+traces use the bound-source radius reported as `boundary_filter_radius` in the
+leakage diagnostics.  The free-wake contribution is evaluated by the configured
+VPM induction backend.  The runtime contract names the source,
+`finite_segment_global_horseshoe`, the point/Jacobian trace, the
+`symmetric_pair_radius` finite-target transport rule, and the
+`partial_newborn_row_stage_responsive` near-wake policy.  These are distinct
+operators and must not be collapsed into one residual or one user parameter;
+the contract is also included in the VLM restart identity.
+
+`VLMSetup(boundary_response="lagged")` is the default accepted-step method:
+the current bound circulation is held fixed during particle RK stages and the
+global circulation/wake row is solved once at the accepted clock.  The opt-in
+`boundary_response="responsive"` policy assembles a temporary global system at
+each particle RK stage using that stage's positions, strengths, radii, and
+stage-time surface geometry.  Temporary circulation and geometry are separate
+from accepted circulation, cumulative history, exchange ledgers, and wake
+buffers.  Only the accepted VLM coupling inserts the completed near-wake row,
+refreshes forces, and publishes restart state.  A stage query therefore cannot
+emit a particle or consume an additional RK weight.  The responsive policy is
+a partitioned stage-response formulation; the accepted newborn row remains
+owned by the one accepted solve, so it must not be interpreted as a claim of a
+fully implicit RK4 shed-wake method.
+
+The leakage table records the stage linear-system residual together with
+`stage_near_wake_elapsed` and `stage_near_wake_matrix_norm`.  A positive latter
+pair in a non-initial stage is the inspectable evidence that a partial/newborn
+row was assembled for that stage; a zero value on the first step is expected
+because no accepted near-wake interval exists yet.
+
+The surface observer runs after accepted particle transport and before
+diffusion/regeneration and accepted wake insertion.  It never deletes,
+reflects, clips, projects, or transfers particle strength.  It reports finite
+surface centre intersections, finite-edge side bypasses, and finite-core
+overlaps with particle index/provenance, receiving surface/panel, accepted
+time interval, crossing position, strength magnitude, and local core/mesh
+scales.  `surface_event_policy="warn"` records an unresolved encounter and
+continues, `"strict"` raises a health error, and `"ignore"` suppresses the
+warning only; none of the policies changes the solution.  Event records are
+written to `vlm_surface_events.csv` and `vlm_surface_events.vtp` under the
+configured samples directory.
+
+Boundary leakage is an observer-only measurement at on-surface and two-sided
+off-grid probes.  For `r_k = (u_total - u_surface) dot n`, the reported values
+are `R1 = sum(w*abs(r_k))/(U_ref*sum(w))` and `Rinf = max(abs(r_k))/U_ref`,
+with separate edge/interior and collocation/off-grid values.  The
+`transport_R1`/`transport_Rinf` pair repeats the measurement with representative
+finite particle target radii and reports the radius quantiles, the
+`symmetric_pair_radius:*:host_reference` operator label, and the complete
+bound-plus-free-wake residual.  It is not silently combined with the point-trace
+residual.  Samples are available in `vlm_leakage.csv` and
+`vlm_surface_leakage.vtp` and include independent interior probes, collocation
+probes, and two-sided traces.  A dense or smooth probe residual alone is not
+evidence of a resolved no-through wall for every particle radius.
+
+For interaction studies, refine the prescribed accepted time step, surface
+resolution, particle spacing/core overlap, and wake-row resolution separately.
+The observer uses bounded accepted-segment sub-sweeps for moving geometry and
+does not connect equal-time RK stage positions into a material trajectory.  No
+automatic collision-repair retry is enabled: a retry would require rollback of
+particle fields, surface histories, exchange ledgers, wake buffers, diffusion
+state, and scheduled output.  Use a smaller globally prescribed step with
+`surface_event_policy="strict"` for a controlled refinement run; persistent
+events are a validity failure, not a reason to remove particles.
+
+The current qualification evidence is the reproducible real-ring/two-surface
+tutorial and its generated `studies/` tables on direct/f64/CPU, plus an f32
+CPU comparison.  Those tables establish implementation self-consistency,
+stage/restart equivalence, and the declared refinement trends for the tested
+case; they are not external validation or a universal qualification of every
+mesh, wake topology, GPU backend, precision, or viscous scheme.  The
+implementation does not model no-slip, viscous wall vorticity, boundary
+layers, stall, separated delta-wing leading-edge vortices, or a general
+viscous impingement treatment.  Unsupported encounters should be retained in
+the event and leakage outputs and reported as unresolved.
 
 ## Practical limits
 

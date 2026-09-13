@@ -1,0 +1,38 @@
+{
+  "schema": "openonda-numerical-qualification-v1",
+  "tests": [
+    {
+      "duration_seconds": 0.9602599999998347,
+      "metrics": {
+        "minimum_observed_order": 1.814890653052532,
+        "n16_velocity_rms_error": 0.0151404584015983,
+        "n32_velocity_rms_error": 0.00415618469103036,
+        "n8_velocity_rms_error": 0.05326912336021068
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[dirichlet]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.9161826250001468,
+      "metrics": {
+        "minimum_observed_order": 1.8159834428583121,
+        "n16_velocity_rms_error": 0.015011700238516053,
+        "n32_velocity_rms_error": 0.004103428391787551,
+        "n8_velocity_rms_error": 0.05285613116667022
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[vorticity_mixed]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.8349381669995637,
+      "metrics": {
+        "minimum_observed_order": 1.7023725590004726,
+        "n16_velocity_rms_error": 0.012431978991653471,
+        "n32_velocity_rms_error": 0.0032139998353368174,
+        "n8_velocity_rms_error": 0.04045809889228173
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[vorticity_mixed_pressure_gradient]",
+      "outcome": "passed"
+    }
+  ]
+}

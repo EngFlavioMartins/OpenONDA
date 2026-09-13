@@ -10,15 +10,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tutorials.vpm.delta_wing.assets._delta_wing_plots import (
-    _read_lineage_csv,
-    _validate_boundary,
-    _validate_duplicate_csv_rows,
-    _wake_frames,
-    load_accepted_lineage,
-    load_animation_lineage,
-)
-from tutorials.vpm.delta_wing.assets.render_delta_wing_gif import coupled_frames
+from tests._tutorial_helpers import load_tutorial_module
+
+_plots = load_tutorial_module("vpm/delta_wing", "assets._delta_wing_plots")
+_gif = load_tutorial_module("vpm/delta_wing", "assets.render_delta_wing_gif")
+_read_lineage_csv = _plots._read_lineage_csv
+_validate_boundary = _plots._validate_boundary
+_validate_duplicate_csv_rows = _plots._validate_duplicate_csv_rows
+_wake_frames = _plots._wake_frames
+load_accepted_lineage = _plots.load_accepted_lineage
+load_animation_lineage = _plots.load_animation_lineage
+coupled_frames = _gif.coupled_frames
 
 
 def _sha256(path: Path) -> str:
@@ -379,7 +381,7 @@ def test_native_and_wake_selected_clocks_reject_out_of_interval(tmp_path):
     case, manifest, _ = _write_manifest_fixture(tmp_path)
     segments = load_accepted_lineage(manifest)
     interval = segments[1]["accepted_interval"]
-    from tutorials.vpm.delta_wing.assets._delta_wing_plots import _validate_selected_clock
+    _validate_selected_clock = _plots._validate_selected_clock
 
     with pytest.raises(ValueError, match="outside its lineage interval"):
         _validate_selected_clock(4, 0.9, interval, "native fixture")

@@ -126,10 +126,10 @@ log.*
 
 # Fixed geometry inputs required by the native tutorials
 !tutorials/fvm/cartesian_mesher/assets/object.stl
-!tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl
-!tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl
-!tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl
-!tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl
+!tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl
+!tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/assets/cube.stl
+!tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_long.stl
+!tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl
 
 # Other simulation data
 *.xdmf
@@ -138,7 +138,10 @@ log.*
 *.csv
 
 # Digitized literature reference curves plotted against sampled results
-!tutorials/vpm/lamb_oseen_vortex/assets/references/*.csv
+!tutorials/vpm/01_lamb_oseen_vortex/assets/references/*.csv
+
+# Small, inspectable qualification tables shipped with the surface-interaction tutorial
+!tutorials/vpm/08_surface_interaction/studies/*.csv
 
 # VPM JSON outputs
 vpm*.json

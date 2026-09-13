@@ -8,15 +8,16 @@ import numpy as np
 import pytest
 import pyvista as pv
 
-from tutorials.vpm.rotor_flow.assets import _common as rotor_common
-from tutorials.vpm.rotor_flow.assets.plot_rotor_wake_planes import (
-    assess_wake_signal_onset,
-    checkpoint_particle_front_brackets,
-    finite_distance_profiles,
-    induced_field_drift,
-    native_plane_windows,
-    plane_profiles,
-)
+from tests._tutorial_helpers import load_tutorial_module
+
+rotor_common = load_tutorial_module("vpm/rotor_flow", "assets._common")
+wake_planes = load_tutorial_module("vpm/rotor_flow", "assets.plot_rotor_wake_planes")
+assess_wake_signal_onset = wake_planes.assess_wake_signal_onset
+checkpoint_particle_front_brackets = wake_planes.checkpoint_particle_front_brackets
+finite_distance_profiles = wake_planes.finite_distance_profiles
+induced_field_drift = wake_planes.induced_field_drift
+native_plane_windows = wake_planes.native_plane_windows
+plane_profiles = wake_planes.plane_profiles
 
 
 def published_planes(directory, defect=None):
@@ -301,7 +302,8 @@ def test_profiles_time_weight_irregular_frames_and_exclude_partial_annuli(monkey
         "compared_rotations": 4,
     }
     monkeypatch.setattr(
-        "tutorials.vpm.rotor_flow.assets.plot_rotor_wake_planes.native_plane_windows",
+        wake_planes,
+        "native_plane_windows",
         lambda *args: [record],
     )
     row = plane_profiles(SimpleNamespace(rotor_radius=1.0, freestream_speed=7.0))[0]
@@ -331,11 +333,13 @@ def test_finite_distance_profiles_report_both_induction_components(monkeypatch):
         "tangential_induction_factor": np.array([0.08, 0.06, 0.04, 0.02, 0.01]),
     }
     monkeypatch.setattr(
-        "tutorials.vpm.rotor_flow.assets.plot_rotor_wake_planes.native_plane_windows",
+        wake_planes,
+        "native_plane_windows",
         lambda *args, **kwargs: [record],
     )
     monkeypatch.setattr(
-        "tutorials.vpm.rotor_flow.assets.plot_rotor_wake_planes.bem_reference",
+        wake_planes,
+        "bem_reference",
         lambda: bem,
     )
     p = SimpleNamespace(

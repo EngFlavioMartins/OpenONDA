@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "tutorials" / "vpm" / "lamb_oseen_vortex" / "assets"
+ASSETS = ROOT / "tutorials" / "vpm" / "01_lamb_oseen_vortex" / "assets"
 
 
 def _load(name: str):
@@ -154,7 +154,11 @@ def test_gbd_closure_reads_both_solver_log_layouts(tmp_path, monkeypatch, separa
 
 
 def test_rwm_precision_plans_additional_independent_members_without_relaxing_gate():
-    from tutorials.vpm.lamb_oseen_vortex.assets.rwm_ensemble import required_ensemble_size
+    from tests._tutorial_helpers import load_tutorial_module
+
+    required_ensemble_size = load_tutorial_module(
+        "vpm/lamb_oseen_vortex", "assets.rwm_ensemble"
+    ).required_ensemble_size
 
     assert required_ensemble_size(10, 0.093436, 0.075) == 18
     assert required_ensemble_size(18, 0.07, 0.075) == 18
@@ -163,7 +167,10 @@ def test_rwm_precision_plans_additional_independent_members_without_relaxing_gat
 
 
 def test_rwm_convergence_extends_only_the_missing_members(tmp_path, monkeypatch):
-    from tutorials.vpm.lamb_oseen_vortex.assets import postprocess, rwm_ensemble
+    from tests._tutorial_helpers import load_tutorial_module
+
+    postprocess = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
+    rwm_ensemble = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.rwm_ensemble")
 
     monkeypatch.setattr(rwm_ensemble, "TUTORIAL_DIR", tmp_path)
     batches = []

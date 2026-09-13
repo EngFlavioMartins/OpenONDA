@@ -2,7 +2,7 @@
 """Body-fitted cube flow at Re=1000.
 
 Usage:
-    python -u setup.py --name DIRECTORY_NAME --dx WALL_CELL_SIZE
+    python -u setup.py --name DIRECTORY_NAME --dx WALL_SIZE_TARGET
 
 Example:
     python -u setup.py --name coarse --dx 0.125
@@ -30,6 +30,8 @@ def create_solver(directory_name: str, dx: float):
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
+        # This lattice resolves the cube target dx to 0.75*dx, and the
+        # strict box targets below to 1.5*dx (nearBody) and 3*dx (wake).
         max_cell_size=12 * dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.

@@ -1,0 +1,128 @@
+{
+  "schema": "openonda-3d-variable-viscosity-model-audit/1",
+  "spatial_dimensions": 3,
+  "domain": "triply periodic [0, 2\u03c0)^3",
+  "field": "ABC: (sin(z)+cos(y), sin(x)+cos(z), sin(y)+cos(x)); curl(u)=u",
+  "fvm_operator": "curl(div(2 nu_eff S))",
+  "gbd_operator": "div(nu_eff grad(omega))",
+  "shared_filter_width": 0.125,
+  "results": [
+    {
+      "points_per_axis": 16,
+      "viscosity_model": "constant",
+      "viscosity_min": 0.001,
+      "viscosity_max": 0.001,
+      "fvm_curl_of_stress_rms": 0.0017320508075688774,
+      "operator_difference_rms": 1.455397068506221e-17,
+      "relative_operator_difference": 8.402738892798593e-15,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    },
+    {
+      "points_per_axis": 16,
+      "viscosity_model": "smooth_variable",
+      "viscosity_min": 0.0007,
+      "viscosity_max": 0.0013000000000000002,
+      "fvm_curl_of_stress_rms": 0.0018083141320025125,
+      "operator_difference_rms": 0.00036742346141747673,
+      "relative_operator_difference": 0.20318563844357895,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": 4.526544070126981e-17
+    },
+    {
+      "points_per_axis": 16,
+      "viscosity_model": "equilibrium_smagorinsky",
+      "viscosity_min": 0.0010000000000000005,
+      "viscosity_max": 0.002077473977852121,
+      "fvm_curl_of_stress_rms": 0.003321160818802947,
+      "operator_difference_rms": 0.000496027638997133,
+      "relative_operator_difference": 0.14935369470482832,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    },
+    {
+      "points_per_axis": 32,
+      "viscosity_model": "constant",
+      "viscosity_min": 0.001,
+      "viscosity_max": 0.001,
+      "fvm_curl_of_stress_rms": 0.0017320508075688774,
+      "operator_difference_rms": 6.340768941682448e-17,
+      "relative_operator_difference": 3.6608446553495877e-14,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    },
+    {
+      "points_per_axis": 32,
+      "viscosity_model": "smooth_variable",
+      "viscosity_min": 0.0007,
+      "viscosity_max": 0.0013000000000000002,
+      "fvm_curl_of_stress_rms": 0.0018083141320025125,
+      "operator_difference_rms": 0.0003674234614174767,
+      "relative_operator_difference": 0.20318563844357884,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": 2.1651517384535524e-16
+    },
+    {
+      "points_per_axis": 32,
+      "viscosity_model": "equilibrium_smagorinsky",
+      "viscosity_min": 0.0010000000000000005,
+      "viscosity_max": 0.002077473977852126,
+      "fvm_curl_of_stress_rms": 0.0033212848495660667,
+      "operator_difference_rms": 0.000496377613301843,
+      "relative_operator_difference": 0.1494534903763812,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    },
+    {
+      "points_per_axis": 64,
+      "viscosity_model": "constant",
+      "viscosity_min": 0.001,
+      "viscosity_max": 0.001,
+      "fvm_curl_of_stress_rms": 0.0017320508075688776,
+      "operator_difference_rms": 3.1433079182977917e-16,
+      "relative_operator_difference": 1.8147896727751363e-13,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    },
+    {
+      "points_per_axis": 64,
+      "viscosity_model": "smooth_variable",
+      "viscosity_min": 0.0007,
+      "viscosity_max": 0.0013000000000000002,
+      "fvm_curl_of_stress_rms": 0.0018083141320025128,
+      "operator_difference_rms": 0.00036742346141747684,
+      "relative_operator_difference": 0.20318563844357962,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": 1.0572597484992396e-15
+    },
+    {
+      "points_per_axis": 64,
+      "viscosity_model": "equilibrium_smagorinsky",
+      "viscosity_min": 0.0010000000000000005,
+      "viscosity_max": 0.0020774739778521237,
+      "fvm_curl_of_stress_rms": 0.003321293181264831,
+      "operator_difference_rms": 0.0004963733235333448,
+      "relative_operator_difference": 0.14945182386588146,
+      "maximum_velocity_divergence": 0.0,
+      "analytical_commutator_max_error": null
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/variable_viscosity_3d.py",
+      "sha256": "5d149f238e10c40aa4ba7e346a273911300046b42d171ed8390b7fbed610e9db"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d6b143ae6b6333c7008e2b6c0db0dbec7b2ac4bb6254563fcad94af4d6c5930f"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "b5018afadd0420ca188c391be60587f8b184d2e09e8b69579c2254cd786ab83e"
+    }
+  ],
+  "limitations": [
+    "Continuum-operator audit, not a cube simulation or a direct measurement of cube error.",
+    "Both models receive exactly the same viscosity and velocity; actual solver discretizations are not executed."
+  ]
+}

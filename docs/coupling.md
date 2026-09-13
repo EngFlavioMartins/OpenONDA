@@ -97,8 +97,26 @@ driver samples face centres, outward face normals, and face areas. The selected
 * `dirichlet` imposes the sampled velocity;
 * `characteristic` uses incoming/outgoing characteristic information;
 * `directional_outflow` preserves outgoing flow while constraining incoming content;
-* `pressure_gradient` uses the pressure-gradient trace; and
-* `vorticity_mixed` combines velocity/vorticity information.
+* `pressure_gradient` prescribes velocity and the pressure-gradient trace;
+* `vorticity_mixed` prescribes normal velocity and tangential `du/dn`, with native
+  `fixedFluxPressure`; and
+* `vorticity_mixed_pressure_gradient` is an opt-in combination of the mixed
+  velocity trace and a prescribed pressure gradient. Its pressure evaluation
+  includes the viscous term as well as convection and the available temporal
+  history. It requires separate qualification of VPM pressure-gradient accuracy.
+
+Both mixed modes retain normal-velocity and tangential-gradient histories.
+Both prescribed-pressure modes retain the pressure-gradient and Eulerian velocity
+histories used during subcycling and restart. The combined mode keeps all of
+these histories, including refreshing the velocity snapshot after particle
+replacement at fixed physical time.
+
+The mixed face velocity is `U_b = (I - nnᵀ) U_owner + n U_n + d g_t`.
+Its tangential value therefore depends on the adjacent FVM cell. Momentum
+convection retains the diagonal part of that dependence implicitly, just as
+the directional diffusion condition does; cross-component terms converge
+through the outer iterations. The reconstructed face value is used to evaluate
+the flux, while the cell dependence belongs in the momentum matrix.
 
 The pressure datum has a constant nullspace. Coupling does not shift the numerical FVM
 pressure field merely to improve presentation; a pressure offset can be applied to an
@@ -183,3 +201,23 @@ MPI ranks must enter collective solver, field-gather, output, and backup calls i
 same order. The VPM owner is rank zero. Coupled adaptive FVM stepping, arbitrary
 unqualified combinations of transfer/diffusion kernels, and convergence claims without
 the local validation reports are outside the current guaranteed contract.
+
+## Small-domain accuracy qualification
+
+The [coupler accuracy study](../studies/coupler_accuracy/README.md) records
+independent manufactured-field checks, an exact unsteady FVM boundary test,
+and induction experiments using a saved cylinder reference snapshot. It also
+distinguishes the finite 3D coupled cylinder from the quasi-2D reference.
+These component results do not establish agreement of complete cylinder runs.
+
+Buffered renewal uses fluid-domain membership and native wall geometry
+independently of distance to the nearest FVM cell centre, so anisotropic donor
+cells retain their authority. Its represented Gaussian uses the physical VPM
+kernel without discrete normalization. Generic body-fitted walls provide
+oriented native surface triangles through a collective FVM getter; this
+geometry is assumed static.
+
+The cylinder tutorial's `allplot.sh` now adds common-time reference overlays
+and a numerical comparison report. Set `REFERENCE_GRID=medium` to choose the
+reference, or run `assets/compare_reference.py --reference medium` directly
+for short histories. The comparison does not fit a phase shift or force scale.

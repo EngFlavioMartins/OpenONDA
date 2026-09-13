@@ -1,0 +1,94 @@
+[
+  {
+    "name": "donor_volume_vorticity",
+    "panel_count": 432,
+    "whole_small_cell_velocity_rms_over_Uinf": 0.05922416662842272,
+    "near_body_cell_velocity_rms_over_Uinf": 0.18493839831117437,
+    "held_cell_velocity_rms_over_Uinf": 0.0054128031112355415,
+    "collocation_normal_velocity_rms_over_Uinf": 0.00012913194650516113,
+    "independent_wall_normal_velocity_rms_over_Uinf": 0.10021915643474474,
+    "independent_wall_tangential_velocity_rms_over_Uinf": 0.4342252865171768,
+    "boundary_normal_velocity_rms_error_over_Uinf": 0.004656702918079037,
+    "boundary_tangential_normal_gradient_rms_error": 0.016390372749447754,
+    "boundary_native_flux_tangential_normal_gradient_rms_error": 0.02104899728385462,
+    "boundary_flux": {
+      "raw_mismatch": 0.0002470576496026444,
+      "raw_relative": 4.5668546381081655e-06,
+      "acceptance_limit": 0.001,
+      "applied_correction": 4.570076007867104e-06,
+      "corrected_mismatch": 6.962208587424357e-13
+    },
+    "derivative_step_check_maximum_difference": 2.4424906541753444e-11,
+    "body_source_flux": -1.1163006100975615e-15,
+    "elapsed_seconds": 4.910358416003874
+  },
+  {
+    "name": "integrated_velocity_curl",
+    "panel_count": 432,
+    "whole_small_cell_velocity_rms_over_Uinf": 0.055452461203996876,
+    "near_body_cell_velocity_rms_over_Uinf": 0.1763815829700509,
+    "held_cell_velocity_rms_over_Uinf": 0.003274372782505534,
+    "collocation_normal_velocity_rms_over_Uinf": 0.0013252798537424732,
+    "independent_wall_normal_velocity_rms_over_Uinf": 0.10068705064666557,
+    "independent_wall_tangential_velocity_rms_over_Uinf": 0.2113646499692977,
+    "boundary_normal_velocity_rms_error_over_Uinf": 0.003550566198472818,
+    "boundary_tangential_normal_gradient_rms_error": 0.019057142697526282,
+    "boundary_native_flux_tangential_normal_gradient_rms_error": 0.024142994448780125,
+    "boundary_flux": {
+      "raw_mismatch": 0.0001570816040999956,
+      "raw_relative": 2.9040221963082816e-06,
+      "acceptance_limit": 0.001,
+      "applied_correction": 2.905697805063976e-06,
+      "corrected_mismatch": 4.424238753131249e-13
+    },
+    "derivative_step_check_maximum_difference": 1.7763568394002505e-11,
+    "body_source_flux": -2.166422839981406e-16,
+    "elapsed_seconds": 5.040463500001351
+  },
+  {
+    "name": "integrated_velocity_curl_velocity",
+    "panel_count": 432,
+    "whole_small_cell_velocity_rms_over_Uinf": 0.04634750685576968,
+    "near_body_cell_velocity_rms_over_Uinf": 0.14508405169370614,
+    "held_cell_velocity_rms_over_Uinf": 0.002626010334013658,
+    "collocation_normal_velocity_rms_over_Uinf": 0.0008004144331691317,
+    "independent_wall_normal_velocity_rms_over_Uinf": 0.10903946479356882,
+    "independent_wall_tangential_velocity_rms_over_Uinf": 0.305761003283944,
+    "boundary_normal_velocity_rms_error_over_Uinf": 0.00380836316513589,
+    "boundary_tangential_normal_gradient_rms_error": 0.0169359736758114,
+    "boundary_native_flux_tangential_normal_gradient_rms_error": 0.021624527023367195,
+    "boundary_flux": {
+      "raw_mismatch": 0.00016996047121520252,
+      "raw_relative": 3.1426455945656636e-06,
+      "acceptance_limit": 0.001,
+      "applied_correction": 3.143931276913073e-06,
+      "corrected_mismatch": 4.789502128232925e-13
+    },
+    "derivative_step_check_maximum_difference": 1.9984014443252818e-11,
+    "body_source_flux": -2.7927938185349263e-16,
+    "elapsed_seconds": 5.1706053750021965
+  },
+  {
+    "name": "integrated_velocity_curl_velocity_moments",
+    "panel_count": 432,
+    "whole_small_cell_velocity_rms_over_Uinf": 0.0460716841908687,
+    "near_body_cell_velocity_rms_over_Uinf": 0.14373524733092788,
+    "held_cell_velocity_rms_over_Uinf": 0.0035089951046937476,
+    "collocation_normal_velocity_rms_over_Uinf": 0.0007933918168400499,
+    "independent_wall_normal_velocity_rms_over_Uinf": 0.1104886361150869,
+    "independent_wall_tangential_velocity_rms_over_Uinf": 0.31962428722525504,
+    "boundary_normal_velocity_rms_error_over_Uinf": 0.004777220105903572,
+    "boundary_tangential_normal_gradient_rms_error": 0.01715776815631961,
+    "boundary_native_flux_tangential_normal_gradient_rms_error": 0.021336343383602952,
+    "boundary_flux": {
+      "raw_mismatch": 0.00011217297682220018,
+      "raw_relative": 2.0741018728778673e-06,
+      "acceptance_limit": 0.001,
+      "applied_correction": 2.074977362290435e-06,
+      "corrected_mismatch": 3.1596947280831955e-13
+    },
+    "derivative_step_check_maximum_difference": 1.554312234475219e-11,
+    "body_source_flux": -4.121048924549591e-16,
+    "elapsed_seconds": 5.299188333003258
+  }
+]

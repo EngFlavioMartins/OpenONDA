@@ -1,0 +1,2003 @@
+{
+  "schema": "openonda-cube-coupled-trial/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "source_seed_time": 0.5,
+  "fvm_dt": 0.01,
+  "vpm_dt": 0.05,
+  "particle_spacing": 0.125,
+  "core_radius_ratio": 1,
+  "boundary_mode": "vorticity_mixed",
+  "initial_vorticity_cutoff": 0.02,
+  "transfer_vorticity_cutoff": 0.05,
+  "transfer_amplification_cap": 1.8,
+  "frozen_renewals": 100,
+  "requested_coupling_steps": 10,
+  "full_cells": 17592,
+  "small_cells": 2840,
+  "small_actual_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "identical_native_shared_cells": true,
+  "fvm_numerics": {
+    "time_scheme": "euler_implicit",
+    "convection": "linearUpwind",
+    "gradient": "gauss",
+    "linear_absolute_tolerances": 1e-11,
+    "linear_relative_tolerances": 0,
+    "outer_correctors": 3,
+    "correctors": 2,
+    "relaxation": 1,
+    "kinematic_viscosity": 0.001,
+    "sgs": "equilibrium_smagorinsky"
+  },
+  "vpm_numerics": "FMM, RK2, GBD, f32, equilibrium Smagorinsky",
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "029e27f088808e6296db2f7c6a5b0dcac60278bb9c252e23285178372853ed26"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cube-boundary-oracle.json",
+      "sha256": "b01cfef087c6c5b7c80960ab056286d594820bcaf7bc571824ce167b5f5f1cdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    }
+  ],
+  "limitations": [
+    "Fresh seeded experiment; VPM initial velocity is approximate due to vorticity representation and pruning.",
+    "Full reference has finite far boundaries; VPM uses free-space induction.",
+    "Coarse matched FVM cells; no resolution convergence or long-time force statistics claimed."
+  ],
+  "seed_particles": 1955,
+  "seed_discarded_strength_l1_fraction": 0.03920037809739911,
+  "wall_time_seconds": 19.676144249999197,
+  "comparison": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.054586049212908445,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 1955,
+      "frozen_renewal_iteration": 0,
+      "particle_strength_l1": 9.166641543457157,
+      "particle_strength_net": [
+        -0.00027093653551080177,
+        -2.7226412129266464e-06,
+        -9.794139384666778e-05
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056901191340821014,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3507,
+      "frozen_renewal_iteration": 1,
+      "particle_strength_l1": 17.040213729068107,
+      "particle_strength_net": [
+        -1.2166567959326358e-05,
+        6.808850585571236e-05,
+        -7.635124643456948e-05
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056675893295830566,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 2,
+      "particle_strength_l1": 17.123287956024463,
+      "particle_strength_net": [
+        1.477888429413099e-07,
+        0.00014313621260342302,
+        -0.0001473012367760873
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056653957520328715,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 3,
+      "particle_strength_l1": 17.140383634403193,
+      "particle_strength_net": [
+        2.1285014524252688e-06,
+        0.00014621335476761033,
+        -0.0001469246887211284
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665254754714374,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 4,
+      "particle_strength_l1": 17.146055621829376,
+      "particle_strength_net": [
+        2.5626560780089847e-06,
+        0.00014652427944383817,
+        -0.00014533783001979828
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665338309133588,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 5,
+      "particle_strength_l1": 17.148873117192288,
+      "particle_strength_net": [
+        2.6967859829696295e-06,
+        0.0001465664690272206,
+        -0.00014438774923064557
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056654335623806215,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 6,
+      "particle_strength_l1": 17.150503133888396,
+      "particle_strength_net": [
+        2.716839211824862e-06,
+        0.00014667592245132255,
+        -0.0001438659882921911
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655113320607874,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 7,
+      "particle_strength_l1": 17.151502814684896,
+      "particle_strength_net": [
+        2.7120211001374628e-06,
+        0.00014684852251889424,
+        -0.00014348882683634656
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665573591574723,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 8,
+      "particle_strength_l1": 17.152158261132865,
+      "particle_strength_net": [
+        2.692641076329494e-06,
+        0.0001470698523462488,
+        -0.0001431096698922829
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665623571575317,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3499,
+      "frozen_renewal_iteration": 9,
+      "particle_strength_l1": 17.152651681661062,
+      "particle_strength_net": [
+        2.6636393117840385e-06,
+        0.00014733363281038692,
+        -0.00014264041650591253
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056654852452159996,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 10,
+      "particle_strength_l1": 17.15360049405686,
+      "particle_strength_net": [
+        2.624840937937023e-06,
+        0.00014761668433038722,
+        -0.0001419591230273909
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056654979239326594,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 11,
+      "particle_strength_l1": 17.15384921373186,
+      "particle_strength_net": [
+        2.3831785531669425e-06,
+        0.00014684568236589257,
+        -0.00014680659373311755
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655198989368105,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 12,
+      "particle_strength_l1": 17.153998729700227,
+      "particle_strength_net": [
+        2.252365631782993e-06,
+        0.00014692503339119867,
+        -0.00014738565022298644
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665535622785679,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 13,
+      "particle_strength_l1": 17.15408449045013,
+      "particle_strength_net": [
+        2.1815448882911426e-06,
+        0.00014702693329127214,
+        -0.00014753021211788564
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665543913810515,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 14,
+      "particle_strength_l1": 17.15413413232357,
+      "particle_strength_net": [
+        2.150195844485836e-06,
+        0.00014709544876723157,
+        -0.00014758483921184506
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665549047168925,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 15,
+      "particle_strength_l1": 17.154163118068638,
+      "particle_strength_net": [
+        2.136480814485253e-06,
+        0.00014714698795614822,
+        -0.0001476217479563502
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665552638967008,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 16,
+      "particle_strength_l1": 17.15418011068731,
+      "particle_strength_net": [
+        2.129175245002557e-06,
+        0.00014719227181103633,
+        -0.00014763911181603362
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665554800148893,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 17,
+      "particle_strength_l1": 17.154190127056232,
+      "particle_strength_net": [
+        2.1274627908240973e-06,
+        0.0001472315486239495,
+        -0.00014765330851673752
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665556848276284,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 18,
+      "particle_strength_l1": 17.154196017839407,
+      "particle_strength_net": [
+        2.12812714428523e-06,
+        0.00014725328225040357,
+        -0.00014766440460789454
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665557290397423,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 19,
+      "particle_strength_l1": 17.15419948545405,
+      "particle_strength_net": [
+        2.129678444262595e-06,
+        0.00014727053638807774,
+        -0.0001476696146909262
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665558515078783,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 20,
+      "particle_strength_l1": 17.154201518970915,
+      "particle_strength_net": [
+        2.1311117195388363e-06,
+        0.0001472814988119353,
+        -0.00014767223765943527
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655587261150345,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 21,
+      "particle_strength_l1": 17.154202702048515,
+      "particle_strength_net": [
+        2.132220462858214e-06,
+        0.0001472912118174463,
+        -0.0001476758531566702
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559115320815,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 22,
+      "particle_strength_l1": 17.15420338265259,
+      "particle_strength_net": [
+        2.132606112148494e-06,
+        0.00014729864739138065,
+        -0.00014767662753456534
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655592456093855,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 23,
+      "particle_strength_l1": 17.154203769540178,
+      "particle_strength_net": [
+        2.133429425565936e-06,
+        0.00014730555483311036,
+        -0.00014767922475300566
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0566555981193903,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 24,
+      "particle_strength_l1": 17.15420398054171,
+      "particle_strength_net": [
+        2.133687099004078e-06,
+        0.00014731088589314822,
+        -0.00014767796345438455
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559654165473,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 25,
+      "particle_strength_l1": 17.154204092914014,
+      "particle_strength_net": [
+        2.1340635480981973e-06,
+        0.00014731296312220366,
+        -0.00014767715290986416
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597947029714,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 26,
+      "particle_strength_l1": 17.154204147944597,
+      "particle_strength_net": [
+        2.133726564323979e-06,
+        0.00014731761325492698,
+        -0.0001476798908015553
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597488478086,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 27,
+      "particle_strength_l1": 17.154204175236565,
+      "particle_strength_net": [
+        2.1346663898746954e-06,
+        0.00014732002313166959,
+        -0.00014767823800809765
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559789803621,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 28,
+      "particle_strength_l1": 17.154204182176883,
+      "particle_strength_net": [
+        2.1342288532011366e-06,
+        0.0001473216424869861,
+        -0.00014767521176395348
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559859359658,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 29,
+      "particle_strength_l1": 17.15420418230718,
+      "particle_strength_net": [
+        2.134344619708628e-06,
+        0.00014732260075334125,
+        -0.0001476760009637701
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559852242204,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 30,
+      "particle_strength_l1": 17.154204178399127,
+      "particle_strength_net": [
+        2.134000022468996e-06,
+        0.00014732369987768834,
+        -0.00014767582203489837
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559864025015,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 31,
+      "particle_strength_l1": 17.154204173642338,
+      "particle_strength_net": [
+        2.1344905190012753e-06,
+        0.00014732399949934916,
+        -0.00014767617767574848
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559801578884,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 32,
+      "particle_strength_l1": 17.154204167397495,
+      "particle_strength_net": [
+        2.1348641556784287e-06,
+        0.00014732471549905313,
+        -0.00014767780899660465
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559871397372,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 33,
+      "particle_strength_l1": 17.154204163220555,
+      "particle_strength_net": [
+        2.134999594449738e-06,
+        0.00014732571986542098,
+        -0.00014767791496694826
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559827444822,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 34,
+      "particle_strength_l1": 17.154204156732952,
+      "particle_strength_net": [
+        2.135278838188981e-06,
+        0.00014732552534724164,
+        -0.00014767842542084963
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559773142732,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 35,
+      "particle_strength_l1": 17.154204152337346,
+      "particle_strength_net": [
+        2.135099002043006e-06,
+        0.00014732604705613994,
+        -0.00014767805546966883
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597778058134,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 36,
+      "particle_strength_l1": 17.15420414945843,
+      "particle_strength_net": [
+        2.135079035792131e-06,
+        0.00014732613391288396,
+        -0.00014767839628859747
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597730434895,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 37,
+      "particle_strength_l1": 17.15420414749454,
+      "particle_strength_net": [
+        2.1351272527780907e-06,
+        0.0001473262386184615,
+        -0.0001476784754572691
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0566555972809999,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 38,
+      "particle_strength_l1": 17.154204146590104,
+      "particle_strength_net": [
+        2.1347816820949106e-06,
+        0.0001473263940852121,
+        -0.0001476778307250015
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597518708536,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 39,
+      "particle_strength_l1": 17.154204145451942,
+      "particle_strength_net": [
+        2.135012139525827e-06,
+        0.0001473261876867582,
+        -0.00014767787314440284
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597343619725,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 40,
+      "particle_strength_l1": 17.15420414415579,
+      "particle_strength_net": [
+        2.13512027835705e-06,
+        0.00014732634826941648,
+        -0.00014767758122502528
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597409907554,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 41,
+      "particle_strength_l1": 17.15420414358298,
+      "particle_strength_net": [
+        2.1349891730082504e-06,
+        0.0001473264327387369,
+        -0.00014767774159452074
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597474288506,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 42,
+      "particle_strength_l1": 17.1542041428227,
+      "particle_strength_net": [
+        2.1349547756344123e-06,
+        0.00014732655318994148,
+        -0.0001476780386013843
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559740658636,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 43,
+      "particle_strength_l1": 17.15420414206075,
+      "particle_strength_net": [
+        2.1352531045515377e-06,
+        0.00014732666829786467,
+        -0.00014767800554693622
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559769516006,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 44,
+      "particle_strength_l1": 17.154204142166606,
+      "particle_strength_net": [
+        2.13517330038826e-06,
+        0.0001473265388085565,
+        -0.00014767802798587581
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559770736642,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 45,
+      "particle_strength_l1": 17.154204141877894,
+      "particle_strength_net": [
+        2.135193726271467e-06,
+        0.00014732674878814578,
+        -0.0001476778424347458
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597794379814,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 46,
+      "particle_strength_l1": 17.154204141884676,
+      "particle_strength_net": [
+        2.135304565609175e-06,
+        0.0001473264688911513,
+        -0.00014767782684543818
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597872568735,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 47,
+      "particle_strength_l1": 17.154204141739847,
+      "particle_strength_net": [
+        2.1351598871177657e-06,
+        0.0001473263730531471,
+        -0.00014767813875948832
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597837926897,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 48,
+      "particle_strength_l1": 17.154204141564925,
+      "particle_strength_net": [
+        2.1350871968195406e-06,
+        0.0001473266572702414,
+        -0.00014767813557625686
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559780713305,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 49,
+      "particle_strength_l1": 17.154204141548533,
+      "particle_strength_net": [
+        2.1350943870679373e-06,
+        0.00014732673508888183,
+        -0.00014767835021700648
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559777325835,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 50,
+      "particle_strength_l1": 17.15420414169802,
+      "particle_strength_net": [
+        2.134948947407622e-06,
+        0.00014732675691675468,
+        -0.00014767834420581494
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.056655597772547146,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 51,
+      "particle_strength_l1": 17.15420414151334,
+      "particle_strength_net": [
+        2.134933981157161e-06,
+        0.000147326774197154,
+        -0.0001476781009159822
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559819069178,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 52,
+      "particle_strength_l1": 17.154204141590974,
+      "particle_strength_net": [
+        2.134963074773566e-06,
+        0.00014732678647533248,
+        -0.00014767805890869568
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559819069178,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 53,
+      "particle_strength_l1": 17.154204141639852,
+      "particle_strength_net": [
+        2.1350356895766254e-06,
+        0.00014732675964523878,
+        -0.00014767799956416638
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 54,
+      "particle_strength_l1": 17.154204141557123,
+      "particle_strength_net": [
+        2.1351376320311033e-06,
+        0.00014732674691231296,
+        -0.00014767799456194552
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 55,
+      "particle_strength_l1": 17.15420414163973,
+      "particle_strength_net": [
+        2.1352541934582803e-06,
+        0.00014732677010442785,
+        -0.00014767800161052946
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 56,
+      "particle_strength_l1": 17.154204141604545,
+      "particle_strength_net": [
+        2.1352544186115097e-06,
+        0.00014732677016127127,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 57,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 58,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 59,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 60,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 61,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 62,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 63,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 64,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 65,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 66,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 67,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 68,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 69,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 70,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 71,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 72,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 73,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 74,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 75,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 76,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 77,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 78,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 79,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 80,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 81,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 82,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 83,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 84,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 85,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 86,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 87,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 88,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 89,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 90,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 91,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 92,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 93,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 94,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 95,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 96,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 97,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 98,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 99,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    },
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.05665559818204035,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 3491,
+      "frozen_renewal_iteration": 100,
+      "particle_strength_l1": 17.154204141604858,
+      "particle_strength_net": [
+        2.135254381308016e-06,
+        0.00014732676697803981,
+        -0.00014767808164606322
+      ]
+    }
+  ]
+}

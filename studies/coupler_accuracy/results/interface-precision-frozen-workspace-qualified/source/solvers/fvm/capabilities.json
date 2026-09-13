@@ -1,0 +1,67 @@
+{
+  "schema_version": 3,
+  "release_level": "evidence-gated",
+  "qualification_status": "not_certified_in_this_checkout",
+  "qualification_note": "Numerical and performance claims require the executable evidence map below; this file does not certify an R-level release.",
+  "reference_backend": "numpy-scipy-serial-cpu-float64",
+  "mesh_inputs": {
+    "native": {
+      "schema": "openonda-native-mesh-v1",
+      "representation": "in-memory Python mesh dictionary",
+      "cell_representation": "first-order polyhedron"
+    },
+    "gmsh": {
+      "schema": "gmsh-api-first-order-3d-v1",
+      "dimension": 3,
+      "element_order": 1,
+      "cell_type_code": {
+        "4": "tetrahedron",
+        "5": "hexahedron",
+        "6": "prism",
+        "7": "pyramid"
+      }
+    }
+  },
+  "verified_components": [
+    "configuration and public API validation",
+    "static-mesh topology, geometry, and quality validation",
+    "serial float64 FVM lifecycle, diagnostics, and lossless backup admission",
+    "restart history reconciliation and typed offline sampling context",
+    "native first-order mesh storage and VTK/PVD artifact contracts"
+  ],
+  "evidence": {
+    "contract_tests": {
+      "command": "PYTHONPATH=. pytest -q tests/fvm tests/coupler tests/test_public_api.py",
+      "paths": [
+        "tests/fvm/test_restart_and_diagnostics.py",
+        "tests/fvm/test_time_step_control.py",
+        "tests/fvm/test_logging.py",
+        "tests/fvm/test_nonorthogonal_pressure_correction.py",
+        "tests/test_public_api.py"
+      ],
+      "scope": "API, lifecycle, restart, output, and local numerical contracts; not a convergence qualification"
+    },
+    "qualification_gates": {
+      "specification": "fvm_audit.md#15-verification-and-acceptance-criteria",
+      "evidence_map": "docs/validation/fvm_qualification.md"
+    }
+  },
+  "experimental": [
+    "all three-level spatial/temporal, nonlinear, IBM, and performance claims until their evidence files are restored and rerun",
+    "FVM-VPM coupling beyond the uniform one-rank reference",
+    "Numba CPU assembly reductions",
+    "Taichi CPU assembly reductions",
+    "replicated PETSc compatibility mode",
+    "partitioned PETSc execution until the declared MPI matrix has been rerun"
+  ],
+  "unsupported": [
+    "dynamic/ALE meshes",
+    "compressible or multiphase flow",
+    "partitioned cyclic patches or least-squares gradients",
+    "partitioned FVM-VPM coupling",
+    "moving immersed bodies",
+    "Taichi CUDA, Metal, or Vulkan operators",
+    "float32 or mixed-precision FVM",
+    "high-order Gmsh elements"
+  ]
+}

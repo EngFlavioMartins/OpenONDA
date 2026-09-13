@@ -1,0 +1,28 @@
+[
+  {
+    "source": "cube-3d-medium-laminar-mixed-state-baseline",
+    "coupling_step": 20,
+    "elapsed_flow_time": 1.0,
+    "physical_time": 1.5,
+    "fvm_velocity_rms_over_Uinf": 0.00768622147801957,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0020049465661046957,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.031245263490371034,
+    "full_drag_coefficient": 1.0803953399803075,
+    "hybrid_drag_coefficient": 1.057755148584418,
+    "drag_coefficient_difference": -0.022640191395889353,
+    "particles": 28459
+  },
+  {
+    "source": "cube-3d-medium-laminar-mixed-outflow",
+    "coupling_step": 20,
+    "elapsed_flow_time": 1.0,
+    "physical_time": 1.5,
+    "fvm_velocity_rms_over_Uinf": 0.0076835812019269084,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.001896802601220564,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.03123616265702156,
+    "full_drag_coefficient": 1.0803953399803075,
+    "hybrid_drag_coefficient": 1.0563393576656135,
+    "drag_coefficient_difference": -0.02405598231469397,
+    "particles": 28463
+  }
+]

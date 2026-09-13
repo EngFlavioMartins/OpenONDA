@@ -176,7 +176,7 @@ jobs:
           env -u PYTHONPATH "$RUNNER_TEMP/openonda-wheel/bin/python" -I -m openonda.verify_install --require-site-packages
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
           "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run fvm/taylor_green --workspace "$RUNNER_TEMP/first-flow"
-          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run coupled_fvm_vpm/uniform_flow --workspace "$RUNNER_TEMP/hybrid-flow"
+          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run coupled_fvm_vpm/cube_flow --workspace "$RUNNER_TEMP/hybrid-flow"
       - name: Verify editable installation outside the checkout
         run: |
           python -m venv "$RUNNER_TEMP/openonda-editable"

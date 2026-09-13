@@ -1,0 +1,23 @@
+{
+  "schema": "openonda-interface-iteration-figure-3d/1",
+  "status": "complete",
+  "figure": {
+    "path": "studies/coupler_accuracy/results/interface-iteration-one-step-3d.png",
+    "sha256": "5a4b10a1eae6e42683f47e7d50c3639ce52ae89ece8c1c5eec4cc763f6060f5e"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/plot_interface_iteration_3d.py",
+      "sha256": "a01429b3f3a1011b29bf2455d2a2ce0487432a92d53fcd4f7aadfdb51e94a51f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/interface-iteration-one-step-verification-3d.json",
+      "sha256": "bd5aaf3f1da8e740444f187928e8a67e56c37284239846071fcef20d3773bd3d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-one-step-serial-twelve/interface-iteration-3d.json",
+      "sha256": "d778214e97d7912183f0508c379e785f00e75d33afeea57c313bb531a32013ff"
+    }
+  ],
+  "scope": "A single short 3D interval; not the complete 20-interval or developed-wake result."
+}

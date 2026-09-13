@@ -1,0 +1,223 @@
+{
+  "schema": "openonda-numerical-qualification-v1",
+  "tests": [
+    {
+      "duration_seconds": 0.25710029199944984,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_cube_reference_grid_study.py::test_three_completed_runs_create_numbers_and_plot",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.3905633329995908,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_closed_vortex_ring_preserves_moments_fields_topology_and_self_advection",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 4.341947458000504,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_continuous_external_injection_converges_to_independent_blob_dynamics",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.4254626670008292,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_external_flux_pair_is_injected_then_advected_only_by_the_real_vpm",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.3153058329990017,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_injected_gaussian_blob_advects_and_diffuses_with_native_core_spreading",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 2.3743174580013147,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_injected_three_dimensional_cloud_matches_pure_vpm_stretching_reference",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.1944293750002544,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_native_fvm_manufactured_flux_injects_and_enters_vpm_blob_dynamics",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.117211958999178,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_flux_handoff_vpm_integration.py::test_oblique_external_flux_retains_tangential_phase_before_free_vpm_advection",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0032102090008265804,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_exact_current_basis_never_triggers_blanket_support_births",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 6.379099977493752e-05,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_gbd_guard_accounts_for_m4_support_and_every_laplacian_stage",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0007808749996911502,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_missing_physical_support_is_created_selectively",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0001482500010752119,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_post_gbd_geometric_authority_absorbs_lattice_roundoff",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 12.528006958000333,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_production_transfer_injects_oblique_vorticity_and_releases_it_to_vpm",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 1.1350369160008995,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_production_transfer_uses_post_gbd_geometry_and_preserves_outer_tail",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 24.274802500000078,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_real_gbd_lifecycle_adds_negligible_renewal_error",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.016483666999192792,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_gbd_projected_renewal.py::test_sparse_production_projection_recovers_dense_gaussian_state",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.006341000000247732,
+      "metrics": {
+        "affine_max_abs_error": 1.1102230246251565e-16,
+        "observed_order_from_n13": 2.055630124461552,
+        "observed_order_from_n7": 2.2327807011751446,
+        "relative_l2_error_n13": 0.015528903724035401,
+        "relative_l2_error_n25": 0.003735377254743629,
+        "relative_l2_error_n7": 0.07299191573378085
+      },
+      "nodeid": "tests/coupler/test_interpolation_qualification.py::test_interpolation_is_affine_exact_and_second_order_on_graded_meshes",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.1672316670010332,
+      "metrics": {
+        "constant_vorticity_max_error": 3.552713678800501e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_anisotropic_donors_preserve_constant_vorticity_target[cell_spacing0]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.16212225000163016,
+      "metrics": {
+        "constant_vorticity_max_error": 2.6645352591003757e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_anisotropic_donors_preserve_constant_vorticity_target[cell_spacing1]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.008157291000316036,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_curved_cylinder_wall_is_recognized_without_a_box_approximation[False]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.00927320799928566,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_curved_cylinder_wall_is_recognized_without_a_box_approximation[True]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.7355247499999678,
+      "metrics": {
+        "minimum_observed_order": 1.814890653052532,
+        "n16_velocity_rms_error": 0.0151404584015983,
+        "n32_velocity_rms_error": 0.00415618469103036,
+        "n8_velocity_rms_error": 0.05326912336021068
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[dirichlet]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.864514541999597,
+      "metrics": {
+        "minimum_observed_order": 1.8159834428583121,
+        "n16_velocity_rms_error": 0.015011700238516053,
+        "n32_velocity_rms_error": 0.004103428391787551,
+        "n8_velocity_rms_error": 0.05285613116667022
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[vorticity_mixed]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.8215239580003981,
+      "metrics": {
+        "minimum_observed_order": 1.7023725590004726,
+        "n16_velocity_rms_error": 0.012431978991653471,
+        "n32_velocity_rms_error": 0.0032139998353368174,
+        "n8_velocity_rms_error": 0.04045809889228173
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_exact_unsteady_boundary_data_converges_under_fvm_refinement[vorticity_mixed_pressure_gradient]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0003810420002992032,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_invariant_recovery_resolves_small_and_large_circulation[1.0]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.000374167000700254,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_invariant_recovery_resolves_small_and_large_circulation[1e+18]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.00042908399882435333,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_invariant_recovery_resolves_small_and_large_circulation[1e-18]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.00023170900021796115,
+      "metrics": {
+        "physical_gaussian_max_error": 1.7763568394002505e-15
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[0.5]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.00019095899915555492,
+      "metrics": {
+        "physical_gaussian_max_error": 2.220446049250313e-16
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[1.0]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.0001872079992608633,
+      "metrics": {
+        "physical_gaussian_max_error": 2.7755575615628914e-17
+      },
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_lattice_representation_matches_independent_gaussian_sum[1.7]",
+      "outcome": "passed"
+    },
+    {
+      "duration_seconds": 0.010754000000815722,
+      "metrics": {},
+      "nodeid": "tests/coupler/test_transfer_representation_qualification.py::test_native_wall_triangles_preserve_orientation_and_area",
+      "outcome": "passed"
+    }
+  ]
+}

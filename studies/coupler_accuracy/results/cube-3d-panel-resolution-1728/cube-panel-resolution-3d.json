@@ -1,0 +1,205 @@
+{
+  "schema": "openonda-frozen-cube-panel-resolution-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "subdivisions": 2,
+  "panels": 1728,
+  "particle_count": 2206,
+  "wall_samples": 1536,
+  "minimum_wall_sample_to_collocation_distance": 0.002456847208498388,
+  "wall_epsilon": 1e-06,
+  "particle_spacing": 0.125,
+  "physical_time": 0.5,
+  "near_body_definition": "Native fluid cells with max(abs(x),abs(y),abs(z)) < 0.8",
+  "near_body_cells": 1328,
+  "surface": {
+    "path": "studies/coupler_accuracy/results/cube-3d-panel-resolution-1728/refined-cube.stl",
+    "sha256": "7cf0c2fd363c9e932da1006294b68d3f9d0f1313632a56be04965fe8bc5081c2"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_panel_resolution_3d.py",
+      "sha256": "c299a731b2a8cb46b1faef3186b5a8d4956293cb19382152c81d9f8314abecf2"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction/native-reconstruction-3d.json",
+      "sha256": "1a993c868cd51eafb98769f8e1ae9b598a57e794515c851129906bfa00334b11"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction/held-fields.npz",
+      "sha256": "3ff2a999beead6bc2cfe6df6892df5113c999704bef6c3402b85b7ce416de64f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/native-curl-3d.json",
+      "sha256": "09d0a49e5953ff2c20234e97c580647dd12be47001534f1ba236bb50fdfd0aec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz",
+      "sha256": "deb4fe2a983e626e11aed5a1ecf8e14997fa75f2f77d4abe700a7be934b3fba0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "4f1826d105651ca09b7c196fe099e4cd2388084bf8f2d013accd49e194817966"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/stl_io.py",
+      "sha256": "b6f429bdfd0094adc496dad93fecb8c84b8c09e4f9e59e30bad2bd396f094949"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    }
+  ],
+  "results": [
+    {
+      "name": "donor_volume_vorticity",
+      "panel_count": 1728,
+      "whole_small_cell_velocity_rms_over_Uinf": 0.059614496388680875,
+      "near_body_cell_velocity_rms_over_Uinf": 0.18643093305742886,
+      "held_cell_velocity_rms_over_Uinf": 0.005420861228456932,
+      "collocation_normal_velocity_rms_over_Uinf": 0.0004105493162859365,
+      "independent_wall_normal_velocity_rms_over_Uinf": 0.08157179779013063,
+      "independent_wall_tangential_velocity_rms_over_Uinf": 0.4451495648984284,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.00466045650887458,
+      "boundary_tangential_normal_gradient_rms_error": 0.01640115753210031,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.021066700327365198,
+      "boundary_flux": {
+        "raw_mismatch": 0.0002468710224674542,
+        "raw_relative": 4.563397650596307e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.56662377639675e-06,
+        "corrected_mismatch": 6.956657472301231e-13
+      },
+      "derivative_step_check_maximum_difference": 1.9984014443252818e-11,
+      "body_source_flux": -1.6861512186494565e-15,
+      "elapsed_seconds": 6.539575542003149
+    },
+    {
+      "name": "integrated_velocity_curl",
+      "panel_count": 1728,
+      "whole_small_cell_velocity_rms_over_Uinf": 0.055886627574414614,
+      "near_body_cell_velocity_rms_over_Uinf": 0.17780959820521355,
+      "held_cell_velocity_rms_over_Uinf": 0.003477848959128407,
+      "collocation_normal_velocity_rms_over_Uinf": 3.205779281246891e-05,
+      "independent_wall_normal_velocity_rms_over_Uinf": 0.06979719078007533,
+      "independent_wall_tangential_velocity_rms_over_Uinf": 0.23263148507742862,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.003587282980510658,
+      "boundary_tangential_normal_gradient_rms_error": 0.019023186883216154,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.024173744411324964,
+      "boundary_flux": {
+        "raw_mismatch": 0.00015661034868807988,
+        "raw_relative": 2.8952525705060833e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 2.896980515576937e-06,
+        "corrected_mismatch": 4.4142467459096224e-13
+      },
+      "derivative_step_check_maximum_difference": 2.220446049250313e-11,
+      "body_source_flux": -9.08995101411847e-16,
+      "elapsed_seconds": 7.016928375000134
+    },
+    {
+      "name": "integrated_velocity_curl_velocity",
+      "panel_count": 1728,
+      "whole_small_cell_velocity_rms_over_Uinf": 0.046867190090656194,
+      "near_body_cell_velocity_rms_over_Uinf": 0.1471861574605328,
+      "held_cell_velocity_rms_over_Uinf": 0.0025844718691493225,
+      "collocation_normal_velocity_rms_over_Uinf": 0.00032025638001295496,
+      "independent_wall_normal_velocity_rms_over_Uinf": 0.08001794186751145,
+      "independent_wall_tangential_velocity_rms_over_Uinf": 0.32498027692854836,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0037148896934359873,
+      "boundary_tangential_normal_gradient_rms_error": 0.016862503247150253,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.02162127591751841,
+      "boundary_flux": {
+        "raw_mismatch": 0.0001695085882348346,
+        "raw_relative": 3.134241588544047e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.135572338947524e-06,
+        "corrected_mismatch": 4.771738559838923e-13
+      },
+      "derivative_step_check_maximum_difference": 1.554312234475219e-11,
+      "body_source_flux": -1.1587952819525071e-15,
+      "elapsed_seconds": 7.495318499997666
+    },
+    {
+      "name": "integrated_velocity_curl_velocity_moments",
+      "panel_count": 1728,
+      "whole_small_cell_velocity_rms_over_Uinf": 0.046597305745539164,
+      "near_body_cell_velocity_rms_over_Uinf": 0.14589302896444784,
+      "held_cell_velocity_rms_over_Uinf": 0.0033818318270770484,
+      "collocation_normal_velocity_rms_over_Uinf": 0.0003210620171736325,
+      "independent_wall_normal_velocity_rms_over_Uinf": 0.08189253587218541,
+      "independent_wall_tangential_velocity_rms_over_Uinf": 0.3387808474366158,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004654151869367059,
+      "boundary_tangential_normal_gradient_rms_error": 0.017077821715459303,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.021325445054262787,
+      "boundary_flux": {
+        "raw_mismatch": 0.00011172164098838255,
+        "raw_relative": 2.065726726673609e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 2.0666285454497583e-06,
+        "corrected_mismatch": 3.1530333899354446e-13
+      },
+      "derivative_step_check_maximum_difference": 1.7763568394002505e-11,
+      "body_source_flux": -1.0269562977782698e-15,
+      "elapsed_seconds": 7.973835042001156
+    }
+  ],
+  "limitations": [
+    "Particle positions, radii and strengths are frozen; only the body source-panel surface is subdivided.",
+    "Common scrambled Sobol samples on all six cube faces are distinct from collocation points at every tested resolution.",
+    "Tangential wall velocity is measured, but the source-panel solve imposes only normal velocity.",
+    "No new particle fit or evolving hybrid calculation is part of this isolation."
+  ]
+}

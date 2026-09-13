@@ -1,0 +1,163 @@
+{
+  "scope": "Bounded two-wing temporal self-convergence with fixed geometry and core rule.\n\nThis is a small coupled implementation check, not rotor qualification. Both\nsurfaces rotate and share the free wake. The span-controlled overlap core stays\nfixed while dt changes. Native health limits and primary state are untouched.\n",
+  "targets": [
+    [
+      0.25,
+      -0.7,
+      0.2
+    ],
+    [
+      0.25,
+      -0.7,
+      0.7
+    ],
+    [
+      0.25,
+      0.25,
+      0.2
+    ],
+    [
+      0.25,
+      0.25,
+      0.7
+    ],
+    [
+      1.4,
+      -0.7,
+      0.2
+    ],
+    [
+      1.4,
+      -0.7,
+      0.7
+    ],
+    [
+      1.4,
+      0.25,
+      0.2
+    ],
+    [
+      1.4,
+      0.25,
+      0.7
+    ],
+    [
+      2.8,
+      -0.7,
+      0.2
+    ],
+    [
+      2.8,
+      -0.7,
+      0.7
+    ],
+    [
+      2.8,
+      0.25,
+      0.2
+    ],
+    [
+      2.8,
+      0.25,
+      0.7
+    ],
+    [
+      4.0,
+      -0.7,
+      0.2
+    ],
+    [
+      4.0,
+      -0.7,
+      0.7
+    ],
+    [
+      4.0,
+      0.25,
+      0.2
+    ],
+    [
+      4.0,
+      0.25,
+      0.7
+    ]
+  ],
+  "policies": {
+    "lagged": {
+      "circulation": {
+        "successive_absolute_l2_changes": [
+          9.351487943200052e-05,
+          4.71268751261628e-05,
+          2.365613468632596e-05
+        ],
+        "observed_orders": [
+          0.9886459120239137,
+          0.9943356601750808
+        ],
+        "last_relative_l2_change": 2.1413114619923995e-05
+      },
+      "force": {
+        "successive_absolute_l2_changes": [
+          0.0010310811751022295,
+          0.0005187818412327498,
+          0.0002601548109279735
+        ],
+        "observed_orders": [
+          0.9909580305147063,
+          0.9957575955625902
+        ],
+        "last_relative_l2_change": 0.00010416041334298872
+      },
+      "probe_velocity": {
+        "successive_absolute_l2_changes": [
+          5.865300429068405e-05,
+          2.9460159262863926e-05,
+          1.476380447558465e-05
+        ],
+        "observed_orders": [
+          0.9934397773826356,
+          0.9967006931713467
+        ],
+        "last_relative_l2_change": 1.8053227264002215e-06
+      }
+    },
+    "responsive": {
+      "circulation": {
+        "successive_absolute_l2_changes": [
+          9.243859834427111e-05,
+          4.6541021316925764e-05,
+          2.335127361538036e-05
+        ],
+        "observed_orders": [
+          0.989992514007979,
+          0.995001631284716
+        ],
+        "last_relative_l2_change": 2.1137165339589216e-05
+      },
+      "force": {
+        "successive_absolute_l2_changes": [
+          0.0010412707330423006,
+          0.0005239680915209772,
+          0.00026277075402743994
+        ],
+        "observed_orders": [
+          0.9907943591292134,
+          0.9956742426514811
+        ],
+        "last_relative_l2_change": 0.00010520789173373808
+      },
+      "probe_velocity": {
+        "successive_absolute_l2_changes": [
+          5.671255260567176e-05,
+          2.8421185768169606e-05,
+          1.4227728615051093e-05
+        ],
+        "observed_orders": [
+          0.9967013458818087,
+          0.9982613856391088
+        ],
+        "last_relative_l2_change": 1.7397714543861105e-06
+      }
+    }
+  }
+}

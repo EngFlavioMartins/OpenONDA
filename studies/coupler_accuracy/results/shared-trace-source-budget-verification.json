@@ -1,0 +1,108 @@
+{
+  "status": "passed",
+  "scope": "Independent raw source circulation and impulse budgets only",
+  "metric_checks": 80,
+  "maximum_difference": 6.661338147750939e-15,
+  "records": [
+    {
+      "directory": "studies/coupler_accuracy/results/cube-3d-shared-trace-sources-coarse-qualified",
+      "source_records": 24,
+      "updates": [
+        {
+          "input": "point",
+          "update": "cell_weighted",
+          "circulation_change_norm": 4.4821740941182415e-05,
+          "impulse_change": [
+            -0.07742462392498148,
+            8.605103735605192e-06,
+            1.1263304758569364e-05
+          ],
+          "first_moment_budget_error": 0.03766085306807391
+        },
+        {
+          "input": "point",
+          "update": "shared_trace",
+          "circulation_change_norm": 1.1250072300711768e-16,
+          "impulse_change": [
+            -0.03976823249878659,
+            1.9446501578854625e-06,
+            3.2283127509445306e-06
+          ],
+          "first_moment_budget_error": 1.942890293094024e-16
+        },
+        {
+          "input": "cell_average",
+          "update": "cell_weighted",
+          "circulation_change_norm": 5.3860270237397736e-05,
+          "impulse_change": [
+            -0.056696645076830324,
+            1.0946209725281805e-05,
+            1.2868249085442782e-05
+          ],
+          "first_moment_budget_error": 0.05670205333086146
+        },
+        {
+          "input": "cell_average",
+          "update": "shared_trace",
+          "circulation_change_norm": 1.9345869809710024e-16,
+          "impulse_change": [
+            -1.3422422895370545e-16,
+            2.4936649967166602e-18,
+            2.0491421059976034e-17
+          ],
+          "first_moment_budget_error": 4.560154337474032e-16
+        }
+      ]
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/cube-3d-shared-trace-sources-medium-laminar-qualified",
+      "source_records": 23,
+      "updates": [
+        {
+          "input": "point",
+          "update": "cell_weighted",
+          "circulation_change_norm": 1.1670660685068168e-06,
+          "impulse_change": [
+            -0.019468676391868774,
+            1.094743666128664e-06,
+            6.239257633209802e-07
+          ],
+          "first_moment_budget_error": 0.000643225456934772
+        },
+        {
+          "input": "point",
+          "update": "shared_trace",
+          "circulation_change_norm": 4.3684649330903275e-16,
+          "impulse_change": [
+            -0.020111710478945367,
+            7.710678997559776e-07,
+            1.7372824258782846e-07
+          ],
+          "first_moment_budget_error": 3.7816971776294395e-16
+        },
+        {
+          "input": "cell_average",
+          "update": "cell_weighted",
+          "circulation_change_norm": 1.666609144999567e-06,
+          "impulse_change": [
+            -0.0014527220223750563,
+            4.6952228495530013e-07,
+            6.220183572803854e-07
+          ],
+          "first_moment_budget_error": 0.001452960861751305
+        },
+        {
+          "input": "cell_average",
+          "update": "shared_trace",
+          "circulation_change_norm": 2.3267402538721455e-16,
+          "impulse_change": [
+            2.7506209115957247e-16,
+            8.470329472543003e-18,
+            2.051852611428817e-17
+          ],
+          "first_moment_budget_error": 2.8118783343411557e-16
+        }
+      ]
+    }
+  ]
+}

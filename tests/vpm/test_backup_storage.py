@@ -32,7 +32,7 @@ from source.solvers.vpm import (
 
 
 def _load_ring_metrics():
-    path = Path(__file__).parents[2] / "tutorials/vpm/vortex_ring/assets/ring_metrics.py"
+    path = Path(__file__).parents[2] / "tutorials/vpm/02_vortex_ring/assets/ring_metrics.py"
     spec = importlib.util.spec_from_file_location("vortex_ring_metrics", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

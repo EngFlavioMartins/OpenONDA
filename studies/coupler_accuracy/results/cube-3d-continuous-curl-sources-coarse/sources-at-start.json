@@ -1,0 +1,66 @@
+[
+  {
+    "path": "studies/coupler_accuracy/cube_continuous_curl_sources_3d.py",
+    "sha256": "86897536f5b8343c4e3970dfd2a28227a6cbb583c35d4a3e9d1a5fa0eaf6e3ab"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-shared-trace-sources-coarse-qualified/cube-shared-trace-sources-3d.json",
+    "sha256": "29533f5cb3ca3f4d3809d775f144e2d2911386064c87b564849c66e8d05f70db"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-shared-trace-sources-coarse-qualified/shared-trace-source-fields.npz",
+    "sha256": "c22daf52e0d49e4e42e1939a48c8fd2c69dda42060df720881236fd1fc234fdf"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+    "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/3d-continuous-velocity-curl-regression.xml",
+    "sha256": "06bb7ef3e11ab9363692237b411a548ab6750d734baec77507dc064f4405db2e"
+  },
+  {
+    "path": "studies/coupler_accuracy/continuous_velocity_curl_3d.py",
+    "sha256": "9583357dea01b1f64b22b3d4deee6cca0f675ae56a867e989d7663890649eac6"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+    "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+    "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_shared_trace_update_3d.py",
+    "sha256": "a7293714e591db3998daa4694b7185f6863ede4d9fdb85dc6432344ace86bdb3"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+    "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+    "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+  },
+  {
+    "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+    "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+  },
+  {
+    "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+    "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+  },
+  {
+    "path": "source/solvers/fvm/io/mesh_storage.py",
+    "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+  },
+  {
+    "path": "source/solvers/fvm/mesh/geometry.py",
+    "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+  },
+  {
+    "path": "tests/coupler/test_continuous_velocity_curl_3d.py",
+    "sha256": "e96dba91ecd07781e54f9a3e28b7e40faf18cfbc2d46531e5e72463dd5d05cea"
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "coupling_step": 0,
+    "elapsed_flow_time": 0.0,
+    "physical_time": 0.5,
+    "fvm_velocity_rms_over_Uinf": 0.0,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.054586049212908445,
+    "full_drag_coefficient": 1.622207816107807,
+    "hybrid_drag_coefficient": 1.622207816107807,
+    "drag_coefficient_difference": 0.0,
+    "particles": 1955,
+    "frozen_renewal_iteration": 0,
+    "particle_strength_l1": 9.166641543457157,
+    "particle_strength_net": [
+      -0.00027093653551080177,
+      -2.7226412129266464e-06,
+      -9.794139384666778e-05
+    ]
+  }
+]

@@ -1,0 +1,323 @@
+{
+  "schema": "openonda-cube-shared-trace-sources-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "source_sgs": "equilibrium_smagorinsky",
+  "full_fvm_cells": 17592,
+  "small_fvm_cells": 2840,
+  "source_names": [
+    "constant_volume_control",
+    "linear_face_point_moment_control",
+    "point_native_face_moments",
+    "point_cell_weighted_quadratic",
+    "point_shared_trace_quadratic",
+    "cell_average_native_face_moments",
+    "cell_average_cell_weighted_quadratic",
+    "cell_average_shared_trace_quadratic"
+  ],
+  "positive_volume_cells": 2112,
+  "exterior_particles": 68,
+  "particle_spacing": 0.125,
+  "small_fvm_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "maximum_relative_native_to_polyhedron_volume_difference": 0.0006718686290191041,
+  "native_minus_polyhedron_cell_momentum_sum": [
+    -4.89073540477792e-06,
+    -2.7267131971535336e-09,
+    -3.6467761783868146e-09
+  ],
+  "stencil_diagnostics": {
+    "point": {
+      "maximum_condition": 9.649720659062824,
+      "maximum_rings": 2,
+      "cells_with_wall_observations": 1536,
+      "native_circulation_replay_maximum_difference_over_volume": 9.338071546576836e-15,
+      "integrated_cell_mean_maximum_difference_from_input": 0.05912655959894675
+    },
+    "cell_average": {
+      "maximum_condition": 9.64952573506181,
+      "maximum_rings": 2,
+      "cells_with_wall_observations": 1536,
+      "native_circulation_replay_maximum_difference_over_volume": 9.338071546576836e-15,
+      "integrated_cell_mean_maximum_difference_from_input": 2.220446049250313e-16
+    }
+  },
+  "update_budgets": [
+    {
+      "input": "point",
+      "update": "cell_weighted",
+      "circulation_change": [
+        1.3793245159777307e-06,
+        -3.0574585229167e-05,
+        3.27456968614579e-05
+      ],
+      "circulation_change_L1": 1.787108201464307,
+      "first_spatial_moment_change": [
+        [
+          1.550423577546591e-07,
+          1.581121635596571e-05,
+          -1.1697841751467892e-05
+        ],
+        [
+          -6.715393161178442e-06,
+          -1.0612636861830795e-06,
+          -0.0774201622831025
+        ],
+        [
+          5.512365719696169e-06,
+          0.07742908556686003,
+          1.0143578550072278e-06
+        ]
+      ],
+      "impulse_change": [
+        -0.07742462392498126,
+        8.60510373558203e-06,
+        1.1263304758572076e-05
+      ],
+      "weighted_cell_integral_change": [
+        -0.0397682324987866,
+        1.9446501578826487e-06,
+        3.2283127509136614e-06
+      ],
+      "first_moment_budget_maximum_difference": 0.03766085306807342
+    },
+    {
+      "input": "point",
+      "update": "shared_trace",
+      "circulation_change": [
+        3.2390539903004445e-18,
+        1.1232334506949826e-16,
+        -5.421010862427522e-18
+      ],
+      "circulation_change_L1": 1.7835598999724636,
+      "first_spatial_moment_change": [
+        [
+          -4.2390028543137477e-19,
+          3.228312750933045e-06,
+          -1.9446501578729934e-06
+        ],
+        [
+          -3.2283127509227864e-06,
+          3.3542504711270293e-17,
+          -0.03976823249878663
+        ],
+        [
+          1.9446501578782124e-06,
+          0.03976823249878683,
+          -1.5731095896406866e-17
+        ]
+      ],
+      "impulse_change": [
+        -0.039768232498786735,
+        1.944650157875603e-06,
+        3.2283127509279157e-06
+      ],
+      "weighted_cell_integral_change": [
+        -0.0397682324987866,
+        1.9446501578826487e-06,
+        3.2283127509136614e-06
+      ],
+      "first_moment_budget_maximum_difference": 2.2898349882893854e-16
+    },
+    {
+      "input": "cell_average",
+      "update": "cell_weighted",
+      "circulation_change": [
+        1.9749989235099784e-06,
+        -3.716897091969552e-05,
+        3.892936796389681e-05
+      ],
+      "circulation_change_L1": 2.2137227879978094,
+      "first_spatial_moment_change": [
+        [
+          2.447912394017614e-07,
+          1.9977088883254278e-05,
+          -1.6155110885591382e-05
+        ],
+        [
+          -5.75940928759396e-06,
+          -6.273204202186504e-07,
+          -0.05669123682279954
+        ],
+        [
+          5.737308565073223e-06,
+          0.0567020533308618,
+          9.711553583716833e-07
+        ]
+      ],
+      "impulse_change": [
+        -0.05669664507683067,
+        1.0946209725332302e-05,
+        1.2868249085424119e-05
+      ],
+      "weighted_cell_integral_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "first_moment_budget_maximum_difference": 0.0567020533308618
+    },
+    {
+      "input": "cell_average",
+      "update": "shared_trace",
+      "circulation_change": [
+        -1.07742590890747e-18,
+        -1.3444106938820255e-17,
+        -1.929879867024198e-16
+      ],
+      "circulation_change_L1": 2.2134513694031526,
+      "first_spatial_moment_change": [
+        [
+          -1.0806816917984787e-18,
+          -5.0523185963114066e-17,
+          -1.3404296390299303e-17
+        ],
+        [
+          -1.8939160392238624e-18,
+          4.958869686405576e-17,
+          -4.0245584642661925e-16
+        ],
+        [
+          -8.406802001498931e-19,
+          2.3592239273284576e-16,
+          -9.097133853511186e-18
+        ]
+      ],
+      "impulse_change": [
+        -3.191891195797325e-16,
+        6.281808095074705e-18,
+        -2.4314634961945102e-17
+      ],
+      "weighted_cell_integral_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "first_moment_budget_maximum_difference": 4.0245584642661925e-16
+    }
+  ],
+  "coarse_source_replay": {
+    "constant_volume_control__circulation": 0.0,
+    "constant_volume_control__moment": 0.0,
+    "linear_face_point_moment_control__circulation": 0.0,
+    "linear_face_point_moment_control__moment": 0.0,
+    "point_cell_weighted_quadratic__circulation": 0.0,
+    "point_cell_weighted_quadratic__moment": 0.0
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_shared_trace_sources_3d.py",
+      "sha256": "2187af035446f5eb1bd232e4892e467aa5c2eb4c56ea3357381a63d859e70020"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cube-boundary-oracle.json",
+      "sha256": "b01cfef087c6c5b7c80960ab056286d594820bcaf7bc571824ce167b5f5f1cdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cell-and-face-map.npz",
+      "sha256": "cfc29835c86a9a7e52dd1d4044ed770a0fbde83900a0775d12587a969203328c"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_shared_trace_update_3d.py",
+      "sha256": "a7293714e591db3998daa4694b7185f6863ede4d9fdb85dc6432344ace86bdb3"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+      "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+      "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_moment_reconstruction_3d.py",
+      "sha256": "9e3c3ea588f8b2728024783a6ffd7b1b6eced78b2ee80287d6889bd0ae33a9d0"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+      "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_volume_overlap_3d.py",
+      "sha256": "d5d2255d0d3d0935eb4fef2a09c36e8af2b9acbd7d2f58c9ede6f3175108a5ac"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "4f1826d105651ca09b7c196fe099e4cd2388084bf8f2d013accd49e194817966"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/time_integration.py",
+      "sha256": "5adcaebfa917aa553e45e133770a9726b5bb83e8b0cb6ff86ba1f0354d018717"
+    },
+    {
+      "path": "tests/coupler/test_native_shared_trace_update_3d.py",
+      "sha256": "9971aa4f3e6652d93b3083d54bd8d03b155f556d9030c4496a924e7b27816a83"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-1728-qualified/physical-boundary-quadratic-checkpoint.npz",
+      "sha256": "e7b3f10883e1a7ecb6fc4ff06c527ecd500c7d9460d2cd7f939ea7e1786de7cd"
+    }
+  ],
+  "elapsed_seconds": 5.394854750004015,
+  "limitations": [
+    "Source construction only; induction, body response and particle emission are separate qualifications.",
+    "The two reconstructions interpret the same FVM velocity values as points at native centres or means over actual fan polyhedra. Neither is an exact physical measurement claim.",
+    "Preserving mean U preserves the FVM's V_FVM U state while reconstructed source integrals use V_poly U. The geometric difference is measured explicitly; velocity is not rescaled by a volume ratio.",
+    "Shared corrections preserve total raw source circulation and have the stated first-moment/impulse budget relative to their corresponding native-face-moment baseline.",
+    "The cell-average shared update preserves that baseline's impulse. It does not claim identical impulse to the zero-moment constant-volume control.",
+    "Overlap face weights are constant per face and equal the minimum of adjacent cell weights. This is a compact discrete trace rule, not an exact continuous taper product.",
+    "Near-cell fits use only the small mesh and prescribed zero cube velocity. The unchanged initial Gaussian seed/complement originates from the full reference snapshot.",
+    "Affine vorticity sources need not be divergence free. Raw source moments are distinct from cell moments of the curl of their projected induced velocity."
+  ]
+}

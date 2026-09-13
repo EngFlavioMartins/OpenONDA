@@ -163,6 +163,69 @@ def radius_score(tracks, reference, xmin, xmax, samples=501):
     )
 
 
+def leapfrog_events(tracks):
+    """Bracket axial-order exchanges while two field cores remain identifiable.
+
+    Interpolate x1-x2=0 in physical time; report the surrounding output times
+    so the interpolation is not mistaken for time-resolved reference evidence.
+    A zero plateau is one event only when the order actually reverses.
+    """
+    axial = tracks.pivot(index="time", columns="ring", values="x").sort_index()
+    radial = tracks.pivot(index="time", columns="ring", values="radius").reindex(axial.index)
+    if not {1, 2}.issubset(axial.columns) or axial.isna().any().any():
+        raise ValueError("Passage timing needs both identified cores at common times")
+    times = axial.index.to_numpy(dtype=float)
+    difference = (axial[1] - axial[2]).to_numpy()
+    nonzero = np.flatnonzero(difference != 0)
+    events = []
+    for left, right in zip(nonzero[:-1], nonzero[1:]):
+        if difference[left] * difference[right] >= 0:
+            continue
+        fraction = difference[left] / (difference[left] - difference[right])
+        time = times[left] + fraction * (times[right] - times[left])
+        locations = [np.interp(time, times, axial[ring]) for ring in (1, 2)]
+        radii = [np.interp(time, times, radial[ring]) for ring in (1, 2)]
+        events.append(dict(
+            time=float(time),
+            time_bracket=[float(times[left]), float(times[right])],
+            midpoint_x=float(np.mean(locations)),
+            radial_separation=float(abs(radii[1] - radii[0])),
+        ))
+    return dict(
+        passages=events,
+        successive_passage_intervals=np.diff([e["time"] for e in events]).tolist(),
+        full_cycle_periods=[events[i + 2]["time"] - events[i]["time"]
+                            for i in range(len(events) - 2)],
+        lbm_passage_times=None,
+        lbm_temporal_phase_error=None,
+        reference_limitation="The supplied LBM CSV has no time coordinate.",
+    )
+
+
+def plot_leapfrog_history(reports, output):
+    """Show native-time core positions and separation using the existing tracks."""
+    fig, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
+    for report in reports:
+        tracks = pd.read_csv(output / f"{report['run']}_tracks.csv")
+        line, = axes[0].plot([], [], label=report["run"])
+        for ring, style in ((1, "-"), (2, "--")):
+            track = tracks[tracks.ring == ring]
+            axes[0].plot(track.time, track.x, style, color=line.get_color())
+            axes[1].plot(track.time, track.radius, style, color=line.get_color())
+        axial = tracks.pivot(index="time", columns="ring", values="x")
+        axes[2].plot(axial.index, axial[1] - axial[2], color=line.get_color())
+    for ax, label in zip(axes, ("Axial position / R0", "Ring radius / R0", "Signed axial separation / R0")):
+        ax.set_ylabel(label)
+        ax.grid(alpha=0.15)
+    axes[0].legend(fontsize=7, frameon=False)
+    axes[0].set_title("Identified field cores: initially leading (solid), trailing (dashed)")
+    axes[2].axhline(0, color="0.4", linewidth=0.7)
+    axes[2].set_xlabel("Physical time [s]; LBM timestamps unavailable")
+    fig.tight_layout()
+    fig.savefig(output / "leapfrogging_history.png", dpi=_theme().DEFAULT_DPI)
+    plt.close(fig)
+
+
 def temporal_field_comparisons(reports):
     """Compare identical sampled points at equal times for paired dt runs."""
     groups = {}
@@ -217,6 +280,10 @@ def reported_self_diagnostics(run):
         final_sample_time=float(flow.time.iloc[-1]),
         final={key: float(flow[key].iloc[-1]) for key in columns},
         maximum={key: float(flow[key].max()) for key in columns},
+        energy_measurements=(
+            sorted(flow.energy_measurement.dropna().unique().tolist())
+            if "energy_measurement" in flow else ["unknown"]
+        ),
         final_energy_ratio=float(
             flow.total_kinetic_energy.iloc[-1] / flow.total_kinetic_energy.iloc[0]
         ),
@@ -228,7 +295,7 @@ def plot_diagnostics(reports, output):
     theme = _theme()
     fig, axes = plt.subplots(3, 2, figsize=(10, 11), sharex=True)
     quantities = (
-        ("total_kinetic_energy", "Energy / initial", True),
+        ("total_kinetic_energy", "Recorded energy / initial", True),
         ("total_enstrophy", "Enstrophy / initial", True),
         ("vorticity_divergence_error", "Relative divergence", False),
         ("vortex_strength_misalignment_degrees", "Misalignment [degrees]", False),
@@ -237,9 +304,7 @@ def plot_diagnostics(reports, output):
     )
     for report in reports:
         flow = pd.read_csv(sample_directory(report["run"]) / "flow_integrals.csv")
-        label = (
-            report["settings"]["method"].replace("p_moments", "weak realignment").replace("_", " ")
-        )
+        label = report["run"]
         for ax, (column, title, normalize) in zip(axes.flat, quantities, strict=True):
             values = flow[column] / flow[column].iloc[0] if normalize else flow[column]
             ax.plot(flow.time, values, label=label)
@@ -248,6 +313,9 @@ def plot_diagnostics(reports, output):
     for ax in axes[-1]:
         ax.set_xlabel("Physical time [s]")
     axes[0, 0].legend(frameon=False, fontsize=8)
+    if any("periodic_fourier_energy" in r["self_diagnostics"]["energy_measurements"]
+           for r in reports):
+        axes[0, 0].set_title("Periodic Fourier estimate; restart grids can differ", fontsize=8)
     fig.tight_layout()
     fig.savefig(output / "diagnostic_histories.png", dpi=theme.DEFAULT_DPI)
     plt.close(fig)
@@ -318,19 +386,40 @@ def write_report(report, output):
             "",
         ]
     lines += [
+        "## VPM leapfrogging timing",
+        "",
+        "Axial-order reversals of two identified field cores, interpolated between "
+        "saved planes. Brackets show the output cadence. These are not breakdown "
+        "events. The LBM CSV has no timestamps, so LBM periods and temporal phase "
+        "errors are unavailable.",
+        "",
+        "| Run | Passage times [s] | Two-passage cycle periods [s] |",
+        "|---|---|---|",
+    ]
+    for result in report["runs"]:
+        events = result["leapfrogging"]
+        passages = "; ".join(
+            f"{event['time']:.4f} [{event['time_bracket'][0]:.3f}, {event['time_bracket'][1]:.3f}]"
+            for event in events["passages"]
+        ) or "none resolved"
+        periods = ", ".join(f"{period:.4f}" for period in events["full_cycle_periods"]) or "unavailable"
+        lines.append(f"| {result['run']} | {passages} | {periods} |")
+    lines += [
+        "",
         "## Whole-solver timestep sensitivity",
         "",
         "Equal-time L2 differences on identical SurfaceSampler grids; "
         "these include time integration, diffusion and remapping effects.",
         "",
-        "| Physical time | Velocity difference (%) | Vorticity difference (%) |",
-        "|---:|---:|---:|",
+        "| Coarse run → fine run | Physical time | Velocity difference (%) | Vorticity difference (%) |",
+        "|---|---:|---:|---:|",
     ]
     comparisons = report["temporal_field_comparisons"]
     for row in comparisons:
         if row["time"] > 0:
             lines.append(
-                f"| {row['time']:.4g} | {100 * row['velocity_relative_l2']:.3f} | "
+                f"| {row['coarse']} → {row['fine']} | {row['time']:.4g} | "
+                f"{100 * row['velocity_relative_l2']:.3f} | "
                 f"{100 * row['vorticity_relative_l2']:.3f} |"
             )
     if not any(row["time"] > 0 for row in comparisons):
@@ -423,6 +512,7 @@ def main():
                 coarser_snapshot_identity_termination=coarse_reason,
                 bridge_limit=args.bridge_limit,
                 scores=scores,
+                leapfrogging=leapfrog_events(tracks),
                 peaks_sha256=hashlib.sha256(peak_path.read_bytes()).hexdigest(),
                 sampler_fields=sources,
                 self_diagnostics=reported_self_diagnostics(run),
@@ -448,12 +538,12 @@ def main():
             scheme += "/" + sig.get("gbd_remeshing", "M4_PRIME").replace("M4_PRIME", "M4'")
         ax.set(
             xlabel=r"$x/R_0$ (initial midpoint origin)",
-            ylabel=r"Core radius, $R/R_0$",
+            ylabel=r"Core-centre radius, $R/R_0$",
             xlim=(-0.6, 7.4),
             ylim=(0.55, 1.48),
             title=(
-                f"{scheme}, {sig.get('integrator', 'SSPRK3')}\n"
-                f"{sig.get('method', 'baseline').replace('p_moments', 'Weak realignment').capitalize()}\n"
+                f"{run}\n"
+                f"{scheme}, {sig.get('integrator', 'SSPRK3')}, Cs={sig['smagorinsky']:g}\n"
                 rf"$h/R_0={sig['spacing']:g}$, $\Delta t={sig['dt']:g}$"
                 "\n"
                 rf"VPM: $Re_\Gamma={sig['reynolds_number']:g}$, seed amplitude $={sig['amplitude']:g}R_0$"
@@ -485,6 +575,7 @@ def main():
     (args.output / "lbm_agreement.json").write_text(json.dumps(report, indent=2) + "\n")
     write_report(report, args.output)
     plot_diagnostics(reports, args.output)
+    plot_leapfrog_history(reports, args.output)
     print(json.dumps([{k: r[k] for k in ("run", "status", "scores")} for r in reports], indent=2))
 
 

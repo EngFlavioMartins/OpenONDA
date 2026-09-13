@@ -8,7 +8,11 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tutorials.vpm.quadcopter.assets.validate_results import validate_impulse, validate_wake
+from tests._tutorial_helpers import load_tutorial_module
+
+_validate_results = load_tutorial_module("vpm/quadcopter", "assets.validate_results")
+validate_impulse = _validate_results.validate_impulse
+validate_wake = _validate_results.validate_wake
 
 
 def _published_planes(directory, defect=None):

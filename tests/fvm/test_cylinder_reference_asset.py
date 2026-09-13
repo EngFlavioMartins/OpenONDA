@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setup
+from tests._tutorial_helpers import load_tutorial_module
+
+setup = load_tutorial_module("coupled_fvm_vpm/cylinder_shedding_flow/reference_flow")
 
 
 def test_tracked_cylinder_surface_crosses_span_with_caps_outside_domain():

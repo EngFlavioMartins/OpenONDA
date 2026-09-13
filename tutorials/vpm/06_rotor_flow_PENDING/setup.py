@@ -42,8 +42,8 @@ RUN_AVAILABLE_MEMORY_FLOOR_BYTES = 2 * 2**30
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # [rad/s]
 
 TIME_STEP_SIZE = 0.006  # [s]
-# The measured native rotor health remains bounded through this endpoint; the
-# old 7.68 s stop is deliberately tested only by a later bounded segment.
+# This is a run horizon, not a validated stability limit. The retained native
+# run failed at 7.68 s; stopping earlier does not establish production health.
 END_TIME = 7.5  # [s]; selected before the known t=7.68 s health stop
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 DEFAULT_SMAGORINSKY_COEFFICIENT = 0.17
@@ -117,6 +117,9 @@ def build_case(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
+        surface_diagnostics_interval_steps=max(
+            1, round(FIELD_SAMPLE_INTERVAL_TIME / time_step_size)
+        ),
         sample_surface_forces=True,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )
@@ -138,6 +141,19 @@ def build_case(
             schedule=plane_schedule,
         )
         for distance in (1, 2)
+    ]
+    # Resolve the approach flow, rotor disk and downstream evolution at fixed
+    # radial offsets. Native CSVs retain all three signed velocity components.
+    streamwise_samplers = [
+        vpm.LineSampler(
+            start=[-2.0 * ROTOR_RADIUS, radial_fraction * ROTOR_RADIUS, 0.0],
+            end=[6.0 * ROTOR_RADIUS, radial_fraction * ROTOR_RADIUS, 0.0],
+            spacing=sample_spacing,
+            file_name=f"streamwise_r{label}",
+            include_derivatives=False,
+            schedule=plane_schedule,
+        )
+        for label, radial_fraction in (("000", 0.0), ("025", 0.25), ("065", 0.65), ("110", 1.1))
     ]
 
     if run_plan is None:
@@ -166,7 +182,11 @@ def build_case(
                 particle_spacing=FIXED_WAKE_SPACING,
             ),
             induction=vpm.TreecodeInduction(
-                stretching_scheme="transposed", theta=0.3, multipole_order=3
+                stretching_scheme="transposed",
+                theta=0.3,
+                multipole_order=3,
+                sort_particle_targets=True,
+                traversal_block_dim=32,
             ),
             particle_kernel="GAUSSIAN",
             max_n_particles=MAX_N_PARTICLES,
@@ -181,6 +201,7 @@ def build_case(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EveryTime(FIELD_SAMPLE_INTERVAL_TIME)),
                 *plane_samplers,
+                *streamwise_samplers,
             ),
             directory=relative_sample_directory,
         ),

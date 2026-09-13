@@ -1,0 +1,81 @@
+{
+  "production_qualified": false,
+  "completion_status": "software_repairs_tested; rotor scientific qualification incomplete",
+  "git_base": "98479c375eb773f0683df5a41cac5bea301671ec",
+  "distinct_tests": 411,
+  "test_executions": 520,
+  "test_runs": [
+    {
+      "name": "repair_regression",
+      "tests": 316,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "24c0c64a2685c165fb8a03ed094bda08ffbed8075bce11a6a7a02acacb8ac71d"
+    },
+    {
+      "name": "repair_followup",
+      "tests": 79,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "8558484ef2c20583fcf6ae919940ec03a2a5eae27ad307cbb1e53ccf704f0e83"
+    },
+    {
+      "name": "repair_output",
+      "tests": 71,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "93d802468d019a3c676de53e9dceb2cee3130c3e996309d52556b97e2ab54294"
+    },
+    {
+      "name": "repair_final_kernels",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "7fbbc52d6d043d85897fddc24d3e5cdb789fb22d2fdbcb60522f033616f01a16"
+    },
+    {
+      "name": "repair_final_observer",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "67360bbdece9f2a3661abe1501beea26bc4cfa5b5eb7bd2afaaab35bfbf8b1cd"
+    }
+  ],
+  "test_backend": "CPU",
+  "native_metal_checks": [
+    "completed 20-step startup",
+    "five accepted-step HDF5/VTP clock pairs",
+    "CPU/Metal startup agreement",
+    "fixed mature-source velocity, gradient and rate bitwise preserved by scheduling and depth guard"
+  ],
+  "coupled_time_refinement": "two rotating interacting wings, fixed cores, four dt levels, both policies approach first order; not rotor qualification",
+  "production_blockers": [
+    "Late downstream rotor wake growth has no demonstrated stable and converged remedy.",
+    "No healthy completed rotor supplies five terminal revolutions of axial/cross-flow/streamwise fields.",
+    "Rotor spatial, temporal and core sensitivity have not passed the predeclared acceptance criteria."
+  ],
+  "preserved_failed_evidence": [
+    "original rotor strain-CFL failure at t=7.68",
+    "deliberately interrupted mature profiling continuation",
+    "initial compatibility and approximation discovery failures",
+    "native validator rejection of short Metal startup"
+  ],
+  "documentation": {
+    "functions": 337,
+    "missing_docstrings": 0
+  },
+  "quality_checks": {
+    "scoped_ruff_check": "passed",
+    "scoped_ruff_format_check": "passed",
+    "global_ci": "not run; unrelated working-tree changes preserved",
+    "formatting": "47 files unchanged Python AST; the observer AST changed during formatting, and its final 19 independent oracle/collision tests pass."
+  },
+  "source_manifest": "repair_source_sha256.json",
+  "source_manifest_sha256": "bccc60e9d5604d3fc41183d8a8109e80ed758b1e45e7b0612fc3edb138994417",
+  "final_observer_warm_seconds": 0.1820140409981832
+}

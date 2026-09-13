@@ -1,0 +1,1334 @@
+{
+  "schema": "openonda-cube-manufactured-induction-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "source_cells": 17592,
+  "source_triangles": 224192,
+  "particle_spacing": 0.125,
+  "manufactured_fields": [
+    {
+      "width": 0.35,
+      "amplitude": 7519.000729399073,
+      "direction": [
+        0.2672612419124244,
+        0.5345224838248488,
+        0.8017837257372732
+      ],
+      "unit_speed_reference_position": [
+        0.745,
+        0.06999999999999999,
+        0.12249999999999998
+      ]
+    },
+    {
+      "width": 0.15,
+      "amplitude": 4263164.675854034,
+      "direction": [
+        0.2672612419124244,
+        0.5345224838248488,
+        0.8017837257372732
+      ],
+      "unit_speed_reference_position": [
+        0.545,
+        0.03,
+        0.0525
+      ]
+    }
+  ],
+  "outer_boundary_completion_velocity_bounds": [
+    3.634751067364054e-38,
+    1.2457820769815332e-231
+  ],
+  "quadrature_history": [
+    {
+      "surface_order": 6,
+      "maximum_successive_cell_integral_difference_over_fvm_volume": null
+    },
+    {
+      "surface_order": 8,
+      "maximum_successive_cell_integral_difference_over_fvm_volume": 5.171158936816469e-10
+    }
+  ],
+  "volume_qualification": {
+    "cell_ids": [
+      4659,
+      4795,
+      5252,
+      5330,
+      8065,
+      8102,
+      11135,
+      11683,
+      14098
+    ],
+    "volume_orders": [
+      12,
+      16
+    ],
+    "maximum_surface_vs_volume_difference_over_fvm_volume": 5.723630323854761e-14,
+    "maximum_volume_refinement_difference_over_fvm_volume": 1.3289348568030592e-13
+  },
+  "native_curl_replays": [
+    {
+      "width": 0.35,
+      "source": "native_curl_of_point_velocity",
+      "curl_replay_maximum_difference": 3.9968028886505635e-15,
+      "divergence_rms": 0.01883281525916341
+    },
+    {
+      "width": 0.35,
+      "source": "native_curl_of_cell_average_velocity",
+      "curl_replay_maximum_difference": 4.218847493575595e-15,
+      "divergence_rms": 0.016434817541263545
+    },
+    {
+      "width": 0.15,
+      "source": "native_curl_of_point_velocity",
+      "curl_replay_maximum_difference": 1.2212453270876722e-15,
+      "divergence_rms": 0.006242330395034105
+    },
+    {
+      "width": 0.15,
+      "source": "native_curl_of_cell_average_velocity",
+      "curl_replay_maximum_difference": 8.881784197001252e-16,
+      "divergence_rms": 0.005585671927072652
+    }
+  ],
+  "target_slices": {
+    "near_body": [
+      0,
+      256
+    ],
+    "outer_layer": [
+      256,
+      512
+    ],
+    "wall": [
+      512,
+      2048
+    ]
+  },
+  "source_names": [
+    "width_0.35__exact_cell_circulation",
+    "width_0.35__point_vorticity_times_fvm_volume",
+    "width_0.35__exact_face_centre_velocity",
+    "width_0.35__exact_face_average_velocity",
+    "width_0.35__native_curl_of_point_velocity",
+    "width_0.35__native_curl_of_cell_average_velocity",
+    "width_0.15__exact_cell_circulation",
+    "width_0.15__point_vorticity_times_fvm_volume",
+    "width_0.15__exact_face_centre_velocity",
+    "width_0.15__exact_face_average_velocity",
+    "width_0.15__native_curl_of_point_velocity",
+    "width_0.15__native_curl_of_cell_average_velocity"
+  ],
+  "source_records": [
+    {
+      "name": "width_0.35__exact_cell_circulation",
+      "width": 0.35,
+      "source": "exact_cell_circulation",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        },
+        "near_body": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        },
+        "outer_layer": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        }
+      },
+      "total_gamma": [
+        1.9014534413143436e-16,
+        2.9241762684222364e-15,
+        -3.0015459518903387e-16
+      ],
+      "l1_gamma": 16.916692112534726
+    },
+    {
+      "name": "width_0.35__point_vorticity_times_fvm_volume",
+      "width": 0.35,
+      "source": "point_vorticity_times_fvm_volume",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.04090333248731059,
+          "relative_to_exact_cell_circulation": 0.2154147561225958
+        },
+        "near_body": {
+          "density_rms_error": 0.22737449562249834,
+          "relative_to_exact_cell_circulation": 0.07826958227359238
+        },
+        "outer_layer": {
+          "density_rms_error": 0.13213213060027398,
+          "relative_to_exact_cell_circulation": 0.21481878731010717
+        }
+      },
+      "total_gamma": [
+        0.03629745425199173,
+        0.07250084974062017,
+        0.10875017501834286
+      ],
+      "l1_gamma": 19.69059722034388
+    },
+    {
+      "name": "width_0.35__exact_face_centre_velocity",
+      "width": 0.35,
+      "source": "exact_face_centre_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.017856344534801432,
+          "relative_to_exact_cell_circulation": 0.09403928407052409
+        },
+        "near_body": {
+          "density_rms_error": 0.14443714589481232,
+          "relative_to_exact_cell_circulation": 0.04971989071609078
+        },
+        "outer_layer": {
+          "density_rms_error": 0.06380293581254505,
+          "relative_to_exact_cell_circulation": 0.103730025663017
+        }
+      },
+      "total_gamma": [
+        8.037072120022429e-17,
+        9.355004563973285e-16,
+        3.886725874957184e-15
+      ],
+      "l1_gamma": 17.938610325655187
+    },
+    {
+      "name": "width_0.35__exact_face_average_velocity",
+      "width": 0.35,
+      "source": "exact_face_average_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.0004928726940032786,
+          "relative_to_exact_cell_circulation": 0.0025956821784909757
+        },
+        "near_body": {
+          "density_rms_error": 0.00843642684109935,
+          "relative_to_exact_cell_circulation": 0.002904088266042234
+        },
+        "outer_layer": {
+          "density_rms_error": 0.00013978931722526605,
+          "relative_to_exact_cell_circulation": 0.0002272677468290007
+        }
+      },
+      "total_gamma": [
+        -9.525114190770366e-16,
+        2.160364308235671e-15,
+        2.478052485432869e-15
+      ],
+      "l1_gamma": 16.918862506305786
+    },
+    {
+      "name": "width_0.35__native_curl_of_point_velocity",
+      "width": 0.35,
+      "source": "native_curl_of_point_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.051341170419425604,
+          "relative_to_exact_cell_circulation": 0.2703849547804014
+        },
+        "near_body": {
+          "density_rms_error": 0.6874439656946698,
+          "relative_to_exact_cell_circulation": 0.2366402260029887
+        },
+        "outer_layer": {
+          "density_rms_error": 0.2080983348940681,
+          "relative_to_exact_cell_circulation": 0.3383237047651419
+        }
+      },
+      "total_gamma": [
+        -4.761769354746059e-16,
+        9.916073100182511e-16,
+        2.980932558085551e-15
+      ],
+      "l1_gamma": 14.028915644993198
+    },
+    {
+      "name": "width_0.35__native_curl_of_cell_average_velocity",
+      "width": 0.35,
+      "source": "native_curl_of_cell_average_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.06855796746799846,
+          "relative_to_exact_cell_circulation": 0.36105610336178195
+        },
+        "near_body": {
+          "density_rms_error": 0.8375878272284456,
+          "relative_to_exact_cell_circulation": 0.28832455097980425
+        },
+        "outer_layer": {
+          "density_rms_error": 0.2606396624963735,
+          "relative_to_exact_cell_circulation": 0.4237447467775145
+        }
+      },
+      "total_gamma": [
+        2.0257639962704704e-16,
+        1.9208759062221413e-16,
+        1.5064616491330193e-15
+      ],
+      "l1_gamma": 12.33951850039647
+    },
+    {
+      "name": "width_0.15__exact_cell_circulation",
+      "width": 0.15,
+      "source": "exact_cell_circulation",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        },
+        "near_body": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        },
+        "outer_layer": {
+          "density_rms_error": 0.0,
+          "relative_to_exact_cell_circulation": 0.0
+        }
+      },
+      "total_gamma": [
+        1.0125634014419614e-16,
+        4.7889423040410525e-17,
+        -2.1916612227246518e-16
+      ],
+      "l1_gamma": 0.9450843638316436
+    },
+    {
+      "name": "width_0.15__point_vorticity_times_fvm_volume",
+      "width": 0.15,
+      "source": "point_vorticity_times_fvm_volume",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.11272844931292017,
+          "relative_to_exact_cell_circulation": 3.12944301510953
+        },
+        "near_body": {
+          "density_rms_error": 2.975231629399478,
+          "relative_to_exact_cell_circulation": 3.142182678958001
+        },
+        "outer_layer": {
+          "density_rms_error": 1.571388224589236e-05,
+          "relative_to_exact_cell_circulation": 0.9344527560605439
+        }
+      },
+      "total_gamma": [
+        0.33375351213981524,
+        0.6675221304283462,
+        1.0012887544650226
+      ],
+      "l1_gamma": 2.403345952826666
+    },
+    {
+      "name": "width_0.15__exact_face_centre_velocity",
+      "width": 0.15,
+      "source": "exact_face_centre_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.00699896520059337,
+          "relative_to_exact_cell_circulation": 0.1942975610282012
+        },
+        "near_body": {
+          "density_rms_error": 0.18447984032450157,
+          "relative_to_exact_cell_circulation": 0.19483167399695445
+        },
+        "outer_layer": {
+          "density_rms_error": 2.926200451776945e-06,
+          "relative_to_exact_cell_circulation": 0.1740114908690595
+        }
+      },
+      "total_gamma": [
+        2.9954725933096273e-16,
+        1.358580804423184e-16,
+        -3.9313684288048664e-17
+      ],
+      "l1_gamma": 1.0416307229908635
+    },
+    {
+      "name": "width_0.15__exact_face_average_velocity",
+      "width": 0.15,
+      "source": "exact_face_average_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 3.22584730532902e-05,
+          "relative_to_exact_cell_circulation": 0.0008955241892354114
+        },
+        "near_body": {
+          "density_rms_error": 0.0008336500016781238,
+          "relative_to_exact_cell_circulation": 0.0008804291301901178
+        },
+        "outer_layer": {
+          "density_rms_error": 1.4514810167718109e-09,
+          "relative_to_exact_cell_circulation": 8.631478938608754e-05
+        }
+      },
+      "total_gamma": [
+        6.195071094095252e-17,
+        -2.8900731073092225e-18,
+        -1.5047040029138173e-16
+      ],
+      "l1_gamma": 0.9450650894312917
+    },
+    {
+      "name": "width_0.15__native_curl_of_point_velocity",
+      "width": 0.15,
+      "source": "native_curl_of_point_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.034500509029109894,
+          "relative_to_exact_cell_circulation": 0.9577651219096184
+        },
+        "near_body": {
+          "density_rms_error": 0.9061807428455348,
+          "relative_to_exact_cell_circulation": 0.9570298345978703
+        },
+        "outer_layer": {
+          "density_rms_error": 0.0006046742232848161,
+          "relative_to_exact_cell_circulation": 35.95798196941227
+        }
+      },
+      "total_gamma": [
+        1.5954567010694192e-17,
+        1.1785997386127446e-16,
+        5.659966797781841e-18
+      ],
+      "l1_gamma": 0.9690796576144877
+    },
+    {
+      "name": "width_0.15__native_curl_of_cell_average_velocity",
+      "width": 0.15,
+      "source": "native_curl_of_cell_average_velocity",
+      "circulation_error": {
+        "all": {
+          "density_rms_error": 0.03231967101265745,
+          "relative_to_exact_cell_circulation": 0.8972230995606052
+        },
+        "near_body": {
+          "density_rms_error": 0.8491409829474488,
+          "relative_to_exact_cell_circulation": 0.8967893666650038
+        },
+        "outer_layer": {
+          "density_rms_error": 0.0025603184914638343,
+          "relative_to_exact_cell_circulation": 152.2536972915498
+        }
+      },
+      "total_gamma": [
+        3.5755881211784585e-17,
+        5.589698797362196e-17,
+        3.186691472292368e-17
+      ],
+      "l1_gamma": 0.8280134271075966
+    }
+  ],
+  "records": [
+    {
+      "name": "width_0.35__exact_cell_circulation",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.08449496006876406,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.39455532868248633
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.02329245756968713,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.28937133125346537
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.011091085998325886,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.0407874827244192
+        }
+      }
+    },
+    {
+      "name": "width_0.35__point_vorticity_times_fvm_volume",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.05869830854546667,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.29258284623284536
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.018328339245976318,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.19191776645285005
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.02302866505704675,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.07780631234707623
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_centre_velocity",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.07491815960705266,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.3626828637784988
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.02157512888240896,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.2573240144251527
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.01350366096839895,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.047273683839866014
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_average_velocity",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.08449668592416454,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.3945215159201351
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.023293696763984947,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.2895312793461948
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.011089883082301412,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.04076416970463301
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_point_velocity",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.12344546946715203,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.4891946196444382
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0335335894135346,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.3751783690697609
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.01815473552090902,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.05287415237934109
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_cell_average_velocity",
+      "kernel": "native_volume",
+      "width": 0.35,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.14378810486984492,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.5458108419610189
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.037918964410801684,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.42570100919582216
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.016438003253320742,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.05039676085413488
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_cell_circulation",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.09298528665803889,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8376927981917641
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0007158885125351639,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.0051270933292076595
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.04960021418776743,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.20952823634859377
+        }
+      }
+    },
+    {
+      "name": "width_0.15__point_vorticity_times_fvm_volume",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.15898850870175016,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.6736531093477973
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.03323828451378923,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.0928573696691549
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.2702530363954591,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 1.0369979351257703
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_centre_velocity",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.09023158120171394,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8176069782211145
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0008283617566391317,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.006159363274052903
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.05899413852271938,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.2579300497274996
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_average_velocity",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.09298616991597947,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8376994281632282
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.000714847028720272,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.005114514082565526
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.04959939903088213,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.20952071428543037
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_point_velocity",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.09768275690825,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8220160945627122
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005905390604943646,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.004581926011795107
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.032807221109051384,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.13907685735373695
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_cell_average_velocity",
+      "kernel": "native_volume",
+      "width": 0.15,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.0993803887183053,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8442892159434583
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005871353072801093,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.003673439502099224
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.026893264783754377,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.10810260003061195
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_cell_circulation",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.13309026284272843,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.6230737889272804
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.024331329942332707,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.30105084057813314
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.09479538134998494,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.2811916053809423
+        }
+      }
+    },
+    {
+      "name": "width_0.35__point_vorticity_times_fvm_volume",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10829542776520742,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.548027039454866
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.01758493094888342,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.206410054110162
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.10773772098084977,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.322004853017094
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_centre_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.12492229824985614,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.5943855325892465
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.02217967176711946,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.270099486625589
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.09755105984973293,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.29356292325885724
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_average_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.13309765112751223,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.6231759504207656
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.024334075378741517,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.3012062644799381
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.09478469300662297,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.2811638368093285
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_point_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.16478368479734595,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.7209689358390222
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.034770754724106186,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.3856694954566472
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.0825248893441171,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.24900728818726756
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_cell_average_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.35,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.18111658317207635,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.7779196406024853
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.039257944926592694,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.4348335956728796
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.07671228873666146,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.22753751292800298
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_cell_circulation",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10516552539698493,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9281160790399533
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0007122118710769958,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.005067598879120565
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.026508663427318696,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.06888772973814805
+        }
+      }
+    },
+    {
+      "name": "width_0.15__point_vorticity_times_fvm_volume",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.14514907894560594,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8889608935195832
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.033233673395894565,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.09273112516416517
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.13751682707724303,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.3297403394144479
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_centre_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10374018028018665,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9154784802232001
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0008244334012264712,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.006096771575969593
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.03054573883738938,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.08217978883979697
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_average_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10516624104068366,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9281201326020052
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0007111846503525053,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.005055208770438167
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.026508437934453292,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.0688869723006544
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_point_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10354757300958178,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8788862516347352
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.000576405813099269,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.004405241576391845
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.02391875548032395,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.07056011079482027
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_cell_average_velocity",
+      "kernel": "gaussian_nominal_spacing",
+      "width": 0.15,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10498996020446523,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8964269515870236
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005674860598360668,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.003399125370188484
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.01940464023213803,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.0533485499625897
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_cell_circulation",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.18636598534624077,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.7381985637602182
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.04535263026928804,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.4949750819324926
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.07711262358081909,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.23587824881486666
+        }
+      }
+    },
+    {
+      "name": "width_0.35__point_vorticity_times_fvm_volume",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.1726872805106036,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.6968322273636912
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.040631501216486836,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.44124556073662297
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.0883638560989256,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.27189324572857587
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_centre_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.18142368166149914,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.7159982220070991
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.04411438219620232,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.47999619809871047
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.07964088104070234,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.24661776981804648
+        }
+      }
+    },
+    {
+      "name": "width_0.35__exact_face_average_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.1863744768182526,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.7382440756178535
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.04535660137127027,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.49509567996061266
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.07710712581706387,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.23585933287421623
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_point_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.20568923619196638,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.8122303853464868
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0514426568793845,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.541593063143743
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.06836858813675373,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.21256478893022918
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_curl_of_cell_average_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.35,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.216485345531793,
+          "exact_velocity_rms": 0.35151999202675827,
+          "maximum_over_reference_speed": 0.8586257406752538
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.05419627590840329,
+          "exact_velocity_rms": 0.08135853911653845,
+          "maximum_over_reference_speed": 0.5679518199616538
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.06363898921747653,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.19482780941055858
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_cell_circulation",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "exact_cell_circulation",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.1032827533455543,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9162598953902645
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005587732405255993,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.0023793501867318476
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.029195979210582666,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.08216419014855886
+        }
+      }
+    },
+    {
+      "name": "width_0.15__point_vorticity_times_fvm_volume",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "point_vorticity_times_fvm_volume",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.1465157331934356,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8522685917933086
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.03326365099627597,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.09366240921380821
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.15150811701465614,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.3888999523329149
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_centre_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "exact_face_centre_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10159579266646236,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9010879187437041
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0006667680919180603,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.0030940747661159823
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.03417828283099946,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.09918432032895132
+        }
+      }
+    },
+    {
+      "name": "width_0.15__exact_face_average_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "exact_face_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10328351606673622,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.9162656555005237
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005580472459300493,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.00237536495684602
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.029195602619804244,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.0821624592614836
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_point_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "native_curl_of_point_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.10297695508820943,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8670828397309461
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0003912809859502615,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.0019305002171011991
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.02611427467695524,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.08270429869759437
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_curl_of_cell_average_velocity",
+      "kernel": "gaussian_cell_volume_scale",
+      "width": 0.15,
+      "source": "native_curl_of_cell_average_velocity",
+      "velocity_errors": {
+        "near_body": {
+          "rms_over_reference_speed": 0.1044330573385823,
+          "exact_velocity_rms": 0.11498321574673437,
+          "maximum_over_reference_speed": 0.8869562451973378
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.000428719611301846,
+          "exact_velocity_rms": 1.6017140157145743e-08,
+          "maximum_over_reference_speed": 0.002544977324012853
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.02113480520027343,
+          "exact_velocity_rms": 0.0,
+          "maximum_over_reference_speed": 0.06240585112529283
+        }
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_manufactured_induction_3d.py",
+      "sha256": "9bf737c6e3b7dd89e88e47cd8d960f77810caf4bb1476687c40db79cf0ef733c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cube-boundary-oracle.json",
+      "sha256": "b01cfef087c6c5b7c80960ab056286d594820bcaf7bc571824ce167b5f5f1cdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+      "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_cell_integrals_3d.py",
+      "sha256": "c5c95c98e6962d770f0d72a63476a7d06a06c1cf93794a8ae3307b1310145471"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+      "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_panel_resolution_3d.py",
+      "sha256": "80889d93ac897802c4a959f2ff77fdeebdbdf4881ccb8a6f7f023849d75abc2c"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "4f1826d105651ca09b7c196fe099e4cd2388084bf8f2d013accd49e194817966"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "tests/coupler/test_manufactured_cube_field_3d.py",
+      "sha256": "5839e6aee6f694937964e8b544a97d9eba9d91b59e5ac7e78f634f06a2ab7888"
+    }
+  ],
+  "elapsed_seconds": 108.73077641599957,
+  "limitations": [
+    "Kinematic manufactured verification, not the physical Re=1000 cube or an advancing hybrid run.",
+    "The same off-grid samples and wall points are used across mesh resolutions. Exact velocity is available at every target.",
+    "The analytic vector potential gives zero velocity on the cube and vanishes at infinity. No body-panel correction or freestream is added.",
+    "The omitted finite-box Helmholtz boundary contribution is bounded by the reported product-factor estimate.",
+    "Exact cell circulation comes from actual face-fan Stokes integrals, independently checked by volume integration.",
+    "Native FVM curl is measured both from point-centre and true cell-average velocity with exact Dirichlet wall/outer data.",
+    "All native cells are included without particle pruning, fitting, f32 rounding or source thresholds.",
+    "Gaussian nominal spacing and local cube-root-volume radii are distinct source representations; neither is assumed identical to polyhedral volumes."
+  ]
+}

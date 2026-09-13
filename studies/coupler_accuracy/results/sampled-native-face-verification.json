@@ -1,0 +1,22 @@
+{
+  "status": "complete",
+  "source_records_checked": 42,
+  "metrics_recomputed": 721,
+  "maximum_metric_difference": 1.1102230246251565e-16,
+  "independent_gauss_and_flux_replay_maximum_difference": 1.27675647831893e-15,
+  "previous_boundary_velocity_replay_maximum_difference": 4.440892098500626e-16,
+  "new_tests_passed": 4,
+  "physical_records": 15,
+  "figure": {
+    "path": "studies/coupler_accuracy/results/cube-3d-sampled-native-face.png",
+    "sha256": "446fbca64e52bda27b99113ccd7abfb612eb945f43abeb20d1c0d2df7b73a42c"
+  },
+  "tests": {
+    "path": "studies/coupler_accuracy/results/3d-face-velocity-sampling-regression.xml",
+    "sha256": "e1a390e91e3b55b7674ff7de0def1ecd7e74067a7443980cd8857fe70971d93d"
+  },
+  "verifier": {
+    "path": "studies/coupler_accuracy/verify_sampled_native_face_3d.py",
+    "sha256": "1a5d72d7fe6cd49776cc9ef904aa9bbd915d93ebc0ac28fe5382e2d3372c5d27"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schema": "openonda-coupler-boundary-oracle/1",
+  "results": [
+    {
+      "n": 8,
+      "h": 0.25,
+      "mode": "dirichlet",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.05326912336021068,
+      "velocity_max_error_over_Uinf": 0.13331183976407684
+    },
+    {
+      "n": 16,
+      "h": 0.125,
+      "mode": "dirichlet",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.0151404584015983,
+      "velocity_max_error_over_Uinf": 0.04905370863863522,
+      "observed_spatial_order": 1.814890653052532
+    },
+    {
+      "n": 32,
+      "h": 0.0625,
+      "mode": "dirichlet",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.00415618469103036,
+      "velocity_max_error_over_Uinf": 0.019966201778540964,
+      "observed_spatial_order": 1.8650772151460553
+    },
+    {
+      "n": 8,
+      "h": 0.25,
+      "mode": "vorticity_mixed",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.05285613116667022,
+      "velocity_max_error_over_Uinf": 0.12961356388665254
+    },
+    {
+      "n": 16,
+      "h": 0.125,
+      "mode": "vorticity_mixed",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.015011700238516053,
+      "velocity_max_error_over_Uinf": 0.04816227405816372,
+      "observed_spatial_order": 1.8159834428583121
+    },
+    {
+      "n": 32,
+      "h": 0.0625,
+      "mode": "vorticity_mixed",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.004103428391787551,
+      "velocity_max_error_over_Uinf": 0.019627369972735755,
+      "observed_spatial_order": 1.8711857047254148
+    },
+    {
+      "n": 8,
+      "h": 0.25,
+      "mode": "vorticity_mixed_pressure_gradient",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.04045809889228173,
+      "velocity_max_error_over_Uinf": 0.07388531115680005
+    },
+    {
+      "n": 16,
+      "h": 0.125,
+      "mode": "vorticity_mixed_pressure_gradient",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.012431978991653471,
+      "velocity_max_error_over_Uinf": 0.022554056359167657,
+      "observed_spatial_order": 1.7023725590004726
+    },
+    {
+      "n": 32,
+      "h": 0.0625,
+      "mode": "vorticity_mixed_pressure_gradient",
+      "dt": 0.0025,
+      "steps": 20,
+      "time": 0.05000000000000001,
+      "velocity_rms_error_over_Uinf": 0.0032139998353368174,
+      "velocity_max_error_over_Uinf": 0.00621229298835143,
+      "observed_spatial_order": 1.951614210690842
+    }
+  ],
+  "method": "Advected Taylor-Green exact endpoint data at every FVM substep; direct linear solves; fixed dt.",
+  "limitations": "Combined FVM space/time/boundary error; no wall, VPM, interpolation in time, or transfer."
+}

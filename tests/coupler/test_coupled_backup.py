@@ -206,6 +206,140 @@ def _make_coupler(
     return coupler
 
 
+def _make_mixed_pressure_coupler():
+    coupler = _make_coupler()
+    mode = "vorticity_mixed_pressure_gradient"
+    coupler.setup.boundary_condition_mode = mode
+    coupler.setup.mapping["coupler"]["boundary_condition_mode"] = mode
+    coupler._normal_velocity_boundary_condition_old = np.array([-1.0, 1.0])
+    coupler._tangential_gradient_boundary_condition_old = np.tile([0.0, 0.2, 0.0], (2, 1))
+
+    def mixed_trace(points, normals, *, particle_spacing):
+        del points, normals, particle_spacing
+        velocity = coupler.vpm_solver.current_velocity.copy()
+        tangent = np.zeros_like(velocity)
+        tangent[:, 1] = 2 * velocity[:, 1]
+        return velocity, tangent
+
+    pressure = coupler.vpm_solver.compute_pressure_gradient_at_points
+
+    def pressure_trace(points, **kwargs):
+        coupler.vpm_solver.last_include_viscous = kwargs["include_viscous"]
+        return pressure(points, **kwargs)
+
+    coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points = mixed_trace
+    coupler.vpm_solver.compute_pressure_gradient_at_points = pressure_trace
+    return coupler
+
+
+def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replacement(
+    tmp_path, monkeypatch
+):
+    uninterrupted = _make_mixed_pressure_coupler()
+    backup = tmp_path / "combined"
+    save_coupled_backup(uninterrupted, backup, coupling_step=1)
+    restarted = _make_mixed_pressure_coupler()
+    for field in (
+        "_normal_velocity_boundary_condition_old",
+        "_tangential_gradient_boundary_condition_old",
+        "_kinematic_pressure_gradient_boundary_condition_old",
+        "_pressure_velocity_snapshot",
+    ):
+        setattr(restarted, field, None)
+    load_coupled_backup(restarted, backup)
+    for field in (
+        "_normal_velocity_boundary_condition_old",
+        "_tangential_gradient_boundary_condition_old",
+        "_kinematic_pressure_gradient_boundary_condition_old",
+        "_pressure_velocity_snapshot",
+    ):
+        np.testing.assert_array_equal(getattr(restarted, field), getattr(uninterrupted, field))
+
+    points = np.array([[-1.0, 0, 0], [1.0, 0, 0]])
+    normals = points.copy()
+    area = np.ones(2)
+    captured = []
+
+    def capture(
+        _coupler, _patch, velocity, pressure_gradient, *, normal_velocity, tangential_gradient
+    ):
+        captured.append(
+            tuple(
+                np.array(value, copy=True)
+                for value in (velocity, pressure_gradient, normal_velocity, tangential_gradient)
+            )
+        )
+
+    monkeypatch.setattr(boundary_module, "apply_fvm_boundary", capture)
+    for coupler in (uninterrupted, restarted):
+        coupler.vpm_solver.current_velocity = np.tile([1.2, 0.15, 0], (2, 1))
+        previous, current, _ = boundary_module.evaluate_vpm_boundary(coupler, points, normals, area)
+        assert coupler.vpm_solver.last_include_viscous is True
+        boundary_module.advance_fvm_substeps(
+            coupler,
+            "numericalBoundary",
+            points,
+            normals,
+            area,
+            previous,
+            current,
+            coupler._kinematic_pressure_gradient_boundary_condition_old,
+            coupler._kinematic_pressure_gradient_boundary_condition,
+            coupler._normal_velocity_boundary_condition_old,
+            coupler._normal_velocity_boundary_condition,
+            coupler._tangential_gradient_boundary_condition_old,
+            coupler._tangential_gradient_boundary_condition,
+        )
+    assert len(captured) == 4
+    for left, right in zip(captured[:2], captured[2:], strict=True):
+        for a, b in zip(left, right, strict=True):
+            np.testing.assert_array_equal(a, b)
+    np.testing.assert_allclose(captured[0][2], [-1.1, 1.1])
+    np.testing.assert_allclose(captured[0][3], np.tile([0, 0.25, 0], (2, 1)))
+    np.testing.assert_allclose(captured[1][2], [-1.2, 1.2])
+    np.testing.assert_allclose(captured[1][3], np.tile([0, 0.3, 0], (2, 1)))
+
+    restarted.vpm_solver.current_velocity[:, 1] = 0.25
+    boundary_module.update_boundary_history_after_replacement(restarted, points, normals, area)
+    np.testing.assert_array_equal(
+        restarted._pressure_velocity_snapshot, restarted.vpm_solver.current_velocity
+    )
+    np.testing.assert_allclose(
+        restarted._tangential_gradient_boundary_condition_old, np.tile([0, 0.5, 0], (2, 1))
+    )
+
+
+def test_combined_boundary_initializes_both_histories_on_worker():
+    coupler = _make_mixed_pressure_coupler()
+    coupler._is_master = False
+    coupler.vpm_solver = None
+    for field in (
+        "_velocity_boundary_condition_old",
+        "_normal_velocity_boundary_condition_old",
+        "_tangential_gradient_boundary_condition_old",
+        "_kinematic_pressure_gradient_boundary_condition_old",
+    ):
+        setattr(coupler, field, None)
+    boundary_module.evaluate_vpm_boundary(coupler, np.empty((0, 3)), np.empty((0, 3)), np.empty(0))
+    assert coupler._normal_velocity_boundary_condition_old.shape == (0,)
+    assert coupler._tangential_gradient_boundary_condition_old.shape == (0, 3)
+    assert coupler._kinematic_pressure_gradient_boundary_condition_old.shape == (0, 3)
+
+
+def test_combined_boundary_rejects_missing_pressure_before_changing_fvm_state():
+    coupler = _make_mixed_pressure_coupler()
+    # This minimal FVM has no setters: entering one before rejecting an
+    # incomplete pressure trace would fail with AttributeError instead.
+    with pytest.raises(RuntimeError, match="requires pressure-gradient data"):
+        boundary_module.apply_fvm_boundary(
+            coupler,
+            "numericalBoundary",
+            np.ones((2, 3)),
+            normal_velocity=np.ones(2),
+            tangential_gradient=np.zeros((2, 3)),
+        )
+
+
 def test_post_renewal_particle_history_is_published_outside_the_rolling_backup(tmp_path):
     backup = tmp_path / "backup"
     output = tmp_path / "solution"

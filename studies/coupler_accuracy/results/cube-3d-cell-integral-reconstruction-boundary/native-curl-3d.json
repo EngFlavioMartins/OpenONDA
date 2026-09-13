@@ -1,0 +1,205 @@
+{
+  "schema": "openonda-frozen-native-curl-3d/1",
+  "spatial_dimensions": 3,
+  "native_stencil_replay_max_error": 2.9778345350813754e-15,
+  "boundary_faces": 864,
+  "boundary_derivative_step": 1.25e-05,
+  "boundary_derivative_step_halving_relative_difference": 1.193482093680218e-09,
+  "native_flux_vs_interpolated_tangential_gradient_rms": 0.016004664426053528,
+  "maximum_legacy_normal_length_defect": 1.0955722329342166e-08,
+  "results": [
+    {
+      "name": "donor_volume_vorticity",
+      "held_native_curl_relative_error": 3.3458983800185518,
+      "held_native_vs_continuous_curl_relative_difference": 3.0666189201727203,
+      "wall_tangential_velocity_rms_over_Uinf": 0.360034785786877,
+      "wall_normal_velocity_rms_over_Uinf": 0.0024069922429914045,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.004499757387388932,
+      "boundary_tangential_normal_gradient_rms_error": 0.016362101654112303,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.02093592114931391,
+      "boundary_flux": {
+        "raw_mismatch": 0.00024833001727342374,
+        "raw_relative": 4.590462252960812e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 4.593612283609897e-06,
+        "corrected_mismatch": 7.003286839335487e-13
+      }
+    },
+    {
+      "name": "original_unregularized_fit",
+      "held_native_curl_relative_error": 15.99669253172083,
+      "held_native_vs_continuous_curl_relative_difference": 8.22053843068185,
+      "wall_tangential_velocity_rms_over_Uinf": 0.12388614169915632,
+      "wall_normal_velocity_rms_over_Uinf": 0.0005384598926330274,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.007516487711624016,
+      "boundary_tangential_normal_gradient_rms_error": 0.030878196906928754,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.03602269611303393,
+      "boundary_flux": {
+        "raw_mismatch": 0.00038278485918830096,
+        "raw_relative": 7.079535459790246e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 7.080759911562427e-06,
+        "corrected_mismatch": 1.0791367799356522e-12
+      }
+    },
+    {
+      "name": "raw_vorticity",
+      "held_native_curl_relative_error": 3.280905760264692,
+      "held_native_vs_continuous_curl_relative_difference": 3.0403235606586576,
+      "wall_tangential_velocity_rms_over_Uinf": 0.10115121523270397,
+      "wall_normal_velocity_rms_over_Uinf": 0.0017063008136376857,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0036773702445288582,
+      "boundary_tangential_normal_gradient_rms_error": 0.019781838910200106,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.02455185593356495,
+      "boundary_flux": {
+        "raw_mismatch": 0.00015738882196514314,
+        "raw_relative": 2.9098479525243875e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 2.9113807256169602e-06,
+        "corrected_mismatch": 4.4375614294267507e-13
+      }
+    },
+    {
+      "name": "raw_vorticity_velocity",
+      "held_native_curl_relative_error": 2.843502204404239,
+      "held_native_vs_continuous_curl_relative_difference": 2.4992029333940753,
+      "wall_tangential_velocity_rms_over_Uinf": 0.19444556497115997,
+      "wall_normal_velocity_rms_over_Uinf": 0.0029465181125518866,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.0042852290620796615,
+      "boundary_tangential_normal_gradient_rms_error": 0.01759078243273426,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.022034821501602558,
+      "boundary_flux": {
+        "raw_mismatch": 0.00017375079246972902,
+        "raw_relative": 3.2128316738040867e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 3.214044694794609e-06,
+        "corrected_mismatch": 4.898303984646191e-13
+      }
+    },
+    {
+      "name": "raw_vorticity_velocity_moments",
+      "held_native_curl_relative_error": 3.0016910175189584,
+      "held_native_vs_continuous_curl_relative_difference": 2.4099989970470106,
+      "wall_tangential_velocity_rms_over_Uinf": 0.21106575200868846,
+      "wall_normal_velocity_rms_over_Uinf": 0.0028485778936388688,
+      "boundary_normal_velocity_rms_error_over_Uinf": 0.005433527984768033,
+      "boundary_tangential_normal_gradient_rms_error": 0.0177831492185659,
+      "boundary_native_flux_tangential_normal_gradient_rms_error": 0.02169148730579923,
+      "boundary_flux": {
+        "raw_mismatch": 0.00011522266027097494,
+        "raw_relative": 2.1305601084876565e-06,
+        "acceptance_limit": 0.001,
+        "applied_correction": 2.1313904512324333e-06,
+        "corrected_mismatch": 3.247402347028583e-13
+      }
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/native_curl_3d.py",
+      "sha256": "9659e463b9be35bf4947d2c6d6b22d1c163a79198793fd3ada6f1f2fc23dd53b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-cell-integral-reconstruction/held-fields.npz",
+      "sha256": "826e514be1e552cf243875782502a0d6418e1944554f75f7bea2f24c96492aa2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-cell-integral-reconstruction/native-reconstruction-3d.json",
+      "sha256": "949b169d75e8e3763fd4bbef60c588b5aac8b31ec1b9d8fd1c19c5f048005b47"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cell-and-face-map.npz",
+      "sha256": "cfc29835c86a9a7e52dd1d4044ed770a0fbde83900a0775d12587a969203328c"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "b2c9959b2aa5dcbae0ca55e2dc6150134bcdf253190f66cf92c029ec186f6130"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/interpolation.py",
+      "sha256": "99f678a164b5de0be51c4a9b903cfffd11d292a35247bb9473477b2847a235d7"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "4f1826d105651ca09b7c196fe099e4cd2388084bf8f2d013accd49e194817966"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/diffusion.py",
+      "sha256": "4ecdc68539777ec2f445f5fe03fbe929eeb855dea58cdccd4ea1209f81103de2"
+    },
+    {
+      "path": "source/solvers/fvm/solve/simple_solver.py",
+      "sha256": "48de8cbc44d987ed359763bb77fdb64d04e43ad0aa9654fcd0ecbe9710193eac"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    }
+  ],
+  "limitations": [
+    "The native curl uses prescribed no-slip wall values even if the particle velocity slips.",
+    "The original boundary-gradient metric uses an interpolated cell-gradient trace; a separate metric uses the actual native momentum diffusion trace.",
+    "Particle derivatives are centred differences of f64 complete velocity, with a step check.",
+    "This is a frozen coarse-cube diagnostic, not a new transfer method."
+  ]
+}

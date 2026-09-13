@@ -1,0 +1,25 @@
+{
+  "campaign": "real_vpm_vlm_surface_interaction",
+  "smoke": false,
+  "requested_steps": 2,
+  "case_directories": {
+    "smooth_incident_plate": "smooth_incident_plate",
+    "tandem_baseline": "tandem_baseline",
+    "timestep_half": "timestep_half",
+    "surface_refined": "surface_refined",
+    "particle_refined": "particle_refined",
+    "f32_cpu": "f32_cpu",
+    "lagged_control": "lagged_control"
+  },
+  "tables": [
+    "qualification_metrics.csv",
+    "refinement_table.csv",
+    "load_runtime_table.csv",
+    "leakage_table.csv",
+    "restart_equivalence.json"
+  ],
+  "qualification_limits": {
+    "restart_max_abs_error": 1e-11,
+    "event_policy": "warn; events remain validity evidence"
+  }
+}

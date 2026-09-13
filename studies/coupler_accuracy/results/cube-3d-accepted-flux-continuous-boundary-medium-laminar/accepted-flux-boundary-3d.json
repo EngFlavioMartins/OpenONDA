@@ -1,0 +1,950 @@
+{
+  "schema": "openonda-accepted-flux-boundary-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "boundary_faces": 3456,
+  "small_fvm_cells": 16936,
+  "snapshots": [
+    {
+      "name": "warmup",
+      "physical_time": 0.5,
+      "solver_step": 50,
+      "cut_flux": -1.1102230246251565e-16,
+      "maximum_cell_velocity_difference": 0.0,
+      "difference_from_linear_reference_rms": 0.00011001904453276756
+    },
+    {
+      "name": "reset-initial",
+      "physical_time": 0.5,
+      "solver_step": 0,
+      "cut_flux": -0.0017637838857889054,
+      "maximum_cell_velocity_difference": 0.0,
+      "difference_from_linear_reference_rms": 4.766970287499812e-17
+    }
+  ],
+  "reference_difference_rms": 0.00011001904453276756,
+  "reference_difference_maximum": 0.0005371741757546067,
+  "reference_difference_by_side": {
+    "xmin": 0.0001280063650464652,
+    "xmax": 0.0001727168268137606,
+    "ymin": 8.124514291091602e-05,
+    "ymax": 8.124153126355104e-05,
+    "zmin": 8.124459125578563e-05,
+    "zmax": 8.124195616260973e-05
+  },
+  "records": [
+    {
+      "experiment": "shared_trace",
+      "name": "constant_volume_control",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.002036191498568668,
+          "accepted_conservative_flux": 0.002072515933139529
+        },
+        "native": {
+          "linear_cell_velocity": 0.0020809075260735045,
+          "accepted_conservative_flux": 0.0021229643403177937
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "linear_face_point_moment_control",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0016370759353378985,
+          "accepted_conservative_flux": 0.001659825293349848
+        },
+        "native": {
+          "linear_cell_velocity": 0.0016329256620702575,
+          "accepted_conservative_flux": 0.0016638056597993273
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "point_native_face_moments",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.001208226474401352,
+          "accepted_conservative_flux": 0.0011899077800267839
+        },
+        "native": {
+          "linear_cell_velocity": 0.00107832761702005,
+          "accepted_conservative_flux": 0.0010701468573503083
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "point_cell_weighted_quadratic",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.001259596839391226,
+          "accepted_conservative_flux": 0.0012505245584178034
+        },
+        "native": {
+          "linear_cell_velocity": 0.0011529186834046223,
+          "accepted_conservative_flux": 0.00115447739940115
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "point_shared_trace_quadratic",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012811638399279415,
+          "accepted_conservative_flux": 0.0012721385720459554
+        },
+        "native": {
+          "linear_cell_velocity": 0.0011754447949686659,
+          "accepted_conservative_flux": 0.0011768781825306203
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "cell_average_native_face_moments",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.001208165319004799,
+          "accepted_conservative_flux": 0.0011898396949771752
+        },
+        "native": {
+          "linear_cell_velocity": 0.001078238853529647,
+          "accepted_conservative_flux": 0.0010700506475495827
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "cell_average_cell_weighted_quadratic",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012420654807909141,
+          "accepted_conservative_flux": 0.0012152368379392765
+        },
+        "native": {
+          "linear_cell_velocity": 0.001088333522658349,
+          "accepted_conservative_flux": 0.0010698580345734625
+        }
+      }
+    },
+    {
+      "experiment": "shared_trace",
+      "name": "cell_average_shared_trace_quadratic",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.001281104676288408,
+          "accepted_conservative_flux": 0.0012531860261300667
+        },
+        "native": {
+          "linear_cell_velocity": 0.0011250307580769905,
+          "accepted_conservative_flux": 0.0011050032454105916
+        }
+      }
+    },
+    {
+      "experiment": "continuous_curl",
+      "name": "point_affine_moments",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012706484003583123,
+          "accepted_conservative_flux": 0.0012722767626441333
+        },
+        "native": {
+          "linear_cell_velocity": 0.001198123801668649,
+          "accepted_conservative_flux": 0.00121091491415679
+        }
+      }
+    },
+    {
+      "experiment": "continuous_curl",
+      "name": "point_continuous_curl",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012746460759707476,
+          "accepted_conservative_flux": 0.0012771964717042258
+        },
+        "native": {
+          "linear_cell_velocity": 0.0012048932136141252,
+          "accepted_conservative_flux": 0.0012185894873063638
+        }
+      }
+    },
+    {
+      "experiment": "continuous_curl",
+      "name": "cell_average_affine_moments",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012107680573201364,
+          "accepted_conservative_flux": 0.0011922496727627262
+        },
+        "native": {
+          "linear_cell_velocity": 0.0010800532712442784,
+          "accepted_conservative_flux": 0.001071616043907894
+        }
+      }
+    },
+    {
+      "experiment": "continuous_curl",
+      "name": "cell_average_continuous_curl",
+      "normal_velocity_errors": {
+        "point": {
+          "linear_cell_velocity": 0.0012089556459968067,
+          "accepted_conservative_flux": 0.0011909637196400016
+        },
+        "native": {
+          "linear_cell_velocity": 0.001079626472362864,
+          "accepted_conservative_flux": 0.0010718052938847311
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "experiment": "shared_trace",
+      "input": "point",
+      "baseline": "point_native_face_moments",
+      "updated": "point_shared_trace_quadratic",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.00107832761702005,
+          "correction_rms": 0.00021087687858061533,
+          "baseline_error_dot_correction": 8.720547923544266e-08,
+          "initial_squared_error_slope": 1.7441095847088533e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.00107832761702005,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.001099623801745786,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0011229929622858547,
+              "squared_error_identity_difference": 4.235164736271502e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011483085445825308,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0011754447949686659,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010701468573503083,
+          "correction_rms": 0.00021087687858061533,
+          "baseline_error_dot_correction": 9.767945114996568e-08,
+          "initial_squared_error_slope": 1.9535890229993136e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010701468573503083,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010939987833593406,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0011198263311454513,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011474961080986878,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0011768781825306203,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.003516323697393971,
+        "correction_rms": 0.00040646602486654087,
+        "baseline_error_dot_correction": 3.073838399375931e-07,
+        "initial_squared_error_slope": 6.147676798751862e-07,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.003516323697393971,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.003539569208132379,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.0035655602423931504,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.0035942372394962853,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003625536464318129,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    },
+    {
+      "experiment": "shared_trace",
+      "input": "cell_average",
+      "baseline": "cell_average_native_face_moments",
+      "updated": "cell_average_shared_trace_quadratic",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.001078238853529647,
+          "correction_rms": 0.00021352351112392167,
+          "baseline_error_dot_correction": 2.8751445777836427e-08,
+          "initial_squared_error_slope": 5.7502891555672854e-08,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.001078238853529647,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.001086197158099078,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0010966989301943518,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011096719591580629,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0011250307580769905,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010700506475495827,
+          "correction_rms": 0.00021352351112392167,
+          "baseline_error_dot_correction": 1.521574712198583e-08,
+          "initial_squared_error_slope": 3.043149424397166e-08,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010700506475495827,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010749259416326978,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.001082414988760752,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0010924640369450482,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0011050032454105916,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.0035165068068554123,
+        "correction_rms": 0.0005259891054958742,
+        "baseline_error_dot_correction": 1.8681162201821478e-07,
+        "initial_squared_error_slope": 3.7362324403642956e-07,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.0035165068068554123,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.003532211413174943,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.003552716971481651,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.003577940938435362,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003607784348571465,
+            "squared_error_identity_difference": 0.0
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    },
+    {
+      "experiment": "continuous_curl",
+      "input": "point_affine",
+      "baseline": "point_native_face_moments",
+      "updated": "point_affine_moments",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.00107832761702005,
+          "correction_rms": 0.00039069656551897475,
+          "baseline_error_dot_correction": 6.003319409423674e-08,
+          "initial_squared_error_slope": 1.2006638818847348e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.00107832761702005,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010965159755195219,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0011229357039917547,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011570230688356766,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.001198123801668649,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010701468573503083,
+          "correction_rms": 0.00039069656551897475,
+          "baseline_error_dot_correction": 8.422841336114133e-08,
+          "initial_squared_error_slope": 1.6845682672228266e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010701468573503083,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.001094014963732938,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0011258790615492247,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011650832834552577,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.00121091491415679,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.003516323697393971,
+        "correction_rms": 0.0005784903671068463,
+        "baseline_error_dot_correction": 1.3829861974374957e-07,
+        "initial_squared_error_slope": 2.7659723948749914e-07,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.003516323697393971,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.0035291071602855154,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.0035477448810204786,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.003572145226742602,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003602191095594086,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    },
+    {
+      "experiment": "continuous_curl",
+      "input": "point_curl",
+      "baseline": "point_native_face_moments",
+      "updated": "point_continuous_curl",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.00107832761702005,
+          "correction_rms": 0.0004094513404838081,
+          "baseline_error_dot_correction": 6.06634031806232e-08,
+          "initial_squared_error_slope": 1.213268063612464e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.00107832761702005,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010970871894395865,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0011248850842929513,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0011610723080519437,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0012048932136141252,
+              "squared_error_identity_difference": 0.0
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010701468573503083,
+          "correction_rms": 0.0004094513404838081,
+          "baseline_error_dot_correction": 8.604782102642928e-08,
+          "initial_squared_error_slope": 1.7209564205285857e-07,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010701468573503083,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010948590579722831,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.001128350440855662,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.001169867248008242,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0012185894873063638,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.003516323697393971,
+        "correction_rms": 0.000608706479822204,
+        "baseline_error_dot_correction": 1.4304794330673837e-07,
+        "initial_squared_error_slope": 2.8609588661347675e-07,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.003516323697393971,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.0035297611874132323,
+            "squared_error_identity_difference": 3.3881317890172014e-21
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.0035496776167428966,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.003575964733154451,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003608483311593033,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    },
+    {
+      "experiment": "continuous_curl",
+      "input": "cell_average_affine",
+      "baseline": "cell_average_native_face_moments",
+      "updated": "cell_average_affine_moments",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.001078238853529647,
+          "correction_rms": 8.401132043628494e-06,
+          "baseline_error_dot_correction": 1.9227322224624637e-09,
+          "initial_squared_error_slope": 3.8454644449249275e-09,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.001078238853529647,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.001078686609984978,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0010791382683596636,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0010795938237564875,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0010800532712442784,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010700506475495827,
+          "correction_rms": 8.401132043628494e-06,
+          "baseline_error_dot_correction": 1.6409891099550368e-09,
+          "initial_squared_error_slope": 3.2819782199100737e-09,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010700506475495827,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.001070436029879873,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0010708253929498216,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0010712187324187093,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.001071616043907894,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.0035165068068554123,
+        "correction_rms": 2.49701487403923e-05,
+        "baseline_error_dot_correction": 2.3314833855777918e-08,
+        "initial_squared_error_slope": 4.6629667711555835e-08,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.0035165068068554123,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.0035181694826797137,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.0035198424444281957,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.003521525677441339,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003523219166997722,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    },
+    {
+      "experiment": "continuous_curl",
+      "input": "cell_average_curl",
+      "baseline": "cell_average_native_face_moments",
+      "updated": "cell_average_continuous_curl",
+      "native_normal_response": {
+        "linear_cell_velocity": {
+          "baseline_error_rms": 0.001078238853529647,
+          "correction_rms": 1.1473508848893816e-05,
+          "baseline_error_dot_correction": 1.4313265802245962e-09,
+          "initial_squared_error_slope": 2.8626531604491924e-09,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.001078238853529647,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010785744833523882,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0010789176345729447,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0010792683000170756,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.001079626472362864,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        },
+        "accepted_conservative_flux": {
+          "baseline_error_rms": 0.0010700506475495827,
+          "correction_rms": 1.1473508848893816e-05,
+          "baseline_error_dot_correction": 1.8132791363742201e-09,
+          "initial_squared_error_slope": 3.6265582727484402e-09,
+          "positive_scale_improvement_upper_bound": null,
+          "scale_samples": [
+            {
+              "scale": 0.0,
+              "error_rms": 0.0010700506475495827,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.25,
+              "error_rms": 0.0010704780499745427,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            },
+            {
+              "scale": 0.5,
+              "error_rms": 0.0010709129646283033,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 0.75,
+              "error_rms": 0.0010713553823621397,
+              "squared_error_identity_difference": 0.0
+            },
+            {
+              "scale": 1.0,
+              "error_rms": 0.0010718052938847311,
+              "squared_error_identity_difference": 2.117582368135751e-22
+            }
+          ]
+        }
+      },
+      "native_derivative_response": {
+        "baseline_error_rms": 0.0035165068068554123,
+        "correction_rms": 2.4290818503325728e-05,
+        "baseline_error_dot_correction": 2.2472299004569505e-08,
+        "initial_squared_error_slope": 4.494459800913901e-08,
+        "positive_scale_improvement_upper_bound": null,
+        "scale_samples": [
+          {
+            "scale": 0.0,
+            "error_rms": 0.0035165068068554123,
+            "squared_error_identity_difference": 0.0
+          },
+          {
+            "scale": 0.25,
+            "error_rms": 0.0035181093146609598,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.5,
+            "error_rms": 0.003519721570327816,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 0.75,
+            "error_rms": 0.003521343560466737,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          },
+          {
+            "scale": 1.0,
+            "error_rms": 0.003522975271632367,
+            "squared_error_identity_difference": 1.6940658945086007e-21
+          }
+        ]
+      },
+      "joint_accepted_flux_and_derivative_improvement_upper_bound": null
+    }
+  ],
+  "fields": {
+    "path": "studies/coupler_accuracy/results/cube-3d-accepted-flux-continuous-boundary-medium-laminar/accepted-flux-boundary-fields.npz",
+    "sha256": "fafafd4d7a852f9e1a49660b707e359acc716e7f4161051ce9b065e42f71283d"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/accepted_flux_boundary_3d.py",
+      "sha256": "0d123a9fe4797b570f4cbd99e7649f41c3429840f27322f5059cda96d1a1626a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/reference-flux-replay-3d.json",
+      "sha256": "17266b0d9df2b1976e97e8e4e8ca65b265c77958a20adf8973697e7f32fcf896"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-shared-trace-induction-medium-laminar/cube-shared-trace-induction-3d.json",
+      "sha256": "7ae66b59b5efcd64dd2460bda8a830d61d6b4025f0ac7e179772c67c00c89670"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-shared-trace-induction-medium-laminar/shared-trace-physical-fields.npz",
+      "sha256": "be194ef8536383555e3c0ae7573c79f6b9e92bee687783750b025746c8b65716"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-shared-trace-sources-medium-laminar-qualified/shared-trace-source-fields.npz",
+      "sha256": "c7b9203f8ddfbb856d123538979f2df28795eb6f07b508e4be78fb4abfc3e445"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/warmup-fvm.npz",
+      "sha256": "cf8e5811e33205f1533e5c7a43ccbc4186de87b3e767fa361d3066ca9b7216ab"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/reset-initial-fvm.npz",
+      "sha256": "181aaede1513015744fbe2252e91ec45593df5c83de8e8e520fc4f1a093df70a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-induction-medium-laminar/cube-continuous-curl-induction-3d.json",
+      "sha256": "a71a643b73c397b9cfaad8cc25e64c3fc1656d30ab1ea59b893cd26db762caac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-continuous-curl-induction-medium-laminar/continuous-curl-physical-fields.npz",
+      "sha256": "e96e52124fca7d2ea1060678481f6f3d340f918418c95c70c0d6fe4207684a22"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/shared_trace_response_3d.py",
+      "sha256": "5a7ec301415edb0206dc96f51cd9154c53393e12c5653c35387c9831db770787"
+    }
+  ],
+  "limitations": [
+    "Both reference observations use identical FVM cell velocities and native geometry, but the accepted warmup flux and reset-initial linear flux are distinct states.",
+    "The earlier linear-cell-velocity errors are replayed and retained. The conservative-flux target is an additional observation, not a replacement solver result.",
+    "Only the normal-velocity reference changes. The native tangential-derivative target is unchanged.",
+    "The response calculation diagnoses frozen source directions using the reference; it is not a production damping rule or an advancing force prediction."
+  ]
+}

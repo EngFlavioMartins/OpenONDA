@@ -1,0 +1,14 @@
+{
+  "velocity": {
+    "bitwise_equal": true,
+    "max_absolute_difference": 0.0
+  },
+  "gradient": {
+    "bitwise_equal": true,
+    "max_absolute_difference": 0.0
+  },
+  "rate": {
+    "bitwise_equal": true,
+    "max_absolute_difference": 0.0
+  }
+}

@@ -11,6 +11,8 @@ import sys
 import numpy as np
 import pytest
 
+from tests._tutorial_helpers import load_tutorial_module
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TUTORIALS = REPOSITORY_ROOT / "tutorials"
 
@@ -26,7 +28,12 @@ def _load_module(path: Path, name: str):
 
 def _import_repository_tutorial(name: str):
     """Import a tutorial module outside pytest's ``tests/tutorials`` namespace."""
-    return importlib.import_module(name)
+    parts = name.split(".")
+    if parts[:1] != ["tutorials"] or len(parts) < 3:
+        raise ValueError(f"unsupported repository tutorial path: {name}")
+    catalog_name = f"{parts[1]}/{parts[2]}"
+    module = ".".join(parts[3:]) or "setup"
+    return load_tutorial_module(catalog_name, module)
 
 
 def _write_vpm_metadata(
@@ -94,7 +101,7 @@ def _write_vpm_metadata(
 
 def test_cube_plot_metadata_accepts_only_supported_coupling_schemas():
     plot_util = _load_module(
-        TUTORIALS / "coupled_fvm_vpm/cube_flow/assets/_plotutil.py",
+        TUTORIALS / "coupled_fvm_vpm/02_cube_flow/assets/_plotutil.py",
         "cube_flow_plot_metadata_test",
     )
 
@@ -114,7 +121,7 @@ def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path
     import pyvista as pv
 
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_surface_schema_test",
     )
     x, y = np.meshgrid([-0.5, 0.5], [-0.25, 0.25], indexing="ij")
@@ -139,7 +146,7 @@ def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path
 
 def test_lamb_oseen_energy_reader_preserves_backend_provenance(tmp_path: Path):
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_energy_schema_test",
     )
     path = tmp_path / "flow_integrals.csv"
@@ -161,7 +168,7 @@ def test_lamb_oseen_energy_reader_preserves_backend_provenance(tmp_path: Path):
 
 def test_lamb_oseen_energy_reader_keeps_persistent_fourier_rate(tmp_path: Path):
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_persistent_fourier_energy_schema_test",
     )
     path = tmp_path / "flow_integrals.csv"
@@ -180,7 +187,7 @@ def test_lamb_oseen_energy_reader_keeps_persistent_fourier_rate(tmp_path: Path):
 
 def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_solver_metadata_test",
     )
     payload = _write_vpm_metadata(

@@ -7,8 +7,12 @@ import pytest
 
 import openonda.vpm as vpm
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
-from tutorials.vpm.vortex_interactions import setup
-from tutorials.vpm.vortex_interactions.assets.plot_core_sections import discover, read_plane
+from tests._tutorial_helpers import load_tutorial_module
+
+setup = load_tutorial_module("vpm/vortex_interactions")
+_plot_core_sections = load_tutorial_module("vpm/vortex_interactions", "assets.plot_core_sections")
+discover = _plot_core_sections.discover
+read_plane = _plot_core_sections.read_plane
 
 
 def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(tmp_path):
@@ -55,7 +59,8 @@ def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(t
 
 
 def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_path):
-    from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
+    study = load_tutorial_module("vpm/vortex_interactions", "assets.study")
+    build_experiment, parser = study.build_experiment, study.parser
 
     cases = [setup.build_case("baseline"), build_experiment(parser().parse_args([]), tmp_path)]
     for case, interval in zip(cases, (1.5, 0.15), strict=True):
@@ -71,7 +76,8 @@ def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_pat
 
 
 def test_study_uses_only_vpm_samplers_without_particle_archives(tmp_path):
-    from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
+    study = load_tutorial_module("vpm/vortex_interactions", "assets.study")
+    build_experiment, parser = study.build_experiment, study.parser
 
     case = build_experiment(parser().parse_args([]), tmp_path)
     assert all(

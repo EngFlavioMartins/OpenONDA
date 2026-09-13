@@ -1,0 +1,5 @@
+{
+  "valid_for_operator_comparison": false,
+  "reason": "Mixed face velocities remained stale after set_initial_state because the core initializer omitted this boundary strategy. The frozen convection and transpose-stress differences cannot be attributed to a consistent mixed boundary stencil. All numerical files and original source archives are retained.",
+  "replacement": "../cube-3d-medium-boundary-operator-audit-initialized/boundary-operator-audit-3d.json"
+}

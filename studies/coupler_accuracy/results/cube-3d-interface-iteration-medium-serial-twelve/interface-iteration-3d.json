@@ -1,0 +1,4251 @@
+{
+  "schema": "openonda-interface-iteration-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "maximum_sweeps": 12,
+  "relaxation": 1.0,
+  "normal_tolerance": 1e-06,
+  "gradient_tolerance": 1e-06,
+  "execution_environment": {
+    "TI_CPU_MAX_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "4f1826d105651ca09b7c196fe099e4cd2388084bf8f2d013accd49e194817966"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    }
+  ],
+  "sweeps": [
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 1,
+      "normal_residual_rms": 0.0011563714661864202,
+      "gradient_residual_rms": 0.002776498530493296,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "8c220b1a67ff06723d08bfc08a0e66295eab944f5af778e55ac9a3df76810939",
+          "fvm_kinematic_pressure": "c7b6c13eb237fd57af0db5c6d93bc2bb997449a44808d05494901829c062a236",
+          "fvm_volumetric_face_flux": "738649f6ca0f471640615ec5c97bc01d629afad24c317a99c89700bb5cf2db54",
+          "fvm_volumetric_face_flux_old": "738649f6ca0f471640615ec5c97bc01d629afad24c317a99c89700bb5cf2db54",
+          "fvm_volumetric_face_flux_older": "26298642a4a59214359c3ebc757d57b70d36ee358fe7832eeb795fea0da604c9",
+          "fvm_velocity_old": "8c220b1a67ff06723d08bfc08a0e66295eab944f5af778e55ac9a3df76810939",
+          "fvm_velocity_older": "df8333919b02e62fdbc74dd621de0fd1bdc62e36bbadd7e3e961fb0bb43a0ab1",
+          "vpm_position": "6899de3f6f7b8c79a121bf2769efcbed9adbc7b2c305ba01dd815002ddfbfa4e",
+          "vpm_velocity": "839021807200df0e55998ee29ae0ab6e00cd8a94480bf210a8c08f6198057f18",
+          "vpm_vortex_strength": "4465aa89dd6d40ddb548d6775631e0433b3f3e5a3756339ae6db5772c3d1e79d",
+          "vpm_core_radius": "2b282677224745057780119b2d0188f8a20b8e6995084f877041dbe816622a74",
+          "vpm_particle_volume": "40b5f7254d4333ba3d7cf206ab633c79e54586dbb9cc09a79584682d4388e00f",
+          "vpm_kinematic_viscosity": "e785013ad1bc94d89a8885e618900dd896e18cdad687848a27b0a670c4f558c1",
+          "vpm_eddy_viscosity": "e8f83a8cf44b0fb77ecbdee611e97ec3e6dcc49d91a75e4a83e389bb109f09d7",
+          "vpm_group_id": "5d03e8e667590f5a40b26d2831be159af98ee0ddd705b00f42f1337251736e4e",
+          "vpm_zone_id": "5d03e8e667590f5a40b26d2831be159af98ee0ddd705b00f42f1337251736e4e",
+          "vpm_velocity_gradient": "16eed5d741d5de6df8ab00462d0cbfa4c411646fbbc7bbb862b465f1e1627d86",
+          "vpm_strain_rate": "16eed5d741d5de6df8ab00462d0cbfa4c411646fbbc7bbb862b465f1e1627d86",
+          "post_trace_velocity_boundary_condition": "aebcf8adf1ad0a579e9b098d31a9765a819b2319af437b5e79ec021c75256097",
+          "post_trace_normal_velocity_boundary_condition": "f59ff088029adb54e8272fd29fdcb7cff558c0418e8a08d1f942e6fb487f34b6",
+          "post_trace_tangential_gradient_boundary_condition": "2d86f0df3135c0205d7a051f00ac8d0b2a88b519cd688d5dffd52981915ef9ba",
+          "clocks": "549f922dc724165c17262bb0ef97b22c32fbfc3720c75fe53cabc4196686c28e",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4945063781092656,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-01.npz",
+        "sha256": "d929a09e0ea39540c9d5e7213124e22b0790fe61716a9a5b124588d62cc3e8e7"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 2,
+      "normal_residual_rms": 5.912916624608426e-07,
+      "gradient_residual_rms": 1.0271073538210112e-05,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867645158447722,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-02.npz",
+        "sha256": "c310b1e9dec7d4c795c765d842d719d0d6e8554b7bdfb03640a2336852bf4548"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 3,
+      "normal_residual_rms": 1.979790845151646e-08,
+      "gradient_residual_rms": 9.956082882859548e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867252777260884,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-03.npz",
+        "sha256": "25d74ee77048d9c58153528b791bae01bf9bff4654a3712fbe6b2fada64a03b6"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 4,
+      "normal_residual_rms": 4.424748845268021e-09,
+      "gradient_residual_rms": 4.766863311993657e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.486725321191124,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-04.npz",
+        "sha256": "87e76c20ac7e83f90bc56d3f46e9deadaad9511abc1e2283fd8aa9f97b47cf2f"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 5,
+      "normal_residual_rms": 3.122395521897943e-09,
+      "gradient_residual_rms": 3.3435002232606633e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867253053693372,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-05.npz",
+        "sha256": "3ae8c126f02cbd6eb8ec15be43014aa6109ad839ca703f3d3b6aca6868dcf504"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 6,
+      "normal_residual_rms": 2.3351465952162337e-09,
+      "gradient_residual_rms": 2.4740457014263553e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867253137077046,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-06.npz",
+        "sha256": "880896b379747c5fd1e93c2ab8558a9e0560630b7e2066b83d5ef71caaafb292"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 7,
+      "normal_residual_rms": 1.8451554564833526e-09,
+      "gradient_residual_rms": 2.371929814928073e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867253353881091,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-07.npz",
+        "sha256": "6b2f513d5517a4d00f121b0bdd825ff05ba98287b139353d2e10ccd294ad1908"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 8,
+      "normal_residual_rms": 1.0995109795749262e-09,
+      "gradient_residual_rms": 1.3980660775182782e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867253253329293,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-08.npz",
+        "sha256": "66fc46884350d1ab55eaefd25c930e12086032f65a6c31c88f58986b64e1048f"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 9,
+      "normal_residual_rms": 1.4667660883447563e-10,
+      "gradient_residual_rms": 6.121959605957271e-10,
+      "converged": true,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4867253215608267,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000001-sweep-09.npz",
+        "sha256": "a423f4920b32702b949e6ac3b440fb89f4e4f1e99c2ced0670488e57dc38e952"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 1,
+      "normal_residual_rms": 0.0010789628255573954,
+      "gradient_residual_rms": 0.0025780296526066986,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "70d5ae3bda7410d8c798cb2177c3463dcd39737ac77c999a212b9e9b16779c90",
+          "fvm_kinematic_pressure": "c1dc4f04cef89045a8faffae3153a87e4128c519d333645971f81142e2139c47",
+          "fvm_volumetric_face_flux": "3dadf80f2f949831c919ccb0aff9ed772f71313c96f04a43e5881e2d29b20e6f",
+          "fvm_volumetric_face_flux_old": "3dadf80f2f949831c919ccb0aff9ed772f71313c96f04a43e5881e2d29b20e6f",
+          "fvm_volumetric_face_flux_older": "a7b3d598382c82cc707b0370eee51f739f4939d1a693bf2a9e7bee0c90c8c4e4",
+          "fvm_velocity_old": "70d5ae3bda7410d8c798cb2177c3463dcd39737ac77c999a212b9e9b16779c90",
+          "fvm_velocity_older": "1f6839ac48dd529baeb07b36a4eed8c95531ae73fe035064c79ff6968b6f6fd9",
+          "vpm_position": "6618d01d750436e3434e582cf12a3e20b6381d34cf98439d6d1c0aed8db1dbf3",
+          "vpm_velocity": "672141f1eef12d68a2936d4d0e2a606a112102270158840c58cb6ba0f4342ddd",
+          "vpm_vortex_strength": "0c7fbe249748ef1ece28fd8e9438c41b7d0b553d405429db0b76481d6032c6ce",
+          "vpm_core_radius": "6af23c6da17f8ae93a3b0742afeada4c9e2f68c698b68545ba427ff390991f01",
+          "vpm_particle_volume": "7826ca828dec294a3d0268b121f2af6bdf32ca5fa85719d66bf28293b952fbed",
+          "vpm_kinematic_viscosity": "c35bd06702bb7d09e64a26d3176817807a5517c4842655ba287e51fe7eab5b83",
+          "vpm_eddy_viscosity": "8d378c0c5ad478b9bb82675563d86daf86818f861631ac6e4b56c01ad8a7d3cc",
+          "vpm_group_id": "f656f32171d2d68366fe20b659d918e77d5c17c3d97721af0ea4685f15374835",
+          "vpm_zone_id": "f656f32171d2d68366fe20b659d918e77d5c17c3d97721af0ea4685f15374835",
+          "vpm_velocity_gradient": "2375b13ab0bb9f3548e9ddac57dec836b9550c0b9088583f69243c55fd37d77b",
+          "vpm_strain_rate": "2375b13ab0bb9f3548e9ddac57dec836b9550c0b9088583f69243c55fd37d77b",
+          "post_trace_velocity_boundary_condition": "f41c511f13c6a5e3700c39c7f49576cc1bc40c62b998fea331a222d48ab6993f",
+          "post_trace_normal_velocity_boundary_condition": "05d75c3a831fd2710cad1afb2f7c9f606169ffb72be37ed0fd47cbe083ceaeec",
+          "post_trace_tangential_gradient_boundary_condition": "1db66b9b3a7429edf3b43681cd9526cb6057a8efb2db1ba6ca0403c627605c00",
+          "clocks": "296c3977357dc7a71e2b561d263b825b8dbf025ebaeac89d779bca9b93aa8f2b",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4624918986092188,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-01.npz",
+        "sha256": "9287c342742ad71380c4446e79e56142408e4dec9a31c45c14982785defcd05d"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 2,
+      "normal_residual_rms": 4.634976773134506e-07,
+      "gradient_residual_rms": 9.516848526304557e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810847313457043,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-02.npz",
+        "sha256": "3e7a638c348b80c56179b0325f9e746913d08d7df0e74b664a92f3f6976aed66"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 3,
+      "normal_residual_rms": 1.7943169142894083e-08,
+      "gradient_residual_rms": 9.315462955476543e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810982590647188,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-03.npz",
+        "sha256": "0042a5aab59422764390b75bf29e0370dab4d63cfb2b5df733cfaa33528c38cc"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 4,
+      "normal_residual_rms": 4.688938386992185e-09,
+      "gradient_residual_rms": 4.418634659029902e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810979911603632,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-04.npz",
+        "sha256": "71a6838de80bace39796170002126f9efbb4143a13b1e6f74c937a3bf48f1990"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 5,
+      "normal_residual_rms": 3.601105088349557e-09,
+      "gradient_residual_rms": 3.350874758110394e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810980237869524,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-05.npz",
+        "sha256": "3025781499bacad1c8e0f4c577da6b883036f6f028a1be86da00c1ec248db2a9"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 6,
+      "normal_residual_rms": 3.271252965786401e-09,
+      "gradient_residual_rms": 2.5687958201476857e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810979896818413,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-06.npz",
+        "sha256": "32c38bd2bc1b93c49839f6e9407573965733c2f98c28378d4e1bfa0120480eac"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 7,
+      "normal_residual_rms": 1.0743377615940986e-09,
+      "gradient_residual_rms": 9.603518382731132e-07,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810979982188903,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000002-sweep-07.npz",
+        "sha256": "f145b9287f9583608e2fb05ca636fb86b896d3fb2a0efee4dcd71c456c2a9ecc"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 1,
+      "normal_residual_rms": 0.0010801350353087408,
+      "gradient_residual_rms": 0.002597427491643579,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "b7cea779fe18922c646a7ab62a12d4696fd35417a574053ccb9f19e2542c1fc9",
+          "fvm_kinematic_pressure": "6f03d002064832fba5d17fb14b71cebbb0cf5cd7eedafa7557551997ae431b0e",
+          "fvm_volumetric_face_flux": "503c945ba104d1bcde4dc99afba37dc41e4419adfe696d66dae6bc8dca61cff1",
+          "fvm_volumetric_face_flux_old": "503c945ba104d1bcde4dc99afba37dc41e4419adfe696d66dae6bc8dca61cff1",
+          "fvm_volumetric_face_flux_older": "2206f1ad8f8aaf75d9efa6dc5f00127b3452ac7a3ad3c0958614abed36338ba2",
+          "fvm_velocity_old": "b7cea779fe18922c646a7ab62a12d4696fd35417a574053ccb9f19e2542c1fc9",
+          "fvm_velocity_older": "efae38df9236a6cea687a0314130498b0bdaf399734dce4e01a141771c999bd4",
+          "vpm_position": "1c8340b6d7e86c839199da408c47d51e8afacea1f40e14fc720351a53a91151f",
+          "vpm_velocity": "186f32338834b49e6edf0596c76ac746538f0b8fd035c985b4ca5ee0677695d2",
+          "vpm_vortex_strength": "5a80ca11bb1318440bc6d0d2b4307d9f19b732900403be1d472686d565665b15",
+          "vpm_core_radius": "4f806b5a80326a8f307459c0b820085f27665ee22f3e744017de35ee4dbd7b68",
+          "vpm_particle_volume": "087bd3daf87760ce7a95b10b416e0a05dd9de49be6b84c92fe9cdd4585d5e527",
+          "vpm_kinematic_viscosity": "5a907aa559a5d1bb660fe3d3c184510d9921c345fd44437072f49b7086461c08",
+          "vpm_eddy_viscosity": "60c85e59d97887ce26e6adb79361b32827e4e2b41f81cf68a2a9bd49a2bb9866",
+          "vpm_group_id": "59bfc81a8df5ef9e6d79869c81f10fed432b184f8ce37be3c1dd08583e95fabf",
+          "vpm_zone_id": "59bfc81a8df5ef9e6d79869c81f10fed432b184f8ce37be3c1dd08583e95fabf",
+          "vpm_velocity_gradient": "d6f50f7a57866286223acaf803eecd0e7f2e4eb0993547c00078df110dafde18",
+          "vpm_strain_rate": "d6f50f7a57866286223acaf803eecd0e7f2e4eb0993547c00078df110dafde18",
+          "post_trace_velocity_boundary_condition": "978f3d617154a67063ba7f1ecd51fbfbc737054d7a71f53d0f6f69d56e660aea",
+          "post_trace_normal_velocity_boundary_condition": "f193e3f276c71d2a3079ea44043634de9d7564686e203d92e7abfcd45d5bf2cd",
+          "post_trace_tangential_gradient_boundary_condition": "649c07fc1092874abbf81f31d2597092f17dee07a2fe3301253faabb90fd3d74",
+          "clocks": "46e01d8020c3dab99f83e29fea90991d09312ae327dd3a293eb004bf685f4a55",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4327851142285581,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-01.npz",
+        "sha256": "4bcdb62eea77eb0d234ba2b9240cf52cab789045aaebef2be9f8a49e4b69b14b"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 2,
+      "normal_residual_rms": 5.686026709881425e-07,
+      "gradient_residual_rms": 8.708897193377687e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4603744963900838,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-02.npz",
+        "sha256": "4c8d27122a60a2d3d7693bc8c5849dd9d3e139d0184a39b41a1b53f7e1debb4e"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 3,
+      "normal_residual_rms": 2.0599029315561225e-08,
+      "gradient_residual_rms": 8.561411072768739e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4604159167512405,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-03.npz",
+        "sha256": "41f5a5852e9a16aa90609d07f563f69a398968e0410085bf144ee0d738e87784"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 4,
+      "normal_residual_rms": 5.8440769103326735e-09,
+      "gradient_residual_rms": 5.486350071070201e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.460416159648184,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-04.npz",
+        "sha256": "5b1cb3acd94620359f0fdb39e30f03fadded2b6a6bfd26702e9cd7d02ef42b35"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 5,
+      "normal_residual_rms": 3.621105126435052e-09,
+      "gradient_residual_rms": 4.284970793871163e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4604161915499572,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-05.npz",
+        "sha256": "43a9b8b3bf1e8c397ea73715189abd66737e8a9607998c1dc9813e1b60bd35ea"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 6,
+      "normal_residual_rms": 2.9499553314945e-09,
+      "gradient_residual_rms": 3.4518065889991773e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.460416196723564,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-06.npz",
+        "sha256": "1b6949d99d99a9f5d99a0a74c99ff56a30df4fe20de1ae295c16b21b77f30051"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 7,
+      "normal_residual_rms": 2.7708824870584436e-09,
+      "gradient_residual_rms": 3.3302468531690164e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4604162111109094,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-07.npz",
+        "sha256": "bb17f104c886d3c7510039079e92641eafdcf7c51a04b6504b56a0ffa0136b46"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 8,
+      "normal_residual_rms": 2.5746530430671413e-09,
+      "gradient_residual_rms": 2.9860478654364072e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4604162291155418,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-08.npz",
+        "sha256": "07680b05bc1977ec60ce6604b5b68a031633a9f87b3daba9843ec61b9abb9a18"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 9,
+      "normal_residual_rms": 3.1187224030251725e-09,
+      "gradient_residual_rms": 2.9881560694443004e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.460416203690129,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-09.npz",
+        "sha256": "a524430622c3733a9c24623cefdad43038efd187617c7ed52b10ed7061b7ffea"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 10,
+      "normal_residual_rms": 2.9467699500743633e-09,
+      "gradient_residual_rms": 3.0683866650494256e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4604162241952812,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-10.npz",
+        "sha256": "fe4f66f6fcf68b8164f0c3831c6dfb46020e91da67f28a897f32afde14526678"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 11,
+      "normal_residual_rms": 2.7606722368679156e-09,
+      "gradient_residual_rms": 3.0683977705254754e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.460416211229745,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-11.npz",
+        "sha256": "629e2ba8031fd007691f3080c0ea3a4491c2b75b672ca2e6e89874298a9187a8"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 12,
+      "normal_residual_rms": 2.765781937741481e-09,
+      "gradient_residual_rms": 3.068407300598093e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.460416220203181,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000003-sweep-12.npz",
+        "sha256": "d1ad4df0120f24f38ec28338ccecb79edf8a7fb8f8e4eab2450dd0590c10abfb"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009844782482348088,
+      "gradient_residual_rms": 0.0023763983381534445,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "f05e19517253da8cb73409aca2afa647866b092e88db2e98a81d3abd49c40a69",
+          "fvm_kinematic_pressure": "99aad128976b8b9a5cdc6c8603f90c5c87edbb3fcbb4528839731d6f43231ef1",
+          "fvm_volumetric_face_flux": "5f72795eb8b3386dd6f79b9c0ed476e31d60f4f0018794f5abe165071571766e",
+          "fvm_volumetric_face_flux_old": "5f72795eb8b3386dd6f79b9c0ed476e31d60f4f0018794f5abe165071571766e",
+          "fvm_volumetric_face_flux_older": "7108f29b0a7683ffef546c99b3872f5f61498f371bc0426de110cad73a54c328",
+          "fvm_velocity_old": "f05e19517253da8cb73409aca2afa647866b092e88db2e98a81d3abd49c40a69",
+          "fvm_velocity_older": "f77a198628c04266d48949608005fdc98f0f5037f62d5f50a98661264f4959b8",
+          "vpm_position": "227c93dc03f35441b2aaaf7eb2bd10f197b648ce88926bde9eaff0b9852dd0fd",
+          "vpm_velocity": "eedd2a289b21661ab10801604d13efd6459c2367e267dec3fb4a81c3bbe80d1b",
+          "vpm_vortex_strength": "7da63a41d30aff073f527db8c6c1eac12a13130a12e2642cf753ea7cb2290cf4",
+          "vpm_core_radius": "073136c7196a87eace932671cf7c7dbbbc91d86c7d151462f41ab592c2fca1d7",
+          "vpm_particle_volume": "6ee05fd942325b2c980fd5ded62bfc5376aef8fb2f3131d3dee1da869be4f38d",
+          "vpm_kinematic_viscosity": "6bc2ee9d06b94fc98ee7ffbbcce9241dad0aa21947beaf853cbd3147b64b95db",
+          "vpm_eddy_viscosity": "3a584281c78b46d69175e0c4cf76f6d74c44534efb2ebef215b28d133ca084f2",
+          "vpm_group_id": "6f44da6209991c9a1c540188ae9dce334638b1bf29eddd3abfdecde80b133fb9",
+          "vpm_zone_id": "6f44da6209991c9a1c540188ae9dce334638b1bf29eddd3abfdecde80b133fb9",
+          "vpm_velocity_gradient": "f2827e77bc0f8d277f729b536f54540e1528caf5edac8ca1bbd4ec66da4aeec4",
+          "vpm_strain_rate": "f2827e77bc0f8d277f729b536f54540e1528caf5edac8ca1bbd4ec66da4aeec4",
+          "post_trace_velocity_boundary_condition": "3321f6552ce04ba3d8222ce980fafeccb0e1a9a321ae2a6a2e7f209202531f9c",
+          "post_trace_normal_velocity_boundary_condition": "32356376835c297a43884b83f4cd3f56c209aa6fc11bfcda318a08090bf88b19",
+          "post_trace_tangential_gradient_boundary_condition": "cff6b6f7544872505f2bf4fa2fb50a5fe3b6222d927873dc4f6234cfc02a07ca",
+          "clocks": "2edf0119564b74f3d11da6610613502d678e76afa915ee404cc4ddcad3f8ac15",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4199995903395475,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-01.npz",
+        "sha256": "602979901c552dd283a4560d86f2545c5b5ab4f33d4890859d51175a8f59827d"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 2,
+      "normal_residual_rms": 5.048565100672382e-07,
+      "gradient_residual_rms": 8.29016267314694e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388091008977133,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-02.npz",
+        "sha256": "c14ff6621283a1e7eb2f14cdc11d290a14533b8c7a9886390e661549a99c5bf8"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 3,
+      "normal_residual_rms": 1.7373525867819614e-08,
+      "gradient_residual_rms": 8.118452460281826e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.438830455553768,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-03.npz",
+        "sha256": "a4d934bed1e353f9c3fb5d35b422c606bd9b9d92695be3173027e2f1af746f06"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 4,
+      "normal_residual_rms": 3.35588697143022e-09,
+      "gradient_residual_rms": 3.801173622743342e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304866792487,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-04.npz",
+        "sha256": "19ed5a9bffad24470ffde1be9e1cca34f181244ff5c7ad1fc0ff6db4d7ec0fb5"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 5,
+      "normal_residual_rms": 2.367675614769964e-09,
+      "gradient_residual_rms": 3.12501510620496e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304656314943,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-05.npz",
+        "sha256": "e3481866158dfbabaaa092a3245d2b8359d7cecc40d0177d057a6c00f40f932a"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 6,
+      "normal_residual_rms": 2.3565030065392366e-09,
+      "gradient_residual_rms": 2.9733330189357572e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388305031943516,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-06.npz",
+        "sha256": "ccc5f732bfa380267a8895998411ffe39fc7b521e21578ccceb0992136990248"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 7,
+      "normal_residual_rms": 2.082924979762393e-09,
+      "gradient_residual_rms": 1.5928407332926578e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304717280462,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-07.npz",
+        "sha256": "6538985e21773fc95079930b3e650359be2707da4521c883f8d636584147b635"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 8,
+      "normal_residual_rms": 2.759995619354889e-09,
+      "gradient_residual_rms": 3.0655330121618947e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304642946195,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-08.npz",
+        "sha256": "f5fabb175e8fd7ee0b870944da111f8817aad2496513752a5d7cf074363742b9"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 9,
+      "normal_residual_rms": 3.1169089485466137e-09,
+      "gradient_residual_rms": 3.123099385146415e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304959324447,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-09.npz",
+        "sha256": "1b1b375a47a4f6684fe1d5adf89c17f1c65d18e12cb04eb12ed63dc162a48b5b"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 10,
+      "normal_residual_rms": 3.1205232947316227e-09,
+      "gradient_residual_rms": 3.0795073236106742e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304700039436,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-10.npz",
+        "sha256": "9cb50719892477c64ca3dec08f4db3ee50d81d17c401bf1321c306ea5cdb45fc"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 11,
+      "normal_residual_rms": 3.583171024895073e-09,
+      "gradient_residual_rms": 3.2158120798799055e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304974063155,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-11.npz",
+        "sha256": "2b70971666c46634671e0b762da9daccc027e9d02915d69c2eac6935f9ed2137"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 12,
+      "normal_residual_rms": 2.9488616627525825e-09,
+      "gradient_residual_rms": 3.108223478827307e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4388304543684312,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000004-sweep-12.npz",
+        "sha256": "892c65472a6a7d88346fb91054cfbb3db66a1e93c15979b28248d04e46ae841f"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009603503111132377,
+      "gradient_residual_rms": 0.0023067547362548395,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "baef523a4b8b8d8672109b733298dbbfc85c46702a2da50484074d3890835ef3",
+          "fvm_kinematic_pressure": "23df2b31884d27fad2ec678a20a03199564195793f13d899bcf2e14b8bf315ef",
+          "fvm_volumetric_face_flux": "8f02586a99dfea482b17989b138640b9d1b1b7683780176d8c0911e78f4419c6",
+          "fvm_volumetric_face_flux_old": "8f02586a99dfea482b17989b138640b9d1b1b7683780176d8c0911e78f4419c6",
+          "fvm_volumetric_face_flux_older": "75c5d9b7923f32bed25d117b620a837a2ffa6486cbd994638251db1834ec1eb7",
+          "fvm_velocity_old": "baef523a4b8b8d8672109b733298dbbfc85c46702a2da50484074d3890835ef3",
+          "fvm_velocity_older": "83d97a96151436adc54200cf9c30c0a384f04bd609c2f7f62ebcad36169714a7",
+          "vpm_position": "c88acce7064e82eeefdb23302cc5d48ba618f72bd5da41a19a41f17a8daf50cd",
+          "vpm_velocity": "b272ffeeb03dd6056c65dda0d9fb0f6d8fb53a342529ecea28c5e1c87931af99",
+          "vpm_vortex_strength": "4179f94e0c31c5610af989ea0a423235574adffc42e983226efe14fb996d33bb",
+          "vpm_core_radius": "844c6e4e9565bb2655b1c4881d17d6820f8de4130f81eac4d9a48ddb1f2188e9",
+          "vpm_particle_volume": "b93137618a26f81b4cb9854acc99003356692c908e72ad7c12812991228f1302",
+          "vpm_kinematic_viscosity": "b3e22a1ca92f74436ea3e7dee183fdfdd7260db19f876f7497f522057083f058",
+          "vpm_eddy_viscosity": "0c7aef41f13bce2974935a1cf1af3516aa0fa20da653bccdac0b30fea8dac2e0",
+          "vpm_group_id": "a878a880f521dd382eff4057cc12a27807c05f6a267aeacbc286a4fe8886b884",
+          "vpm_zone_id": "a878a880f521dd382eff4057cc12a27807c05f6a267aeacbc286a4fe8886b884",
+          "vpm_velocity_gradient": "87cd1f2a0cca41b256253b7b13acdbbcad274d6198a74b8a5f59311c6e702ac8",
+          "vpm_strain_rate": "87cd1f2a0cca41b256253b7b13acdbbcad274d6198a74b8a5f59311c6e702ac8",
+          "post_trace_velocity_boundary_condition": "44b7099402750687f517a021b95f2845cfcd9e67ac53b1b9c3932e2c7f6a8a5a",
+          "post_trace_normal_velocity_boundary_condition": "b4263f5176700f604118adb400139b5e432ddd43ec5b50b2fed2d4dbc29fd009",
+          "post_trace_tangential_gradient_boundary_condition": "475f1151f062b09c4620d55d2ac1ab85bbd760c49b15c8b18197db6087a4de44",
+          "clocks": "0309ad644e8b3eb8c8d65f3c7a484df1255013356ebf1d16099fabfddb07a032",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3902833582070158,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-01.npz",
+        "sha256": "fe54da6d5fff9a0af748846b1324316075dbfaf6a28dbdd8ca5ab9adffbd2838"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 2,
+      "normal_residual_rms": 4.4633686852955995e-07,
+      "gradient_residual_rms": 7.965259378181796e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.407598068695306,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-02.npz",
+        "sha256": "57283c024528fd12bad99d78fd6916ff625090aa82a628e915e4def27181b0fe"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 3,
+      "normal_residual_rms": 1.643043236829379e-08,
+      "gradient_residual_rms": 7.684702189912922e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076118581522017,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-03.npz",
+        "sha256": "d790c4e0e6094c5695169bc2d275fe3c7fcc50dfe6898087732fd239dc38221a"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 4,
+      "normal_residual_rms": 3.6415034080019394e-09,
+      "gradient_residual_rms": 3.1777279845392986e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117585806918,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-04.npz",
+        "sha256": "35cebe8dc6651076e39952ae1237a1fde6849d5325d7949d384c145fcc08e69d"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 5,
+      "normal_residual_rms": 2.9286846559307333e-09,
+      "gradient_residual_rms": 2.6997521810645893e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117791645089,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-05.npz",
+        "sha256": "34b97e3e6dd84908077a972642245ed1320113e6aba8e882544896523867df0f"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 6,
+      "normal_residual_rms": 2.5659984758256474e-09,
+      "gradient_residual_rms": 2.708074576252817e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.407611783491343,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-06.npz",
+        "sha256": "56a9976a260f0ebd03477d0f2be4e6888339b86df515de7ca2aa24b20dc98c6d"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 7,
+      "normal_residual_rms": 2.3361833629906394e-09,
+      "gradient_residual_rms": 2.480979205655036e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117782679034,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-07.npz",
+        "sha256": "a72573ce04cc137f2ba532960541656b806802e78764fbeb79613ded19c43984"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 8,
+      "normal_residual_rms": 2.3394485600456835e-09,
+      "gradient_residual_rms": 2.437583564472534e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.407611785908632,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-08.npz",
+        "sha256": "96132e3ef2b8403b1fd2519dbaad5388b54e23ebd6f70a0171c1853cecb910c2"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 9,
+      "normal_residual_rms": 2.565650128688827e-09,
+      "gradient_residual_rms": 2.77321941471683e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117794055456,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-09.npz",
+        "sha256": "82624241c499b9e230b83adef8cae1e5909cca3899a60a60daff53ea07be5b4f"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 10,
+      "normal_residual_rms": 2.567344379703806e-09,
+      "gradient_residual_rms": 3.0566495670173045e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117822239713,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-10.npz",
+        "sha256": "0e81b9fd57c775e530899b3c722052fdf44497f5433ab0db4b205bd709ae3141"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 11,
+      "normal_residual_rms": 2.34987576561108e-09,
+      "gradient_residual_rms": 2.5711690243518748e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4076117701373578,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-11.npz",
+        "sha256": "3d2512db8cd2f85966da7a53f4d588a660501f577026536801f9fc722dd568e8"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 12,
+      "normal_residual_rms": 2.5452884215131416e-09,
+      "gradient_residual_rms": 2.508943830855763e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.407611782457457,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000005-sweep-12.npz",
+        "sha256": "cbac88869c9ab0f6d11154588f48e627516a9fabd5a948f41277553b22b41bea"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009753950021459569,
+      "gradient_residual_rms": 0.0023404911969362174,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "78bd64e7bec74d064936daecfb265c430b75636cea2627ad19029e92e7ad99da",
+          "fvm_kinematic_pressure": "ab9c53518aacaaa77adbdc0541fe265ff100bd05076bcb1f1b6c30528da28271",
+          "fvm_volumetric_face_flux": "3207739988786c6bdc6355ed53637140fc829eabbac45e47c4e941bf11a4ab60",
+          "fvm_volumetric_face_flux_old": "3207739988786c6bdc6355ed53637140fc829eabbac45e47c4e941bf11a4ab60",
+          "fvm_volumetric_face_flux_older": "4d711a09f565276645d6c1c6db5660a50db741e0b2e05760ff03c3a469d523a7",
+          "fvm_velocity_old": "78bd64e7bec74d064936daecfb265c430b75636cea2627ad19029e92e7ad99da",
+          "fvm_velocity_older": "c46bce581c8bd25cef5dccd32031845f4b83d5851af07b905acf4114efb190a4",
+          "vpm_position": "0f380a15b390f2299721c7e1d3e2cfcc505339d5fa0de4ba406b15908dab7f7f",
+          "vpm_velocity": "e8300966bb6a7c4193de6e479c5dce395004930c045e3c0419b5e965430c693a",
+          "vpm_vortex_strength": "d6d8bf700df7e920c15b67caee6dca8441187327ea2d6a3a1cdcbcf0e3cb0975",
+          "vpm_core_radius": "687e785b8b8b404b515b30dc4b49c1326f265e2ad929b0669fbea0188418e565",
+          "vpm_particle_volume": "560aa5acffca4c71fe52950e91dccd15e2ad4cf1d542081433c0cfae11240314",
+          "vpm_kinematic_viscosity": "9ccc194c86be63126326c290fe2216df9a4f5971502c870313feae29a535e6ff",
+          "vpm_eddy_viscosity": "7d9f38f2ff28be4a3753c1e4c2def3d6d974f99d78fef7f88481e80d5dbc3e9a",
+          "vpm_group_id": "84ac44ce9f58fc26b1d7915f0bb27931cbef32dea5172570745023c46e365528",
+          "vpm_zone_id": "84ac44ce9f58fc26b1d7915f0bb27931cbef32dea5172570745023c46e365528",
+          "vpm_velocity_gradient": "2fd474677a21d1e7728129cde8635dbef57e653507a1980a177b89b6dfe44339",
+          "vpm_strain_rate": "2fd474677a21d1e7728129cde8635dbef57e653507a1980a177b89b6dfe44339",
+          "post_trace_velocity_boundary_condition": "b0689f90be01a044bc3f9f6d050cc7e2a170de331a7d9372adfd0b9c57204736",
+          "post_trace_normal_velocity_boundary_condition": "ecc7e7b2b92d90a0025e9130bb0d48c7dfc73c029753d95a52973c3f64b960de",
+          "post_trace_tangential_gradient_boundary_condition": "a05b870c4aae4bdc08f742a25a04466da5e0291ec93a266ae0dfeda8e10b1570",
+          "clocks": "3f71fdf0fb6d17aefaede45f8fd7f66b895c209129f4f4490fe7729f0e669634",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3493694017968896,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-01.npz",
+        "sha256": "401e80384e00997fc977f5b7f11cb83ede214f98f9c2e7432b078f623183e8d1"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 2,
+      "normal_residual_rms": 5.649147819600404e-07,
+      "gradient_residual_rms": 7.826653358669903e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783348653126783,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-02.npz",
+        "sha256": "9b2e732e34af64de114f04ba3164eba7d3bb13bd6c35b86cb10c33bf22927b2a"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 3,
+      "normal_residual_rms": 2.201304505551441e-08,
+      "gradient_residual_rms": 7.3703211211413065e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783852485110302,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-03.npz",
+        "sha256": "6bf58a24724ffb73e539966db570bc689ba9e9a3e59f4ac0de87b37dce453a7a"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 4,
+      "normal_residual_rms": 4.371433707250613e-09,
+      "gradient_residual_rms": 3.822971220787618e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783851611848783,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-04.npz",
+        "sha256": "66509ac72a493eb9d1fc2d0d844926e86a8fe5d875b23c459e32884ea0903070"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 5,
+      "normal_residual_rms": 3.0964589918246394e-09,
+      "gradient_residual_rms": 2.0339975578076623e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783851486233705,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-05.npz",
+        "sha256": "2fcd636ecb934d1b4b199726026ef31d47d6780690bbe479d16b9b067c95fb1d"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 6,
+      "normal_residual_rms": 1.8141028638885648e-09,
+      "gradient_residual_rms": 1.5291134232702446e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783851466574768,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-06.npz",
+        "sha256": "7d614e7c8ebfdec60210e8b65364dca973ff73993abeb6ae1cc63e33023a6c76"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 7,
+      "normal_residual_rms": 2.03708777415075e-09,
+      "gradient_residual_rms": 7.553762459281789e-10,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3783851533433622,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000006-sweep-07.npz",
+        "sha256": "dff0ccdb8f6cb6ef9e2696ba9de72d9503329a5b989be82cb7365a95da9f23ff"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009724760065106368,
+      "gradient_residual_rms": 0.0023659554518135,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "c29088315153d1084d1124e5c1b61bbc35cf5637c4b7b2c8a64cc78fc09eb07a",
+          "fvm_kinematic_pressure": "c9a8bc131fe78e1d3954df008e3e783ed2ff797b2199e9c51bf72f346bf3b4ed",
+          "fvm_volumetric_face_flux": "6ca5bb548ef61768b45f74fe37758627134b2bf91d536bf99d6b87bdbd52c47e",
+          "fvm_volumetric_face_flux_old": "6ca5bb548ef61768b45f74fe37758627134b2bf91d536bf99d6b87bdbd52c47e",
+          "fvm_volumetric_face_flux_older": "295b0bbb07651670d9b4b186d71c57d64d5e021515434e8841e8a37b01ece829",
+          "fvm_velocity_old": "c29088315153d1084d1124e5c1b61bbc35cf5637c4b7b2c8a64cc78fc09eb07a",
+          "fvm_velocity_older": "19e3d6802e86c03efd0361031f807d350686e19a26ab780f30402b3e79f3c96a",
+          "vpm_position": "1c61419a117dbce6db55eecc83a83c4d83d208380106dadae6571c2521d17733",
+          "vpm_velocity": "0d8db4faff4fa0b0cd1fbbd245a18c5474a883d32d924792f6948e9b9ea9129e",
+          "vpm_vortex_strength": "473052275122f04b2a7da80a02fe76d3dcf361e02f0b1c725a30164676cbdd23",
+          "vpm_core_radius": "179217473e5784a2ad03339210dea33eeaaa4f95b2c066455f06b61457f5c2bc",
+          "vpm_particle_volume": "c77e98f9ddfe78d9e3c5ec6295415919365db7e43149f6af42d8f15f24973a60",
+          "vpm_kinematic_viscosity": "7cee698f1eeae751095eb17f987e3426b75d1b61773b5b5899d9e27e9471ce98",
+          "vpm_eddy_viscosity": "bf23eaf645f4f74a5ec8765434a3117daa115505142eeca8fa7ddc81c193f2d9",
+          "vpm_group_id": "efcb5507a458d2eb5985aebab42f0ceabeac69e23c40cdf63152bd1f823c2284",
+          "vpm_zone_id": "efcb5507a458d2eb5985aebab42f0ceabeac69e23c40cdf63152bd1f823c2284",
+          "vpm_velocity_gradient": "031287382d0455305ecd820383194349d643345aff2c20eb82f7d8f17684f7fd",
+          "vpm_strain_rate": "031287382d0455305ecd820383194349d643345aff2c20eb82f7d8f17684f7fd",
+          "post_trace_velocity_boundary_condition": "6dfa95d3bb06017520c32e7a21631cece1c5eaa59fb8fb94d112e9004d15c455",
+          "post_trace_normal_velocity_boundary_condition": "a9acad20cf142d93edd256718c6c29c704e866de1fc3f7230f0144f6e0a91c3e",
+          "post_trace_tangential_gradient_boundary_condition": "a649dccaea0b7825be7dd4de31ed3a6707e687259519c68ae7d0f00d3693070c",
+          "clocks": "d802d545c23d8a50bed846122afa22ac09cb41c4a8758be720be5d7cd5aca434",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3191609538634546,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-01.npz",
+        "sha256": "6f4b506e2f0ff03323cffb75a61aa54b1ccddd4d72f46de88db4cf7b80d394ed"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 2,
+      "normal_residual_rms": 7.932992935067435e-07,
+      "gradient_residual_rms": 7.497714110940794e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3507918621938506,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-02.npz",
+        "sha256": "446b30c2ffc80a269eece03ba1915e55e8431340fa51373a63dd9ddb59827c74"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 3,
+      "normal_residual_rms": 2.315397598461785e-08,
+      "gradient_residual_rms": 7.173465175343395e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508588926215372,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-03.npz",
+        "sha256": "0f5c72518ef3dbc646002aea3b95f5c5af0cb911e258da4f7f18814718a8754a"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 4,
+      "normal_residual_rms": 5.338603798772902e-09,
+      "gradient_residual_rms": 4.070869474956121e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591304625635,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-04.npz",
+        "sha256": "513e674301b8e902674d7d9cb37933d88b0a47e729e647550a50e234818d08f3"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 5,
+      "normal_residual_rms": 3.751317142794743e-09,
+      "gradient_residual_rms": 3.714776956156518e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.350859155009746,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-05.npz",
+        "sha256": "9f3da153967ca6cbbd3e2d65c650ee85a6cc8fde6209260e806533fe1b3488b8"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 6,
+      "normal_residual_rms": 3.4260738457077237e-09,
+      "gradient_residual_rms": 2.2713705049321726e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591996042605,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-06.npz",
+        "sha256": "f2047cb1bb2eeebc2fdc2620cd8b712a7e3c01b9c710ad2543859c5ba7c41ba6"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 7,
+      "normal_residual_rms": 2.9278559910568978e-09,
+      "gradient_residual_rms": 2.0706690814745997e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591861685948,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-07.npz",
+        "sha256": "604f3d591273358b8f3aebe1e229bfdb0f9a3396c9030b7581ddd57c1e9f9bff"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 8,
+      "normal_residual_rms": 2.7405066333881423e-09,
+      "gradient_residual_rms": 1.9595058421807368e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591811635593,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-08.npz",
+        "sha256": "3e78384f7ed8f922eedc35aa0fb29c2efbcc68a1b27f9b5090464e49575b3926"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 9,
+      "normal_residual_rms": 2.711149292940292e-09,
+      "gradient_residual_rms": 1.1644322481762094e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591796154463,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-09.npz",
+        "sha256": "1197de96495a8a86b6996fa68c6ec2c2f868303c7dd5a3553c90bce1f23cf559"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 10,
+      "normal_residual_rms": 2.3144841795631205e-09,
+      "gradient_residual_rms": 1.8026936997478615e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591854085608,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-10.npz",
+        "sha256": "75ceebd0b16c25005ec8c4d5799434a02b84fb3783f9c4d9800295540a86fd24"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 11,
+      "normal_residual_rms": 3.723175677691787e-09,
+      "gradient_residual_rms": 2.771398213940615e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.350859205816161,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-11.npz",
+        "sha256": "53358ab95f3e3f8cdad651b49b93ebe710c5a11f51cfa8c3eb20500f7e032115"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 12,
+      "normal_residual_rms": 2.603771490383115e-09,
+      "gradient_residual_rms": 2.871926147076019e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3508591680059518,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000007-sweep-12.npz",
+        "sha256": "defd099ddd84bc4b6846cf38b7cb50008a99bebc34e4b420d76d1d5ea63a5230"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009480853464159942,
+      "gradient_residual_rms": 0.002415989764254993,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "f0b8f718cf9c4ec45682745e66dbb1107c34d5f5569e6e4d8db8bf41774809a7",
+          "fvm_kinematic_pressure": "eeacfb5bb8a8e575ab4e5db162acffcb8b317ea83bb47927261783e3624405ea",
+          "fvm_volumetric_face_flux": "0cea76eee9754fcd16bd36b52f859023bc17afe67ce8fc954b95d78cce74494f",
+          "fvm_volumetric_face_flux_old": "0cea76eee9754fcd16bd36b52f859023bc17afe67ce8fc954b95d78cce74494f",
+          "fvm_volumetric_face_flux_older": "cdd1ba7b4e291fff376f0d70ff14d679271e81e52fbc7f63cb0b71a18d86e286",
+          "fvm_velocity_old": "f0b8f718cf9c4ec45682745e66dbb1107c34d5f5569e6e4d8db8bf41774809a7",
+          "fvm_velocity_older": "51fe7ffd67a07a6ffe659c740b52f49454eb4fae2c3a586b1d7d1a57a11f02bf",
+          "vpm_position": "6cf2d414fb71536d8f7dbfd635256fd799b58c0fdd7bebe05abc90e913a0609f",
+          "vpm_velocity": "c418f30e272f6168b88695d976311daa7e0d02ea44d44e074b6c0ab550b09c0b",
+          "vpm_vortex_strength": "c99a20b50fe69a5b66ccbfd7f893d7232f7fd7462a76dd29b17268efcb84b1fa",
+          "vpm_core_radius": "8c68121a9e34789207f1f51365a1e3199478a330fc3522a781fc9f4a3e99324b",
+          "vpm_particle_volume": "08104935d481fc3ad428e23d9c296ad7c91c30a559d3347ff918c15525739ea9",
+          "vpm_kinematic_viscosity": "b7f7322cb0166baf5dad4e772f6440cc6f503d4d1bc4e96eba56f972c5e8b062",
+          "vpm_eddy_viscosity": "73cf6fcf4278a09556274ca39e9f013e2cca5f5336cf24c950a72aa45e60cfc5",
+          "vpm_group_id": "e86db8c86b47ab87c764c8fdd5a87fbbcc85500517ebfe89ae19c4401323da86",
+          "vpm_zone_id": "e86db8c86b47ab87c764c8fdd5a87fbbcc85500517ebfe89ae19c4401323da86",
+          "vpm_velocity_gradient": "a515dda3e6bc0b10f4ea59be466a4df92d74eab26fca68a3ec44279e5083adb5",
+          "vpm_strain_rate": "a515dda3e6bc0b10f4ea59be466a4df92d74eab26fca68a3ec44279e5083adb5",
+          "post_trace_velocity_boundary_condition": "36372ef6b624c80e896619feb16ef54b52ec1cc7ec731ce1e6dbd9920ffcb1cf",
+          "post_trace_normal_velocity_boundary_condition": "494c40aef153304610989e18db8f8a925d3c7ba8ff4858078dff3ea7caddbe57",
+          "post_trace_tangential_gradient_boundary_condition": "1d9ea72787eb03f30c53e11f5c445d7be1e1141812c1a7d4c5bc13673c1f23ee",
+          "clocks": "a510f38bea98b99c76d329ec2b1506ec85efc2ffe93103759b12cab543153785",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2928373710569285,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-01.npz",
+        "sha256": "0aa7d620ef5a82375693752b8432e946fe086864f3c7093acb1f1f839736e4b5"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 2,
+      "normal_residual_rms": 7.016406085659077e-07,
+      "gradient_residual_rms": 6.8808598479123606e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3246646024863422,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-02.npz",
+        "sha256": "e2f5949d332071856828627aa9faa7cce84e3ba24a85dd355b6d8803d1cd31b2"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 3,
+      "normal_residual_rms": 2.309471048640251e-08,
+      "gradient_residual_rms": 6.824678762768916e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.32473555450828,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-03.npz",
+        "sha256": "2a94106bd4c5132a7f104506c999fc51918a885c82f9e7cc4645adc8f68640a7"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 4,
+      "normal_residual_rms": 4.193652709767996e-09,
+      "gradient_residual_rms": 3.674652835428233e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3247356348273105,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-04.npz",
+        "sha256": "85e51a19d4b1066275d8d58ba079defeef493a83b35ad7f29a77e06eaf75137f"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 5,
+      "normal_residual_rms": 3.4332131632157573e-09,
+      "gradient_residual_rms": 2.457257127431446e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.324735599678307,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-05.npz",
+        "sha256": "79ab1a1fd282900533610de086e796f03ff48452547f31aa7ee4392b44c35308"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 6,
+      "normal_residual_rms": 2.756280611060153e-09,
+      "gradient_residual_rms": 2.467495106936954e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3247356027830728,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-06.npz",
+        "sha256": "33b6cae272498759aa1b6179ea87c58ca9460f727e86e4412c1f0806d7a0699f"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 7,
+      "normal_residual_rms": 1.495512690376808e-09,
+      "gradient_residual_rms": 5.917091631918113e-07,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3247355901549778,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000008-sweep-07.npz",
+        "sha256": "28f262295a6236150a1865d0efcc39f1ac69921a0c2d52e7b6a9f7118fdb4326"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009265981569597239,
+      "gradient_residual_rms": 0.003712142699305097,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "9f4d24dcd0e4c034c35a3bfb6ef03efc68c98e988fa7595821638ad6c703b847",
+          "fvm_kinematic_pressure": "1ecdeaa96af1b4ff815fdcf324c6f4ff7c7b38698a39d66e9c2b48c83f965ca2",
+          "fvm_volumetric_face_flux": "02f13e56d9865bb108ddde31fe1c25ddaf96ef2b6c79f8184ba55db7efa6f967",
+          "fvm_volumetric_face_flux_old": "02f13e56d9865bb108ddde31fe1c25ddaf96ef2b6c79f8184ba55db7efa6f967",
+          "fvm_volumetric_face_flux_older": "b0f90e4ce092ca19c98a62dc134a57f1cfff5455a40064ca1c2632eee80631fe",
+          "fvm_velocity_old": "9f4d24dcd0e4c034c35a3bfb6ef03efc68c98e988fa7595821638ad6c703b847",
+          "fvm_velocity_older": "6d064b9a5e673c680a44ff4e8c9b07547f0a16078b439244f029dff24830ff92",
+          "vpm_position": "967bba4ca5efe97bcfb68c5aee58db6b4968f150b61e243bf7fee4a2c446e1fc",
+          "vpm_velocity": "fe1137f36b6caedad721de41dc48fd69099f45fbf9c56544fb92bb7e7c1fca21",
+          "vpm_vortex_strength": "17ee112644d3814e87d0f34743682ad9a2d199fdc3d212017979a9d79093f8af",
+          "vpm_core_radius": "cc25b8b56fd85ee0f87bf60412231361010a11d1e5aeda3435cdd2251edc1bec",
+          "vpm_particle_volume": "6fed4fa20b7a015b9ce145754cc75ee4692fc613408fd3e646f00b0b9ecf4ca5",
+          "vpm_kinematic_viscosity": "291d20e0db4de9297bbff57a7d625e6d86f39761484424d04aab485f0d71f81d",
+          "vpm_eddy_viscosity": "d9cc168af1121bafd1d4abb757adf30711b53ce586a24eafc2bb32a63a3db507",
+          "vpm_group_id": "7a052283af46e6b345e91415af69f661fe3e0ad6648523373d2b374f141deb31",
+          "vpm_zone_id": "7a052283af46e6b345e91415af69f661fe3e0ad6648523373d2b374f141deb31",
+          "vpm_velocity_gradient": "2b89ddcb550a60e4a80c85beeeb1c4807413e857c9e30f3e211051efadbfe120",
+          "vpm_strain_rate": "2b89ddcb550a60e4a80c85beeeb1c4807413e857c9e30f3e211051efadbfe120",
+          "post_trace_velocity_boundary_condition": "be76cdff942cef95ab92d34afb3b69e1d6fc4a39d811be5caad231c363f3ea53",
+          "post_trace_normal_velocity_boundary_condition": "0aa4247bb38c2d524b1317866d57e483b129b7a494432224cbc810bb7b97e735",
+          "post_trace_tangential_gradient_boundary_condition": "79ca8800fbac3a3a589abd9fd12ce5216f8a3a06fff113a10d14b5fd34fe573b",
+          "clocks": "b81fafd58283f6a1169f3db3cff3884ea5b989c6f64edee2095b7ae1ef79ac76",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.268956588926388,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-01.npz",
+        "sha256": "295cd78f92a9e8482f54e2d51f262bf6b1b4a268fa689afe13df52c4b33de549"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 2,
+      "normal_residual_rms": 7.814063721147745e-07,
+      "gradient_residual_rms": 6.695256897745927e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3010853347143732,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-02.npz",
+        "sha256": "e6c3c99bf590b9663963414e8c98a0b484ace9a03e21bd66bb36af54de5140fa"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 3,
+      "normal_residual_rms": 2.3941943240872783e-08,
+      "gradient_residual_rms": 6.487156844321225e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3011629796949702,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-03.npz",
+        "sha256": "ea1e23d91942bf7e1abf888bb7a4d9f6d5ba291aa09d29b51a00fb4f06a32f7a"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 4,
+      "normal_residual_rms": 4.36722576330404e-09,
+      "gradient_residual_rms": 3.6996250026081264e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3011632407759148,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-04.npz",
+        "sha256": "91d75a71cf4bc555452001f7433a74024dc20442e2c882037a6b7edd3d0ccdd9"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 5,
+      "normal_residual_rms": 1.54390144122261e-09,
+      "gradient_residual_rms": 1.0687406494300897e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3011632332562717,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-05.npz",
+        "sha256": "8dee756accd765374d33e48f6b360997661016b8b4128002f51c38f07c475878"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 6,
+      "normal_residual_rms": 1.0662960127999389e-09,
+      "gradient_residual_rms": 4.0634288978713964e-07,
+      "converged": true,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3011632399989523,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000009-sweep-06.npz",
+        "sha256": "d3a5152775a76a6201386e36679ee0b1036169f43a1b4548c319c5d46dce4ad2"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009136782646564246,
+      "gradient_residual_rms": 0.003017700512328519,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "d08ec27cf1d9f4c14000847c1ea24a8867879b7c2ee098eead66cfa8e0e2b945",
+          "fvm_kinematic_pressure": "b89145ae7291b50b3f136ff2836bb09521ba491a4e5a88e75651203aa6cc14f0",
+          "fvm_volumetric_face_flux": "fce5396b86b12d3b2108910e5e17176e29f5f44f30ffb757a0ede0c4af169cc5",
+          "fvm_volumetric_face_flux_old": "fce5396b86b12d3b2108910e5e17176e29f5f44f30ffb757a0ede0c4af169cc5",
+          "fvm_volumetric_face_flux_older": "89f1d9d51474e1ee189980949c425a453bfe4532089bae2ab439ce4cf289017d",
+          "fvm_velocity_old": "d08ec27cf1d9f4c14000847c1ea24a8867879b7c2ee098eead66cfa8e0e2b945",
+          "fvm_velocity_older": "9fda1988b0d6353d895b239055c601b1295392a773b7a513b316e4c8d6f8bc3d",
+          "vpm_position": "dabbb2be028f342251577b69ef1e292c0957de2d3669a5c23c96405063fb2302",
+          "vpm_velocity": "167c6c79c314631b06a8df1059118fa1499532c791a625757231bbedaac9b5cc",
+          "vpm_vortex_strength": "6bd1c8868c934b648621efecc10291f34a4fc10e39429aa09d28a9bfcb122e92",
+          "vpm_core_radius": "f591674794529bce352a892c733ecc98322a7df0413ca73bb5795f8c37f5ac67",
+          "vpm_particle_volume": "2257e9fc607a14753fd14e5e566320c4cf5eba99cb1b82e24f4f6d400c831840",
+          "vpm_kinematic_viscosity": "3bd584372cc9fb97dee6da668115fa4f65f60b9538701d495cabc73c71eb7648",
+          "vpm_eddy_viscosity": "f1d83b9c1da864b9c01eddbf1f742a76a1d51f3fc72c42a4c21898877c5124a2",
+          "vpm_group_id": "775f2ba7681381d38ffe5a5cd496aee0fa21c455e440490e67d0973ee73f3f49",
+          "vpm_zone_id": "775f2ba7681381d38ffe5a5cd496aee0fa21c455e440490e67d0973ee73f3f49",
+          "vpm_velocity_gradient": "bfc8350647d79c538209f333bc0a7ca6147cc002a3e65a7e38fe3d08c7ca8fb6",
+          "vpm_strain_rate": "bfc8350647d79c538209f333bc0a7ca6147cc002a3e65a7e38fe3d08c7ca8fb6",
+          "post_trace_velocity_boundary_condition": "697a7f8faeeb7cd624659909c94b1fb62014af05ad59507e7361a4276fd1ffee",
+          "post_trace_normal_velocity_boundary_condition": "d9f99126053cfc04929048113e2f3374081e1e13a05bbbf93183af5a6f5000e6",
+          "post_trace_tangential_gradient_boundary_condition": "bc39ed065da82d6e7ab873dce31f20307163c1a50e6dad853dc7cc4bb3eee1e9",
+          "clocks": "5eea51fcde77c76dbe6e60037268373388dc8110099f05975cd55999d584d0c1",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2443359731492842,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-01.npz",
+        "sha256": "17889f1bade4bcd5b379dd89d676491161f3605f3be597863fffeefe39edbebf"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 2,
+      "normal_residual_rms": 6.995792394351629e-07,
+      "gradient_residual_rms": 6.431754437615615e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2766516648319508,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-02.npz",
+        "sha256": "5762537130042d2e8712b392c339b2536eacf64d8b7b4603be42cb169ca2713a"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 3,
+      "normal_residual_rms": 2.3995572762378477e-08,
+      "gradient_residual_rms": 6.207355037446109e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2767326641807537,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-03.npz",
+        "sha256": "c73a7e7c597a0017f5a2da27bb0ff7e1bb6aebe0b04feecbbc675bd08b8ddf66"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 4,
+      "normal_residual_rms": 4.846692437770769e-09,
+      "gradient_residual_rms": 4.0521586747857736e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.276732931058827,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-04.npz",
+        "sha256": "2852abb511c7856fb1cff7e3d1054a3051558880de7e89fb495b2466aa27415e"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 5,
+      "normal_residual_rms": 2.38383347090584e-09,
+      "gradient_residual_rms": 2.020898447907936e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2767329067054396,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-05.npz",
+        "sha256": "a0a107e5bc71b87e9b3cb196f4b6fd489cec1fd769e6b412712ef410f599326c"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 6,
+      "normal_residual_rms": 1.5034147961177942e-09,
+      "gradient_residual_rms": 1.0749750849381965e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2767329054705212,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-06.npz",
+        "sha256": "e056bc697b4ee595e7fccedf61830b472fd5bc64f39d1f74e9d96eee47f46446"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 7,
+      "normal_residual_rms": 1.8050953067022854e-09,
+      "gradient_residual_rms": 1.3786881466738528e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2767329023255087,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-07.npz",
+        "sha256": "f4b82e5cbf18ed71c9f2f3cf58e4e12ad971a296dd2f4c7b0e46ed53e0ed72fb"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 8,
+      "normal_residual_rms": 1.0482696580004254e-09,
+      "gradient_residual_rms": 1.6544448664530842e-07,
+      "converged": true,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2767328942576925,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000010-sweep-08.npz",
+        "sha256": "5d0a30dd716884cb97c00d6019c7148eab142e55dccc3db959d40ef87cbbedc3"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 1,
+      "normal_residual_rms": 0.000899739981705361,
+      "gradient_residual_rms": 0.0038409859473153406,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "aa7abd2ff42ee2825f2246e3107f889a4232734a82bcf4cc802b61bb83381f5e",
+          "fvm_kinematic_pressure": "faefcb3cb542780d32b20e428f577e8c914874b47ac74991620dede157346f08",
+          "fvm_volumetric_face_flux": "00eaf9ee8bbad0db24d9b74851d28fafc183dc3e5fec159908eb9c4c00793e23",
+          "fvm_volumetric_face_flux_old": "00eaf9ee8bbad0db24d9b74851d28fafc183dc3e5fec159908eb9c4c00793e23",
+          "fvm_volumetric_face_flux_older": "4e98975d85e325b2331d3cb4292acb921e06479518cdf53d4f94dae3c105109e",
+          "fvm_velocity_old": "aa7abd2ff42ee2825f2246e3107f889a4232734a82bcf4cc802b61bb83381f5e",
+          "fvm_velocity_older": "118df836a664cff3fcb6f12fb828283dad4d06457219036f929042ca5881b4b8",
+          "vpm_position": "1620dc8ecc7cd0efd921847b5b180b892de1f4a84bc56b50d5083b1cb4c8a98a",
+          "vpm_velocity": "adc7d0f79d4bcf13f0b9d91aa6dedebbbbee4914f1551c22f095631d2ff83216",
+          "vpm_vortex_strength": "f20ffb8ff64b696323aca9e0570b2dbe45e4cb98b90ff5eb10cd76bd71a18797",
+          "vpm_core_radius": "e840b0d314e6cd3c90c1b82465e37ed7aba91997b4a498c5b1ba6c9c22f2b645",
+          "vpm_particle_volume": "c9971280409165e0b67e838e36415212ba16ff0990d3802820386305625d0f65",
+          "vpm_kinematic_viscosity": "a11e815dd3cb55bf159a0f22e4d660de6eb492764d52b59f07582a04df20d8d2",
+          "vpm_eddy_viscosity": "9a275926365e3937befc1d5fb1f8424f461c0fa0223562139287a0605c811b2b",
+          "vpm_group_id": "274bc284a85d187bd8b718c694ccc6819f69c743a79f96660da2ffff137d8b9f",
+          "vpm_zone_id": "274bc284a85d187bd8b718c694ccc6819f69c743a79f96660da2ffff137d8b9f",
+          "vpm_velocity_gradient": "f8ef74daef26f91f3ff14bc03c0830c0c50ea4633a94f73d41b4625fbd78bbb9",
+          "vpm_strain_rate": "f8ef74daef26f91f3ff14bc03c0830c0c50ea4633a94f73d41b4625fbd78bbb9",
+          "post_trace_velocity_boundary_condition": "68695e1b800e21dee1b4955b36cf7277dfcc9873909b65bb9c6c86a4cfe2fed6",
+          "post_trace_normal_velocity_boundary_condition": "b59e136e2c262c453c1dace99e52dfec632976153768178a667a7073a22c9884",
+          "post_trace_tangential_gradient_boundary_condition": "c3702e6a7e538929319f355120d3e190ef433472312229e4bb5975c5ea88b9bc",
+          "clocks": "65be9df32428f2f4062cdc359913270e8aa4e80c3608846b4ae1a58840953222",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2193439780338138,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-01.npz",
+        "sha256": "613cd7e01812eeb1b1b6711b4dfc390a9c2e25f0994a51a436d7e40cc445c777"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 2,
+      "normal_residual_rms": 7.418974947511838e-07,
+      "gradient_residual_rms": 6.1325739826209745e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.251650105316174,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-02.npz",
+        "sha256": "7e83cd5950edd4eb44ec2759c212bc3d779e449e05e76e44c0a72e1c1eb891d1"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 3,
+      "normal_residual_rms": 2.4099609845889197e-08,
+      "gradient_residual_rms": 6.043359646082269e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517343733225135,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-03.npz",
+        "sha256": "4b494926ed1e4a514c16c27581ebf0dd02cf0edf554f1b0a0f785ce61e170e1f"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 4,
+      "normal_residual_rms": 5.2797068785017736e-09,
+      "gradient_residual_rms": 4.49137856055546e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.251734812314045,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-04.npz",
+        "sha256": "726e5e6e12486149fe4319612f004783ded20e311557e6efa646780eaafee519"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 5,
+      "normal_residual_rms": 2.356850209341424e-09,
+      "gradient_residual_rms": 2.0749159492317223e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348184958004,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-05.npz",
+        "sha256": "727d0a08f18403cd946f1654e2fad4db3c8978d1dfe646259b7e2415f64e131d"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 6,
+      "normal_residual_rms": 2.3176041361036813e-09,
+      "gradient_residual_rms": 1.5160722407050572e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348107218353,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-06.npz",
+        "sha256": "4cac607182c9dac2dd38ffe3fa36dd9bc0f6a9b7f80dbe2767003ec65c51c067"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 7,
+      "normal_residual_rms": 2.355276278094963e-09,
+      "gradient_residual_rms": 2.2616568035623176e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348329274443,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-07.npz",
+        "sha256": "c01834a19708d65c4ce16c7bc71561405637678fe6010a26a5fc533fd681cfb2"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 8,
+      "normal_residual_rms": 2.568035065214259e-09,
+      "gradient_residual_rms": 2.315462947264429e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348029190982,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-08.npz",
+        "sha256": "87947d52330dece69d72c58e249b0edf40f6619c9dd28373e74fad074a474a69"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 9,
+      "normal_residual_rms": 2.0984724545547535e-09,
+      "gradient_residual_rms": 1.6119400372213564e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348272415711,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-09.npz",
+        "sha256": "1197d27f5526bd68ffdbaa4d16d13dc47eddfb0bd325b6c790f41650f6b1b41e"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 10,
+      "normal_residual_rms": 2.0976748201132913e-09,
+      "gradient_residual_rms": 1.5088322879157116e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348117189449,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-10.npz",
+        "sha256": "09f92132814327fd7026b992397b7d38864e2a237dde0ce64effb7f0947e4b01"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 11,
+      "normal_residual_rms": 1.8359891607310252e-09,
+      "gradient_residual_rms": 1.6195240924405868e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348264400951,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-11.npz",
+        "sha256": "f705c6a5c57fdfdb3e493470398106a3e9c0f1e7fa5df0c76c73b72ec5e0c174"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 12,
+      "normal_residual_rms": 2.3209664770768836e-09,
+      "gradient_residual_rms": 1.748465877098615e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2517348052207546,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000011-sweep-12.npz",
+        "sha256": "a7990caeb4d3459ca278d65a404e9d127699b3c14087b32dd7aa65a60b53248f"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008814576186510011,
+      "gradient_residual_rms": 0.003809947918731518,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "b263512d71daa78eb0a11f04f9579e4a6e85ada29499d0efd34f63165d37c01c",
+          "fvm_kinematic_pressure": "e7eb770f1155b1c68c7e9a244ecec815c1774e78bf64f6a9c97c949ec5a82586",
+          "fvm_volumetric_face_flux": "fb4b40541e1310a38b34b1add3d28ec714ae11ec1cb4f6c9c0d5c941f378795b",
+          "fvm_volumetric_face_flux_old": "fb4b40541e1310a38b34b1add3d28ec714ae11ec1cb4f6c9c0d5c941f378795b",
+          "fvm_volumetric_face_flux_older": "1e1877919c52550ec37faef9bbfd0275b998e864367bfd712a452277d8dd0dbf",
+          "fvm_velocity_old": "b263512d71daa78eb0a11f04f9579e4a6e85ada29499d0efd34f63165d37c01c",
+          "fvm_velocity_older": "9674d705d55f075c8b1341476d6785d88ecf041a67ca3eac699a3f0c7c87f8c0",
+          "vpm_position": "98e0243dbc52b2207578f882b10ccb04caeceb9bb64de4b417fe3814488cd7ce",
+          "vpm_velocity": "c225d247134eea012f513285ec734dbdf874f20f099aae2a9e86bd30d9827aca",
+          "vpm_vortex_strength": "c2d6ca97b76bebcf73308f92843dd180e0edc96aa87996c9cc9794ceca1f032d",
+          "vpm_core_radius": "391685dc02aa5599432cb9f23e85adf1d1b62b151faa838882a8acb78ea5d111",
+          "vpm_particle_volume": "4dcb9ee58d5e61b0ad16615acbf92f3190a52109f149f3d23b6ce87783695524",
+          "vpm_kinematic_viscosity": "dc96dde331191d626bd7c5a4876857d7d868dcad5527a52b86ecbb43510f4535",
+          "vpm_eddy_viscosity": "798380b698702ae7c3b69f3b25d66f9ee0d4dc5a7b40999064cde23a1e581156",
+          "vpm_group_id": "5f5487b5d1f8946bb8fc337638d3e801c1e23032a62cc5f4c439afd2bc074a20",
+          "vpm_zone_id": "5f5487b5d1f8946bb8fc337638d3e801c1e23032a62cc5f4c439afd2bc074a20",
+          "vpm_velocity_gradient": "c037be1c827a50bd7f883e57c17637c389c12ba0c6a6a6fd011659e3ebad6c64",
+          "vpm_strain_rate": "c037be1c827a50bd7f883e57c17637c389c12ba0c6a6a6fd011659e3ebad6c64",
+          "post_trace_velocity_boundary_condition": "51e89c04002fe5888280f246b52e1eb5473b16630b4713cc63d769c1ee1e2c4d",
+          "post_trace_normal_velocity_boundary_condition": "62b52142637a1fc848707fab4ee852463051a7434079b567ef9ed17732e79b38",
+          "post_trace_tangential_gradient_boundary_condition": "642a7727ed7caa97b3bc3d45b3d5c32b5e2e65454b5913c6d1add02ec9c90bb4",
+          "clocks": "2f374ed808133c2473c1c94429a7f68b6fd3c6ff8c57a36d563e343e34c7ed2d",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1969479697316876,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-01.npz",
+        "sha256": "ecb4d3d9c3072715ec82827cb016beeb30b9a3d960d9e48c7d5f1c087101aa3c"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 2,
+      "normal_residual_rms": 7.369074461533266e-07,
+      "gradient_residual_rms": 5.979206780153412e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2290524720330118,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-02.npz",
+        "sha256": "5e82cf9f4f4c436bc898daa0357cbfbaedf1a213ed2258938a03ed6fc6274177"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 3,
+      "normal_residual_rms": 2.4925444666708334e-08,
+      "gradient_residual_rms": 5.695347286028321e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.229140867546088,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-03.npz",
+        "sha256": "e72cb8d8115b123f8fee9927e54e204054a828269a1f22c75bece5c69dcfa2a2"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 4,
+      "normal_residual_rms": 5.0061256935253205e-09,
+      "gradient_residual_rms": 3.2389697063644603e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2291409720699011,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-04.npz",
+        "sha256": "c28af2f8988b27a9e141b7319fe38a343850be04b43534f53238a7e6107d4cc2"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 5,
+      "normal_residual_rms": 2.7808047170134016e-09,
+      "gradient_residual_rms": 1.7883602248234317e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2291409782313036,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-05.npz",
+        "sha256": "459b8ab9c0351c7d079c34fda9716304e4d510bfc8c3b769f20ca867d6c780fe"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 6,
+      "normal_residual_rms": 2.3405588641364808e-09,
+      "gradient_residual_rms": 1.5874479199092216e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2291409775425701,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-06.npz",
+        "sha256": "22b7e542a13009c67dbbe9d0ac6edcd0cd0b7ee6f398df2c83576ad54552a2ce"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 7,
+      "normal_residual_rms": 2.1123769458088954e-09,
+      "gradient_residual_rms": 1.3054554428455165e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2291409928000996,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-07.npz",
+        "sha256": "fa9f68b8d04783b3a57341fe33cf6c2f31a0a1c3d300163df2bb30e38ba5a0e8"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 8,
+      "normal_residual_rms": 1.1379921836091827e-09,
+      "gradient_residual_rms": 1.2138657731823486e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2291409862335987,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-08.npz",
+        "sha256": "7cf116ff751edbcba7425c89607e4f4afc07b54d2d65cfa518de7f8883da940d"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 9,
+      "normal_residual_rms": 2.4591519141123846e-10,
+      "gradient_residual_rms": 8.402957696917217e-10,
+      "converged": true,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.229140992963259,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000012-sweep-09.npz",
+        "sha256": "838de49ce9871b74b0678c2f7224f6c07ecb8d6ec903c2a9f00999ebd07725a4"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008627367662229988,
+      "gradient_residual_rms": 0.004044100794759197,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "b9392160d58df397f3b2c492cda12d77accfe436e04b01dfd5e69675fba00f92",
+          "fvm_kinematic_pressure": "de7786b29de195f701abdbb4974b7194d20ea67d4c39ff974a64ded812a518f6",
+          "fvm_volumetric_face_flux": "a2dd151b18ab95c8d052d92a34a2e3d22b7cdf6c2e1c352be4248bde17d6672a",
+          "fvm_volumetric_face_flux_old": "a2dd151b18ab95c8d052d92a34a2e3d22b7cdf6c2e1c352be4248bde17d6672a",
+          "fvm_volumetric_face_flux_older": "3fad2607d1aaaeff8a0f8ea7d26c44a61f6b4c51fb65f11050f2bdf189355809",
+          "fvm_velocity_old": "b9392160d58df397f3b2c492cda12d77accfe436e04b01dfd5e69675fba00f92",
+          "fvm_velocity_older": "05c6234b1dcc5ce22fd210cbf890c54d6611bb82cb20aaaf2a74076350f20a11",
+          "vpm_position": "d74cd34338ad8ed1cb02954d6e85445db872791e013701b7cec6106bb052dbbc",
+          "vpm_velocity": "8ed8b76d0139cd7605229beab23e24b5f9ebbb7916fa55813c2e704b9a9ae6f9",
+          "vpm_vortex_strength": "1b1ad6fa875d620641096a9acd580c0c99537ea324280fcccfe1b5393df6a60c",
+          "vpm_core_radius": "1a63380ff480b911be07bd404b8700d7f45b29863a1ba147aea5c0d98f48d256",
+          "vpm_particle_volume": "06484463fb52fe1945f7f436029be912d4f04bf4fb30e185070a3d8b9f27534a",
+          "vpm_kinematic_viscosity": "197f75ed381e6ceec623d447f206f840d6351901ed8b1028ba5e2ca9878bdccb",
+          "vpm_eddy_viscosity": "8cd6522182dd16d0e2b061a7be6f454a6912ca19f1b104aafaa9d460998cc5dc",
+          "vpm_group_id": "892de7fa715acb1ca3320710660437f6552a7495a39cb947ab5c5aa7bd687baf",
+          "vpm_zone_id": "892de7fa715acb1ca3320710660437f6552a7495a39cb947ab5c5aa7bd687baf",
+          "vpm_velocity_gradient": "cadefb074dfff55d0aea1cfddf3a1352c2eb9b022845fd3aa95bc02435a446d1",
+          "vpm_strain_rate": "cadefb074dfff55d0aea1cfddf3a1352c2eb9b022845fd3aa95bc02435a446d1",
+          "post_trace_velocity_boundary_condition": "45707409af18a905934052542f0812750517cdb8a2773dc28ef575d9559ffa8f",
+          "post_trace_normal_velocity_boundary_condition": "b72885a27dd072f67df34cda17e184ab1f972a5f0a60efafa3875a016e837606",
+          "post_trace_tangential_gradient_boundary_condition": "c4d97b740712b6fc424738da65054cffe5efe09f67ea978b2cc8edd5cbc4de90",
+          "clocks": "b2b4d39b9266e07219c312a37528ccbd69f6dcbdf3dc21c9253bb2ed8d8d205d",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1762061914428277,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-01.npz",
+        "sha256": "741d32a4088b83c86ed207c306b61848e433da5028802650e5e1220ca4e13f0d"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 2,
+      "normal_residual_rms": 8.278691000872123e-07,
+      "gradient_residual_rms": 5.7532018905997486e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077141079182976,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-02.npz",
+        "sha256": "d4995eb8afda74532f3b89ff6b951420271219ac5dfe78d422c5a60c06d3b2e9"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 3,
+      "normal_residual_rms": 2.4434520613535553e-08,
+      "gradient_residual_rms": 5.372155674006004e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077978242900775,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-03.npz",
+        "sha256": "0184accc2711f9b2f69c58e787b437d101c1c67122609f3cbd21828d01c7d5e6"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 4,
+      "normal_residual_rms": 5.419328395777381e-09,
+      "gradient_residual_rms": 3.799371774163923e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.207798373004544,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-04.npz",
+        "sha256": "d054cdd801c249ed602c17bba46c5b4b3fd83f4d189055c445374ff1ca9c528e"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 5,
+      "normal_residual_rms": 3.751402767874151e-09,
+      "gradient_residual_rms": 2.5928029125480815e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077983687257576,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-05.npz",
+        "sha256": "60c4707a697d941f705478105bec8deaf37545bc74329b84a5bb3d65d4c1b12f"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 6,
+      "normal_residual_rms": 2.1524323103506745e-09,
+      "gradient_residual_rms": 2.3728175483915796e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077983770325467,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-06.npz",
+        "sha256": "5bc776528ca8fcd39f049d9e25e98b1a6f2e9bb223ff280a554a8e6319bcffea"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 7,
+      "normal_residual_rms": 2.566326423624417e-09,
+      "gradient_residual_rms": 2.1312307318190235e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.207798382961138,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-07.npz",
+        "sha256": "132d4bd0ed4da38ddd5dbf5717af1642b8fc71d50b72735337a7ead5be856214"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 8,
+      "normal_residual_rms": 2.3208200183036456e-09,
+      "gradient_residual_rms": 1.3492754561307364e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.207798378351894,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-08.npz",
+        "sha256": "d56acc8c513ae78a283b19bbc5d6145e77d618c2c71e23a899c072a3576d620e"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 9,
+      "normal_residual_rms": 2.0836873482069167e-09,
+      "gradient_residual_rms": 1.5635949270150129e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077983756180515,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-09.npz",
+        "sha256": "3cb051efaeeb231745c90d851f40d0fa06ddf0e2acd06e622df687bf5d66a602"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 10,
+      "normal_residual_rms": 2.7006276143541463e-09,
+      "gradient_residual_rms": 1.698285955832674e-07,
+      "converged": true,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2077983732989186,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000013-sweep-10.npz",
+        "sha256": "a3b598d987c540c99ce967a908ed103185fd44dff3d925a048fe5e940f4b6663"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008430829607465117,
+      "gradient_residual_rms": 0.0045208615372569014,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "a84f09dbc66d3f5a993ec46591dccb28d34df172e33468ae4b0a859153286402",
+          "fvm_kinematic_pressure": "ada7d07b36f76d70002216126af3a8eb51e675170da8570a19d20e20305fcd1b",
+          "fvm_volumetric_face_flux": "2f819fa841db966a692cf27b383530408672eb6071edd87a6c077ad00eec7f75",
+          "fvm_volumetric_face_flux_old": "2f819fa841db966a692cf27b383530408672eb6071edd87a6c077ad00eec7f75",
+          "fvm_volumetric_face_flux_older": "536abe12f1da928657b21163b603df70742fe9b950c0e69ade4390f043bc6a2a",
+          "fvm_velocity_old": "a84f09dbc66d3f5a993ec46591dccb28d34df172e33468ae4b0a859153286402",
+          "fvm_velocity_older": "8299eee546d2c885afae47b12d20f0b58c05621bb852f02e862f4737ec3b7539",
+          "vpm_position": "623b7450a62b69af9c27f118619fd8e43b3c0c8c53e11915d9f94b1dd3a1e5aa",
+          "vpm_velocity": "900639d6f939a42ea565cf6caf7585552a6a59d3c3fd492113f81fc0d70c7fdf",
+          "vpm_vortex_strength": "0b6ed0f79d9964d941431f44b48ce25f600ff7863491cacd86c272803ad733ce",
+          "vpm_core_radius": "2f70786bab8040b9514347b8a11b5d4d1f1697abc6247a6aa3fc707da1abac0a",
+          "vpm_particle_volume": "52720d8ac45d7c1d3e314eadb0e9ca3040ea7186906dd29b073e72acc20e4033",
+          "vpm_kinematic_viscosity": "028f35c7d74d318be03b11877dc9183e21eb4c022c358fc8464186c48d8f8790",
+          "vpm_eddy_viscosity": "82f350cebd1c5b5186733bd68fe49c8d99cc7021524f3758bb26686a2f3e65dc",
+          "vpm_group_id": "c976e8e5d8bb2f523eee67cb313f1229fac959b31cfbace4f0738cef61744a73",
+          "vpm_zone_id": "c976e8e5d8bb2f523eee67cb313f1229fac959b31cfbace4f0738cef61744a73",
+          "vpm_velocity_gradient": "52f594e80e73e0ceffd01cb0350a41ead7907904c353ab82579df2e541edf023",
+          "vpm_strain_rate": "52f594e80e73e0ceffd01cb0350a41ead7907904c353ab82579df2e541edf023",
+          "post_trace_velocity_boundary_condition": "cdd635ab966bfc0027d9d23b3aca39df7727eb913ca84f8c8179f9801b4e313a",
+          "post_trace_normal_velocity_boundary_condition": "035d922b271ecbd8c6b3e4beb2d51c8f8063fd2e451268c04aa6bfd541c92aef",
+          "post_trace_tangential_gradient_boundary_condition": "ba5a1ed00c6192bfcff092319c4a82a9e5352cd8853ba02c40e2e27850d39294",
+          "clocks": "a2d796f0d42d7f659af5f88e35453990fcc2b1c0446181daf57ac98746b6b56b",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.154362396904719,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-01.npz",
+        "sha256": "833ed8a20c93363a3a5e0406c59e6884f5ba6b28972ed700741fdd4d6c21fc8e"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 2,
+      "normal_residual_rms": 7.144737672771605e-07,
+      "gradient_residual_rms": 5.389518122515015e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1853836218999778,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-02.npz",
+        "sha256": "2a54eea08dab0c5a97be3bf1e109c895ff933771d93c98538a7b1478c33127ee"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 3,
+      "normal_residual_rms": 2.4702095409744514e-08,
+      "gradient_residual_rms": 5.32516153312831e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1854676076067658,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-03.npz",
+        "sha256": "62a94bf10b5011781d88c7740e4c1a11281049f887a2f05077916ba548b049b8"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 4,
+      "normal_residual_rms": 4.4018200034790844e-09,
+      "gradient_residual_rms": 3.304856383847143e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1854679359948528,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-04.npz",
+        "sha256": "fd4dd194c8075e720eea87fd6f0bbc2c629dea5b6a6f9bd4359c99d0f6456716"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 5,
+      "normal_residual_rms": 2.56893616674021e-09,
+      "gradient_residual_rms": 2.4255785441668606e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1854679267150188,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-05.npz",
+        "sha256": "dfd40218a737397a3b3cd4350ed5f49c27d3c122676cc671db281df93d2cf5d9"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 6,
+      "normal_residual_rms": 2.348753785485423e-09,
+      "gradient_residual_rms": 2.245286813358894e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1854679199425675,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-06.npz",
+        "sha256": "a52c2c453414892f1d37b64854a548915fd59ca0ed8d0adae4f1b5850200750b"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 7,
+      "normal_residual_rms": 1.4979159379334245e-09,
+      "gradient_residual_rms": 8.488065960101135e-07,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1854679312334846,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000014-sweep-07.npz",
+        "sha256": "eebdb33252dcdaca2f2433752bb361457d2c07760527ff4989f1d352de5e0b8f"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008216498906909202,
+      "gradient_residual_rms": 0.004579462162463215,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "a34a6d6519d67aa446112ab96e7695f8da6f977ba13ad491c5a657e93a446865",
+          "fvm_kinematic_pressure": "66584f1137530e8abb0f96492c311c87c7c01839aed161c0014c27e9bd6b53c8",
+          "fvm_volumetric_face_flux": "cb4d96aca6dd3fdbaa2de1773498d5985a49e7ca64d1dfc1fcaac16d6e191783",
+          "fvm_volumetric_face_flux_old": "cb4d96aca6dd3fdbaa2de1773498d5985a49e7ca64d1dfc1fcaac16d6e191783",
+          "fvm_volumetric_face_flux_older": "c0d8620d95f13780ad3aa6caf2472cbdee0c1570412c8f853addcd01cb2bb227",
+          "fvm_velocity_old": "a34a6d6519d67aa446112ab96e7695f8da6f977ba13ad491c5a657e93a446865",
+          "fvm_velocity_older": "efc6d3ac697213dfd15d4cc5857325b4a8437cbcb5d2cabb66546b2d0420f3c1",
+          "vpm_position": "2d8c471ebca18a301c1c6f1df77a292c18bb3101570d088fbbf54d7f8347a165",
+          "vpm_velocity": "ea0018bab6dc918ce962c03b476f46bef5d587310a7394fc7bc269d34bd7a2c5",
+          "vpm_vortex_strength": "34c7a7749e3e54192b08ab33f32c29728cdd8115f964f2c2fe534528efc88baf",
+          "vpm_core_radius": "ef2172be1982661d36dcfb8ead21f456aa0e5e042bb0affebcb325f49d6d1c3f",
+          "vpm_particle_volume": "432ae9974cb19f2e30f83b8279c8e34c2d7c84614d83b47a0779121cf087b260",
+          "vpm_kinematic_viscosity": "3b7c08e5f72fb148c6d6945bbe2a6d259dcdc446c37b9b1e06586b95568535d9",
+          "vpm_eddy_viscosity": "15aca46f0fdd62975df5951b2214d3498a99c0924155b87c0d86a34c2e355e3b",
+          "vpm_group_id": "12657a402205f2d3da8f6226f6370b2124785e2927cf7030f64cc0c9983ea863",
+          "vpm_zone_id": "12657a402205f2d3da8f6226f6370b2124785e2927cf7030f64cc0c9983ea863",
+          "vpm_velocity_gradient": "61b69db70483d8a9ad94b1aa614c8292bd033078fdec2d0b22d5cbbecb74fde0",
+          "vpm_strain_rate": "61b69db70483d8a9ad94b1aa614c8292bd033078fdec2d0b22d5cbbecb74fde0",
+          "post_trace_velocity_boundary_condition": "2d14a300498c89676187553a409602c8f27f9d1e2daaf267263cd9b6aa3e2132",
+          "post_trace_normal_velocity_boundary_condition": "e918edb8291621e353c60f07897e5d0c95525c5bdb9199b445e044257f540eb8",
+          "post_trace_tangential_gradient_boundary_condition": "c269805e63abdc9b3aaf322b3bba8c4db15c3fb9f590cb275db4b60fd53ab71e",
+          "clocks": "35d8aa13446794d394738fd1627728ca92ffc3e16839843444dd8c1d8ecde7a5",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.13484014154897,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-01.npz",
+        "sha256": "3850b657d27c22c6d13488c0d048e1f789dc92f4e254420b76a2641dd07ae5d1"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 2,
+      "normal_residual_rms": 8.039526202312842e-07,
+      "gradient_residual_rms": 5.323151367534852e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1658375153648828,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-02.npz",
+        "sha256": "ecfce10ccac61b06547ce0bf87fa9939d0129f002c6d69efca6033cb7907a553"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 3,
+      "normal_residual_rms": 2.4929442938776406e-08,
+      "gradient_residual_rms": 4.902768197473605e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.165927820853209,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-03.npz",
+        "sha256": "cffcc6262a79b38b38e6d0f6e0f1161feca1cd8c045501741b6b6f063e74ea4c"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 4,
+      "normal_residual_rms": 6.610843358429292e-09,
+      "gradient_residual_rms": 3.4165368569166164e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.165928304444673,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-04.npz",
+        "sha256": "c5f767960a286d4db132c95d96cfcb293dab71eb043988065cf46a1a11f5646a"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 5,
+      "normal_residual_rms": 1.9031891078249868e-09,
+      "gradient_residual_rms": 1.6442609566117394e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.165928326774197,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-05.npz",
+        "sha256": "e20636009c437e2f6fcd5ae0045361e43644a967af3ed91beb8062304795f692"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 6,
+      "normal_residual_rms": 1.4820666219743756e-09,
+      "gradient_residual_rms": 9.992376123760561e-07,
+      "converged": true,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1659283293523897,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000015-sweep-06.npz",
+        "sha256": "4d1339af151cc8cdfe23641cc2ace45c734decf028dbde33e3d80b054eae4d01"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007990652222285257,
+      "gradient_residual_rms": 0.004266161623546413,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "cf6fce67b7a50c3757c3aea8b554b84cf9743a1abf2938d72fed5910f8b00178",
+          "fvm_kinematic_pressure": "a9e9ffcf071870d4dafe2750c899f7bb6ce569fb2c45b139b8c842849151ca6a",
+          "fvm_volumetric_face_flux": "8145fe76ed2cf8ac8faa76c2edfaff4c24a9811de1e2b0e3f73c40dfc7dc49fd",
+          "fvm_volumetric_face_flux_old": "8145fe76ed2cf8ac8faa76c2edfaff4c24a9811de1e2b0e3f73c40dfc7dc49fd",
+          "fvm_volumetric_face_flux_older": "9c1eb4edb070a3b3a69e44cfe8a3a677f405bbcd05401b994b57ae73ca08a33e",
+          "fvm_velocity_old": "cf6fce67b7a50c3757c3aea8b554b84cf9743a1abf2938d72fed5910f8b00178",
+          "fvm_velocity_older": "c259341c2cad336ab8ca682af4687d5c47380a3ee417d8f057fdb267af8863d5",
+          "vpm_position": "cc97be70614b83ab8a9de942b495107dc557586eae0b03133fa7f5f6dfaccf46",
+          "vpm_velocity": "285999d5e87588a426a7c0202d6eab5bf917c9652264e391e5d6ac27b447b9c2",
+          "vpm_vortex_strength": "00d9275898842cf4c9e7f2735d9f5086d18907cb878c0aa0778bf3867500c047",
+          "vpm_core_radius": "c22214fa1fbd0e48bee703e13a78658e07b2a0a63b71f203d45a2156d0d73dcb",
+          "vpm_particle_volume": "e94554d3fcc95a7387dbae3973adb5f2624c0c256d5e2134726b3ab5946eee82",
+          "vpm_kinematic_viscosity": "9de6d126b0fb1f47c5cbf9637e5289b596f15cc51caa4cf27a5339126ff5ad5a",
+          "vpm_eddy_viscosity": "058055efdd3059495b9e71edfdabbd6a97e65a32503d99b60bc42817e4ea5a7a",
+          "vpm_group_id": "1f6f751fbb6890e3ebf01f70bfba5acf52f1c1b21e3b12808163a98c249513c6",
+          "vpm_zone_id": "1f6f751fbb6890e3ebf01f70bfba5acf52f1c1b21e3b12808163a98c249513c6",
+          "vpm_velocity_gradient": "9d345de0618ca204f2d239b24e4a8582b5d2ff403ef07386cbad5d71878e7adc",
+          "vpm_strain_rate": "9d345de0618ca204f2d239b24e4a8582b5d2ff403ef07386cbad5d71878e7adc",
+          "post_trace_velocity_boundary_condition": "020a51277da9ecfcbfcfdc59a80bc3d8abce89c5d531c6dc07fd676d17dcda38",
+          "post_trace_normal_velocity_boundary_condition": "a39c075b50a3535c3fa18c1fdbc1f8bbd73e9ad24455d76b2fef3b361c7d40e5",
+          "post_trace_tangential_gradient_boundary_condition": "94641056469fc2e8c5d45e14814080c2ba290acdb8293750cb8001d739899c9b",
+          "clocks": "92b461ad7b804bb38a42fbe97158d3e53305fec53b12c39ef4ec178979e62a86",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1165744740085062,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-01.npz",
+        "sha256": "d66a463db04683eeb15a548658ff7cf6fb7048a69397dfe7414443d225d0f4e3"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 2,
+      "normal_residual_rms": 7.714822284299274e-07,
+      "gradient_residual_rms": 4.9178225934382505e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1471969890810405,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-02.npz",
+        "sha256": "fdd6990a556540a13987b3e91bcd83bc0073a60238ec7b8657fbf083fba11888"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 3,
+      "normal_residual_rms": 2.4074407663307416e-08,
+      "gradient_residual_rms": 4.702815328576259e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.147288305899512,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-03.npz",
+        "sha256": "4609c36f6daa9efd387bee260c756e40f0c33362d28dcc62eef8f9afdb24334a"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 4,
+      "normal_residual_rms": 4.661278265691998e-09,
+      "gradient_residual_rms": 3.219294228854031e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1472885267536754,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-04.npz",
+        "sha256": "d2a06da5f9320fa19a3c8b396aa7c77aafe31f83323261fb324edc2913b2e1fb"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 5,
+      "normal_residual_rms": 2.111638509096045e-09,
+      "gradient_residual_rms": 1.430666416502677e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1472885497502856,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-05.npz",
+        "sha256": "06dfede472940950e39fce80dd946ff5263f5d15fda5ca7297e08597fbbc7283"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 6,
+      "normal_residual_rms": 1.502446504741241e-09,
+      "gradient_residual_rms": 1.0020184843665919e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1472885310340044,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-06.npz",
+        "sha256": "e16015bdfe2390083e4680bb2b0a7ff645ae7a7f13a5485ede45fb1f86788edc"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 7,
+      "normal_residual_rms": 1.808304838327686e-09,
+      "gradient_residual_rms": 9.616772558954102e-07,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.147288528188857,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000016-sweep-07.npz",
+        "sha256": "d561ab0e2cebf70119b809d0c6d6cab54376761d29197ef9c05d89f44d273ad8"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007748145109623188,
+      "gradient_residual_rms": 0.0040801203104930605,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "67c79b5b84c36ec9738ad40368206538a4b63edf713fb35e9e8f2f44f9071c59",
+          "fvm_kinematic_pressure": "370e00a81e2158d006b6410a8c9080fe8761a6d0557d6d379c2b0ada971aab77",
+          "fvm_volumetric_face_flux": "4ade212b4c03c4103b3aab57e722366f265a799c7a358900d3b03e6dd48e5489",
+          "fvm_volumetric_face_flux_old": "4ade212b4c03c4103b3aab57e722366f265a799c7a358900d3b03e6dd48e5489",
+          "fvm_volumetric_face_flux_older": "d8083bab4c7323030226a9619c1a6a2a7b24867933148c0b6e34a28d6a463e9f",
+          "fvm_velocity_old": "67c79b5b84c36ec9738ad40368206538a4b63edf713fb35e9e8f2f44f9071c59",
+          "fvm_velocity_older": "1a4485c6203370233e96561974d98cdc601727f9fa5873af19dfab586f5b1201",
+          "vpm_position": "b96e1a18f7ea552c3d421a19dad93f1a9542f05c628ea1f059682b50d5f25825",
+          "vpm_velocity": "6cd45f3ed8eee8f85129f53a38fbc371a25e7e0b1196e9315c9d558a3d69ba47",
+          "vpm_vortex_strength": "8c28bce389857baa395e8097385d1234caf04012d700d356e930e20b37261c99",
+          "vpm_core_radius": "e8db37b682358d7a5486ab5b35b38c164cafb0a2d627fc4d22c3b428d3f5a3df",
+          "vpm_particle_volume": "59a0aec58a9f08063377b95846b56d67339aa252e598f0a49a99ae7191f64779",
+          "vpm_kinematic_viscosity": "560a18fc5bf61697c162fe67bf04804cac29525283bf5287aee173f45ea9e3b0",
+          "vpm_eddy_viscosity": "7de0549b8f68e5b6210624e756786abd4cbcefa0772bc78486e843f0ebf1f163",
+          "vpm_group_id": "865002c9a0a63a5bf469c789c1a45524cce291c69dc08ba088901a7cc9fb59f6",
+          "vpm_zone_id": "865002c9a0a63a5bf469c789c1a45524cce291c69dc08ba088901a7cc9fb59f6",
+          "vpm_velocity_gradient": "dbde1a55cd8f27d062eb461f4117992d70da3f01ab91a6a4479ba721d2143603",
+          "vpm_strain_rate": "dbde1a55cd8f27d062eb461f4117992d70da3f01ab91a6a4479ba721d2143603",
+          "post_trace_velocity_boundary_condition": "ed5dc3037c91370fc1bc50a2a4067334cbb40d64454f10a011940ea0c1981500",
+          "post_trace_normal_velocity_boundary_condition": "5e71e1ab7f3fda04b6bff6a3cbc0ff2c2a5a70e2671a4c37a6127d3fae78a2a9",
+          "post_trace_tangential_gradient_boundary_condition": "d09b76d1da188401ca5e8a204c01b40b21daec050c6249aea55c572790df205b",
+          "clocks": "20e960e52f9817cb5cdef2967520e3a79747ff4e011ffd3bd81bdb0677ea6d1d",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1002299760669565,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-01.npz",
+        "sha256": "a6cef3a80b210ef540cb9ef69745124849e381f5b5e6af819e610181ffd999a7"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 2,
+      "normal_residual_rms": 8.539046261469018e-07,
+      "gradient_residual_rms": 5.090202793773369e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.13040382378909,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-02.npz",
+        "sha256": "d8bf01beac404d38db33b13f5bd329467d5dd844d4491511ec88fe3d342afde8"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 3,
+      "normal_residual_rms": 2.515002005879391e-08,
+      "gradient_residual_rms": 4.509403362579986e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.130492979298867,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-03.npz",
+        "sha256": "51a42f82834df7c1d6c9a7f35403fdd93befa2bccb606c7522900ba465f43d10"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 4,
+      "normal_residual_rms": 5.744873919239207e-09,
+      "gradient_residual_rms": 3.270222881572826e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933437524542,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-04.npz",
+        "sha256": "211a413f32a3242b328fed7389d51c79b06420f49a3e848b02913e2273d9772b"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 5,
+      "normal_residual_rms": 3.994873312277527e-09,
+      "gradient_residual_rms": 2.0289419408757654e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933691095491,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-05.npz",
+        "sha256": "9bb04f26691d75e5b84d14a7057d3f87c07ba6ea5567442d29ffc6fe5ca7fcd2"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 6,
+      "normal_residual_rms": 2.762453136287412e-09,
+      "gradient_residual_rms": 1.995781745812762e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933232630412,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-06.npz",
+        "sha256": "7e2274a387fef1e43614a6d398ea911f8eafd08036e1db37398a8a43fb36ff17"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 7,
+      "normal_residual_rms": 2.5588874299687698e-09,
+      "gradient_residual_rms": 1.5779226798213898e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933616620183,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-07.npz",
+        "sha256": "25bf02b2e65acb701859cd396b7e408b23a3ac7f7823a44a9a852bdc428e7058"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 8,
+      "normal_residual_rms": 2.7422560540031095e-09,
+      "gradient_residual_rms": 1.7331607256324676e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933551439533,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-08.npz",
+        "sha256": "8824c1a6d7395c72df06aef913a74ee879b4b5bbe75b259999ef7c3b98914254"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 9,
+      "normal_residual_rms": 2.5560475432676995e-09,
+      "gradient_residual_rms": 1.7232985792759882e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933596547952,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-09.npz",
+        "sha256": "4e366ab35cfdeb7c82749fc7e67152d68b2a197f16889f488637db4321020a19"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 10,
+      "normal_residual_rms": 2.7354074916093894e-09,
+      "gradient_residual_rms": 1.6364866288540918e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933593041784,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-10.npz",
+        "sha256": "aada19c32b1b12ce90b05c1148754418a621953f932831d4f289b71d88c73106"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 11,
+      "normal_residual_rms": 2.7316820496214624e-09,
+      "gradient_residual_rms": 1.6566166967435178e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933483433013,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-11.npz",
+        "sha256": "f6e2035894b0ba79a4341588a23ed68e5bea817e95bbbde725c8ef1335ebd75b"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 12,
+      "normal_residual_rms": 2.9216352015845256e-09,
+      "gradient_residual_rms": 1.6566447450104875e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1304933654295468,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000017-sweep-12.npz",
+        "sha256": "3f100219767e2b84ce454d3a250b44862897454aa02df072ef0b1c9ee21f67ef"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007599712730508468,
+      "gradient_residual_rms": 0.003999841315484962,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "92da06768fd8f8f44c8765c913ae39b68a9725b5b5f6630b97d53eeac03df91f",
+          "fvm_kinematic_pressure": "06dc4fbfbfa83894f8272b39eacb23a7c47f54a4d0606289afb5256d50faf405",
+          "fvm_volumetric_face_flux": "8fbf29e15f9c1af124d031146dce4b3525a1ad1686ecb8bc30aedd8da84b115a",
+          "fvm_volumetric_face_flux_old": "8fbf29e15f9c1af124d031146dce4b3525a1ad1686ecb8bc30aedd8da84b115a",
+          "fvm_volumetric_face_flux_older": "421944e32862c19dcdfae5aa25dac4909f23f96e9643c27a8afd21c7c3fd9057",
+          "fvm_velocity_old": "92da06768fd8f8f44c8765c913ae39b68a9725b5b5f6630b97d53eeac03df91f",
+          "fvm_velocity_older": "bb6663223447b83a69abeb5117e636a272e794baa500ba38e2084f4229b759bc",
+          "vpm_position": "f0a976307eedec44eef8c0fef8ce0f2867d3ce7d6b8dfd505af710b6b6af125c",
+          "vpm_velocity": "00ede651b204e175e562964ebbead2c2477b5a37e01499d4235265ed45c64a9d",
+          "vpm_vortex_strength": "90306a43ed39062005e6e7d00a3be05b74f04f262f4b7c8e6ce051927cd6b079",
+          "vpm_core_radius": "df85e48e526511c10e264750bd13926710cb70f36a5249bc8c804ef8ccb07d0e",
+          "vpm_particle_volume": "cf92daace43a016d89d3906bcafa10e74172aeb6e398a83632d92d5f8c7a7958",
+          "vpm_kinematic_viscosity": "a207f596458185d8cffc03050ae9d439bf5d26bded9f3124f22440bc8e04ebf3",
+          "vpm_eddy_viscosity": "5da82673c8b0e85a471a8a712b891fa33af8b48bcd7ddceed9fa9155430bb43c",
+          "vpm_group_id": "e2d895a76814b51750c3b545b212744ce4c51092e8c8fdc874a5de46d1e98dd4",
+          "vpm_zone_id": "e2d895a76814b51750c3b545b212744ce4c51092e8c8fdc874a5de46d1e98dd4",
+          "vpm_velocity_gradient": "2e7186a53624dea5edc60ba2613a87c145ecec0bc9b37990c34f228d3465aec8",
+          "vpm_strain_rate": "2e7186a53624dea5edc60ba2613a87c145ecec0bc9b37990c34f228d3465aec8",
+          "post_trace_velocity_boundary_condition": "8ad0064bd303c350bf0a349c7c249fa916cf8e11fd9021956d82715090c04f39",
+          "post_trace_normal_velocity_boundary_condition": "9783a7a1c1a778d8503c68f92cf68077908da4d932f11190179715bd85aa4980",
+          "post_trace_tangential_gradient_boundary_condition": "fddca66b655f888d7179a8326787a6f2c82f35ad29678e6910d02bb037780570",
+          "clocks": "38b8909e829cb855e15c7d823a16a81757a0c05f59a25e4590304a819425ea2f",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0852554842465036,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-01.npz",
+        "sha256": "3e89bc6f77c0f8bcc396669980b1afff6ebe3ab268d0feea04a0d00f74b63774"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 2,
+      "normal_residual_rms": 7.718223005269655e-07,
+      "gradient_residual_rms": 4.71684403875003e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1156626196235806,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-02.npz",
+        "sha256": "d71ecad5d6470f87846e66f429ea98aa0eefb3f2ec68117667f9c2c2a46a476d"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 3,
+      "normal_residual_rms": 2.5487242078504892e-08,
+      "gradient_residual_rms": 4.39101846488241e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157549904333617,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-03.npz",
+        "sha256": "d910735132173778724cf278afbe4e3c2e41db75803c7988760b4004318377eb"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 4,
+      "normal_residual_rms": 4.363733443169315e-09,
+      "gradient_residual_rms": 2.912339562959038e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157551120215454,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-04.npz",
+        "sha256": "9a3826decd71cca3229e458a852245bec51f22c74f190c380d9276927ed6d8a8"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 5,
+      "normal_residual_rms": 2.5720140254670226e-09,
+      "gradient_residual_rms": 1.7321202468934676e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157551168378752,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-05.npz",
+        "sha256": "7f9be9e39dcc2b52c60f38efd7e8ce26cc17817ce95ab2de71db14442ad0bc05"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 6,
+      "normal_residual_rms": 2.5643857598313493e-09,
+      "gradient_residual_rms": 1.9775932804162816e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157551107560948,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-06.npz",
+        "sha256": "f68b405e88efa509536f7d55c3cac5dac566d946d7052fecd01bcf13752a1030"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 7,
+      "normal_residual_rms": 2.335232156253214e-09,
+      "gradient_residual_rms": 1.5745390747294842e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.115755090947348,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-07.npz",
+        "sha256": "ec65e1e3a6588a76a2ca821357edc59ca69e9b3b33c4f056ab3a478d0ab103a7"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 8,
+      "normal_residual_rms": 2.533655873336325e-09,
+      "gradient_residual_rms": 1.4290389735589291e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.11575510132569,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-08.npz",
+        "sha256": "89aa9ac27b3b552c05cf95d5d7b1967b16b87cd4d19c0b457d73a842306b237c"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 9,
+      "normal_residual_rms": 2.1091457760349206e-09,
+      "gradient_residual_rms": 1.721306459112435e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157550915569254,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-09.npz",
+        "sha256": "c2072a863f784096f3159a99ce68660b19038ce2d81fcb8133fdeebd49362d77"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 10,
+      "normal_residual_rms": 1.8177984572980888e-09,
+      "gradient_residual_rms": 1.1771543088606422e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157550976468151,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-10.npz",
+        "sha256": "5256d5a7f496864d3008b3df9dcd46fbabedeb7f12ed129d0eafac321de1bc29"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 11,
+      "normal_residual_rms": 1.836883279718561e-09,
+      "gradient_residual_rms": 1.910343219493097e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1157551122870244,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-11.npz",
+        "sha256": "80a31273fee046136dcd8e9d0d99bd299db4759d98fa03b40c0f5041e8e89eff"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 12,
+      "normal_residual_rms": 1.5107572338822083e-09,
+      "gradient_residual_rms": 1.1997619319182381e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.115755115007131,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000018-sweep-12.npz",
+        "sha256": "939ef73a14e48d681c2ccf9ae878f04b2aae1157a40114b2786c4281dcc52f46"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 1,
+      "normal_residual_rms": 0.000744787881142777,
+      "gradient_residual_rms": 0.004223740745373279,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "0ade55974e1443b226a35043a4dc272705402605a95dffdbc1661fcaefc7210e",
+          "fvm_kinematic_pressure": "b1bb16637629a533f88696c0f387353bfba8f087543c4adec6f7c88d03a36008",
+          "fvm_volumetric_face_flux": "7fc3fb956a8401535e6532e8e305995a537a0abf1f2be4cb1c32513bc24bbf49",
+          "fvm_volumetric_face_flux_old": "7fc3fb956a8401535e6532e8e305995a537a0abf1f2be4cb1c32513bc24bbf49",
+          "fvm_volumetric_face_flux_older": "d264ee357e8f56896ac013ec7978b3d1cd805f7befca7c9861538ef4b98e4e0e",
+          "fvm_velocity_old": "0ade55974e1443b226a35043a4dc272705402605a95dffdbc1661fcaefc7210e",
+          "fvm_velocity_older": "c4d1fbbcde8a987da81920788f439a87ecf68658be8b0d0645abbbc0b85f868c",
+          "vpm_position": "450281f5fed3c6945ffe6273f53975d56cb68c4a7ddf873dcf35c587ca658c5a",
+          "vpm_velocity": "afd24f1c9f2808711c1af69a6a36bbd9cb3e75a73d29d794e2c327f579b414e7",
+          "vpm_vortex_strength": "491712ee1da821c373041d02b7df8efce5559ee2e0c804ad91b264911c3082b1",
+          "vpm_core_radius": "dd3c2f6a7e228625736a9fdc628e9c11f47b55e6622a3c9af490b7c8a8cf7b3b",
+          "vpm_particle_volume": "a888d39f18f4f0cd88c9cf13b8d0b3066c6cc77b38deacf2ddc4f0bd9619c250",
+          "vpm_kinematic_viscosity": "f852dcca57ac731b44e18f64e3b9e54547489ee0f794cb6aa47315faf5c6f682",
+          "vpm_eddy_viscosity": "b9cc85606b552cd18bde6fa82ca1db39d71bd063560fbef86e392297c2074049",
+          "vpm_group_id": "5a596f83fd33b4a708a9e33a543fa84aa3011229ccfee4474c87b44fd0b8fd88",
+          "vpm_zone_id": "5a596f83fd33b4a708a9e33a543fa84aa3011229ccfee4474c87b44fd0b8fd88",
+          "vpm_velocity_gradient": "9aeea64552d29a34aab2992fcdcc1e5e950b8486924b3c03d02dac241ca207ea",
+          "vpm_strain_rate": "9aeea64552d29a34aab2992fcdcc1e5e950b8486924b3c03d02dac241ca207ea",
+          "post_trace_velocity_boundary_condition": "c1242bcfaba84dff98656fac31eec83bff26c816da9ad312b41822786b1c37fc",
+          "post_trace_normal_velocity_boundary_condition": "a16d249359eb99df80450fdf746d800be27886718c9f5868fa8cb1f3f8dddc4c",
+          "post_trace_tangential_gradient_boundary_condition": "2bc68dc2b6d68d17e7881f29534f3fed0c5401a17b5967a1c36ce3d49f19a2db",
+          "clocks": "bee7c9a6b278aafad0122c0a3ba3c06e432c8472dd0ab9c92d83190e7f890c43",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0717431235295092,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-01.npz",
+        "sha256": "3a7be7e67e1c7094de43374963845c152b00c790bd7dbbf0f80a148096eafed0"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 2,
+      "normal_residual_rms": 8.848319895069572e-07,
+      "gradient_residual_rms": 4.638130924147521e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1020505198665664,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-02.npz",
+        "sha256": "12c0206c1de8049538177e025f486d51e14e435e4436afe1cf3e6ca4146fa4f5"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 3,
+      "normal_residual_rms": 2.4976888984760845e-08,
+      "gradient_residual_rms": 4.339575344075963e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.102145406456052,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-03.npz",
+        "sha256": "119eed45ac2c2f4f265143bd4981a126b1f86c6fdd2e54eff7d33be73a6ad73b"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 4,
+      "normal_residual_rms": 4.366705758613916e-09,
+      "gradient_residual_rms": 2.674130094028276e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456042952293,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-04.npz",
+        "sha256": "5a3394e45d2c16e86b81461321a16b99c1f89a782e5b6ff3afa8e396333e18ba"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 5,
+      "normal_residual_rms": 1.9052460911951845e-09,
+      "gradient_residual_rms": 1.885595122023766e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456401901262,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-05.npz",
+        "sha256": "cab46a2413fc94ec15dd8a9c80da9f302958bf545d120789fe1cb59259c8dd82"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 6,
+      "normal_residual_rms": 2.105432516476128e-09,
+      "gradient_residual_rms": 1.5661185473906382e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456342347635,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-06.npz",
+        "sha256": "1f22044b05b2f1391449641f183e3e5abdcf5c193e71b9b898868378323aed5b"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 7,
+      "normal_residual_rms": 1.5063584396990389e-09,
+      "gradient_residual_rms": 1.34665941061497e-06,
+      "converged": false,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456382018622,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-07.npz",
+        "sha256": "624db120301582a4228c5c0b3f5429a63fe966b86fb2f2a086a76409481b110f"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 8,
+      "normal_residual_rms": 1.8449776170850516e-09,
+      "gradient_residual_rms": 1.5593635428897399e-06,
+      "converged": false,
+      "map_evaluations": 9,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456283007003,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-08.npz",
+        "sha256": "e46f1c4d125b71df6be92d129b7cee847594f1fe498644fb64d913812b63afe5"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 9,
+      "normal_residual_rms": 2.757801836591587e-09,
+      "gradient_residual_rms": 1.6082922148490244e-06,
+      "converged": false,
+      "map_evaluations": 10,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456430365941,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-09.npz",
+        "sha256": "9eb5abb6945f5b1dec427f4dcf3a60911b54d4749e7e556cf2f00abb4193b4dc"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 10,
+      "normal_residual_rms": 2.331050153876139e-09,
+      "gradient_residual_rms": 1.3989802238501708e-06,
+      "converged": false,
+      "map_evaluations": 11,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.10214563446572,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-10.npz",
+        "sha256": "98484db7a075b69dc8acd88dd067327b8073b33b3db20f832bab46d624e3283c"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 11,
+      "normal_residual_rms": 1.1340259410011104e-09,
+      "gradient_residual_rms": 1.2283324817538832e-06,
+      "converged": false,
+      "map_evaluations": 12,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.102145632414228,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-11.npz",
+        "sha256": "03e5a6fb501aed52e1e881c2df06648317ed6c1b648080009cf85541dc0fc28f"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 12,
+      "normal_residual_rms": 1.8394034623205106e-09,
+      "gradient_residual_rms": 1.5369971441065052e-06,
+      "converged": false,
+      "map_evaluations": 13,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1021456309829398,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000019-sweep-12.npz",
+        "sha256": "39af33fcb79eb8c407104a4f7edbfa19f6e46b60f37277fc158d74bd7752f2d5"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007125119525549915,
+      "gradient_residual_rms": 0.004340072080961724,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "c7b6b2a4e9a35ce0c6b17382dfb914ca6ec7f9dfc090f943b8a42777c8c60c0e",
+          "fvm_kinematic_pressure": "6d000bb2337e7f2f6b72ff9610835f7aa4ff7bb40982ef96f82c1c252806bd62",
+          "fvm_volumetric_face_flux": "1b4a20e908eccadcf8edf43a1b293734b58aaec2e4f0d45fc8f0ed317fa1479e",
+          "fvm_volumetric_face_flux_old": "1b4a20e908eccadcf8edf43a1b293734b58aaec2e4f0d45fc8f0ed317fa1479e",
+          "fvm_volumetric_face_flux_older": "c9b2e8c263a88453de138b82e525af410dd8e4cad542d69f0122abeed6ef9524",
+          "fvm_velocity_old": "c7b6b2a4e9a35ce0c6b17382dfb914ca6ec7f9dfc090f943b8a42777c8c60c0e",
+          "fvm_velocity_older": "ae18de66a2a2d25cb5cf4627d8608bc9bf1814c1a7db7946ce4b2a350b5fd811",
+          "vpm_position": "dfbda2270447ea152b75ed316f32a80589d04c96056234b27f848a61cc830d02",
+          "vpm_velocity": "35d140c3e3766ed50aafe9c13864297c9160b63ba7b34690261ec2b402a48456",
+          "vpm_vortex_strength": "a027bf86d954feb2f5b9d0d3188793e419d4346128d56b7b47777c45c7c9de2d",
+          "vpm_core_radius": "3aff874bec079e6c645f187983e1cb2e32563a64e9a90f09b0daa8171857050b",
+          "vpm_particle_volume": "9712ac1505926cd3b4885b17434f400310a0bc3834371bbb99b50dc26c1530b0",
+          "vpm_kinematic_viscosity": "7a12028df81862fed1155fa4edd490cac6255a017f4c4e313696634764a2c6ee",
+          "vpm_eddy_viscosity": "eab46273e1e8fa09c4210033ca345e81162ebad415bf07f7fd3738efbfd9c231",
+          "vpm_group_id": "d38bc19c5df894cf2aaf003f79754c904bbb0487f3871cfa0ec91d2c52a33f01",
+          "vpm_zone_id": "d38bc19c5df894cf2aaf003f79754c904bbb0487f3871cfa0ec91d2c52a33f01",
+          "vpm_velocity_gradient": "a2f641b11548229adbb585e504104ff93c21cca12d1af17d77443679ea00b25e",
+          "vpm_strain_rate": "a2f641b11548229adbb585e504104ff93c21cca12d1af17d77443679ea00b25e",
+          "post_trace_velocity_boundary_condition": "2b9c4e3ff4050a9919b8780faedfcb7ad93ff26934c90ac72dd9f7992796b908",
+          "post_trace_normal_velocity_boundary_condition": "0d71ac9cc7d9fb0afd3c14e837584c853ca245b54f3920c4837f19b4a1243fd7",
+          "post_trace_tangential_gradient_boundary_condition": "e3a9dcbb57a2c5d3dc5207ed31e27265f78cfce356bbc606679511406cb8fccf",
+          "clocks": "b956f2ba3ead1b442607b6a49d8d652e114c014b68d03148d516727702d10531",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0578330489093757,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-01.npz",
+        "sha256": "3c7ff8d01b1c0b65cf73416a5da4b77001f5cfa3c69efcffc99c3907f74e804f"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 2,
+      "normal_residual_rms": 7.787929301232272e-07,
+      "gradient_residual_rms": 4.309766992054653e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0884641117417355,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-02.npz",
+        "sha256": "1f626b1f0065c2808805121ea5d818ce5a8d4493111d5eae24f14c3bb12254db"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 3,
+      "normal_residual_rms": 2.5994630689900375e-08,
+      "gradient_residual_rms": 4.102595896891197e-06,
+      "converged": false,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.088560577925371,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-03.npz",
+        "sha256": "9abfde86226729919c693cc648515bc15ca1f0d911150728de572609440062b8"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 4,
+      "normal_residual_rms": 4.000377867621055e-09,
+      "gradient_residual_rms": 2.519708495637918e-06,
+      "converged": false,
+      "map_evaluations": 5,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0885606450999497,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-04.npz",
+        "sha256": "b237c781609d32941ea13219a608e2df383d5d8fbd00be64793466a863c35c89"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 5,
+      "normal_residual_rms": 3.723491988810622e-09,
+      "gradient_residual_rms": 1.9023781572035992e-06,
+      "converged": false,
+      "map_evaluations": 6,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.088560660881309,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-05.npz",
+        "sha256": "fd9f591940043cda8fbaf7b49173cea7e7f29e94b14639f3081a63be57ab96aa"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 6,
+      "normal_residual_rms": 2.9354546697773417e-09,
+      "gradient_residual_rms": 1.3331749250918192e-06,
+      "converged": false,
+      "map_evaluations": 7,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0885606958176808,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-06.npz",
+        "sha256": "9a39bda212af48fb9fbbe12809c81b3dfafe2a056abe6d5f9364e34f9fa3e33e"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 7,
+      "normal_residual_rms": 1.8039551052460034e-09,
+      "gradient_residual_rms": 8.173414569545669e-07,
+      "converged": true,
+      "map_evaluations": 8,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0885606755997375,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/boundary-step-000020-sweep-07.npz",
+        "sha256": "c6e8894ffc183c17e1d53292c547e53ca21f30ef0dda9a6ba46978f4c0debfbe"
+      }
+    }
+  ],
+  "limitations": [
+    "Only interface consistency is changed. The FVM start and advected VPM predictor are fixed within every interval; particle renewal never uses a prior sweep as its starting cloud.",
+    "The first endpoint map in each interval is replayed from the saved states and required to match numerical fields and clocks bitwise.",
+    "Zero sweeps selects the original unmodified partitioned algorithm. One sweep tests the wrapper and replay path without a numerical correction.",
+    "The fixed tolerances measure interface residuals; they are not acceptance tolerances for force or velocity agreement with the reference.",
+    "A completed bounded run can contain unconverged intervals; convergence flags are explicit and no production mode is changed.",
+    "Serial buffered-M4 mixed/flux-pressure study without a consistency band; no developed-wake validation is implied."
+  ],
+  "converged_intervals": 12,
+  "observed_intervals": 20,
+  "comparison": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705,
+      "drag_coefficient_difference": 0.0,
+      "particles": 6429
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_flow_time": 0.05,
+      "physical_time": 0.55,
+      "fvm_velocity_rms_over_Uinf": 0.002413924909278497,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.000725695785276924,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03677604374183699,
+      "full_drag_coefficient": 1.5090799958339747,
+      "hybrid_drag_coefficient": 1.4867253215608267,
+      "drag_coefficient_difference": -0.022354674273147968,
+      "particles": 22037
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_flow_time": 0.1,
+      "physical_time": 0.6,
+      "fvm_velocity_rms_over_Uinf": 0.002621694987781313,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006964427266253208,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03568678221192796,
+      "full_drag_coefficient": 1.486079170256125,
+      "hybrid_drag_coefficient": 1.4810979982188903,
+      "drag_coefficient_difference": -0.0049811720372345825,
+      "particles": 22374
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_flow_time": 0.15,
+      "physical_time": 0.65,
+      "fvm_velocity_rms_over_Uinf": 0.0027278513719776144,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006622465819054758,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03484642172293684,
+      "full_drag_coefficient": 1.4650546185458297,
+      "hybrid_drag_coefficient": 1.460416220203181,
+      "drag_coefficient_difference": -0.004638398342648786,
+      "particles": 22580
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_flow_time": 0.2,
+      "physical_time": 0.7,
+      "fvm_velocity_rms_over_Uinf": 0.002852361116538198,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006298504775526064,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03417497830136291,
+      "full_drag_coefficient": 1.4436512495695992,
+      "hybrid_drag_coefficient": 1.4388304543684312,
+      "drag_coefficient_difference": -0.004820795201168071,
+      "particles": 22640
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_flow_time": 0.25,
+      "physical_time": 0.75,
+      "fvm_velocity_rms_over_Uinf": 0.002966932682059864,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005911449354524868,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03361371068830365,
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.407611782457457,
+      "drag_coefficient_difference": -0.004278517716711727,
+      "particles": 22883
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_flow_time": 0.3,
+      "physical_time": 0.8,
+      "fvm_velocity_rms_over_Uinf": 0.0030717509979330897,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005515001379016418,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03316355372583334,
+      "full_drag_coefficient": 1.3814860276095515,
+      "hybrid_drag_coefficient": 1.3783851533433622,
+      "drag_coefficient_difference": -0.003100874266189324,
+      "particles": 23074
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_flow_time": 0.35,
+      "physical_time": 0.85,
+      "fvm_velocity_rms_over_Uinf": 0.00319403832908964,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005099199499861171,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03281201565105583,
+      "full_drag_coefficient": 1.3528429561245168,
+      "hybrid_drag_coefficient": 1.3508591680059518,
+      "drag_coefficient_difference": -0.001983788118564922,
+      "particles": 23268
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_flow_time": 0.4,
+      "physical_time": 0.9,
+      "fvm_velocity_rms_over_Uinf": 0.0033794008767494823,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0004797413482665358,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032525636219939265,
+      "full_drag_coefficient": 1.3251828343240502,
+      "hybrid_drag_coefficient": 1.3247355901549778,
+      "drag_coefficient_difference": -0.0004472441690723805,
+      "particles": 23502
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_flow_time": 0.45,
+      "physical_time": 0.95,
+      "fvm_velocity_rms_over_Uinf": 0.003655466160671387,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.000491115711027221,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032295958658288534,
+      "full_drag_coefficient": 1.299674528453869,
+      "hybrid_drag_coefficient": 1.3011632399989523,
+      "drag_coefficient_difference": 0.0014887115450832322,
+      "particles": 23723
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_flow_time": 0.5,
+      "physical_time": 1.0,
+      "fvm_velocity_rms_over_Uinf": 0.004038469517007342,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005690260988354441,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03211995724034458,
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.2767328942576925,
+      "drag_coefficient_difference": 0.00386114493735068,
+      "particles": 24030
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_flow_time": 0.55,
+      "physical_time": 1.05,
+      "fvm_velocity_rms_over_Uinf": 0.004537330747743114,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006975206391841741,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03197619847191522,
+      "full_drag_coefficient": 1.2463331973842469,
+      "hybrid_drag_coefficient": 1.2517348052207546,
+      "drag_coefficient_difference": 0.005401607836507782,
+      "particles": 24394
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_flow_time": 0.6,
+      "physical_time": 1.1,
+      "fvm_velocity_rms_over_Uinf": 0.0051229235086092,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0008477568905170178,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03184715690200194,
+      "full_drag_coefficient": 1.2228278165771698,
+      "hybrid_drag_coefficient": 1.229140992963259,
+      "drag_coefficient_difference": 0.006313176386089303,
+      "particles": 24772
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_flow_time": 0.65,
+      "physical_time": 1.15,
+      "fvm_velocity_rms_over_Uinf": 0.005705345106987467,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0009950834636820425,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031733330352184515,
+      "full_drag_coefficient": 1.200371041321157,
+      "hybrid_drag_coefficient": 1.2077983732989186,
+      "drag_coefficient_difference": 0.007427331977761575,
+      "particles": 25191
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_flow_time": 0.7,
+      "physical_time": 1.2,
+      "fvm_velocity_rms_over_Uinf": 0.006222929046051905,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0011402674063018508,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03163724484194109,
+      "full_drag_coefficient": 1.1793654420697106,
+      "hybrid_drag_coefficient": 1.1854679312334846,
+      "drag_coefficient_difference": 0.006102489163773983,
+      "particles": 25576
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_flow_time": 0.75,
+      "physical_time": 1.25,
+      "fvm_velocity_rms_over_Uinf": 0.006639947355331303,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0012776654684375586,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031549765902948786,
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1659283293523897,
+      "drag_coefficient_difference": 0.006612395126113668,
+      "particles": 26138
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_flow_time": 0.8,
+      "physical_time": 1.3,
+      "fvm_velocity_rms_over_Uinf": 0.006953453246661241,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0014035035965206067,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031468888907773156,
+      "full_drag_coefficient": 1.1418336834682312,
+      "hybrid_drag_coefficient": 1.147288528188857,
+      "drag_coefficient_difference": 0.00545484472062574,
+      "particles": 26576
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_flow_time": 0.85,
+      "physical_time": 1.35,
+      "fvm_velocity_rms_over_Uinf": 0.007181960073935085,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.001528608275983917,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031397607510098534,
+      "full_drag_coefficient": 1.125024781496457,
+      "hybrid_drag_coefficient": 1.1304933654295468,
+      "drag_coefficient_difference": 0.00546858393308991,
+      "particles": 27000
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_flow_time": 0.9,
+      "physical_time": 1.4,
+      "fvm_velocity_rms_over_Uinf": 0.0073603351408010305,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0016642379125109464,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031342323814019274,
+      "full_drag_coefficient": 1.1094366266728828,
+      "hybrid_drag_coefficient": 1.115755115007131,
+      "drag_coefficient_difference": 0.006318488334248196,
+      "particles": 27483
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_flow_time": 0.95,
+      "physical_time": 1.45,
+      "fvm_velocity_rms_over_Uinf": 0.007513229682941572,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0018039018748929503,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03129218744627553,
+      "full_drag_coefficient": 1.0938074851469775,
+      "hybrid_drag_coefficient": 1.1021456309829398,
+      "drag_coefficient_difference": 0.008338145835962374,
+      "particles": 27985
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_flow_time": 1.0,
+      "physical_time": 1.5,
+      "fvm_velocity_rms_over_Uinf": 0.00766336858671606,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.001954802123819413,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031242711352786456,
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0885606755997375,
+      "drag_coefficient_difference": 0.008165335619430003,
+      "particles": 28437
+    }
+  ],
+  "elapsed_seconds": 2256.7107071249993
+}

@@ -2,17 +2,22 @@
 
 from types import SimpleNamespace
 
+from _flat_plate_geometry import create_flat_plate
 import numpy as np
 import pytest
 import taichi as ti
 
+from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
 from source.solvers.vpm.boundary_elements.vlm.kernels.collision import (
     SURFACE_COLLISION_EVENT_CORE_OVERLAP,
     SURFACE_COLLISION_EVENT_INTERSECTION,
     SURFACE_COLLISION_EVENT_SIDE_BYPASS,
+    classify_finite_surface_segment,
+    classify_moving_finite_surface_segment,
     detect_surface_collision_events_kernel,
     detect_surface_collisions_kernel,
 )
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.vpm.coupling.stepper import CouplingStepper
 
 
@@ -158,6 +163,246 @@ def test_surface_event_kernel_classifies_intersection_bypass_and_core_overlap():
             dtype=np.int32,
         ),
     )
+
+
+def _host_panel():
+    return (
+        np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        ),
+        np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    )
+
+
+def test_host_surface_observer_requires_finite_interior_intersection():
+    corners, normal = _host_panel()
+    result = classify_finite_surface_segment(
+        np.array([0.5, 0.5, 0.01]),
+        np.array([0.5, 0.5, -0.01]),
+        0.0,
+        corners,
+        normal,
+        tolerance=1.0e-4,
+    )
+
+    assert result["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    np.testing.assert_allclose(result["position"], [0.5, 0.5, 0.0])
+
+
+def test_host_surface_observer_distinguishes_side_bypass_and_core_overlap():
+    corners, normal = _host_panel()
+    bypass = classify_finite_surface_segment(
+        np.array([-0.2, 0.5, 0.01]),
+        np.array([-0.2, 0.5, -0.01]),
+        0.0,
+        corners,
+        normal,
+        tolerance=1.0e-4,
+    )
+    overlap = classify_finite_surface_segment(
+        np.array([0.5, 1.0005, 0.0005]),
+        np.array([0.5, 1.0005, 0.0005]),
+        0.0015,
+        corners,
+        normal,
+        tolerance=1.0e-4,
+    )
+
+    assert bypass["event"] == SURFACE_COLLISION_EVENT_SIDE_BYPASS
+    assert overlap["event"] == SURFACE_COLLISION_EVENT_CORE_OVERLAP
+    assert bypass["distance"] > overlap["distance"]
+
+
+def test_host_surface_observer_detects_core_overlap_over_face_interior():
+    corners, normal = _host_panel()
+    result = classify_finite_surface_segment(
+        np.array([0.5, 0.5, 5.0e-4]),
+        np.array([0.5, 0.5, 5.0e-4]),
+        1.0e-3,
+        corners,
+        normal,
+        tolerance=1.0e-5,
+    )
+    assert result["event"] == SURFACE_COLLISION_EVENT_CORE_OVERLAP
+    np.testing.assert_allclose(result["distance"], 5.0e-4, atol=1.0e-12)
+
+
+def test_moving_surface_observer_uses_relative_motion_not_midpoint_plane():
+    corners, normal = _host_panel()
+    translated = corners + np.array([0.0, 0.0, 0.2])
+    result = classify_moving_finite_surface_segment(
+        np.array([0.5, 0.5, 0.1]),
+        np.array([0.5, 0.5, 0.1]),
+        0.0,
+        corners,
+        translated,
+        normal,
+        normal,
+        tolerance=1.0e-5,
+    )
+    assert result["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    np.testing.assert_allclose(result["position"], [0.5, 0.5, 0.1], atol=1.0e-12)
+
+
+def test_moving_surface_observer_handles_rigid_panel_rotation():
+    corners, normal = _host_panel()
+    centre = np.array([0.5, 0.5, 0.0])
+    angle = np.pi / 2.0
+    rotation = np.array(
+        [
+            [np.cos(angle), 0.0, np.sin(angle)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(angle), 0.0, np.cos(angle)],
+        ]
+    )
+    rotated = (corners - centre) @ rotation.T + centre
+    rotated_normal = rotation @ normal
+    result = classify_moving_finite_surface_segment(
+        centre + np.array([0.0, 0.0, 0.1]),
+        centre + np.array([0.0, 0.0, 0.1]),
+        0.0,
+        corners,
+        rotated,
+        normal,
+        rotated_normal,
+        tolerance=1.0e-5,
+    )
+    assert result["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    np.testing.assert_allclose(result["position"], centre + [0.0, 0.0, 0.1])
+
+
+def test_host_surface_observer_reports_endpoint_on_surface_and_warped_panel():
+    corners, normal = _host_panel()
+    endpoint = classify_finite_surface_segment(
+        np.array([0.5, 0.5, 0.0]),
+        np.array([0.5, 0.5, 0.02]),
+        0.0,
+        corners,
+        normal,
+        tolerance=1.0e-5,
+    )
+    assert endpoint["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    warped = corners.copy()
+    warped[2, 2] = 0.05
+    warped_result = classify_finite_surface_segment(
+        np.array([0.5, 0.5, 0.02]),
+        np.array([0.5, 0.5, -0.02]),
+        0.0,
+        warped,
+        normal,
+        tolerance=1.0e-4,
+    )
+    assert warped_result["event"] in {
+        SURFACE_COLLISION_EVENT_INTERSECTION,
+        SURFACE_COLLISION_EVENT_SIDE_BYPASS,
+    }
+
+
+def test_host_surface_observer_is_invariant_to_translation_normal_scale_and_winding():
+    corners, normal = _host_panel()
+    translated = corners + np.array([3.0, -2.0, 0.4])
+    start = np.array([3.25, -1.75, 0.41])
+    end = np.array([3.25, -1.75, 0.39])
+    forward = classify_finite_surface_segment(
+        start,
+        end,
+        0.0,
+        translated,
+        2.0 * normal,
+        tolerance=1.0e-4,
+    )
+    reverse = classify_finite_surface_segment(
+        start,
+        end,
+        0.0,
+        translated[[0, 3, 2, 1]],
+        -normal,
+        tolerance=1.0e-4,
+    )
+
+    assert forward["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    assert reverse["event"] == SURFACE_COLLISION_EVENT_INTERSECTION
+    np.testing.assert_allclose(forward["position"], reverse["position"])
+
+
+def test_host_surface_observer_rejects_degenerate_panels():
+    corners, normal = _host_panel()
+    corners[2] = corners[1] + np.array([0.5, 0.0, 0.0])
+    corners[3] = corners[0]
+    with pytest.raises(ValueError, match="degenerate panel"):
+        classify_finite_surface_segment(
+            np.array([0.5, 0.5, 0.01]),
+            np.array([0.5, 0.5, -0.01]),
+            0.0,
+            corners,
+            normal,
+            tolerance=1.0e-4,
+        )
+
+
+def test_surface_observer_is_pure_and_runs_before_any_particle_topology_change():
+    solver = VLMSolver(
+        VLMSetup(
+            surfaces=(
+                VLMSurfaceSetup(
+                    create_flat_plate(
+                        chord=1.0,
+                        span=1.0,
+                        n_chordwise_panels=1,
+                        n_spanwise_panels=1,
+                    ),
+                    name="receiving_surface",
+                ),
+            ),
+            dtype="f64",
+            freestream_velocity=(1.0, 0.0, 0.0),
+        )
+    )
+    solver.generate_mesh()
+    lattice = solver.lattice
+    corners_before = lattice.panel_corner_position.to_numpy().copy()
+    circulation_before = lattice.circulation.to_numpy().copy()
+    cumulative_before = lattice.cumulative_circulation.to_numpy().copy()
+    transported_before = solver._transported_bound.to_numpy().copy()
+    centre = lattice.collocation_point.to_numpy()[0]
+    normal = lattice.normal.to_numpy()[0]
+
+    class Particles:
+        def __init__(self):
+            self.position = np.array([centre + 0.1 * normal], dtype=np.float64)
+            self.end_position = np.array([centre - 0.1 * normal], dtype=np.float64)
+            self.n_particles_total = 1
+
+        def position_cpu(self, use_cache=False):
+            del use_cache
+            return self.position.copy()
+
+        def vortex_strength_cpu(self, use_cache=False):
+            del use_cache
+            return np.array([[0.0, 0.2, 0.1]], dtype=np.float64)
+
+        def core_radius_cpu(self, use_cache=False):
+            del use_cache
+            return np.array([1.0e-3], dtype=np.float64)
+
+        def group_id_cpu(self, use_cache=False):
+            del use_cache
+            return np.array([7], dtype=np.int32)
+
+    particles = Particles()
+    solver._snapshot_pre_transport_positions(particles, time=0.0, time_step_size=0.02)
+    particles.position = particles.end_position.copy()
+    result = solver.observe_surface_interaction(particles)
+
+    assert result["n_events"] == 1
+    assert result["events"][0]["provenance"] == "active_particle_index"
+    assert result["events"][0]["surface"] == "receiving_surface"
+    np.testing.assert_array_equal(lattice.panel_corner_position.to_numpy(), corners_before)
+    np.testing.assert_array_equal(lattice.circulation.to_numpy(), circulation_before)
+    np.testing.assert_array_equal(lattice.cumulative_circulation.to_numpy(), cumulative_before)
+    np.testing.assert_array_equal(solver._transported_bound.to_numpy(), transported_before)
+    np.testing.assert_array_equal(particles.position, particles.end_position)
 
 
 def test_coupling_stepper_runs_coupling_when_wake_release_is_disabled():

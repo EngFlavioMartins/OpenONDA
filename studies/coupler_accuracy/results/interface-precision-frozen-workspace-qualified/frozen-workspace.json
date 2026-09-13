@@ -1,0 +1,4011 @@
+{
+  "schema": "openonda-frozen-coupler-workspace/1",
+  "status": "complete",
+  "source_root": "/Users/flaviomartins/OpenONDA",
+  "snapshot_root": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified",
+  "created_at": "2026-09-13T13:30:10.401262+00:00",
+  "code_files": 786,
+  "input_files": 13,
+  "records": [
+    {
+      "path": "openonda/__init__.py",
+      "sha256": "64d9316d091c384828e6e7279e6d9d7b96b905d52649b220f5190c00a946e454",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/_resources/DejaVuSerif.ttf",
+      "sha256": "8deba7c78917fb06eafa38f73434b8f50f2b733cf4374bbf54be814699115dc4",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/cli.py",
+      "sha256": "84b45df518f3c7aac30fe8ee84851387956cfb464a52b075436c9e3bfcf44522",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/coupler.py",
+      "sha256": "efb13c1baa6462c7817ea008ba49ba642e908751d6e233caf2e4bde792854dcd",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/fvm/__init__.py",
+      "sha256": "9055d511b422636668dce1dcb72865e6b7e0312465fb7bb3aad3312611120fff",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/fvm/mesher.py",
+      "sha256": "93e90872c902ab43308f5001af77eeee957406decbb22f38d9045a3ea2b24bbf",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/plotting.py",
+      "sha256": "42303511f0d998425f718d4dc881d520e59800e8f90bb7969b832174b8bed3c3",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/py.typed",
+      "sha256": "5aa7089e44073a5efd51ba6bdedc5ab11faf8e4a436318575e5c64533ba62cda",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/rotor_theory.py",
+      "sha256": "21f51b938cafc7f477c07e486f454d2f2d06eb1a5b6641082881b17989ce3511",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/runtime.py",
+      "sha256": "e320ad5936f28d9b89c16e80ebde92b283828f41ccc15415aa9c3bb169e21bf1",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/tutorial_runner.py",
+      "sha256": "2d9972b0ff26c21b64f3efa9bf271f0f98b8de5579680732d8da7f33d01c19f7",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/tutorials.py",
+      "sha256": "bf793c79a36fdeccfdecc19454054949ebd806916e059263a9c31a9f6a2b5e87",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/verify_install.py",
+      "sha256": "a0e4951a778bdfe273e15aefa908ed5e2507d09a7ca383a6538fecd6e2a51577",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/vlm_backups.py",
+      "sha256": "9b4f2491aad3b107d95c6c8afafbdb393417cfc0f07baa0d4e8dad0760f2e264",
+      "kind": "code"
+    },
+    {
+      "path": "openonda/vpm.py",
+      "sha256": "974b82e72aa9da9593352f545cf097606356e9c74c6f8150b1c0d1dabc218045",
+      "kind": "code"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "7bdf1a5ec92d82d04e7192b06a2cff0c28029eb526597aeb584c96ad14fac4e0",
+      "kind": "code"
+    },
+    {
+      "path": "source/__init__.py",
+      "sha256": "ab376dac22d38ebedba47450c140ad468595231da15a801696801a809e612dd3",
+      "kind": "code"
+    },
+    {
+      "path": "source/_numba.py",
+      "sha256": "2b7ecb2cb0d700e375ea2732e913eb317d883812927dd68609485814be0c45e7",
+      "kind": "code"
+    },
+    {
+      "path": "source/config.py",
+      "sha256": "8bc2196ca9083bdada5b02c92b470a6fe93e809f406bf9977b6a12d249c5a52d",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/__init__.py",
+      "sha256": "ceb805117e98e01e755e629cd57551cd534d2a0f825abffd6f495aebd603647d",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/backup.py",
+      "sha256": "4f87ea6c1416357f529fed07ea15833a82bf868f4f4fb3f16da984023ecb2254",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/config/__init__.py",
+      "sha256": "c9dc3fd6ea338413bf2be326175710466ffbae66f055a344bc6fb7b24a99e397",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/config/types.py",
+      "sha256": "caf866ea9008ee51e7ee27eeb0faf85e7902d68a9899bf4b023897959e4690f1",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/consistency.py",
+      "sha256": "1feaaab32f9019e03fe8a633cedeb2cce0db41adefc6a7e740f10fbd43d41b4a",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/factory.py",
+      "sha256": "92d896c38a549ae96a98d3ccd54a146a2882080f42c0e63bf45f9d73804c11d1",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/flux_handoff.py",
+      "sha256": "4de569c09a7a2bbf5d8e7d978663de5335b640a0c04f3db00475455daa29d781",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/geometry.py",
+      "sha256": "0482ee700cc13bafc5ee1228e833a85330ea22701daec5386284b84ed76813ad",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/interpolation.py",
+      "sha256": "99f678a164b5de0be51c4a9b903cfffd11d292a35247bb9473477b2847a235d7",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/lattice_transfer.py",
+      "sha256": "ef4e4a853c8b036a1e70e7532b749bce72d32624568312d408b93afe4069fb00",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/reporting.py",
+      "sha256": "0743867e8006313dd514a8413a98a45becc9c5750a3c72420d948ab6c8f452cf",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686",
+      "kind": "code"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0",
+      "kind": "code"
+    },
+    {
+      "path": "source/log_style.py",
+      "sha256": "c4414b40fd5a69b37d81132f87d1f331e2510734a87528bf0465bdcfb5cf9bac",
+      "kind": "code"
+    },
+    {
+      "path": "source/py.typed",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "code"
+    },
+    {
+      "path": "source/simulation/__init__.py",
+      "sha256": "0a2d22b9e65460f82d71315bf74536a2efd0882bcaad0c1be34c55fdb668b216",
+      "kind": "code"
+    },
+    {
+      "path": "source/simulation/paths.py",
+      "sha256": "eff2782f43efd879ce402b747a0feb9d1e200cce084dc79de84e4c4177602b51",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/__init__.py",
+      "sha256": "7946123a1028e6519e6d7877ea379973fc269e2bd73c90ca6e21551903df6055",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/README.md",
+      "sha256": "7982855913cdee5b8be35b759980d4cb41b440548c7d4ebd9963168ccc9fe3ae",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/__init__.py",
+      "sha256": "fdb6e8b12f416a85d1d9d26b17b0dd29d184a28ca895604b87237c25995ef0b2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/__init__.py",
+      "sha256": "cf3a9235a0cf400185cf1c2fa55d019cf4d9d91a0daa15732d1a45862884a856",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/diffusion.py",
+      "sha256": "4ecdc68539777ec2f445f5fe03fbe929eeb855dea58cdccd4ea1209f81103de2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/matrix_assembly.py",
+      "sha256": "4bbedecd5c516fe2249a48401d7643c44cb3408d7dc2fcf0c208b8049e99ce48",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/time_integration.py",
+      "sha256": "5adcaebfa917aa553e45e133770a9726b5bb83e8b0cb6ff86ba1f0354d018717",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/capabilities.json",
+      "sha256": "2c3b84af6321c7e826a63cfd941aa524b96d63dbe7381ebe3639382f7b38804a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/config/__init__.py",
+      "sha256": "b778289857f825546425454410b9a8e5821ffb2f60bbf0c9d1272fb7171e85b5",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/config/case.py",
+      "sha256": "621e6bbcf2115119a2ab34845baa2d958415366545c2dc1c44a4b3defdcb9a98",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/config/scheduling.py",
+      "sha256": "741ebeb130d363b5ffdab524b45736ccfda61255dc4bf4b39d92296004e783f2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/config/types.py",
+      "sha256": "fbe641ec8755672ab125f7fbe81d0c3fe54842a612e81cf06b8e7e85cf73983e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/__init__.py",
+      "sha256": "e96ae181ce1a0405689b22992d053131201f085e8036ddba9d129e15b3748da2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/parallel.py",
+      "sha256": "7c59f40fbfb0aec0764208cc9af5c3dbc857e709e6c1604542d5f4cd1c43d107",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/state.py",
+      "sha256": "ee8193eb2e4050dd2fe57247cc070bee1acdf16ab8640feedbec1496664ec3e0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/taichi_operators.py",
+      "sha256": "9277f16cb8e5a12f2ed80d27c39a80d0d9ccfbd22b4ef20bc7e1f13c27bb83ad",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/core/time_step.py",
+      "sha256": "36039a293add0fa195653c0bf95fc5191530eed293c61ddd29b67c651b7dfe93",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/__init__.py",
+      "sha256": "d501c2a88efc0e5c4557b507e864736f63fb8d65d31ebd907d3beb6cda0ebc34",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/factory.py",
+      "sha256": "9e1fc7c54a4b2c0c5e78d37d4f8662eb88932be9394412ad483d20f916098ceb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/__init__.py",
+      "sha256": "bee8bb670cc96f810371acbf902baa48b80480bfda9136e0dcd084cfe73b89e7",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/filters.py",
+      "sha256": "261ba601f87928dc56f05a16f42dbb56fd1877ad459ca9f33f76d486f4a6f754",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/fields/spanwise_projection.py",
+      "sha256": "da80b8a4e35f1df824af028a4b4b8b6175d33f4930e340ca87d47f3b0d067917",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/grid_study.py",
+      "sha256": "c4eedecbf90bd30777a5b2cdd1eb63a2eaf8d3cd9000bfbd20e1e8c297f49b62",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/immersed_boundary/__init__.py",
+      "sha256": "f882fad930ccce5175b4632e184a77581b5a117836bae2902aa89bc7121a1f56",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/immersed_boundary/body.py",
+      "sha256": "821fbf46b43f298c98b4927882cf936baea77a84f556e775b56fe17e3363a881",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/immersed_boundary/forcing.py",
+      "sha256": "b13582b9a9ddcb35e8c985cd2fcfefa2980b1b97a6ac6cad1054b15ba7321363",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/__init__.py",
+      "sha256": "b06e0f76ebef295ee874ee88994826cbffae1bbef36903abfe36dfd7ac0134c9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/async_output.py",
+      "sha256": "66bf081d4d028ed72ddbb74469c85b1629c9ed24a9bccb218f467dc393395458",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/logging.py",
+      "sha256": "1101ec66c8bce16b307eef041c3f36c2f5b7faa7baa9442eb2ec086f5d49b2ff",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/manifest.py",
+      "sha256": "72fb8917ba780ba2cbbe9d35386a7acf5e96447b2cf758b784c33859ae2cf09a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/openfoam_poly_mesh.py",
+      "sha256": "1f21ae1ae92e460a1135619c34a757781ba6492c3b56227b40a69d592433f1ac",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/partitioned.py",
+      "sha256": "5b54612be523e8c5311e77fd38c25a8b1de9e6b7d4cb0f97a427e2cda44dbf6e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/profiling.py",
+      "sha256": "830218a1948c3abf48899d334c4ab71998cd784e9d9ae8cd757bec8eafbecd0b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/solver_io.py",
+      "sha256": "1ea096b935f6faed0aa0ae694295b46368d24a53752320daa2dc23edf67ffaa6",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/storage.py",
+      "sha256": "998e260838857135e3fd560219c1ea289fdb1b277e9ae7684a36cd7cead2206c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/io/vtk_exporter.py",
+      "sha256": "92584441913693a68068d3d2f910345f32be0c849335af043779fd3db2949457",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/CFMESH_ATTRIBUTION.md",
+      "sha256": "6562b24d8d015227684f1dd2783fc0d635af6054b20e7f5545f6bba9996237d4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/THIRD_PARTY_NOTICES.md",
+      "sha256": "606f35420881b7f4b81e37555abfb23997ce75391ce3d857d9c6b1ac7bffde0b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/__init__.py",
+      "sha256": "1ac655145e7af8fc8c68bd59f351b06f7d30617af125d37067b3da0a438ec3b2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/__init__.py",
+      "sha256": "7f273858615fdfe6ad04ee4bc631237ec417c594a8fe06f62d5bb7b48e12488a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/boundary_layers.py",
+      "sha256": "a37b16bf8e5e5c6ba994f9c57e89f0ae11ba30d437f444576bb3fb473c51e3a2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_automatic_refinement.py",
+      "sha256": "945e4614e11cd913eb4ec556d5947d8cb7a5f921fea6340d507c86cb66c1d8ba",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_boundary_layer.py",
+      "sha256": "1feca5e7273a562e65d5dcaa85b5e632b3ac2f1f1ea9bbe27d65de4d6748be52",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_edge_extraction.py",
+      "sha256": "2ef8988adfe99bac8ad528af0e7608c4a40d4a188b188abba0cf3bc5bd006405",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_mesh_optimisation.py",
+      "sha256": "2b34746c0ff277e5a3cc0784ed1b25361186b61018bd575c41ffc2072d523dad",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_octree.py",
+      "sha256": "a858225fd0a8a0c9df3abc62b146303b6eba955ac75cdfb9fdd17449d1921fca",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_surface_optimisation.py",
+      "sha256": "79030c740ee4e5534208572d3690fb43ebac005cd250cc8ee2be52049f2d17f1",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_template.py",
+      "sha256": "f2f7bc0acd6ccb5ee3d0e4940b76664076e4feeaa448fd3da28d0aebc07110b1",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/cfmesh_volume_optimisation.py",
+      "sha256": "1ce307bd1ef6343683779097f35c37af112751d6d14a8e275a9758adb6b928c0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/config.py",
+      "sha256": "157bc5fa967e2396e5d5b7a9b62a50e2b268ca3b37e97f75cd531775cec80cd0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/extraction.py",
+      "sha256": "753457d8c202199ef2437dfcf7129e2b61e511a276c36afcdd9774937951ed38",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/extrusion.py",
+      "sha256": "c8b126ac87afca8348c6e87b92961203888e18e6e29b7e3f2bbe1b18094b36bf",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/features.py",
+      "sha256": "d1afd642d0e6d4ee6ae5f5e77357282315bcfadb462f6b6ddfb6d4ce524cc98c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/mesher.py",
+      "sha256": "17231c113da29055796154597af77f2ec267c93d87c5903f073a18e0a82bc9bd",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/native_mesh.py",
+      "sha256": "f7543898f202f61c6b756a835eee46cddc64e1c9f30a2a35df7b5efe48a84cdc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/octree.py",
+      "sha256": "1610a7c8ab7ad9bfd3a4ab613baccbfc088549b77362bb3a711dd11b90f0ec97",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/optimisation.py",
+      "sha256": "a1e2aa3dad631782ef21cf6f16938f9dc55dd3aaeb5227c417c4582fc90430eb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/report.py",
+      "sha256": "b0da18b1af90151f1919d6f9bcd72bb1d5161186aa6175ff26fcaaa1312b55cb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/size_field.py",
+      "sha256": "6e9dd79533973fef9bd4d693e6cddbca1f96273a191240374acf526c4334cf81",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/surface.py",
+      "sha256": "77a831f10064a89917b8bbb834884b7228981c81218913bc88ed8e126dfaec05",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/cartesian/surface_recovery.py",
+      "sha256": "42d15fe46ee7744975f30e3ef97d039b36b435784e6aa128ed06c64139479ef9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/coupled.py",
+      "sha256": "695e2264cc02a0e50b5b6a7a364928a2b4bf436e7f6512e7ff3ff5bb942aa5fc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/gmsh_importer.py",
+      "sha256": "f9e7e05d35e716da9f546f387e4850ea8f85d622cf0644884ad28db47f0d9c0a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/partition.py",
+      "sha256": "00898c72c5f600ce249788f8fda9bc8c335fdabd380392eea2dbe6651adcbe07",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/progress.py",
+      "sha256": "75495fb441671c5a343ea02e8fb26a28df00cd67cb6c688b8fc39c7692c260e9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/rectilinear.py",
+      "sha256": "3276f3c7bfb06e0c7077182f4afb9ec629917e231e89c9c4e731c62146b38a47",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/surface_classification.py",
+      "sha256": "66781455f0e710fa80f661d4adac81051c00a5d07c7de131912c8569e1a1cca8",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/topology.py",
+      "sha256": "b81a26a6bfb76af687d9d6787f43db1ed4e8393afa5a561265b24c07375db4f0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/triangulated_surface.py",
+      "sha256": "5c4fe88cfdd5cf210926749a789002eb5b5472271a39726a7349d663ff14b252",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/validation.py",
+      "sha256": "77c8054dabfb3820e861ec247a8054fbcf7c7a87b099a4031852dba4386b636c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/mesher.py",
+      "sha256": "7427d6d6b497988cb250d17331ba256b04ff2cfa7ec266c5607d93bb7ae5d2f4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/__init__.py",
+      "sha256": "3368cc06a720014669a88f76299825d6301fc4282ae34972471e9eb0eb453c88",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/base.py",
+      "sha256": "90512f1ac9f294789a405ca4df55df46a1583d21b289c78465e39da098993cbe",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/executor.py",
+      "sha256": "aa8ef9376a75eba7c2cd800c6aba69c5d87fb42bf5513042bc6f7f88c1d5aab3",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/fields.py",
+      "sha256": "fcd9a690aed2a29f137fdf611c32453f6d99bcade678d04ab39426c8b74ef6ee",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/forces.py",
+      "sha256": "ee1ddba118c6336ea45faaebe69ae5526f392d7463c9e7127ef05ff7a233604d",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/postprocess.py",
+      "sha256": "ccf27b50d7c4c8847604a27d2316431d6ed4637846aaa43286b566c87799a37a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/schemes/__init__.py",
+      "sha256": "06b10c60daba02a8a6792dabc8c94292333c3d3797989d3ee9789a112d530db0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/schemes/boundaries.py",
+      "sha256": "6de0b215a6c41bf0d1e7bda38a0887671a7130fb77eadf4b9897804f8468bdbc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/schemes/limiters.py",
+      "sha256": "d03e5fba20563e4ec68367af24030a34ca84f76dc684913d9ac01d4b9be5731c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/schemes/validation.py",
+      "sha256": "f62122d9a9195b9ec056f2807c56d4bb5d2ee2a6426da86768e06c44ff011b5c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/__init__.py",
+      "sha256": "404d5c98b19f5dbcb3c5c325ff2e8894dd9f59b8dbf3e90e1e263d5709ed4847",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/diagnostics.py",
+      "sha256": "f5c88b7553cebfdd0966fc7c4b048368ad61bb852e414130fb961d5202a7acce",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/equation_solver.py",
+      "sha256": "0a25dc724158c2b067f01c93ea8e017320401bf928cbcb091b90031285f71055",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/linear_interface.py",
+      "sha256": "47ba6f92d682e6eed0501e030420135ad3315e6a60d75b5b5dcae6ff9a79b20e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/petsc_partitioned.py",
+      "sha256": "17620d5f3694b1ebdfb7950de1e85845d1555087b7087fc513d3f2c028b1e29b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/pimple_solver.py",
+      "sha256": "dd8f1d4ec30041157d3cfe58a75e6185b9008318c7c1938006c43a9222d28000",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/solve/simple_solver.py",
+      "sha256": "48de8cbc44d987ed359763bb77fdb64d04e43ad0aa9654fcd0ecbe9710193eac",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/turbulence/__init__.py",
+      "sha256": "97344ec16bfaa1d1d60a0ab936acd7e32e21b7912da58a74027dda23912a3d41",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/turbulence/les_models.py",
+      "sha256": "c4506a07172044ef330f5aa91ccb5994cbbd99de4cc9f1bc89074876c04a0eff",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/turbulence/smagorinsky.py",
+      "sha256": "d27748731b42cda4fe6d00e9d3fe4ace3fd0a54f0e25ea47cab49f058282f70a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/utils/__init__.py",
+      "sha256": "c46365ffe532944e4d79d90738aa6c97e132b1135f4652db3d39da7f3b70660f",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/fvm/utils/cavity_utils.py",
+      "sha256": "e5c256d38ebe750d28ceb61c90802030d57850d2278eb06ac6bfe2e02474eae6",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/REFERENCES.md",
+      "sha256": "1bdc90db4bc6936323119ba540a0de772d13ad8405ce8614b092875b04d9b94a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/__init__.py",
+      "sha256": "ce730703a626247e856f8758e77977df12c7b885b7b4d6c13285bd033014b81a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/__init__.py",
+      "sha256": "dca29f05ed7b9c92462e3d1dce3a1b6329ec1eda3c75bea65c3ac7ee574ea1c5",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/__init__.py",
+      "sha256": "902419709f3ea1ef3beaec8fcb85a089b70d8a5b0246de08459d19ea80c6461b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/coupling/__init__.py",
+      "sha256": "242464580c61313c4df439793a6b5d470407c2702d26e21e35b7e75ac6f6dabb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/coupling/kinematics.py",
+      "sha256": "f02586b0fa65b0a16841d5f030c9fae933fde4bc8c16c748cd26af8b1aa53e2a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/__init__.py",
+      "sha256": "163bc6debb3c5c316c16dde8c6529b97896602a3bf477120a9c319df2b0cb86b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/geometry_utils.py",
+      "sha256": "739a715caa00790b1480791a39538d745fd8bb4f8fd880bc77c9c389e163ddcd",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/stl_audit.py",
+      "sha256": "c7debcee90b40a15e5258606fa8be25f0efe57b375dba546b24d036638870920",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/stl_io.py",
+      "sha256": "b6f429bdfd0094adc496dad93fecb8c84b8c09e4f9e59e30bad2bd396f094949",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/geometry/surface_io.py",
+      "sha256": "228b852b5e519060913c30eb6359588b0ae8713d024fde95e835eda65a01762e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/__init__.py",
+      "sha256": "b554c75aec311db39722bd356505dcaa218908c2bee182e1b918ec334d788f78",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/biot_savart.py",
+      "sha256": "2b5b120c0e797551aa018e7b3affc831f58fd542975a30e9c4114ecc88fa16e9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/far_field.py",
+      "sha256": "5abe19ce21c81411158fb5d715344eb396b41d993f8eb37a3d16aaf70fbaa557",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_potential.py",
+      "sha256": "f669b2149c0d0f4613421b465785c950951faaec64432b6ea67267d925064a83",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/__init__.py",
+      "sha256": "dfbf3bdb09fde83c92556d30f86e4a9781926a7da7913811b17a5498a25a6c66",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/diagnostics.py",
+      "sha256": "c1f48b05014958a2c31af3e8c32b24a924a5c07f79ef7a91d7e5567c0baa32ca",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/forces.py",
+      "sha256": "84a376e78baae7d2860a510da00811025b467d5e757c6b63897e3afe69ea6024",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/influence.py",
+      "sha256": "c553c5e3f1eaa684da9626748724da5b59effbf37f5992963e7bbf18a1e1e5a4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/kernels.py",
+      "sha256": "8dc41ab621db3826529da490e6cfb37c95da2079d8fe7d3e4bcc3c79bc2f7c2c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/lattice.py",
+      "sha256": "2eaf44ef9b8fcbc2deca616783679d32f2dab11484dc99e536f5f07160c24d06",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/loading_distribution.py",
+      "sha256": "d7275dda07ef878f55a5d6d2733e86142c379f98cb70cfd4b37af5ab83e50e71",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/mesh.py",
+      "sha256": "6aee971c0b310d67ce2f8fd1fff9fd6ebfa5db22027ee3ce38df328f1550854a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/vtk_export.py",
+      "sha256": "cdc0f152a4c64b6a10eb387e883a7e4384d04930e8646b4dede4823b5baf6463",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/__init__.py",
+      "sha256": "428be277a7cffb3d8de0a539aa093bc979ef26e69965a627f87daceae8bd6a61",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "sha256": "c76f0885aa726b19f6726a46c95ad99c8b16f70c1802ec575801b4c4be6727e8",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/coupling/__init__.py",
+      "sha256": "eeacaf92cf18b16d4fbe140a24bdc8688e4050759ceb8528f64dbf5d8ae777bd",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "sha256": "7fbcc19efe0406f49a06490625040c07384970b385b647ad185b7ced7df208ac",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/geometry/__init__.py",
+      "sha256": "050813c9bb374c496b44454f42024bf83b079333f3529ee3ab6bd5f910120b67",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "sha256": "cf4232fe908b43aff6d253e4e9116c4ff733bdd0a284d6781dfde22131e9facc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "sha256": "1e4862121e4f83d2e79f2ee58d4561f4651c2b3c431cc3e0814922fc0d0f55ab",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/geometry/surface_io.py",
+      "sha256": "f96d00487b3b8f66f5b1c6a4c82a5309fc88ed7d00190f206bd944923c300b6c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py",
+      "sha256": "b197c31add4733653e1324768a15fd7c8cff1cd66e67290973102871c49a3fcf",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "sha256": "3372504a05f47f206220fa9f2c2c72944849878863f17a47f2a1068b4bf76814",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "sha256": "af733e6877e08c8a5602f4417835387812b860d3dd2b13087b222fabda8e9086",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "sha256": "388349768c62978d183e6076f34f17c27861afd600814a70dd03a8ad04e693c9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/kernels/virtual_wake.py",
+      "sha256": "2a5d61582e097d385ed6020026893d29976797d77c49c8dd52a1ea0e5ff87dc4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/__init__.py",
+      "sha256": "94ab51607e5abfb3847ea5e0562c2b6f58066d6bc208f8711751b18e36cb2b98",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "sha256": "69f265ce1d8f2bb484b47c6cf66ce9885aed9850eac5b3f3301c296d3072c195",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/field.py",
+      "sha256": "1314b57926504cda77bc37a5481ae97da6464613f378f16d22ecac5cfceb2c76",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/forces.py",
+      "sha256": "bbced3dffb2dfe32c11a1f4805552d20fd7f15554efe9f5488f9242bffbc0df0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "sha256": "d370cd386bf7901f6d7b215da3be26fdc31b506ac185602ce3bacc5b2e47997d",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/kernels.py",
+      "sha256": "b6e5603a810881b85bb6ecd9226985819cc76e5922775782b0071b0afc3361f8",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "sha256": "3422b089c07e0009b2e39217d49ef7979ddf3538f00d4d6b72ea0d44ca44c8a0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "sha256": "bfe8f0adfd865d31a2ad4acde70e34843b639c372ea258ab2116e204ab15591c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/loading_distribution.py",
+      "sha256": "3b9c8b0cb43d641bbdf36eb434dafa0014f5809681afe2baad5e849402e5d9c9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "sha256": "c20315f5ede43c1b4a1397b0e970cfc36d771483693af8a8191e9bd03d4583fc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "sha256": "b1d8f0b2b9e0d656924208bdde36065f002bb0fa019a7fef86fc4ab6998695ff",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/unsteady.py",
+      "sha256": "1e0983eec070798918cbb4473732bfef280f7932be9c32a537588c5fbdee579b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "sha256": "4367773ca17b14befa429f56eec77bbb5ecf181a6a14c249def7d5089fba4230",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/vlm/solver/vtk_export.py",
+      "sha256": "5cd3a72b366d88b196741a1578b92a3cd42afe190de96da8aae66c1adbcf4f28",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/__init__.py",
+      "sha256": "dbd8d878b94ece756c75f8f645a0143dbac80b5caefc498e74010ed5051b66e3",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/artifacts.py",
+      "sha256": "8338e40a41fff32f43ae8005c196129f9cfe7a4a14e54beb707220aea5c41c19",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/case.py",
+      "sha256": "93cee7c6f9ab1de1bfc934d769d55d01d29f62d1f8a62d0c0bc8901914e66b9b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/constants.py",
+      "sha256": "aeccadffabb4c454a755c5c2c9ad16b6511b26aeb8071c057aaadcdfbcce2e6d",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/diagnostics.py",
+      "sha256": "11b3ce485d51ef95e8f40a2b656c05b28710d35a741dd8f207f0934e22cf211f",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/divergence_relaxation.py",
+      "sha256": "5250cf4da4825b4816119bafad8574a27a948de3beb8b4e6cb24044f4653b5f1",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/filament_refinement.py",
+      "sha256": "dd762c596ef818280e0d805a8fd0b13d11b068731264fd48b78bdef2d4ff44e3",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/fingerprint.py",
+      "sha256": "9303b848e77d539006916adb936de6af719709b5e92a277400497a692f84123d",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/health.py",
+      "sha256": "33128abf2589258d77a29b43b5dc00cfd0bddcc0cbe13bfff80d6117fd8e5497",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/setup.py",
+      "sha256": "0e55c03d2351be4b4b5d448a69360fb48e3f80606399962ef8af75862356eb48",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/stabilization.py",
+      "sha256": "d08a198b5580c2a3ba2579cc67780f9206db38b9084494ae8c47938fdac865ce",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/state.py",
+      "sha256": "38f2bceccb4b875bc527ec0535ec4250153e0edb9d94645208b9836418ade4b9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/turbulence.py",
+      "sha256": "df6ca4b2358eb446e39e59ad34c6f5dc97d58dfaf757723ed3ecceb84e0dd5bb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/types.py",
+      "sha256": "c55e6b713dea93586bc95c0657453cabbef2a0fcaf9148e06d3d37ac03558863",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/config/viscous.py",
+      "sha256": "2cece8af32918d46270357072ee7ce4762993db57e7964a351ce090c0e4967b9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/core/__init__.py",
+      "sha256": "96a8bf64935511792adaebf2fa83e4b2460dbbd81b845d60db9c644b32540273",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/core/validation.py",
+      "sha256": "77326f0545da6d82021c8c66a2df9d32083e22fe386e1900abd9704cd57c0f84",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/coupling/__init__.py",
+      "sha256": "446c86473805a0ac8dd8ce526db2fae88f414cd588433b6c2a73cbde0ab15972",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/coupling/stepper.py",
+      "sha256": "1c91009f8a0b303beaaf066bf58d2cfa8e30375f8ac764eca9325eb14ce60d07",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/__init__.py",
+      "sha256": "5b09ddec1ff2eab1425d13bb2c0aa4d143ff593704ecfce3c685960297a62181",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/axisymmetric_field.py",
+      "sha256": "3afd6fd2e40850094f40aa8cce2645f6c836e917d415101b51017af2a0a498ec",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/conservation.py",
+      "sha256": "690659d115262fff826fe4f370846baf674cf5e7d1df1cdb484776795afa6447",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/flow_integrals.py",
+      "sha256": "c1cf2220b784743469f7f721ef2e171c6eca1729dd12cc67ccdbf0e05ce4c836",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/offline.py",
+      "sha256": "c1506dd58823af7bfc9c69ea18b4c2c22df224feea35785290a8aa84edf0260e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/resolution.py",
+      "sha256": "b02c51c605866342e2f9c9097bdd34acdc6d928778b594c801ed1020b2571d0a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/diagnostics/ring.py",
+      "sha256": "17a17b50db6700f0e4082c0f8ada1be2908e98b6b60ab8dbba781d8919eabdd5",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/__init__.py",
+      "sha256": "239a70855b7062f7561488075c0c756cc086610cb04bed31f6dd0768ca9da481",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/data.py",
+      "sha256": "63c3f6ac7b032b6b57f0ccb5219e0297201aa014cd3c1471374ae5d3edc79e9f",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/__init__.py",
+      "sha256": "15f2a78b2fe50074fce74b6e7908b3dd20ce86b7063afb86b29c46d932b42882",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/_common.py",
+      "sha256": "9f0e9af0482017f46df133e2ee529d3ca84933aed4f5960f2ade27264f4b4c59",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/cylindrical.py",
+      "sha256": "d654d6f19ada950298f4484fd794685d7c7721386e6960c346cdfd1a981d1225",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/rectangular.py",
+      "sha256": "3a91f8e4fa5c6d27764409fdf09cdb5540f77818700b3ae284b1b1c2a14513e4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/toroidal.py",
+      "sha256": "70597d9eb238a73e25b6d3d554e9ec14be3c750508c0880b2c647aa83de44083",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/distributions/triangular.py",
+      "sha256": "46aec0665f6bd7c3e263b54faeea1a86dcb01c7a7969a85a1b3df4a1ef839de0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/disturbances.py",
+      "sha256": "cf538ac7b175a39a40f13f6795ccea74a0caabbfa79b7feb0da04d6c7b132690",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/__init__.py",
+      "sha256": "88330ea57512c04aab6cc41edad3e559d47eed9047f63fe089b31223a695f85b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/_common.py",
+      "sha256": "de95df6a6619fa5786874c1ac912d7a91e404ba944b1a4d555f20fde4a569da2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/_shared.py",
+      "sha256": "40b5f75cea3fa35c348468dc7003553c1cc96e1ec0d00934ad7b0cc8e7ded477",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/doublet.py",
+      "sha256": "88285b4f7691fd993912d6181459fd7e524c16800fc0fd4d1a2f44a4d5180865",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/filament_tail.py",
+      "sha256": "8a0d00e451639337fbbf4b8eda43c40f313439ee0ba28421bbf0ebd4cb704eaf",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/isotropic_turbulence.py",
+      "sha256": "340bf7209cc819e32b0bed5bf819b84f326201f8ad5e49e10916fea51d3bdcf3",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/taylor_green.py",
+      "sha256": "b5799bd96af814a1983c0ac2021ccb8d977b5e0339351076360c68116044a2fb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/vortex_filament.py",
+      "sha256": "dd99518ddda5016887ed61a4a6ce68d9112e8dca2e467aceeeafe277dceb1ec3",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/initialization/flows/vortex_ring.py",
+      "sha256": "f9ff4d76804ffe387f9e6564c36ce84c6170e42ddca35c5177ecd7801b9dfdac",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/__init__.py",
+      "sha256": "84a154e16db703e18ae114ca793227b6fbf465f23eaaa657f9081e81419ab9e0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/backup.py",
+      "sha256": "0be1fc30bf9365af6c41d9b81746afc6a6f7f5d53be7f3326522ed2f4ad1fbce",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/checkpoint_audit.py",
+      "sha256": "94c2c5a2933719870348649aed6f9eef018f18ad288bf4a0a921de8f6162462f",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/logging.py",
+      "sha256": "06b64535d692b5b2e2dc0b5a5f73b945aa39d25c14cacb88ddc9f20705f2047b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/manifest.py",
+      "sha256": "55766b5d5dacb90b3dbe6030330cf2f329fee1e511e616cabadd8fe8a56569ee",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/physics_events.py",
+      "sha256": "65a9f5774f02bd66cd5d45363c581c85f26407aa836308377591ad5751638307",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/runtime_profiler.py",
+      "sha256": "b3195e03d96057cb6b6e81795a0550fc873f4c6e77bb652ea4c8963817114bd9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/sampler.py",
+      "sha256": "02eccc202071a45abd6b423250214bd261374f8a018eef6e6640d2348f98b48a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/sampling/__init__.py",
+      "sha256": "161dc518b1b2cf9f87b3146e80df54db9597e21b1892e64a8087ff917aa624ce",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/sampling/field_samplers.py",
+      "sha256": "ef553fc8b0a673c79730b132bff0b475739bdb18142b37785ac62c1889d8e608",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/sampling/schedule.py",
+      "sha256": "0c4c61d6ce71cb3572c812e1bff119c0c5c08897b87f784ae624ffeddf75836c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/sampling/vlm.py",
+      "sha256": "1024bbd8a34f36daa5fc4ae56a4f34df1358adcfa24f6f285697006f70cc04fc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/solver_io.py",
+      "sha256": "7264896363b344d0971302ca00d2f4ccea1d917d5a849ea0d44aeab5240b450a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/vlm_backup.py",
+      "sha256": "5cc108f72e55782088e256dfff57ff65fbca6d68c30217ca645cd5f7412be6f0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/io/vtk_export.py",
+      "sha256": "fccfa5b4f4816311093e115d0149beaa15266631ebe56607d9f4836845687b27",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/THIRD_PARTY_NOTICES.md",
+      "sha256": "1906c9581aed61a9bdc8b15bf8c57583405b8e235ad64dc6eb4de90451ccfb67",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/__init__.py",
+      "sha256": "00e9f56abbd91761392b3ee71fbcad4ede34918e4dcdd9f5471b74d90c1628d7",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/base.py",
+      "sha256": "f1451bc224c93ff743d592a17514ce5205c9c4dcfbe1c89b2d58bd9ee5674e90",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/gaussian.py",
+      "sha256": "5b116de8748b8c3d30411bf50f8e02060c415acd0d4f9532a8f595ba46b62803",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/high_order_gaussian.py",
+      "sha256": "7564f344066287c38548b7a0eff246e5fdfc4d74ae7cd1e6399c687101defd88",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/super_gaussian.py",
+      "sha256": "8a5a79bae72a1ec9341bad645bc82b36822c9d1257c894777cdefdc7332d5ebc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/winckelmans.py",
+      "sha256": "6275257ef2f5dd87dd972501ec3deeb2bf0d655e17329bf123d01b17d7db4f94",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/__init__.py",
+      "sha256": "00943d7c394f293a33b55b47b4068d915c5f969e3bc3236713a14d17f23a6303",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/fourier_integrals.py",
+      "sha256": "0368aa63e4dc3fdf3906a053c9fc0b53f0cc8f1ddb008f802ea8a3d70b0c4262",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/kernels_common.py",
+      "sha256": "61c883b3e7f888f787048b1cb84f69728291b11b11db44cefc696faa2459bcfc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/particles/__init__.py",
+      "sha256": "d05ae19d80110c38eb95aba024d16b764a394958977fbc27aa2993f2cfd26708",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/particles/container.py",
+      "sha256": "f9ee26d49f50afeb0207a10827f0faa982990f420bd2a9378499c18e900d1a97",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/__init__.py",
+      "sha256": "4d33ef0ee7e2c1140e8a525dfd7c42cab77ba98dab83f1823e7fc8797c62a556",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/base.py",
+      "sha256": "a86821e9a303d1165829d8fbe56341411bcfd996ea15a878d1e078b0b8d39b95",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/__init__.py",
+      "sha256": "e5f3950ae2a997f66634170a5a3412c4d82d5ac6e66cb4785d7058c8851d828f",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/core_spreading.py",
+      "sha256": "76e1663a7426437a23f1abeee140b1c39a151e57fb00c2ae062cca5d582295dc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/random_walk.py",
+      "sha256": "71ee6e94e15b2fe3480744bfacc7679898d586a1172c71d50c0fe3ccb1f3f4c4",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/schemes.py",
+      "sha256": "d4d63997ba1b5bbf2db36baaf712b10668eb1f5241f58f0aba583a4ccd422e14",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/engine.py",
+      "sha256": "f23e9298a4f6855fabbe96002d3846e079361114323f2e64c1fd51077273074c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/evaluation.py",
+      "sha256": "f4ea28644095170c6df28f8ce0482bf6498750b0b76ed3b2a1d688044dcf8339",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/events.py",
+      "sha256": "86fbf24049b7fa357ee78cf9ed167dae4d89601447aa668c45a285cf52f0fae5",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/__init__.py",
+      "sha256": "656741e188cdda68a7b31d4e97d9c9a7137b94968bd0652c9127f5da074add60",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/base.py",
+      "sha256": "f6cd17bcf8cc0aa339cf42557fb628ee8b4fe8b809081f3429fa6026de7b1f36",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/direct.py",
+      "sha256": "b746b6e306e4eaeea9f8169dda57465f9f10e41a825dd6b684e3cdc5084601b1",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/__init__.py",
+      "sha256": "0541dc7b29e4111df217a9adb1f711d1823fe6b3f35159ba9af41ac78e023e38",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/device.py",
+      "sha256": "bbd70cd6f8b2a0dc508197b6a3337db0207cbdf68e188ada38821c3deb86aaa6",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/diagnostics.py",
+      "sha256": "8e0c1d492e4dc9e67b742380d92941f2f2529de5df58f1b2edc0e855f63a867e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/interaction_lists.py",
+      "sha256": "40e9da28e37ab37c0092041f2763af06b16f5c08184fd748b463adbf9b6be5ab",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/local_expansions.py",
+      "sha256": "1df847e3e59a121f698a97a0ada7536db5f3a1c7531df6d8f3722f049d8dc764",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/multipoles.py",
+      "sha256": "82f75e5e9f6170e45de221402e806ee2467a9806ef22b7b79e9bfc54482772fb",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/near_field.py",
+      "sha256": "eb876496fe005d10c07a79b87470f276695ed088bf23da0273420e8b80cef1a0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/reference.py",
+      "sha256": "10497b6b0a0fc13149deb9772fdc07529c6d0637bf01a110eba0b7977ff63b68",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/tree.py",
+      "sha256": "2591c7144287e566bb6ed7a0291b582314817de1af1947097378d5a353d9645b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/stretching.py",
+      "sha256": "3ea8684db6c60b616661317fc4182c1b0a46f96d7d99410db304a1f88f77316b",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/treecode/__init__.py",
+      "sha256": "7dc8de4a47f7c32d7ce6b89f000d97675cd71d778e395afa9d6c37cb3d1e3ff5",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/treecode/evaluator.py",
+      "sha256": "64d4dc7d1e9cb9751900d1fccdb8710f6e338a7eb26cd3d149da66123bef6688",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/treecode/lbvh.py",
+      "sha256": "b33ab57649b4296ba818a6d6015f2df65dc1660536dc89e029b78e6e0acb0aa6",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/treecode/traversal.py",
+      "sha256": "0a80687178c33ce748de492075c8566921c1b16ee9fb7fc5a933d2264c5dfcc0",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/treecode/tree.py",
+      "sha256": "90101b8b43eaa4eb312a8c12232b6d843579cefd0cb8fea7be9f9dea634a8848",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/runtime/__init__.py",
+      "sha256": "1c7a97b10059b65c9bd4d0d0936be27860dfbec5e5f9c0a2e56ba6ac8d1a2192",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/runtime/backend.py",
+      "sha256": "cc4878b6c458ed7a3b98f6b698a2734128686106897bd64edcbbab8e71c2798e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/__init__.py",
+      "sha256": "77c57da52416e3eabd9ac4d5bfcb576b85c7fd3b3b7e233ebbb11d93da97f2ff",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/context.py",
+      "sha256": "f02b2430d29423176d32c416c15afe56169d81aa3442c6e5139b1f6bd4bd85fc",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/divergence_relaxation.py",
+      "sha256": "0ac7340da35a53a63c6e2f710563b7dd73da86e376311b995df268039ad2b96c",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/filament_refinement.py",
+      "sha256": "c10409187d6c9ee27e053c7eb1a04d3b20f1441de2975ac53eed6a8547e0ead9",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/operators.py",
+      "sha256": "48523231105271489d08f328717c46c5cbc53bfb66363524ea76570e4267fe87",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/regularization.py",
+      "sha256": "efbd70711ca740bc21ee07a22b2e384f71c707cab41b1d0c83262a4460664d3e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/remeshing.py",
+      "sha256": "c8a6cbc2afa2c1595efe34c469eb509f70a4d30d1ad32f03881bab7491c06d07",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/turbulence/__init__.py",
+      "sha256": "7378fcb9a0bc8b40353e3f09875ee3a626d94c47c31db230a01b19cda3d23665",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/turbulence/smagorinsky.py",
+      "sha256": "fb217a303f4f4e292f266340873f0a32919ff32f019d874b836c9c041fd7670e",
+      "kind": "code"
+    },
+    {
+      "path": "source/solvers/vpm/turbulence/turbulence.py",
+      "sha256": "4396fa93247f98565a5f486c69e8340f0534d03de6469d85af36dd6697e96ebe",
+      "kind": "code"
+    },
+    {
+      "path": "source/version.py",
+      "sha256": "e630d0382c21fa0093a124bd299534d27715fb1e48192a4572e24eda7f42d104",
+      "kind": "code"
+    },
+    {
+      "path": "source/vtk_output.py",
+      "sha256": "69693a668e58eb55180763ead98a9d33b8097a96760744fe8d99d2aefc574a2c",
+      "kind": "code"
+    },
+    {
+      "path": "source/write_precision.py",
+      "sha256": "8789f2a05161b8b52ca0a58ca58d96860c6210d9f2fa9ffe6ce825185b9f0378",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/accepted_flux_boundary_3d.py",
+      "sha256": "0d123a9fe4797b570f4cbd99e7649f41c3429840f27322f5059cda96d1a1626a",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/boundary_operator_audit_3d.py",
+      "sha256": "ac038b1ec9d4b57a46ea190f90ca5d1075a5e14d5f731dffda1b7c25b5681834",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/boundary_oracle.py",
+      "sha256": "9b2918a4ece25a266306fcba51a2581261ae6c96e82bbea9b842d1cb1eead006",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/build_native_velocity_curl_integrals_3d.py",
+      "sha256": "77595389ccbf2cc28ca1e881ead81c09a8f1432fd4bbcb96235e90bc58494cd2",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cell_integral_region_audit_3d.py",
+      "sha256": "c09bd26547fa48303ad6bcc4e52768406cd787bfe01b903099f4577b45ffc5ff",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/compare_integrated_velocity_curl_3d.py",
+      "sha256": "f7a7e6ee892f61f914c5353a09debe94621d36bdd199d783a536728f00ba8f2c",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/compare_manufactured_induction_3d.py",
+      "sha256": "ef02996584cc0fba1af280358151b662a32f2ac8e319d010566a77a8f46e39d3",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/compare_manufactured_linear_induction_3d.py",
+      "sha256": "de4986d1212aac4aee375577dad1c94d82a219e99272cfdf2c8324baf5167bf8",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/continuous_curl_hodge_3d.py",
+      "sha256": "456683bd8c1a4648fbb0ee84c5ccd46ed9af638bdf1a6a0f219ed53048c3cd44",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/continuous_velocity_curl_3d.py",
+      "sha256": "9583357dea01b1f64b22b3d4deee6cca0f675ae56a867e989d7663890649eac6",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/coupled_boundary_stage_audit_3d.py",
+      "sha256": "373b5132cd9f854a0652afd0d9e916f51f2d8a9244b726400bf10e3f99ebfe26",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_quadratic_moments_3d.py",
+      "sha256": "9b0d854fb7fece59b91fc043bc7f40fb67618de5af35bd9a84bf03958b78afd3",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_quadratic_overlap_3d.py",
+      "sha256": "35324afec5cf00dc9059e892e5218ef3208ff234d969ef2eb384b9bda1b575fb",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_continuous_curl_induction_3d.py",
+      "sha256": "bd4e5f03b570520076e1bd4944f4df5af258721d60ee28765fb5444f196bba54",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_continuous_curl_sources_3d.py",
+      "sha256": "86897536f5b8343c4e3970dfd2a28227a6cbb583c35d4a3e9d1a5fa0eaf6e3ab",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_live_reference_flux_replay_3d.py",
+      "sha256": "42ab25c85307e2f8842e5fe7d3c2e34239444b7296a467483406eb3355927c55",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_manufactured_induction_3d.py",
+      "sha256": "9bf737c6e3b7dd89e88e47cd8d960f77810caf4bb1476687c40db79cf0ef733c",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_manufactured_linear_induction_3d.py",
+      "sha256": "d40e593021da90ac6c76c1b6b34d9e00aa113cb40f45bb4eb3489a476155bb41",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_moment_panel_resolution_3d.py",
+      "sha256": "08a6050dded60cb85d63117a0af060c9f25282c39f75dfd3920d59b17c1e52e1",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_impulse_3d.py",
+      "sha256": "0b39e596f63015cdb5a492cb5943433b34dc03944062f5cbe4f7f62639c49979",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_volume_induction_3d.py",
+      "sha256": "a319db351d50f996217084de574a634342cc08e880787addf1cf6aac12b1e969",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_panel_resolution_3d.py",
+      "sha256": "80889d93ac897802c4a959f2ff77fdeebdbdf4881ccb8a6f7f023849d75abc2c",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_partitioned_volume_induction_3d.py",
+      "sha256": "910d90802e606a259e54b1c94cac07ce39e9abd5032833ff7cca617517fe9c32",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_quadratic_moment_reconstruction_3d.py",
+      "sha256": "0fe3225f9c41ab64dba04605f5d6752f85a0675302216a6795c3bfdedf1dd597",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_reconstructed_moment_overlap_3d.py",
+      "sha256": "73e5ef7fc7af6dad94ef993fe0a4359e7e3154b8adcda719bf18b774da4b1288",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_reference_flux_replay_3d.py",
+      "sha256": "ffd6fc068b8bb1bb0ca043b00d10086807f755f8c7f2ee94a30fbe6677337b64",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_sampled_face_trial_3d.py",
+      "sha256": "a654f5ad4e8d15c67356a84b59599a5d786c983ba552dcca4748fc8cb74f7f54",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_sampled_native_face_3d.py",
+      "sha256": "fde3acc981a5ac62a7fe7d3fdd3491cc00272aedbbc146e072ca0b81ae661524",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_shared_trace_induction_3d.py",
+      "sha256": "5812c5666cceb2811181ffd032ea3467e3c2a9aea5685e20c4ef309e52ac5346",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_shared_trace_sources_3d.py",
+      "sha256": "2187af035446f5eb1bd232e4892e467aa5c2eb4c56ea3357381a63d859e70020",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_snapshot_induction.py",
+      "sha256": "30c5d9371460b527b3194c0134bcf7d4b4e9168811d107d54070a7b10edd524b",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_volume_overlap_3d.py",
+      "sha256": "d5d2255d0d3d0935eb4fef2a09c36e8af2b9acbd7d2f58c9ede6f3175108a5ac",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/cylinder_boundary_oracle.py",
+      "sha256": "6b5b4783f5ec7d960f6b6f8afa06f5b6b47bf95af2fabfeb70d39b0804e4867b",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_sampled_face_boundary.py",
+      "sha256": "81ca96ce158e2f3ae2b2dfd3bbc4b972f04278a7604dc370fb3b73e99b2b6cba",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/freeze_coupler_workspace.py",
+      "sha256": "1138a8db5a098c97086c32ecbc1d31bc687190aee1417fbc7451cf3ecc702a3d",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/induction_derivatives_3d.py",
+      "sha256": "74d8043a18b7e1eeeea4dd384ff7a16c78f5965da81d1fab5a0e6ee55c9e1dd3",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "fb40eb90f5fd78985b8a9833b940321c929f6e2e4bc3b71cc60c571b16247843",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/manufactured_cell_moments_3d.py",
+      "sha256": "8abe4c38bcd0b7f195b31b5d2f3b3c66e36505968fd1511fd8ea2c9cad629130",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+      "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/moment_budget.py",
+      "sha256": "21518ec2d2464f1979549c1c496bf1a4414e001f82a23ca02f1cf92736fa5f9d",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/mpi_wall_geometry.py",
+      "sha256": "27468382cbbf06acbc6d692b89a66ed45537ad327e6d07bc8b94a060e0d1de74",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+      "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_cell_integrals_3d.py",
+      "sha256": "c5c95c98e6962d770f0d72a63476a7d06a06c1cf93794a8ae3307b1310145471",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_curl_3d.py",
+      "sha256": "9659e463b9be35bf4947d2c6d6b22d1c163a79198793fd3ada6f1f2fc23dd53b",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_velocity_sampling_3d.py",
+      "sha256": "3b8fee2307024b08adef16ce8b012a356b38917ac9d27f2507ea7eb965ebe99d",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_mass_flux_audit_3d.py",
+      "sha256": "ddc9801e17a85ceee2eecf65ce1842aaf92eed28d5eda2642846959ca2d533da",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_moment_reconstruction_3d.py",
+      "sha256": "9e3c3ea588f8b2728024783a6ffd7b1b6eced78b2ee80287d6889bd0ae33a9d0",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+      "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_reconstruction_3d.py",
+      "sha256": "b2292dfc26414ef973dee2b11e0100e3320627ef2b0e5a5a75447a7581f2a407",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_shared_trace_update_3d.py",
+      "sha256": "a7293714e591db3998daa4694b7185f6863ede4d9fdb85dc6432344ace86bdb3",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+      "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/panel_derivative_precision_3d.py",
+      "sha256": "645c0d108261ed5c518f3c30c3bdee7a0821b83c44d5fb92bf01e80f496a0e13",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/plot_cube_3d_study.py",
+      "sha256": "4e1d871f165e796040b4d63645ef8c56eda40a6182ee967a9fedc75501d45c7a",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/plot_interface_iteration_3d.py",
+      "sha256": "a01429b3f3a1011b29bf2455d2a2ce0487432a92d53fcd4f7aadfdb51e94a51f",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/plot_interface_trajectory_3d.py",
+      "sha256": "ca8b4bb7610e7f5db1da9d42231f267acad3a2d723dd46f7534a93014c8b5de8",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/plot_panel_precision_3d.py",
+      "sha256": "a83616a69c0f3ded6b7890ae9b93066117e609c18397cffac0054ba529388c08",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/reproduce_transfer_defects.py",
+      "sha256": "dad007e3a136d3ba9feb555c9cf1bff92c557110179d36dfd27229c4c6477f7d",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/shared_trace_curl_3d.py",
+      "sha256": "c8f60e66a71e1d4a03822ac4d5768021309e7a57798889478d1bbebd171b3898",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/shared_trace_response_3d.py",
+      "sha256": "5a7ec301415edb0206dc96f51cd9154c53393e12c5653c35387c9831db770787",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/snapshot_induction.py",
+      "sha256": "5c941a0d1eda52e5ef16d4a02e26adf7ac56c2edb25b5e297b4fee9a3afcde1b",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/stress_curl_3d.py",
+      "sha256": "ade243bc69a8ec2a60212987a926e8b7a4e195fffcc792ef4e1faa1a09af3284",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/variable_viscosity_3d.py",
+      "sha256": "d1639733c14d36eed02ffa3e0923de54e638c3a58835bbe1a87376670854ceaa",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_boundary_quadratic_3d.py",
+      "sha256": "c6337c0111cc2d83217b8c2e64d47f3eea942c02afd3e21375cac38972fbccaf",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_continuous_curl_3d.py",
+      "sha256": "bbb5715ac2744067994b8c5cb9ef38a2d6a30345b7605ddf0d3035778616604a",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_interface_iteration_3d.py",
+      "sha256": "7370daf8819e0bfaf77e7b4a551e0aee918a3de63c492b234370ba7bdea9881c",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_moment_panels_and_quadratic_3d.py",
+      "sha256": "7374778de5d001b07eecb43aa7076f3a174e780821639c2a37fa91a491577689",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_native_volume_3d.py",
+      "sha256": "5ee1844b4d9071ace3d22e8608b26d8a51637a61636b9550529039b5d4f93cbd",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_reconstructed_moments_3d.py",
+      "sha256": "423d53eb5ce71ce46b9e99b66089ef43ef4569dcc79db341e2e78837e76d94f1",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_face_trials_3d.py",
+      "sha256": "c1f4b4ed1b6cf9ed256179a86c503ce4690c73c550095f94eb627210326c7b89",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_native_face_3d.py",
+      "sha256": "1a5d72d7fe6cd49776cc9ef904aa9bbd915d93ebc0ac28fe5382e2d3372c5d27",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_shared_trace_induction_3d.py",
+      "sha256": "4ba1f65de98138406462f3e7d55174b78b5f4303716f367ff7ed450d34c2e830",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/.DS_Store",
+      "sha256": "8c37a4e7a479470b5751ab43431c2859d5dab61e4504a620894997dd492d6333",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/allclean.sh",
+      "sha256": "a024cf90361f7d8e46556e978bb3daa70673114712343fda567ff4e1b602498b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/allplot.sh",
+      "sha256": "aa32c91fe5f3f21438f7f1d147d110cec7da88dec7854691f448536e1abe58d7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/allrun.sh",
+      "sha256": "066b797b80bff269895147e0b258f38c69dce10cab55819e00f323169df9d91d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/README.md",
+      "sha256": "bec0860eb12e714e97b93f40ea7a5a5cd8071698e9e9baf8cabadb9603d3ad31",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_frames_util.py",
+      "sha256": "466b63fd3881a21e88d8ee65db227ec809ec67c8c7739367c178c7977fa920cc",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_plotutil.py",
+      "sha256": "02a567459cc041d20e1aa559bb71b626ea237611ed7e4938903f0af2000d3da5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_reference_util.py",
+      "sha256": "4f8c40b2251d814d2a8058e431c81ec478fc7588e16323be0a0f0ff9b16ddf14",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/analyze_renewal_oracle.py",
+      "sha256": "5960446c247d570d28b0e7cdf27ffdd88af34fb3b4b6b39656364df0381ebbb0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/audit_mesh_geometry.py",
+      "sha256": "0535863a3c0485a01809569d5b425099ad854c41942879e535b2f60811318cc1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/check_run.py",
+      "sha256": "f7f9a0bc94feee09962079ac9335795fc53bc30e8f7efa85ed06af16b028f41d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/diagnose_wake_handoff.py",
+      "sha256": "7c5ec44631c7c3046060af4a8f804293fb08d0f7bdf696a39efd6ae924a58a15",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/extract_profiles.py",
+      "sha256": "8d0c0ba9cdf1c6db5ab61840d67c54eb3e346f5ae613868b1d00917a4250ee57",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/measure_trial_errors.py",
+      "sha256": "27ebff1e2bcba06b1d825124593e5fa3ca5d57fd86ef1e800637479627bf462f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/mesh.msh",
+      "sha256": "1404745fdd297dfad5571988dd4c69fba530650c92772e8e60480650e85d1e29",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/paraview_state.pvsm",
+      "sha256": "9d1d564318b5b8ba73a1d483932bd05edd5c96055fd073693e974058bea445fd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_coupling_diagnostics.py",
+      "sha256": "78412471a361eb6497928f87e3961470d466aee3b3ade5801ed5ab5408fda92a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_fields.py",
+      "sha256": "d960e9af91c240954721149dbfeb7e0666c56727098e92c26493e2c09c364249",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_profiles.py",
+      "sha256": "609b2401b4c1277ac99a47ec6f9b22448e7e6266a27aa24fe8140ba200aab849",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/report_l1_acceptance.py",
+      "sha256": "1c866d0ee194cd1cf559f6cba11bc05138b255d72ce765c85df76a28603e572a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_calibration_matrix.py",
+      "sha256": "385529901f98d76dbe51e5ffdc36cb639cb625648ee45536e5fe8d128e4f9b92",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_l1_lattice_trial.py",
+      "sha256": "a8bef86be06cc82c05167b921373963f0390bbb76f752d3b2a8a136bd8e70e9f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_trial.py",
+      "sha256": "6821f245b8ea7c3e3e274bb5ff74c82764810f6daedd9f82b290fe5bd2bc38e1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/forces_history.csv",
+      "sha256": "80f22bf05fa7cc2ccfefea9667961574b1993f846b914974ec0488a76730d081",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/fvm_centreline.csv",
+      "sha256": "af23a35f123d541f2b0f93bc4894e0efebbf059c1f14830d773bdac2098c0f37",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/fvm_offaxis_y075.csv",
+      "sha256": "131317bee4c86c39ef462a3542dcf2b61574e751fe3bf6772e326ae7ab05d985",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/fvm_slice_z0.pvd",
+      "sha256": "ea64e6ca0a8344e0f08fb27c28c2a87989237cb4e87ed6b7dd4a26da3050ca9e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/fvm_slice_z0_000060.vts",
+      "sha256": "9fbf358fbc83d9d91da1173c5f60335f6edf448f351480a2e615fd4046f9c201",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_centreline.csv",
+      "sha256": "07ccedf8e4152b6ceb32133bbc8cb43c5315e215227bfff25e31cd6575a0f9fb",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_offaxis_y075.csv",
+      "sha256": "61341eb38a971a01d811937480def3fdfd419e69a02a57d11035e98fd4e88069",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_slice_z0.pvd",
+      "sha256": "118935bef75c2b1dbc2a27e5157762dd1e21e608b7793321c54cdda16f2fea4d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_slice_z0_000020.vts",
+      "sha256": "9ca1d1162e66465c864a279d3990be277a8910a3d8f1246bbc62d7c0761c376a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_wake_slice_z0.pvd",
+      "sha256": "6886599190c6503f0eb2d380ce0888a678e1e7bda32edf4037a28b77904a73b1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/samples_archive/vpm_wake_slice_z0_000020.vts",
+      "sha256": "c3dfb09850eeca7177450413feb2f8df9dd127e6980f6951d17d8a24346e7388",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/validate_plot_inputs.py",
+      "sha256": "4fed3d0e13ea3b5bfe0a91c1be92af75369a2525b4b53e2af0443dc773e716f2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupling_diagnostics.png",
+      "sha256": "9e3cbd3219155091c05229765e6a3f8adb44f78d3afb7228f45d798d03b8a961",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.10.png",
+      "sha256": "237abd4c5e380fb764897657ff0903a01a0e812bf86259a56f76b38bde96db4d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.20.png",
+      "sha256": "257ee1609063b3762fb9128b5aac4b57cf137b2e33497c860fca77861e9c7cee",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.30.png",
+      "sha256": "cfd342a81f7d4e35be24f6d076ffe82e6375dd4ed6b0d0f681dfbf03cf0cc52b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.40.png",
+      "sha256": "bfcc1173de192d0db8d845c68a90629470a8817be90931311684bb6a33e46bbe",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.50.png",
+      "sha256": "c33f6b2de2f2a6847f54a9268e896d183bd529f3c256d095a04e23a9593bd19b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.60.png",
+      "sha256": "293cc762fcce7f12565c227d7207eb0c0031caad717db6c64197652bcbbb8af4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.70.png",
+      "sha256": "826a7ee9c9fa1b4df6220bbf7b3766d0510838bd30bb6758d52a9a5584b0ec49",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.80.png",
+      "sha256": "53ea006bcc0aefb943f3e1082d893278aa9f5d8c75d22c6b88fd0adeb8868938",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t0.90.png",
+      "sha256": "29d3e8a415fa63f744107af9d50fc854e2a23b8eb2a0acb7a0a2a134aafe25ff",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.00.png",
+      "sha256": "649dda34d07c85c051b1dee8cbdba1d712f0ad39d3804766e790e739170322fa",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.10.png",
+      "sha256": "c4ba683a1fa16d70a88336fb0f27b5bf790e62ea70de6db9d33d01f7764f7c94",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.20.png",
+      "sha256": "14457f59a29102a71d66a4b906b82e56ba7e34b82799839f2eb7ec1ebf49a374",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.30.png",
+      "sha256": "85e074fb010ee5ed44b4d7bbcfb7d1622c56cd4b2aa7a9971fac305f9719e0b8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.40.png",
+      "sha256": "9cb70258e9ce507f96adc7f4710d5a45a41e3b952ec96a260d62ce4a073b6345",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.50.png",
+      "sha256": "7d96fd0fc4d587416607cd5f495d2ce50a896fa558dde6dc81f6414f726dfa52",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.60.png",
+      "sha256": "6d96b418f48076f2e47e9ff35c498f47dfefacde46000e650b694f28204a3b0c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.70.png",
+      "sha256": "a3ff1dc107804d3d36412eb674b97669ec4d3cd0e42628532756e0fbc6327da0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.80.png",
+      "sha256": "e1be6537976ab37f041f543a04f7e9154dd78f044129ad0ebb63db5ea55f7af9",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t1.90.png",
+      "sha256": "e9c1600441cd19254a7a3c41a8f9fa7a20345a62a97d45347541fef055b695a1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.00.png",
+      "sha256": "13e914aac676fc2f9a4261274c778589e1d0f2a3fbab226daf4f8fb7606a0e8a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.10.png",
+      "sha256": "a2e4f1d94926bac9cfcf35cfdd5f1ba7e4e1098ce013ce98ed28a79e71c1e633",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.20.png",
+      "sha256": "b5e0b327c7ee6e9922b9583f0dea5c22ee1e5263d693d871c437857682276f90",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.30.png",
+      "sha256": "6951154c6eea4396ef9986608fa247825640c6034f4874b9802be96d408c4740",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.40.png",
+      "sha256": "1b1d7c35183df1da0979852c302b56de69b682d05be58796c941f22a0429c95e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.50.png",
+      "sha256": "d1ea79d716a2d122a9aff5fd0125848b9ab9dcab9c08d2f45a2f54c55c5c2e9b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.60.png",
+      "sha256": "caa5faa64ac59fceb12fc4cd7d27f64a623ceb17826cfa126b0a5e3a70e9f5bd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.70.png",
+      "sha256": "ca06d0d8b86e89599bfa7668b34f59d24a214938a2e1df7de33dd22c09abaa44",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.80.png",
+      "sha256": "8578882b07f52bf6cb8b2175a3b6a4f2e3c7df3d4aa819f976c80a082b36d0ad",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t2.90.png",
+      "sha256": "dccf2849861ff60f91dfd12d4f18955613270400f7fa5ee6a42bd4b751171e2b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.00.png",
+      "sha256": "d5da8ac080570411ab29bf7a1b434ed9a99885c36cff202be584421f3aa111a6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.10.png",
+      "sha256": "edce02c08747ac30e10f053f97546240ca41ff9c1d1de33a57f0c1d4c832f2d6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.20.png",
+      "sha256": "3dffc3eb81d1f9782b27005e97121c68be1457753dfbff1a702cd4d71d3e2030",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.30.png",
+      "sha256": "f83de873c014432be423e9973562d721bacd93c69a4e1cb123e154baca543ed9",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.40.png",
+      "sha256": "19a9542d08eb7c1bb3567d282ba6c6c175e139d39e125ea4547eccdc899cfe2e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.50.png",
+      "sha256": "ece0615c82ed58c5b94d966e16e24a8c2f807a3b7ecfaad138376e6e417c74c4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.60.png",
+      "sha256": "4336b950d08fd24a69806c59381b4ef8da76c159aee53d7a76fa0d3d02c2e1d0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.70.png",
+      "sha256": "f4f4580f24b1f76a8cdcadc0caf2af6328f2f804f275f5a63849d2394644ca9c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.80.png",
+      "sha256": "2575d0d63105f39ddfc16e33af3869941ae846231fcbf90107878041ba41849c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t3.90.png",
+      "sha256": "7a1f640e666e15e1f024bf0cc883c1e6f036f0764b8a6606d0d62ae8cd24579f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.00.png",
+      "sha256": "15f5949cb9c71432e98395ffac5f85093a6ec48180039b1e0d6824cba6055ff6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.10.png",
+      "sha256": "a271e32a2cc9b259ce5d658f431a49244aae37401f11542616532439f13e7a8a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.20.png",
+      "sha256": "2955d939b3de6bb27b146536b9ce12718a1bee1adf42131d877d123332c4f413",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.30.png",
+      "sha256": "5a68f185e87bcf250689a4350b312e36f25da741cb3bf46bd2b9b33a08b9d6cd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.40.png",
+      "sha256": "73d8449245082029a1a247efca4b0b5f9e9c1ea9ac1e31bcc4a6ac1cf318eee8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.50.png",
+      "sha256": "d72616fceeb25faf12888c365b3885767816bb17f9a7c08c25efca67e732f5b4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.60.png",
+      "sha256": "737de78cfbbc5cd7ff09e47bed90f28b7ffe3f3a87d106063f5ceec11e6ec344",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.70.png",
+      "sha256": "eccb4cb097213d95e23ed5be917ab940efbc81d7a1a02c9277fbfe5603d27c6f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.80.png",
+      "sha256": "5d96fbbdf3a3d181ef58419bdf5644a4d6889634feee7e15d02c3b5ff2486367",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t4.90.png",
+      "sha256": "5cc3c0f4fa18a681c8ef11a21cbb6edf1aa538409f2465804760d7cd1efe6260",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.00.png",
+      "sha256": "560708c1ee75c3c7d4d4186c937350bee7dcefe019531d27ff8266fb86c25944",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.10.png",
+      "sha256": "cc7ebc5a113d5317996c72da720c22b6bed22a7e8e34d61d2f47eaca55fa9d7c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.20.png",
+      "sha256": "a6fe77bff7d2c8684a947f291a7ee2b879fcd9a2a7bde543b8edbbc3f1d08c63",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.30.png",
+      "sha256": "90beed74f5ee883929864e74d4d150cdacf6e5885f5ac4f845f3eed0a6604b82",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.40.png",
+      "sha256": "07182f05d1b749f71ebe035cee88f6dc3bf74edc9553b1b98b1fbbe6e10b52dd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.50.png",
+      "sha256": "e9976b1fcede0c02e4119be3cd47719276eebe0cfd998041198893869f82f7ee",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.60.png",
+      "sha256": "326c06afc98aff923e31f6b6f07b2809afa942ea1e586555a2ebaaed0370920e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.70.png",
+      "sha256": "80a4a86106d1ea53c2e3a6fdab6e1ddc95f4f5bd07fdb244791cc540d43cd558",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.80.png",
+      "sha256": "7e789f1f8e09d36d23f30ea4d392b08f82bd740b832f5980967bcc62c7270816",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t5.90.png",
+      "sha256": "9352ea38258f6a72e6b742ea9e05173a1225a621f9f6d55df691dd096e7fc4aa",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.00.png",
+      "sha256": "6b10135aafcf82690f6a5c8dba0957879380b23821c9a98c6c4cabc185090896",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.10.png",
+      "sha256": "1965b121b8f4a8d921e0eee1a624bccdf253b2b75566fab437f2494f2453006e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.20.png",
+      "sha256": "427b88608ee274875f1e99bc525b5508d4f8694ff598fe132326a0c0a3fe9740",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.30.png",
+      "sha256": "12a4264502600ff6d936b7750777668b3972861efc7aa862a8982b042996ef84",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.40.png",
+      "sha256": "6a5612b8924c8d0e1ed17d48b534850e51e826024c70df927fa778a2c610a3ee",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.50.png",
+      "sha256": "fb0a513f1971460c8b13463b732dc1387cfed6c3da3e0c4c298f0e27762ccca8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.60.png",
+      "sha256": "d35e4e116163d10096d8193154c3003b41558eaf0c52d227eeccd95481e11105",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.70.png",
+      "sha256": "86eca28dcc1b229995b68b0662a90cddfc09ebf2f5af2ba21a4f4f6fc02dfc70",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.80.png",
+      "sha256": "401bf282eaf24e0d60ca982fcba91978251785143b82b7d189ef5f9ed387fc43",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t6.90.png",
+      "sha256": "473dfb946922bdc2b956747483217be9108ef84aa4555ce00da9bca43be69c8e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.00.png",
+      "sha256": "256986b292941d86ccfbe8b38bbb4747c715c1d5ec19efef3f9b31e2255f4b55",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.10.png",
+      "sha256": "95b98089d7a3c1a7f21f4d2cbd4c53fff8a4b2081c42fb9f30e4cbbc30253ba4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.20.png",
+      "sha256": "86899305614343130ad093ffd9fbe0f862d82168ad5e57105802300d1734f56c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.30.png",
+      "sha256": "efd4870e71dca5a393d024aca717400fbfe468e2143cf24e227dcdae8207957e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.40.png",
+      "sha256": "b96f36b2df0d4b17c5c65eaefff0d8faef922b99c848b1ca5a5fbb5f6b001a67",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.50.png",
+      "sha256": "f9822707ba11ae58191b36d2e530a6211688fffe806f3b1c238994dcc32449a5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.60.png",
+      "sha256": "f0384fc67530d6a1bbed3686d68cb010f23fb7a586fa09c7defa7a5cbb092172",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.70.png",
+      "sha256": "c7f003bc7acddf829f495c8b3b923b72e93fdbbab14cc3f460551733da41ad80",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.80.png",
+      "sha256": "ad734bde1e82c0aa885499f56241323954510f2c439e61b8d808a86838aedb73",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t7.90.png",
+      "sha256": "2f45e265457e455b980c6208b70f7a5fc2b344841bef08122c60c3bf7c779aad",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.00.png",
+      "sha256": "262165a5e5f53a83c6a4e67a5b35b871414ef8da063ae3b32d157ad9462d8467",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.10.png",
+      "sha256": "cc6bf3a9bac21ba101996eedfe238ca65b3424f19d02d62a2ea09d633dc33da4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.20.png",
+      "sha256": "0134c85512c02d542771591cd852465cb212f99979ec2c026aff23a1755d58ef",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.30.png",
+      "sha256": "e444567d63728ada6d3bb9148aeafe58dbb8b05928b24a05583f65bb2044f048",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.40.png",
+      "sha256": "9c7a091319ed6c8b2ca34fa46810a8e5608d63c0ed957ea1811c4393112107dd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.50.png",
+      "sha256": "9ff9cf891e157dcf06fe0654f2fc69c6eb8e11d36838dad7be134ef28c4bba51",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.60.png",
+      "sha256": "00a467ecdd8196adedeffd505d64bd92cc22bfc1048e6744fcd3250573239461",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_vpm_fields_t8.70.png",
+      "sha256": "0c5a28b660a30820cf5eec80b03a813120e9f822ebb67f8664145e30d501844d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.10.png",
+      "sha256": "a40a6a7dc095ed09d4421a1a18db2e625c001f8edfcf073273a6529af7247e34",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.20.png",
+      "sha256": "2a85580bba03b436cb19bf3267b65251999ef29bc93db4e073019befa51be84f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.30.png",
+      "sha256": "17f1af73d6c92abb80507e59de130b3c647c6cc2e2d680c6e071e0a47c61e0d8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.40.png",
+      "sha256": "d77f2d81051b22702c34075d02202a6a98a02007b75689d6e2da8cc92d01a29f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.50.png",
+      "sha256": "130914b70df1aa45ab98ebe4ea6cf811b820649b97089a7b725773618f8afb2a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.60.png",
+      "sha256": "3e8a87a0acada93fc67a3ce313aedefefacf026eea8ab33ac519d73e353fbd90",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.70.png",
+      "sha256": "53652c35fc57199f24aba54317135be5c032a04329825275f1cb2a08b81331fe",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.80.png",
+      "sha256": "fd19f5987e1a9dc2f55f4659e11fc394959b24031fcc12fd53393b91b83aa527",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t0.90.png",
+      "sha256": "c55eef76857d3726528e146b8cb01ead1d8fca90b1035e0f9796424a8ed3d8f8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.00.png",
+      "sha256": "1ac5eeb6f54f09554f92a5d96676c85ed54510af2010d380bc0808289e7fe55a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.10.png",
+      "sha256": "8cd6e1807269761d7c5a793895b893c1d32b49cf85082e5e72611d2092ffb4e3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.20.png",
+      "sha256": "602df7a9690cc9f0164d09df334523fb2ff20dd46130df4373921f4ae66c2d73",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.30.png",
+      "sha256": "a98917a7ec7db65522b44aaf7b734198643c51c485372d8ba7a476b42a99d187",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.40.png",
+      "sha256": "3b5c6339204696fbc9160bcbef94669ea452885df8bf624f4f332dd46829c726",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.50.png",
+      "sha256": "ec41de55de1d4b90b4af1da5fd8ae37a4a7401bdaca83941d5a4ee42d04e0dbc",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.60.png",
+      "sha256": "0ea853b45792b2d676ebe6f77b695b2d29310bf0b57a27cced2d177ba033369e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.70.png",
+      "sha256": "93174ec660187c368809e6e31d7aa9ac0c8a7ad36461a128c1364e0397db739e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.80.png",
+      "sha256": "7001ed7d1756cfb6ecb51aaa45ee1db92e46cd425c6c5eb6b79f1d0cc346f5db",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t1.90.png",
+      "sha256": "de591f7a4ead7d66df7a071523097f8c1a861aa12177a0f0c402672e8b0ae320",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.00.png",
+      "sha256": "24cf426f31f523771eb30fb495f23291b94f8ebf3daea2eb6410974752791436",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.10.png",
+      "sha256": "f596bb318ad3481dd313bdbbf68d7ea32def227a8df9ca689493df882d212802",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.20.png",
+      "sha256": "f976b311b810b57a5fc7ce270884268464cbe5e325f6c62a12e51df9b26a5790",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.30.png",
+      "sha256": "3a0c885a662fe46a9fe0c2ec9ad035f580a9d2b50a0e1a9318c1f2f8b4ebbedb",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.40.png",
+      "sha256": "151b65c18209ed95fef29ff522b6e4cc1b0c8762de2320aacf7a2951714eb4a2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.50.png",
+      "sha256": "d2ebaf160a0f67d1ba720aaf103ff1e13cffa4c0185fd421ffe793f9411ff935",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.60.png",
+      "sha256": "37f69327cebd628cb4c039172bc78d6ecf0e3f62124708c1d62f08ef2c14abd2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.70.png",
+      "sha256": "0888139e8adf6c2256791670b0a153c941ebde38fd88fa40f713bd1ee83b682a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.80.png",
+      "sha256": "f9da74c739c4409c6c60b9fa7c098e8f8254b8692554314e18844115893be3f4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t2.90.png",
+      "sha256": "89cdf0a80cacaf1ee2fd326ca86626919017d1a358f2269e43ab8c465466560e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.00.png",
+      "sha256": "80aa51704e620b2c2c4a5927eaaa0bbc97e44047b84a58d5e7204240dc3a96e8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.10.png",
+      "sha256": "2cb41a4a23304fe69387c55967e58aae376cf62536858284dd197ea098fdbd98",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.20.png",
+      "sha256": "7c1cdcd6ff94c586b4e470104deb2cf8e1918b959ec910e7cfe4f2f736b7c9cd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.30.png",
+      "sha256": "5c43882cf7e7185c33a6b7abed026d525764cbe5900befbd557d676c6685b72a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.40.png",
+      "sha256": "fa376f0ef6d96de238a4e23e844dc02c5c2e14a9f6fa1508e1b632412080ad40",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.50.png",
+      "sha256": "fc0118a9ad8fc1f6a6d6f3bcead4eaa17c320044a8febdafa4d422aba778c103",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.60.png",
+      "sha256": "0215e2cbb731fd391c1907119ef48bf4f1fe937ae402468f70ac76de5797c8ac",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.70.png",
+      "sha256": "518601f20ca23c9a3c7c07ae8b0b82c7de8ee7ab7769d7ebb50db78f612a2cf7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.80.png",
+      "sha256": "b6aba76c24e80c7e89423d485dd6d6957616cac88fa1956764ba49590b477382",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t3.90.png",
+      "sha256": "6ce4da57aca66cdeb57126b56e1945206918dc5e2475aa4d8c927e12ba3649eb",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.00.png",
+      "sha256": "55cab92f1f4c5d523ea40ff29c42fb39f514ad13947fa5f86565d8df99e8a8f5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.10.png",
+      "sha256": "ef755977c4c0addc79cd384568c694a1937bf1da89cdf9bc799aff2a5e13d90b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.20.png",
+      "sha256": "21d202ab5ae44ef547f3abe91220597fa4f765bdf1d2df6a6661f89ff4e067ff",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.30.png",
+      "sha256": "f3c9af2cb03bd913e8ce980d72a9b89a82de5a29e29161e9619f71e57c3394f7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.40.png",
+      "sha256": "ccbca5058c0bbfc20f2d2cbbc0c3a00dd74283096e8a4eaf64998bed3108c4d7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.50.png",
+      "sha256": "0a02e10f2a27878f709a5b6c07d58be4b2c1a09a65486a6010aca21b0a44d17d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.60.png",
+      "sha256": "ec71ea2689fed397476b5c03d570fd4ba09938917644242ee5ee838c6ffca5c8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.70.png",
+      "sha256": "44794321bde79698bff3ba91b1e7fc1686a9ef528cd6f31358e9aaa8210ad29d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.80.png",
+      "sha256": "4c7c32afd988d9829ac52724b1985381c7e18043d0c07a2b588b7266fabc5ab7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t4.90.png",
+      "sha256": "a32f0c2a9eedd8c418df64602223a8b3606d24600705bfca2c54af3803874a37",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.00.png",
+      "sha256": "2b308fb844a38b82da9a1d8ed52293a3bd59f2b5aa6aaf78f3db8b14593c8a39",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.10.png",
+      "sha256": "6ec019911d4aa9b37e2d93714b4a144f9b2935d606900db8b363ced0ba6a4493",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.20.png",
+      "sha256": "e3812470d2b5cd129fd46747b52cb1786f0f1acae538a31e3d0166c8de3d9c88",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.30.png",
+      "sha256": "a7aff04bc6c6b8835dc0b2e371735fa8a9f0041be474a781b45ccee5ceb2c1e0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.40.png",
+      "sha256": "68cf1ab5ff8edae4fd1b9b7c608586fe5fbc4a74e5c8f538e24456359a67d019",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.50.png",
+      "sha256": "5121efbd1fe266a23460b7a9dda4f504fa830725ad3b32a99dc648c86a19512a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.60.png",
+      "sha256": "44bdb6bc496e579a0a45a9b83055c85451641f54fbfd337d4b6ebe6663497c2f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.70.png",
+      "sha256": "ba74c0809dfe22dceeb892592e9dd433c776a59826c1a78baec4a98e97a15336",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.80.png",
+      "sha256": "7280c977581794252e9c4333d5d6a2f3c28c6a67f00ecf6ff62fd70758d1b5d6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t5.90.png",
+      "sha256": "fdc71239ae909d6c9e286f81851a2984417bee3edacb5abbe0930be562bab8b0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.00.png",
+      "sha256": "2a85cf6b8a9d9b2a2d587511fb844e769f2ff16305196900da519c3586a43b79",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.10.png",
+      "sha256": "45e7516db809e0f12c4ba2e6d5243f942b8aa05de2003a356b812599cf07e070",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.20.png",
+      "sha256": "925e81e11ecc6441ccc755faa6b01d44042b1c15a3bc3ca7538bc4306c202f09",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.30.png",
+      "sha256": "d61aa47f60003c3d32ca4651f7ac0c37a89e7b3024171b708918fc2cca214caa",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.40.png",
+      "sha256": "bf2e11452aa4ce61e0ed6a77b628c66a0ad572f9f30a7bef71f28db5ddaffd9f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.50.png",
+      "sha256": "abcf2a7cbeb20e228729b944eb3e7702ff2a26949ef190580a0d7b5fcb406cff",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.60.png",
+      "sha256": "7dee9138878d4260dd712b25a1900b20f6379d8ca0d91724fb86b6cb377b3187",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.70.png",
+      "sha256": "feb4838ca100734fc821746c847aa97389ca71ed517bfed6a8d3606c940bbe4d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.80.png",
+      "sha256": "30081cb41bb522c049d0eb8c0b4497b2ae9f3f2ef5904214b6874b3afc1f362c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t6.90.png",
+      "sha256": "0982fd7020f8d1b43c87241ffdc86991547ebd9f23ba56b0477c9fdd677472a5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.00.png",
+      "sha256": "1b36850e885ab9384a3a0fd370d5cb54b851ab020509f95461f5299087487167",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.10.png",
+      "sha256": "f7d103f8a85ccb7621d8b43cb0329d8f85e5554447b50c4b0ea65c856b27b7db",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.20.png",
+      "sha256": "7787488bf26a1583c6c385644b11a89d43e4224ccf4e1e33aaf08f0d520a1a65",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.30.png",
+      "sha256": "101e6f987ffb31068a812fc5ba55dabf7ea16feb06002dc82e27d645c7db6b84",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.40.png",
+      "sha256": "df8e8dda44570ea57fa5ba6f052885c1d25ed86e7c4b7118cdd62795d78eaaa1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.50.png",
+      "sha256": "86f2f42f5b6363f53a397aba15724db5ff8e92943a4cb65677fe2f6e28506f21",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.60.png",
+      "sha256": "fc4bfd17af903445b910599bcbe669b3115eec5edfac80fb75386f0f77dfc677",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.70.png",
+      "sha256": "3106eeee41bf89acf7aa687c799dca6ab4800c4e0809e6c528cdae48764e80e3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.80.png",
+      "sha256": "89e993cac1e2c28aca816f8f5f7a1eb62109c3a46c3c69e971ac47e2d8ebbdfe",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t7.90.png",
+      "sha256": "b239b58b34a3922d9985288abb247e1c53d93ae43a6b1f474f53d35530058250",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.00.png",
+      "sha256": "276588bd4f174bc78f1ec44b2b5443904629a61ff53c71a99984b198a6863be5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.10.png",
+      "sha256": "407ae196288b7572319236741a999b40d424a99150afbca779335e8d81a46b40",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.20.png",
+      "sha256": "8a17c0b8a0bd7848bbb9f4997baa7bbe1b2d37eed6f537aadaf8e0cd9ab939fc",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.30.png",
+      "sha256": "c95845f1de1d0db5c29fbbbca04002bc2bff70ed2e296334ba1bc78413cf6a60",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.40.png",
+      "sha256": "bcf2891c0775e8840f299a83c93a86390eb0c31f36bd7d1e0ed4610ca0c359c6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.50.png",
+      "sha256": "bda800292a3cc99fe0133d159b15c9d045a6505cbeece17f2ecc2d7146f729b6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.60.png",
+      "sha256": "6ad27ddd9db6a58d7f48d235f0158a9aa2ed4cd6d206463bf1180d2aa6c49f86",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_fields_t8.70.png",
+      "sha256": "479bbd4254fa3dc7a7370167a4d6fb61c67a5536cea84b1ca2851a19db7f4f15",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.05.png",
+      "sha256": "f8de5f1d6e568f4c99e2ab055f80e16aae6aafdea7d67827e22d7de500c9c972",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.10.png",
+      "sha256": "f17c1c7debf3eff53ca4d53727998f1c4fe66ecf29e05c617b1f60a66744cec2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.15.png",
+      "sha256": "18fba94c743d3af3d48096d53da61bdf39b51eba64cf162ac225e7f8a62bd55f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.20.png",
+      "sha256": "3a2cd5f79c4af653344965a603ecae70063e8afcc3c1984ef7712b5c372aae43",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.25.png",
+      "sha256": "1d71b468695d7fc234dba8252e57620f9b557a94695c1822132625385aecf1d5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.30.png",
+      "sha256": "338f1fa2364377df33aa2f295c117e5ef4691ad1fe1c91f7b623437617b25769",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.35.png",
+      "sha256": "306eced468fd47bcf96935f937a7c1896b3dcb7ade26c48fe51ebdba7db3db34",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.40.png",
+      "sha256": "7fab8fc98438586c7e9d3ac66ec3bc3b3a52f53649aa39b0da63cdb58fcdd99a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.45.png",
+      "sha256": "d3b39d63b69f288218c89cbe9916f78625a1c1b56ec9a1bd261f92221a7a0a70",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.50.png",
+      "sha256": "6c43d43351986dc5fc056f8c3b9ebf07087542757620350065e079abed41cae2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.55.png",
+      "sha256": "dbe693f55a7f4e07fd28854aebdeb8cee32b3f07ab3ae1d1d57c82ee776a2ec2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.60.png",
+      "sha256": "0e02ba1073d71be791cbac928a10518b06c74a84be775637e3de993681a0f7d5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.65.png",
+      "sha256": "05c0402773aed4d3160ef04eb83b22878e8734209bfdbb1fd54751757d7bafd2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.70.png",
+      "sha256": "964ba51764b9fb3fe75d24db36a16ed42f767b7a2e5f81a96ba4f3b33d1c1d43",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.75.png",
+      "sha256": "7dfa20280a003c1d76e686b7f3ba0be8c9fbae6ca59dc9dfdb6b80e3af74d9f3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.80.png",
+      "sha256": "260b3da5448afbdaa374c88acc51426dd0bf10e9fe22830a858752beeb4e89a0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.85.png",
+      "sha256": "d17ef6188d2c90b85813094944ff607dc1cd5e39165e99667711976ce034f012",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.90.png",
+      "sha256": "da799006ecf9f2e63a77cf7134548ace5c466d8005668d947af6679e5b148c23",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.95.png",
+      "sha256": "9d985052f12607c4fe058c0ad1465e62e6aebe781a0d13ed23d6b2ec67121bef",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.00.png",
+      "sha256": "0e459ce378755a474d653149dc16420beef9b30641aa03206c74e0c91c4908f1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.05.png",
+      "sha256": "d3ae22011e3ae0e52feab42b790a5022a4edcb01f6b33d9270a82db6fe297d8c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.10.png",
+      "sha256": "8e5fd58bcab85d9ade5fb8d18770236981736124f845448e37b9f0f90f080e67",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.15.png",
+      "sha256": "ade40601dd8850dc6c6f1e9196dbe76549b5b7eaaf23ba7ef42da7480ef37b11",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.20.png",
+      "sha256": "9da1446bd4597eb1f11c83eeb4cf94a1119d561daa214cfbe87e555db6a5cbe8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.25.png",
+      "sha256": "372edd939ca80eb4242a665d3d2ce9fbf2f67294b197233660ef2709cc261e7a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.30.png",
+      "sha256": "70ac2cada162b5c26a32ea8f98ef3b8c83f01fd746e7506afdf856b6a4849431",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.35.png",
+      "sha256": "3b160cf329e183ae9cf772602584a728e46abc77e7dc0ebd520a9d5bf12872ea",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.40.png",
+      "sha256": "4939bdc27c5f1a50028c285716d0ead8446408622aba2282c9202c6f70114486",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.45.png",
+      "sha256": "f32689d7e4f47ccafd92bf169c66d685e5cf0c26fb9470647af6b89d82aa4e90",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.50.png",
+      "sha256": "1536fdb34f341c931235673390e600e3481c5c065e65d2015056671927ea7e64",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.55.png",
+      "sha256": "d343ba60c9fa5d52272f33d606ee2094a280e5379857b3e5df38dfdd39e3f0b9",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.60.png",
+      "sha256": "b86e0d5fa8ca0ff890553662d6d447502ebbc7c2c832be5050ef37c273ec392f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.65.png",
+      "sha256": "4e73e57b945633773f08f82200dfde54827243f677d9ca6c1d6a0a0dd3626590",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.70.png",
+      "sha256": "e381929671d9918f8df8785ea83db8917c39aaf376febac21aead55cf8061023",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.75.png",
+      "sha256": "af0859f91331ae996699448a0c8f96f6097cb9429cdf202650b7b8e1ae810db5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.80.png",
+      "sha256": "278b0b9d953dcb86575010fd503090ff71c5d9d8f2626b369d237ca6437282a2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.85.png",
+      "sha256": "4d3077d36d2676680c583c2ad9db1896e35b48a9716e17d0e6b3170e96277054",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.90.png",
+      "sha256": "6f965d47592e495f223b667aa3ed32c597935b83429b4bcd651617364b7a543c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.95.png",
+      "sha256": "efbc7f0e15274ac807c59a28d0d90c57afe49d03ca7df336e766a694157f162f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.00.png",
+      "sha256": "74ad9c09368e7f1e1c91a182b86aa52d9044623cc5f71ab248e397958206410e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.05.png",
+      "sha256": "a46366815840d5d0e6a7ccd6744bbaec48ea8e978d86367d48b9d5029bea5fcf",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.10.png",
+      "sha256": "4b88e7a0bf286e392851e7bde6ee01836c8e603249336ef5a661f1a6ee44c06d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.15.png",
+      "sha256": "3d14a7ae9707dd3c6e593f334ac457f9cd92617d778cf6d12a51cea22ada56e4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.20.png",
+      "sha256": "6fa31871084b9f869758bafd76f27bbbfb04d353af4b036721588a09da108037",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.25.png",
+      "sha256": "d743adba2e8cfb988992058d5fc66e869a55653081005089141c367223f8aff0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.30.png",
+      "sha256": "390dc6649dbbdc4b992a8f70556a9d5ae5d40eb0c36c6456201c08440bced585",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.35.png",
+      "sha256": "10f5cf2ec4cd4055a43deda82d753f36388407ad5e9d997af8b56d1aa338d80e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.40.png",
+      "sha256": "596bcd754cd443ad526e00434b0800ac0208efab15de9c5696939d201b4e41e6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.45.png",
+      "sha256": "674683317c861a5ce9940e726bfac8b19dc47da4f2b74b316835bda712aa03c3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.50.png",
+      "sha256": "e24ada2524dd489cd01a7eb6b9a6127be64031f9034f4516d7ba1c65cb1bf2f7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.55.png",
+      "sha256": "3b22d065b9b3f677b9c5aa326288d89fc6394fe180395935d5233c3e26fe05ab",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.60.png",
+      "sha256": "f0bfb5936213c1c1deb2075ea1d19cd135c23cafd4cb0f0accc91109d07a3a40",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.65.png",
+      "sha256": "9f1f49e385f0704410f47d337a0cbcf09a90024b378d3a0ba40e38f266b501e9",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.70.png",
+      "sha256": "d5c39ad32523bfab5d86c00c2ce094ce44ac2de9f05dc17bcf284be741e2e1d6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.75.png",
+      "sha256": "a5e4602982f14766e93004c25416658864b05d2d1d236c1601e90880ef180911",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.80.png",
+      "sha256": "fb80bfb2f3bbb1229a1a8ce76560362124a90c8b4b4fae59b5a5639744d6d5b2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.85.png",
+      "sha256": "470c7899f978fb5ccc9d74cfe3f4114e383332387f7e7913bfddc951ef993904",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.90.png",
+      "sha256": "c65f12a33010a4b4726a17484351056e2935634331fa14626da10ebae2dbd216",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.95.png",
+      "sha256": "f3b4d33151d937f13e7fa55891b4f2c69c836d6263698a2269ee04fbe3fc40da",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.00.png",
+      "sha256": "6474d6bf453a52ca98e950dde93f7036e28843a416d384ec6858c79eb0634299",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.05.png",
+      "sha256": "561556369332928bc5d4a77170c30faadddcead0ce2dd865bc88121f09c96ca5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.10.png",
+      "sha256": "e7cbd30d70fdee8794440a9de33f0258d05aa49a23c90ba49d9db29ad826911c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.15.png",
+      "sha256": "ef9a7d2d260a950c72a0130a97cdffda4615bf682349537ba706dc0b1b258270",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.20.png",
+      "sha256": "55bf6b0273282300602bcfe384c5e429c029126ac6f3f7895e8ffb5de9d43555",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.25.png",
+      "sha256": "7d529c0e6b3264c94b541dad5e3a3cdf48ac8ae15a7873b234c9adec4634c2ef",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.30.png",
+      "sha256": "b90aa7b3b54779f4f2d770a1f743e766f4f15ebc270dd881e62467c70e5ab7e8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.35.png",
+      "sha256": "8e84cd25fc4ad3d9a7247f3c5f91f1712553e6791db9896f6e96edb5cb9543fb",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.40.png",
+      "sha256": "1a3e10170525fc528e204a911b3af370f37ef2362abdccd294cfd7cda41f7c64",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.45.png",
+      "sha256": "1fa0d2df3b8d3661d65214fcbe118f325d0690b1e37189cab6f0dd4222acb5a8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.50.png",
+      "sha256": "1e6564f679f4b1b3bd0d0a03f7b3d19e18cac5d6ff069d000f1ce42bbbf915c5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.55.png",
+      "sha256": "4d8fa9735d8192867d86641643a9aa458a4d6b596f83529f104b1028c76a0fe6",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.60.png",
+      "sha256": "9fa90926c34e382df04b59e20acc7f77623e3bc50f47aca55225d9196463db1f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.65.png",
+      "sha256": "280e69e74378b17b3df497fb77f9a99c5fcba3ae1a6ee448db851d5f7fe8f013",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.70.png",
+      "sha256": "bf9797650a2b84d7756b700816e39301e9c927cd75abf3d63a0c540a4c2b52bc",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.75.png",
+      "sha256": "303acac61f25d7fe1f7042f55b0f51f53a740128b388ee1a8137d808ea3c6d12",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.80.png",
+      "sha256": "5ceae2ca0a351c21ba22dfcb8b50f0802ed26216a5bd657e9eb53e792abbdb07",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.85.png",
+      "sha256": "72d9a7e3502738823f709c18c802a054483e27243671fbd86feeb0f667124450",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.90.png",
+      "sha256": "47839f48c877a19a83c547c92e5c27ce2c2f07111a0df91544073f88cc090a01",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.95.png",
+      "sha256": "8a895f47854b5bc04889e32dd942afb5665985a3fc448fb24ac29585884b5d69",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.00.png",
+      "sha256": "572d3d237636ad51241d43a919e993644d783131ea0e8c63944fdcb2fd4d93e7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.05.png",
+      "sha256": "8ad0fbe551d4b57f1fa3bdcafd9a598197c39c891586538a2c150f1be598df68",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.10.png",
+      "sha256": "3e7158e361046b33417eb68b9a52e7928a4755f916015621c119a5df78df7730",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.15.png",
+      "sha256": "f50d85d6cc96c2d92074d58e88ee18172a6b69f2532290f00453e25eef505829",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.20.png",
+      "sha256": "2e77cbc6b42b082eedef0cf667514fe8368a99f0fc481f173f1dee5095eaa83a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.25.png",
+      "sha256": "c14a417f278e5e331337d68c45f064087fe937bc8ccf9c94e41d83949114b68e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.30.png",
+      "sha256": "3b794ea907843b9356a6eaba53d0aded9008d636843c905f60f6e8010075d9f8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.35.png",
+      "sha256": "de2cf223d4fd89ea6559d3207c6f4807e2c60986cc96e1820f6b6faf61892819",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.40.png",
+      "sha256": "0432827bf2d8eff010f00ab7f9848fd5a3eaa08d6b5c1d4f7ba4bb7e4787d499",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.45.png",
+      "sha256": "6d4530a170c4c84e5168be27e6afcf59657e6f6b88ffcfe05f18e724f984d32b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.50.png",
+      "sha256": "aa85e6ed72220b75c37fe92509e250e81da2c237339b5da9e8d740d4e32f76a4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.55.png",
+      "sha256": "21561a290ac9d6fd9ea0a37d48f1fd133d6ac0e703d952fcb52a0eef8e8cc892",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.60.png",
+      "sha256": "49198629e519b96697872e8866d78a86ccb3ec436166a27eaef6a51c74c6b1ed",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.65.png",
+      "sha256": "1f6d126b0ec5f8afbd43154f518690854a35f5bac4ffb87ef55bd487c24cdd20",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.70.png",
+      "sha256": "bd6715e8e242b82d96c1c603e2621c9b771cd782003dd7d8ec26a70b60620c5b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.75.png",
+      "sha256": "af7b99e1aa2b2dfd3d2b33b9286e18a78add33f5e71f41fba2d8e0dc0a30cffb",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.80.png",
+      "sha256": "3ade7a357eb00a9f945ab558f432b416d0e124c57fcd3233e6009533d5deb2f4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.85.png",
+      "sha256": "022f4da7b31b8213cc7f78fc29002cc9336f456cf815c01677b99589adbe7266",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.90.png",
+      "sha256": "3a75f1fe4f920fcfd0a4825912343c249397c18b2cb96d837803ac0b05a7d164",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.95.png",
+      "sha256": "916c1b267336757da422a32f7ab593901cef210a879b4b8d0fa82bf8269c3ff8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.00.png",
+      "sha256": "b4d8927c9c83d0f446daccd1dfabfd8bfafc29df4d35066b3f8a136eecbbab24",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.05.png",
+      "sha256": "bc2c8d2f9e78f1820e4f6e17eb6b8d1e075546ac3616e44a4aab2c8eb460de88",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.10.png",
+      "sha256": "3360378616935f3942a070f8af9dfc67a2963b7efafb357c9d23222219c88422",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.15.png",
+      "sha256": "61b6b4101f818180b10c41e17609182f1915a5db2c2c22104f3fff52e2822eaf",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.20.png",
+      "sha256": "13cfb187ee6476114e50c9367d9f6e804afd3e3cfdb96b48a12b9542f95ac588",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.25.png",
+      "sha256": "606defa51416e9a8e3b981cb348e30b31428754c37daaca21ce3d6cb94f7d740",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.30.png",
+      "sha256": "ac8c6dff98c8c78f5bfea6edee013088ef07cda6045dc045fec6f1ed4c18f31c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.35.png",
+      "sha256": "f765d7e706333150f4323f3156f7368b038c6c4376bdc105d531710f1a4e2f0a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.40.png",
+      "sha256": "c83bef0456c859a2695ab3bb56248397655216a347caec77626d1c1cd883dda0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.45.png",
+      "sha256": "9d5ae3006900cc94508f6ee2334b9d2b94e0f141491e5bdd12024e8c6ec8a5ae",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.50.png",
+      "sha256": "81708c67be90105f74802015591753eb5b4d4cec7c0f26c0296cd74389b59068",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.55.png",
+      "sha256": "ff37249c510cfbf7d8b0233ffbf1596e981b84130f92e4beaa08be014cfa6bf4",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.60.png",
+      "sha256": "8b57984bde2e934ffa560f9f766c03286cdffc8af5621762a85e6188bd581f37",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.65.png",
+      "sha256": "b9a62c364f05f34b51be477f1a69e68f53d24ce7eef35479b74331a80b89a137",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.70.png",
+      "sha256": "c475b2966e1f490201d1d05b200195c1fff361066e9e4e1a09fa85d1bbaad7c2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.75.png",
+      "sha256": "e6d99ed3f610638c4a6ec0296681f4fe377c5a4ce6ddcce1ba6dd86ceeacdfb0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.80.png",
+      "sha256": "b910d87d53fb1a1440105934df3309c8e3739f150a7f8b42bed49f28a03c9bb5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.85.png",
+      "sha256": "b29881fc6fdd079c8e532806294a1bc7bbd73d29e33bd590a90354b50e34e58a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.90.png",
+      "sha256": "930ad8563ee13dce020f10265d5a5233d7242998a1693e6d9a1e9d375e9f9684",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.95.png",
+      "sha256": "3e4a24aa021a05c348e38bebd7bceb3c9860b670bc7d3be62a94ac6f99ac0966",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.00.png",
+      "sha256": "bdde3c7815b017a263d7c032e00567eac47199377bafbac689c59eb004563b27",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.05.png",
+      "sha256": "b192080f04d2dd84e4ed8c39527acd4854050048ae59c7d10c6e87f52e6da89d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.10.png",
+      "sha256": "8152d0b43c3abc6b901167b33a1073223ad28b295934b71acdde332e889d9786",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.15.png",
+      "sha256": "41350b790958133141fa2cf17c4edfda83754ce9b8b39939aefd8d548b203a3f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.20.png",
+      "sha256": "3232d8699bc7540fe0b0ecbf013372ad177dda8f8bff41d277668bf57517c6f5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.25.png",
+      "sha256": "bdd642778af2286ef711c1efd1c4ad668849c260196dd557f191e372e9eea9db",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.30.png",
+      "sha256": "f2e9a74479e791d9f537abb0c6885bcc086fdbaeebcdbf91d7c142f12d55138f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.35.png",
+      "sha256": "0f27c710a91b727a4ac5b337aba87fb1f1a7aa7f0266895146de9d90bc60fff1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.40.png",
+      "sha256": "2ba9c72c9d9c9cecb91a1663bdb096cff9d06eb33c4e4bdcacc67cc4a4b0561f",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.45.png",
+      "sha256": "366998f97d276e9777e747cbbce5cbba0fefde2f34e57de4b492b101813ce9c5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.50.png",
+      "sha256": "c0ff9557d3f09208754e0476ab5751b7a261f3d38059ad6ad1e387c84d0494d3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.55.png",
+      "sha256": "d0973a3d76ca3504e4d157dc0ea54f0856249c04c6cad5e6fe3e7a891836ac4e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.60.png",
+      "sha256": "401210bfad9172d2a366d143cffc4751bda45371c80a206a9edae2d926c87c3a",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.65.png",
+      "sha256": "8892f3b87e6d88e988b95bf4bed7dd8fea8fe82090ab5d8207c2b6197af37291",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.70.png",
+      "sha256": "2ab726bc2cf6b02e0ca5a1b37a2759cb8b04530b4f9a803987ff156083a449ab",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.75.png",
+      "sha256": "7336a4bc8f7be5283d6223e3bb1260c57e2bc1a13b0736e68690eb14395e9dea",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.80.png",
+      "sha256": "2571be6caeb005b2bec4cb7e745f5f5d11f9541063f18d6bdcb9d0d6d29d6194",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.85.png",
+      "sha256": "32f348597c54b6baff651692699ae2079fd10a5bbd664768ac7ae5a312d647e0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.90.png",
+      "sha256": "cec05a2f7fc898346aba21971889e0d1f49f7bab54abc74f6b5188a01c00c065",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.95.png",
+      "sha256": "f6cce98140d32a5de69e501f6344ca22f7ce154505fd6011d7cb939cff0b3bda",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.00.png",
+      "sha256": "37b364363c550b9b7f69c3af3ed17fe07615a123151cafa2841005ce63033713",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.05.png",
+      "sha256": "07ca593e9a57e2e8f22cfd5d50b9780a9536eb25e20c0d2174c8c9629b016be3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.10.png",
+      "sha256": "322f5dc4947ef2ab964fe6c625040ffa08b3de03496942a7a7be1c26a179e244",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.15.png",
+      "sha256": "ccbbd3b21f4464fbfaff78353e9735a05a77705cac4a09425f8f6cd77c06a792",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.20.png",
+      "sha256": "a0f7159977d5fd26fc7b9c588e5aae70b122b722692c84227244fabeca71b3cc",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.25.png",
+      "sha256": "c45dc9cb10116c77a2e6f62bab80ad3facf1c5c06d642472b7734070ed279881",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.30.png",
+      "sha256": "1b4a05a928066331265c1454d7645e0f19617dc2931851599b25f7d83fe03d90",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.35.png",
+      "sha256": "58c4994c3cca5bb8f45e4256d0557ac1de580a7dba1975df7851d774b0bd0ea5",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.40.png",
+      "sha256": "3ab8b91d5e647e651e56235c560eea0931a4f23b23595f0cbfb890cc779f00e1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.45.png",
+      "sha256": "9dc7c544e845fa51c95aebaf6cfc62fcc190c008430d05ccad4828214736afb8",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.50.png",
+      "sha256": "01d9c281191fb1f7aef1772c45b8e2da38ea4b04a1500d68a8de04ccb550eb58",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.55.png",
+      "sha256": "385552f00055ac1d34eed1a10c7427fcfb8d9d04a62d3e142f1dba96ee013945",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.60.png",
+      "sha256": "c651b614364304a2187e3e12f90e9709a7fb399cf97d2785e229a3020df93eb1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.65.png",
+      "sha256": "547bb2392fc6b3276fb312248f5a7bd64bce3532bee8a761c63e6f67a9f12196",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.70.png",
+      "sha256": "d8a91f09f71d13df99c57e14a87dbc203ee11976506823b214f96e1a60e45a74",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.75.png",
+      "sha256": "1bc580721ff33e736261b5c1616020f41bb53f6ec5051d50070ff5c916faccbd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.80.png",
+      "sha256": "bacf63583a3cfc5ad9f353d4e6d175d76fefd9ef97c37645445f874350605aee",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.85.png",
+      "sha256": "98f60ed1b777416543cf5e4972c1b7101721975510c9fe1b4da6ea37e4877ab0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.90.png",
+      "sha256": "67b0f198fd085518543292dc151b5d20f776bb4825c18d5c4769e5682e54ed65",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.95.png",
+      "sha256": "4c687e8e49ef04a187d37339a2e884de655e3ff44bb6da6d120c58f26cc3eccd",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.00.png",
+      "sha256": "57a94b0bb9319524d860a351d0de83af048ba3b251ab7ac8f2753dcf2e7f79e0",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.05.png",
+      "sha256": "ad21cc3771ed4932cb7b2e2eff22be18241c668a136ca845950432e95503b583",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.10.png",
+      "sha256": "c7cc374db72dcc0ef855a3bee1ee164c7691d895ff38cc8f21ab38f4132cdf1d",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.15.png",
+      "sha256": "e29346b58d191ca48ad802c358c6a4a1934c312f165d9777ecc2869a2dd653e3",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.20.png",
+      "sha256": "9c7e80d93d1db6d8240071c06c526dc36e8598dc89ac01c9f51cbf711cf0d2ba",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.25.png",
+      "sha256": "f9efe8385f7eb7d09827f0fb04907f7597f61f81a8a44be354e6498176d81324",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.30.png",
+      "sha256": "ce205dc888a731352641866d33f744d4c53c28c3a6573ca512ac548fc4578ed7",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.35.png",
+      "sha256": "a08a86567dd734f76f2f34ad30cad04ddd9cf861bbbda3426a21b9b8f1a19a15",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.40.png",
+      "sha256": "d9537ae068205c65cb6b50de94ac525ed955cff8e2ae9b48fa2d48bcaae4616c",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.45.png",
+      "sha256": "13ea2e9750ffab7f1dc4ab70a7d3b922bba99bed9f8fe66d9e98951faf7160b1",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.50.png",
+      "sha256": "84fb31030c40799776c7e07d0762103074cd7a73894f4c0681affefa89917c4b",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.55.png",
+      "sha256": "28780724225278109df57d634847a6d5cd269dbd767324e1ee717b2377741e05",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.60.png",
+      "sha256": "83bdf2368d8f58af385407c6b24bc4523662f1c70025da061e1ce41657f88fd9",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.65.png",
+      "sha256": "5cb23aec489d2830ac1ebff054ee30e20dd133c3a44ea0d5e04f0de0a1383c4e",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.70.png",
+      "sha256": "30664c2eb8d2520756bd9cef95d8254599d746c664da4fcdd882bae49c5a33c2",
+      "kind": "code"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+      "sha256": "9ac2499848cfdc46a96301c5a8e429d29de5581a4dd2de3b9fd9f1262126e6d6",
+      "kind": "code"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+      "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/final-full-cell-fields.npz",
+      "sha256": "798c15c9c0e91412abf2609d16c6bda2a9a069ddd82a1c350954dac3636ea518",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/final-shared-cell-velocities.npz",
+      "sha256": "a4b77df13ddc483ac9783e7d9af9149320c228b0ccb1a248e61ecb60621c56bc",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/history.json",
+      "sha256": "378bb185298807ecc0d51e75a9e68b716bbe19f5d5f95c7292a7f420baa26ec6",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/cube-moment-panel-resolution-3d.json",
+      "sha256": "80ab78e2f0336621689ce6daf2a0d7066afae1871f8557222f688c1d45b98a51",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-moment-panels-108-qualified/moment-panel-resolution-fields.npz",
+      "sha256": "363b71740caf0399f8d285157d37bc95e4fe3878d2ff276cdd7af1c22c14e33f",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db",
+      "kind": "input"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-fields.npz",
+      "sha256": "1b398e3e072326049be60aae578bb88706fe35bf4c69b974e4cd24e153e44f4c",
+      "kind": "input"
+    }
+  ],
+  "limitations": [
+    "Source stability is checked across the copy window. Subsequent shared-workspace edits do not change these copied bytes.",
+    "Installed Python and native dependencies still come from the OpenONDA environment. This is a source snapshot, not a fully isolated operating-system image.",
+    "New experiments must use this root as working directory and PYTHONPATH. Prior runs are not reclassified as having used this snapshot."
+  ]
+}

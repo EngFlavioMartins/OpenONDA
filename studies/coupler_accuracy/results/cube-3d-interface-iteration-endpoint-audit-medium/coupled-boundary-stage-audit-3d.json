@@ -1,0 +1,174 @@
+{
+  "schema": "openonda-coupled-boundary-stage-audit-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "small_fvm_cells": 16936,
+  "boundary_faces": 3456,
+  "records": [
+    {
+      "name": "cube-3d-interface-iteration-medium-serial-control",
+      "physical_time": 1.5,
+      "coupling_step": 20,
+      "normal_velocity": {
+        "fvm_trace_error_rms": 0.004865561481547296,
+        "post_replacement_trace_error_rms": 0.00492770062095261,
+        "replacement_change_rms": 0.0007143238081953516,
+        "fvm_error_dot_replacement_change": 4.914318803265262e-08
+      },
+      "tangential_gradient": {
+        "fvm_trace_error_rms": 0.013231684784793722,
+        "post_replacement_trace_error_rms": 0.01211638275547524,
+        "replacement_change_rms": 0.004350809454435452,
+        "fvm_error_dot_replacement_change": -2.36001470378844e-05
+      },
+      "fvm_cut_flux": -6.106226635438361e-16,
+      "post_replacement_cut_flux": -7.771561172376096e-16,
+      "maximum_ghost_normal_flux_difference": 4.440892098500626e-16
+    },
+    {
+      "name": "cube-3d-interface-iteration-medium-serial-twelve",
+      "physical_time": 1.5,
+      "coupling_step": 20,
+      "normal_velocity": {
+        "fvm_trace_error_rms": 0.004926408283031858,
+        "post_replacement_trace_error_rms": 0.004926408275581876,
+        "replacement_change_rms": 1.803955104202308e-09,
+        "fvm_error_dot_replacement_change": -3.670328191358967e-14
+      },
+      "tangential_gradient": {
+        "fvm_trace_error_rms": 0.012177990615965539,
+        "post_replacement_trace_error_rms": 0.012177995409952127,
+        "replacement_change_rms": 8.173414569747222e-07,
+        "fvm_error_dot_replacement_change": 5.804711164016985e-11
+      },
+      "fvm_cut_flux": 1.609823385706477e-15,
+      "post_replacement_cut_flux": 6.661338147750939e-16,
+      "maximum_ghost_normal_flux_difference": 3.3306690738754696e-16
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/coupled_boundary_stage_audit_3d.py",
+      "sha256": "373b5132cd9f854a0652afd0d9e916f51f2d8a9244b726400bf10e3f99ebfe26"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+      "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-live-reference-flux-replay-medium-laminar/reference-flux-replay-3d.json",
+      "sha256": "94bb075930c873f23f258e6573dee867a3eb8bcab06b4c749049b16e83d323df"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-live-reference-flux-replay-medium-laminar/final-fvm.npz",
+      "sha256": "cd9cd0262aa7d76e8faaeb8ce8f17a3955052e7fde90f29abfef8898fb90350d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-control/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "f4f977e36a400b1c61d81343ae1e7d37e6e0eae3259774ae7a7dd5d6d2897fa7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-control/trial/hybrid/solution/backups/vpm_boundary_condition_000020.npz",
+      "sha256": "ec8f4e3720821814e0366400356c5d0184c0c588d64ce4e7eea490395ff64c27"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-control/trial/cube-coupled-trial.json",
+      "sha256": "2f92e0fad8b698007634bdfd2d779c75aa9b8ee2afd35c359601f4a298cdf1d5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-control/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "469d949e59a2f994012708e5bbb5d9a4f815a8da74573035523b36a41258b5ad"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-control/trial/latest-comparison-fields.npz",
+      "sha256": "a12b47411410a90061a1bc26118b728d1d51b940a6cc42c25f60b0c77af375ab"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "4bd5efd314255946dae89a8ae54c2d1a205b377d0a54448a0a77a7457cf29b19"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/trial/hybrid/solution/backups/vpm_boundary_condition_000020.npz",
+      "sha256": "06409a3543e2da67cefc5e8b7ab5285c2220cb7b8cef912a803de583f17a221b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/trial/cube-coupled-trial.json",
+      "sha256": "c649717b47bed11261e4183e5d6fa153a98249baec146a590178ef8cecd5b135"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "1d7c9348457de4425116704155c1b40d024099a10cfc2985e6ca21eb41ae175a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-medium-serial-twelve/trial/latest-comparison-fields.npz",
+      "sha256": "9b1240b7bf8b31d79590d81a107af91325ea2a5f10948dd5b29bf36253908095"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/backup.py",
+      "sha256": "4f87ea6c1416357f529fed07ea15833a82bf868f4f4fb3f16da984023ecb2254"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_velocity_sampling_3d.py",
+      "sha256": "3b8fee2307024b08adef16ce8b012a356b38917ac9d27f2507ea7eb965ebe99d"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21"
+    }
+  ],
+  "fields": {
+    "path": "studies/coupler_accuracy/results/cube-3d-interface-iteration-endpoint-audit-medium/coupled-boundary-stage-fields.npz",
+    "sha256": "e1071d0da48a788bca9e9b5c8ad2cebec9a0e4a0d29f5fcbeaf7e02e76b135ea"
+  },
+  "limitations": [
+    "The FVM trace is recovered from its saved conservative flux and face-valued ghost velocities after the last FVM substep.",
+    "The boundary-history backup contains VPM data recomputed after particle replacement at that same time. The FVM is not re-solved with that endpoint.",
+    "This fixed-time difference follows the documented partitioned algorithm; it is not a restart corruption or evidence of physical time advance during replacement.",
+    "The tangential-gradient comparison uses the recovered mixed face increment and the full reference's native face derivative; these are discrete boundary observations.",
+    "The endpoint jump and reference errors do not, by themselves, predict whether interface iteration improves an advancing trajectory."
+  ]
+}

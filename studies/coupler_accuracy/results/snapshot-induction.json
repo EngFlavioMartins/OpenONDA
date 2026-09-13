@@ -1,0 +1,87 @@
+{
+  "schema": "openonda-coupler-snapshot-induction/1",
+  "reference": "fine",
+  "time": 59.99999999998448,
+  "cells": 151740,
+  "sigma": 0.0625,
+  "target_count": 303,
+  "elapsed_seconds": 47.486148166999556,
+  "metrics": {
+    "2D": {
+      "velocity_rms_error_over_Uinf": 0.017576990904968694,
+      "velocity_max_error_over_Uinf": 0.03095379593618962,
+      "rms_difference_from_2D_over_Uinf": 0.0
+    },
+    "3D, span 1D": {
+      "velocity_rms_error_over_Uinf": 0.21800961445264846,
+      "velocity_max_error_over_Uinf": 0.5328587562171488,
+      "rms_difference_from_2D_over_Uinf": 0.22545734182068844
+    },
+    "3D, span 3D": {
+      "velocity_rms_error_over_Uinf": 0.07984326081324337,
+      "velocity_max_error_over_Uinf": 0.16083703706704378,
+      "rms_difference_from_2D_over_Uinf": 0.09205854342306341
+    },
+    "3D, span 9D": {
+      "velocity_rms_error_over_Uinf": 0.012038464053323832,
+      "velocity_max_error_over_Uinf": 0.020051093203604257,
+      "rms_difference_from_2D_over_Uinf": 0.02749757784659345
+    }
+  },
+  "method": "Direct free-space Gaussian induction of saved FVM omega*V, no panels; replicated spans or exact 2D kernel.",
+  "limitations": [
+    "VTK parametric cell centres approximate native volume centroids.",
+    "Free-space induction has different outer boundary conditions from the finite FVM reference.",
+    "This is a fixed-field diagnostic, not a coupled-flow validation."
+  ],
+  "sources": [
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041.pvtu",
+      "sha256": "320cf2d8b9e02da3c88f465b35bef8378dcb7b69b18694b2b02359ee6cb53c7a"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/mesh.vtu",
+      "sha256": "12aded258e083bf11e292b79ef354fd154baa1924c43aeff0e467175f0d94284"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fvm_metadata.json",
+      "sha256": "60d6990629490a3f40f58d34e56f1a12b03d6263939e43236801304bc13045a4"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/fine/transverse_x1.csv",
+      "sha256": "a4589f6d761480c9647dfe6bfae2c78b40686e8eafbea76d3f8ae3e041c74181"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/fine/transverse_x2.csv",
+      "sha256": "e41e4315555d4d28cafbf74499307f9e4055a3fa08d7e80a9818aa2d91e6b4d9"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/fine/transverse_x4.csv",
+      "sha256": "7190c2a744a230ba35ae6208e7a4290767628e9fdc639e3a78b14bfd87d36fb2"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00000.vtu",
+      "sha256": "a29a796142366e757435600b92b561c2abaef0b0e663aed66381d8dfabca273d"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00001.vtu",
+      "sha256": "92453584d0a7c41b9109907621c089266deb02c5dc36f20eead9f788a2295d9c"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00002.vtu",
+      "sha256": "3381830f80e5737e1a2fb656d0019044980844506db7044aa3253998e3e7d495"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00003.vtu",
+      "sha256": "8e21c26c673665fe697991de0cf88f21e8a8590afe7bd6ec8ae144fe997cf116"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00004.vtu",
+      "sha256": "3b7994ed6b0a7ebe681f7ea574e05af1d0059179df0beb228da8e05ab6cd646f"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fine_015041-rank-00005.vtu",
+      "sha256": "9c9c5108b19e9a3a2c089021de43eb7fc30774a0ba04fb3bfbdd41aafe56cdc2"
+    }
+  ]
+}

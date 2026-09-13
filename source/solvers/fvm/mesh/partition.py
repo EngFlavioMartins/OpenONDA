@@ -559,6 +559,11 @@ def localize_mesh_and_geometry(
         values = np.asarray(mesh_data.get(key, np.full(n_global_cells, default)), dtype=dtype)
         local_mesh[key] = np.ascontiguousarray(values[local_cell_ids])
 
+    for key in ("cell_sizes", "cell_levels", "boundary_layer_index"):
+        values = mesh_data.get(key)
+        if values is not None:
+            local_mesh[key] = np.ascontiguousarray(np.asarray(values)[local_cell_ids])
+
     if "cell_vertex_indices" in mesh_data:
         local_mesh["cell_vertex_indices"] = np.ascontiguousarray(
             point_lookup[np.asarray(mesh_data["cell_vertex_indices"])[local_cell_ids]],

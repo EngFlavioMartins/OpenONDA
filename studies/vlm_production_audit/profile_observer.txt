@@ -1,0 +1,33 @@
+         35052221 function calls (35052159 primitive calls) in 15.256 seconds
+
+   Ordered by: cumulative time
+   List reduced from 427 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.268    0.268   15.256   15.256 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:2217(observe_surface_interaction)
+    15147    0.095    0.000   14.698    0.001 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:244(classify_moving_finite_surface_segment)
+    15147    0.327    0.000   13.791    0.001 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:288(classify_finite_surface_segment)
+    15147    0.327    0.000   12.127    0.001 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:167(_host_segment_surface_distance)
+    30348    0.337    0.000    8.458    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:51(_host_point_in_surface)
+   288195    2.652    0.000    7.874    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/numeric.py:1567(cross)
+    30354    0.017    0.000    5.496    0.000 {built-in method builtins.any}
+    91032    0.033    0.000    5.478    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:76(<genexpr>)
+    60684    0.556    0.000    5.445    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:41(_host_point_in_triangle)
+   864585    1.428    0.000    4.762    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/numeric.py:1493(moveaxis)
+  1744317    1.819    0.000    2.797    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/numeric.py:1431(normalize_axis_tuple)
+    60588    0.540    0.000    1.235    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:89(_host_segment_segment_distance)
+   469905    0.629    0.000    1.167    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/linalg/_linalg.py:2599(norm)
+    15147    0.173    0.000    0.794    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:228(_host_rigid_transform)
+   186056    0.119    0.000    0.727    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:2207(clip)
+    15147    0.011    0.000    0.676    0.000 {method 'extend' of 'list' objects}
+    75735    0.038    0.000    0.664    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:218(<genexpr>)
+    15147    0.096    0.000    0.639    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:155(_host_surface_frame)
+    60588    0.252    0.000    0.626    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:79(_host_point_segment_distance)
+   186073    0.115    0.000    0.608    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:48(_wrapfunc)
+  3488634    0.397    0.000    0.546    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/numeric.py:1480(<genexpr>)
+   178654    0.164    0.000    0.464    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:38(_wrapit)
+    75790    0.208    0.000    0.443    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/_core/_methods.py:115(_mean)
+    60588    0.178    0.000    0.321    0.000 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:122(_host_segment_intersection_parameter_2d)
+    15147    0.200    0.000    0.321    0.000 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numpy/linalg/_linalg.py:1667(svd)
+
+

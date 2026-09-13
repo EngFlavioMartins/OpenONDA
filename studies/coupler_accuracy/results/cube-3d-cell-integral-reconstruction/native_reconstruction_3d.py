@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""Frozen 3D reconstruction with native curl, wall samples and conserved moments.
+
+Fits only donor cells and the known stationary wall condition. The actual outer
+coupling faces are reserved for a separate boundary audit. Every candidate keeps
+the original outside particles, core widths and source positions fixed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+from pathlib import Path
+import time
+
+import numpy as np
+from scipy.sparse import coo_matrix, csr_matrix, hstack, load_npz, save_npz, vstack
+from scipy.sparse.linalg import LinearOperator, lsmr
+from scipy.spatial import cKDTree
+
+import openonda.fvm as fvm
+from source.coupler.renewal_projection import (
+    geometric_renewal_mask,
+    sparse_gaussian_vorticity_basis,
+)
+from source.solvers.fvm.io.mesh_storage import load_native_mesh
+from studies.coupler_accuracy.cube_boundary_oracle import (
+    CASE,
+    ROOT,
+    field_rms,
+    hash_file,
+    setup_for,
+)
+from studies.coupler_accuracy.joint_reconstruction_3d import (
+    CubePanelResponse,
+    constrained_least_squares,
+    gaussian_velocity_curl_operator,
+    regularized_projection,
+)
+from studies.coupler_accuracy.moment_budget import MomentBudgetProjector, particle_moments
+from studies.coupler_accuracy.native_cell_integrals_3d import (
+    NativeCellIntegration,
+    gaussian_cell_integrals,
+)
+from studies.coupler_accuracy.native_curl_3d import native_gauss_curl_stencil
+
+
+def selection_operator(ids, total_points):
+    ids = np.asarray(ids, dtype=int)
+    columns = (3 * ids[:, None] + np.arange(3)).ravel()
+    return coo_matrix((np.ones(len(columns)), (np.arange(len(columns)), columns)),
+                      shape=(len(columns), 3 * total_points)).tocsr()
+
+
+def fit_native(velocity_map, background, observation, target, prior, position,
+               *, conserve_moments, max_iterations):
+    penalty = 0.05 / np.linalg.norm(prior)
+    n = prior.size
+
+    def apply(x):
+        return np.r_[observation @ (velocity_map @ x), penalty * x]
+
+    def transpose(y):
+        return velocity_map.T @ (observation.T @ y[:-n]) + penalty * y[-n:]
+
+    operator = LinearOperator((observation.shape[0] + n, n), matvec=apply, rmatvec=transpose, dtype=float)
+    rhs = np.r_[target - observation @ (velocity_map @ prior.ravel() + background), np.zeros(n)]
+    unconstrained = lsmr(operator, rhs, atol=1e-9, btol=1e-9, maxiter=1000)
+    initial = prior + unconstrained[0].reshape(-1, 3)
+    budget = 2 * np.linalg.norm(prior, axis=1).sum()
+    projector = MomentBudgetProjector(position, prior, budget) if conserve_moments else None
+    candidate, diagnostics = constrained_least_squares(
+        operator, rhs, prior, budget, initial, max_iterations=max_iterations, projector=projector)
+    diagnostics.update({"lsmr_stop": int(unconstrained[1]), "lsmr_iterations": int(unconstrained[2]),
+                        "prior_weight": 0.05, "l1_budget_ratio": 2.0,
+                        "conserve_moments": conserve_moments,
+                        "maximum_moment_projection_iterations": projector.max_iterations_used if projector else 0})
+    return candidate, diagnostics
+
+
+def cell_integral_observation(args, mesh, geometry, ids, position, radius):
+    """Build or verify a shared integral matrix for the point/integral comparison."""
+    inputs = {"cell_ids": ids, "position": position, "radius": radius,
+              "fvm_volume": geometry["cell_volume"][ids]}
+    if args.cell_integrals is not None:
+        with np.load(args.cell_integrals / "cell-integral-inputs.npz", allow_pickle=False) as data:
+            for key, value in inputs.items():
+                np.testing.assert_array_equal(data[key], value, err_msg=f"Integral cache mismatch: {key}")
+        record = json.loads((args.cell_integrals / "cell-integral-audit.json").read_text())
+        assert hash_file(args.cell_integrals / "cell-integrals.npz")["sha256"] == record["matrix"]["sha256"]
+        matrix = load_npz(args.cell_integrals / "cell-integrals.npz")
+        return matrix, record
+    integration = NativeCellIntegration.from_mesh(mesh, geometry, ids)
+    started = time.perf_counter()
+
+    def progress(done, total, order, change):
+        print(json.dumps({"event": "cell_integration", "done": done, "total": total,
+                          "quadrature_order": order, "basis_change_over_fvm_volume": change,
+                          "elapsed_seconds": time.perf_counter() - started}), flush=True)
+
+    matrix, diagnostic = gaussian_cell_integrals(integration, position, radius, progress=progress)
+    # Check ordinary cells, the largest cells, the largest geometry mismatch,
+    # and the largest adaptive remainder. Selection uses no fit result.
+    selected = np.unique(np.r_[np.linspace(0, len(ids)-1, 16, dtype=int),
+                               np.argsort(integration.fvm_volume)[-4:],
+                               np.argsort(np.abs(integration.polyhedron_volume / integration.fvm_volume - 1))[-4:],
+                               np.argsort(diagnostic["successive_basis_change_over_fvm_volume"])[-4:]])
+    refined_integration = NativeCellIntegration.from_mesh(mesh, geometry, ids[selected])
+    refined, refined_diagnostic = gaussian_cell_integrals(
+        refined_integration, position, radius, minimum_order=6, maximum_order=20,
+        cutoff_sigma=10, basis_tolerance=1e-11)
+    difference = (refined - matrix[selected]).multiply(1 / integration.fvm_volume[selected, None])
+    maximum_difference = float(np.max(np.abs(difference.data), initial=0))
+    assert maximum_difference < 2e-9
+    save_npz(args.output / "cell-integrals.npz", matrix)
+    np.savez_compressed(args.output / "cell-integral-inputs.npz", **inputs,
+                        polyhedron_volume=integration.polyhedron_volume,
+                        polyhedron_centroid=integration.polyhedron_centroid)
+    record = {"geometry": integration.geometry_audit(), "quadrature": diagnostic,
+              "refinement": {"local_cell_indices": selected.tolist(),
+                             "maximum_basis_difference_over_fvm_volume": maximum_difference,
+                             "quadrature": refined_diagnostic},
+              "normalization": "Integral over signed face-fan tetrahedra; divide by original stored FVM volume. No filter or row normalization.",
+              "matrix": hash_file(args.output / "cell-integrals.npz"),
+              "elapsed_seconds": time.perf_counter() - started}
+    (args.output / "cell-integral-audit.json").write_text(json.dumps(record, indent=2) + "\n")
+    return matrix, record
+
+
+def run(args):
+    if args.raw_observation != "point" and args.fit_family == "native":
+        raise ValueError("The raw-observation choice applies to raw and overlap fits")
+    args.output.mkdir(parents=True, exist_ok=False)
+    started = time.perf_counter()
+    source_paths = [Path(__file__), args.failure, args.oracle / "initial-cell-fields.npz",
+                    args.oracle / "full-native-mesh.npz", CASE / "assets/cube.stl"]
+    source_paths += [ROOT / p for p in (
+        "studies/coupler_accuracy/cube_boundary_oracle.py",
+        "studies/coupler_accuracy/joint_reconstruction_3d.py",
+        "studies/coupler_accuracy/moment_budget.py",
+        "studies/coupler_accuracy/native_cell_integrals_3d.py",
+        "studies/coupler_accuracy/native_curl_3d.py",
+        "source/coupler/renewal_projection.py",
+        "source/solvers/fvm/fields/gradients.py", "source/solvers/fvm/fields/diagnostics.py",
+        "source/solvers/fvm/core/solver.py", "source/solvers/fvm/mesh/geometry.py",
+        "source/solvers/fvm/coupling/coupler_interface.py",
+        "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+        "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+        "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+        "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py")]
+    if args.cell_integrals is not None:
+        source_paths += [args.cell_integrals / name for name in
+                         ("cell-integrals.npz", "cell-integral-inputs.npz", "cell-integral-audit.json",
+                          "sources-at-start.json")]
+    sources = [hash_file(p) for p in source_paths]
+    (args.output / "sources-at-start.json").write_text(json.dumps(sources, indent=2) + "\n")
+    for path in source_paths:
+        if path.parent == Path(__file__).parent:
+            (args.output / path.name).write_bytes(path.read_bytes())
+    with np.load(args.failure, allow_pickle=False) as data:
+        failure = {k: data[k].copy() for k in data.files}
+    with np.load(args.oracle / "initial-cell-fields.npz", allow_pickle=False) as data:
+        centres, velocity, pressure = (data[k].copy() for k in ("centres", "velocity", "pressure"))
+        physical_time = float(data["physical_time"])
+    tree = cKDTree(centres)
+    fit, held = failure["fit_position"], failure["verification_position"]
+    if args.fit_data == "all_donor":
+        fit = np.vstack((fit, held))
+        unused = cKDTree(fit).query(failure["fvm_position"])[0] > 1e-12
+        held = failure["fvm_position"][unused]
+        assert len(fit) == 2512 and len(held) == 328
+    fit_distance, fit_ids = tree.query(fit)
+    held_distance, held_ids = tree.query(held)
+    np.testing.assert_allclose(np.r_[fit_distance, held_distance], 0, rtol=0, atol=1e-13)
+    assert not set(fit_ids) & set(held_ids)
+    ids = np.r_[fit_ids, held_ids]
+    mesh = load_native_mesh(args.oracle / "full-native-mesh.npz")
+    with fvm.create_fvm_solver(setup_for(mesh, "donor", 0.01, 1), mesh=copy.deepcopy(mesh),
+                               case_dir=args.output / "donor") as solver:
+        solver.set_initial_state(velocity, pressure)
+        omega, volume = solver.get_vorticity_field().copy(), solver.get_cell_volume().copy()
+        geometry = solver.geo_data
+        stencil, dependencies = native_gauss_curl_stencil(solver.mesh_data, solver.geo_data, ids)
+        replay = (stencil @ solver.velocity[dependencies].ravel()).reshape(-1, 3)
+        np.testing.assert_allclose(replay, omega[ids], rtol=0, atol=5e-13)
+        boundary_ids = dependencies[dependencies >= mesh["n_cells"]]
+        wall = next(p for p in solver.mesh_data["boundary"] if p["name"] == "cube")
+        wall_ghosts = mesh["n_cells"] + np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"]) - mesh["n_interior_faces"]
+        assert np.all(np.isin(boundary_ids, wall_ghosts))
+        np.testing.assert_array_equal(solver.velocity[boundary_ids], 0)
+    _, small_ids = tree.query(failure["fvm_position"])
+    np.testing.assert_allclose(omega[small_ids], failure["fvm_vorticity"], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(velocity[small_ids], failure["fvm_velocity"], rtol=0, atol=1e-13)
+    h = float(failure["particle_spacing"])
+    retained = np.linalg.norm(omega, axis=1) >= 0.02
+    seed_position = centres[retained].astype(np.float32).astype(float)
+    seed_strength = (omega * volume[:, None])[retained].astype(np.float32).astype(float)
+    preserved = ~geometric_renewal_mask(seed_position, failure["renewal_bounds"], particle_spacing=h)
+    outer_position, outer_strength = seed_position[preserved], seed_strength[preserved]
+    position, radius, prior = (failure[k] for k in ("solve_position", "solve_radius", "solve_prior"))
+    nonzero = np.linalg.norm(prior, axis=1) > 0
+    distance, seed_ids = cKDTree(seed_position).query(position[nonzero])
+    np.testing.assert_allclose(distance, 0, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(prior[nonzero], seed_strength[seed_ids], rtol=0, atol=1e-12)
+    integral_audit, integral_g, integral_outer = None, None, None
+    if args.raw_observation == "cell_integral" or args.cell_integrals is not None:
+        integral, integral_audit = cell_integral_observation(
+            args, mesh, geometry, ids, np.vstack((position, outer_position)),
+            np.r_[radius, np.full(len(outer_position), h)])
+        mean_basis = integral.multiply(1 / volume[ids, None]).tocsr()
+        integral_g = mean_basis[:, :len(position)]
+        integral_outer = mean_basis[:, len(position):] @ outer_strength
+        del mean_basis, integral
+    panel = CubePanelResponse()
+    fluid = dependencies < mesh["n_cells"]
+    dependency_cells = dependencies[fluid]
+    wall_points = panel.centres + 1e-6 * panel.normal
+    evaluation_points = np.vstack((centres[dependency_cells], wall_points))
+    u, background = panel.velocity_operator(evaluation_points, position, radius)
+    outer, _ = panel.velocity_operator(evaluation_points, outer_position, h)
+    background += outer @ outer_strength.ravel()
+    del outer
+    native = hstack((stencil[:, np.repeat(fluid, 3)], csr_matrix((stencil.shape[0], 3 * panel.count))), format="csr")
+    fit_rows, held_rows = np.searchsorted(dependency_cells, fit_ids), np.searchsorted(dependency_cells, held_ids)
+    np.testing.assert_array_equal(dependency_cells[fit_rows], fit_ids)
+    np.testing.assert_array_equal(dependency_cells[held_rows], held_ids)
+    fit_select = selection_operator(fit_rows, len(evaluation_points))
+    wall_select = selection_operator(np.arange(len(dependency_cells), len(evaluation_points)), len(evaluation_points))
+    weights_omega = np.repeat(np.sqrt(volume[fit_ids] / volume[fit_ids].sum()) / field_rms(omega[fit_ids], volume[fit_ids]), 3)
+    weights_velocity = 5 * np.repeat(np.sqrt(volume[fit_ids] / volume[fit_ids].sum()), 3)
+    weights_wall = 5 * np.repeat(np.sqrt(panel.area / panel.area.sum()), 3)
+    observations = [native[:3 * len(fit)].multiply(weights_omega[:, None]),
+                    fit_select.multiply(weights_velocity[:, None]), wall_select.multiply(weights_wall[:, None])]
+    targets = [weights_omega * omega[fit_ids].ravel(), weights_velocity * velocity[fit_ids].ravel(), np.zeros(3 * panel.count)]
+    gheld = sparse_gaussian_vorticity_basis(held, position, radius)
+    raw_outer = sparse_gaussian_vorticity_basis(held, outer_position, h) @ outer_strength
+    cheld = gaussian_velocity_curl_operator(held, position, radius)
+    curl_outer = (gaussian_velocity_curl_operator(held, outer_position, h) @ outer_strength.ravel()).reshape(-1, 3)
+    barycentric = np.array([[2/3, 1/6, 1/6], [1/6, 2/3, 1/6], [1/6, 1/6, 2/3]])
+    held_wall_points = np.einsum("qv,pvd->pqd", barycentric, panel.vertices).reshape(-1, 3) + 1e-6 * np.repeat(panel.normal, 3, axis=0)
+    wall_u, wall_background = panel.velocity_operator(held_wall_points, position, radius)
+    outer_wall, _ = panel.velocity_operator(held_wall_points, outer_position, h)
+    wall_background += outer_wall @ outer_strength.ravel()
+    records, fields = [], {}
+    prior_l1 = np.linalg.norm(prior, axis=1).sum()
+    prior_moments = particle_moments(position, prior)
+    overlap_fit = np.max(np.abs(fit), axis=1) >= 1
+    overlap_held = np.max(np.abs(held), axis=1) >= 1
+    gfit_overlap = sparse_gaussian_vorticity_basis(fit[overlap_fit], position, radius)
+    raw_outer_fit = sparse_gaussian_vorticity_basis(fit[overlap_fit], outer_position, h) @ outer_strength
+    print(json.dumps({"event": "native_operators_ready", "fluid_dependencies": len(dependency_cells),
+                      "wall_fit_points": panel.count, "wall_held_points": len(held_wall_points),
+                      "fit_cells": len(fit), "held_cells": len(held), "sources": len(position)}), flush=True)
+
+    def measure(name, strength, diagnostics):
+        values = (u @ strength.ravel() + background).reshape(-1, 3)
+        discrete_curl = (native @ values.ravel()).reshape(-1, 3)
+        raw = gheld @ strength + raw_outer
+        physical = (cheld @ strength.ravel()).reshape(-1, 3) + curl_outer
+        wall_values = (wall_u @ strength.ravel() + wall_background).reshape(-1, 3)
+        moments = particle_moments(position, strength)
+        record = {"name": name, **diagnostics,
+                  "overlap_fit_velocity_rms_over_Uinf": field_rms(values[fit_rows[overlap_fit]] - velocity[fit_ids[overlap_fit]], volume[fit_ids[overlap_fit]]),
+                  "overlap_held_velocity_rms_over_Uinf": field_rms(values[held_rows[overlap_held]] - velocity[held_ids[overlap_held]], volume[held_ids[overlap_held]]),
+                  "overlap_fit_raw_vorticity_relative_error": field_rms(gfit_overlap @ strength + raw_outer_fit - omega[fit_ids[overlap_fit]], volume[fit_ids[overlap_fit]]) / field_rms(omega[fit_ids[overlap_fit]], volume[fit_ids[overlap_fit]]),
+                  "overlap_held_raw_vorticity_relative_error": field_rms((raw - omega[held_ids])[overlap_held], volume[held_ids[overlap_held]]) / field_rms(omega[held_ids[overlap_held]], volume[held_ids[overlap_held]]),
+                  "fit_velocity_rms_over_Uinf": field_rms(values[fit_rows] - velocity[fit_ids], volume[fit_ids]),
+                  "held_velocity_rms_over_Uinf": field_rms(values[held_rows] - velocity[held_ids], volume[held_ids]),
+                  "fit_native_curl_relative_error": field_rms(discrete_curl[:len(fit)] - omega[fit_ids], volume[fit_ids]) / field_rms(omega[fit_ids], volume[fit_ids]),
+                  "held_native_curl_relative_error": field_rms(discrete_curl[len(fit):] - omega[held_ids], volume[held_ids]) / field_rms(omega[held_ids], volume[held_ids]),
+                  "held_raw_vorticity_relative_error": field_rms(raw - omega[held_ids], volume[held_ids]) / field_rms(omega[held_ids], volume[held_ids]),
+                  "held_velocity_curl_relative_error": field_rms(physical - omega[held_ids], volume[held_ids]) / field_rms(omega[held_ids], volume[held_ids]),
+                  "fit_wall_velocity_rms_over_Uinf": field_rms(values[len(dependency_cells):], panel.area),
+                  "held_wall_velocity_rms_over_Uinf": field_rms(wall_values, np.repeat(panel.area / 3, 3)),
+                  "strength_l1_over_prior": float(np.linalg.norm(strength, axis=1).sum() / prior_l1),
+                  "net_strength_change_norm": float(np.linalg.norm(moments[0] - prior_moments[0])),
+                  "impulse_change_norm": float(np.linalg.norm(moments[1] - prior_moments[1])),
+                  "elapsed_seconds": time.perf_counter() - started}
+        if integral_g is not None:
+            integrated = integral_g @ strength + integral_outer
+            for role, local, selected_ids in (("fit", slice(None, len(fit)), fit_ids),
+                                               ("held", slice(len(fit), None), held_ids)):
+                error = field_rms(integrated[local] - omega[selected_ids], volume[selected_ids])
+                record[role + "_cell_integrated_raw_vorticity_relative_error"] = error / field_rms(omega[selected_ids], volume[selected_ids])
+                record[role + "_cell_integrated_raw_vorticity_rms_error"] = error
+            record["sampled_region_integrated_raw_circulation"] = np.sum(integrated * volume[ids, None], axis=0).tolist()
+            fields[name + "__cell_integrated_raw_vorticity"] = integrated[len(fit):]
+        records.append(record)
+        fields.update({name + "__strength": strength, name + "__velocity": values[held_rows],
+                       name + "__raw_vorticity": raw, name + "__velocity_curl": physical,
+                       name + "__native_curl": discrete_curl[len(fit):], name + "__held_wall_velocity": wall_values})
+        print(json.dumps(record), flush=True)
+        (args.output / "history.json").write_text(json.dumps(records, indent=2) + "\n")
+
+    measure("donor_volume_vorticity", prior, {})
+    measure("original_unregularized_fit", failure["solve_strength"], {})
+    if args.fit_family == "native":
+        cases = [("native_curl_only", 1, False), ("native_curl_velocity", 2, False),
+                 ("native_curl_velocity_wall", 3, False), ("native_curl_velocity_wall_moments", 3, True)]
+        for name, count, conserve in cases:
+            candidate, diagnostics = fit_native(u, background, vstack(observations[:count], format="csr"),
+                                                np.concatenate(targets[:count]), prior, position,
+                                                conserve_moments=conserve, max_iterations=args.max_iterations)
+            measure(name, candidate, diagnostics)
+    else:
+        selected = overlap_fit if args.fit_family == "overlap" else np.ones(len(fit), dtype=bool)
+        rows = (3 * fit_rows[selected, None] + np.arange(3)).ravel()
+        interface_u = u[rows]
+        interface_target = velocity[fit_ids[selected]] - background[rows].reshape(-1, 3)
+        weights = np.sqrt(volume[fit_ids[selected]] / volume[fit_ids[selected]].sum())
+        omega_weights = weights / field_rms(omega[fit_ids[selected]], volume[fit_ids[selected]])
+        if args.raw_observation == "cell_integral":
+            selected_g = integral_g[:len(fit)][selected]
+            selected_outer = integral_outer[:len(fit)][selected]
+        else:
+            selected_g = sparse_gaussian_vorticity_basis(fit[selected], position, radius)
+            selected_outer = sparse_gaussian_vorticity_basis(fit[selected], outer_position, h) @ outer_strength
+        cases = (("overlap_velocity_moments", 0, 5, True),
+                 ("overlap_raw_vorticity_velocity_moments", 1, 5, True),
+                 ("overlap_raw_vorticity_velocity", 1, 5, False)) if args.fit_family == "overlap" else (
+                     ("raw_vorticity", 1, 0, False), ("raw_vorticity_velocity", 1, 5, False),
+                     ("raw_vorticity_velocity_moments", 1, 5, True))
+        for name, omega_weight, velocity_weight, conserve in cases:
+            projector = MomentBudgetProjector(position, prior, 2 * prior_l1) if conserve else None
+            candidate, diagnostics = regularized_projection(
+                selected_g, interface_u, omega[fit_ids[selected]] - selected_outer,
+                interface_target, prior, omega_weight * omega_weights, weights,
+                velocity_weight=velocity_weight, budget_method="projected", projector=projector,
+                max_iterations=args.max_iterations)
+            diagnostics.update({"conserve_moments": conserve, "omega_weight": omega_weight,
+                                "maximum_moment_projection_iterations": projector.max_iterations_used if projector else 0})
+            measure(name, candidate, diagnostics)
+    np.savez_compressed(args.output / "held-fields.npz", position=held, volume=volume[held_ids],
+                        fvm_velocity=velocity[held_ids], fvm_vorticity=omega[held_ids],
+                        renewable_position=position, radius=radius, held_wall_position=held_wall_points, **fields)
+    report = {"schema": "openonda-frozen-native-reconstruction-3d/1", "status": "complete",
+              "spatial_dimensions": 3, "physical_time": physical_time, "particle_spacing": h,
+              "fit_family": args.fit_family, "raw_observation": args.raw_observation,
+              "cell_integral_audit": integral_audit,
+              "sampled_region_fvm_circulation": np.sum(omega[ids] * volume[ids, None], axis=0).tolist(),
+              "fit_data": args.fit_data, "fit_cells": len(fit), "held_cells": len(held),
+              "data_role_note": ("All 2512 original fit and verification cells are now training data. Independent cell checks use the 328 unused outer-layer cells; actual coupling faces remain outside the fit."
+                                 if args.fit_data == "all_donor" else "Original disjoint 1256-cell fit and verification sets."),
+              "overlap_fit_cells": int(overlap_fit.sum()), "overlap_held_cells": int(overlap_held.sum()),
+              "overlap_definition": "Selected native cells with max(abs(x), abs(y), abs(z)) >= 1; the dataset determines the outer limit",
+              "renewal_bounds": failure["renewal_bounds"].tolist(), "results": records, "sources": sources,
+              "limitations": ["Frozen coarse 3D cube; no production checkpoint or acceptance gate is changed.",
+                              "Actual coupling faces are excluded from fitting and evaluated in a separate audit.",
+                              "The moment target is this frozen donor; evolving regional exchange is not qualified.",
+                              "Native-curl fit does not by itself establish continuous-field vorticity or no-slip accuracy.",
+                              "Cell-integrated raw Gaussian vorticity is not the integral of the induced velocity's curl.",
+                              "Reused development verification cells; fresh 3D acceptance data remain required."]}
+    (args.output / "native-reconstruction-3d.json").write_text(json.dumps(report, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--failure", type=Path, default=ROOT / "studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz")
+    parser.add_argument("--oracle", type=Path, default=ROOT / "studies/coupler_accuracy/results/cube-3d-oracle")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--max-iterations", type=int, default=6000)
+    parser.add_argument("--fit-family", choices=("native", "overlap", "raw"), default="native")
+    parser.add_argument("--fit-data", choices=("original_split", "all_donor"), default="original_split")
+    parser.add_argument("--raw-observation", choices=("point", "cell_integral"), default="point")
+    parser.add_argument("--cell-integrals", type=Path, help="Reuse a verified cell-integral matrix from this study's output directory")
+    run(parser.parse_args())

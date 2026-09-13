@@ -1,0 +1,2028 @@
+{
+  "function_count": 337,
+  "missing_docstrings": [],
+  "functions": [
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "name": "kutta_joukowski",
+      "line": 32,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "name": "__post_init__",
+      "line": 55,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "name": "geometric",
+      "line": 67,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "name": "__post_init__",
+      "line": 110,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/config.py",
+      "name": "__post_init__",
+      "line": 212,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_clip",
+      "line": 18,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_point_segment",
+      "line": 24,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_segment_segment",
+      "line": 33,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_triangle",
+      "line": 54,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_inside",
+      "line": 63,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_intersection_2d",
+      "line": 79,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "classify_relative_segment",
+      "line": 102,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "moving_panel_geometry",
+      "line": 180,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "_observe",
+      "line": 205,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/observer.py",
+      "name": "observe_moving_surfaces",
+      "line": 267,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/virtual_wake.py",
+      "name": "make_virtual_wake_kernel",
+      "line": 9,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/virtual_wake.py",
+      "name": "accumulate",
+      "line": 15,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "regularized_segment_velocity_and_gradient",
+      "line": 22,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "bound_vortex_velocity",
+      "line": 67,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "semi_infinite_vortex_velocity",
+      "line": 80,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "horseshoe_velocity",
+      "line": 130,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "vortex_ring_velocity",
+      "line": 153,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "horseshoe_semi_infinite_velocity",
+      "line": 172,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/biot_savart.py",
+      "name": "vortex_ring_tri_velocity",
+      "line": 217,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "swept_panel_candidates",
+      "line": 19,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_point_in_triangle",
+      "line": 42,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_point_in_surface",
+      "line": 54,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_point_segment_distance",
+      "line": 87,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_segment_segment_distance",
+      "line": 97,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_segment_intersection_parameter_2d",
+      "line": 130,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_surface_frame",
+      "line": 163,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_segment_surface_distance",
+      "line": 175,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_host_rigid_transform",
+      "line": 235,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "classify_moving_finite_surface_segment",
+      "line": 253,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "classify_finite_surface_segment",
+      "line": 297,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_safe_normalized_normal",
+      "line": 407,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "_is_point_in_triangle",
+      "line": 417,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "is_point_in_quad",
+      "line": 444,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "detect_surface_collision_events_kernel",
+      "line": 477,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "detect_surface_collisions_kernel",
+      "line": 570,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "duplicate",
+      "line": 61,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/kernels/collision.py",
+      "name": "frame",
+      "line": 200,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/field.py",
+      "name": "__post_init__",
+      "line": 60,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/field.py",
+      "name": "particle_target_radius",
+      "line": 67,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/field.py",
+      "name": "as_dict",
+      "line": 71,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_lazy_import_taichi",
+      "line": 29,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_matvec_kernel",
+      "line": 397,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_matvec",
+      "line": 406,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_dot_product_reset_kernel",
+      "line": 421,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_dot_product_kernel",
+      "line": 427,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_dot_product",
+      "line": 439,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_build_jacobi_precond_kernel",
+      "line": 470,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_build_jacobi_precond",
+      "line": 480,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_apply_precond_kernel",
+      "line": 487,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_apply_precond",
+      "line": 493,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_init_kernel",
+      "line": 500,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_init",
+      "line": 516,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_s_kernel",
+      "line": 523,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_s",
+      "line": 531,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_axpy_kernel",
+      "line": 538,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_axpy",
+      "line": 544,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_x_kernel",
+      "line": 551,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_x",
+      "line": 564,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_r_kernel",
+      "line": 571,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_r",
+      "line": 579,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_p_kernel",
+      "line": 586,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_bicgstab_update_p",
+      "line": 599,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "get_linear_solver",
+      "line": 615,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "list_available_solvers",
+      "line": 661,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "solve",
+      "line": 43,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "name",
+      "line": 70,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "is_gpu",
+      "line": 76,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "__init__",
+      "line": 100,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "name",
+      "line": 106,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "is_gpu",
+      "line": 111,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "solve",
+      "line": 115,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "__init__",
+      "line": 238,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_ensure_workspace",
+      "line": 261,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "name",
+      "line": 286,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "is_gpu",
+      "line": 291,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_matvec_p_to_v",
+      "line": 295,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_matvec_s_to_t",
+      "line": 303,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_update_x_full",
+      "line": 311,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "_update_x_partial",
+      "line": 318,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/linear_solvers.py",
+      "name": "solve",
+      "line": 325,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vtk_export.py",
+      "name": "write_lattice_vtk",
+      "line": 34,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vtk_export.py",
+      "name": "add",
+      "line": 69,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "record_time",
+      "line": 31,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "record_vlm_diagnostics",
+      "line": 53,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "export_forces_csv",
+      "line": 126,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "record_vlm_leakage_diagnostics",
+      "line": 248,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "_export_leakage_csv",
+      "line": 357,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+      "name": "_export_leakage_vtk",
+      "line": 417,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/unsteady.py",
+      "name": "_triangle_load",
+      "line": 7,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/unsteady.py",
+      "name": "add_unsteady_pressure_loads",
+      "line": 15,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_aerodynamic_influence_coefficient_matrix",
+      "line": 23,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_right_hand_side",
+      "line": 105,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_coupled_right_hand_side",
+      "line": 139,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "panel_velocity_and_gradient",
+      "line": 173,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_induced_velocities",
+      "line": 219,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "add_induced_velocity_at_targets",
+      "line": 249,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "add_induced_velocity_and_gradient_at_targets",
+      "line": 279,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "add_stage_rates_with_bound_exchange",
+      "line": 323,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "accumulate_bound_transport",
+      "line": 382,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "initialize_bound_transport",
+      "line": 394,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "_bound_panel_pair_velocity",
+      "line": 409,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "apply_circulation_smoothing",
+      "line": 460,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_induced_velocities_at_bound",
+      "line": 488,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_pressure_coefficients",
+      "line": 539,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/influence.py",
+      "name": "compute_panel_force_coupled",
+      "line": 566,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_stitch_symmetry_neighbors",
+      "line": 18,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_stitch_segment_neighbors",
+      "line": 41,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "generate_vlm_mesh",
+      "line": 66,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_fill_panel_geometry",
+      "line": 241,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_set_panel_topology",
+      "line": 292,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_generate_segment_to_numpy",
+      "line": 308,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_compute_bilinear_coefficients",
+      "line": 377,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_compute_panel_corners",
+      "line": 388,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_bilinear_interp",
+      "line": 397,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_mirror_vertices",
+      "line": 417,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_update_trailing_uniform_kernel",
+      "line": 469,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_update_trailing_local_kernel",
+      "line": 509,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "update_trailing_edge_directions",
+      "line": 548,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_prepare_trailing_temp",
+      "line": 575,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "update_trailing_directions_local",
+      "line": 606,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_geometric_spacing_single_end",
+      "line": 661,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_geometric_spacing_both_ends",
+      "line": 693,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/mesh.py",
+      "name": "_compute_spanwise_edges",
+      "line": 742,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/forces.py",
+      "name": "compute_kutta_joukowski",
+      "line": 37,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "_portable_code",
+      "line": 43,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "_identity_controls",
+      "line": 51,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "_identity_digest",
+      "line": 86,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "restart_identity",
+      "line": 110,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "restart_physics_identity",
+      "line": 115,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "write_vlm_restart",
+      "line": 126,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "validate_vlm_restart",
+      "line": 157,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/restart.py",
+      "name": "restore_vlm_restart",
+      "line": 265,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/loading_distribution.py",
+      "name": "record_loading_distributions",
+      "line": 44,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/loading_distribution.py",
+      "name": "build_surface_grid_index",
+      "line": 84,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/loading_distribution.py",
+      "name": "extract_distributions",
+      "line": 171,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/loading_distribution.py",
+      "name": "export_distribution_csv",
+      "line": 504,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "__init__",
+      "line": 29,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "reset_wake_buffer",
+      "line": 210,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "mark_le_panels",
+      "line": 219,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "save_old_circulation",
+      "line": 233,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "apply_relaxation",
+      "line": 240,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "compute_cumulative_circulation",
+      "line": 260,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_wake_count",
+      "line": 288,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "reset",
+      "line": 292,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_collocation_points",
+      "line": 319,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_circulation",
+      "line": 323,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_velocity",
+      "line": 327,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_bound_vortex_velocity",
+      "line": 331,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_kinematic_velocity",
+      "line": 335,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_panel_centre",
+      "line": 339,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_external_velocity",
+      "line": 343,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_pressure_coefficient",
+      "line": 347,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "translate_panels",
+      "line": 352,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "rotate_translate_panels",
+      "line": 396,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "has_kinematic_velocity",
+      "line": 462,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "set_kinematic_velocity",
+      "line": 469,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "set_external_velocity",
+      "line": 508,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_forces",
+      "line": 542,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "get_aerodynamic_influence_coefficient_matrix",
+      "line": 546,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "set_circulation",
+      "line": 551,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "compute_panel_centre",
+      "line": 574,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "save_vtk",
+      "line": 582,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/lattice.py",
+      "name": "_rotate",
+      "line": 437,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/kernels.py",
+      "name": "update_geometry_translating_kernel",
+      "line": 9,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/kernels.py",
+      "name": "update_geometry_rotating_kernel",
+      "line": 44,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/kernels.py",
+      "name": "_append_wake_particle",
+      "line": 95,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/kernels.py",
+      "name": "shed_wake_particles_kernel",
+      "line": 126,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_surface_event_name",
+      "line": 70,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "__init__",
+      "line": 92,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_ensure_lattice_initialized",
+      "line": 196,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "generate_mesh",
+      "line": 240,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_build_wing_panel_ranges",
+      "line": 293,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_transform_panel_points",
+      "line": 309,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_write_lattice_arrays",
+      "line": 350,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_apply_transform_to_surface",
+      "line": 371,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_apply_surface_transforms",
+      "line": 414,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_build_rotation_matrix",
+      "line": 458,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_register_surface",
+      "line": 504,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "get_panel_group_ids",
+      "line": 536,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "ensure_mesh_generated",
+      "line": 577,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_update_combined_aircraft",
+      "line": 592,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "kinematics",
+      "line": 621,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "kinematics",
+      "line": 629,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_rotor_tip_speed",
+      "line": 636,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_get_active_kinematic_velocity",
+      "line": 667,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_get_max_kinematic_speed",
+      "line": 696,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_get_active_kinematics",
+      "line": 709,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "update_trailing_directions",
+      "line": 725,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_find_surface_panel_range",
+      "line": 747,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_panel_kinematic_velocity",
+      "line": 762,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "advance_time",
+      "line": 772,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_aerodynamic_influence_coefficient_matrix",
+      "line": 806,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_minimum_panel_chord",
+      "line": 829,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "check_coupling_stability",
+      "line": 847,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_run_linear_solver",
+      "line": 911,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "solve",
+      "line": 941,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_stage_geometry_arrays",
+      "line": 1048,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_ensure_stage_geometry_fields",
+      "line": 1111,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_stage_geometry",
+      "line": 1131,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_ensure_stage_workspace",
+      "line": 1136,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "solve_stage_boundary",
+      "line": 1147,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "add_stage_velocity",
+      "line": 1265,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "add_stage_velocity_and_gradient",
+      "line": 1290,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_initialize_bound_transport",
+      "line": 1318,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "particle_transport_step",
+      "line": 1329,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "add_stage_rates",
+      "line": 1359,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_postprocess",
+      "line": 1439,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_resolve_reference_velocity",
+      "line": 1591,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_decompose_wind_axes",
+      "line": 1613,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_force_moments",
+      "line": 1642,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_build_force_coefficients",
+      "line": 1693,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_forces",
+      "line": 1783,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_total_bound_vortex_strength",
+      "line": 1854,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_last_reference_velocity_norm",
+      "line": 1884,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_surface_leakage",
+      "line": 1909,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_snapshot_pre_transport_positions",
+      "line": 2264,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "surface_diagnostics_due",
+      "line": 2282,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "observe_surface_interaction",
+      "line": 2286,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "write_surface_event_outputs",
+      "line": 2407,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_resolve_surface_warning",
+      "line": 2505,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_bound_linear_impulse",
+      "line": 2524,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_one_surface_forces",
+      "line": 2545,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "compute_per_surface_forces",
+      "line": 2603,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "log_forces_table",
+      "line": 2662,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "save_results",
+      "line": 2751,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "advance",
+      "line": 2764,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_fill_segment_cumulative",
+      "line": 2834,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_cumulative_circulation_cpu",
+      "line": 2855,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_prepare_near_wake",
+      "line": 2896,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_compute_wake_particles",
+      "line": 2917,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_fill_trailing_edge_strip_segment",
+      "line": 2970,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_build_trailing_edge_strip_map",
+      "line": 2989,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_near_wake_row",
+      "line": 3019,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_near_wake_row_influence",
+      "line": 3072,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_near_wake_particle_influence",
+      "line": 3087,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_near_wake_stage_influence",
+      "line": 3109,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_augment_near_wake_particles",
+      "line": 3160,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_resolve_coupling_reference_velocity",
+      "line": 3171,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "advance_coupled",
+      "line": 3187,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_transport_free_wake",
+      "line": 2114,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
+      "name": "_r1_rinf",
+      "line": 2187,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 44,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 60,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 68,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 74,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 112,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 116,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 120,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 124,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 155,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 160,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 164,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 168,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 215,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 234,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 238,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "rotation_angle",
+      "line": 247,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "_rotation_matrix",
+      "line": 257,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 279,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 331,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 345,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 349,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "_rotation_matrix",
+      "line": 353,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 372,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 432,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 499,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 560,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 588,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 598,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 602,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 642,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 662,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 677,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "_rotation_matrix",
+      "line": 692,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 711,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 773,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 824,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 843,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 847,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "__init__",
+      "line": 893,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_velocity",
+      "line": 902,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "get_angular_velocity",
+      "line": 916,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "update",
+      "line": 920,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "velocity_function",
+      "line": 458,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "angular_velocity_function",
+      "line": 526,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/coupling/kinematics.py",
+      "name": "_get_displacement",
+      "line": 935,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/surface_io.py",
+      "name": "surface_to_dict",
+      "line": 17,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/surface_io.py",
+      "name": "save_surface",
+      "line": 53,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/surface_io.py",
+      "name": "load_surface",
+      "line": 73,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "__post_init__",
+      "line": 46,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "area",
+      "line": 65,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "centre",
+      "line": 77,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "normal",
+      "line": 87,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "__post_init__",
+      "line": 116,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "area",
+      "line": 122,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "span",
+      "line": 127,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "add_segment",
+      "line": 140,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "__post_init__",
+      "line": 167,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "add_wing",
+      "line": 172,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "compute_default_refs",
+      "line": 180,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "total_area",
+      "line": 233,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/aircraft.py",
+      "name": "total_n_panels",
+      "line": 237,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "export_openvsp_degengeom",
+      "line": 119,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "load_degengeom_csv",
+      "line": 213,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "load_openvsp_surface",
+      "line": 269,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_import_openvsp",
+      "line": 325,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_export_openvsp_degengeom_external",
+      "line": 342,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_openvsp_python_command",
+      "line": 379,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_openvsp_subprocess_env",
+      "line": 392,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_call_if_available",
+      "line": 397,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_try_set_analysis_input",
+      "line": 404,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_read_degengeom_sections",
+      "line": 427,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_read_csv_rows",
+      "line": 489,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_parse_component_metadata",
+      "line": 502,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_is_num_dims_header",
+      "line": 536,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_parse_num_dims",
+      "line": 542,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_parse_section_dims",
+      "line": 557,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_parse_point_table",
+      "line": 567,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_point_table_to_wing",
+      "line": 643,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_point_table_to_grid",
+      "line": 678,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_apply_coordinate_transform",
+      "line": 713,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_drop_incomplete_grid_lines",
+      "line": 730,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_infer_chord_panel_count",
+      "line": 737,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_infer_span_panel_counts",
+      "line": 746,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_validate_segment_orientation",
+      "line": 759,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_component_is_selected",
+      "line": 776,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_infer_surface_type",
+      "line": 790,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_symmetry_to_int",
+      "line": 800,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_unique_sorted",
+      "line": 817,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_first_present_col",
+      "line": 823,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_sanitize_uid",
+      "line": 831,
+      "documented": true
+    },
+    {
+      "file": "source/solvers/vpm/boundary_elements/vlm/geometry/openvsp_io.py",
+      "name": "_norm",
+      "line": 842,
+      "documented": true
+    }
+  ]
+}

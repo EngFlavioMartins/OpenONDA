@@ -1,0 +1,58 @@
+         60358262 function calls (58194503 primitive calls) in 82.756 seconds
+
+   Ordered by: cumulative time
+   List reduced from 7417 to 50 due to restriction <50>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000   82.822   82.822 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/solver.py:844(run)
+       20    0.000    0.000   82.273    4.114 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/solver.py:785(advance)
+       20    0.003    0.000   58.428    2.921 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/evolution.py:215(advance)
+    19099    0.151    0.000   38.446    0.002 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:1016(__call__)
+       20    0.001    0.000   36.627    1.831 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/evolution.py:506(_apply_coupled_update)
+       20    0.000    0.000   28.752    1.438 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/evolution.py:529(_observe_vlm_surface_interaction)
+        3    0.008    0.003   28.751    9.584 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:2256(observe_surface_interaction)
+     3149    0.009    0.000   28.683    0.009 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/observer.py:234(observe_moving_surfaces)
+    19099    0.326    0.000   27.702    0.001 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:685(launch_kernel)
+     4488    0.008    0.000   22.137    0.005 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:1110(wrapped)
+      103    0.001    0.000   18.296    0.178 /Users/flaviomartins/OpenONDA/source/solvers/vpm/physics/stage_rhs.py:421(evaluate)
+       20    0.000    0.000   17.485    0.874 /Users/flaviomartins/OpenONDA/source/solvers/vpm/coupling/stepper.py:92(advance_vlm)
+       20    0.002    0.000   17.484    0.874 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:3115(advance_coupled)
+        2   16.463    8.232   16.463    8.232 /Users/flaviomartins/OpenONDA/source/solvers/vpm/boundary_elements/vlm/kernels/observer.py:186(_observe)
+    19099   16.441    0.001   16.441    0.001 {built-in method taichi._lib.core.taichi_python.compile_kernel}
+    14611    0.016    0.000   16.335    0.001 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:1170(__call__)
+9267/6850    0.020    0.000   12.272    0.002 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/util.py:348(wrapped)
+        1    0.000    0.000   12.182   12.182 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/dispatcher.py:342(_compile_for_args)
+    342/1    0.003    0.000   12.166   12.166 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/dispatcher.py:860(compile)
+ 4291/283    0.007    0.000   11.915    0.042 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler_lock.py:32(_acquire_compile_lock)
+     50/1    0.000    0.000   11.905   11.905 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/dispatcher.py:79(compile)
+     50/1    0.000    0.000   11.905   11.905 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/dispatcher.py:86(_compile_cached)
+     50/1    0.001    0.000   11.905   11.905 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/dispatcher.py:101(_compile_core)
+     50/1    0.000    0.000   11.905   11.905 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler.py:713(compile_extra)
+    116/1    0.001    0.000   11.904   11.904 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler.py:433(compile_extra)
+    116/1    0.001    0.000   11.903   11.903 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler.py:500(_compile_bytecode)
+    118/1    0.001    0.000   11.903   11.903 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler.py:456(_compile_core)
+    118/1    0.006    0.000   11.902   11.902 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler_machinery.py:342(run)
+  3152/31    0.052    0.000   11.902    0.384 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler_machinery.py:267(_runPass)
+  9456/93    0.007    0.000   11.898    0.128 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/compiler_machinery.py:271(check)
+    19099    0.038    0.000   10.508    0.001 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:1008(ensure_compiled)
+    19099   10.444    0.001   10.444    0.001 {built-in method taichi._lib.core.taichi_python.launch_kernel}
+    19099    0.042    0.000    9.933    0.001 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:634(materialize)
+      103    0.003    0.000    9.719    0.094 /Users/flaviomartins/OpenONDA/source/solvers/vpm/physics/induction/treecode/evaluator.py:204(evaluate_stage)
+      181    0.002    0.000    9.498    0.052 {built-in method taichi._lib.core.taichi_python.create_kernel}
+      181    0.001    0.000    9.496    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:657(taichi_ast_generator)
+ 2572/181    0.003    0.000    9.494    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/transform.py:5(transform_tree)
+144903/181    0.363    0.000    9.494    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer_utils.py:19(__call__)
+ 2572/181    0.008    0.000    9.492    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:935(build_Module)
+ 2572/181    0.021    0.000    9.466    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:620(build_FunctionDef)
+41995/181    0.076    0.000    9.450    0.052 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:1716(build_stmts)
+       83    0.001    0.000    9.399    0.113 /Users/flaviomartins/OpenONDA/source/solvers/vpm/physics/base.py:989(compute_target_velocity)
+   118/37    0.006    0.000    9.385    0.254 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/numba/core/typed_passes.py:439(run_pass)
+ 1487/190    0.007    0.000    9.300    0.049 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:1478(build_For)
+       20    0.001    0.000    9.122    0.456 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/solver.py:1266(_record_vlm_diagnostics)
+12955/807    0.125    0.000    8.858    0.011 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:547(build_Call)
+       90    0.004    0.000    8.616    0.096 /Users/flaviomartins/OpenONDA/source/solvers/vpm/physics/induction/treecode/evaluator.py:299(evaluate_targets)
+8053/1595    0.017    0.000    8.590    0.005 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/ast/ast_transformer.py:122(build_Assign)
+ 2391/167    0.008    0.000    8.566    0.051 /opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:222(__call__)
+       41    0.001    0.000    8.480    0.207 /Users/flaviomartins/OpenONDA/source/solvers/vpm/core/evolution.py:377(_update_velocity_and_gradients)
+
+

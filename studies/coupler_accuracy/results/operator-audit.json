@@ -1,0 +1,32 @@
+{
+  "schema": "openonda-coupler-operator-audit/1",
+  "setup": {
+    "fvm_cell_spacing": [
+      0.25,
+      0.5,
+      0.5
+    ],
+    "particle_spacing": 0.0625,
+    "test_nodes": 12167
+  },
+  "legacy_formula": {
+    "zero_confidence_fraction": 0.9053176625297937,
+    "mean_target_vorticity_z": 0.05002426618165762,
+    "gaussian_peak_relative_error": -0.00031027487438528567
+  },
+  "current_implementation": {
+    "constant_vorticity_max_error": 2.6645352591003757e-15,
+    "mean_target_vorticity_z": 1.0,
+    "gaussian_peak_relative_error": -1.1102230246251565e-16
+  },
+  "finite_filament_span_3D_velocity_ratio": {
+    "1": 0.8320502943378437,
+    "2": 0.6,
+    "4": 0.3511234415883917
+  },
+  "source_sha256": {
+    "source/coupler/stable_renewal.py": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686",
+    "source/coupler/vorticity_transfer.py": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0",
+    "source/coupler/geometry.py": "0482ee700cc13bafc5ee1228e833a85330ea22701daec5386284b84ed76813ad"
+  }
+}

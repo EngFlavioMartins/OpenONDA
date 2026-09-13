@@ -34,8 +34,10 @@ from .boundary_layers import (
 from .cfmesh_boundary_layer import add_cfmesh_wrapper_layer
 from .cfmesh_edge_extraction import extract_cfmesh_edges
 from .cfmesh_mesh_optimisation import optimise_cfmesh_mesh
+from .cfmesh_octree import object_additional_level
 from .cfmesh_surface_optimisation import optimise_cfmesh_surface
 from .cfmesh_template import (
+    _additional_level,
     assign_cfmesh_patches,
     build_cfmesh_template,
     project_cfmesh_template,
@@ -100,6 +102,33 @@ def _dyadic_size(background: float, requested: float) -> tuple[float, int]:
         return background, 0
     level = max(0, int(math.ceil(math.log2(background / requested) - 1.0e-12)))
     return background / (2**level), level
+
+
+def _box_patch_point_constraints(points, faces, bounds):
+    """Preserve incident box planes at wall edges and corners.
+
+    Independent nearest-surface projection can put every vertex on the STL
+    while leaving a polygon across two planes inside the body. Infer each
+    face's intended plane from its dominant normal, then retain all incident
+    plane constraints at shared vertices.
+    """
+    constraints: dict[int, dict[int, float]] = {}
+    for face in faces:
+        vertices = points[np.asarray(face, dtype=np.int64)]
+        centre = vertices.mean(axis=0)
+        relative = vertices - centre
+        area = 0.5 * np.cross(relative, np.roll(relative, -1, axis=0)).sum(axis=0)
+        axis = int(np.argmax(np.abs(area)))
+        if abs(area[axis]) <= 0.75 * np.linalg.norm(area):
+            raise ValueError("Box wall face has no unambiguous Cartesian surface plane")
+        lower, upper = float(bounds[2 * axis]), float(bounds[2 * axis + 1])
+        bound = lower if abs(centre[axis] - lower) < abs(centre[axis] - upper) else upper
+        for point_id in face:
+            planes = constraints.setdefault(int(point_id), {})
+            if axis in planes and planes[axis] != bound:
+                raise ValueError("Box wall vertex belongs to opposite surface planes")
+            planes[axis] = bound
+    return constraints
 
 
 def _combined_surface(
@@ -580,13 +609,16 @@ class CartesianMesher:
         """Return the latest immutable generation report, or ``None`` before build."""
         return self._report
 
-    def effective_cell_size(self, requested: float) -> float:
-        """Return the dyadic cell size realizable for a requested size.
+    def effective_cell_size(self, requested: float, *, strict: bool = False) -> float:
+        """Return the nominal octree size selected by cfMesh for a request.
 
         Parameters
         ----------
         requested : float
             Positive requested upper size in metres.
+        strict : bool, default=False
+            Use the strict object-refinement rule for a ``BoxRefinement``.
+            Boundary and patch sizes use the default inclusive upper bound.
 
         Returns
         -------
@@ -599,9 +631,45 @@ class CartesianMesher:
         ``min_cell_size`` is an automatic curvature/proximity guard.  Explicit
         box, patch, and boundary requests retain their requested precedence;
         callers that need the automatic guard use the private helper below.
+        These sizes describe the octree lattice. Neighbour balancing, surface
+        projection, and wrapper cells can produce different final geometry.
         """
-        effective, _level = _dyadic_size(self.max_cell_size, requested)
-        return effective
+        if not math.isfinite(requested) or requested <= 0.0:
+            raise ValueError("requested cell sizes must be finite and positive")
+        conversion = object_additional_level if strict else _additional_level
+        return self.max_cell_size / (2 ** conversion(self.max_cell_size, requested))
+
+    def _cfmesh_size_reports(self) -> tuple[SizeReport, ...]:
+        """Report the same control levels used by the production octree."""
+        controls = [
+            ("background", self.max_cell_size, False),
+            ("boundary", self.boundary_cell_size, False),
+        ]
+        controls.extend(
+            (
+                str(_refinement_attribute(item, "name")),
+                float(_refinement_attribute(item, "cell_size")),
+                True,
+            )
+            for item in self.refinements
+        )
+        controls.extend(
+            (f"patch:{item.patch}", item.cell_size, False) for item in self.patch_refinements
+        )
+        if self.features is not None:
+            controls.append(("features", self.features.cell_size, False))
+        sizes = []
+        for name, requested, strict in controls:
+            conversion = object_additional_level if strict else _additional_level
+            level = conversion(self.max_cell_size, requested)
+            sizes.append(SizeReport(name, requested, self.max_cell_size / (2**level), level))
+        if self.min_cell_size is not None:
+            level = _additional_level(self.max_cell_size, self.min_cell_size * (1.0 + 1.0e-15))
+            sizes.insert(
+                2,
+                SizeReport("minimum", self.min_cell_size, self.max_cell_size / (2**level), level),
+            )
+        return tuple(sizes)
 
     def _automatic_cell_size(self, requested: float) -> float:
         """Return a dyadic automatic size subject to ``min_cell_size``."""
@@ -875,29 +943,7 @@ class CartesianMesher:
         quality["surface_distance"] = _surface_distance_snapshot(mesh_data, self.surfaces)
         recovery = RecoveryDiagnostics.from_mesh(mesh_data)
         optimisation = OptimisationDiagnostics.from_quality(quality)
-        requested_sizes = [
-            ("background", self.max_cell_size),
-            ("boundary", self.boundary_cell_size),
-        ]
-        if self.min_cell_size is not None:
-            requested_sizes.append(("minimum", self.min_cell_size))
-        requested_sizes.extend(
-            (
-                str(_refinement_attribute(refinement, "name")),
-                float(_refinement_attribute(refinement, "cell_size")),
-            )
-            for refinement in self.refinements
-        )
-        requested_sizes.extend(
-            (f"patch:{request.patch}", float(request.cell_size))
-            for request in self.patch_refinements
-        )
-        if self.features is not None:
-            requested_sizes.append(("features", self.features.cell_size))
-        sizes = tuple(
-            SizeReport(name, requested, *(_dyadic_size(self.max_cell_size, requested)))
-            for name, requested in requested_sizes
-        )
+        sizes = self._cfmesh_size_reports()
         diagnostics = {
             "quality": quality,
             "recovery": recovery.as_dict(),
@@ -938,6 +984,10 @@ class CartesianMesher:
             generation["resolved_surface_patch_sizes"] = {
                 str(name): root_size / (2 ** int(level)) for name, level in patch_levels.items()
             }
+            generation["resolved_box_sizes"] = {
+                request.name: self.effective_cell_size(request.cell_size, strict=True)
+                for request in cast(tuple[BoxRefinement, ...], self.refinements)
+            }
         return mesh_data
 
     def _constrain_cfmesh_wall_points(self, mesh_data: dict[str, Any]) -> None:
@@ -963,6 +1013,7 @@ class CartesianMesher:
         inner_displacements: dict[int, list[np.ndarray]] = {}
         boundary_columns: list[tuple[int, int, np.ndarray, dict[int, int]]] = []
         constrained_outer_ids: set[int] = set()
+        box_wall_constraints: dict[int, dict[int, float]] = {}
         column_maps = mesh_data.get("_cfmesh_boundary_column_inner", {})
 
         # The volume optimizer is also allowed to drift outer box points.
@@ -1056,6 +1107,14 @@ class CartesianMesher:
                 )
             boundary_columns.append((start, stop, point_ids, column_map))
             constrained_outer_ids.update(map(int, point_ids))
+            surface_constraints = (
+                _box_patch_point_constraints(
+                    candidate, mesh_data["faces"][start:stop], surface.bounds
+                )
+                if surface.kind == "box"
+                else {}
+            )
+            box_wall_constraints.update(surface_constraints)
             for point_id_value in point_ids:
                 point_id = int(point_id_value)
                 previous = assigned_points.get(point_id)
@@ -1066,6 +1125,8 @@ class CartesianMesher:
                     )
                 assigned_points[point_id] = surface.patch
                 mapped, distance = index.nearest_point(candidate[point_id])
+                for axis, bound in surface_constraints.get(point_id, {}).items():
+                    mapped[axis] = bound
                 max_before = max(max_before, float(distance))
                 displacement = mapped - candidate[point_id]
                 candidate[point_id] = mapped
@@ -1220,6 +1281,10 @@ class CartesianMesher:
                 raise validation_error
             for surface in self.surfaces:
                 validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
+            for point_id, planes in box_wall_constraints.items():
+                for axis, bound in planes.items():
+                    if candidate[point_id, axis] != bound:
+                        raise ValueError("Box wall edge/corner plane constraint was not preserved")
             for axis, bound, point_ids, _column_map in domain_points:
                 if not np.allclose(
                     candidate[point_ids, axis],

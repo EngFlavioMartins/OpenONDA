@@ -1,0 +1,17 @@
+{
+  "format_version": 8,
+  "generation": "6f4cfdbb36154a9f9b17e087a0671df2",
+  "config_hash": "3ad0cd5e9fd510ac905f3cc862bbccaeda874f048b42ff55527aa38cb3b70797",
+  "mesh_hash": "99965ef7ca8d58bc8785abb762e251731008ff1dacc646d3c02e32541d592d2e",
+  "kinematic_viscosity": 0.006666666666666667,
+  "n_global_cells": 67284,
+  "n_ranks": 6,
+  "files": [
+    "rank-00000-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+    "rank-00001-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+    "rank-00002-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+    "rank-00003-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+    "rank-00004-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+    "rank-00005-6f4cfdbb36154a9f9b17e087a0671df2.npz"
+  ]
+}

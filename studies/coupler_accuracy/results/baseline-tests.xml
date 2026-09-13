@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="8" failures="0" skipped="0" tests="8" time="7.251" timestamp="2026-09-13T00:01:26.567762+02:00" hostname="MacBook-Pro-4.local"><testcase classname="" name="tests.coupler.test_coupled_backup" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_coupled_backup.py:13: in &lt;module&gt;
+    from source.coupler import boundary as boundary_module
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:22: in &lt;module&gt;
+    from source.coupler.backup import (
+source/coupler/backup.py:19: in &lt;module&gt;
+    from source.solvers.vpm.config.case import Numerics
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:25: in &lt;module&gt;
+    from .solver.lattice import VLMLattice
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_cube_flow_setup" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_cube_flow_setup.py:12: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_flux_handoff" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_flux_handoff.py:8: in &lt;module&gt;
+    from source.coupler.flux_handoff import FluxReleaseHandoff, vorticity_transport_flux
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_flux_handoff_vpm_integration" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_flux_handoff_vpm_integration.py:13: in &lt;module&gt;
+    from source.coupler.flux_handoff import (  # noqa: E402
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_gbd_projected_renewal" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_gbd_projected_renewal.py:11: in &lt;module&gt;
+    from source.coupler import CouplerSetup
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_physical_coupling" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_physical_coupling.py:11: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import (
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_reporting" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_reporting.py:6: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import TransferResult, _transfer_log_record
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase><testcase classname="" name="tests.coupler.test_stable_renewal" time="0.000"><error message="collection failure">/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/python.py:508: in importtestmodule
+    mod = import_path(
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/pathlib.py:596: in import_path
+    importlib.import_module(module_name)
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;frozen importlib._bootstrap&gt;:1204: in _gcd_import
+    ???
+&lt;frozen importlib._bootstrap&gt;:1176: in _find_and_load
+    ???
+&lt;frozen importlib._bootstrap&gt;:1147: in _find_and_load_unlocked
+    ???
+&lt;frozen importlib._bootstrap&gt;:690: in _load_unlocked
+    ???
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    exec(co, module.__dict__)
+tests/coupler/test_stable_renewal.py:10: in &lt;module&gt;
+    from source.coupler import vorticity_transfer as transfer_module
+source/coupler/__init__.py:22: in &lt;module&gt;
+    from .solver import FVMVPMCoupler
+source/coupler/solver.py:45: in &lt;module&gt;
+    from source.coupler.vorticity_transfer import VorticityTransfer
+source/coupler/vorticity_transfer.py:41: in &lt;module&gt;
+    from source.solvers.vpm.diagnostics.resolution import discretization_health
+source/solvers/vpm/__init__.py:3: in &lt;module&gt;
+    from .boundary_elements import vlm
+source/solvers/vpm/boundary_elements/vlm/__init__.py:26: in &lt;module&gt;
+    from .solver.vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/__init__.py:16: in &lt;module&gt;
+    from .vlm_solver import VLMSolver
+source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py:27: in &lt;module&gt;
+    from ..kernels.collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/__init__.py:22: in &lt;module&gt;
+    from .collision import (
+source/solvers/vpm/boundary_elements/vlm/kernels/collision.py:222: in &lt;module&gt;
+    @ti.func
+     ^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:79: in func
+    fun = Func(fn, _classfunc=is_classfunc, is_real_function=is_real_function)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:213: in __init__
+    self.extract_arguments()
+/opt/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/lang/kernel_impl.py:372: in extract_arguments
+    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi function: {annotation}")
+E   taichi.lang.exception.TaichiSyntaxError: Invalid type annotation (argument 0) of Taichi function: ti.math.vec3</error></testcase></testsuite></testsuites>

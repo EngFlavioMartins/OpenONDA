@@ -1,0 +1,119 @@
+{
+  "schema": "openonda-cube-coupled-trial/1",
+  "status": "failed",
+  "spatial_dimensions": 3,
+  "source_seed_time": 0.5,
+  "fvm_dt": 0.01,
+  "vpm_dt": 0.05,
+  "particle_spacing": 0.125,
+  "core_radius_ratio": 1,
+  "boundary_mode": "vorticity_mixed",
+  "transfer_method": "projected_renewal",
+  "eta_blend_width": 0.0,
+  "transfer_region_bounds": [
+    -1.0,
+    1.0,
+    -1.0,
+    1.0,
+    -1.0,
+    1.0
+  ],
+  "initial_vorticity_cutoff": 0.02,
+  "transfer_vorticity_cutoff": 0.05,
+  "transfer_amplification_cap": 1.8,
+  "frozen_renewals": 1,
+  "experimental_residual_blend": false,
+  "requested_coupling_steps": 10,
+  "full_cells": 17592,
+  "small_cells": 2840,
+  "small_actual_bounds": [
+    -1.5012083567593693,
+    1.500001132297455,
+    -1.5012884415550036,
+    1.5012885310101702,
+    -1.5012884453317432,
+    1.501288530960052
+  ],
+  "identical_native_shared_cells": true,
+  "fvm_numerics": {
+    "time_scheme": "euler_implicit",
+    "convection": "linearUpwind",
+    "gradient": "gauss",
+    "linear_absolute_tolerances": 1e-11,
+    "linear_relative_tolerances": 0,
+    "outer_correctors": 3,
+    "correctors": 2,
+    "relaxation": 1,
+    "kinematic_viscosity": 0.001,
+    "sgs": "equilibrium_smagorinsky"
+  },
+  "vpm_numerics": "FMM, RK2, GBD, f32, equilibrium Smagorinsky",
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "ec01b99892e3a68f8359fda2c5e299a08c1d4899bbaf35a600c794799b12599d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/cube-boundary-oracle.json",
+      "sha256": "b01cfef087c6c5b7c80960ab056286d594820bcaf7bc571824ce167b5f5f1cdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    }
+  ],
+  "limitations": [
+    "Fresh seeded experiment; VPM initial velocity is approximate due to vorticity representation and pruning.",
+    "Full reference has finite far boundaries; VPM uses free-space induction.",
+    "Coarse matched FVM cells; no resolution convergence or long-time force statistics claimed."
+  ],
+  "seed_particles": 1955,
+  "seed_discarded_strength_l1_fraction": 0.03920037809739911,
+  "error": "RuntimeError: projected renewal failed its independent vorticity gate: error=2.199016e-01, fit_error=2.705435e-04, limit=5.000000e-03, renewable=1887, births=251, oracle=/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz",
+  "wall_time_seconds": 6.852880250000453,
+  "comparison": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.054586049212908445,
+      "full_drag_coefficient": 1.622207816107807,
+      "hybrid_drag_coefficient": 1.622207816107807,
+      "drag_coefficient_difference": 0.0,
+      "particles": 1955,
+      "frozen_renewal_iteration": 0,
+      "particle_strength_l1": 9.166641543457157,
+      "particle_strength_net": [
+        -0.00027093653551080177,
+        -2.7226412129266464e-06,
+        -9.794139384666778e-05
+      ]
+    }
+  ]
+}

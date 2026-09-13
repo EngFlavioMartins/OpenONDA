@@ -36,7 +36,7 @@ to work on the source without reinstalling after edits. Ordinary
 Run a case directly with normal Python arguments:
 
 ```bash
-cd tutorials/vpm/lamb_oseen_vortex
+cd tutorials/vpm/01_lamb_oseen_vortex
 python setup.py vortex CS
 python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
 ```
@@ -65,7 +65,7 @@ openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
 Each case includes its own instructions and input assets. The
-[small hybrid example](tutorials/coupled_fvm_vpm/uniform_flow/README.md) is another
+[hybrid examples](docs/tutorials.md#catalog-and-scope) are another
 quick introduction; wing, rotor, and vortex-interaction campaigns take longer.
 See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 

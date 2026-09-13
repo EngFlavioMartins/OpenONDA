@@ -11,8 +11,14 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tutorials.vpm.delta_wing.assets._delta_wing_plots import load_animation_lineage
-from tutorials.vpm.delta_wing.assets.finalize_delta_wing_lineage import finalize_lineage
+from tests._tutorial_helpers import load_tutorial_module
+
+load_animation_lineage = load_tutorial_module(
+    "vpm/delta_wing", "assets._delta_wing_plots"
+).load_animation_lineage
+finalize_lineage = load_tutorial_module(
+    "vpm/delta_wing", "assets.finalize_delta_wing_lineage"
+).finalize_lineage
 
 FRESH_NUMERICS = {
     "compute_device": "CPU",

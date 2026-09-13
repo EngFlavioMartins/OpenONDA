@@ -1,0 +1,398 @@
+{
+  "schema": "openonda-live-sampled-face-boundary-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "mode": "native_both",
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_sampled_face_trial_3d.py",
+      "sha256": "a654f5ad4e8d15c67356a84b59599a5d786c983ba552dcca4748fc8cb74f7f54"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_sampled_face_boundary.py",
+      "sha256": "81ca96ce158e2f3ae2b2dfd3bbc4b972f04278a7604dc370fb3b73e99b2b6cba"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_velocity_sampling_3d.py",
+      "sha256": "3b8fee2307024b08adef16ce8b012a356b38917ac9d27f2507ea7eb965ebe99d"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_face_trace_3d.py",
+      "sha256": "319964bca2ef92df3913bf575b45f4d8cb29d58be4b484f35859c5df6d798a21"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/diffusion.py",
+      "sha256": "4ecdc68539777ec2f445f5fe03fbe929eeb855dea58cdccd4ea1209f81103de2"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "tests/coupler/test_experimental_sampled_face_boundary.py",
+      "sha256": "a7dc85ba7b3da65685aa651bf84f7916c8632544969236d971cab14447384877"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+      "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d"
+    }
+  ],
+  "sample_cells": 13024,
+  "gradient_cells": 6632,
+  "boundary_faces": 3456,
+  "requested_coupling_steps": 20,
+  "boundary_calls": [
+    {
+      "call": 0,
+      "step": 0,
+      "elapsed_time": 0.0,
+      "sample_velocity_rms": 1.0002257289073495,
+      "face_velocity_rms": 1.0002243580405625,
+      "tangential_gradient_rms": 0.04715729855692961
+    },
+    {
+      "call": 1,
+      "step": 1,
+      "elapsed_time": 0.05,
+      "sample_velocity_rms": 1.000265893541203,
+      "face_velocity_rms": 1.000258162145022,
+      "tangential_gradient_rms": 0.0487505928261882
+    },
+    {
+      "call": 2,
+      "step": 1,
+      "elapsed_time": 0.05,
+      "sample_velocity_rms": 1.000238905961366,
+      "face_velocity_rms": 1.0002352717830925,
+      "tangential_gradient_rms": 0.048949751671837946
+    },
+    {
+      "call": 3,
+      "step": 2,
+      "elapsed_time": 0.1,
+      "sample_velocity_rms": 1.0002939749329052,
+      "face_velocity_rms": 1.0002813960102117,
+      "tangential_gradient_rms": 0.05067386953409873
+    },
+    {
+      "call": 4,
+      "step": 2,
+      "elapsed_time": 0.1,
+      "sample_velocity_rms": 1.0002539095842027,
+      "face_velocity_rms": 1.0002469690179754,
+      "tangential_gradient_rms": 0.050692503592204875
+    },
+    {
+      "call": 5,
+      "step": 3,
+      "elapsed_time": 0.15,
+      "sample_velocity_rms": 1.0003308377178173,
+      "face_velocity_rms": 1.000311105853378,
+      "tangential_gradient_rms": 0.05252256392975589
+    },
+    {
+      "call": 6,
+      "step": 3,
+      "elapsed_time": 0.15,
+      "sample_velocity_rms": 1.0002731057912313,
+      "face_velocity_rms": 1.000261600613102,
+      "tangential_gradient_rms": 0.052522634386033794
+    },
+    {
+      "call": 7,
+      "step": 4,
+      "elapsed_time": 0.2,
+      "sample_velocity_rms": 1.0003192426230438,
+      "face_velocity_rms": 1.0002990354584127,
+      "tangential_gradient_rms": 0.05450459468539705
+    },
+    {
+      "call": 8,
+      "step": 4,
+      "elapsed_time": 0.2,
+      "sample_velocity_rms": 1.0002943149419392,
+      "face_velocity_rms": 1.0002773127693658,
+      "tangential_gradient_rms": 0.05445576607179187
+    },
+    {
+      "call": 9,
+      "step": 5,
+      "elapsed_time": 0.25,
+      "sample_velocity_rms": 1.0003481563105485,
+      "face_velocity_rms": 1.0003199774276499,
+      "tangential_gradient_rms": 0.05652077576077342
+    },
+    {
+      "call": 10,
+      "step": 5,
+      "elapsed_time": 0.25,
+      "sample_velocity_rms": 1.0003211321853611,
+      "face_velocity_rms": 1.0002964827231686,
+      "tangential_gradient_rms": 0.05650743915157422
+    },
+    {
+      "call": 11,
+      "step": 6,
+      "elapsed_time": 0.3,
+      "sample_velocity_rms": 1.000398248542776,
+      "face_velocity_rms": 1.00035614514985,
+      "tangential_gradient_rms": 0.058867159937836186
+    },
+    {
+      "call": 12,
+      "step": 6,
+      "elapsed_time": 0.3,
+      "sample_velocity_rms": 1.000354136390761,
+      "face_velocity_rms": 1.0003186001323088,
+      "tangential_gradient_rms": 0.05872522408490745
+    },
+    {
+      "call": 13,
+      "step": 7,
+      "elapsed_time": 0.35,
+      "sample_velocity_rms": 1.0004512454738317,
+      "face_velocity_rms": 1.000390658319128,
+      "tangential_gradient_rms": 0.06144763221086151
+    },
+    {
+      "call": 14,
+      "step": 7,
+      "elapsed_time": 0.35,
+      "sample_velocity_rms": 1.0003966080465105,
+      "face_velocity_rms": 1.0003432090823028,
+      "tangential_gradient_rms": 0.061252563489259275
+    },
+    {
+      "call": 15,
+      "step": 8,
+      "elapsed_time": 0.4,
+      "sample_velocity_rms": 1.0005001696969684,
+      "face_velocity_rms": 1.0004179247239966,
+      "tangential_gradient_rms": 0.06504301018837919
+    },
+    {
+      "call": 16,
+      "step": 8,
+      "elapsed_time": 0.4,
+      "sample_velocity_rms": 1.0004464972376659,
+      "face_velocity_rms": 1.0003710419474634,
+      "tangential_gradient_rms": 0.06476545985994185
+    },
+    {
+      "call": 17,
+      "step": 9,
+      "elapsed_time": 0.45,
+      "sample_velocity_rms": 1.0005561292521936,
+      "face_velocity_rms": 1.000451306384515,
+      "tangential_gradient_rms": 0.07029709886259707
+    },
+    {
+      "call": 18,
+      "step": 9,
+      "elapsed_time": 0.45,
+      "sample_velocity_rms": 1.000504282005444,
+      "face_velocity_rms": 1.0004048536580747,
+      "tangential_gradient_rms": 0.0697356686149512
+    },
+    {
+      "call": 19,
+      "step": 10,
+      "elapsed_time": 0.5,
+      "sample_velocity_rms": 1.0006197297878883,
+      "face_velocity_rms": 1.0004939132384514,
+      "tangential_gradient_rms": 0.07784795927834541
+    },
+    {
+      "call": 20,
+      "step": 10,
+      "elapsed_time": 0.5,
+      "sample_velocity_rms": 1.000570234985332,
+      "face_velocity_rms": 1.0004498708546246,
+      "tangential_gradient_rms": 0.07792939549279411
+    },
+    {
+      "call": 21,
+      "step": 11,
+      "elapsed_time": 0.55,
+      "sample_velocity_rms": 1.0006907335552044,
+      "face_velocity_rms": 1.0005486274917792,
+      "tangential_gradient_rms": 0.08675224179191872
+    },
+    {
+      "call": 22,
+      "step": 11,
+      "elapsed_time": 0.55,
+      "sample_velocity_rms": 1.000641971167945,
+      "face_velocity_rms": 1.0005056116820603,
+      "tangential_gradient_rms": 0.08716697091810033
+    },
+    {
+      "call": 23,
+      "step": 12,
+      "elapsed_time": 0.6,
+      "sample_velocity_rms": 1.0007663147050656,
+      "face_velocity_rms": 1.0006142865354575,
+      "tangential_gradient_rms": 0.09279320619686231
+    },
+    {
+      "call": 24,
+      "step": 12,
+      "elapsed_time": 0.6,
+      "sample_velocity_rms": 1.000717980279414,
+      "face_velocity_rms": 1.0005718616485333,
+      "tangential_gradient_rms": 0.09309232928905053
+    },
+    {
+      "call": 25,
+      "step": 13,
+      "elapsed_time": 0.65,
+      "sample_velocity_rms": 1.0008448177780764,
+      "face_velocity_rms": 1.0006893826132732,
+      "tangential_gradient_rms": 0.09473517360943703
+    },
+    {
+      "call": 26,
+      "step": 13,
+      "elapsed_time": 0.65,
+      "sample_velocity_rms": 1.0007966806591329,
+      "face_velocity_rms": 1.0006472973339275,
+      "tangential_gradient_rms": 0.09510444674249001
+    },
+    {
+      "call": 27,
+      "step": 14,
+      "elapsed_time": 0.7,
+      "sample_velocity_rms": 1.0009256529360944,
+      "face_velocity_rms": 1.0007699273827995,
+      "tangential_gradient_rms": 0.09475392203896651
+    },
+    {
+      "call": 28,
+      "step": 14,
+      "elapsed_time": 0.7,
+      "sample_velocity_rms": 1.0008772909085,
+      "face_velocity_rms": 1.0007280186711225,
+      "tangential_gradient_rms": 0.09508673850781561
+    },
+    {
+      "call": 29,
+      "step": 15,
+      "elapsed_time": 0.75,
+      "sample_velocity_rms": 1.0010076673916457,
+      "face_velocity_rms": 1.0008516510167509,
+      "tangential_gradient_rms": 0.09357867679455381
+    },
+    {
+      "call": 30,
+      "step": 15,
+      "elapsed_time": 0.75,
+      "sample_velocity_rms": 1.000958029986931,
+      "face_velocity_rms": 1.0008088259141246,
+      "tangential_gradient_rms": 0.09365192785820167
+    },
+    {
+      "call": 31,
+      "step": 16,
+      "elapsed_time": 0.8,
+      "sample_velocity_rms": 1.0010889140971733,
+      "face_velocity_rms": 1.0009307867026331,
+      "tangential_gradient_rms": 0.09079794661699685
+    },
+    {
+      "call": 32,
+      "step": 16,
+      "elapsed_time": 0.8,
+      "sample_velocity_rms": 1.0010387458000112,
+      "face_velocity_rms": 1.0008876194175345,
+      "tangential_gradient_rms": 0.09088467319734163
+    },
+    {
+      "call": 33,
+      "step": 17,
+      "elapsed_time": 0.85,
+      "sample_velocity_rms": 1.001169076714719,
+      "face_velocity_rms": 1.0010071389408648,
+      "tangential_gradient_rms": 0.08728339398721806
+    },
+    {
+      "call": 34,
+      "step": 17,
+      "elapsed_time": 0.85,
+      "sample_velocity_rms": 1.0011182089433317,
+      "face_velocity_rms": 1.0009627395935934,
+      "tangential_gradient_rms": 0.08718545380676787
+    },
+    {
+      "call": 35,
+      "step": 18,
+      "elapsed_time": 0.9,
+      "sample_velocity_rms": 1.0012472010637077,
+      "face_velocity_rms": 1.0010797502217765,
+      "tangential_gradient_rms": 0.0839973167327182
+    },
+    {
+      "call": 36,
+      "step": 18,
+      "elapsed_time": 0.9,
+      "sample_velocity_rms": 1.001195734648276,
+      "face_velocity_rms": 1.001035035012533,
+      "tangential_gradient_rms": 0.08391374856839875
+    },
+    {
+      "call": 37,
+      "step": 19,
+      "elapsed_time": 0.95,
+      "sample_velocity_rms": 1.001322722136132,
+      "face_velocity_rms": 1.0011492671200923,
+      "tangential_gradient_rms": 0.0816470483193707
+    },
+    {
+      "call": 38,
+      "step": 19,
+      "elapsed_time": 0.95,
+      "sample_velocity_rms": 1.0012715566544443,
+      "face_velocity_rms": 1.0011050717375993,
+      "tangential_gradient_rms": 0.08149189239641322
+    },
+    {
+      "call": 39,
+      "step": 20,
+      "elapsed_time": 1.0,
+      "sample_velocity_rms": 1.001396820780059,
+      "face_velocity_rms": 1.0012175077612082,
+      "tangential_gradient_rms": 0.07997055932193085
+    },
+    {
+      "call": 40,
+      "step": 20,
+      "elapsed_time": 1.0,
+      "sample_velocity_rms": 1.0013453546835656,
+      "face_velocity_rms": 1.0011726702263344,
+      "tangential_gradient_rms": 0.07972105671037831
+    }
+  ],
+  "limitations": [
+    "The native sampling stencil uses full-reference mesh geometry only. Evolving reference field values never enter a boundary query.",
+    "Only the small inherited FVM mesh is advanced by the hybrid; external stencil locations are VPM evaluation points.",
+    "This changes boundary observations with the existing particle transfer, convection and pressure policies. It does not make cropped momentum fluxes identical to internal full-FVM fluxes.",
+    "The native face velocity is an interpolation of VPM samples, not an advancing pressure-corrected Rhie--Chow flux.",
+    "Short laminar matched-medium experiment, not developed tutorial force/profile or LES validation."
+  ],
+  "elapsed_seconds": 429.0652405000001
+}

@@ -1,0 +1,295 @@
+[build-system]
+requires = [
+    "setuptools>=77.0",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OpenONDA"
+dynamic = ["version"]
+description = "Native finite-volume and vortex-particle CFD solvers with hybrid coupling"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["license"]
+authors = [
+    {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
+    {name = "Artur Palha"},
+    {name = "Rention Pasolari"},
+]
+maintainers = [
+    {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+]
+keywords = [
+    "CFD",
+    "computational fluid dynamics",
+    "finite volume method",
+    "Python",
+    "vortex particle method",
+    "GPU computing",
+    "hybrid coupling",
+]
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "numpy>=1.26.0",
+    "scipy>=1.11.0",
+    "matplotlib>=3.8.0",
+    "h5py>=3.10.0",
+    "numba>=0.59.0; platform_system!='Darwin' or platform_machine!='x86_64'",
+    "numba>=0.59.0,<0.63; platform_system=='Darwin' and platform_machine=='x86_64'",
+    "pandas>=2.1.0",
+    "defusedxml>=0.7.1",
+    "taichi>=1.7.4,<1.8; platform_system!='Darwin' or platform_machine!='x86_64'",
+    "taichi==1.7.1; platform_system=='Darwin' and platform_machine=='x86_64'",
+    "pyamg>=5.0.0",
+    "pyvista>=0.43.0",
+    "vtk>=9.3.0",
+]
+
+[project.scripts]
+openonda = "openonda.cli:main"
+openonda-verify-install = "openonda.verify_install:main"
+
+[project.optional-dependencies]
+# External Gmsh input/generation and accelerated STL reading. Native meshers
+# and the built-in STL reader work without these packages.
+meshing = [
+    "gmsh>=4.11.0; platform_system!='Darwin' or platform_machine!='x86_64'",
+    "gmsh>=4.11.0,<4.13; platform_system=='Darwin' and platform_machine=='x86_64'",
+    "numpy-stl>=3.2",
+]
+
+# Minimal contract-test runner.
+test = [
+    "pytest>=8.0.0",
+]
+
+# Collective FVM sparse solves. The Conda environment is the recommended way
+# to obtain mpi4py, PETSc, and petsc4py against one MPI implementation.
+parallel = [
+    "mpi4py>=4.0.0",
+    "petsc4py>=3.21.0",
+]
+
+# Development dependencies.
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.0.0",
+    "pyrefly>=1.1.0",
+    "complexipy>=0.1.0",
+    "vulture>=2.0.0",
+    "tach>=0.1.0",
+    "interrogate>=1.5.0",
+    "bandit[toml]>=1.7.0",
+    "pip-audit>=2.0.0",
+    "scalene>=1.5.0",
+    "pre-commit>=2.10.0",
+    "build>=1.2.0",
+    "twine>=5.0.0",
+    "pygit2>=1.13.0",
+]
+
+[tool.vulture]
+# Minimum confidence for reporting unused code (0-100).
+min_confidence = 80
+# b_vec: mutated in-place with numpy +=; vulture cannot track writes as reads.
+ignore_names = ["b_vec"]
+
+[project.urls]
+Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
+Repository = "https://github.com/EngFlavioMartins/OpenONDA"
+Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/development/docs"
+"Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "source.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["openonda*", "source*", "tutorials*"]
+exclude = ["tests*", "examples*", "*.solution*", "*.samples*", "*.figures*", "*.study_results*", "*.animation*", "*.__pycache__*"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+"openonda" = ["py.typed", "_resources/*.ttf"]
+"source" = ["py.typed", "**/*.md", "**/*.json"]
+"tutorials" = ["**/*.sh", "**/*.md", "**/*.json", "**/*.csv", "**/*.stl", "**/*.vsp3"]
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
+    "**/solution_*/*", "**/solutions_*/*",
+    "**/study_results/*", "**/animation/*", "**/__pycache__/*",
+    "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
+]
+
+# Development tools configuration
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Explicit first-party roots so ruff's import sorting agrees across the pinned
+# pre-commit ruff (v0.9.10) and newer local ruff builds.
+src = ["."]
+exclude = [
+    ".git",
+    "__pycache__",
+    "docs/",
+    "build/",
+    "dist/",
+    ".eggs/",
+    # Byte-identical provenance artifacts; their sha256 contract in the
+    # study manifest forbids any reformatting by ruff.
+    "**/provenance/frozen_scripts/",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "N803",   # argument name should be lowercase — scientific notation (A, N, U, …)
+    "N806",   # variable in function should be lowercase — scientific notation
+    "N802",   # function name should be lowercase — physics conventions
+    "N815",   # mixed-case variable in class — scientific conventions
+    "N999",   # module name invalid — tutorial/script names
+    "E402",   # module-level import not at top — intentional conditional imports
+    "B008",   # function call in default argument — Taichi patterns
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tutorials/*" = ["ALL"]
+"scripts/*" = ["T201"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+implicit_optional = true
+warn_unused_ignores = false
+warn_return_any = false
+warn_unused_configs = false
+show_error_codes = true
+
+# Taichi DSL uses invalid Python type syntax (ti.template(), etc.)
+# Suppress globally because it appears across many VPM files.
+disable_error_code = ["valid-type"]
+
+# VPM and FVM have legacy type debt that is being fixed incrementally.
+# When running mypy on coupler/, ignore errors in imported solver code
+# so that only genuine coupler/ issues are reported.
+[[tool.mypy.overrides]]
+module = "source.solvers.fvm.*"
+ignore_errors = true
+
+[tool.ty]
+
+[tool.ty.environment]
+python-version = "3.11"
+root = ["source/"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+# Taichi DSL uses invalid Python type syntax (ti.template(), ti.types.vector() etc.)
+# Equivalent to mypy's disable_error_code = ["valid-type"] for the VPM module.
+invalid-type-form = "ignore"
+# Dynamic attributes: Taichi field members and sys._vpm_* stdout redirect helpers
+unresolved-attribute = "ignore"
+# Legacy: many parameters use `= None` as default on typed params; fixing incrementally
+invalid-parameter-default = "ignore"
+# Legacy: class fields typed as ndarray/module but assigned None at class level
+invalid-assignment = "ignore"
+# Taichi types are subscriptable at runtime but not visible to static analysis
+not-subscriptable = "ignore"
+# Taichi-aware function calls and duck-typed VPM API; fixing incrementally
+invalid-argument-type = "ignore"
+call-top-callable = "ignore"
+unknown-argument = "ignore"
+unsupported-operator = "ignore"
+invalid-return-type = "ignore"
+missing-argument = "ignore"
+
+# ── Pyrefly (fast type checker, used in the agentic type-check loop) ──────────
+# `pyrefly check` at the repo root type-checks the actively-maintained Python:
+# the FVM solver and the coupler. The VPM subtree is
+# intentionally excluded because its Taichi DSL is not statically typeable — the
+# same reason [tool.ty] / [tool.mypy] suppress it.
+[tool.pyrefly]
+project-includes = [
+    "source/solvers/fvm",
+    "source/coupler",
+]
+project-excludes = [
+    "**/__pycache__",
+    "**/*.pyx",
+]
+search-path = ["."]
+python-version = "3.11"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+markers = [
+    "unit: fast, isolated numerical or API contract",
+    "integration: interaction between real solver subsystems",
+    "qualification: independent analytical, manufactured, or convergence evidence",
+    "tutorial: executable tutorial construction and output-schema contract",
+    "slow: test whose normal runtime is unsuitable for the fast feedback loop",
+    "gpu: test that requires or qualifies a GPU backend",
+    "stochastic: seeded ensemble or random-process qualification",
+]
+
+[tool.coverage.run]
+source = ["source"]
+omit = [
+    "*/tests/*",
+    "*/examples/*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.complexipy]
+max_complexity = 15
+exclude = ["tests/*", "tutorials/*", "scripts/*"]
+
+[tool.skylos]
+include = ["source/"]
+exclude = ["tests/", "tutorials/", "scripts/", "**/__pycache__/"]
+min_confidence = 80
+
+[tool.bandit]
+exclude_dirs = ["tests", "tutorials"]
+skips = ["B101"]  # Skip assert_used warnings (needed for unit tests)

@@ -1,0 +1,310 @@
+{
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "source_records_verified": 51,
+  "source_checks": [
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/cube-manufactured-induction-3d.json",
+      "sha256": "6291b2d70ed5323aa24086ea37dc1cce8c2aee1f01c10de4aae98d29358af15b"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-source-fields.npz",
+      "sha256": "46d2931bc2feb15e07fc5b6fe5ee53f47dc28dd381681865b2f10836991287da"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-induction-fields.npz",
+      "sha256": "58503cee3a6368ec532e0c8f260de249154156a074e25992aa9d263dbfe3ffe5"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/cube-manufactured-linear-induction-3d.json",
+      "sha256": "2864514d3ea66c18b952d48e8dd76cf542d7460a44bb5bd6938d4622a6dc0d57"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/linear-source-fields.npz",
+      "sha256": "4de0ad3f36fe71307ad0f4d42c2961e7d5d2dcb02ee532eb107fd91ab0e56a0b"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/linear-induction-fields.npz",
+      "sha256": "2e74690f6f508f4e84d296e1587f0e31009c30122efd5f20ded6a4023447951c"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/native_moment_reconstruction_3d.py",
+      "sha256": "9e3c3ea588f8b2728024783a6ffd7b1b6eced78b2ee80287d6889bd0ae33a9d0"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+      "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-coarse",
+      "path": "tests/coupler/test_native_moment_reconstruction_3d.py",
+      "sha256": "206b9d695740b9050f76b480798bb4c36d46b9752a50ed5b01da157dd572d021"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-native-flux-initialized-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-medium/cube-manufactured-induction-3d.json",
+      "sha256": "5570e8c21e044ced4b8cb443d9bc41ac4acb675740889f303e6bdf65c376f3d0"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-medium/manufactured-source-fields.npz",
+      "sha256": "5ba66740071c954b7ffaa11d22747aad4d00d55bff0d77247f9c5782ebf9361f"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-medium/manufactured-induction-fields.npz",
+      "sha256": "0433dd023c427f21e2980a783551c008dba0be91fd132aeffd137c451f307266"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-medium/cube-manufactured-linear-induction-3d.json",
+      "sha256": "cbf50078bf7670b1a83a68f81c26fc7129d2c318f493035a8918b508e401e022"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-medium/linear-source-fields.npz",
+      "sha256": "f36f79486668c4d932d237346e30b6712d6cc3fad1cdcd4e2fdce4493f69c11c"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-medium/linear-induction-fields.npz",
+      "sha256": "044101fb784aa5a177f32847c4d969e25cb77195181041db18a70b9f83b725e3"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/native_moment_reconstruction_3d.py",
+      "sha256": "9e3c3ea588f8b2728024783a6ffd7b1b6eced78b2ee80287d6889bd0ae33a9d0"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+      "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "result_directory": "cube-3d-native-moment-reconstruction-medium",
+      "path": "tests/coupler/test_native_moment_reconstruction_3d.py",
+      "sha256": "206b9d695740b9050f76b480798bb4c36d46b9752a50ed5b01da157dd572d021"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/cube_reconstructed_moment_overlap_3d.py",
+      "sha256": "73e5ef7fc7af6dad94ef993fe0a4359e7e3154b8adcda719bf18b774da4b1288"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+      "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-integrated-velocity-curl-reconstruction-boundary/boundary-fields.npz",
+      "sha256": "d2ea4b530adcd13a91a93eae0662dea414969f44b5f8d7648eb80e6f31ca96c2"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-volume-overlap/cube-volume-overlap-3d.json",
+      "sha256": "fc91d0a55a89c985de6b99116ee71aa70e0c8a2159d7b9b0fe2b7ee931baee3d"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-volume-overlap/induction-checkpoint.npz",
+      "sha256": "c7ad81f1412897dfab81adc17a374c9f1f57da8ca4616ce5ea27f0872af07d35"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-volume-overlap/volume-overlap-fields.npz",
+      "sha256": "1631a3ff40b820e14040bd37b5806c8d8fda80c94e4f0bc0c6e95915be09cdbe"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/cube-native-volume-induction-3d.json",
+      "sha256": "d548a50b2d2ba46ef3f98ee7c7731a009892e9bec1c30074e9bd8010b659cf30"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/native-induction-fields.npz",
+      "sha256": "81287fd0f48197c881a41d089c4c7577dffa574319beca96a670e08a434bcb56"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/results/cube-3d-native-volume-induction/volume-induction-comparison-fields.npz",
+      "sha256": "0f018ebfec7f50fed3601e6db15eb59d31870706614734281b4c68099a5c9f95"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/induction_derivatives_3d.py",
+      "sha256": "74d8043a18b7e1eeeea4dd384ff7a16c78f5965da81d1fab5a0e6ee55c9e1dd3"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "tests/coupler/test_induction_derivatives_3d.py",
+      "sha256": "fba319713512d7e5591307723d7893c30ea0298a126cc85395d7b09ddbb1e53d"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/native_moment_reconstruction_3d.py",
+      "sha256": "9e3c3ea588f8b2728024783a6ffd7b1b6eced78b2ee80287d6889bd0ae33a9d0"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "fb40eb90f5fd78985b8a9833b940321c929f6e2e4bc3b71cc60c571b16247843"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "tests/coupler/test_native_moment_reconstruction_3d.py",
+      "sha256": "206b9d695740b9050f76b480798bb4c36d46b9752a50ed5b01da157dd572d021"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "result_directory": "cube-3d-reconstructed-moment-overlap",
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    }
+  ],
+  "metrics_recomputed": 400,
+  "maximum_metric_difference": 0.0,
+  "baseline_velocity_maximum_difference_from_previous_overlap": 0.0,
+  "maximum_derivative_difference_from_independent_stencil_evaluation": 0.0,
+  "passing_tests": {
+    "3d-manufactured-regression.xml": 44,
+    "3d-linear-volume-regression.xml": 7,
+    "3d-moment-reconstruction-regression.xml": 5,
+    "3d-induction-derivatives-regression.xml": 1
+  },
+  "total_passing_tests": 57,
+  "physical_source_cells": 2840,
+  "exterior_particles": 68,
+  "discarded_attempt": "studies/coupler_accuracy/results/cube-3d-reconstructed-moment-overlap-initial-attempt",
+  "verification_artifacts": [
+    {
+      "path": "studies/coupler_accuracy/verify_reconstructed_moments_3d.py",
+      "sha256": "423d53eb5ce71ce46b9e99b66089ef43ef4569dcc79db341e2e78837e76d94f1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-native-moment-reconstruction.png",
+      "sha256": "308215a91a9a6a270b98c7445737737bddb1b78eb915e0304fcfa49b21f7b882"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reconstructed-moment-overlap.png",
+      "sha256": "e9c9a9ee389644be9e91caf4e3dcfe25f1839e8efd403b0b47917d0ad724f2c1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-reconstructed-moment-overlap-initial-attempt/validation-status.json",
+      "sha256": "402248ce7186c380d0e6ea52d3bf600fab7c9285dac700102cdb2706a6017c17"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/3d-manufactured-regression.xml",
+      "sha256": "a1b47a7a0780649369d037d6570a11dcbde382b5322567aa4155c16560966aca"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/3d-linear-volume-regression.xml",
+      "sha256": "2acd6e7b44b880c3e3dacaef08400135b2636399972e373538653e0a54c500be"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/3d-moment-reconstruction-regression.xml",
+      "sha256": "c34a4e41f1991da226aef45d9a49cfe1211e9aed58b723735989056712073f8a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/3d-induction-derivatives-regression.xml",
+      "sha256": "8969376bc84085c734a50050ebd136f966c3c5bc869099c54f731a161eb55994"
+    }
+  ]
+}

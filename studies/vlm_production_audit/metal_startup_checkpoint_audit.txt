@@ -1,0 +1,6 @@
+[Taichi] version 1.7.4, llvm 15.0.7, commit b4b956fd, osx, python 3.11.15
+vpm_000004.h5: step 4, time 0.024, 1 frames through vlm_000004.vtp (vlm identity e72b77973c5ac488f5ea6fbc9985df39242d31a81022dab2066d4f4abda4d0a6)
+vpm_000008.h5: step 8, time 0.048, 2 frames through vlm_000008.vtp (vlm identity e72b77973c5ac488f5ea6fbc9985df39242d31a81022dab2066d4f4abda4d0a6)
+vpm_000012.h5: step 12, time 0.072, 3 frames through vlm_000012.vtp (vlm identity e72b77973c5ac488f5ea6fbc9985df39242d31a81022dab2066d4f4abda4d0a6)
+vpm_000016.h5: step 16, time 0.096, 4 frames through vlm_000016.vtp (vlm identity e72b77973c5ac488f5ea6fbc9985df39242d31a81022dab2066d4f4abda4d0a6)
+vpm_000020.h5: step 20, time 0.12, 5 frames through vlm_000020.vtp (vlm identity e72b77973c5ac488f5ea6fbc9985df39242d31a81022dab2066d4f4abda4d0a6)

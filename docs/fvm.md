@@ -210,6 +210,18 @@ feature controls, and optional boundary-layer controls. `build()` returns the na
 face-based dictionary, validates topology/geometry/quality, and records a
 `GenerationReport` in `mesh_generation`.
 
+The cfMesh octree uses spacings `H / 2**level`, where `H = max_cell_size`.
+Boundary/patch requests select the first spacing at or below the target.
+Box requests use a strict upper bound (including cfMesh's small floating-point
+tolerance): equality triggers another level. For example, a box target `H/4`
+resolves to `H/8`, while a patch target `H/4` resolves to `H/4`. Changing `H`
+changes every available spacing and can move fixed targets across a level
+threshold. `mesher.effective_cell_size(target, strict=True)` previews a box
+target; omit `strict` for a boundary/patch target. Reports list these nominal
+control sizes, before overlaps, 2:1 balancing, projection, and wrapper layers.
+Report levels are additional levels relative to `H`; per-cell refinement
+levels count from the root cube.
+
 Mesh quality limits are construction gates, not post-processing hints. Non-positive
 cell volume, invalid face closure, unsupported cell topology, a failed surface
 conformance check, or a configured quality limit raises before a solver can use the
@@ -231,6 +243,16 @@ model adds `eddy_viscosity`. `OutputConfig.precision` controls visualization pre
 independently of compute precision. `f16` is quantized but stored in a ParaView-safe
 float32 array. Asynchronous output is still part of the solver lifecycle: `flush_output`
 surfaces writer failures before a restart or final metadata refresh is accepted.
+
+Mesh backups and solver time steps also expose `cell_volume` (m³) and
+`cell_equivalent_size = cbrt(cell_volume)` (m). Cartesian meshes additionally
+provide `cell_size`, the nominal octree edge before projection/layers, and
+`refinement_level`; layer indices are included when available. These geometry
+arrays remain cell data when smoothing flow fields. Inspect **Cell Data** in
+ParaView to compare nominal spacing with actual volume. Existing time steps
+are not rewritten: their separate `mesh.vtu` already includes volume and
+available nominal sizes, and ParaView's **Cell Size** filter can calculate
+volume from old field-file geometry.
 
 The default FVM artifacts are below the case directory, normally `solution/`
 and `samples/`. An explicit `solution_dir` or `samples_dir` overrides that

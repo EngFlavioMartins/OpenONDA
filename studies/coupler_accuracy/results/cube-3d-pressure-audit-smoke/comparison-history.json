@@ -1,0 +1,52 @@
+[
+  {
+    "coupling_step": 0,
+    "elapsed_flow_time": 0.0,
+    "physical_time": 0.5,
+    "fvm_velocity_rms_over_Uinf": 0.0,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.054586049212908445,
+    "full_drag_coefficient": 1.622207816107807,
+    "hybrid_drag_coefficient": 1.622207816107807,
+    "drag_coefficient_difference": 0.0,
+    "particles": 1955
+  },
+  {
+    "coupling_step": 1,
+    "elapsed_flow_time": 0.05,
+    "physical_time": 0.55,
+    "fvm_velocity_rms_over_Uinf": 0.003007402476039553,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0022506836965362357,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.055927083460778335,
+    "full_drag_coefficient": 1.8064809120706131,
+    "hybrid_drag_coefficient": 1.866474477903223,
+    "drag_coefficient_difference": 0.05999356583260984,
+    "particles": 4019,
+    "pressure_audit_temporal_valid": false,
+    "pressure_reference_normal_rms": 0.03577807029995092,
+    "pressure_accepted_normal_rms_error": 0.028091283465729255,
+    "pressure_predicted_normal_rms_error": 0.021683448503970162,
+    "pressure_accepted_convective_normal_rms": 0.0490715825343165,
+    "pressure_accepted_temporal_normal_rms": 0.0,
+    "pressure_accepted_viscous_normal_rms": 4.621059455331428e-05
+  },
+  {
+    "coupling_step": 2,
+    "elapsed_flow_time": 0.1,
+    "physical_time": 0.6,
+    "fvm_velocity_rms_over_Uinf": 0.002680977163549425,
+    "fvm_near_body_velocity_rms_over_Uinf": 0.0013752101461360848,
+    "vpm_sampled_velocity_rms_over_Uinf": 0.05450564026590162,
+    "full_drag_coefficient": 1.8136079330338115,
+    "hybrid_drag_coefficient": 1.7429418160026433,
+    "drag_coefficient_difference": -0.07066611703116821,
+    "particles": 4042,
+    "pressure_audit_temporal_valid": true,
+    "pressure_reference_normal_rms": 0.03641608464806725,
+    "pressure_accepted_normal_rms_error": 0.013466436733331545,
+    "pressure_predicted_normal_rms_error": 0.024913533245133686,
+    "pressure_accepted_convective_normal_rms": 0.0497770948628962,
+    "pressure_accepted_temporal_normal_rms": 0.016116149312840323,
+    "pressure_accepted_viscous_normal_rms": 4.489110474219235e-05
+  }
+]

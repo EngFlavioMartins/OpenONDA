@@ -1,0 +1,5 @@
+{
+  "status": "incomplete_metric_evaluation",
+  "reason": "The initial run stopped when the wall-RMS call omitted the required weights argument. The source-induction checkpoint completed, but no physical comparison report or final fields were produced. The complete experiment is rerun with explicit uniform weighting.",
+  "successor": "studies/coupler_accuracy/results/cube-3d-boundary-quadratic-overlap-108-qualified"
+}

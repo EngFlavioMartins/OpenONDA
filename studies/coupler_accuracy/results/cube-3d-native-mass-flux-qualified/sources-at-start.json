@@ -1,0 +1,94 @@
+[
+  {
+    "path": "studies/coupler_accuracy/native_mass_flux_audit_3d.py",
+    "sha256": "ddc9801e17a85ceee2eecf65ce1842aaf92eed28d5eda2642846959ca2d533da"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+    "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+    "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cell-and-face-map.npz",
+    "sha256": "2770c52390b0a3c6a0b16f599a23261db17370b731f65f5e94b637c741177c0d"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/hybrid/solution/mesh.npz",
+    "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/hybrid/solution/backups/fvm_000020.npz",
+    "sha256": "c492fd01f5637cd1a316abe1b38d71bb289aa5e564191595a8f9fdd8cba926fd"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-control/latest-comparison-fields.npz",
+    "sha256": "baf11dc79c542fe687a09dd824e31c11c587c2ea6db0826d3e1107f480f215b5"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/hybrid/solution/mesh.npz",
+    "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/hybrid/solution/backups/fvm_000020.npz",
+    "sha256": "e6c4cd9ca2eb38e04996a96b3a0798fcf980d409a7f20ea658efcbf7ebb042ff"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-gradient/trial/latest-comparison-fields.npz",
+    "sha256": "9ab4713523483e10aee029ad2c397cc20cd7f9bf18c1c9c1354724a6f0c6c466"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/hybrid/solution/mesh.npz",
+    "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/hybrid/solution/backups/fvm_000020.npz",
+    "sha256": "609250ab3e1d73226a7cd90c7e6d40e06942c9b27c76b45f74cc294875f8b055"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-sampled-face-both/trial/latest-comparison-fields.npz",
+    "sha256": "af23f5d7ffe5b54d5be489f37f5b6bcc7e33bd7fde4d62a4196bdfc34fa1d95d"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/reference-flux-replay-3d.json",
+    "sha256": "17266b0d9df2b1976e97e8e4e8ca65b265c77958a20adf8973697e7f32fcf896"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/warmup-fvm.npz",
+    "sha256": "cf8e5811e33205f1533e5c7a43ccbc4186de87b3e767fa361d3066ca9b7216ab"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/reset-initial-fvm.npz",
+    "sha256": "181aaede1513015744fbe2252e91ec45593df5c83de8e8e520fc4f1a093df70a"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-reference-flux-replay-medium-laminar/final-fvm.npz",
+    "sha256": "e59dcc2de405f6d30d46bf974c9b8e0b002dfa35d65d070f9a37851cb4342525"
+  },
+  {
+    "path": "source/solvers/fvm/fields/diagnostics.py",
+    "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+  },
+  {
+    "path": "source/solvers/fvm/io/backup.py",
+    "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+  },
+  {
+    "path": "source/solvers/fvm/io/mesh_storage.py",
+    "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+  },
+  {
+    "path": "source/solvers/fvm/mesh/geometry.py",
+    "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+  },
+  {
+    "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+    "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+  },
+  {
+    "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+    "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+  }
+]

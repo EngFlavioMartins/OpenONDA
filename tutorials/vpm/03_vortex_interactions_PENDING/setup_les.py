@@ -98,6 +98,7 @@ def build_case(
     particle_core_radius: float | None = None,
     smagorinsky_coefficient: float | None = None,
     case_name: str | None = None,
+    particle_capacity: int | None = None,
 ):
     if scenario not in SCENARIOS:
         raise ValueError(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
@@ -178,7 +179,7 @@ def build_case(
             ),
             stabilization=stabilization(variant, rings, time_step_size),
             domain_bounds=(-2.0, 12.0, -3.0, 3.0, -3.0, 3.0),
-            max_n_particles=MAX_N_PARTICLES,
+            max_n_particles=MAX_N_PARTICLES if particle_capacity is None else particle_capacity,
             compute_device=compute_device,
             write_precision="f32",
             random_seed=42,
@@ -240,6 +241,8 @@ if __name__ == "__main__":
     parser.add_argument("--particle-spacing", type=float)
     parser.add_argument("--particle-core-radius", type=float)
     parser.add_argument("--smagorinsky", type=float)
+    parser.add_argument("--particle-capacity", type=int,
+                        help="Allocated particle capacity; leaves the initial population unchanged")
     parser.add_argument("--case-name", "--qualification-name", dest="case_name")
     args = parser.parse_args()
     if args.qualification and args.variant != "baseline":
@@ -261,5 +264,6 @@ if __name__ == "__main__":
             particle_core_radius=args.particle_core_radius,
             smagorinsky_coefficient=args.smagorinsky,
             case_name=args.case_name,
+            particle_capacity=args.particle_capacity,
         )
     ).run()

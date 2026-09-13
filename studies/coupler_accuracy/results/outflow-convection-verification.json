@@ -1,0 +1,23 @@
+{
+  "full_reference_time_and_drag_bitwise_equal_between_live_runs": true,
+  "saved_shared_full_velocity_bitwise_equal": true,
+  "live_final_changes": {
+    "fvm_velocity_rms_over_Uinf": -2.6402760926616878e-06,
+    "fvm_near_body_velocity_rms_over_Uinf": -0.00010814396488413179,
+    "vpm_sampled_velocity_rms_over_Uinf": -9.10083334947423e-06,
+    "hybrid_drag_coefficient": -0.0014157909188046158,
+    "drag_coefficient_difference": -0.0014157909188046158
+  },
+  "baseline_repeat_max_history_difference_from_previous_live_baseline": {
+    "fvm_velocity_rms_over_Uinf": 6.767216422899971e-07,
+    "fvm_near_body_velocity_rms_over_Uinf": 6.098505514245869e-07,
+    "vpm_sampled_velocity_rms_over_Uinf": 5.887883881144917e-07,
+    "hybrid_drag_coefficient": 1.4507862336143873e-05,
+    "drag_coefficient_difference": 1.4507862336143873e-05
+  },
+  "oracle_full_fields": {
+    "cube-3d-medium-laminar-outflow-linear-upwind-oracle": "bitwise equal to baseline",
+    "cube-3d-medium-laminar-native-flux-outflow-oracle": "bitwise equal to baseline"
+  },
+  "initial_live_comparison_records_bitwise_equal": true
+}

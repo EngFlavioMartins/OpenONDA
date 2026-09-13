@@ -1,0 +1,307 @@
+{
+  "schema": "openonda-cylinder-boundary-oracle/1",
+  "reference": "medium",
+  "source_checkpoint_time": 59.99999999998448,
+  "source_global_cells": 67284,
+  "full_planar_cells": 9612,
+  "small_planar_cells": 1270,
+  "span": 0.14285714285714285,
+  "small_requested_xy_bounds": [
+    -1.5,
+    2.0,
+    -1.5,
+    1.5
+  ],
+  "small_actual_bounds": [
+    -1.6566349783737384,
+    2.00000012834376,
+    -1.6507710551589876,
+    1.6507620304966093,
+    -0.07142857142857145,
+    0.0714285714285714
+  ],
+  "dt": 0.002,
+  "steps": 10,
+  "results": [
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.0,
+      "step": 0,
+      "velocity_rms_difference_over_Uinf": 0.0,
+      "velocity_max_difference_over_Uinf": 0.0,
+      "full_drag_coefficient": 1.1544314495502754,
+      "small_drag_coefficient": 1.1544314495502754,
+      "full_lift_coefficient": 0.07693346805107658,
+      "small_lift_coefficient": 0.07693346805107658
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.0,
+      "step": 0,
+      "velocity_rms_difference_over_Uinf": 0.0,
+      "velocity_max_difference_over_Uinf": 0.0,
+      "full_drag_coefficient": 1.1544314495502754,
+      "small_drag_coefficient": 1.1544314495502754,
+      "full_lift_coefficient": 0.07693346805107658,
+      "small_lift_coefficient": 0.07693346805107658
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.002,
+      "step": 1,
+      "velocity_rms_difference_over_Uinf": 0.0021976346507171373,
+      "velocity_max_difference_over_Uinf": 0.008716272718369045,
+      "full_drag_coefficient": 1.265966878187103,
+      "small_drag_coefficient": 1.2951564853410893,
+      "full_lift_coefficient": 0.054681364267335435,
+      "small_lift_coefficient": 0.059308135442836404
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.002,
+      "step": 1,
+      "velocity_rms_difference_over_Uinf": 0.0021963343023265035,
+      "velocity_max_difference_over_Uinf": 0.008706432017437782,
+      "full_drag_coefficient": 1.265966878187103,
+      "small_drag_coefficient": 1.2949440666723102,
+      "full_lift_coefficient": 0.054681364267335435,
+      "small_lift_coefficient": 0.05936850982507764
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.004,
+      "step": 2,
+      "velocity_rms_difference_over_Uinf": 0.003897770683717163,
+      "velocity_max_difference_over_Uinf": 0.015880729352635445,
+      "full_drag_coefficient": 1.1449837532638605,
+      "small_drag_coefficient": 1.15791156530615,
+      "full_lift_coefficient": 0.07429548352835703,
+      "small_lift_coefficient": 0.07056645989626147
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.004,
+      "step": 2,
+      "velocity_rms_difference_over_Uinf": 0.0036613931459270515,
+      "velocity_max_difference_over_Uinf": 0.015382520307469647,
+      "full_drag_coefficient": 1.1449837532638605,
+      "small_drag_coefficient": 1.1669417189399625,
+      "full_lift_coefficient": 0.07429548352835703,
+      "small_lift_coefficient": 0.07606930736392471
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.006,
+      "step": 3,
+      "velocity_rms_difference_over_Uinf": 0.0049748906611879066,
+      "velocity_max_difference_over_Uinf": 0.02117181398680606,
+      "full_drag_coefficient": 1.1457855192386264,
+      "small_drag_coefficient": 1.1494607020677317,
+      "full_lift_coefficient": 0.07819948792214354,
+      "small_lift_coefficient": 0.07422642876187993
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.006,
+      "step": 3,
+      "velocity_rms_difference_over_Uinf": 0.004671897381180314,
+      "velocity_max_difference_over_Uinf": 0.020419163888004153,
+      "full_drag_coefficient": 1.1457855192386264,
+      "small_drag_coefficient": 1.1596762694559737,
+      "full_lift_coefficient": 0.07819948792214354,
+      "small_lift_coefficient": 0.07822983722757855
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.008,
+      "step": 4,
+      "velocity_rms_difference_over_Uinf": 0.005675606237058671,
+      "velocity_max_difference_over_Uinf": 0.02507817988356745,
+      "full_drag_coefficient": 1.1467972543647147,
+      "small_drag_coefficient": 1.1450183048887974,
+      "full_lift_coefficient": 0.07734771301337313,
+      "small_lift_coefficient": 0.07409511765704128
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.008,
+      "step": 4,
+      "velocity_rms_difference_over_Uinf": 0.005376291043549057,
+      "velocity_max_difference_over_Uinf": 0.024215726412214374,
+      "full_drag_coefficient": 1.1467972543647147,
+      "small_drag_coefficient": 1.1541372192050892,
+      "full_lift_coefficient": 0.07734771301337313,
+      "small_lift_coefficient": 0.07674652445595077
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.01,
+      "step": 5,
+      "velocity_rms_difference_over_Uinf": 0.006141939924972447,
+      "velocity_max_difference_over_Uinf": 0.027960552564672343,
+      "full_drag_coefficient": 1.147639111682732,
+      "small_drag_coefficient": 1.1421117440574722,
+      "full_lift_coefficient": 0.0775423222743257,
+      "small_lift_coefficient": 0.0749071978007442
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.01,
+      "step": 5,
+      "velocity_rms_difference_over_Uinf": 0.005871856443725509,
+      "velocity_max_difference_over_Uinf": 0.027071220188897512,
+      "full_drag_coefficient": 1.147639111682732,
+      "small_drag_coefficient": 1.1499113559360392,
+      "full_lift_coefficient": 0.0775423222743257,
+      "small_lift_coefficient": 0.07669611284150432
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.012,
+      "step": 6,
+      "velocity_rms_difference_over_Uinf": 0.006458109211588064,
+      "velocity_max_difference_over_Uinf": 0.030083632039786923,
+      "full_drag_coefficient": 1.1483966589824366,
+      "small_drag_coefficient": 1.140391586417902,
+      "full_lift_coefficient": 0.07762216157091621,
+      "small_lift_coefficient": 0.07544476858286266
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.012,
+      "step": 6,
+      "velocity_rms_difference_over_Uinf": 0.006223390919911948,
+      "velocity_max_difference_over_Uinf": 0.029215989035430472,
+      "full_drag_coefficient": 1.1483966589824366,
+      "small_drag_coefficient": 1.1468674326266997,
+      "full_lift_coefficient": 0.07762216157091621,
+      "small_lift_coefficient": 0.07669664675617217
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.014,
+      "step": 7,
+      "velocity_rms_difference_over_Uinf": 0.006675983383924348,
+      "velocity_max_difference_over_Uinf": 0.03164600880786258,
+      "full_drag_coefficient": 1.1490171906497233,
+      "small_drag_coefficient": 1.1394058427926181,
+      "full_lift_coefficient": 0.0777133466038637,
+      "small_lift_coefficient": 0.07590160374036414
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.014,
+      "step": 7,
+      "velocity_rms_difference_over_Uinf": 0.006474884413625903,
+      "velocity_max_difference_over_Uinf": 0.030827560869522888,
+      "full_drag_coefficient": 1.1490171906497233,
+      "small_drag_coefficient": 1.14468647377943,
+      "full_lift_coefficient": 0.0777133466038637,
+      "small_lift_coefficient": 0.07678736357903618
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.016,
+      "step": 8,
+      "velocity_rms_difference_over_Uinf": 0.006828286084964601,
+      "velocity_max_difference_over_Uinf": 0.03279472591156251,
+      "full_drag_coefficient": 1.149551479075564,
+      "small_drag_coefficient": 1.138972186562716,
+      "full_lift_coefficient": 0.07777867957142157,
+      "small_lift_coefficient": 0.07622467757089305
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.016,
+      "step": 8,
+      "velocity_rms_difference_over_Uinf": 0.006656303687949235,
+      "velocity_max_difference_over_Uinf": 0.03203898352468223,
+      "full_drag_coefficient": 1.149551479075564,
+      "small_drag_coefficient": 1.1432141471000905,
+      "full_lift_coefficient": 0.07777867957142157,
+      "small_lift_coefficient": 0.07690087942254341
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.018000000000000002,
+      "step": 9,
+      "velocity_rms_difference_over_Uinf": 0.006936202942628741,
+      "velocity_max_difference_over_Uinf": 0.03363886338382005,
+      "full_drag_coefficient": 1.1499916004960242,
+      "small_drag_coefficient": 1.1389049863363463,
+      "full_lift_coefficient": 0.07794065233712266,
+      "small_lift_coefficient": 0.0765606733579384
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.018000000000000002,
+      "step": 9,
+      "velocity_rms_difference_over_Uinf": 0.006788270945517314,
+      "velocity_max_difference_over_Uinf": 0.03295027627058604,
+      "full_drag_coefficient": 1.1499916004960242,
+      "small_drag_coefficient": 1.1422913249229643,
+      "full_lift_coefficient": 0.07794065233712266,
+      "small_lift_coefficient": 0.0771008578435715
+    },
+    {
+      "mode": "dirichlet",
+      "elapsed_flow_time": 0.020000000000000004,
+      "step": 10,
+      "velocity_rms_difference_over_Uinf": 0.007013719807187664,
+      "velocity_max_difference_over_Uinf": 0.03425921895537401,
+      "full_drag_coefficient": 1.150394683837291,
+      "small_drag_coefficient": 1.1390593367826485,
+      "full_lift_coefficient": 0.07799143332762332,
+      "small_lift_coefficient": 0.07681761069024565
+    },
+    {
+      "mode": "vorticity_mixed",
+      "elapsed_flow_time": 0.020000000000000004,
+      "step": 10,
+      "velocity_rms_difference_over_Uinf": 0.006885128802755082,
+      "velocity_max_difference_over_Uinf": 0.03363664326392036,
+      "full_drag_coefficient": 1.150394683837291,
+      "small_drag_coefficient": 1.1417686013324753,
+      "full_lift_coefficient": 0.07799143332762332,
+      "small_lift_coefficient": 0.07725431580741036
+    }
+  ],
+  "sources": [
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00000-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "66314757b663a7217ae402afa7682f9a59a8efdc7813a0b88b103986dfa37e69"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00001-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "dff2e377db22dcdb7be9eadb1977f95f7fff3d64b0f16c8a108014c46f4e15b5"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00002-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "e72178755f5a5823bec79be8d262ee02ce7abe6596784c3d8040063d312871f9"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00003-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "4d252a0dedcfa425052eace47679924a79594b5c7aa2e4db3cbb4ad861a23e6f"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00004-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "953fdc0213f56fe2ecd0597a44b46af4a9fc32a932f5b3abcd7073445c05af81"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/backup/rank-00005-6f4cfdbb36154a9f9b17e087a0671df2.npz",
+      "sha256": "2ac7bdde3162f3a26d0b22913257734e8ba7e9683f827a60da60831518433eb1"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/medium/mesh.npz",
+      "sha256": "28ca5b4cc293c71c421788b6961dabbd8bd826431247d0051ad15a3d7e85a1f2"
+    }
+  ],
+  "limitations": [
+    "A new initial-value experiment from checkpoint cell fields; flux histories rebuilt on both meshes.",
+    "One inherited span layer with slip ends; no exact replay of the archived multilayer parallel run.",
+    "Normal data uses the full FVM native face flux; tangential data uses local Taylor/interpolated gradients.",
+    "No VPM, transfer, macro-step interpolation, or long-time shedding validation."
+  ],
+  "valid_for_comparison": false,
+  "invalid_reason": "Superseded: the initial harness reused mutable native mesh boundary dictionaries across solver variants. Use cylinder-oracle-independent, cylinder-oracle-independent-half-dt, or cylinder-oracle-pressure."
+}

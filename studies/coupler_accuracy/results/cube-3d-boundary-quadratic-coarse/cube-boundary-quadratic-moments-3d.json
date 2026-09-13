@@ -1,0 +1,519 @@
+{
+  "schema": "openonda-cube-boundary-quadratic-moments-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "source_cells": 17592,
+  "source_triangles": 224192,
+  "target_slices": {
+    "near_body": [
+      0,
+      256
+    ],
+    "outer_layer": [
+      256,
+      512
+    ],
+    "wall": [
+      512,
+      2048
+    ]
+  },
+  "source_names": [
+    "width_0.35__weak_boundary_quadratic_faces_point_input",
+    "width_0.35__weak_boundary_quadratic_faces_average_input",
+    "width_0.35__native_circulation_boundary_quadratic_point_moments",
+    "width_0.15__weak_boundary_quadratic_faces_point_input",
+    "width_0.15__weak_boundary_quadratic_faces_average_input",
+    "width_0.15__native_circulation_boundary_quadratic_point_moments"
+  ],
+  "records": [
+    {
+      "name": "width_0.35__weak_boundary_quadratic_faces_point_input",
+      "method": "weak_boundary_quadratic_faces_point_input",
+      "width": 0.35,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.03972011739037111,
+          "circulation_relative_error": 0.20918343031003853,
+          "moment_variation_density_rms": 0.07550744777935711,
+          "moment_variation_relative_error": 0.6801271917179438
+        },
+        "near_body": {
+          "circulation_density_rms": 0.43174948463845847,
+          "circulation_relative_error": 0.1486219978937127,
+          "moment_variation_density_rms": 0.641301159024623,
+          "moment_variation_relative_error": 0.4570909774948227
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.17007905556933778,
+          "circulation_relative_error": 0.27651242962835954,
+          "moment_variation_density_rms": 0.3230449469598099,
+          "moment_variation_relative_error": 0.7193011521125859
+        }
+      },
+      "total_circulation": [
+        6.699570786298603e-16,
+        -8.797052925809899e-16,
+        3.308347167665099e-15
+      ],
+      "global_first_vorticity_moment": [
+        [
+          1.8567461953253143e-15,
+          -1.558892466948646e-05,
+          -2.3641939376851072e-05
+        ],
+        [
+          1.558892467001948e-05,
+          -3.8123174186726824e-16,
+          -5.171047433462769e-07
+        ],
+        [
+          2.3641939376857767e-05,
+          5.171047440010477e-07,
+          2.3408433123730393e-16
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.035718568636546814,
+          "maximum_over_reference_speed": 0.17611945244951083
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.015856758772547098,
+          "maximum_over_reference_speed": 0.10054596566316325
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.005595770615303675,
+          "maximum_over_reference_speed": 0.01749500645142966
+        }
+      }
+    },
+    {
+      "name": "width_0.35__weak_boundary_quadratic_faces_average_input",
+      "method": "weak_boundary_quadratic_faces_average_input",
+      "width": 0.35,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.05015583424234089,
+          "circulation_relative_error": 0.26414245843638817,
+          "moment_variation_density_rms": 0.06414231309698354,
+          "moment_variation_relative_error": 0.5777566658645701
+        },
+        "near_body": {
+          "circulation_density_rms": 0.5367021115446388,
+          "circulation_relative_error": 0.18475005281901674,
+          "moment_variation_density_rms": 0.6432471968501616,
+          "moment_variation_relative_error": 0.45847802680761396
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.20530257717504288,
+          "circulation_relative_error": 0.33377839636751416,
+          "moment_variation_density_rms": 0.30332296276695214,
+          "moment_variation_relative_error": 0.6753876159765952
+        }
+      },
+      "total_circulation": [
+        -1.1635316508060735e-15,
+        -3.6921199045266946e-16,
+        2.3008912574484513e-17
+      ],
+      "global_first_vorticity_moment": [
+        [
+          4.1629721181770177e-16,
+          -5.179233777963255e-16,
+          4.0549161250957866e-17
+        ],
+        [
+          9.63584680796492e-18,
+          -3.590386316162583e-16,
+          -6.4210857225917295e-16
+        ],
+        [
+          -1.405397066084335e-16,
+          -3.578654909843111e-16,
+          7.417501400423798e-16
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.04221196088632737,
+          "maximum_over_reference_speed": 0.22321959058039978
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.016142316024981177,
+          "maximum_over_reference_speed": 0.09718150963738922
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.005374932328363677,
+          "maximum_over_reference_speed": 0.017751340315298084
+        }
+      }
+    },
+    {
+      "name": "width_0.35__native_circulation_boundary_quadratic_point_moments",
+      "method": "native_circulation_boundary_quadratic_point_moments",
+      "width": 0.35,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.051341170419425604,
+          "circulation_relative_error": 0.2703849547804014,
+          "moment_variation_density_rms": 0.07550744777935711,
+          "moment_variation_relative_error": 0.6801271917179438
+        },
+        "near_body": {
+          "circulation_density_rms": 0.6874439656946698,
+          "circulation_relative_error": 0.2366402260029887,
+          "moment_variation_density_rms": 0.641301159024623,
+          "moment_variation_relative_error": 0.4570909774948227
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.2080983348940681,
+          "circulation_relative_error": 0.3383237047651419,
+          "moment_variation_density_rms": 0.3230449469598099,
+          "moment_variation_relative_error": 0.7193011521125859
+        }
+      },
+      "total_circulation": [
+        -4.761769354746059e-16,
+        9.916073100182511e-16,
+        2.980932558085551e-15
+      ],
+      "global_first_vorticity_moment": [
+        [
+          2.989504175594177e-06,
+          0.0005929868794143772,
+          0.000888982841998249
+        ],
+        [
+          -7.079295366255003e-05,
+          1.6177047757405416e-05,
+          3.9175671028008365e-06
+        ],
+        [
+          -0.00010523402308349025,
+          4.26017780248961e-06,
+          2.6162046579672744e-05
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.04607583129206619,
+          "maximum_over_reference_speed": 0.1944125157256332
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0169736088728512,
+          "maximum_over_reference_speed": 0.10358373696156793
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.01030140997776074,
+          "maximum_over_reference_speed": 0.02816752526911263
+        }
+      }
+    },
+    {
+      "name": "width_0.15__weak_boundary_quadratic_faces_point_input",
+      "method": "weak_boundary_quadratic_faces_point_input",
+      "width": 0.15,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.041918781610793904,
+          "circulation_relative_error": 1.1637030324940836,
+          "moment_variation_density_rms": 0.049063195097576465,
+          "moment_variation_relative_error": 0.5358528539498155
+        },
+        "near_body": {
+          "circulation_density_rms": 1.0976466791773642,
+          "circulation_relative_error": 1.159239619815091,
+          "moment_variation_density_rms": 1.263774103124637,
+          "moment_variation_relative_error": 0.5234335551475772
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.002203947603031342,
+          "circulation_relative_error": 131.06149579325125,
+          "moment_variation_density_rms": 0.009806719504557618,
+          "moment_variation_relative_error": 384.5144577790948
+        }
+      },
+      "total_circulation": [
+        1.1572587641861878e-18,
+        -5.246533986693957e-17,
+        2.1767780597480057e-17
+      ],
+      "global_first_vorticity_moment": [
+        [
+          1.2445455094007435e-17,
+          -2.389007583351459e-07,
+          -1.6239094612790029e-07
+        ],
+        [
+          2.3890075833750785e-07,
+          9.446111427779957e-18,
+          3.9192038273176366e-07
+        ],
+        [
+          1.6239094611525652e-07,
+          -3.919203827425667e-07,
+          -1.0125431851477906e-17
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.07627082947952257,
+          "maximum_over_reference_speed": 0.6548232731579133
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0004022616816243184,
+          "maximum_over_reference_speed": 0.003274765433737037
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.01625821580552432,
+          "maximum_over_reference_speed": 0.08259427431717763
+        }
+      }
+    },
+    {
+      "name": "width_0.15__weak_boundary_quadratic_faces_average_input",
+      "method": "weak_boundary_quadratic_faces_average_input",
+      "width": 0.15,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.03985139122287677,
+          "circulation_relative_error": 1.1063104182214207,
+          "moment_variation_density_rms": 0.05191214240333991,
+          "moment_variation_relative_error": 0.5669681643471481
+        },
+        "near_body": {
+          "circulation_density_rms": 1.0422237221795623,
+          "circulation_relative_error": 1.1007066794637281,
+          "moment_variation_density_rms": 1.345388135595225,
+          "moment_variation_relative_error": 0.5572366874165382
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.0031343946036360448,
+          "circulation_relative_error": 186.39211049927715,
+          "moment_variation_density_rms": 0.007753272763993018,
+          "moment_variation_relative_error": 304.0002797545786
+        }
+      },
+      "total_circulation": [
+        1.931221884850004e-17,
+        9.319877048859465e-18,
+        -2.98562755583347e-16
+      ],
+      "global_first_vorticity_moment": [
+        [
+          3.4236224695071565e-17,
+          2.1101178902880723e-18,
+          -1.912939208079112e-17
+        ],
+        [
+          2.5758271926003273e-18,
+          1.1275702593849246e-17,
+          -2.3050307593631275e-17
+        ],
+        [
+          2.3195997260559015e-18,
+          1.565316886525947e-18,
+          -1.3040919255927208e-17
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.0771264690570652,
+          "maximum_over_reference_speed": 0.68576128286379
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0002994962300841581,
+          "maximum_over_reference_speed": 0.0019994703024376267
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.014458198147738856,
+          "maximum_over_reference_speed": 0.06996251443506053
+        }
+      }
+    },
+    {
+      "name": "width_0.15__native_circulation_boundary_quadratic_point_moments",
+      "method": "native_circulation_boundary_quadratic_point_moments",
+      "width": 0.15,
+      "source_error": {
+        "all": {
+          "circulation_density_rms": 0.034500509029109894,
+          "circulation_relative_error": 0.9577651219096184,
+          "moment_variation_density_rms": 0.049063195097576465,
+          "moment_variation_relative_error": 0.5358528539498155
+        },
+        "near_body": {
+          "circulation_density_rms": 0.9061807428455348,
+          "circulation_relative_error": 0.9570298345978703,
+          "moment_variation_density_rms": 1.263774103124637,
+          "moment_variation_relative_error": 0.5234335551475772
+        },
+        "outer_layer": {
+          "circulation_density_rms": 0.0006046742232848161,
+          "circulation_relative_error": 35.95798196941227,
+          "moment_variation_density_rms": 0.009806719504557618,
+          "moment_variation_relative_error": 384.5144577790948
+        }
+      },
+      "total_circulation": [
+        1.5954567010694192e-17,
+        1.1785997386127446e-16,
+        5.659966797781841e-18
+      ],
+      "global_first_vorticity_moment": [
+        [
+          3.453793622571643e-07,
+          1.892746831210807e-07,
+          6.052983948953043e-07
+        ],
+        [
+          4.5713470729922206e-07,
+          -8.369095382670357e-07,
+          3.1060445498304897e-07
+        ],
+        [
+          4.561117676584565e-07,
+          -1.054885698601347e-06,
+          -1.36137186161017e-06
+        ]
+      ],
+      "velocity_error": {
+        "near_body": {
+          "rms_over_reference_speed": 0.07271856710433804,
+          "maximum_over_reference_speed": 0.6599929499089023
+        },
+        "outer_layer": {
+          "rms_over_reference_speed": 0.0005762751600302856,
+          "maximum_over_reference_speed": 0.004986347153177478
+        },
+        "wall": {
+          "rms_over_reference_speed": 0.018312869649780326,
+          "maximum_over_reference_speed": 0.09575521334725855
+        }
+      }
+    }
+  ],
+  "stencil_diagnostics": {
+    "point": {
+      "maximum_condition": 9.318483103795243,
+      "minimum_neighbour_count": 9,
+      "maximum_neighbour_count": 42,
+      "maximum_rings": 2,
+      "cells_requiring_third_ring": 0,
+      "cells_with_wall_observations": 1536,
+      "potentially_changed_source_cells": 1832,
+      "boundary_faces": 600,
+      "boundary_points": 21600,
+      "minimum_positive_boundary_observations": 36,
+      "maximum_boundary_observations": 468
+    },
+    "average": {
+      "maximum_condition": 9.389062330421538,
+      "minimum_neighbour_count": 9,
+      "maximum_neighbour_count": 42,
+      "maximum_rings": 2,
+      "cells_requiring_third_ring": 0,
+      "cells_with_wall_observations": 1536,
+      "potentially_changed_source_cells": 1832,
+      "boundary_faces": 600,
+      "boundary_points": 21600,
+      "minimum_positive_boundary_observations": 36,
+      "maximum_boundary_observations": 468
+    }
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_quadratic_moments_3d.py",
+      "sha256": "9b0d854fb7fece59b91fc043bc7f40fb67618de5af35bd9a84bf03958b78afd3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-quadratic-moment-reconstruction-coarse/cube-quadratic-moment-reconstruction-3d.json",
+      "sha256": "d1e43dcb7980fdb28ede945dfe43580bcdbcffd5b9cfb8998e64ad60b42088f2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-quadratic-moment-reconstruction-coarse/quadratic-moment-source-fields.npz",
+      "sha256": "ed68d0e309684915ad77e4544e623fb848b44732cefebecf41b017e21a90ef10"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_boundary_quadratic_3d.py",
+      "sha256": "73ba285c1402a7dcf9574bcd245f76ec4fe94ae8ad0182b219fd8bdf880940d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+      "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+    },
+    {
+      "path": "tests/coupler/test_native_boundary_quadratic_3d.py",
+      "sha256": "c927319f7746e10cc007ead6646b1c77071fb05a392e6ba3fc719153b6fe09d2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/cube-manufactured-induction-3d.json",
+      "sha256": "6291b2d70ed5323aa24086ea37dc1cce8c2aee1f01c10de4aae98d29358af15b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-source-fields.npz",
+      "sha256": "46d2931bc2feb15e07fc5b6fe5ee53f47dc28dd381681865b2f10836991287da"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-induction-fields.npz",
+      "sha256": "58503cee3a6368ec532e0c8f260de249154156a074e25992aa9d263dbfe3ffe5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/cube-manufactured-linear-induction-3d.json",
+      "sha256": "2864514d3ea66c18b952d48e8dd76cf542d7460a44bb5bd6938d4622a6dc0d57"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/linear-source-fields.npz",
+      "sha256": "4de0ad3f36fe71307ad0f4d42c2961e7d5d2dcb02ee532eb107fd91ab0e56a0b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-manufactured-linear-induction-coarse/linear-induction-fields.npz",
+      "sha256": "2e74690f6f508f4e84d296e1587f0e31009c30122efd5f20ded6a4023447951c"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_quadratic_moments_3d.py",
+      "sha256": "300c7a7e503a88057a077c36c2212f889fbacac0053a3fac99343f1e1202fd98"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+      "sha256": "0e1cca1173f3ed9e47857824230db746d42c47428152a27926dffa0f28b343dd"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+      "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "tests/coupler/test_native_quadratic_moments_3d.py",
+      "sha256": "e8dfa869977befdd22e0852228d660eda7f00687708805ac493095888deeefd1"
+    }
+  ],
+  "elapsed_seconds": 111.04331604100298,
+  "limitations": [
+    "Kinematic fully 3D reconstruction; no physical flow time advance or forces.",
+    "Prescribed cube velocity is added to the cell fit through a distance-scaled face-area residual; no wall-penalty parameter is tuned.",
+    "Only sources touching a changed cell polynomial may differ; all other Gamma and M reproduce the preceding fit exactly.",
+    "Quadratic cell velocity provides circulation and first moments to the existing affine-vorticity induction kernel.",
+    "Point and exact-average velocity inputs are separate; neither receives exact derivatives, moments or target velocities.",
+    "The native-circulation control retains original Gamma while using the point-input quadratic first moments.",
+    "Only full-rank 3D stencils are accepted. Two rings expand to three only when required by rank/conditioning.",
+    "Boundary traces are constant zero on the cube and exponentially small on the outer box; variable VPM boundary data are not tested.",
+    "All original full-mesh cells and common targets are retained; no pruning or tuned core size."
+  ]
+}

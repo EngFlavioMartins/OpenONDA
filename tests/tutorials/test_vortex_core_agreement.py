@@ -4,10 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tutorials.vpm.vortex_interactions.assets.assess_lbm_agreement import (
-    coherent_tracks,
-    radius_score,
-)
+from tests._tutorial_helpers import load_tutorial_module
+
+_assessment = load_tutorial_module("vpm/vortex_interactions", "assets.assess_lbm_agreement")
+coherent_tracks = _assessment.coherent_tracks
+radius_score = _assessment.radius_score
 
 
 def test_core_identity_survives_overtaking_and_peak_rank_changes():
@@ -60,7 +61,7 @@ def test_uniform_distance_score_weights_rings_equally_and_keeps_radius_error():
 
 
 def test_sampled_peaks_recover_two_cores_and_reject_a_clipped_core():
-    from tutorials.vpm.vortex_interactions.assets.assess_lbm_agreement import sampled_peaks
+    sampled_peaks = _assessment.sampled_peaks
 
     x, r = np.linspace(-1, 1, 101), np.linspace(0, 2, 101)
     xx, rr = np.meshgrid(x, r, indexing="ij")
@@ -79,7 +80,7 @@ def test_sampled_peaks_recover_two_cores_and_reject_a_clipped_core():
 def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_path, monkeypatch):
     import pyvista as pv
 
-    from tutorials.vpm.vortex_interactions.assets import assess_lbm_agreement as analysis
+    analysis = _assessment
 
     monkeypatch.setattr(analysis, "STUDY_DIR", tmp_path)
     reports = []
@@ -114,3 +115,31 @@ def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_p
     assert comparisons[1]["time"] == 0.1
     assert comparisons[1]["velocity_relative_l2"] == pytest.approx(0.1)
     assert comparisons[1]["vorticity_relative_l2"] == pytest.approx(0.1)
+
+
+def test_passage_timing_resolves_a_known_period_without_inventing_reference_time():
+    times = np.linspace(0, 4 * np.pi, 101)
+    tracks = pd.DataFrame([
+        {"time": time, "ring": ring, "x": time + sign * np.cos(time),
+         "radius": 1 + sign * 0.2 * np.sin(time)}
+        for time in times for ring, sign in ((1, 1), (2, -1))
+    ])
+    measured = _assessment.leapfrog_events(tracks)
+    expected = np.pi * np.array([0.5, 1.5, 2.5, 3.5])
+    np.testing.assert_allclose([row["time"] for row in measured["passages"]], expected, atol=1e-3)
+    np.testing.assert_allclose(measured["full_cycle_periods"], 2 * np.pi, atol=1e-3)
+    for event, time in zip(measured["passages"], expected):
+        assert event["time_bracket"][0] <= time <= event["time_bracket"][1]
+    assert measured["lbm_temporal_phase_error"] is None
+    assert measured["lbm_passage_times"] is None
+
+
+def test_axial_contact_requires_order_reversal_and_zero_plateaus_are_counted_once():
+    tracks = pd.DataFrame([
+        {"time": time, "ring": ring, "x": time + sign * distance, "radius": 1 + sign * 0.2}
+        for time, distance in enumerate([1, 0, 1, 0, 0, -1])
+        for ring, sign in ((1, 1), (2, -1))
+    ])
+    events = _assessment.leapfrog_events(tracks)["passages"]
+    assert len(events) == 1
+    assert events[0]["time_bracket"] == [2, 5]

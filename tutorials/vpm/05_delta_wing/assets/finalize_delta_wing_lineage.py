@@ -898,8 +898,8 @@ def _check_resumed_samples(
 def _check_declared_resume_lineage(manifest_path: Path) -> tuple[dict, list[dict], int, float]:
     """Validate a declared fresh-prefix/restart pair and return its endpoint."""
     try:
-        from tutorials.vpm.delta_wing.assets._delta_wing_plots import load_accepted_lineage
-    except ModuleNotFoundError:
+        from ._delta_wing_plots import load_accepted_lineage
+    except ImportError:
         from _delta_wing_plots import load_accepted_lineage
 
     payload = _read_metadata(manifest_path)

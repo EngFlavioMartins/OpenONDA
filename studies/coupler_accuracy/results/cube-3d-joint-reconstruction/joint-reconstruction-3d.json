@@ -1,0 +1,190 @@
+{
+  "schema": "openonda-frozen-joint-3d-reconstruction/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "renewal_bounds": [
+    -1.375,
+    1.375,
+    -1.375,
+    1.375,
+    -1.375,
+    1.375
+  ],
+  "particle_spacing": 0.125,
+  "renewable_particles": 2138,
+  "preserved_particles": 68,
+  "fit_points": 1256,
+  "held_points": 1256,
+  "velocity_fit_points": 384,
+  "panel_count": 108,
+  "precision": "f64 direct kernels and constrained panel response",
+  "results": [
+    {
+      "name": "donor_volume_vorticity",
+      "held_raw_vorticity_relative_error": 0.4947050553381221,
+      "held_velocity_curl_relative_error": 0.4930088163212581,
+      "held_raw_vs_velocity_curl_relative_difference": 0.036564036264356205,
+      "held_velocity_rms_over_Uinf": 0.06616859444559739,
+      "held_near_velocity_rms_over_Uinf": 0.11244928020119224,
+      "renewable_strength_l1": 9.100406881023623,
+      "renewable_strength_l1_over_prior": 1.0,
+      "maximum_strength": 0.023005598443039652,
+      "coefficient_relative_change": 0.0,
+      "net_strength_change": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed_seconds": 4.807318584000313
+    },
+    {
+      "name": "original_unregularized_fit",
+      "held_raw_vorticity_relative_error": 0.3688942167291752,
+      "held_velocity_curl_relative_error": 0.28891056040049756,
+      "held_raw_vs_velocity_curl_relative_difference": 0.14454176873367033,
+      "held_velocity_rms_over_Uinf": 0.06757878752586984,
+      "held_near_velocity_rms_over_Uinf": 0.10880083942520101,
+      "renewable_strength_l1": 23.867915133283027,
+      "renewable_strength_l1_over_prior": 2.622730548790401,
+      "maximum_strength": 0.0866971311270791,
+      "coefficient_relative_change": 2.3244375784988613,
+      "net_strength_change": [
+        -0.001165789251060443,
+        -0.034269686282171266,
+        0.03526523976876919
+      ],
+      "elapsed_seconds": 4.814354209000157
+    },
+    {
+      "name": "regularized_raw_vorticity",
+      "lsmr_stop": 2,
+      "lsmr_iterations": 124,
+      "lsmr_residual_norm": 0.09278366589309953,
+      "lsmr_normal_residual_norm": 1.9861797831923585e-09,
+      "lsmr_condition_estimate": 3.778478279446671,
+      "prior_weight": 0.05,
+      "velocity_weight": 0,
+      "l1_budget_ratio": 2.0,
+      "accepted_correction_fraction": 0.9284111893514451,
+      "held_raw_vorticity_relative_error": 0.25086521555727603,
+      "held_velocity_curl_relative_error": 0.21996346150752275,
+      "held_raw_vs_velocity_curl_relative_difference": 0.09309144664174153,
+      "held_velocity_rms_over_Uinf": 0.06497015500346252,
+      "held_near_velocity_rms_over_Uinf": 0.11062853847442669,
+      "renewable_strength_l1": 18.200813762047247,
+      "renewable_strength_l1_over_prior": 2.0,
+      "maximum_strength": 0.05884052997789428,
+      "coefficient_relative_change": 1.5331231400180974,
+      "net_strength_change": [
+        0.00978517061574693,
+        -0.035974887355376024,
+        0.05446831163561524
+      ],
+      "elapsed_seconds": 4.902875458999915
+    },
+    {
+      "name": "joint_raw_vorticity_velocity",
+      "lsmr_stop": 2,
+      "lsmr_iterations": 244,
+      "lsmr_residual_norm": 0.20839642931967625,
+      "lsmr_normal_residual_norm": 1.4284207428816214e-08,
+      "lsmr_condition_estimate": 7.818798012396752,
+      "prior_weight": 0.05,
+      "velocity_weight": 5,
+      "l1_budget_ratio": 2.0,
+      "accepted_correction_fraction": 0.4972198197164667,
+      "held_raw_vorticity_relative_error": 0.488172108686012,
+      "held_velocity_curl_relative_error": 0.4208543859639431,
+      "held_raw_vs_velocity_curl_relative_difference": 0.13236623887657484,
+      "held_velocity_rms_over_Uinf": 0.058208378099617264,
+      "held_near_velocity_rms_over_Uinf": 0.09682556018349558,
+      "renewable_strength_l1": 18.200813762047247,
+      "renewable_strength_l1_over_prior": 2.0,
+      "maximum_strength": 0.042775957975367616,
+      "coefficient_relative_change": 1.3173322798295557,
+      "net_strength_change": [
+        -0.001191491398839928,
+        -0.016086047479533107,
+        -0.012848157431421781
+      ],
+      "elapsed_seconds": 5.530856624998705
+    },
+    {
+      "name": "joint_velocity_curl_velocity",
+      "lsmr_stop": 2,
+      "lsmr_iterations": 238,
+      "lsmr_residual_norm": 0.2283928517417978,
+      "lsmr_normal_residual_norm": 1.510960523226453e-08,
+      "lsmr_condition_estimate": 7.6705219761027,
+      "prior_weight": 0.05,
+      "velocity_weight": 5,
+      "l1_budget_ratio": 2.0,
+      "accepted_correction_fraction": 0.5013591592194333,
+      "held_raw_vorticity_relative_error": 0.4557951163277289,
+      "held_velocity_curl_relative_error": 0.39759912420938465,
+      "held_raw_vs_velocity_curl_relative_difference": 0.13158868729874562,
+      "held_velocity_rms_over_Uinf": 0.05806856228361689,
+      "held_near_velocity_rms_over_Uinf": 0.09702061353168584,
+      "renewable_strength_l1": 18.200813762047247,
+      "renewable_strength_l1_over_prior": 2.0,
+      "maximum_strength": 0.040445868078579694,
+      "coefficient_relative_change": 1.2667054499855397,
+      "net_strength_change": [
+        0.01259549374573651,
+        -0.008355697198715789,
+        0.002152588282871777
+      ],
+      "elapsed_seconds": 7.553125292000914
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "9fc8b975305655e264d63c93217bc6cbcf0c84e29bcf2516109cad71c0ea58e8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz",
+      "sha256": "deb4fe2a983e626e11aed5a1ecf8e14997fa75f2f77d4abe700a7be934b3fba0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    }
+  ],
+  "limitations": [
+    "Frozen coarse native 3D cube only, not evolved hybrid acceptance.",
+    "Regularized candidates share an immutable donor anchor; no production state is changed.",
+    "The L1 bound limits coefficient growth but does not enforce circulation/impulse constraints.",
+    "All targets are native cell samples; subcell/continuum convergence remains separate.",
+    "Dense direct operators are an offline accuracy oracle, not a production scalability solution."
+  ]
+}

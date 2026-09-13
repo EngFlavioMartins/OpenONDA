@@ -146,7 +146,7 @@ def test_compiled_balancing_does_not_pack_deep_coordinates_into_one_integer():
 def test_refined_cylinder_template_matches_original_python_balancing(monkeypatch):
     surface = msh.STLSurface(
         files("tutorials")
-        / "coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl",
+        / "coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl",
         patch="body",
     )
     mesher = msh.CartesianMesher(

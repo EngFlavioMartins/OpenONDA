@@ -3,7 +3,11 @@
 import numpy as np
 from scipy import sparse
 
-from tutorials.vpm.vortex_interactions.assets.axisymmetric_reference import MeridionalPoisson
+from tests._tutorial_helpers import load_tutorial_module
+
+MeridionalPoisson = load_tutorial_module(
+    "vpm/vortex_interactions", "assets.axisymmetric_reference"
+).MeridionalPoisson
 
 
 def test_separable_poisson_residual():

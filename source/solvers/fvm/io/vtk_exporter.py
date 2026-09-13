@@ -24,6 +24,35 @@ else:
 
 _pyvista: Any = pv
 _vtk: Any = vtk
+_CELL_GEOMETRY_FIELDS = frozenset(
+    ("cell_size", "refinement_level", "boundary_layer_index", "cell_volume", "cell_equivalent_size")
+)
+
+
+def mesh_cell_fields(
+    mesh_data: dict[str, Any], cell_volume: np.ndarray | None = None
+) -> dict[str, np.ndarray]:
+    """Cell geometry and meshing provenance shared by mesh and time-step output.
+
+    ``cell_size`` is the nominal octree edge before surface projection and
+    wrapper insertion. ``cell_volume`` is the solver's physical volume (m³),
+    and ``cell_equivalent_size`` is its cube root (m), not a maximum edge.
+    Geometry is supplied by the caller so diagnostic export of a rejected
+    mesh does not depend on successful geometric admission.
+    """
+    fields = {}
+    for source_name, output_name in (
+        ("cell_sizes", "cell_size"),
+        ("cell_levels", "refinement_level"),
+        ("boundary_layer_index", "boundary_layer_index"),
+    ):
+        values = mesh_data.get(source_name)
+        if values is not None:
+            fields[output_name] = np.asarray(values)
+    if cell_volume is not None:
+        fields["cell_volume"] = np.asarray(cell_volume)
+        fields["cell_equivalent_size"] = np.cbrt(cell_volume)
+    return fields
 
 
 def atomic_write_text(path: str | Path, content: str) -> None:
@@ -496,7 +525,11 @@ class VTKExporter:
                 )
             # Interpolate before discarding the ghosts: the boundary values
             # are precisely what a cell-to-point filter cannot reconstruct.
-            if smooth and np.issubdtype(values.dtype, np.floating):
+            if (
+                smooth
+                and name not in _CELL_GEOMETRY_FIELDS
+                and np.issubdtype(values.dtype, np.floating)
+            ):
                 interpolated[name] = self._interpolate_to_points(values, n_cells)
             if values.shape[0] == n_with_boundary:
                 values = values[:n_cells]
@@ -516,7 +549,10 @@ class VTKExporter:
 
         if interpolate_to_points:
             # This allows ParaView to offer Point-based filters and smooth gradients
-            point_grid = self._grid.cell_data_to_point_data()
+            point_grid = self._grid.cell_data_to_point_data(pass_cell_data=True)
+            for name in _CELL_GEOMETRY_FIELDS:
+                if name in point_grid.point_data:
+                    del point_grid.point_data[name]
             self._write_grid(filename, point_grid)
         else:
             self._write_grid(filename, self._grid)

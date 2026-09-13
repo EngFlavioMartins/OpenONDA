@@ -20,6 +20,7 @@ QUALIFICATION_MODULES = frozenset(
         "test_flux_handoff_vpm_integration.py",
         "test_gbd_projected_renewal.py",
         "test_interpolation_qualification.py",
+        "test_transfer_representation_qualification.py",
         "test_core_numerical_qualification.py",
         "test_manufactured_gradient_qualification.py",
         "test_panel_linear_solver_convergence.py",

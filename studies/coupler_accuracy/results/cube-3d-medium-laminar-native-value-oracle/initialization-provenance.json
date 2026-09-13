@@ -1,0 +1,9 @@
+{
+  "note": "Core initializer used by this completed run, archived before the mixed-boundary initialization fix. The original source manifest did not include this file.",
+  "sources": [
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "8e85463a5116f25d2e763e0597da6b9ff88a50e53566505ded4e95a51bd13b3e"
+    }
+  ]
+}

@@ -6,11 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tutorials.vpm.rotor_flow.assets.plot_rotor_loading_validation import (
-    _native_vlm_logging_cadence,
-    _native_vlm_station_keys,
-    shared_vlm_window,
-)
+from tests._tutorial_helpers import load_tutorial_module
+
+_loading = load_tutorial_module("vpm/rotor_flow", "assets.plot_rotor_loading_validation")
+_native_vlm_logging_cadence = _loading._native_vlm_logging_cadence
+_native_vlm_station_keys = _loading._native_vlm_station_keys
+shared_vlm_window = _loading.shared_vlm_window
 
 
 def _histories(*, chord_time_offset=0.0, chord_panels=1):
@@ -134,7 +135,7 @@ def test_shared_vlm_window_rejects_missing_step_station_key():
 def _native_chordwise_first_step():
     path = (
         Path(__file__).resolve().parents[2]
-        / "tutorials/vpm/rotor_flow/samples/rotor/vlm_chordwise_blade_0.csv"
+        / "tutorials/vpm/06_rotor_flow_PENDING/samples/rotor/vlm_chordwise_blade_0.csv"
     )
     return pd.read_csv(path, nrows=132)
 

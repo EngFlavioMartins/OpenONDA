@@ -1,0 +1,229 @@
+{
+  "schema": "openonda-interface-precision-pair-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "frozen_files_verified": 799,
+  "additional_independent_metrics": 59,
+  "maximum_metric_difference": 2.220446049250313e-16,
+  "native_independent_force": {
+    "pressure_force": [
+      0.6572414174972814,
+      -5.60608003366196e-05,
+      -6.513158190215164e-05
+    ],
+    "viscous_force": [
+      0.07296669260430903,
+      -9.961490726567653e-06,
+      -8.500345098801901e-06
+    ],
+    "pressure_drag_coefficient": 1.3144828349945628,
+    "viscous_drag_coefficient": 0.14593338520861807,
+    "drag_coefficient": 1.4604162202031807
+  },
+  "cases": [
+    {
+      "directory": "studies/coupler_accuracy/results/native-three-step-twelve",
+      "converged_intervals": 2,
+      "final_sweeps": [
+        {
+          "coupling_step": 1,
+          "sweep": 9,
+          "normal_residual_rms": 1.4667660883447563e-10,
+          "gradient_residual_rms": 6.121959605957271e-10,
+          "converged": true
+        },
+        {
+          "coupling_step": 2,
+          "sweep": 7,
+          "normal_residual_rms": 1.0743377615940986e-09,
+          "gradient_residual_rms": 9.603518382731132e-07,
+          "converged": true
+        },
+        {
+          "coupling_step": 3,
+          "sweep": 12,
+          "normal_residual_rms": 2.765781937741481e-09,
+          "gradient_residual_rms": 3.068407300598093e-06,
+          "converged": false
+        }
+      ],
+      "comparison": [
+        {
+          "coupling_step": 0,
+          "elapsed_flow_time": 0.0,
+          "physical_time": 0.5,
+          "fvm_velocity_rms_over_Uinf": 0.0,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+          "full_drag_coefficient": 1.586677942360705,
+          "hybrid_drag_coefficient": 1.586677942360705,
+          "drag_coefficient_difference": 0.0,
+          "particles": 6429
+        },
+        {
+          "coupling_step": 1,
+          "elapsed_flow_time": 0.05,
+          "physical_time": 0.55,
+          "fvm_velocity_rms_over_Uinf": 0.002413924909278497,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.000725695785276924,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.03677604374183699,
+          "full_drag_coefficient": 1.5090799958339747,
+          "hybrid_drag_coefficient": 1.4867253215608267,
+          "drag_coefficient_difference": -0.022354674273147968,
+          "particles": 22037
+        },
+        {
+          "coupling_step": 2,
+          "elapsed_flow_time": 0.1,
+          "physical_time": 0.6,
+          "fvm_velocity_rms_over_Uinf": 0.002621694987781313,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0006964427266253208,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.03568678221192796,
+          "full_drag_coefficient": 1.486079170256125,
+          "hybrid_drag_coefficient": 1.4810979982188903,
+          "drag_coefficient_difference": -0.0049811720372345825,
+          "particles": 22374
+        },
+        {
+          "coupling_step": 3,
+          "elapsed_flow_time": 0.15,
+          "physical_time": 0.65,
+          "fvm_velocity_rms_over_Uinf": 0.0027278513719776144,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0006622465819054758,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.03484642172293684,
+          "full_drag_coefficient": 1.4650546185458297,
+          "hybrid_drag_coefficient": 1.460416220203181,
+          "drag_coefficient_difference": -0.004638398342648786,
+          "particles": 22580
+        }
+      ]
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/precision-three-step-twelve",
+      "converged_intervals": 3,
+      "final_sweeps": [
+        {
+          "coupling_step": 1,
+          "sweep": 3,
+          "normal_residual_rms": 1.984794407339198e-08,
+          "gradient_residual_rms": 9.667909717231168e-09,
+          "converged": true
+        },
+        {
+          "coupling_step": 2,
+          "sweep": 3,
+          "normal_residual_rms": 1.757496142770106e-08,
+          "gradient_residual_rms": 8.812092192265708e-09,
+          "converged": true
+        },
+        {
+          "coupling_step": 3,
+          "sweep": 3,
+          "normal_residual_rms": 2.0897372917398745e-08,
+          "gradient_residual_rms": 1.2004852516158647e-08,
+          "converged": true
+        }
+      ],
+      "comparison": [
+        {
+          "coupling_step": 0,
+          "elapsed_flow_time": 0.0,
+          "physical_time": 0.5,
+          "fvm_velocity_rms_over_Uinf": 0.0,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+          "full_drag_coefficient": 1.586677942360705,
+          "hybrid_drag_coefficient": 1.586677942360705,
+          "drag_coefficient_difference": 0.0,
+          "particles": 6429
+        },
+        {
+          "coupling_step": 1,
+          "elapsed_flow_time": 0.05,
+          "physical_time": 0.55,
+          "fvm_velocity_rms_over_Uinf": 0.002413921937746722,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0007256951925531843,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.03677604367921395,
+          "full_drag_coefficient": 1.5090799958339747,
+          "hybrid_drag_coefficient": 1.4867254893250548,
+          "drag_coefficient_difference": -0.022354506508919902,
+          "particles": 22037
+        },
+        {
+          "coupling_step": 2,
+          "elapsed_flow_time": 0.1,
+          "physical_time": 0.6,
+          "fvm_velocity_rms_over_Uinf": 0.002621689237946372,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0006964437651190851,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.035686780864612196,
+          "full_drag_coefficient": 1.486079170256125,
+          "hybrid_drag_coefficient": 1.4810985624133859,
+          "drag_coefficient_difference": -0.0049806078427390155,
+          "particles": 22374
+        },
+        {
+          "coupling_step": 3,
+          "elapsed_flow_time": 0.15,
+          "physical_time": 0.65,
+          "fvm_velocity_rms_over_Uinf": 0.002727841910817231,
+          "fvm_near_body_velocity_rms_over_Uinf": 0.0006622424011757835,
+          "vpm_sampled_velocity_rms_over_Uinf": 0.034846422924989455,
+          "full_drag_coefficient": 1.4650546185458297,
+          "hybrid_drag_coefficient": 1.4604162830031233,
+          "drag_coefficient_difference": -0.004638335542706429,
+          "particles": 22580
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-three-step-verification.json",
+      "sha256": "26036fd332ccfaf34e550e17af55d15d130f41e8ae3e12b9207041087fb8b2c2"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_precision_pair_3d.py",
+      "sha256": "dbe952380a751df39e46c238c6882528ce9b53c24e28b86daf909f81b24a7d4a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-three-step-twelve/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-three-step-twelve/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "6724a1d9b7c3e74ed61ee3941b5be770493fb548f88103ba914e3d721ac1f448"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-three-step-twelve/interface-iteration-3d.json",
+      "sha256": "2f841bf00e9e7a4158724e05b8ee3b26aeee13e5491f0c54b7266d453bdaf569"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-three-step-twelve/trial/cube-coupled-trial.json",
+      "sha256": "8df29cdf9325e0b4f85772e31df733de2f754a2f9735481f2d57298f0672d420"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-three-step-twelve/trial/latest-comparison-fields.npz",
+      "sha256": "9e116f5e058f76139c59bdb435cae7afe0793d4b398c928a4ccc8a2246c2c830"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-three-step-twelve/interface-iteration-3d.json",
+      "sha256": "7ca84cf00459c8a23278f0ebd9fa452dcdba87e1fa8f688580231fbe14ab4c8b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-three-step-twelve/trial/cube-coupled-trial.json",
+      "sha256": "6b9aa30f04d527cec40c42bc3067ec65173699e1987334705f997d8c57da94fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-three-step-twelve/trial/latest-comparison-fields.npz",
+      "sha256": "0dad226c78babfbaf422641b6c008e62132689ebc8700adefab8f16b01e8bd21"
+    }
+  ],
+  "limitations": [
+    "Three short matched 3D intervals on one immutable source snapshot; no developed-wake or complete 20-interval precision conclusion.",
+    "The promoted zero/one-sweep checkpoint identity is checked separately. Each native and promoted interval replays its own endpoint map; different derivative operators are not required to share a first-map fingerprint."
+  ]
+}

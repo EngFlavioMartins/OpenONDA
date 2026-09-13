@@ -1,0 +1,31 @@
+{
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/plot_cube_3d_study.py",
+      "sha256": "15dca31624bcde5f3a1796d155edf1b95c26df89b4c7d95c2696ab3b078a1045",
+      "archive": "studies/coupler_accuracy/results/native-face-plot-source.py"
+    }
+  ],
+  "run_sources_verified": [
+    {
+      "run": "cube-3d-medium-laminar-outflow-linear-upwind-oracle",
+      "verified_archived_sources": 16
+    },
+    {
+      "run": "cube-3d-medium-laminar-native-flux-outflow-oracle",
+      "verified_archived_sources": 16
+    },
+    {
+      "run": "cube-3d-medium-laminar-mixed-state-baseline",
+      "verified_archived_sources": 15
+    },
+    {
+      "run": "cube-3d-medium-laminar-mixed-outflow",
+      "verified_archived_sources": 15
+    }
+  ],
+  "visually_checked_figures_unchanged_after_final_source_render": {
+    "cube-3d-native-face-followup.png": "028ca51c8bc9e963188e89946989c36b139ae9bddcd3a48fbd24e5942e9b6335",
+    "cube-3d-outflow-convection-live.png": "e8a03000278363118b3ef27c2e2c17d5b809b1a702bad4e5664395528a58e6ba"
+  }
+}

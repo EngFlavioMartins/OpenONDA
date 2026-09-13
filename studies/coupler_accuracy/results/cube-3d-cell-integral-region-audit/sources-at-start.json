@@ -1,0 +1,22 @@
+[
+  {
+    "path": "studies/coupler_accuracy/cell_integral_region_audit_3d.py",
+    "sha256": "c09bd26547fa48303ad6bcc4e52768406cd787bfe01b903099f4577b45ffc5ff"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-cell-integral-reconstruction/cell-integral-inputs.npz",
+    "sha256": "1b1b336bb95a74d05e28d9b925cb326609ce09cab06035574e03e843fe4c0591"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-cell-integral-reconstruction/cell-integrals.npz",
+    "sha256": "7215b3e60c42d6261872e21102d09d9675aef983126060890c7cb53dc8df12dd"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-oracle/small-native-mesh.npz",
+    "sha256": "6c7f3e2b387e13ebaec22a5b81daefbffb53aa2e15f583ec5173cc50662547b6"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz",
+    "sha256": "deb4fe2a983e626e11aed5a1ecf8e14997fa75f2f77d4abe700a7be934b3fba0"
+  }
+]

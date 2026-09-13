@@ -1,0 +1,50 @@
+[
+  {
+    "path": "studies/coupler_accuracy/cube_manufactured_linear_induction_3d.py",
+    "sha256": "4596a652263fd2bac65725808c70dd38855f41f9397e2a623ad28aa474287eae"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+    "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/cube-manufactured-induction-3d.json",
+    "sha256": "6291b2d70ed5323aa24086ea37dc1cce8c2aee1f01c10de4aae98d29358af15b"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-source-fields.npz",
+    "sha256": "46d2931bc2feb15e07fc5b6fe5ee53f47dc28dd381681865b2f10836991287da"
+  },
+  {
+    "path": "studies/coupler_accuracy/results/cube-3d-manufactured-induction-coarse/manufactured-induction-fields.npz",
+    "sha256": "58503cee3a6368ec532e0c8f260de249154156a074e25992aa9d263dbfe3ffe5"
+  },
+  {
+    "path": "studies/coupler_accuracy/manufactured_cell_moments_3d.py",
+    "sha256": "8abe4c38bcd0b7f195b31b5d2f3b3c66e36505968fd1511fd8ea2c9cad629130"
+  },
+  {
+    "path": "studies/coupler_accuracy/manufactured_cube_field_3d.py",
+    "sha256": "a017edff47bfd6a5217807806a882b4b49733c1419ca9ee22dcffc57b8752515"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_linear_volume_induction_3d.py",
+    "sha256": "60d2b140d43aca41829c4e9f717e488ba5cdb00a76da6116eb4565d04cb8cc5e"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+    "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_cell_integrals_3d.py",
+    "sha256": "c5c95c98e6962d770f0d72a63476a7d06a06c1cf93794a8ae3307b1310145471"
+  },
+  {
+    "path": "studies/coupler_accuracy/native_velocity_curl_integrals_3d.py",
+    "sha256": "9892aba5273e75860aba3a448c84bd3f10b28ff85cd42c8b6b141fe98fca7c95"
+  },
+  {
+    "path": "tests/coupler/test_native_linear_volume_induction_3d.py",
+    "sha256": "ce837e29951ba46e04480e7e8126b856d29ee9a0e8a762d7499411aad269a216"
+  }
+]

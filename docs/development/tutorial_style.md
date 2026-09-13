@@ -2,7 +2,7 @@
 
 A tutorial is executable documentation. Start with the physical inputs, then
 show geometry and resolution, numerical choices, output, construction, and run.
-Use `tutorials/fvm/cube_flow/setup.py` and `tutorials/vpm/vortex_ring/setup.py`
+Use `tutorials/fvm/cube_flow/setup.py` and `tutorials/vpm/02_vortex_ring/setup.py`
 as examples of the layout.
 
 - Group related inputs and add short unit comments. Prefer the names used by

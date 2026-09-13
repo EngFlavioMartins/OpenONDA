@@ -18,7 +18,7 @@ protect user edits; `run` reuses an existing workspace.
 After installation, open a case directory and run Python directly:
 
 ```bash
-cd ring-workspace/tutorials/vpm/vortex_ring
+cd ring-workspace/tutorials/vpm/02_vortex_ring
 python setup.py --variant dns_direct
 ```
 
@@ -104,8 +104,8 @@ campaign converges. Full physical qualification can require long runs.
 | Family | Cases | Runtime notes |
 | --- | --- | --- |
 | FVM | `cartesian_mesher`, `airfoil_flow`, `boundary_layer`, `cube_flow`, `cylinder_ibm`, `step_profile`, `taylor_green` | Native meshers and solver. Taylor–Green is the short first example. |
-| VPM/VLM | `delta_wing`, `flat_plate`, `lamb_oseen_vortex`, `quadcopter`, `rotor_flow`, `vortex_interactions`, `vortex_ring` | CPU or supported GPU backends; geometry inputs are included. OpenVSP is optional for regenerating rotor inputs. |
-| Hybrid | `uniform_flow`, `cube_flow`, `cylinder_shedding_flow`, `naca4412_flow` | Uniform flow is a small CPU interoperability example. Body-flow campaigns have separate accuracy and resolution requirements. |
+| VPM/VLM | `delta_wing`, `flat_plate`, `lamb_oseen_vortex`, `quadcopter`, `rotor_flow`, `surface_interaction`, `vortex_interactions`, `vortex_ring` | CPU or supported GPU backends; geometry inputs are included. OpenVSP is optional for regenerating rotor inputs. The surface-interaction case is a real VPM vortex-ring/tandem-VLM run with owner-emitted loads, leakage, events, and restart/refinement study tables; its scope remains inviscid attached-flow self-consistency. |
+| Hybrid | `cube_flow`, `cylinder_shedding_flow`, `naca4412_flow` | Small-to-medium CPU interoperability examples. Body-flow campaigns have separate accuracy and resolution requirements. |
 | Hybrid references | `cube_flow/reference_flow`, `cylinder_shedding_flow/reference_flow` | Standalone FVM reference studies; each owns its geometry input. |
 
 Names are prefixed with `fvm/`, `vpm/` or `coupled_fvm_vpm/` as appropriate.

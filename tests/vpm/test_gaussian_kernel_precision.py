@@ -8,13 +8,15 @@ import taichi as ti
 
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.kernels.gaussian import create_gaussian_kernels
+from source.solvers.vpm.kernels.high_order_gaussian import create_high_order_gaussian_kernels
+from source.solvers.vpm.kernels.super_gaussian import create_super_gaussian_kernels
 from source.solvers.vpm.physics.induction.treecode.lbvh import TaichiTreecode
 
 
 @ti.data_oriented
 class _Sampler:
-    def __init__(self, radii, dtype, *, tree=False):
-        functions = create_gaussian_kernels(dtype)
+    def __init__(self, radii, dtype, *, tree=False, factory=create_gaussian_kernels):
+        functions = factory(dtype)
         self.q_func = functions["q_"]
         self.zeta_func = functions["zeta_"]
         self.g_func = functions["g_"]
@@ -123,5 +125,55 @@ def test_device_gaussian_derivative_matches_mollifier_across_splices(tmp_path):
         derivative = (qm2 - 8 * qm1 + 8 * qp1 - qp2) / (12 * h)
         exact = centres**2 * math.pi**-1.5 * np.exp(-(centres**2))
         np.testing.assert_allclose(derivative, exact, rtol=2e-10, atol=1e-13)
+    finally:
+        ti.reset()
+
+
+@pytest.mark.parametrize("precision", ["f32", "f64"])
+@pytest.mark.parametrize(
+    "name,factory,scale",
+    [
+        ("HIGH_ORDER_GAUSSIAN", create_high_order_gaussian_kernels, 1.0),
+        ("SUPER_GAUSSIAN", create_super_gaussian_kernels, math.sqrt(2.0)),
+    ],
+)
+def test_corrected_gaussians_match_density_quadrature_and_potential(
+    precision, name, factory, scale
+):
+    """Integrate the declared density, independently of the q implementation."""
+    dtype, np_dtype = (ti.f32, np.float32) if precision == "f32" else (ti.f64, np.float64)
+    ti.reset()
+    ti.init(arch=ti.cpu, default_fp=dtype, cpu_max_num_threads=1, offline_cache=False)
+    try:
+        rho = np.unique(
+            np.r_[0.0, np.geomspace(1e-9, 10.0, 250), 0.499999, 0.5, 0.500001, 1.0, scale]
+        ).astype(np_dtype)
+        r = rho.astype(np.float64)
+        nodes, weights = np.polynomial.legendre.leggauss(128)
+        x, w = (nodes + 1) / 2, weights / 2
+        s = r[:, None] * x / scale
+        density = (2.5 - s**2) * np.exp(-(s**2)) / (math.pi**1.5 * scale**3)
+        expected_q = r**3 * (density @ (w * x**2))
+        y = r / scale
+        expected_g = np.array(
+            [
+                (math.erf(v) / v if v else 2 / math.sqrt(math.pi))
+                + math.exp(-v * v) / math.sqrt(math.pi)
+                for v in y
+            ]
+        ) / (4 * math.pi * scale)
+        expected_zeta = (2.5 - y * y) * np.exp(-y * y) / (math.pi**1.5 * scale**3)
+        sampler = _Sampler(rho, dtype, factory=factory)
+        sampler.evaluate()
+        tol = 9e-7 if precision == "f32" else 5e-14
+        np.testing.assert_allclose(sampler.q.to_numpy(), expected_q, rtol=tol, atol=1e-44)
+        np.testing.assert_allclose(sampler.g.to_numpy(), expected_g, rtol=tol, atol=1e-44)
+        np.testing.assert_allclose(
+            sampler.zeta.to_numpy(),
+            expected_zeta,
+            rtol=1e-5 if precision == "f32" else 1e-13,
+            atol=np.finfo(np_dtype).tiny,
+        )
+        np.testing.assert_allclose(make_vortex_kernel(name).q(r), expected_q, rtol=5e-14, atol=0.0)
     finally:
         ti.reset()

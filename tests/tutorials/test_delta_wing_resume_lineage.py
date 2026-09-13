@@ -11,17 +11,17 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tutorials.vpm.delta_wing.assets._delta_wing_plots import (
-    _read_lineage_csv,
-    load_accepted_lineage,
-)
-from tutorials.vpm.delta_wing.assets.finalize_delta_wing_lineage import (
-    _check_csv,
-    _clock,
-    _require_exact_steps,
-    _require_force_surface_steps,
-    finalize_lineage,
-)
+from tests._tutorial_helpers import load_tutorial_module
+
+_plots = load_tutorial_module("vpm/delta_wing", "assets._delta_wing_plots")
+_finalizer = load_tutorial_module("vpm/delta_wing", "assets.finalize_delta_wing_lineage")
+_read_lineage_csv = _plots._read_lineage_csv
+load_accepted_lineage = _plots.load_accepted_lineage
+_check_csv = _finalizer._check_csv
+_clock = _finalizer._clock
+_require_exact_steps = _finalizer._require_exact_steps
+_require_force_surface_steps = _finalizer._require_force_surface_steps
+finalize_lineage = _finalizer.finalize_lineage
 
 FIXTURE_NUMERICS = {
     "axisymmetric_no_swirl_axis": None,

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="27" time="85.662" timestamp="2026-09-13T11:37:12.586856+02:00" hostname="MacBook-Pro-4.local"><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_batched_swept_candidates_match_exhaustive_boxes" time="0.102" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype0-GAUSSIAN]" time="1.648" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype0-HIGH_ORDER_GAUSSIAN]" time="1.449" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype0-SUPER_GAUSSIAN]" time="1.492" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype0-WINCKELMANS]" time="1.420" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype1-GAUSSIAN]" time="1.575" /><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype1-HIGH_ORDER_GAUSSIAN]" time="1.447"><failure message="AssertionError: &#10;Not equal to tolerance rtol=3e-12, atol=3e-12&#10;&#10;Mismatched elements: 60 / 69 (87%)&#10;First 5 mismatches are at indices:&#10; [0, 0]: 0.818630091507871 (ACTUAL), 0.818630107883407 (DESIRED)&#10; [0, 1]: -0.48616807368183795 (ACTUAL), -0.48616807562847064 (DESIRED)&#10; [0, 2]: 0.8865253736471672 (ACTUAL), 0.8865253903764716 (DESIRED)&#10; [1, 0]: -0.05574013126825353 (ACTUAL), -0.05574013327061991 (DESIRED)&#10; [1, 1]: -0.18194856798762943 (ACTUAL), -0.1819485601196311 (DESIRED)&#10;Max absolute difference among violations: 1.07792821e-07&#10;Max relative difference among violations: 1.25817891e-06&#10; ACTUAL: array([[ 0.81863 , -0.486168,  0.886525],&#10;       [-0.05574 , -0.181949,  0.251164],&#10;       [ 0.643481, -0.356118,  0.366956],...&#10; DESIRED: array([[ 0.81863 , -0.486168,  0.886525],&#10;       [-0.05574 , -0.181949,  0.251164],&#10;       [ 0.643481, -0.356118,  0.366956],...">kernel_name = 'HIGH_ORDER_GAUSSIAN'
+dtype = &lt;taichi._lib.core.taichi_python.DataType object at 0x10a452f30&gt;
+
+    @pytest.mark.parametrize("kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"])
+    @pytest.mark.parametrize("dtype", [ti.f32, ti.f64])
+    def test_finite_target_taichi_matches_independent_host_sum(kernel_name, dtype):
+        ti.reset()
+        ti.init(arch=ti.cpu, default_fp=dtype, offline_cache=False, cpu_max_num_threads=2)
+        try:
+            rng = np.random.default_rng(23)
+            count, target_count = 17, 23
+            physics = PhysicsBase(particle_kernel=kernel_name, max_n_particles=count,
+                                  max_evaluation_points=target_count, accumulator_dtype=dtype)
+            x = ti.Vector.field(3, dtype=dtype, shape=count)
+            g = ti.Vector.field(3, dtype=dtype, shape=count)
+            core = ti.field(dtype=dtype, shape=count)
+            background = ti.Vector.field(3, dtype=dtype, shape=())
+            x.from_numpy(rng.normal(size=(count, 3)))
+            g.from_numpy(rng.normal(size=(count, 3)))
+            core.from_numpy(rng.uniform(0.05, 0.4, count))
+            background[None] = [0.1, -0.2, 0.3]
+            class Cloud:
+                position, vortex_strength, core_radius, velocity_background = x, g, core, background
+                def __len__(self):
+                    return count
+            cloud = Cloud()
+            targets = rng.normal(size=(target_count, 3)).astype(physics.np_dtype)
+            targets[0] = x.to_numpy()[0]  # include a coincident source/target
+            radii = rng.uniform(0.1, 0.8, target_count).astype(physics.np_dtype)
+            expected = make_vortex_kernel(kernel_name).velocity_pair(
+                targets[:, None, :].astype(float) - x.to_numpy()[None, :, :],
+                g.to_numpy()[None, :, :], radii[:, None], core.to_numpy()[None, :],
+            ).sum(axis=1)
+            tolerance = 2e-6 if dtype == ti.f32 else 3e-12
+            for include in (True, False):
+                actual = physics.compute_transport_target_velocity(cloud, targets, radii, include_freestream=include)
+                reference = expected + (np.asarray(background[None]) if include else 0)
+&gt;               np.testing.assert_allclose(actual, reference, atol=tolerance, rtol=tolerance)
+E               AssertionError: 
+E               Not equal to tolerance rtol=3e-12, atol=3e-12
+E               
+E               Mismatched elements: 60 / 69 (87%)
+E               First 5 mismatches are at indices:
+E                [0, 0]: 0.818630091507871 (ACTUAL), 0.818630107883407 (DESIRED)
+E                [0, 1]: -0.48616807368183795 (ACTUAL), -0.48616807562847064 (DESIRED)
+E                [0, 2]: 0.8865253736471672 (ACTUAL), 0.8865253903764716 (DESIRED)
+E                [1, 0]: -0.05574013126825353 (ACTUAL), -0.05574013327061991 (DESIRED)
+E                [1, 1]: -0.18194856798762943 (ACTUAL), -0.1819485601196311 (DESIRED)
+E               Max absolute difference among violations: 1.07792821e-07
+E               Max relative difference among violations: 1.25817891e-06
+E                ACTUAL: array([[ 0.81863 , -0.486168,  0.886525],
+E                      [-0.05574 , -0.181949,  0.251164],
+E                      [ 0.643481, -0.356118,  0.366956],...
+E                DESIRED: array([[ 0.81863 , -0.486168,  0.886525],
+E                      [-0.05574 , -0.181949,  0.251164],
+E                      [ 0.643481, -0.356118,  0.366956],...
+
+tests/vpm/test_vlm_audit_diagnostics.py:70: AssertionError</failure></testcase><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype1-SUPER_GAUSSIAN]" time="1.412"><failure message="AssertionError: &#10;Not equal to tolerance rtol=3e-12, atol=3e-12&#10;&#10;Mismatched elements: 64 / 69 (92.8%)&#10;First 5 mismatches are at indices:&#10; [0, 0]: 0.8713604473424604 (ACTUAL), 0.8713605034263034 (DESIRED)&#10; [0, 1]: -0.5005233196002643 (ACTUAL), -0.5005233424735546 (DESIRED)&#10; [0, 2]: 0.9443815672580196 (ACTUAL), 0.9443816294297667 (DESIRED)&#10; [1, 0]: -0.05952575681014255 (ACTUAL), -0.05952576751134292 (DESIRED)&#10; [1, 1]: -0.16992932697577706 (ACTUAL), -0.1699293288703756 (DESIRED)&#10;Max absolute difference among violations: 2.21985613e-07&#10;Max relative difference among violations: 4.62164339e-05&#10; ACTUAL: array([[ 8.713604e-01, -5.005233e-01,  9.443816e-01],&#10;       [-5.952576e-02, -1.699293e-01,  2.454112e-01],&#10;       [ 6.845119e-01, -3.766157e-01,  3.667242e-01],...&#10; DESIRED: array([[ 8.713605e-01, -5.005233e-01,  9.443816e-01],&#10;       [-5.952577e-02, -1.699293e-01,  2.454112e-01],&#10;       [ 6.845120e-01, -3.766157e-01,  3.667241e-01],...">kernel_name = 'SUPER_GAUSSIAN'
+dtype = &lt;taichi._lib.core.taichi_python.DataType object at 0x10a452f30&gt;
+
+    @pytest.mark.parametrize("kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"])
+    @pytest.mark.parametrize("dtype", [ti.f32, ti.f64])
+    def test_finite_target_taichi_matches_independent_host_sum(kernel_name, dtype):
+        ti.reset()
+        ti.init(arch=ti.cpu, default_fp=dtype, offline_cache=False, cpu_max_num_threads=2)
+        try:
+            rng = np.random.default_rng(23)
+            count, target_count = 17, 23
+            physics = PhysicsBase(particle_kernel=kernel_name, max_n_particles=count,
+                                  max_evaluation_points=target_count, accumulator_dtype=dtype)
+            x = ti.Vector.field(3, dtype=dtype, shape=count)
+            g = ti.Vector.field(3, dtype=dtype, shape=count)
+            core = ti.field(dtype=dtype, shape=count)
+            background = ti.Vector.field(3, dtype=dtype, shape=())
+            x.from_numpy(rng.normal(size=(count, 3)))
+            g.from_numpy(rng.normal(size=(count, 3)))
+            core.from_numpy(rng.uniform(0.05, 0.4, count))
+            background[None] = [0.1, -0.2, 0.3]
+            class Cloud:
+                position, vortex_strength, core_radius, velocity_background = x, g, core, background
+                def __len__(self):
+                    return count
+            cloud = Cloud()
+            targets = rng.normal(size=(target_count, 3)).astype(physics.np_dtype)
+            targets[0] = x.to_numpy()[0]  # include a coincident source/target
+            radii = rng.uniform(0.1, 0.8, target_count).astype(physics.np_dtype)
+            expected = make_vortex_kernel(kernel_name).velocity_pair(
+                targets[:, None, :].astype(float) - x.to_numpy()[None, :, :],
+                g.to_numpy()[None, :, :], radii[:, None], core.to_numpy()[None, :],
+            ).sum(axis=1)
+            tolerance = 2e-6 if dtype == ti.f32 else 3e-12
+            for include in (True, False):
+                actual = physics.compute_transport_target_velocity(cloud, targets, radii, include_freestream=include)
+                reference = expected + (np.asarray(background[None]) if include else 0)
+&gt;               np.testing.assert_allclose(actual, reference, atol=tolerance, rtol=tolerance)
+E               AssertionError: 
+E               Not equal to tolerance rtol=3e-12, atol=3e-12
+E               
+E               Mismatched elements: 64 / 69 (92.8%)
+E               First 5 mismatches are at indices:
+E                [0, 0]: 0.8713604473424604 (ACTUAL), 0.8713605034263034 (DESIRED)
+E                [0, 1]: -0.5005233196002643 (ACTUAL), -0.5005233424735546 (DESIRED)
+E                [0, 2]: 0.9443815672580196 (ACTUAL), 0.9443816294297667 (DESIRED)
+E                [1, 0]: -0.05952575681014255 (ACTUAL), -0.05952576751134292 (DESIRED)
+E                [1, 1]: -0.16992932697577706 (ACTUAL), -0.1699293288703756 (DESIRED)
+E               Max absolute difference among violations: 2.21985613e-07
+E               Max relative difference among violations: 4.62164339e-05
+E                ACTUAL: array([[ 8.713604e-01, -5.005233e-01,  9.443816e-01],
+E                      [-5.952576e-02, -1.699293e-01,  2.454112e-01],
+E                      [ 6.845119e-01, -3.766157e-01,  3.667242e-01],...
+E                DESIRED: array([[ 8.713605e-01, -5.005233e-01,  9.443816e-01],
+E                      [-5.952577e-02, -1.699293e-01,  2.454112e-01],
+E                      [ 6.845120e-01, -3.766157e-01,  3.667241e-01],...
+
+tests/vpm/test_vlm_audit_diagnostics.py:70: AssertionError</failure></testcase><testcase classname="tests.vpm.test_vlm_audit_diagnostics" name="test_finite_target_taichi_matches_independent_host_sum[dtype1-WINCKELMANS]" time="1.521" /><testcase classname="tests.vpm.test_vlm_production_contract" name="test_coupled_backup_velocity_contains_bound_induction_and_preserves_state" time="12.418" /><testcase classname="tests.vpm.test_vlm_production_contract" name="test_periodic_and_final_backups_pair_exact_moving_surface_states" time="19.247" /><testcase classname="tests.vpm.test_vlm_production_contract" name="test_other_surface_wake_changes_receiving_circulation_without_group_filter" time="4.419" /><testcase classname="tests.vpm.test_vlm_production_contract" name="test_surface_event_output_is_published_only_after_acceptance" time="13.759" /><testcase classname="tests.tutorials.test_rotor_streamwise" name="test_window_mean_uses_time_weights_and_preserves_crossflow_sign" time="0.004" /><testcase classname="tests.tutorials.test_rotor_streamwise" name="test_incomplete_native_line_cannot_be_plotted_as_valid[short]" time="0.001" /><testcase classname="tests.tutorials.test_rotor_streamwise" name="test_incomplete_native_line_cannot_be_plotted_as_valid[missing]" time="0.002" /><testcase classname="tests.tutorials.test_rotor_streamwise" name="test_incomplete_native_line_cannot_be_plotted_as_valid[duplicate]" time="0.001" /><testcase classname="tests.tutorials.test_rotor_streamwise" name="test_incomplete_native_line_cannot_be_plotted_as_valid[nan]" time="0.000" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_ordinary_rotor_case_keeps_native_controls" time="0.000" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius" time="0.001" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_streamwise_lines_resolve_signed_fields_through_rotor_and_wake" time="0.001" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_restart_pilot_is_explicitly_bounded_and_cpu_selected" time="0.000" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_restart_preflight_has_no_scientific_samplers" time="0.000" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_restart_preflight_caps_steps_near_authored_endpoint" time="0.000" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_restart_pilot_help_is_lightweight" time="3.533" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_matched_stabilization_pair_uses_fresh_public_model_variants" time="0.001" /><testcase classname="tests.tutorials.test_rotor_setup" name="test_allrun_keeps_literal_completion_launcher" time="0.001" /></testsuite></testsuites>

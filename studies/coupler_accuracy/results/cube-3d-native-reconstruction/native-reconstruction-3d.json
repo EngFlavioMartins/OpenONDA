@@ -1,0 +1,232 @@
+{
+  "schema": "openonda-frozen-native-reconstruction-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "physical_time": 0.5,
+  "particle_spacing": 0.125,
+  "renewal_bounds": [
+    -1.375,
+    1.375,
+    -1.375,
+    1.375,
+    -1.375,
+    1.375
+  ],
+  "results": [
+    {
+      "name": "donor_volume_vorticity",
+      "fit_velocity_rms_over_Uinf": 0.06548252584510249,
+      "held_velocity_rms_over_Uinf": 0.06616859444559739,
+      "fit_native_curl_relative_error": 0.2463665234376598,
+      "held_native_curl_relative_error": 0.24745714035656177,
+      "held_raw_vorticity_relative_error": 0.4947050553381221,
+      "held_velocity_curl_relative_error": 0.4930088163212581,
+      "fit_wall_velocity_rms_over_Uinf": 0.36004283160238065,
+      "held_wall_velocity_rms_over_Uinf": 0.4085210191578102,
+      "strength_l1_over_prior": 1.0,
+      "net_strength_change_norm": 0.0,
+      "impulse_change_norm": 0.0,
+      "elapsed_seconds": 5.996237542000017
+    },
+    {
+      "name": "original_unregularized_fit",
+      "fit_velocity_rms_over_Uinf": 0.06535969384093852,
+      "held_velocity_rms_over_Uinf": 0.06757878752586984,
+      "fit_native_curl_relative_error": 0.24233217859793516,
+      "held_native_curl_relative_error": 0.2748866773132874,
+      "held_raw_vorticity_relative_error": 0.3688942167291752,
+      "held_velocity_curl_relative_error": 0.28891056040049756,
+      "fit_wall_velocity_rms_over_Uinf": 0.1238873118772032,
+      "held_wall_velocity_rms_over_Uinf": 0.19791277815359207,
+      "strength_l1_over_prior": 2.622730548790401,
+      "net_strength_change_norm": 0.049187473999029216,
+      "impulse_change_norm": 0.24360814329207559,
+      "elapsed_seconds": 6.009151792000921
+    },
+    {
+      "name": "native_curl_only",
+      "constrained_converged": true,
+      "constrained_iterations": 10,
+      "constrained_initial_objective": 0.003732500884888969,
+      "constrained_objective": 0.003732500884888966,
+      "constrained_relative_gradient_mapping": 2.7302523369860217e-09,
+      "constrained_lipschitz": 12.774082711910575,
+      "lsmr_stop": 2,
+      "lsmr_iterations": 136,
+      "prior_weight": 0.05,
+      "l1_budget_ratio": 2.0,
+      "conserve_moments": false,
+      "maximum_moment_projection_iterations": 0,
+      "fit_velocity_rms_over_Uinf": 0.04416420822116792,
+      "held_velocity_rms_over_Uinf": 0.0440843700451547,
+      "fit_native_curl_relative_error": 0.06669651164917552,
+      "held_native_curl_relative_error": 0.12974289084464966,
+      "held_raw_vorticity_relative_error": 0.5708704918182337,
+      "held_velocity_curl_relative_error": 0.5596327983833382,
+      "fit_wall_velocity_rms_over_Uinf": 0.5337415904707066,
+      "held_wall_velocity_rms_over_Uinf": 0.5897837438009098,
+      "strength_l1_over_prior": 1.6680365352725273,
+      "net_strength_change_norm": 0.1018319411077267,
+      "impulse_change_norm": 0.5451676538252018,
+      "elapsed_seconds": 9.335521917000733
+    },
+    {
+      "name": "native_curl_velocity",
+      "constrained_converged": true,
+      "constrained_iterations": 2260,
+      "constrained_initial_objective": 0.02353193921486008,
+      "constrained_objective": 0.019375511251625104,
+      "constrained_relative_gradient_mapping": 9.888687905229029e-09,
+      "constrained_lipschitz": 69.69833287450045,
+      "lsmr_stop": 2,
+      "lsmr_iterations": 226,
+      "prior_weight": 0.05,
+      "l1_budget_ratio": 2.0,
+      "conserve_moments": false,
+      "maximum_moment_projection_iterations": 0,
+      "fit_velocity_rms_over_Uinf": 0.03252127753024672,
+      "held_velocity_rms_over_Uinf": 0.04470167540906478,
+      "fit_native_curl_relative_error": 0.0813866775306569,
+      "held_native_curl_relative_error": 0.11236524544327814,
+      "held_raw_vorticity_relative_error": 0.6532223884765587,
+      "held_velocity_curl_relative_error": 0.6182379754062509,
+      "fit_wall_velocity_rms_over_Uinf": 0.5039368949105729,
+      "held_wall_velocity_rms_over_Uinf": 0.571826035774505,
+      "strength_l1_over_prior": 1.999999999999999,
+      "net_strength_change_norm": 0.007559899307114482,
+      "impulse_change_norm": 0.45974014616684944,
+      "elapsed_seconds": 70.94449887500014
+    },
+    {
+      "name": "native_curl_velocity_wall",
+      "constrained_converged": true,
+      "constrained_iterations": 2650,
+      "constrained_initial_objective": 2.109917665866067,
+      "constrained_objective": 0.0839032991642832,
+      "constrained_relative_gradient_mapping": 9.544698051772047e-09,
+      "constrained_lipschitz": 497.5535615297956,
+      "lsmr_stop": 2,
+      "lsmr_iterations": 516,
+      "prior_weight": 0.05,
+      "l1_budget_ratio": 2.0,
+      "conserve_moments": false,
+      "maximum_moment_projection_iterations": 0,
+      "fit_velocity_rms_over_Uinf": 0.06064906540282362,
+      "held_velocity_rms_over_Uinf": 0.06774483786458858,
+      "fit_native_curl_relative_error": 0.2412109076783419,
+      "held_native_curl_relative_error": 0.276044595835459,
+      "held_raw_vorticity_relative_error": 0.3445824865785041,
+      "held_velocity_curl_relative_error": 0.2760324467109372,
+      "fit_wall_velocity_rms_over_Uinf": 0.014353755915974695,
+      "held_wall_velocity_rms_over_Uinf": 0.18396649640128046,
+      "strength_l1_over_prior": 1.9999999999999996,
+      "net_strength_change_norm": 0.012633856476236717,
+      "impulse_change_norm": 0.441873886920352,
+      "elapsed_seconds": 146.0480930420017
+    },
+    {
+      "name": "native_curl_velocity_wall_moments",
+      "constrained_converged": true,
+      "constrained_iterations": 2340,
+      "constrained_initial_objective": 1.054422942829472,
+      "constrained_objective": 0.09041975476803661,
+      "constrained_relative_gradient_mapping": 9.887755727065937e-09,
+      "constrained_lipschitz": 497.5535615297956,
+      "lsmr_stop": 2,
+      "lsmr_iterations": 516,
+      "prior_weight": 0.05,
+      "l1_budget_ratio": 2.0,
+      "conserve_moments": true,
+      "maximum_moment_projection_iterations": 107,
+      "fit_velocity_rms_over_Uinf": 0.06297782035379587,
+      "held_velocity_rms_over_Uinf": 0.07072417377157292,
+      "fit_native_curl_relative_error": 0.24906432253387464,
+      "held_native_curl_relative_error": 0.2855098462246519,
+      "held_raw_vorticity_relative_error": 0.3773924704238654,
+      "held_velocity_curl_relative_error": 0.29577271324530474,
+      "fit_wall_velocity_rms_over_Uinf": 0.016111535012742734,
+      "held_wall_velocity_rms_over_Uinf": 0.190113477717334,
+      "strength_l1_over_prior": 2.0000000000000018,
+      "net_strength_change_norm": 2.1965315537248217e-13,
+      "impulse_change_norm": 7.891799894493986e-13,
+      "elapsed_seconds": 224.30849583300005
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/native_reconstruction_3d.py",
+      "sha256": "bc2efc4b130a1c2bae4a82f78b63b9bbe7c55596d6f3546ce996070e64eedc85"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-frozen-projected-guard/hybrid/renewal_projection_failure_oracle.npz",
+      "sha256": "deb4fe2a983e626e11aed5a1ecf8e14997fa75f2f77d4abe700a7be934b3fba0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/initial-cell-fields.npz",
+      "sha256": "ec10523e93a3e23f4e4202280ad7d9e2446bd7368a41a0bb33fef1b8d38cf722"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-oracle/full-native-mesh.npz",
+      "sha256": "09cab6a4bfa416a2b821ece79b747ab63c826528d138f9effa6825fb59bb5132"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256": "0a15a2011ebe4026c8d141dbce0622fad3d6a7d955e51052a56b28ccfa502235"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a7e2a7c0c07779d42a1505a4368bbe7ef1283c1999bb59da197159cf446c2337"
+    },
+    {
+      "path": "studies/coupler_accuracy/joint_reconstruction_3d.py",
+      "sha256": "e79944d6d36592c71c08de3181f4bff2bdfbbad231c6c8e6fefa322bae1f7db3"
+    },
+    {
+      "path": "studies/coupler_accuracy/moment_budget.py",
+      "sha256": "72fb775b2522ff9ef9459a82caf1f419d5462fd21589811b0ebc96173a63400d"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_curl_3d.py",
+      "sha256": "199a47b4d74088bd1a7bc9ed3dd0a8865f45d34daeca5fd13c9be710b521372e"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/fields/gradients.py",
+      "sha256": "c130b5921619a9f252409c4292eb8d1885184e4a3a721dbfbc7fd11b7aae5c72"
+    },
+    {
+      "path": "source/solvers/fvm/fields/diagnostics.py",
+      "sha256": "f0dbdc691656de6716f59425dd858eacbdb664d0d9c4157f8119a1189ab6c0a8"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "275f2ce7ee353bb7f866566a5795dea04fe19efaa85641fd632e3dd0c052124e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py",
+      "sha256": "abfc2df3c08273d310305c3974d2575f04970548cd9b181d8cbcb72132ed4252"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/solver/linear_solvers.py",
+      "sha256": "b165a3c3651c307da1c48107805bbd0b58b1ad6658c031a5284d0fc2dc9e311b"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    }
+  ],
+  "limitations": [
+    "Frozen coarse 3D cube; no production checkpoint or acceptance gate is changed.",
+    "Actual coupling faces are excluded from fitting and evaluated in a separate audit.",
+    "The moment target is this frozen donor; evolving regional exchange is not qualified.",
+    "Native-curl fit does not by itself establish continuous-field vorticity or no-slip accuracy.",
+    "Reused development verification cells; fresh 3D acceptance data remain required."
+  ]
+}

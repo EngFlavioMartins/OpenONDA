@@ -1,0 +1,35 @@
+{
+  "scope": "identical startup at t=0.048; CPU vs Metal; not mature-flow convergence",
+  "particle_matching": "bijective nearest positions within provenance group; GPU atomic append order is not a persistent particle identity",
+  "fields": {
+    "particles/position": {
+      "max_absolute_difference": 9.5367431640625e-07,
+      "relative_l2_difference": 1.7054921905499913e-08
+    },
+    "particles/vortex_strength": {
+      "max_absolute_difference": 6.697140634059906e-06,
+      "relative_l2_difference": 1.5466237687547993e-06
+    },
+    "particles/velocity": {
+      "max_absolute_difference": 3.552436828613281e-05,
+      "relative_l2_difference": 6.571063838513114e-07
+    },
+    "particles/core_radius": {
+      "max_absolute_difference": 2.980232238769531e-07,
+      "relative_l2_difference": 1.347136387427123e-07
+    },
+    "solver/vlm/circulation": {
+      "max_absolute_difference": 1.1444091796875e-05,
+      "relative_l2_difference": 6.804137509272825e-07
+    },
+    "solver/vlm/panel_force": {
+      "max_absolute_difference": 0.0002830028533935547,
+      "relative_l2_difference": 1.1231520105351968e-05
+    },
+    "solver/vlm/panel_corner_position": {
+      "max_absolute_difference": 0.0,
+      "relative_l2_difference": 0.0
+    }
+  },
+  "matching_max_distance": 9.537907246235167e-07
+}

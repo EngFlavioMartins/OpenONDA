@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tutorials.vpm.flat_plate.assets.validate_results import check_polar, vector_strength_closure
+from tests._tutorial_helpers import load_tutorial_module
+
+_validate = load_tutorial_module("vpm/flat_plate", "assets.validate_results")
+check_polar = _validate.check_polar
+vector_strength_closure = _validate.vector_strength_closure
 
 
 def symmetric_polar():

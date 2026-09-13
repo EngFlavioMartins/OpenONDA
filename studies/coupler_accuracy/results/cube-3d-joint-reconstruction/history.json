@@ -1,0 +1,119 @@
+[
+  {
+    "name": "donor_volume_vorticity",
+    "held_raw_vorticity_relative_error": 0.4947050553381221,
+    "held_velocity_curl_relative_error": 0.4930088163212581,
+    "held_raw_vs_velocity_curl_relative_difference": 0.036564036264356205,
+    "held_velocity_rms_over_Uinf": 0.06616859444559739,
+    "held_near_velocity_rms_over_Uinf": 0.11244928020119224,
+    "renewable_strength_l1": 9.100406881023623,
+    "renewable_strength_l1_over_prior": 1.0,
+    "maximum_strength": 0.023005598443039652,
+    "coefficient_relative_change": 0.0,
+    "net_strength_change": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "elapsed_seconds": 4.807318584000313
+  },
+  {
+    "name": "original_unregularized_fit",
+    "held_raw_vorticity_relative_error": 0.3688942167291752,
+    "held_velocity_curl_relative_error": 0.28891056040049756,
+    "held_raw_vs_velocity_curl_relative_difference": 0.14454176873367033,
+    "held_velocity_rms_over_Uinf": 0.06757878752586984,
+    "held_near_velocity_rms_over_Uinf": 0.10880083942520101,
+    "renewable_strength_l1": 23.867915133283027,
+    "renewable_strength_l1_over_prior": 2.622730548790401,
+    "maximum_strength": 0.0866971311270791,
+    "coefficient_relative_change": 2.3244375784988613,
+    "net_strength_change": [
+      -0.001165789251060443,
+      -0.034269686282171266,
+      0.03526523976876919
+    ],
+    "elapsed_seconds": 4.814354209000157
+  },
+  {
+    "name": "regularized_raw_vorticity",
+    "lsmr_stop": 2,
+    "lsmr_iterations": 124,
+    "lsmr_residual_norm": 0.09278366589309953,
+    "lsmr_normal_residual_norm": 1.9861797831923585e-09,
+    "lsmr_condition_estimate": 3.778478279446671,
+    "prior_weight": 0.05,
+    "velocity_weight": 0,
+    "l1_budget_ratio": 2.0,
+    "accepted_correction_fraction": 0.9284111893514451,
+    "held_raw_vorticity_relative_error": 0.25086521555727603,
+    "held_velocity_curl_relative_error": 0.21996346150752275,
+    "held_raw_vs_velocity_curl_relative_difference": 0.09309144664174153,
+    "held_velocity_rms_over_Uinf": 0.06497015500346252,
+    "held_near_velocity_rms_over_Uinf": 0.11062853847442669,
+    "renewable_strength_l1": 18.200813762047247,
+    "renewable_strength_l1_over_prior": 2.0,
+    "maximum_strength": 0.05884052997789428,
+    "coefficient_relative_change": 1.5331231400180974,
+    "net_strength_change": [
+      0.00978517061574693,
+      -0.035974887355376024,
+      0.05446831163561524
+    ],
+    "elapsed_seconds": 4.902875458999915
+  },
+  {
+    "name": "joint_raw_vorticity_velocity",
+    "lsmr_stop": 2,
+    "lsmr_iterations": 244,
+    "lsmr_residual_norm": 0.20839642931967625,
+    "lsmr_normal_residual_norm": 1.4284207428816214e-08,
+    "lsmr_condition_estimate": 7.818798012396752,
+    "prior_weight": 0.05,
+    "velocity_weight": 5,
+    "l1_budget_ratio": 2.0,
+    "accepted_correction_fraction": 0.4972198197164667,
+    "held_raw_vorticity_relative_error": 0.488172108686012,
+    "held_velocity_curl_relative_error": 0.4208543859639431,
+    "held_raw_vs_velocity_curl_relative_difference": 0.13236623887657484,
+    "held_velocity_rms_over_Uinf": 0.058208378099617264,
+    "held_near_velocity_rms_over_Uinf": 0.09682556018349558,
+    "renewable_strength_l1": 18.200813762047247,
+    "renewable_strength_l1_over_prior": 2.0,
+    "maximum_strength": 0.042775957975367616,
+    "coefficient_relative_change": 1.3173322798295557,
+    "net_strength_change": [
+      -0.001191491398839928,
+      -0.016086047479533107,
+      -0.012848157431421781
+    ],
+    "elapsed_seconds": 5.530856624998705
+  },
+  {
+    "name": "joint_velocity_curl_velocity",
+    "lsmr_stop": 2,
+    "lsmr_iterations": 238,
+    "lsmr_residual_norm": 0.2283928517417978,
+    "lsmr_normal_residual_norm": 1.510960523226453e-08,
+    "lsmr_condition_estimate": 7.6705219761027,
+    "prior_weight": 0.05,
+    "velocity_weight": 5,
+    "l1_budget_ratio": 2.0,
+    "accepted_correction_fraction": 0.5013591592194333,
+    "held_raw_vorticity_relative_error": 0.4557951163277289,
+    "held_velocity_curl_relative_error": 0.39759912420938465,
+    "held_raw_vs_velocity_curl_relative_difference": 0.13158868729874562,
+    "held_velocity_rms_over_Uinf": 0.05806856228361689,
+    "held_near_velocity_rms_over_Uinf": 0.09702061353168584,
+    "renewable_strength_l1": 18.200813762047247,
+    "renewable_strength_l1_over_prior": 2.0,
+    "maximum_strength": 0.040445868078579694,
+    "coefficient_relative_change": 1.2667054499855397,
+    "net_strength_change": [
+      0.01259549374573651,
+      -0.008355697198715789,
+      0.002152588282871777
+    ],
+    "elapsed_seconds": 7.553125292000914
+  }
+]
