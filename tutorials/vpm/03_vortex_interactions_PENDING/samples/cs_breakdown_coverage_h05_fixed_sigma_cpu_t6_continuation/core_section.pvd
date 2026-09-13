@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
+  <Collection>
+    <DataSet timestep="0.45" file="core_section_000060.vts"/>
+    <DataSet timestep="0.6" file="core_section_000080.vts"/>
+    <DataSet timestep="0.75" file="core_section_000100.vts"/>
+    <DataSet timestep="0.9" file="core_section_000120.vts"/>
+    <DataSet timestep="1.05" file="core_section_000140.vts"/>
+    <DataSet timestep="1.2" file="core_section_000160.vts"/>
+    <DataSet timestep="1.35" file="core_section_000180.vts"/>
+    <DataSet timestep="1.5" file="core_section_000200.vts"/>
+    <DataSet timestep="1.65" file="core_section_000220.vts"/>
+    <DataSet timestep="1.8" file="core_section_000240.vts"/>
+    <DataSet timestep="1.95" file="core_section_000260.vts"/>
+    <DataSet timestep="2.1" file="core_section_000280.vts"/>
+    <DataSet timestep="2.25" file="core_section_000300.vts"/>
+    <DataSet timestep="2.4" file="core_section_000320.vts"/>
+    <DataSet timestep="2.55" file="core_section_000340.vts"/>
+    <DataSet timestep="2.7" file="core_section_000360.vts"/>
+    <DataSet timestep="2.7675" file="core_section_000369.vts"/>
+  </Collection>
+</VTKFile>

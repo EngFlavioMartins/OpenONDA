@@ -1,0 +1,15 @@
+{
+  "case": "smooth_incident_plate",
+  "physics": "real VPM vortex ring + responsive two-surface VLM",
+  "boundary_response": "responsive",
+  "compute_device": "CPU",
+  "precision": "f64",
+  "time_step_size": 0.01,
+  "accepted_steps_requested": 2,
+  "force_table": "samples/tandem/vlm_surface_forces.csv",
+  "leakage_table": "samples/tandem/vlm_leakage.csv",
+  "surface_events": "samples/tandem/vlm_surface_events.csv",
+  "summary": "samples/tandem/qualification_summary.csv",
+  "n_force_rows": 2,
+  "n_event_rows": 16
+}
