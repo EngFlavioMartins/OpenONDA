@@ -1,24 +1,18 @@
 """Geometry-preservation audit for the cube FVM mesh.
 
-Audits the adaptive Cartesian mesh produced for ``cube_flow`` at every stage of
-the pipeline — resolver, root mesh, MPI-localized numerical mesh, VTK
-visualization mesh and the written VTU — and writes
+Audits the adaptive Cartesian mesh produced for ``cube_flow``, its disjoint
+owned-cell partitions, its VTK visualization mesh and the written VTU. Writes
 
-* ``solution/mesh_audit/root_mesh.vtu`` (with ``global_cell_id``,
-  ``refinementLevel`` and ``solidOverlapVolume`` cell fields), and
-* ``solution/mesh_provenance.json``
+* ``solution/mesh_audit/root_mesh.vtu`` (with ``global_cell_id`` and
+  ``solidOverlapVolume`` cell fields), and
+* ``solution/mesh_audit/mesh_provenance.json``
 
 The body is the geometry authority: its six faces must be exact Cartesian
 lattice planes, the wall patch must coincide with the STL bounds, and no fluid
 cell may overlap the solid with positive volume.
 
-Run serially::
-
-    python -u assets/audit_mesh_geometry.py
-
-or partitioned (mirrors the 4-rank production run)::
-
-    mpiexec -n 4 python -u assets/audit_mesh_geometry.py
+Run with ``python assets/audit_mesh_geometry.py``. The solver owns the
+parallel runtime and the single report writer.
 
 Exit status is non-zero when any stage fails.
 """
@@ -26,7 +20,7 @@ Exit status is non-zero when any stage fails.
 from __future__ import annotations
 
 import json
-import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +34,7 @@ cube_flow_setup = load_case_module(CASE_DIR)
 
 def _boundary_face_area_vector(mesh_data) -> np.ndarray:
     """Surface-vector magnitude and orientation for every boundary face."""
-    faces = np.asarray(mesh_data["faces"])
+    faces = mesh_data["faces"]
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     out = []
     for patch in mesh_data["boundary"]:
@@ -75,13 +69,13 @@ def cell_overlap_vs_body(mesh_data, body_bounds) -> np.ndarray:
 
 def wall_metrics(mesh_data, wall_patch_name: str) -> dict:
     """Wall-patch bounds, area and surface-vector sum."""
-    faces = np.asarray(mesh_data["faces"])
+    faces = mesh_data["faces"]
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     patch = next(p for p in mesh_data["boundary"] if p["name"] == wall_patch_name)
     block = faces[int(patch["start_face"]) : int(patch["start_face"]) + int(patch["n_faces"])]
     sf = _boundary_face_area_vector(mesh_data)
     wall_sf = np.concatenate([s for name, s in sf if name == wall_patch_name])
-    wall_vertices = points[np.unique(block)]
+    wall_vertices = points[np.unique(np.concatenate(block))]
     return {
         "bounds_min": wall_vertices.min(axis=0).tolist(),
         "bounds_max": wall_vertices.max(axis=0).tolist(),
@@ -155,32 +149,32 @@ def check_stage(metrics: dict, body_bounds, tolerance: float = 1e-10) -> list[st
     return violations
 
 
-def stage_vtu(mesh, body_bounds, output_dir: Path) -> None:
+def stage_vtu(mesh, body_bounds, output_dir: Path) -> dict:
     """Write the root mesh to VTU with provenance cell fields and audit the file."""
     output_dir.mkdir(parents=True, exist_ok=True)
     overlaps = cell_overlap_vs_body(mesh, body_bounds)
     fields = {
         "global_cell_id": np.arange(mesh["n_cells"], dtype=np.int64),
-        "refinementLevel": np.asarray(mesh["cell_levels"], dtype=np.int32),
         "solidOverlapVolume": overlaps.astype(np.float64),
     }
-    from source.solvers.fvm.io.vtk_exporter import write_vtu
+    from source.solvers.fvm.io.vtk_exporter import VTKExporter
 
     path = output_dir / "root_mesh.vtu"
-    write_vtu(str(path), mesh, fields)
+    VTKExporter(mesh).export(str(path), fields)
 
     import pyvista as pv
 
     grid = pv.read(str(path))
-    file_overlaps = cell_overlap_vs_body(
-        {
-            "vertex_position": np.asarray(grid.points),
-            "cell_vertex_indices": grid.cells_dict[grid.celltypes[0]].reshape(-1, 8),
-            "n_cells": grid.n_cells,
-            "n_points": grid.n_points,
-        },
-        body_bounds,
-    )
+    body_min = np.asarray(body_bounds[::2])
+    body_max = np.asarray(body_bounds[1::2])
+    file_overlaps = np.empty(grid.n_cells)
+    for index in range(grid.n_cells):
+        vertices = grid.get_cell(index).points
+        overlap = np.maximum(
+            0.0,
+            np.minimum(vertices.max(axis=0), body_max) - np.maximum(vertices.min(axis=0), body_min),
+        )
+        file_overlaps[index] = np.prod(overlap)
     return {
         "file": str(path),
         "file_cells": grid.n_cells,
@@ -189,142 +183,66 @@ def stage_vtu(mesh, body_bounds, output_dir: Path) -> None:
     }
 
 
-def main() -> None:
-    mesher = cube_flow_setup.FVM_MESH
-    body_bounds = mesher.surface_bounds
-    wall_patch_name = mesher.wall_patch_name
+def audit_saved_mesh(fields, mesh_path: Path, output_dir: Path) -> None:
+    """Audit the current native mesh and each disjoint owned-cell partition."""
+    from source.solvers.fvm.io.mesh_storage import load_native_mesh
+    from source.solvers.fvm.mesh.partition import CellPartition, _visualization_mesh
 
-    print("Building the adaptive Cartesian mesh ...", flush=True)
-    mesh = mesher.build()
-    root_metrics = audit_stage(mesh, body_bounds, wall_patch_name, "root")
-
-    stage_records = [root_metrics]
-    violations: list[str] = []
-    violations.extend(check_stage(root_metrics, body_bounds))
-
-    # Partitioned stage: every rank audits its owned cells; parity is verified
-    # by all-reducing owned coverage against the global mesh.
-    try:
-        from mpi4py import MPI
-
-        comm = MPI.COMM_WORLD
-    except (ImportError, ValueError):
-        comm = None
-
-    if comm is not None and comm.size > 1:
-        from source.solvers.fvm.mesh.partition import localize_mesh_and_geometry
-
-        local_mesh, _local_geo, partition = localize_mesh_and_geometry(
-            mesh, {}, comm.rank, comm.size
-        )
-        n_owned = local_mesh["_n_owned"]
-        owned = {key: local_mesh[key] for key in ("points", "faces", "boundary")}
-        owned["n_cells"] = n_owned
-        owned["n_points"] = len(local_mesh["vertex_position"])
-        owned["cell_vertex_indices"] = local_mesh["cell_vertex_indices"][:n_owned]
-        owned_metrics = audit_stage(
-            owned, body_bounds, wall_patch_name, "local-owned", check_wall=False
-        )
-        stage_records.append(owned_metrics)
-        violations.extend(check_stage(owned_metrics, body_bounds))
-
-        pts = np.asarray(local_mesh["vertex_position"], dtype=np.float64)
-        cv = np.asarray(local_mesh["cell_vertex_indices"], dtype=np.int64)[:n_owned]
-        cell_pts = pts[cv]
-        cell_min = cell_pts.min(axis=1)
-        cell_max = cell_pts.max(axis=1)
-        cell_volume = np.prod(cell_max - cell_min, axis=1)
-        owned_vol = float(cell_volume.sum())
-        all_owned_min = np.zeros(3)
-        all_owned_max = np.zeros(3)
-        all_owned_vol = np.zeros(1)
-        comm.Allreduce(cell_min.min(axis=0), all_owned_min, op=MPI.MIN)
-        comm.Allreduce(cell_max.max(axis=0), all_owned_max, op=MPI.MAX)
-        comm.Allreduce(np.asarray([owned_vol]), all_owned_vol, op=MPI.SUM)
-        global_pts = np.asarray(mesh["vertex_position"])
-        global_min = global_pts.min(axis=0)
-        global_max = global_pts.max(axis=0)
-        if not np.allclose(all_owned_min, global_min, atol=1e-9) or not np.allclose(
-            all_owned_max, global_max, atol=1e-9
-        ):
-            violations.append("local-owned: owned coverage does not span the global AABB")
-        global_vertices = np.asarray(mesh["vertex_position"])[
-            np.asarray(mesh["cell_vertex_indices"], dtype=np.int64)
-        ]
-        global_cell_volume = np.prod(
-            global_vertices.max(axis=1) - global_vertices.min(axis=1), axis=1
-        )
-        global_vol = float(global_cell_volume.sum())
-        if not np.isclose(all_owned_vol[0], global_vol, rtol=1e-9):
-            violations.append(
-                "local-owned: owned-cell volumes do not sum to the global mesh volume "
-                f"({all_owned_vol[0]:.9g} vs {global_vol:.9g})"
-            )
-    else:
-        stage_records.append(
-            {"stage": "local-owned", "n_cells": int(mesh["n_cells"]), "skipped": True}
-        )
-
-    # VTK visualization mesh and written VTU stages are root-only in a
-    # partitioned run; every rank has already audited its owned cells above.
-    is_root = comm is None or comm.rank == 0
-    if is_root:
-        try:
-            from source.solvers.fvm.mesh.partition import _visualization_mesh
-
-            vis = _visualization_mesh(mesh, np.arange(mesh["n_cells"], dtype=np.int64))
-            vis_metrics = audit_stage(vis, body_bounds, wall_patch_name, "visualization")
-            stage_records.append(vis_metrics)
-            violations.extend(check_stage(vis_metrics, body_bounds))
-        except Exception as exc:  # pragma: no cover - diagnostic path
-            violations.append(f"visualization: could not audit the VTK view ({exc})")
-
-        # Written VTU stage
-        output_dir = CASE_DIR / "solution" / "mesh_audit"
-        vtu = stage_vtu(mesh, body_bounds, output_dir)
-        if vtu["file_overlapping_cells"]:
-            violations.append(
-                f"vtk-file: {vtu['file_overlapping_cells']} cells overlap the body "
-                f"(max volume {vtu['file_max_overlap_volume']:.6g})"
-            )
-
-        provenance = {
-            "schema": "mesh-provenance/1",
-            "mesh_method": "adaptive_cartesian",
-            "surface_file": mesher.surface_file,
-            "surface_sha256": mesher.surface.sha256 if mesher.surface else None,
-            "surface_bounds": list(body_bounds),
-            "surface_triangle_count": len(mesher.surface.triangles) if mesher.surface else 0,
-            "requested_domain": list(mesher.requested_domain),
-            "effective_domain": list(mesher.effective_domain),
-            "padding_per_face": list(mesher.padding),
-            "background_cell_size": float(mesher.max_cell_size),
-            "finest_cell_size": float(mesher._resolved_h_min),
-            "max_level": int(mesher._resolved_max_level),
-            "body_lattice_indices": list(mesher._body_lattice_indices),
-            "preserve_body_geometry": bool(mesher.preserve_body_geometry),
-            "stages": stage_records,
-            "vtk_file": vtu,
-            "violations": violations,
-            "passed": not violations,
+    mesh = load_native_mesh(mesh_path)
+    body_bounds = np.asarray(cube_flow_setup.CUBE_BOUNDS)
+    wall_patch_name = "cube"
+    records = [audit_stage(mesh, body_bounds, wall_patch_name, "root")]
+    if len(fields.cell_centre) != mesh["n_cells"]:
+        raise ValueError("Analysis did not receive the complete mesh")
+    owned_ids = []
+    for rank in range(cube_flow_setup.FVM_SETUP.cores):
+        partition = CellPartition.from_mesh_data(mesh, rank, cube_flow_setup.FVM_SETUP.cores)
+        ids = partition.owned_global_ids
+        owned_ids.extend(ids.tolist())
+        owned = {
+            **mesh,
+            "n_cells": len(ids),
+            "boundary": [],
+            "cell_vertex_indices": np.asarray(mesh["cell_vertex_indices"])[ids],
         }
-        (output_dir / "mesh_provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-
-        for metrics in stage_records:
-            print(f"  {metrics['stage']}: {metrics}", flush=True)
-        print(f"  vtk-file: {vtu}", flush=True)
-
-        if violations:
-            print("\nGEOMETRY AUDIT FAILED:")
-            for violation in violations:
-                print(f"  - {violation}")
-            sys.exit(1)
-        print(
-            "\nGEOMETRY AUDIT PASSED: body faces are exact lattice planes, "
-            "the wall patch coincides with the STL bounds, and no fluid cell "
-            "overlaps the solid."
+        records.append(
+            audit_stage(
+                owned, body_bounds, wall_patch_name, f"owned-partition-{rank}", check_wall=False
+            )
         )
-        print(f"Provenance written to {output_dir / 'mesh_provenance.json'}")
+    if sorted(owned_ids) != list(range(mesh["n_cells"])):
+        raise ValueError("Partitions do not cover every global cell exactly once")
+    visual = _visualization_mesh(mesh, np.arange(mesh["n_cells"]))
+    records.append(audit_stage(visual, body_bounds, wall_patch_name, "visualization"))
+    written = stage_vtu(mesh, body_bounds, output_dir)
+    violations = [error for record in records for error in check_stage(record, body_bounds)]
+    if written["file_overlapping_cells"]:
+        violations.append("Written VTK cells overlap the body")
+    report = {
+        "schema": "mesh-provenance/2",
+        "stages": records,
+        "vtk_file": written,
+        "surface_bounds": body_bounds.tolist(),
+        "violations": violations,
+        "passed": not violations,
+    }
+    destination = output_dir / "mesh_provenance.json"
+    destination.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"Geometry audit written to {destination}", flush=True)
+    if violations:
+        raise ValueError("Geometry audit failed: " + "; ".join(violations))
+
+
+def main() -> None:
+    fvm = cube_flow_setup.fvm
+    output_dir = CASE_DIR / "solution" / "mesh_audit"
+    config = replace(
+        cube_flow_setup.FVM_SETUP, case_name="mesh_audit", samplers=(), backup=fvm.BackupConfig()
+    )
+    with fvm.create_fvm_solver(
+        config, case_dir=CASE_DIR, solution_dir=output_dir, mesh=cube_flow_setup.FVM_MESH
+    ) as solver:
+        solver.evaluate(audit_saved_mesh, output_dir / "mesh.npz", output_dir)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 #!/bin/bash -e
+# Usage: ./allplot.sh [png|pdf] (default: png)
+cd -- "$(dirname -- "$0")"
 
 python assets/finalize_delta_wing_lineage.py
 python assets/plot_delta_wing_forces.py --format "${1:-png}"

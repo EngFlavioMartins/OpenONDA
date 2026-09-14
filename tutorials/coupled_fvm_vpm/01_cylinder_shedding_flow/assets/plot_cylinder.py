@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
-import os
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/openonda-matplotlib-cache")
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
@@ -16,6 +15,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
     path = CASE_DIR / "samples" / "forces_history.csv"
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     time = np.asarray([float(row["time"]) for row in rows])
@@ -33,8 +35,7 @@ def main() -> None:
 
     figures = CASE_DIR / "figures"
     figures.mkdir(exist_ok=True)
-    for suffix in ("png", "pdf"):
-        figure.savefig(figures / f"cylinder_forces.{suffix}", dpi=220)
+    figure.savefig(figures / f"cylinder_forces.{args.format}", dpi=220)
     plt.close(figure)
 
 

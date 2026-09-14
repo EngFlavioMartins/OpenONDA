@@ -1,4 +1,5 @@
 #!/bin/bash -e
+cd -- "$(dirname -- "$0")"
 
 python setup.py --variant dns_direct
 python setup.py --variant dns_transposed

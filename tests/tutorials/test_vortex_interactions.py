@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from openonda.tutorial_runner import load_case_module
+from tests._tutorial_helpers import load_tutorial_module
 
 CASE_DIR = (
     Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions_PENDING"
@@ -37,11 +38,26 @@ def test_ring_pair_is_a_translated_symmetric_toroidal_cloud():
     np.testing.assert_array_equal(right.group_id, np.ones(len(right), dtype=np.int32))
     assert left_model.distribution.spacing == setup.PARTICLE_SPACING == 0.05
     assert left_model.distribution.core_radius_ratio == 1.0
-    assert left_model.disturbance.amplitude == 0.0
+    assert left_model.disturbance is None
+    assert left_model.distribution.disturbance is None
     np.testing.assert_allclose(left.core_radius, setup.PARTICLE_CORE_RADIUS)
 
 
-def test_all_cases_share_the_transposed_les_rk3_baseline():
+def test_nonzero_validation_seed_shifts_geometry_in_the_papers_axial_direction(monkeypatch):
+    setup = _load_setup()
+    unperturbed = setup.create_ring(0.0, 0).distribution.build().position
+    monkeypatch.setattr(setup, "DISTURBANCE_AMPLITUDE", 0.05)
+    ring = setup.create_ring(0.0, 0)
+    perturbed = ring.distribution.build().position
+
+    assert ring.disturbance is ring.distribution.disturbance
+    assert ring.disturbance.direction == "axial"
+    assert ring.disturbance.mode == 8
+    np.testing.assert_allclose(perturbed[:, 1:], unperturbed[:, 1:])
+    assert np.max(np.abs(perturbed[:, 0] - unperturbed[:, 0])) == pytest.approx(0.05)
+
+
+def test_all_cases_share_the_transposed_dns_rk3_baseline():
     setup = _load_setup()
     for case_name in setup.CASES:
         case = setup.build_case(case_name)
@@ -50,15 +66,20 @@ def test_all_cases_share_the_transposed_les_rk3_baseline():
         assert numerics.integrator.order == 3
         assert numerics.induction.method == "TREECODE"
         assert numerics.induction.stretching_scheme == "TRANSPOSED"
-        assert numerics.turbulence.model == "LES_SMAGORINSKY"
-        assert numerics.turbulence.smagorinsky_coefficient == 0.20
+        assert numerics.turbulence.model == "DNS"
+        assert numerics.domain_bounds is None
         assert numerics.viscous.scheme == "CS"
         assert numerics.particle_kernel == "GAUSSIAN"
         assert case.run.health_limit_action == "STOP"
         assert case.run.final_backup
         assert case.run.wall_time_limit_seconds is None
         assert numerics.time_step_size == 0.00375
-        assert numerics.turbulence.filter_width == pytest.approx(setup.LES_FILTER_WIDTH)
+        assert numerics.viscous.kinematic_viscosity == pytest.approx(np.pi / 3000)
+        assert numerics.max_n_particles == setup.MAX_N_PARTICLES
+        assert case.run.resource_limits.max_particles == setup.MAX_N_PARTICLES
+        assert not any(
+            isinstance(s, setup.vpm.RingDiagnosticsSampler) for s in case.samplers.samples
+        )
         assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
         assert numerics.health_limits.divergence.maximum == 0.12
         assert numerics.health_limits.misalignment.maximum_degrees == 25.0
@@ -97,9 +118,26 @@ def test_frozen_representation_controls_are_retained():
     assert config.regularization_grid_spacing == config.regularization_core_radius == 0.05
     assert config.regularization_core_radius_trigger == 0.1
     assert config.regularization_tail_budget == 0.003
-    assert config.regularization_max_particles == 120000
+    assert config.regularization_max_particles == setup.MAX_N_PARTICLES
     assert config.regularization_total_kinetic_energy_dissipation_limit == 0.01
     assert config.regularization_total_enstrophy_dissipation_limit == 0.01
+
+
+def test_dns_metadata_does_not_report_an_active_smagorinsky_closure():
+    postprocess = load_tutorial_module("vpm/vortex_interactions", "assets.postprocess")
+    settings = postprocess.metadata_settings(
+        {
+            "configuration": {
+                "initial_conditions": [{"circulation": np.pi, "kinematic_viscosity": np.pi / 3000}],
+                "numerics": {
+                    "time_step_size": 0.00375,
+                    "turbulence": {"model": "DNS", "smagorinsky_coefficient": 0.2},
+                },
+            }
+        }
+    )
+    assert settings["flow_model"] == "DNS"
+    assert settings["smagorinsky"] == 0.0
 
 
 def test_run_and_plot_launchers_use_the_same_cases(tmp_path):

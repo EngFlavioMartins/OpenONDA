@@ -7,6 +7,8 @@ interpolation, or azimuthal averaging is performed by this plotting utility.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 
 import defusedxml.ElementTree as ET
@@ -25,7 +27,7 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 from .. import setup
-from .postprocess import CASES, _theme, case_style
+from .postprocess import CASES, _theme, case_style, load_metadata, save_figure
 
 
 def read_plane(path):
@@ -82,6 +84,7 @@ def render(records, output, formats=("pdf", "png")):
     theme = _theme()
     theme.set_thesis_style()
     output.mkdir(parents=True, exist_ok=True)
+    exports = []
     for record in records:
         x, r, omega = read_plane(record["path"])
         weights = np.abs(omega).sum(axis=1)
@@ -95,7 +98,7 @@ def render(records, output, formats=("pdf", "png")):
         contours = contours[(contours > omega.min()) & (contours < omega.max())]
 
         fig, ax = plt.subplots(figsize=theme.figure_size("single_short"))
-        fig.subplots_adjust(left=0.14, right=0.82, bottom=0.14, top=0.89)
+        fig.subplots_adjust(left=0.16, right=0.78, bottom=0.17, top=0.84)
         field = ax.contourf(x, r, omega.T, levels=levels, cmap=cmap, extend="max")
         if len(contours):
             ax.contour(x, r, omega.T, levels=contours, colors=style["color"], linewidths=0.45)
@@ -106,19 +109,41 @@ def render(records, output, formats=("pdf", "png")):
             xlabel=r"$x/R_0$",
             ylabel=r"$r/R_0$",
         )
-        ax.spines[["top", "right"]].set_visible(False)
-        ax.tick_params(top=False, right=False)
         time = record["time"] * setup.RING_CIRCULATION / setup.RING_RADIUS**2
-        ax.set_title(
-            rf"{record['label'].splitlines()[0]}   $t\Gamma_0/R_0^2={time:.2f}$", loc="left", pad=6
-        )
-        cax = fig.add_axes([0.87, 0.20, 0.025, 0.60])
+        ax.set_title(rf"{record['label'].splitlines()[0]}, $t\Gamma_0/R_0^2={time:.2f}$", pad=6)
+        cax = fig.add_axes([0.82, 0.20, 0.02, 0.60])
         fig.colorbar(field, cax=cax, ticks=[0, 0.5, 1], label=r"$\omega_\theta/\omega_0$")
         stem = f"core_section_{record['run']}_t{record['time']:g}"
+        save_figure(fig, output / stem, (ax, cax), formats)
+        source = record["path"]
+        source_name = (
+            str(source.relative_to(setup.TUTORIAL_DIR))
+            if source.is_relative_to(setup.TUTORIAL_DIR)
+            else str(source)
+        )
+        run_status = load_metadata(record["run"]).get("lifecycle", {}).get("status")
         for fmt in formats:
-            fig.savefig(output / f"{stem}.{fmt}", dpi=theme.DEFAULT_DPI, bbox_inches=None)
+            exported = output / f"{stem}.{fmt}"
+            exports.append(
+                {
+                    "file": exported.name,
+                    "sha256": hashlib.sha256(exported.read_bytes()).hexdigest(),
+                    "run": record["run"],
+                    "run_status": run_status,
+                    "time": record["time"],
+                    "source": source_name,
+                    "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                }
+            )
         plt.close(fig)
         print(f"Saved {output / stem}", flush=True)
+    if exports:
+        manifest = {
+            "generator": "assets/plot_core_sections.py",
+            "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "exports": exports,
+        }
+        (output / "figure_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if not records:
         print("No core_section.pvd samples found; new runs record these through setup.py.")
 

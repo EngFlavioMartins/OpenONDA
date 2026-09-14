@@ -9,3 +9,6 @@
 # Keep every tutorial figure and its post-processing files in Git.
 !**/figures/
 !**/figures/**
+
+# Finder metadata is not a figure or a post-processing result.
+.DS_Store

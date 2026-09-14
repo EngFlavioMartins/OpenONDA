@@ -21,11 +21,13 @@ outputs before a fresh comparison when desired.
 RWM starts with ten independent seeds and adds batches until the maximum
 velocity and vorticity relative standard errors are both at most 7.5%, up to
 80 seeds. The ensemble's statistical stopping rule is part of the experiment.
-Validation is separate: run `python assets/postprocess.py` after plotting.
+Validation is separate: run `python assets/postprocess.py` after plotting
+(add `--format pdf` when checking PDF exports).
 
-`allplot.sh` extracts the required fields and produces PNG and PDF figures.
-This also creates `mergingRenderT0` and `mergingRenderFinal` in PDF and PNG
-formats from the initial conditions and the final GBD particle backup in
+`allplot.sh` extracts the required fields and produces PNG figures by default;
+use `./allplot.sh pdf` for PDF exports. This also creates `mergingRenderT0`
+and `mergingRenderFinal` in the selected format from the initial conditions
+and the final GBD particle backup in
 `solution/merging_gbd/`. Keep that backup and its sample metadata when
 reproducing the sphere views. Their camera and field of view are shared;
 colour clipping and strength-based sphere sizes are normalised per frame.

@@ -19,7 +19,7 @@ After installation, open a case directory and run Python directly:
 
 ```bash
 cd ring-workspace/tutorials/vpm/02_vortex_ring
-python setup.py --variant dns_direct
+python setup.py
 ```
 
 Edit the inputs in `setup.py` to define your experiment; for a short ring check,
@@ -28,16 +28,41 @@ actions:
 
 ```bash
 ./allrun.sh    # Run the simulations listed in the file.
-./allplot.sh   # Plot their results.
+./allplot.sh   # Plot their results as PNG (the default in every tutorial).
+./allplot.sh pdf  # Export PDF figures instead; explicit png is also accepted.
 ./allclean.sh  # Remove generated output when you choose to.
 ```
 
 Most run scripts leave existing outputs in place. A case that requires fresh
 outputs, such as vortex interactions, calls `allclean.sh` explicitly at the
 start of `allrun.sh`. Running does not invoke plotting or result validation.
-Launch the shell files from the case directory. Direct Python setup paths also
-work from other directories.
+Every setup has a default case. The reference defaults are the cylinder's
+medium grid (`dx=0.04`) and the cube's fine grid (`dx=0.06`). Variant and grid
+arguments remain available for comparisons. Every shell launcher resolves its
+own case directory, so it also works when invoked from elsewhere.
 No interpreter variables or module-runner commands are required.
+
+FVM construction uses `FVMSetup.cores` to start its runtime, limit numerical
+thread pools, build the mesh once, and own logging and outputs. Coupled cases
+pass the FVM setup and VPM case directly to `coupler.create_coupler`; the library
+constructs one VPM instance and closes both solvers. Immersed bodies can be
+passed to the factory, which selects their compatible replicated FVM layout.
+Periodic cases also use this layout until partitioned periodic adjacency is
+supported; their linear systems still solve across the configured MPI ranks.
+No tutorial checks MPI ranks or launches MPI itself.
+The optional `cores` count is the only parallel setting needed in a case;
+MPI launch commands, communicators and PETSc execution modes stay in the
+library. An allocated cluster task count alone does not imply MPI is running.
+An explicitly serial `spsolve` request resolves to distributed GMRES under MPI,
+with zero relative tolerance and absolute tolerance at most `1e-10`; the runtime
+logs that choice. Existing iterative solver settings and discretization schemes
+are preserved. Per-face boundary profiles are mapped to their owning partitions.
+
+For a custom analysis, `solver.evaluate(function, ...)` supplies a detached
+`AnalysisSnapshot` containing every global cell and physical boundary face.
+The function runs once and can write its analysis files; its result is shared
+with the running application. `solver.write_csv(...)` also has one writer.
+Normal solver steps do not gather these fields unless an analysis requests them.
 
 The installed CLI performs the same separate actions from any directory:
 

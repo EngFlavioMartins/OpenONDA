@@ -8,10 +8,8 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
-import os
+from functools import partial
 from pathlib import Path
-
-import numpy as np
 
 import openonda.fvm as fvm
 from openonda.tutorial_runner import case_package
@@ -97,13 +95,12 @@ def main() -> None:
     max_time_step_size = min(MAX_TIME_STEP_SIZE, fourier_limit)
     time_step_size = min(TIME_STEP_SIZE, fourier_limit)
 
-    mesh_data, depth = cylinder_ibm_mesh(grid_spacing=SPACING, diameter=DIAMETER)
+    mesh = partial(cylinder_ibm_mesh, grid_spacing=SPACING, diameter=DIAMETER)
+    depth = SPACING
 
     fvm_setup = create_fvm_setup(
         REYNOLDS_NUMBER, FINAL_TIME, depth, time_step_size, max_time_step_size
     )
-    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
-
     body = fvm.ImmersedBody.cylinder_z(
         centre=[0.0, 0.0, 0.5 * depth],
         diameter=DIAMETER,
@@ -111,19 +108,19 @@ def main() -> None:
         marker_spacing_ratio=MARKER_ALPHA,
         name="cylinder",
     )
-    fvm_solver.set_immersed_bodies(body, grid_spacing=SPACING)
-
-    # Save the marker cloud so the plotting scripts can draw the cylinder.
-    sol_dir = os.path.join(case_dir, "solution")
-    np.savetxt(
-        os.path.join(sol_dir, "ibm_markers.csv"),
-        body.position,
-        delimiter=",",
-        header="position_x,position_y,position_z",
-        comments="",
-    )
-
-    fvm_solver.run()
+    with fvm.create_fvm_solver(
+        fvm_setup,
+        case_dir=case_dir,
+        mesh=mesh,
+        immersed_bodies=body,
+        grid_spacing=SPACING,
+    ) as solver:
+        solver.write_csv(
+            "ibm_markers.csv",
+            body.position,
+            columns=("position_x", "position_y", "position_z"),
+        )
+        solver.run()
 
 
 if __name__ == "__main__":

@@ -345,7 +345,7 @@ class Particles:
         return out
 
     def _replace_field_native(self, family: str, field, values: np.ndarray, count: int) -> None:
-        """Replace a field through Taichi's native fixed-shape ndarray path.
+        """Replace live entries with bounded uploads; retain Vulkan's native path.
 
         The custom templated prefix kernels are efficient for incremental
         uploads, but long Vulkan runs have shown cross-field external-array
@@ -353,6 +353,18 @@ class Particles:
         ``from_numpy`` is the backend-supported path; persistent per-field
         arrays keep its external allocation shape and identity fixed.
         """
+        if ti.lang.impl.current_cfg().arch != ti.vulkan:
+            # The native fallback uploads the entire configured capacity. On
+            # Metal, renewal may replace only 10k live particles in a 1.5M-slot
+            # cloud. Use the same fixed-shape prefix transfers as appending.
+            copy = {
+                "vector": self._copy_vectors_chunked,
+                "scalar": self._copy_scalars_chunked,
+                "matrix": self._copy_matrices_chunked,
+                "int": self._copy_ints_chunked,
+            }[family]
+            copy(values, field, 0, count)
+            return
         key = id(field)
         if family == "vector":
             buffers = self._native_vector_uploads
@@ -866,8 +878,8 @@ class Particles:
         )
         strain_rate = self._validate_numpy_input(strain_rate, (3, 3), "strain_rate")
 
-        # Full cloud replacement uses native fixed-shape transfers.  This is
-        # intentionally separate from the chunked append path above.
+        # Replacement uses bounded prefix transfers, with a native fixed-shape
+        # fallback on Vulkan. Appending always uses the chunked path above.
         self._replace_field_native("vector", self.position, position, count)
         self._replace_field_native("vector", self.velocity, velocity, count)
         self._replace_field_native("vector", self.vortex_strength, vortex_strength, count)

@@ -127,10 +127,10 @@ def main() -> None:
     angle = math.radians(ANGLE_OF_ATTACK_DEGREES)
     velocity = [FREESTREAM_VELOCITY * math.cos(angle), FREESTREAM_VELOCITY * math.sin(angle), 0.0]
     solver = fvm.create_fvm_solver(
-        create_fvm_setup(velocity), case_dir=case_dir, mesh=create_fvm_mesh()
+        create_fvm_setup(velocity), case_dir=case_dir, mesh=create_fvm_mesh
     )
     solver.run()
-    write_surface_cp(solver, case_dir / "solution", CHORD, FREESTREAM_VELOCITY)
+    solver.evaluate(write_surface_cp, case_dir / "solution", CHORD, FREESTREAM_VELOCITY)
 
 
 if __name__ == "__main__":

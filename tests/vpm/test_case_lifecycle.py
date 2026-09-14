@@ -16,6 +16,27 @@ from source.solvers.vpm.io.manifest import build_manifest
 from source.solvers.vpm.io.sampler import OutputEvent
 
 
+def test_terminal_backup_does_not_repeat_a_scheduled_backup(tmp_path, monkeypatch):
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        numerics=vpm.Numerics(compute_device="CPU", max_n_particles=8, verbose=False),
+        run=vpm.RunPlan(steps=2, initial_samples=False, final_backup=True),
+        backup=vpm.Backup(interval_steps=1),
+    )
+    solver = vpm.VPMSolver(case)
+    writes = []
+    original = solver.io.write_backup
+
+    def record():
+        writes.append(solver.step)
+        original()
+
+    monkeypatch.setattr(solver.io, "write_backup", record)
+    solver.run()
+    assert writes == [1, 2]
+    assert len(list((tmp_path / "solution").glob("vpm_*.h5"))) == 2
+
+
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
     for configured in (
         vpm.DirectInduction(),
@@ -206,7 +227,7 @@ def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None
         def dispatch(self, event: OutputEvent) -> None:
             events.append(("dispatch", event))
 
-        def write_all(self, event: OutputEvent) -> None:
+        def write_all(self, event: OutputEvent, *, skip_current=False) -> None:
             events.append(("write_all", event))
 
     solver = object.__new__(VPMSolver)
@@ -266,7 +287,7 @@ def test_run_plan_can_persist_and_return_from_a_resource_limit() -> None:
         def dispatch(self, event: OutputEvent) -> None:
             events.append(("dispatch", event))
 
-        def write_all(self, event: OutputEvent) -> None:
+        def write_all(self, event: OutputEvent, *, skip_current=False) -> None:
             events.append(("write_all", event))
 
     solver = object.__new__(VPMSolver)
@@ -319,7 +340,7 @@ def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> N
         def dispatch(self, event: OutputEvent) -> None:
             events.append(("dispatch", event))
 
-        def write_all(self, event: OutputEvent) -> None:
+        def write_all(self, event: OutputEvent, *, skip_current=False) -> None:
             events.append(("write_all", event))
 
     solver = object.__new__(VPMSolver)

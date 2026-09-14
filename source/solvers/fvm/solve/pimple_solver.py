@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Transient incompressible PIMPLE solver."""
 
-import os
 from typing import Any
 
 import numpy as np
@@ -67,21 +66,15 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
         self._partitioned_linear_workspaces = {}
-        self._partitioned_workspace_mode = os.environ.get(
-            "FVM_PETSC_WORKSPACE_POLICY", "shared"
-        ).lower()
-        if self._partitioned_workspace_mode not in {"shared", "separate"}:
-            raise ValueError(
-                "FVM_PETSC_WORKSPACE_POLICY must be 'shared' or 'separate', got "
-                f"{self._partitioned_workspace_mode!r}"
-            )
 
     def _partitioned_workspace(self, equation: str):
         """Return the solver-owned PETSc workspace for a partitioned equation."""
         parallel = self.params.get("_parallel_context")
         if parallel is None or not parallel.is_partitioned:
             return None
-        key = equation if self._partitioned_workspace_mode == "separate" else "flow"
+        # Momentum and pressure have different operators. Separate workspaces
+        # retain each operator's preconditioner across PIMPLE corrections.
+        key = equation
         workspace = self._partitioned_linear_workspaces.get(key)
         if workspace is None:
             from .petsc_partitioned import PartitionedLinearWorkspace
@@ -445,7 +438,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             if has_pressure_nullspace and pressure_constraint == "nullspace"
                             else None
                         ),
-                        partitioned_workspace=self._partitioned_workspace("kinematic_pressure"),
+                        partitioned_workspace=self._partitioned_workspace(
+                            "kinematic_pressure_final"
+                            if final_iteration
+                            else "kinematic_pressure_relaxed"
+                        ),
                         matrix_values_unchanged=reuse_pressure_matrix,
                         return_info=True,
                     )
@@ -626,12 +623,4 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         self.last_linear_results = tuple(linear_results)
         self.last_outer_diagnostics = tuple(outer_diagnostics)
 
-        # Under the low-memory shared policy the workspace now contains the
-        # final pressure GAMG hierarchy.  Destroy it before allocating
-        # full-mesh diagnostics so those large lifetimes never overlap.  The
-        # separate policy deliberately retains both equation workspaces.
-        if self._partitioned_workspace_mode == "shared":
-            flow_workspace = self._partitioned_linear_workspaces.get("flow")
-            if flow_workspace is not None:
-                flow_workspace.close()
         return velocity, kinematic_pressure, volumetric_face_flux, residuals

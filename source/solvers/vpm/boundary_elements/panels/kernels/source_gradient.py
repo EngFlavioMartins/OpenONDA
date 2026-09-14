@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import math
-import os
 
 from numba import njit
 import numpy as np
@@ -34,50 +33,72 @@ def triangle_geometry(triangles):
 @njit(cache=True, nogil=True)
 def _gradient(points, vertices, normals, outward, lengths, strength):
     result = np.zeros((len(points), 3, 3))
+    r = np.empty((3, 3))
+    distance = np.empty(3)
+    products = np.empty(3)
+    log_factor = np.empty(3)
     for query in range(len(points)):
         for panel in range(len(vertices)):
-            r = vertices[panel] - points[query]
-            distance = np.sqrt(np.sum(r * r, axis=1))
-            if np.min(distance) == 0:
-                raise ValueError("Source-vertex target is singular")
-            norm_gradient = -r / distance[:, None]
-            products = np.array([np.dot(r[0], r[1]), np.dot(r[1], r[2]), np.dot(r[2], r[0])])
-            determinant = np.dot(r[0], np.cross(r[1], r[2]))
+            for vertex in range(3):
+                squared = 0.0
+                for axis in range(3):
+                    value = vertices[panel, vertex, axis] - points[query, axis]
+                    r[vertex, axis] = value
+                    squared += value * value
+                distance[vertex] = math.sqrt(squared)
+                if distance[vertex] == 0:
+                    raise ValueError("Source-vertex target is singular")
+            determinant = 0.0
+            for axis in range(3):
+                a, b = (axis + 1) % 3, (axis + 2) % 3
+                determinant += r[0, axis] * (r[1, a] * r[2, b] - r[1, b] * r[2, a])
+            for edge in range(3):
+                following = (edge + 1) % 3
+                products[edge] = 0.0
+                for axis in range(3):
+                    products[edge] += r[edge, axis] * r[following, axis]
+                radius_sum = distance[edge] + distance[following]
+                length = lengths[panel, edge]
+                log_denominator = (radius_sum - length) * (radius_sum + length)
+                if log_denominator <= 0:
+                    raise ValueError("Source-edge target is singular or numerically unresolved")
+                log_factor[edge] = -2 * length / log_denominator
             denominator = (
                 distance[0] * distance[1] * distance[2]
                 + products[0] * distance[2]
                 + products[1] * distance[0]
                 + products[2] * distance[1]
             )
-            determinant_gradient = -(
-                np.cross(r[1], r[2]) + np.cross(r[2], r[0]) + np.cross(r[0], r[1])
-            )
-            denominator_gradient = np.zeros(3)
-            for edge in range(3):
-                a, b, c = edge, (edge + 1) % 3, (edge + 2) % 3
-                denominator_gradient += (
-                    norm_gradient[a] * distance[b] * distance[c]
-                    - (r[a] + r[b]) * distance[c]
-                    + products[edge] * norm_gradient[c]
-                )
             angle_denominator = denominator**2 + determinant**2
             if angle_denominator == 0:
                 raise ValueError("Source-edge target is singular")
-            angle_gradient = (
-                2
-                * (denominator * determinant_gradient - determinant * denominator_gradient)
-                / angle_denominator
-            )
-            jacobian = -np.outer(normals[panel], angle_gradient)
-            for edge in range(3):
-                a, b = edge, (edge + 1) % 3
-                radius_sum, length = distance[a] + distance[b], lengths[panel, edge]
-                log_denominator = (radius_sum - length) * (radius_sum + length)
-                if log_denominator <= 0:
-                    raise ValueError("Source-edge target is singular or numerically unresolved")
-                log_gradient = -2 * length * (norm_gradient[a] + norm_gradient[b]) / log_denominator
-                jacobian += np.outer(outward[panel, edge], log_gradient)
-            result[query] += strength[panel] * jacobian / (4 * math.pi)
+            for axis in range(3):
+                a, b = (axis + 1) % 3, (axis + 2) % 3
+                determinant_gradient = 0.0
+                denominator_gradient = 0.0
+                for edge in range(3):
+                    v, w, u = edge, (edge + 1) % 3, (edge + 2) % 3
+                    determinant_gradient -= r[v, a] * r[w, b] - r[v, b] * r[w, a]
+                    denominator_gradient += (
+                        -r[v, axis] / distance[v] * distance[w] * distance[u]
+                        - (r[v, axis] + r[w, axis]) * distance[u]
+                        - products[edge] * r[u, axis] / distance[u]
+                    )
+                angle_gradient = (
+                    2
+                    * (denominator * determinant_gradient - determinant * denominator_gradient)
+                    / angle_denominator
+                )
+                for component in range(3):
+                    jacobian = -normals[panel, component] * angle_gradient
+                    for edge in range(3):
+                        following = (edge + 1) % 3
+                        log_gradient = log_factor[edge] * (
+                            -r[edge, axis] / distance[edge]
+                            - r[following, axis] / distance[following]
+                        )
+                        jacobian += outward[panel, edge, component] * log_gradient
+                    result[query, component, axis] += strength[panel] * jacobian / (4 * math.pi)
     return result
 
 
@@ -92,9 +113,9 @@ def source_panel_gradient(points, vertices, strengths):
         or not np.all(np.isfinite(points))
     ):
         raise ValueError("Finite targets and one strength per source triangle are required")
-    workers = min(
-        max(1, int(os.environ.get("TI_CPU_MAX_NUM_THREADS", "1"))), max(1, len(points) // 2048)
-    )
+    from openonda.runtime import worker_thread_count
+
+    workers = min(worker_thread_count(), max(1, len(points) // 2048))
     if workers == 1:
         result = _gradient(points, vertices, normals, outward, lengths, strengths)
     else:

@@ -19,11 +19,22 @@ def _theme():
 
 def case_style(name):
     label, palette, marker = {
-        "baseline": ("Baseline", "dark", "o"),
-        "stretching_viscosity": ("Stretching viscosity", "teal", "s"),
-        "p_moments": ("Moment-preserving relaxation", "purple", "D"),
+        "baseline": ("Baseline", "black", "o"),
+        "stretching_viscosity": ("Stretching viscosity", "purple", "s"),
+        "p_moments": ("Moment-preserving relaxation", "yellow", "D"),
     }[name]
-    return {"label": label, "color": _theme().PALETTE[palette], "marker": marker}
+    colors = {"black": "#000000", "purple": "#5C3D9B", "yellow": "#B08A00"}
+    return {"label": label, "color": colors[palette], "marker": marker}
+
+
+def save_figure(fig, stem, axes, formats=("pdf", "png")):
+    """Export at the fixed thesis size after checking its text and margins."""
+    theme = _theme()
+    theme.validate_thesis_figure(fig, axes)
+    stem = Path(stem)
+    stem.parent.mkdir(parents=True, exist_ok=True)
+    for fmt in formats:
+        fig.savefig(stem.parent / f"{stem.name}.{fmt}", dpi=theme.DEFAULT_DPI, bbox_inches=None)
 
 
 def load_metadata(name):
@@ -43,6 +54,7 @@ def metadata_settings(metadata):
     distribution = first.get("distribution") or {}
     disturbance = first.get("disturbance") or {}
     viscous = numerics.get("viscous", {})
+    turbulence = numerics.get("turbulence", {})
     stabilization = numerics.get("stabilization", {})
     circulation = float(first.get("circulation", np.nan))
     viscosity = float(first.get("kinematic_viscosity", np.nan))
@@ -60,7 +72,12 @@ def metadata_settings(metadata):
         "dt": dt,
         "integrator": numerics.get("integrator", {}).get("name"),
         "diffusion": viscous.get("scheme"),
-        "smagorinsky": float(numerics.get("turbulence", {}).get("smagorinsky_coefficient", 0.0)),
+        "flow_model": turbulence.get("model"),
+        "smagorinsky": (
+            float(turbulence.get("smagorinsky_coefficient", 0.0))
+            if turbulence.get("model") == "LES_SMAGORINSKY"
+            else 0.0
+        ),
         "frequency": relaxation / dt if dt > 0 else np.nan,
         "capacity": int(numerics.get("max_n_particles", 0)),
     }

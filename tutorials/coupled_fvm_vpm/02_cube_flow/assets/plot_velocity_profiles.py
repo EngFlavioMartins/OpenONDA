@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publication-style velocity profiles and drag history."""
+"""Common-reconstruction velocity profiles and unfiltered wall drag."""
 
 if not __package__:
     from pathlib import Path as _CasePath
@@ -7,223 +7,122 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-
-from pathlib import Path
 import argparse
-import sys
-
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.gridspec import GridSpec  # noqa: E402
-import numpy as np  # noqa: E402
-
-from . import _plotutil as util  # noqa: E402
-
-FIGURE_FORMAT = "png"
-FIGURE_DPI = util.FIGURE_DPI
-FIGURE_HEIGHT_CM = 10.0
-FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
-
-# Manual layout controls (fractions of the fixed 12.5 cm canvas).
-# Adjust these six values to tune the margins and inter-panel spacing.
-LAYOUT_LEFT = 0.12
-LAYOUT_RIGHT = 0.98
-LAYOUT_BOTTOM = 0.10
-LAYOUT_TOP = 0.95
-LAYOUT_WSPACE = 0.30
-LAYOUT_HSPACE = 0.48
-
-PROFILE_MARK_EVERY = 5
-FORCE_MARKERS = 20
-DRAG_ZOOM_START = 0.20
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+import numpy as np
+from . import _plotutil as util
 
 
-def _force_series(source: str, end_time: float) -> tuple[np.ndarray, np.ndarray]:
+def _force_series(source: str, end_time: float):
     data = util.load_forces(source)
     if data is None:
-        return np.empty(0), np.empty(0)
-    time = np.asarray(data["time"], dtype=float)
-    drag_coefficient = np.asarray(data["drag_coefficient"], dtype=float)
-    selected = (
-        np.isfinite(time) & np.isfinite(drag_coefficient) & (time <= end_time + util.TIME_ATOL)
-    )
-    return time[selected], drag_coefficient[selected]
+        raise ValueError(f"Missing {source} forces")
+    selected = data["time"] <= end_time + util.TIME_ATOL
+    # Raw accepted samples: no smoothing, outlier removal, or time interpolation.
+    return data["time"][selected], data["drag_coefficient"][selected]
 
 
-def _drag_y_limits(series: list[tuple[np.ndarray, np.ndarray]]) -> tuple[float, float] | None:
-    settled = [cd[t >= DRAG_ZOOM_START] for t, cd in series if np.any(t >= DRAG_ZOOM_START)]
-    if not settled:
-        return None
-    values = np.concatenate(settled)
-    low, high = float(np.min(values)), float(np.max(values))
-    padding = max(0.05, 0.08 * max(high - low, 0.1))
-    return low - padding, high + padding
-
-
-def _full_range_inset(ax, series: list[tuple[np.ndarray, np.ndarray]], end_time: float) -> None:
-    limits = ax.get_ylim()
-    available = [cd for _, cd in series if cd.size]
-    if not available:
-        return
-    all_values = np.concatenate(available)
-    if np.min(all_values) >= limits[0] and np.max(all_values) <= limits[1]:
-        return
-    inset = ax.inset_axes((0.73, 0.50, 0.25, 0.42))
-    styles = ((util.COLORS["hybrid"], "-"), (util.COLORS["reference"], "-."))
-    for (time, cd), (colour, linestyle) in zip(series, styles, strict=True):
-        inset.plot(time, cd, color=colour, linestyle=linestyle, linewidth=0.7)
-    inset.set_xlim(0.0, max(end_time, 0.1))
-    inset.tick_params(labelsize=util.FONT_SIZE_PT, length=2)
-
-
-def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[float, float]):
-    freestream_speed = consts["freestream_speed"]
-    reference_length = consts["reference_length"]
-    box = consts["box"]
-
-    ax.axvspan(
-        box["xmin"] / reference_length,
-        box["xmax"] / reference_length,
-        color=util.COLORS["background_light"],
-    )
+def _profile(ax, name, time, consts, title):
+    box, speed = consts["box"], consts["freestream_speed"]
+    ax.axvspan(box["xmin"], box["xmax"], color=util.COLORS["background_light"])
     if name == "centreline":
-        ax.axvspan(-0.5, 0.5, color=util.COLORS["background_strong"], zorder=1)
-
-    styles = {
-        "reference": dict(color=util.COLORS["reference"], ls="-.", label="Reference"),
-        "fvm": dict(color=util.COLORS["hybrid"], ls="-", label="FVM"),
-        "vpm": dict(
-            color=util.COLORS["vpm"],
-            ls="-",
-            marker="o",
-            ms=1.5,
-            markevery=PROFILE_MARK_EVERY,
-            label="VPM",
-        ),
-    }
-    for source in ("reference", "fvm", "vpm"):
+        ax.axvspan(-0.5, 0.5, color=util.COLORS["background_strong"])
+    for source, style in (("reference", "-."), ("fvm", "-"), ("vpm", "--")):
         frame = util.load_line(source, name, time)
         if frame is None:
-            raise RuntimeError(f"Missing exact {source} {name} sample at t={time:.12g} s")
+            raise ValueError(f"No exact {source} {name} sample at t={time:g}")
+        values = np.array(frame["velocity_x"], dtype=float, copy=True) / speed
+        if name == "centreline":
+            values[np.abs(frame["position_x"]) <= 0.5 + 1e-12] = np.nan
         ax.plot(
-            frame["position_x"] / reference_length,
-            frame["velocity_x"] / freestream_speed,
-            zorder=2,
-            **styles[source],
+            frame["position_x"],
+            values,
+            color=util.colour(source),
+            ls=style,
+            label=util.label(source),
+            lw=1 if source == "reference" else 1.1,
         )
-
-    ax.set(xlabel=r"$x/D$", ylabel="", xlim=(-3, 10), ylim=ylim, title=title)
-
-
-def plot_frame(
-    time: float,
-    consts: dict,
-    figure_format: str = FIGURE_FORMAT,
-    dpi: int = FIGURE_DPI,
-) -> None:
-    freestream_speed = consts["freestream_speed"]
-    reference_length = consts["reference_length"]
-    fig = plt.figure(figsize=FIGURE_SIZE, dpi=dpi)
-    grid = GridSpec(2, 2, figure=fig, height_ratios=(1.0, 0.85))
-    ax_centre = fig.add_subplot(grid[0, 0])
-    ax_offaxis = fig.add_subplot(grid[0, 1])
-    ax_drag = fig.add_subplot(grid[1, :])
-    fig.subplots_adjust(
-        left=LAYOUT_LEFT,
-        right=LAYOUT_RIGHT,
-        bottom=LAYOUT_BOTTOM,
-        top=LAYOUT_TOP,
-        wspace=LAYOUT_WSPACE,
-        hspace=LAYOUT_HSPACE,
+    ax.set(
+        title=title,
+        ylabel=r"$u_x/U_\infty$",
+        xlabel=r"$x/D$",
+        xlim=(-3, 10),
+        xticks=[-2, 0, 2, 4, 6, 8, 10],
     )
+    ax.yaxis.set_major_locator(MaxNLocator(4))
+    ax.margins(y=0.08)
 
-    t_fvm, cd_fvm = _force_series("fvm", time)
-    t_ref, cd_ref = _force_series("reference", time)
-    fvm_nondimensional_time = t_fvm * freestream_speed / reference_length
-    reference_nondimensional_time = t_ref * freestream_speed / reference_length
-    if t_fvm.size:
-        ax_drag.plot(
-            fvm_nondimensional_time,
-            cd_fvm,
-            color=util.COLORS["hybrid"],
-            ls="-",
-            marker="o",
-            ms=2,
-            markevery=max(1, t_fvm.size // FORCE_MARKERS),
-            label="FVM",
+
+def plot_frame(time, consts, figure_format="pdf", dpi=util.FIGURE_DPI):
+    util._THEME.set_thesis_style()
+    fig, axes = plt.subplots(3, 1, figsize=util.figure_size(16), dpi=dpi)
+    util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.82, hspace=0.76)
+    _profile(axes[0], "centreline", time, consts, "(a) Centreline")
+    _profile(axes[1], "offaxis_y075", time, consts, r"(b) $y/D=0.75$")
+    for source, style in (("fvm", "-"), ("reference", "-.")):
+        t, cd = _force_series(source, time)
+        axes[2].plot(
+            t * consts["freestream_speed"],
+            cd,
+            color=util.colour(source),
+            ls=style,
+            label=util.label(source),
         )
-    if t_ref.size:
-        ax_drag.plot(
-            reference_nondimensional_time,
-            cd_ref,
-            color=util.COLORS["reference"],
-            ls="-.",
-            label="Reference",
-        )
-    ax_drag.set(
-        xlabel=r"$t U_\infty / D$",
+    axes[2].set(
+        title=r"(c) Raw wall drag",
         ylabel=r"$C_D$",
-        xlim=(0, max(time * freestream_speed / reference_length, 0.1)),
-        title=rf"$C_D$ history, $t\leq {time:.2f}$",
+        xlabel=r"$tU_\infty/D$",
+        xlim=(0, time * consts["freestream_speed"]),
     )
-    drag_series = [
-        (fvm_nondimensional_time, cd_fvm),
-        (reference_nondimensional_time, cd_ref),
-    ]
-    drag_limits = _drag_y_limits(drag_series)
-    if drag_limits is not None:
-        ax_drag.set_ylim(*drag_limits)
-        _full_range_inset(
-            ax_drag,
-            drag_series,
-            time * freestream_speed / reference_length,
-        )
-    ax_drag.legend(loc="upper left", handlelength=1.8, borderpad=0.3, labelspacing=0.3)
-
-    _profile(
-        ax_centre,
-        "centreline",
-        time,
-        consts,
-        "Centreline",
-        (-1.2, 1.2),
+    axes[2].yaxis.set_major_locator(MaxNLocator(4))
+    axes[2].xaxis.set_major_locator(MaxNLocator(6))
+    axes[2].margins(y=0.08)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.938),
+        ncol=3,
+        frameon=False,
+        columnspacing=0.8,
+        handlelength=1.5,
+        handletextpad=0.4,
     )
-    _profile(
-        ax_offaxis,
-        "offaxis_y075",
-        time,
-        consts,
-        r"$y/D=0.75$",
-        (-0.5, 1.5),
+    fig.text(
+        0.5,
+        0.982,
+        rf"$z/D=0,\quad tU_\infty/D={time * consts['freestream_speed']:g}$",
+        ha="center",
+        va="top",
     )
-    ax_centre.set_ylabel(r"$u_x/U_\infty$")
-    ax_offaxis.legend(loc="lower right", handlelength=1.8, borderpad=0.3, labelspacing=0.3)
-
     util.save(fig, f"velocity_profiles_t{time:.2f}", figure_format, dpi)
     plt.close(fig)
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default=FIGURE_FORMAT)
-    parser.add_argument("--dpi", type=int, default=FIGURE_DPI, help="PNG resolution in dpi.")
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="pdf")
+    parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
-
+    util.validate_plot_inputs()
     times = util.common_times(
-        util.line_times("fvm", "centreline"),
-        util.line_times("vpm", "centreline"),
-        util.line_times("reference", "centreline"),
-        util.line_times("fvm", "offaxis_y075"),
-        util.line_times("vpm", "offaxis_y075"),
-        util.line_times("reference", "offaxis_y075"),
+        *(
+            util.line_times(source, name)
+            for source in ("fvm", "vpm", "reference")
+            for name in ("centreline", "offaxis_y075")
+        )
     )
-    if times.size == 0:
-        raise SystemExit("No coincident profile samples found in samples/.")
+    if not len(times):
+        raise SystemExit("No exactly coincident profile states")
     consts = util.run_constants()
     for time in times:
         plot_frame(float(time), consts, args.format, args.dpi)
+    util.remove_obsolete_frames("velocity_profiles", times, args.format)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,267 @@
+{
+  "baseline": {
+    "input_directory": "/private/tmp/openonda-cube-performance-t8wa3h/baseline",
+    "fvm_solve_count": 30,
+    "fvm_solve_seconds": 167.54116008098936,
+    "maximum_sum_of_rank_peak_rss_bytes": 3040542720.0,
+    "forces": [
+      {
+        "time": 0.05,
+        "drag_coefficient": 2.813429800836747
+      },
+      {
+        "time": 0.09999999999999999,
+        "drag_coefficient": 2.722132897052634
+      }
+    ],
+    "steps": [
+      {
+        "time": 0.05,
+        "timing_seconds": {
+          "vpm": 34.66466766700614,
+          "vpm_boundary_condition": 4.893936042004498,
+          "fvm": 84.80261824798072,
+          "transfer": 18.69165083198459,
+          "total": 143.05287278897595
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": true,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.0014342805194096193,
+              "gradient_residual_rms": 0.003042408100257555,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 7.055137716662365e-06,
+              "gradient_residual_rms": 1.340891406946865e-05,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 5.976912674513544e-08,
+              "gradient_residual_rms": 9.339620437323318e-08,
+              "converged": true
+            }
+          ]
+        }
+      },
+      {
+        "time": 0.1,
+        "timing_seconds": {
+          "vpm": 5.299439583992353,
+          "vpm_boundary_condition": 4.7941742909897584,
+          "fvm": 84.35700458296924,
+          "transfer": 19.757211459014798,
+          "total": 114.20782991696615
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": true,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.0009262137282485416,
+              "gradient_residual_rms": 0.001702653786501248,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 4.234233633881975e-06,
+              "gradient_residual_rms": 8.282996405032044e-06,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 2.9348235443000906e-08,
+              "gradient_residual_rms": 4.0603275256849534e-08,
+              "converged": true
+            }
+          ]
+        }
+      }
+    ],
+    "interval_005_to_010_seconds": 114.20782991696615
+  },
+  "optimized": {
+    "input_directory": "/private/tmp/openonda-cube-performance-t8wa3h/final",
+    "fvm_solve_count": 30,
+    "fvm_solve_seconds": 71.03300916205626,
+    "maximum_sum_of_rank_peak_rss_bytes": 3189145600.0,
+    "forces": [
+      {
+        "time": 0.05,
+        "drag_coefficient": 2.8134298703137013
+      },
+      {
+        "time": 0.09999999999999999,
+        "drag_coefficient": 2.7221329744177956
+      }
+    ],
+    "steps": [
+      {
+        "time": 0.05,
+        "timing_seconds": {
+          "vpm": 26.21224945798167,
+          "vpm_boundary_condition": 1.2419632080127485,
+          "fvm": 38.05847008302226,
+          "transfer": 7.8276932089356706,
+          "total": 73.34037595795235
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": true,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.0014342809163324555,
+              "gradient_residual_rms": 0.0030424088493306227,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 7.055596881368283e-06,
+              "gradient_residual_rms": 1.3409473169512992e-05,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 6.013951549293136e-08,
+              "gradient_residual_rms": 9.374897313779714e-08,
+              "converged": true
+            }
+          ]
+        }
+      },
+      {
+        "time": 0.1,
+        "timing_seconds": {
+          "vpm": 1.116965541994432,
+          "vpm_boundary_condition": 0.8178518329805229,
+          "fvm": 34.33043149995501,
+          "transfer": 7.245952792989556,
+          "total": 43.51120166791952
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": true,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.0009262137268388534,
+              "gradient_residual_rms": 0.0017026538804771707,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 4.234317931038182e-06,
+              "gradient_residual_rms": 8.283377152443072e-06,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 2.9334595072258122e-08,
+              "gradient_residual_rms": 4.066874172603081e-08,
+              "converged": true
+            }
+          ]
+        }
+      }
+    ],
+    "interval_005_to_010_seconds": 43.51120166791952
+  },
+  "reference": {
+    "input_directory": "/private/tmp/openonda-cube-performance-t8wa3h/reference",
+    "fvm_solve_count": 8,
+    "fvm_solve_seconds": 50.90618225099752,
+    "maximum_sum_of_rank_peak_rss_bytes": 5332893696.0,
+    "forces": [
+      {
+        "time": 0.0,
+        "drag_coefficient": 0.741317338361462
+      },
+      {
+        "time": 0.05,
+        "drag_coefficient": 1.0286308571467868
+      },
+      {
+        "time": 0.1,
+        "drag_coefficient": 2.393391592972693
+      }
+    ],
+    "steps": [
+      {
+        "time": 0.011606227062720324,
+        "dt": 0.011606227062720324,
+        "seconds": 10.082873167004436
+      },
+      {
+        "time": 0.0241695434465446,
+        "dt": 0.012563316383824278,
+        "seconds": 7.587027708010282
+      },
+      {
+        "time": 0.037094304951041455,
+        "dt": 0.012924761504496856,
+        "seconds": 5.619003041996621
+      },
+      {
+        "time": 0.05,
+        "dt": 0.012905695048958547,
+        "seconds": 5.031893416977255
+      },
+      {
+        "time": 0.06389219843357534,
+        "dt": 0.013892198433575342,
+        "seconds": 6.306478000013158
+      },
+      {
+        "time": 0.0781316979214334,
+        "dt": 0.014239499487858062,
+        "seconds": 4.76135808401159
+      },
+      {
+        "time": 0.09264884798077153,
+        "dt": 0.014517150059338124,
+        "seconds": 4.694827416999033
+      },
+      {
+        "time": 0.1,
+        "dt": 0.00735115201922848,
+        "seconds": 6.822721415985143
+      }
+    ],
+    "interval_005_to_010_seconds": 22.585384917008923
+  },
+  "field_difference_including_halos_at_010": {
+    "velocity": {
+      "maximum_absolute": 1.2589072184709948e-07,
+      "relative_l2": 5.494190720466512e-09
+    },
+    "kinematic_pressure": {
+      "maximum_absolute": 1.888137678013324e-07,
+      "relative_l2": 1.369735393880026e-07
+    },
+    "volumetric_face_flux": {
+      "maximum_absolute": 2.575605692264893e-10,
+      "relative_l2": 4.582793785650626e-09
+    },
+    "eddy_viscosity": {
+      "maximum_absolute": 1.0421694286228593e-10,
+      "relative_l2": 2.9912219646987876e-08
+    }
+  },
+  "notes": [
+    "Fixed original coupled box [-1.5,1.5]^3; requested fine mesh spacing 0.06.",
+    "Original FVM schemes, correctors, timesteps and residual tolerances retained.",
+    "All cases use four MPI ranks. Coupled cases use Metal treecode.",
+    "Reference benchmark also receives the compiled FVM and PETSc workspace optimizations.",
+    "Short startup comparison with concurrent reference jobs and cProfile overhead; not a developed-wake benchmark.",
+    "RSS is the sum of rank process peaks, not a measurement of combined CPU/GPU memory."
+  ],
+  "speedup": 2.624791445398547,
+  "optimized_to_reference_cost_ratio": 1.9265202620103006
+}

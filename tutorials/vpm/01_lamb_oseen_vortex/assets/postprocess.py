@@ -2769,6 +2769,7 @@ def validate(
     pre_plot: bool,
     schemes: tuple[str, ...] = SCHEMES,
     cases: tuple[str, ...] = CASES,
+    figure_format: str = "png",
 ) -> int:
     failures: list[str] = []
     for physics_id in cases:
@@ -2979,7 +2980,7 @@ def validate(
             "mergingRenderT0",
             "mergingRenderFinal",
         ):
-            for suffix in ("png", "pdf"):
+            for suffix in ("png", "pdf") if figure_format == "both" else (figure_format,):
                 figure = FIGURES_DIR / f"{fig_name}.{suffix}"
                 if not figure.is_file() or figure.stat().st_size == 0:
                     failures.append(f"missing or empty figure {figure.name}")
@@ -3010,6 +3011,12 @@ def main() -> int:
         help="limit --extract-fields to one physical case",
     )
     parser.add_argument("--pre-plot", action="store_true", help="skip figure existence checks")
+    parser.add_argument(
+        "--format",
+        choices=("png", "pdf", "both"),
+        default="png",
+        help="Figure format to check during validation (default: png).",
+    )
     parser.add_argument(
         "--validate-case",
         choices=CASES,
@@ -3079,6 +3086,7 @@ def main() -> int:
         pre_plot=args.pre_plot,
         schemes=("rwm",) if args.rwm_only else SCHEMES,
         cases=cases,
+        figure_format=args.format,
     )
 
 

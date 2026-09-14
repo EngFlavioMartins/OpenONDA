@@ -900,7 +900,7 @@ class VPMSolver:
                 # checkpoint), so stop before expensive initial diagnostics or
                 # another physical step and retain a valid terminal backup.
                 if self.case.run.final_backup:
-                    self.save_backup()
+                    self._save_final_backup()
                 status = "resource_limit"
                 failure = resource_limit_failure
             else:
@@ -930,9 +930,9 @@ class VPMSolver:
                     # A health limit describes the last usable accepted state.
                     # Persist every sampler once even when its regular cadence
                     # is not due at this step.
-                    self.output_manager.write_all(OutputEvent.FINAL)
+                    self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
                 if self.case.run.final_backup:
-                    self.save_backup()
+                    self._save_final_backup()
                 if budget_exhausted:
                     status = "wall_time_limit"
                 elif health_limit_failure is None and resource_limit_failure is None:
@@ -1781,7 +1781,9 @@ class VPMSolver:
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
         velocity_at = (
-            self._nonpanel_target_velocity if panel_gradient is not None else self._nonparticle_target_velocity
+            self._nonpanel_target_velocity
+            if panel_gradient is not None
+            else self._nonparticle_target_velocity
         )
         for axis in range(3):
             offset = np.zeros(3, dtype=np.float64)
@@ -2546,12 +2548,17 @@ class VPMSolver:
         self._refresh_backup_particle_fields()
         self.io.write_backup()
         self._write_run_manifest("running" if self._run_started else "partial", None)
+        self._last_backup_state = (self.step, self.time, self.particles.state_revision)
 
     def _write_backup(self) -> None:
         """Write the backup selected by the sole output-schedule owner."""
-        self._refresh_backup_particle_fields()
-        self.io.write_backup()
-        self._write_run_manifest("running" if self._run_started else "partial", None)
+        self.save_backup()
+
+    def _save_final_backup(self) -> None:
+        """Do not rewrite a scheduled checkpoint of the identical final state."""
+        previous = getattr(self, "_last_backup_state", None)
+        if previous is None or previous != (self.step, self.time, self.particles.state_revision):
+            self.save_backup()
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh derived fields before writing a numerical restart backup.

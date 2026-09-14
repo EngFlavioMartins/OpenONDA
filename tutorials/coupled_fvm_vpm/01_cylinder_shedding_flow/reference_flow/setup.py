@@ -199,8 +199,8 @@ def create_solver(directory_name: str, dx: float):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--dx", required=True, type=float)
+    parser.add_argument("--name", default="medium")
+    parser.add_argument("--dx", default=0.04, type=float)
     arguments = parser.parse_args()
     with create_solver(arguments.name, arguments.dx) as solver:
         solver.run()

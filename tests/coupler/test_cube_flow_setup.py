@@ -66,36 +66,34 @@ def test_cube_recommended_formulation_preserves_resolution_and_small_domain():
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
 
 
-@pytest.mark.parametrize("is_root", [False, True])
-def test_cube_run_owns_vpm_only_on_root(monkeypatch, is_root):
-    setup = _load_setup(CASE_DIR / "setup.py", f"cube_run_root_{is_root}")
-    closed = []
-    fvm_solver = SimpleNamespace(
-        parallel=SimpleNamespace(is_root=is_root),
-        close=lambda: closed.append("fvm"),
-    )
-    vpm_solver = SimpleNamespace(close=lambda: closed.append("vpm"))
-    coupled = {}
-    monkeypatch.setattr(
-        setup, "RunConfig", lambda **kwargs: SimpleNamespace(ensure_runtime=lambda _: None)
-    )
-    monkeypatch.setattr(setup.msh, "CachedMesh", lambda *args: object())
-    monkeypatch.setattr(setup.fvm, "create_fvm_solver", lambda *args, **kwargs: fvm_solver)
-    monkeypatch.setattr(
-        setup.vpm,
-        "VPMSolver",
-        lambda *args: vpm_solver if is_root else pytest.fail("VPM created on worker"),
-    )
-    def create_coupler(fvm, vpm, config):
-        coupled["vpm"] = vpm
-        return SimpleNamespace(run=lambda: None)
+def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_run_factory")
+    events = []
+    mesh = object()
+    monkeypatch.setattr(setup.msh, "CachedMesh", lambda *args: mesh)
+
+    class Driver:
+        def __enter__(self):
+            events.append("enter")
+            return self
+
+        def run(self):
+            events.append("run")
+
+        def __exit__(self, *args):
+            events.append("close")
+
+    def create_coupler(fvm, vpm, config, **kwargs):
+        assert fvm is setup.FVM_SETUP
+        assert vpm is setup.VPM_CASE
+        assert config is setup.COUPLER_SETUP
+        assert kwargs == {"mesh": mesh}
+        return Driver()
 
     monkeypatch.setattr(setup.coupling, "create_coupler", create_coupler)
 
-    setup.main()
-
-    assert coupled["vpm"] is (vpm_solver if is_root else None)
-    assert closed == (["fvm", "vpm"] if is_root else ["fvm"])
+    assert setup.main() == 0
+    assert events == ["enter", "run", "close"]
 
 
 def test_cube_flow_viscous_config_factory_rejects_rwm_for_les():

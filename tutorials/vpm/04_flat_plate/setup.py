@@ -151,10 +151,10 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         choices=("moving", "static"),
-        required=True,
+        default="moving",
         help="plate motion: 'moving' travels through still air, 'static' is fixed",
     )
-    parser.add_argument("--angle", type=float, required=True, help="angle of attack [deg]")
+    parser.add_argument("--angle", type=float, default=10.0, help="angle of attack [deg]")
     args = parser.parse_args()
 
     run(args.mode, args.angle)

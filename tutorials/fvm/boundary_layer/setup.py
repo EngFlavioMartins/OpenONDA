@@ -8,6 +8,7 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import openonda.fvm as fvm
@@ -95,7 +96,8 @@ def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
 def main() -> None:
     case_dir = Path(__file__).parent
     kinematic_viscosity = FREESTREAM_VELOCITY * PLATE_LENGTH / REYNOLDS_NUMBER
-    mesh, _ = flat_plate_mesh(
+    mesh = partial(
+        flat_plate_mesh,
         plate_length=PLATE_LENGTH,
         height=DOMAIN_HEIGHT,
         n_plate=N_PLATE,
@@ -106,8 +108,8 @@ def main() -> None:
         create_fvm_setup(kinematic_viscosity), case_dir=case_dir, mesh=mesh
     )
     solver.run()
-    write_profiles(
-        solver, case_dir / "solution", kinematic_viscosity, FREESTREAM_VELOCITY, STATIONS
+    solver.evaluate(
+        write_profiles, case_dir / "solution", kinematic_viscosity, FREESTREAM_VELOCITY, STATIONS
     )
 
 

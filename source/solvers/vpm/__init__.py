@@ -1,5 +1,11 @@
 """Vortex-particle and vortex-lattice solvers for OpenONDA."""
 
+import os
+
+# OpenONDA reports its backend after solver ownership is established. Taichi's
+# import-time banner would otherwise repeat in the launcher and every MPI rank.
+os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "False")
+
 from .boundary_elements import vlm
 from .boundary_elements.panels.coupling.kinematics import BodyPose
 from .boundary_elements.panels.solver.panel_solver import PanelSolver

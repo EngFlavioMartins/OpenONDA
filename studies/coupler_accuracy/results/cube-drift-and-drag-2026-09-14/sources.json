@@ -1,0 +1,27 @@
+{
+  "reference_forces.csv": {
+    "source": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/fine/forces_history.csv",
+    "sha256": "885b2963b6caef3567ea55d996ad3a3ae1562fb0ffd4d7202c7b3c44ac45ae09"
+  },
+  "field_differences.csv": {
+    "source": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/field_differences.csv",
+    "sha256": "e83c9ae0885deb18882617f250cd1936eb3bd5c52c272f807c880824f270892e"
+  },
+  "reference_timestep_pressure.csv": {
+    "source": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/diagnostics.jsonl",
+    "selection": [
+      "step",
+      "time",
+      "time_step_size",
+      "max_courant_number",
+      "min_kinematic_pressure",
+      "max_kinematic_pressure",
+      "max_velocity_magnitude",
+      "max_continuity_error"
+    ]
+  },
+  "coupler_boundary_mismatch.csv": {
+    "source": "tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupler_diagnostics.jsonl",
+    "last_captured_time": 15.450000000000001
+  }
+}

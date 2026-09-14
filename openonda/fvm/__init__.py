@@ -13,9 +13,11 @@ configuration and mesh-generation intent remain separate namespaces::
 """
 
 from source.solvers.fvm import (
+    AnalysisSnapshot,
     Backup,
     BackupConfig,
     BoundaryConfig,
+    BoundarySnapshot,
     ComputeConfig,
     DiscretizationConfig,
     FieldState,
@@ -60,6 +62,8 @@ from source.solvers.fvm.immersed_boundary import ImmersedBody
 from . import mesher
 
 __all__ = [
+    "AnalysisSnapshot",
+    "BoundarySnapshot",
     "BackupConfig",
     "Backup",
     "BoundaryConfig",

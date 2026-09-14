@@ -1,0 +1,132 @@
+{
+  "generator": "assets/plot_core_sections.py",
+  "generator_sha256": "4edee18caeb4d8c74b3c7f557978f1b804f1512cffecdeea8466633ed3348497",
+  "exports": [
+    {
+      "file": "core_section_baseline_t1.5.png",
+      "sha256": "bda621358b09bde59a6f7b72117cbd7a228d98493e0f64552c7c4dcb1449b733",
+      "run": "baseline",
+      "run_status": "resolution_lost",
+      "time": 1.5,
+      "source": "samples/baseline/core_section_000400.vts",
+      "source_sha256": "de8d9100ae69f8429e9b35f2b026d1c7f4f58a3b4b5a949e6d19ca311c7f0285"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t1.5.png",
+      "sha256": "204c26a8b444d702470ff9481798a7e12a57e981e66a3005812a0467b3968377",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 1.5,
+      "source": "samples/stretching_viscosity/core_section_000400.vts",
+      "source_sha256": "5c05ee8c528b022fa8abf572cddfa188e312a500c5768ba6aedea4e28d1a0173"
+    },
+    {
+      "file": "core_section_p_moments_t1.5.png",
+      "sha256": "1f23975aaf47b4853f45aa5834468e316afc212e8a1731608cec076056f295a7",
+      "run": "p_moments",
+      "run_status": "running",
+      "time": 1.5,
+      "source": "samples/p_moments/core_section_000400.vts",
+      "source_sha256": "0ec8db870ed6343b5914f4de871428dd8bb8c190eb8d92c1a8bc0cd07d113a63"
+    },
+    {
+      "file": "core_section_p_moments_t2.1.png",
+      "sha256": "62834627ef74d444c53c902c78b028c0645225d8f786c0745ce69c42ea88953b",
+      "run": "p_moments",
+      "run_status": "running",
+      "time": 2.1,
+      "source": "samples/p_moments/core_section_000560.vts",
+      "source_sha256": "294b6229ff061cc8f87cae03565a5df72015808a4b966a01a661453b0b336eca"
+    },
+    {
+      "file": "core_section_baseline_t3.png",
+      "sha256": "23293492ad30d564ef1a4144b74d73342031f90058eb508e492c38a442cc0f53",
+      "run": "baseline",
+      "run_status": "resolution_lost",
+      "time": 3.0,
+      "source": "samples/baseline/core_section_000800.vts",
+      "source_sha256": "a6f482a2271256dfd584b40d00255a38695fa7db0989bc49a658188c62e6a150"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t3.png",
+      "sha256": "f46ad1b9ed7341421ef29012cfcad5b0b1608cba54c4bdf0b3d4c2508aab1273",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 3.0,
+      "source": "samples/stretching_viscosity/core_section_000800.vts",
+      "source_sha256": "7e6acd8170e029184cf13f35c6ae27b4c9a428875f033ca522474a7ef2c14aa9"
+    },
+    {
+      "file": "core_section_baseline_t3.3.png",
+      "sha256": "123167ab76310e3b2a67654428f5008e3f9c6821642e0dbbc2a0d8278c85c679",
+      "run": "baseline",
+      "run_status": "resolution_lost",
+      "time": 3.3,
+      "source": "samples/baseline/core_section_000880.vts",
+      "source_sha256": "0aaca0788a980b6df75faefda5df27a519b9709e1cfe97f79ab405b058be3221"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t3.3.png",
+      "sha256": "c91567ffcf1075440950d18cb9411ad8dd658111f10185e3a3c1ca73f5793dd2",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 3.3,
+      "source": "samples/stretching_viscosity/core_section_000880.vts",
+      "source_sha256": "7e62e4dff33d8dddf0b174757005371fb1eb567933bfac88119915e2a430565e"
+    },
+    {
+      "file": "core_section_baseline_t4.5.png",
+      "sha256": "4a6a7e5174c20bfc0eaa5a2ef5cde68ee0de719bdb18091a680ff15023a287a8",
+      "run": "baseline",
+      "run_status": "resolution_lost",
+      "time": 4.5,
+      "source": "samples/baseline/core_section_001200.vts",
+      "source_sha256": "8b0ea40fa9f4348eaafaeffa61e8160d7d4ed2cbb44dccb11d3f215c9466764d"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t4.5.png",
+      "sha256": "1cb9b5eae85371e80d599669d7c036446849c41a6fe93b62f1585afb0bb10c5e",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 4.5,
+      "source": "samples/stretching_viscosity/core_section_001200.vts",
+      "source_sha256": "3a8448663e097ed34786e458c42ccd03279eab9f4d1d43c964e975793ea56151"
+    },
+    {
+      "file": "core_section_baseline_t5.77875.png",
+      "sha256": "da8b6d280b211e3977bf95fb4f850927b2662002b01ebee1526df51b718ba59f",
+      "run": "baseline",
+      "run_status": "resolution_lost",
+      "time": 5.77875,
+      "source": "samples/baseline/core_section_001541.vts",
+      "source_sha256": "3b9b932b38c389180ece40fa379022ea99450672f981b52dc4135063f920b7aa"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t6.png",
+      "sha256": "82cfd8bff9e788fe6b2266cc219bd34fc1db4a7df155d790ca387b298211924b",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 6.0,
+      "source": "samples/stretching_viscosity/core_section_001600.vts",
+      "source_sha256": "ce25d847a89b721e657cb3cdc5b48fd518c300fcd572b666500ff390bbe7d65a"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t7.5.png",
+      "sha256": "3cc88f205c054b7529faedab592bead8703e6b4f7293ae39be0a7bbf8a0af299",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 7.5,
+      "source": "samples/stretching_viscosity/core_section_002000.vts",
+      "source_sha256": "5009aa6d9c76614d95567a72fbc6f4afde5fdc983769fcbd113bd7b219f750b5"
+    },
+    {
+      "file": "core_section_stretching_viscosity_t9.png",
+      "sha256": "b56db0071816557fb53379afa98c3a51586b0381f3e024207f6b8c5bd415fcd3",
+      "run": "stretching_viscosity",
+      "run_status": "completed",
+      "time": 9.0,
+      "source": "samples/stretching_viscosity/core_section_002400.vts",
+      "source_sha256": "db4d048223479ce7e71349164dae0fec59329be03ce0ebad381d24c835d6bb1c"
+    }
+  ]
+}

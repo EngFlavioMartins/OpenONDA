@@ -32,7 +32,7 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 from .. import setup
-from .postprocess import _theme, case_style, load_metadata, metadata_settings
+from .postprocess import _theme, case_style, load_metadata, metadata_settings, save_figure
 from .plot_core_sections import discover, read_plane
 
 
@@ -75,14 +75,25 @@ def sampled_peaks(x, r, omega, peak_merge_bridge=None):
                 index = parent[index]
             return index
 
-        for a, left in enumerate(indices):
-            for b in range(a):
-                right = indices[b]
+        # Attach each secondary maximum to at most one stronger maximum.
+        # Unioning every high-saddle pair can join two distinct strong cores
+        # through a weaker lobe even when their direct bridge is low.
+        for child in range(1, raw_count):
+            left = indices[child]
+            child_value = float(omega[tuple(left)])
+            best = None
+            for stronger in range(child):
+                right = indices[stronger]
                 line = np.linspace([x[left[0]], r[left[1]]], [x[right[0]], r[right[1]]], 101)
-                saddle = interpolate(line).min() / min(omega[tuple(left)], omega[tuple(right)])
-                if saddle >= peak_merge_bridge:
-                    high, low = sorted((root(a), root(b)))
-                    parent[low] = high
+                saddle = float(interpolate(line).min())
+                if saddle < peak_merge_bridge * child_value:
+                    continue
+                distance = float(np.linalg.norm(line[-1] - line[0]))
+                score = (saddle, -distance, -stronger)
+                if best is None or score > best[0]:
+                    best = (score, stronger)
+            if best is not None:
+                parent[child] = best[1]
         representatives = sorted({root(index) for index in range(raw_count)})
         clusters = [
             [indices[j] for j in range(raw_count) if root(j) == index] for index in representatives
@@ -245,12 +256,13 @@ def leapfrog_events(tracks):
     )
 
 
-def plot_leapfrog_history(reports, output):
+def plot_leapfrog_history(reports, output, formats=("pdf", "png")):
     """Show core positions and separation using the existing tracks."""
     if all(
         pd.read_csv(output / f"{report['run']}_tracks.csv").time.nunique() < 2 for report in reports
     ):
-        (output / "leapfrogging_history.png").unlink(missing_ok=True)
+        for fmt in ("pdf", "png"):
+            (output / f"leapfrogging_history.{fmt}").unlink(missing_ok=True)
         return
     theme = _theme()
     fig, axes = plt.subplots(3, 1, figsize=theme.figure_size("stacked"), sharex=True)
@@ -281,18 +293,18 @@ def plot_leapfrog_history(reports, output):
             markevery=max(1, len(axial) // 12),
             lw=1,
         )
-    for ax, label in zip(axes, (r"$x/R_0$", r"$r/R_0$", r"$\Delta x/R_0$"), strict=True):
+    for index, (ax, label) in enumerate(
+        zip(axes, (r"$x/R_0$", r"$r/R_0$", r"$\Delta x/R_0$"), strict=True)
+    ):
         ax.set_ylabel(label)
-        ax.spines[["top", "right"]].set_visible(False)
-        ax.tick_params(top=False, right=False)
-        ax.grid(alpha=0.15)
+        ax.set_title(f"({chr(97 + index)})", pad=6)
     handles, labels = axes[0].get_legend_handles_labels()
-    handles.append(Line2D([0], [0], color="0.4", linestyle="--", lw=1))
-    axes[0].legend(handles, labels + ["Ring 2 dashed"], fontsize=7, frameon=False)
-    axes[2].axhline(0, color="0.4", linewidth=0.7)
+    fig.legend(handles, labels, loc="upper center", ncol=min(2, len(labels)), frameon=False)
     axes[2].set_xlabel(r"$t\Gamma_0/R_0^2$")
-    fig.tight_layout()
-    fig.savefig(output / "leapfrogging_history.png", dpi=theme.DEFAULT_DPI, bbox_inches=None)
+    theme.centered_subplots_adjust(
+        fig, outer=0.19, bottom=0.11, top=0.90 if len(labels) <= 2 else 0.82, hspace=0.29
+    )
+    save_figure(fig, output / "leapfrogging_history", axes, formats)
     plt.close(fig)
 
 
@@ -363,13 +375,13 @@ def reported_self_diagnostics(run):
     )
 
 
-def plot_diagnostics(reports, output):
+def plot_diagnostics(reports, output, formats=("pdf", "png")):
     """Plot saved native histories; do not reconstruct solver diagnostics."""
     theme = _theme()
-    fig, axes = plt.subplots(3, 2, figsize=theme.figure_size("stacked"), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=(12.5 * theme.CM, 17.0 * theme.CM), sharex=True)
     quantities = (
-        ("total_kinetic_energy", "Energy / first", True),
-        ("total_enstrophy", "Enstrophy / first", True),
+        ("total_kinetic_energy", r"$E/E_0$", True),
+        ("total_enstrophy", r"$Z/Z_0$", True),
         ("vorticity_divergence_error", "Divergence error", False),
         ("vortex_strength_misalignment_degrees", "Misalignment [deg]", False),
         ("lagrangian_cfl", "Lagrangian CFL", False),
@@ -379,7 +391,9 @@ def plot_diagnostics(reports, output):
         flow = pd.read_csv(sample_directory(report["run"]) / "flow_integrals.csv")
         style = case_style(report["run"])
         time = flow.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2
-        for ax, (column, title, normalize) in zip(axes.flat, quantities, strict=True):
+        for index, (ax, (column, title, normalize)) in enumerate(
+            zip(axes.flat, quantities, strict=True)
+        ):
             values = flow[column] / flow[column].iloc[0] if normalize else flow[column]
             ax.plot(
                 time,
@@ -392,14 +406,13 @@ def plot_diagnostics(reports, output):
                 lw=1,
             )
             ax.set_ylabel(title)
-            ax.spines[["top", "right"]].set_visible(False)
-            ax.tick_params(top=False, right=False)
-            ax.grid(alpha=0.15)
+            ax.set_title(f"({chr(97 + index)})", pad=6)
     for ax in axes[-1]:
         ax.set_xlabel(r"$t\Gamma_0/R_0^2$")
-    axes[0, 0].legend(frameon=False, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(output / "diagnostic_histories.png", dpi=theme.DEFAULT_DPI, bbox_inches=None)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=1, frameon=False)
+    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.09, top=0.89, hspace=0.33, wspace=0.70)
+    save_figure(fig, output / "diagnostic_histories", axes.flat, formats)
     plt.close(fig)
 
 
@@ -452,8 +465,9 @@ def write_report(report, output):
         "from output/resource failure; neither is automatically physical breakdown.",
         f"Optional within-core saddle grouping: {report.get('peak_merge_bridge')}. "
         "The raw maximum counts and grouped-peak coordinate spans are retained in the peak tables.",
-        "The trajectory figure ends each run when the two core identities can no longer be followed. "
-        "Later field maxima remain in the peak tables but do not extend the identified-ring scores.",
+        "The trajectory figure ends each run when two coherent field tracks can no longer be followed. "
+        "Track numbers come from initial axial order, not particle group_id ancestry. "
+        "Later field maxima remain in the peak tables but do not extend the two-core scores.",
         "",
         "## LBM radius discrepancies",
         "",
@@ -538,6 +552,38 @@ def write_report(report, output):
     (output / "report.md").write_text("\n".join(lines))
 
 
+def write_figure_manifest(output, reports, formats):
+    """Keep the thesis-ready exports linked to their analysis and input runs."""
+    analysis = output / "lbm_agreement.json"
+    names = ("core_trajectories", "leapfrogging_history", "diagnostic_histories")
+    exports = []
+    for name in names:
+        for fmt in formats:
+            path = output / f"{name}.{fmt}"
+            if path.is_file():
+                exports.append(
+                    {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                )
+    manifest = {
+        "generator": "assets/plot_lbm_comparison.py",
+        "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "analysis": "lbm_agreement.json",
+        "analysis_sha256": hashlib.sha256(analysis.read_bytes()).hexdigest(),
+        "runs": [
+            {
+                "name": report["run"],
+                "status": report["status"],
+                "metadata": f"solution/{report['run']}/vpm_metadata.json",
+                "metadata_sha256": report["metadata_sha256"],
+                "color": case_style(report["run"])["color"],
+            }
+            for report in reports
+        ],
+        "exports": exports,
+    }
+    (output / "figure_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+")
@@ -549,8 +595,12 @@ def main():
         default=None,
         help="Group lobes joined above this fraction of the weaker peak; default keeps every maximum",
     )
-    parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures/study/les")
+    parser.add_argument(
+        "--output", type=Path, default=setup.TUTORIAL_DIR / "figures/leapfrogging_study"
+    )
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
+    formats = ("pdf", "png") if args.format == "both" else (args.format,)
     if not 0 < args.bridge_limit < 1:
         parser.error("bridge-limit must be between zero and one")
     if args.peak_merge_bridge is not None and not args.bridge_limit < args.peak_merge_bridge < 1:
@@ -573,21 +623,21 @@ def main():
     reports = []
     theme = _theme()
     theme.set_thesis_style()
-    fig, ax = plt.subplots(figsize=theme.figure_size("single"))
-    fig.subplots_adjust(left=0.15, right=0.98, bottom=0.17, top=0.96)
+    fig, ax = plt.subplots(figsize=theme.figure_size("single_tall"))
     for ring in (1, 2):
         ref = reference[reference.ring == ring]
         ax.plot(
             ref.x_over_R0 - 2.5,
             ref.R_over_R0,
-            color="0.65",
-            lw=1.4,
+            color="black",
+            alpha=0.45,
+            lw=1.0,
             linestyle="-" if ring == 1 else "--",
         )
     for run in runs:
-        metadata = load_metadata(run)
-        if not metadata:
-            raise FileNotFoundError(setup.TUTORIAL_DIR / "solution" / run / "vpm_metadata.json")
+        metadata_path = setup.TUTORIAL_DIR / "solution" / run / "vpm_metadata.json"
+        metadata_bytes = metadata_path.read_bytes()
+        metadata = json.loads(metadata_bytes)
         settings = metadata_settings(metadata)
         numerics = metadata.get("configuration", {}).get("numerics", {})
         settings["filter_width"] = numerics.get("turbulence", {}).get("filter_width")
@@ -641,6 +691,7 @@ def main():
         reports.append(
             dict(
                 run=run,
+                metadata_sha256=hashlib.sha256(metadata_bytes).hexdigest(),
                 status=metadata.get("lifecycle", {}).get("status", "unknown"),
                 identity_start_step=initial_step,
                 completed_steps=metadata.get("state", {}).get("step"),
@@ -682,14 +733,11 @@ def main():
                 linestyle="-" if ring == 1 else "--",
             )
     ax.set(
-        xlabel=r"$x/R_0$ (initial midpoint origin)",
+        xlabel=r"$x/R_0$",
         ylabel=r"$R/R_0$",
         xlim=(-0.6, 7.4),
         ylim=(0.55, 1.48),
     )
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.tick_params(top=False, right=False)
-    ax.grid(alpha=0.15)
     handles = [
         Line2D(
             [0],
@@ -702,12 +750,10 @@ def main():
         )
         for run in runs
     ]
-    handles += [
-        Line2D([0], [0], color="0.65", lw=1.4, label="LBM"),
-        Line2D([0], [0], color="0.4", linestyle="--", lw=1.1, label="Ring 2 dashed"),
-    ]
-    ax.legend(handles=handles, frameon=False, fontsize=7, loc="upper right", ncol=2)
-    fig.savefig(args.output / "core_trajectories.png", dpi=theme.DEFAULT_DPI, bbox_inches=None)
+    handles.append(Line2D([0], [0], color="black", alpha=0.45, lw=1.0, label="LBM"))
+    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=2)
+    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.18, top=0.80)
+    save_figure(fig, args.output / "core_trajectories", ax, formats)
     plt.close(fig)
     report = dict(
         analysis_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -715,7 +761,11 @@ def main():
         reference_sha256=hashlib.sha256(reference_path.read_bytes()).hexdigest(),
         peak_merge_bridge=args.peak_merge_bridge,
         scoring="Equal-ring, uniform-x RMS radius discrepancy; linear interpolation; no extrapolation or fitting",
-        limitation="A kinematic discrepancy, not a matched-boundary or converged benchmark error estimate. Reynolds number and seed differences are recorded per run; mismatched inputs do not validate the seeded breakdown scenario.",
+        limitation=(
+            "Field-core kinematics before merger only; no group_id ancestry. "
+            "Periodic boundaries and spatial convergence are not matched, so "
+            "the discrepancy is not a benchmark error estimate."
+        ),
         requested_runs=args.runs,
         unavailable_runs=[run for run in args.runs if run not in runs],
         runs=reports,
@@ -723,8 +773,9 @@ def main():
     )
     (args.output / "lbm_agreement.json").write_text(json.dumps(report, indent=2) + "\n")
     write_report(report, args.output)
-    plot_diagnostics(reports, args.output)
-    plot_leapfrog_history(reports, args.output)
+    plot_diagnostics(reports, args.output, formats)
+    plot_leapfrog_history(reports, args.output, formats)
+    write_figure_manifest(args.output, reports, formats)
     print(f"Saved LBM comparison for {len(reports)} run(s) to {args.output}", flush=True)
 
 

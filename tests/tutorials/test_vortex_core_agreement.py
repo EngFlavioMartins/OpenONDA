@@ -169,6 +169,18 @@ def test_high_saddle_grouping_preserves_separate_cores_and_reports_lobe_extent()
     assert len(_assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.9)) == 3
 
 
+def test_weak_intermediate_lobe_cannot_merge_two_strong_cores_by_transitivity():
+    x, r = np.arange(11.0), np.arange(3.0)
+    omega = np.zeros((11, 3))
+    omega[2:9, 1] = [10.0, 1.6, 1.7, 2.0, 1.7, 1.6, 9.0]
+
+    peaks = _assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.7)
+    assert len(peaks) == 2
+    assert all(peak["raw_n_peaks"] == 3 for peak in peaks)
+    assert sorted(peak["cluster_n_peaks"] for peak in peaks) == [1, 2]
+    assert peaks[0]["strongest_peak_pair_bridge_ratio"] < 0.2
+
+
 def test_passage_timing_resolves_a_known_period_without_inventing_reference_time():
     times = np.linspace(0, 4 * np.pi, 101)
     tracks = pd.DataFrame(

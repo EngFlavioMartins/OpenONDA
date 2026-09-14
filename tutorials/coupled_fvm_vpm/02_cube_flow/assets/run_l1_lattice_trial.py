@@ -286,9 +286,12 @@ def main() -> None:
         run=replace(case.VPM_CASE.run, steps=round(arguments.end_time / case.VPM_TIME_STEP_SIZE)),
         directory=case.CASE_DIR,
     )
-    fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)
-    vpm_solver = vpm.VPMSolver(case.VPM_CASE)
-    coupler = coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
+    coupler = coupling.create_coupler(
+        case.FVM_SETUP,
+        case.VPM_CASE,
+        case.COUPLER_SETUP,
+        mesh=case.FVM_MESH,
+    )
     coupler.initialize()
     original_load = coupler.fvm_solver.load_state
     coupler.fvm_solver.load_state = lambda path: original_load(path, allow_config_change=True)
@@ -301,11 +304,12 @@ def main() -> None:
     # (Only the master receives the assembled buffers.)
     seed_velocity = coupler._get_velocity_field_buffer()
     seed_gradient = coupler._get_velocity_gradient_field_buffer()
-    report: dict | None = None
-    if coupler._is_master:
+    report = {}
+
+    def instrument(vpm_solver):
         assert coupler.vorticity_transfer is not None
         transfer = coupler.vorticity_transfer
-        report = {"seed_time": seed_time, "end_time": arguments.end_time, "steps": []}
+        report.update({"seed_time": seed_time, "end_time": arguments.end_time, "steps": []})
 
         original_gbd = vpm_solver.physics.gbd_diffusion
 
@@ -353,13 +357,18 @@ def main() -> None:
             "added": initial.n_particles_injected,
             "gamma_l1": initial.injected_vortex_strength_l1,
         }
-    coupler.solve(start_step=start_step)
-    if coupler._is_master:
-        assert report is not None
+
+    def write_report(vpm_solver):
+        transfer = coupler.vorticity_transfer
         report["final_cloud"] = _record_cloud(vpm_solver, transfer._box)
         output = case.CASE_DIR / "l1_lattice_diagnostic.json"
         output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         print(f"L1 lattice diagnostic written to {output}")
+
+    with coupler:
+        coupler.apply_vpm(instrument)
+        coupler.solve(start_step=start_step)
+        coupler.apply_vpm(write_report)
 
 
 if __name__ == "__main__":

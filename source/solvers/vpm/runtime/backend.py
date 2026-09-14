@@ -25,6 +25,7 @@ import weakref
 
 import taichi as ti
 
+from openonda.runtime import worker_thread_count
 from source import log_style
 
 from ..config import constants as constants_module
@@ -581,6 +582,8 @@ def initialize_taichi_backend(
             "kernel_profiler": False,
             "offline_cache": False,
         }
+        if "TI_CPU_MAX_NUM_THREADS" not in os.environ:
+            init_kwargs["cpu_max_num_threads"] = worker_thread_count()
         if name != "METAL":
             init_kwargs["random_seed"] = random_seed
             init_kwargs["advanced_optimization"] = True

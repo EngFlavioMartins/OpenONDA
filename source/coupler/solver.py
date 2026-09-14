@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
+from contextlib import ExitStack
 import logging
 from numbers import Integral
 import os
@@ -33,6 +34,7 @@ from source.coupler.boundary import (
 )
 from source.coupler.config.types import CouplerSetup
 from source.coupler.consistency import FVMConsistencyBand
+from source.coupler.parallel import collective_phase
 from source.coupler.reporting import (
     OutputRedirector,
     configure_logging,
@@ -220,12 +222,12 @@ class FVMVPMCoupler:
         """
         if fvm_solver is None:
             raise ValueError(
-                "FVMVPMCoupler requires an injected fvm_solver on every rank. "
-                "Build it with fvm_solver(case_dir) (all ranks) and the VPM on "
-                "the master, then FVMVPMCoupler(fvm_solver, vpm_solver, "
-                "coupler_setup)."
+                "FVMVPMCoupler requires an FVM solver. Use create_coupler with "
+                "FVMSetup, VPMCase and CouplerSetup for automatic MPI ownership."
             )
         self.setup = coupler_setup
+        self._owned_resources = ExitStack()
+        self._closed = False
         self.case_dir = Path(fvm_solver.case_dir).expanduser().absolute()
 
         self._injected_fvm = fvm_solver
@@ -235,9 +237,10 @@ class FVMVPMCoupler:
         self._is_master = self._mpi_rank == 0
 
         self.solution_dir = self.case_dir / "solution"
+        self._log_handler = None
         if self._is_master:
             self.solution_dir.mkdir(parents=True, exist_ok=True)
-            configure_logging(self.solution_dir, logger)
+            self._log_handler = configure_logging(self.solution_dir, logger)
 
         if self._is_master:
             self.vpm_redirector = OutputRedirector(
@@ -287,6 +290,36 @@ class FVMVPMCoupler:
         self.vpm_core_radius_ratio = float("nan")
         self.n_fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
+
+    def close(self, *, failure: BaseException | None = None) -> None:
+        """Close factory-owned solvers and this driver's log; safe to repeat.
+
+        Externally supplied solvers remain caller-owned. Every MPI rank must
+        close its driver because native FVM resources are collective.
+        """
+        if self._closed:
+            return
+        try:
+            self._owned_resources.__exit__(
+                type(failure) if failure is not None else None,
+                failure,
+                failure.__traceback__ if failure is not None else None,
+            )
+        finally:
+            if self._log_handler is not None:
+                logger.removeHandler(self._log_handler)
+                self._log_handler.close()
+            self._closed = True
+
+    def __enter__(self):
+        """Return this live driver for an automatically closed run."""
+        if self._closed:
+            raise RuntimeError("The coupled driver is closed")
+        return self
+
+    def __exit__(self, _exc_type, exc_value, _traceback):
+        """Close resources on success or failure without suppressing errors."""
+        self.close(failure=exc_value)
 
     @staticmethod
     def _validate_vpm(vpm, cfg: CouplerSetup, box: np.ndarray, kinematic_viscosity: float) -> None:
@@ -488,14 +521,15 @@ class FVMVPMCoupler:
         candidate_vpm = self._injected_vpm
         inactive_rank = bool(getattr(candidate_vpm, "_openonda_inactive_rank", False))
         self.vpm_solver = candidate_vpm if self._is_master and not inactive_rank else None
-        if self._is_master:
-            if self.vpm_solver is None:
-                raise ValueError(
-                    "vpm_solver is None on the master rank. "
-                    "Build the VPM on the master (the Coupler's internal VPM-owner rank)."
-                )
-            assert self.fvm_box is not None and self.kinematic_viscosity is not None
-            self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
+        with collective_phase(_mpi4py_comm, "VPM configuration validation"):
+            if self._is_master:
+                if self.vpm_solver is None:
+                    raise ValueError(
+                        "vpm_solver is None on the master rank. "
+                        "Build the VPM on the master (the Coupler's internal VPM-owner rank)."
+                    )
+                assert self.fvm_box is not None and self.kinematic_viscosity is not None
+                self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
 
         assert self.fvm_time_step_size is not None
         vpm_particle_spacing = self.fvm_time_step_size
@@ -551,54 +585,69 @@ class FVMVPMCoupler:
                 coupling_time_step_size=self.vpm_time_step_size,
                 fvm_box=self.fvm_box,
             )
-        if self._is_master and self.vorticity_transfer._body_bounds is not None:
-            assert self.vpm_solver is not None
-            self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
-            bounds = np.asarray(self.vorticity_transfer._body_bounds, dtype=np.float64)
-            logger.info(
-                format_coupler_log(
-                    "vpm diffusion grid",
-                    ("solid mask", "box"),
-                    ("bounds, x", f"[{bounds[0]:.6g}, {bounds[1]:.6g}]", "m"),
-                    ("bounds, y", f"[{bounds[2]:.6g}, {bounds[3]:.6g}]", "m"),
-                    ("bounds, z", f"[{bounds[4]:.6g}, {bounds[5]:.6g}]", "m"),
-                )
-            )
-        if self._is_master:
-            anchor = self.vorticity_transfer._lattice_anchor
-            if (
-                anchor is None
-                and self.vorticity_transfer._cell_centre is not None
-                and len(self.vorticity_transfer._cell_centre) > 0
-            ):
-                anchor = self.vorticity_transfer._cell_centre[0]
-            if anchor is not None:
+        with collective_phase(_mpi4py_comm, "VPM grid configuration"):
+            if self._is_master and self.vorticity_transfer._body_bounds is not None:
                 assert self.vpm_solver is not None
-                self.vpm_solver.physics.configure_grid_lattice_anchor(
-                    anchor, self.vpm_particle_spacing
-                )
-                anchor_text = ", ".join(
-                    f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
-                )
+                self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
+                bounds = np.asarray(self.vorticity_transfer._body_bounds, dtype=np.float64)
                 logger.info(
                     format_coupler_log(
-                        "vpm diffusion lattice",
-                        ("anchor", f"[{anchor_text}]", "m"),
-                        ("spacing", f"{self.vpm_particle_spacing:.6g}", "m"),
+                        "vpm diffusion grid",
+                        ("solid mask", "box"),
+                        ("bounds, x", f"[{bounds[0]:.6g}, {bounds[1]:.6g}]", "m"),
+                        ("bounds, y", f"[{bounds[2]:.6g}, {bounds[3]:.6g}]", "m"),
+                        ("bounds, z", f"[{bounds[4]:.6g}, {bounds[5]:.6g}]", "m"),
                     )
                 )
+            if self._is_master:
+                anchor = self.vorticity_transfer._lattice_anchor
+                if (
+                    anchor is None
+                    and self.vorticity_transfer._cell_centre is not None
+                    and len(self.vorticity_transfer._cell_centre) > 0
+                ):
+                    anchor = self.vorticity_transfer._cell_centre[0]
+                if anchor is not None:
+                    assert self.vpm_solver is not None
+                    self.vpm_solver.physics.configure_grid_lattice_anchor(
+                        anchor, self.vpm_particle_spacing
+                    )
+                    anchor_text = ", ".join(
+                        f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
+                    )
+                    logger.info(
+                        format_coupler_log(
+                            "vpm diffusion lattice",
+                            ("anchor", f"[{anchor_text}]", "m"),
+                            ("spacing", f"{self.vpm_particle_spacing:.6g}", "m"),
+                        )
+                    )
 
-        if self._is_master:
-            logger.info(
-                format_coupler_log(
-                    "initial state",
-                    ("start", "impulsive"),
-                    ("particles", 0),
+            if self._is_master:
+                logger.info(
+                    format_coupler_log(
+                        "initial state",
+                        ("start", "impulsive"),
+                        ("particles", 0),
+                    )
                 )
-            )
-            logger.info(format_coupler_log("initialization complete"))
+                logger.info(format_coupler_log("initialization complete"))
 
         self._initialize_run_state()
+
+    def apply_vpm(self, callback, *args, **kwargs):
+        """Run application instrumentation once with the owned VPM solver.
+
+        Callbacks may inspect the VPM state or install diagnostic hooks. The
+        library selects its owner and propagates callback failures. Collective
+        FVM field queries belong outside the callback. The result is shared.
+        """
+        result = None
+        with collective_phase(_mpi4py_comm, "VPM application callback"):
+            if self._is_master:
+                vpm = self.vpm_solver if self.vpm_solver is not None else self._injected_vpm
+                result = callback(vpm, *args, **kwargs)
+        return _mpi4py_comm.bcast(result, root=0) if _mpi4py_comm is not None else result
 
     def run(
         self,
@@ -665,6 +714,12 @@ class FVMVPMCoupler:
             )
         elif restart_allowed_config_differences:
             raise ValueError("restart_allowed_config_differences requires restart_from")
+        if (
+            start_step == 0
+            and restart_from is None
+            and getattr(self.fvm_solver, "auto_write", False)
+        ):
+            self.fvm_solver.write_vtk()
         return self.solve(
             start_step=start_step,
             max_coupling_steps=max_coupling_steps,
@@ -750,24 +805,26 @@ class FVMVPMCoupler:
         collectively and in the same order.
         """
         face_geometry, n_steps = self._prepare_run()
-        start_step = self._validate_start_step(start_step, n_steps)
+        with collective_phase(_mpi4py_comm, "coupled start state"):
+            start_step = self._validate_start_step(start_step, n_steps)
         step_limit = self._validate_step_limit(max_coupling_steps)
         if step_limit is not None and start_step == n_steps:
             raise ValueError("No configured coupling steps remain after start_step")
         stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
         self._n_steps = stop_step
-        if self._is_master:
-            write_run_metadata(self, start_step=start_step, stop_step=stop_step)
-            if stop_step < n_steps:
-                logger.info(
-                    format_coupler_log(
-                        "execution limit",
-                        ("start step", f"{start_step:,}"),
-                        ("stop step", f"{stop_step:,}"),
-                        ("steps this invocation", f"{stop_step - start_step:,}"),
-                        ("backup at stop", "enabled" if backup_at_stop else "disabled"),
+        with collective_phase(_mpi4py_comm, "coupled run metadata"):
+            if self._is_master:
+                write_run_metadata(self, start_step=start_step, stop_step=stop_step)
+                if stop_step < n_steps:
+                    logger.info(
+                        format_coupler_log(
+                            "execution limit",
+                            ("start step", f"{start_step:,}"),
+                            ("stop step", f"{stop_step:,}"),
+                            ("steps this invocation", f"{stop_step - start_step:,}"),
+                            ("backup at stop", "enabled" if backup_at_stop else "disabled"),
+                        )
                     )
-                )
         if start_step == 0:
             # Every VPM interval must start from the FVM state at the same
             # physical time. This first synchronization also supports non-zero
@@ -795,9 +852,10 @@ class FVMVPMCoupler:
                 )
                 transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
                 update_boundary_history_after_replacement(self, *face_geometry)
-            if self._is_master:
-                assert self.vpm_solver is not None
-                self.vpm_solver.execute_scheduled_samplers()
+            with collective_phase(_mpi4py_comm, "VPM health check and output"):
+                if self._is_master:
+                    assert self.vpm_solver is not None
+                    self.vpm_solver.execute_scheduled_samplers()
             self._last_transfer_result = transfer_result
             record_step(
                 self,
@@ -864,24 +922,25 @@ class FVMVPMCoupler:
 
     def _advance_vpm(self, step: int, time_end: float) -> float:
         t0 = time.perf_counter()
-        if self._is_master:
-            assert self.vpm_solver is not None
-            with self.vpm_redirector:
-                self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
-            logger.info(format_coupler_step(step, self._n_steps, time_end))
+        with collective_phase(_mpi4py_comm, "VPM advance"):
+            if self._is_master:
+                assert self.vpm_solver is not None
+                with self.vpm_redirector:
+                    self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
+                logger.info(format_coupler_step(step, self._n_steps, time_end))
 
-            with self.vpm_redirector:
-                self.vpm_solver.advance(defer_output=True)
-            self.vpm_solver.synchronize()
-            if str(getattr(self.vpm_solver, "viscous_scheme", "")).upper() == "GBD":
-                _validate_gbd_moment_recovery(
-                    getattr(
-                        self.vpm_solver.physics,
-                        "last_gbd_moment_recovery",
-                        None,
-                    ),
-                    self.setup.transfer_discretization_error_limit,
-                )
+                with self.vpm_redirector:
+                    self.vpm_solver.advance(defer_output=True)
+                self.vpm_solver.synchronize()
+                if str(getattr(self.vpm_solver, "viscous_scheme", "")).upper() == "GBD":
+                    _validate_gbd_moment_recovery(
+                        getattr(
+                            self.vpm_solver.physics,
+                            "last_gbd_moment_recovery",
+                            None,
+                        ),
+                        self.setup.transfer_discretization_error_limit,
+                    )
         return time.perf_counter() - t0
 
     def _transfer_vorticity_to_vpm(
@@ -895,35 +954,36 @@ class FVMVPMCoupler:
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()
         transfer_result = None
-        if self._is_master:
-            assert self.vpm_solver is not None
-            assert self.vorticity_transfer is not None
-            vpm = self.vpm_solver
-            transfer = self.vorticity_transfer
-            n_before = vpm.particles.n_particles_total
-            sum_before = (
-                float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
-                if n_before > 0
-                else 0.0
-            )
-            transfer_result = transfer.transfer(
-                vpm,
-                velocity=velocity_global,
-                velocity_gradient=gradient_global,
-            )
-            n_after = vpm.particles.n_particles_total
-            sum_after = (
-                float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
-                if n_after > 0
-                else 0.0
-            )
-            self._step_transfer_stats = {
-                "n_before": n_before,
-                "n_after": n_after,
-                "sum_before": sum_before,
-                "sum_after": sum_after,
-                "face_count": len(face_centre),
-            }
+        with collective_phase(_mpi4py_comm, "vorticity transfer"):
+            if self._is_master:
+                assert self.vpm_solver is not None
+                assert self.vorticity_transfer is not None
+                vpm = self.vpm_solver
+                transfer = self.vorticity_transfer
+                n_before = vpm.particles.n_particles_total
+                sum_before = (
+                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
+                    if n_before > 0
+                    else 0.0
+                )
+                transfer_result = transfer.transfer(
+                    vpm,
+                    velocity=velocity_global,
+                    velocity_gradient=gradient_global,
+                )
+                n_after = vpm.particles.n_particles_total
+                sum_after = (
+                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
+                    if n_after > 0
+                    else 0.0
+                )
+                self._step_transfer_stats = {
+                    "n_before": n_before,
+                    "n_after": n_after,
+                    "sum_before": sum_before,
+                    "sum_after": sum_after,
+                    "face_count": len(face_centre),
+                }
         return transfer_result, time.perf_counter() - t_transfer
 
     def _get_velocity_field_buffer(self) -> np.ndarray:

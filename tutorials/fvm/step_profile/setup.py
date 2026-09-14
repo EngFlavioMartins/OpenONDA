@@ -8,12 +8,12 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 
 import openonda.fvm as fvm
-import openonda.fvm.mesher as msh
 from openonda.tutorial_runner import case_package
 
 __package__ = case_package(Path(__file__).parent)
@@ -45,14 +45,11 @@ GRADIENT_SCHEME = "gauss"
 LINEAR_SOLVER = "bicgstab"
 
 
-def inlet_velocity(mesh_data, geo_data):
+def inlet_velocity():
     """Parabolic inlet profile with the requested bulk velocity."""
-    patch = next(item for item in mesh_data["boundary"] if item["name"] == "inlet")
-    start = patch["start_face"]
-    stop = start + patch["n_faces"]
-    y = geo_data["face_centre"][start:stop, 1]
-    eta = np.clip((y - STEP_HEIGHT) / STEP_HEIGHT, 0.0, 1.0)
-    values = np.zeros((patch["n_faces"], 3))
+    n_inlet = N_HEIGHT // 2
+    eta = (np.arange(n_inlet) + 0.5) / n_inlet
+    values = np.zeros((n_inlet, 3))
     values[:, 0] = 6.0 * MEAN_VELOCITY * eta * (1.0 - eta)
     return values
 
@@ -117,25 +114,27 @@ def main() -> None:
     case_dir = Path(__file__).parent
     solution_dir = case_dir / "solution"
 
-    mesh_data, depth = backward_facing_step_mesh(
+    mesh = partial(
+        backward_facing_step_mesh,
         step_height=STEP_HEIGHT,
         n_upstream=N_UPSTREAM,
         n_downstream=N_DOWNSTREAM,
         n_height=N_HEIGHT,
     )
-    geo_data = msh.geometry.compute_mesh_geometry(mesh_data)
 
     kinematic_viscosity = MEAN_VELOCITY * STEP_HEIGHT / REYNOLDS_NUMBER
-    inlet_values = inlet_velocity(mesh_data, geo_data)
+    inlet_values = inlet_velocity()
     fvm_setup = create_fvm_setup(REYNOLDS_NUMBER, FINAL_TIME, inlet_values, kinematic_viscosity)
-    with fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data) as fvm_solver:
-        fvm_solver.set_initial_velocity(initial_velocity(geo_data, mesh_data["n_cells"]))
+    with fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh) as fvm_solver:
+        fvm_solver.set_initial_velocity(
+            initial_velocity(fvm_solver.geo_data, fvm_solver.mesh_data["n_cells"])
+        )
         fvm_solver.write_vtk()
 
         history = []
         while fvm_solver.time < fvm_setup.time.end_time:
             fvm_solver.advance()
-            x_re, min_u = reattachment_location(fvm_solver, STEP_HEIGHT)
+            x_re, min_u = fvm_solver.evaluate(reattachment_location, STEP_HEIGHT)
             diagnostics = fvm_solver.last_diagnostics
             history.append(
                 [
@@ -147,7 +146,7 @@ def main() -> None:
                 ]
             )
 
-        write_solution_tables(fvm_solver, solution_dir, history, STEP_HEIGHT)
+        fvm_solver.evaluate(write_solution_tables, solution_dir, history, STEP_HEIGHT)
 
 
 if __name__ == "__main__":

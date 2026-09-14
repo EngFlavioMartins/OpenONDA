@@ -27,6 +27,7 @@ assert (sys.stdout, sys.stderr, getattr(sys, 'tracebacklimit', None)) == before
     )
     assert completed.returncode == 0, completed.stderr
     assert not log_file.exists()
+    assert "[Taichi] version" not in completed.stdout
 
 
 def test_runtime_configuration_preserves_numba_compilation_after_initialization(tmp_path):

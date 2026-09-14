@@ -54,4 +54,29 @@ def maximum_courant_time_step_size(
     return selected
 
 
-__all__ = ["maximum_courant_time_step_size"]
+def event_aligned_time_step_size(maximum_time_step_size: float, time_until_event: float) -> float:
+    """Divide the remaining interval into steps below the current CFL ceiling.
+
+    Clipping only the last step can leave an arbitrarily small remainder at
+    a sampling or backup time. That abrupt reduction amplifies the transient
+    pressure correction and then forces many growth-limited recovery steps.
+    Distributing the interval over an integer number of steps avoids that
+    scheduler-induced reduction while retaining the exact event deadline.
+    The CFL estimate is recomputed from the accepted flow before every step.
+    """
+    maximum_time_step_size = float(maximum_time_step_size)
+    time_until_event = float(time_until_event)
+    if not math.isfinite(maximum_time_step_size) or maximum_time_step_size <= 0.0:
+        raise ValueError("maximum_time_step_size must be finite and positive")
+    if not math.isfinite(time_until_event) or time_until_event <= 0.0:
+        raise ValueError("time_until_event must be finite and positive")
+    quotient = time_until_event / maximum_time_step_size
+    if not math.isfinite(quotient):
+        return maximum_time_step_size
+    # Do not introduce an extra substep when roundoff puts an integer ratio
+    # just above its exact value. The min still enforces the original ceiling.
+    n_steps = max(1, math.ceil(quotient - 32.0 * math.ulp(quotient)))
+    return min(maximum_time_step_size, time_until_event / n_steps)
+
+
+__all__ = ["maximum_courant_time_step_size", "event_aligned_time_step_size"]

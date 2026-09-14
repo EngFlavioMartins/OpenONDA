@@ -990,6 +990,13 @@ def solve_linear_system(
                 initial_guess=x0,
                 workspace=partitioned_workspace,
                 matrix_values_unchanged=matrix_values_unchanged,
+                preconditioner_reuse_tolerance=(
+                    float(kwargs.get("amg_reuse_tolerance", 0.05))
+                    if method == "amg"
+                    else ilu_reuse_tolerance
+                    if reuse_ilu
+                    else None
+                ),
             )
         else:
             solution, info = _solve_petsc(

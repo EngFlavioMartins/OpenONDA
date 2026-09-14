@@ -1,19 +1,13 @@
-"""Load sampled FVM-VPM cube-flow results for plotting.
+"""Cube comparison data and the fixed-width thesis figure style.
 
-Every figure is built from sampler output alone — the line CSVs and slice VTS
-files under ``samples/`` — so plotting needs no solver, no GPU and no raw
-field dumps. Three solutions are compared:
-
-``reference``  selected fully meshed FVM reference samples
-``fvm``        the coupled run's FVM near field (samples/fvm_*)
-``vpm``        the coupled run's VPM far field  (samples/vpm_*)
+The two FVM fields are sampled offline with the same 3D reconstruction;
+forces and VPM velocities come directly from the original samplers.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import matplotlib
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -26,7 +20,7 @@ SAMPLES = CASE_DIR / "samples"
 REFERENCE_SAMPLES = Path(
     os.environ.get(
         "OPENONDA_CUBE_REFERENCE_SAMPLES",
-        str(CASE_DIR / "reference_flow" / "samples"),
+        str(CASE_DIR / "reference_flow" / "samples" / "fine"),
     )
 )
 FIGURES = CASE_DIR / "figures"
@@ -34,8 +28,6 @@ FIGURES = CASE_DIR / "figures"
 # Keep one publication theme: reference and coupled figures are intended to be
 # visually interchangeable.
 from openonda import plotting as _THEME
-
-_THEME.set_style()
 
 # Publication canvas and export settings shared by every cube-flow figure.
 # Keep this width local: the cube-flow figures are intended for a 12.5 cm
@@ -45,32 +37,8 @@ FIGURE_WIDTH_CM = 12.5
 FIGURE_WIDTH = FIGURE_WIDTH_CM * CM
 FIGURE_DPI = _THEME.DEFAULT_DPI
 EXPORT_FORMATS = _THEME.EXPORT_FORMATS
-# The Lamb--Oseen figures use one 10 pt type scale for all publication text.
-# Exported cube-flow figures must remain interchangeable with that set.
-FONT_SIZE_PT = _THEME.FONT_SIZE_PT
-
-# Use the bundled DejaVu Serif face for both normal text and MathText.  This
-# preserves the OpenONDA serif typography without launching an external LaTeX
-# process once per frame (a complete run can contain hundreds of figures).
-matplotlib.rcParams.update(
-    {
-        "text.usetex": False,
-        "mathtext.fontset": "dejavuserif",
-        "font.family": "serif",
-        "font.serif": ["DejaVu Serif"],
-        "font.size": FONT_SIZE_PT,
-        "axes.labelsize": FONT_SIZE_PT,
-        "axes.titlesize": FONT_SIZE_PT,
-        "figure.titlesize": FONT_SIZE_PT,
-        "legend.fontsize": FONT_SIZE_PT,
-        "xtick.labelsize": FONT_SIZE_PT,
-        "ytick.labelsize": FONT_SIZE_PT,
-        "figure.dpi": FIGURE_DPI,
-        "savefig.dpi": FIGURE_DPI,
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-    }
-)
+FONT_SIZE_PT = _THEME.THESIS_FONT_SIZE_PT
+COMPARISON = SAMPLES / "comparison"
 
 COLORS = dict(_THEME.COLORS)
 COLORS.update(
@@ -151,6 +119,9 @@ def run_constants() -> dict:
     meta = metadata()
     phys = meta["physics"]
     freestream_velocity = np.asarray(phys["freestream_velocity"], dtype=float)
+    freestream_speed = float(np.linalg.norm(freestream_velocity))
+    if not np.isfinite(freestream_speed) or freestream_speed <= 0:
+        raise ValueError("A positive finite freestream speed is required for normalization")
     box = meta.get("fvm_solver", {}).get("fvm_domain", {})
     frames = slice_frames("fvm")
     if frames:
@@ -166,7 +137,7 @@ def run_constants() -> dict:
             "zmax": box.get("zmax", 1.5),
         }
     return {
-        "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
+        "freestream_speed": freestream_speed,
         "freestream_velocity": freestream_velocity,
         "reference_length": 1.0,  # cube side length (CUBE_SIDE in setup.py)
         "kinematic_viscosity": float(phys["kinematic_viscosity"]),
@@ -197,6 +168,7 @@ def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
     """
     if fmt not in EXPORT_FORMATS:
         raise ValueError(f"Unsupported figure format: {fmt!r}")
+    _THEME.validate_thesis_figure(fig, fig.axes)
     FIGURES.mkdir(parents=True, exist_ok=True)
     out = FIGURES / f"{name}.{fmt}"
     fig.savefig(out, format=fmt, dpi=dpi, bbox_inches=None, facecolor="white")
@@ -206,6 +178,30 @@ def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
         display_path = out
     print(f"  wrote {display_path}")
     return out
+
+
+def remove_obsolete_frames(prefix: str, times: np.ndarray, fmt: str) -> None:
+    """Retire generated frames that no longer have a matched source state."""
+    expected = {f"{prefix}_t{time:.2f}.{fmt}" for time in times}
+    for path in FIGURES.glob(f"{prefix}_t*.{fmt}"):
+        generated_name = re.fullmatch(rf"{re.escape(prefix)}_t[0-9]+\.[0-9]{{2}}\.{fmt}", path.name)
+        if generated_name and path.name not in expected:
+            path.unlink()
+
+
+def comparison_manifest() -> dict:
+    path = COMPARISON / "manifest.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing {path}; run assets/prepare_fine_reference.py first")
+    return json.loads(path.read_text())
+
+
+def comparison_frame(time: float) -> dict | None:
+    for row in comparison_manifest()["frames"]:
+        if np.isclose(row["time"], time, rtol=0, atol=TIME_ATOL):
+            with np.load(COMPARISON / row["file"], allow_pickle=False) as archive:
+                return {key: archive[key] for key in archive.files}
+    return None
 
 
 # ---- Line samplers -------------------------------------------------------
@@ -234,8 +230,7 @@ def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
     if "step" in table and table["step"].size:
         reset = np.flatnonzero(np.diff(table["step"].astype(int)) < 0)
         if reset.size:
-            start = int(reset[-1] + 1)
-            table = {name: values[start:] for name, values in table.items()}
+            raise ValueError(f"Line samples contain a restarted history: {path}")
     if "time" in table:
         return table
     if time_comment is None:
@@ -246,6 +241,8 @@ def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
 
 def line_times(source: str, name: str) -> np.ndarray:
     """Sampling times available for one line sampler."""
+    if source != "vpm":
+        return np.array([row["time"] for row in comparison_manifest()["frames"]])
     path = _path(source, name, ".csv")
     if not path.exists():
         return np.empty(0)
@@ -261,6 +258,17 @@ def load_line(
     must treat that as "no data for this panel", never substitute the nearest
     available frame regardless of how far away it is.
     """
+    if source != "vpm":
+        frame = comparison_frame(time)
+        if frame is None:
+            return None
+        points = frame[f"{name}_points"]
+        velocity = frame[f"{name}_{source}"]
+        return {
+            "time": time,
+            **{f"position_{axis}": points[:, i] for i, axis in enumerate("xyz")},
+            **{f"velocity_{axis}": velocity[:, i] for i, axis in enumerate("xyz")},
+        }
     path = _path(source, name, ".csv")
     if not path.exists():
         return None
@@ -293,6 +301,8 @@ def slice_frames(source: str, name: str = "slice_z0") -> list[tuple[float, Path]
 
 
 def slice_times(source: str, name: str = "slice_z0") -> np.ndarray:
+    if source != "vpm":
+        return np.array([row["time"] for row in comparison_manifest()["frames"]])
     return np.array([t for t, _ in slice_frames(source, name)])
 
 
@@ -305,6 +315,20 @@ def load_slice(
     :func:`load_line` for why a distant snapshot is never substituted.
     """
     import pyvista as pv
+
+    if source != "vpm":
+        frame = comparison_frame(time)
+        if frame is None:
+            return None
+        velocity = frame[f"slice_{source}"]
+        return {
+            "time": time,
+            "x": frame["slice_x"],
+            "y": frame["slice_y"],
+            "velocity": velocity,
+            "valid": np.all(np.isfinite(velocity), axis=-1),
+            **{f"velocity_{axis}": velocity[..., i] for i, axis in enumerate("xyz")},
+        }
 
     frames = slice_frames(source, name)
     if not frames:
@@ -333,6 +357,11 @@ def load_slice(
         "y": points[:, 1].reshape(shape),
         "velocity_x": field("velocity", 0),
         "velocity_y": field("velocity", 1),
+        "velocity_z": field("velocity", 2),
+        "velocity": np.asarray(grid.point_data["velocity"], dtype=float).reshape(*shape, 3),
+        "valid": np.asarray(
+            grid.point_data.get("vtkValidPointMask", np.ones(ni * nj)), dtype=bool
+        ).reshape(shape),
         "vorticity_z": field("vorticity", 2),
     }
 
@@ -341,7 +370,7 @@ def load_slice(
 
 
 def load_forces(source: str) -> dict[str, np.ndarray] | None:
-    """Load one body-fitted wall-force history, trimming restarted runs."""
+    """Load raw cube forces, rejecting ambiguous or nonmonotonic histories."""
     path = SOURCES[source]["dir"] / "forces_history.csv"
     if not path.exists():
         return None
@@ -353,9 +382,12 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
     names = rows.dtype.names
     if names is None:
         raise ValueError(f"{path} does not contain a named CSV table")
-    if "step" in names:
-        resets = np.flatnonzero(np.diff(rows["step"].astype(int)) <= 0)
-        rows = rows[resets[-1] + 1 :] if resets.size else rows
+    if "patch" in names and np.any(rows["patch"] != "cube"):
+        raise ValueError(f"Unexpected force patch in {path}")
+    if np.any(~np.isfinite(rows["time"])) or np.any(np.diff(rows["time"]) <= 0):
+        raise ValueError(f"Force times are duplicate or nonmonotonic in {path}")
+    if np.any(~np.isfinite(rows["drag_coefficient"])):
+        raise ValueError(f"Non-finite raw drag coefficient in {path}")
     return {name: np.asarray(rows[name]) for name in names}
 
 
@@ -431,78 +463,82 @@ def _is_lfs_pointer(path: Path) -> bool:
         return stream.readline().startswith(b"version https://git-lfs.github.com/spec/")
 
 
+def comparison_configurations() -> tuple[dict, dict]:
+    reference = json.loads(
+        (CASE_DIR / "reference_flow" / "solution" / "fine" / "fvm_metadata.json").read_text()
+    )["configuration"]
+    coupled = json.loads((SOLUTION / "fvm_metadata.json").read_text())["configuration"]
+    for key in (
+        "transport",
+        "initial_velocity",
+        "initial_kinematic_pressure",
+        "schemes",
+        "pimple",
+        "turbulence",
+    ):
+        if coupled[key] != reference[key]:
+            raise ValueError(f"Coupled/fine configurations differ in {key}; review the comparison")
+    for key in (
+        "momentum_tolerance",
+        "pressure_tolerance",
+        "momentum_relative_tolerance",
+        "pressure_relative_tolerance",
+        "momentum_final_relative_tolerance",
+        "pressure_final_relative_tolerance",
+    ):
+        if coupled["linear"][key] != reference["linear"][key]:
+            raise ValueError(f"Coupled/fine linear tolerances differ: {key}")
+
+    def force_definition(config):
+        samplers = [s for s in config["samplers"] if s["type"] == "ForceSampler"]
+        if len(samplers) != 1:
+            raise ValueError("Expected one cube force sampler")
+        return {
+            key: value for key, value in samplers[0].items() if key not in ("schedule", "file_name")
+        }
+
+    if force_definition(coupled) != force_definition(reference):
+        raise ValueError("Force patches or normalization differ")
+    force = force_definition(reference)
+    if (
+        force["patch_names"] != ["cube"]
+        or force["reference_length"] != 1
+        or force["reference_area"] != 1
+        or force["reference_velocity"] != run_constants()["freestream_speed"]
+    ):
+        raise ValueError("Unexpected cube force normalization")
+    return coupled, reference
+
+
 def validate_plot_inputs() -> dict[str, float]:
-    """Validate source provenance and exact cross-solver sample times."""
-    meta = metadata()
-    _validate_metadata_provenance(meta)
-    required_metadata = (
-        ("physics", "freestream_velocity"),
-        ("physics", "kinematic_viscosity"),
-        ("physics", "end_time"),
-    )
-    for section, key in required_metadata:
-        if key not in meta.get(section, {}):
-            raise ValueError(f"Run metadata is missing {section}.{key}")
+    """Check physical provenance and exact times; adaptive dt need not match."""
+    from .prepare_fine_reference import validate_reference
 
-    required_files = [
-        SOURCES["fvm"]["dir"] / "forces_history.csv",
-        SOURCES["reference"]["dir"] / "forces_history.csv",
-        SOLUTION / "coupler_diagnostics.jsonl",
-    ]
-    for source in ("reference", "fvm", "vpm"):
-        required_files.extend(
-            [_path(source, name, ".csv") for name in ("centreline", "offaxis_y075")]
+    validate_reference()
+    _validate_metadata_provenance(metadata())
+    comparison_configurations()
+    profile_times = common_times(
+        *(
+            line_times(s, n)
+            for s in ("fvm", "vpm", "reference")
+            for n in ("centreline", "offaxis_y075")
         )
-    for source in ("reference", "fvm", "vpm"):
-        required_files.append(_path(source, "slice_z0", ".pvd"))
-    missing = [path for path in required_files if not path.is_file()]
-    if missing:
-        raise FileNotFoundError(f"Missing plotting input: {missing[0]}")
-    unhydrated = [path for path in required_files if _is_lfs_pointer(path)]
-    if unhydrated:
-        raise FileNotFoundError(
-            "Plotting input is an unhydrated Git-LFS pointer: "
-            f"{unhydrated[0]}. Run `git lfs pull --include='**/samples/**'`."
-        )
-
-    profile_times = _require_coincident_overlap(
-        "Profile",
-        line_times("fvm", "centreline"),
-        line_times("vpm", "centreline"),
-        line_times("reference", "centreline"),
-        line_times("fvm", "offaxis_y075"),
-        line_times("vpm", "offaxis_y075"),
-        line_times("reference", "offaxis_y075"),
     )
-    field_times = _require_coincident_overlap(
-        "Field",
-        slice_times("fvm"),
-        slice_times("vpm"),
-        slice_times("reference"),
-    )
-    fvm_forces = load_forces("fvm")
-    reference_forces = load_forces("reference")
+    field_times = common_times(*(slice_times(s) for s in ("fvm", "vpm", "reference")))
+    fvm_forces, reference_forces = load_forces("fvm"), load_forces("reference")
     if fvm_forces is None or reference_forces is None:
-        raise ValueError("Force histories must contain at least one row")
-    force_times = _require_coincident_overlap("Force", fvm_forces["time"], reference_forces["time"])
-    expected_step = float(meta["physics"]["fvm_time_step_size"])
+        raise ValueError("Both force histories are required")
+    force_times = common_times(fvm_forces["time"], reference_forces["time"])
     for source, forces in (("coupled", fvm_forces), ("reference", reference_forces)):
         accepted = forces.get("accepted_time_step_size")
-        if accepted is None or not np.allclose(accepted, expected_step, rtol=0.0, atol=1.0e-12):
-            raise ValueError(
-                f"{source} force samples use a stale time step; expected {expected_step:g} s"
-            )
-
-    for source in ("reference", "fvm", "vpm"):
-        for _, path in slice_frames(source):
-            if not path.is_file():
-                raise FileNotFoundError(f"PVD index references a missing field sample: {path}")
-            if _is_lfs_pointer(path):
-                raise FileNotFoundError(
-                    "Field sample is an unhydrated Git-LFS pointer: "
-                    f"{path}. Run `git lfs pull --include='**/samples/**'`."
-                )
-
+        if (
+            accepted is None
+            or np.any(~np.isfinite(accepted))
+            or np.any(accepted[forces["time"] > 0] <= 0)
+        ):
+            raise ValueError(f"Invalid accepted timestep in {source} force history")
+    if any(len(t) == 0 for t in (profile_times, field_times, force_times)):
+        raise ValueError("No exactly coincident comparison states")
     return {
         "latest_profile_time": float(profile_times[-1]),
         "latest_field_time": float(field_times[-1]),

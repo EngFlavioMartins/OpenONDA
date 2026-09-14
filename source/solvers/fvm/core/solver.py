@@ -21,7 +21,7 @@ from ..sampling.executor import FVMSamplerExecutor
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
 from .state import FieldState
-from .time_step import maximum_courant_time_step_size
+from .time_step import event_aligned_time_step_size, maximum_courant_time_step_size
 
 
 def _load_velocity_field(setup, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
@@ -378,6 +378,11 @@ class FVMSolver(CouplerInterfaceMixin):
         if public_case is not None:
             setup = public_case.to_setup()
             validate_fvm_setup(setup)
+            import sys
+
+            from openonda.runtime import RunConfig
+
+            RunConfig(cpu_cores=setup.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
             if case_dir is None:
                 case_dir = str(public_case.directory)
             from ..factory import _runtime_setup
@@ -393,17 +398,14 @@ class FVMSolver(CouplerInterfaceMixin):
                     mesh_source = Path(case_dir or os.getcwd()) / mesh_source
                 materialize_here = True
                 rank_is_root = True
+                mesh_comm = None
                 if public_case.cores > 1:
                     try:
                         from mpi4py import MPI
 
-                        # Replicated PETSc keeps a complete mesh on every
-                        # rank; partitioned PETSc materializes it only on the
-                        # root before localization.
+                        mesh_comm = MPI.COMM_WORLD
                         rank_is_root = MPI.COMM_WORLD.Get_rank() == 0
-                        materialize_here = (
-                            setup.execution.parallel_mode == "petsc_replicated" or rank_is_root
-                        )
+                        materialize_here = rank_is_root
                     except ImportError:
                         raise RuntimeError(
                             "FVMCase.cores > 1 requires mpi4py and an MPI launch"
@@ -414,7 +416,10 @@ class FVMSolver(CouplerInterfaceMixin):
                     else Path(case_dir or os.getcwd()) / "solution"
                 )
                 mesher_log_path = requested_solution.resolve() / "mesher.log"
+                from source.simulation.parallel import collective_phase
+
                 with (
+                    collective_phase(mesh_comm, "FVM mesh materialization"),
                     mesher_log_session(
                         mesher_log_path if rank_is_root else None,
                         announce=rank_is_root,
@@ -428,6 +433,8 @@ class FVMSolver(CouplerInterfaceMixin):
                             faces=mesh_data.get("n_faces"),
                             points=mesh_data.get("n_points"),
                         )
+                if mesh_comm is not None and setup.execution.parallel_mode == "petsc_replicated":
+                    mesh_data = mesh_comm.bcast(mesh_data, root=0)
 
             # The public case is immutable intent; give the numerical core a
             # private resolved snapshot so later mutation of a nested caller
@@ -898,6 +905,16 @@ class FVMSolver(CouplerInterfaceMixin):
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
                     velocity = np.asarray(b_cfg.velocity_value, dtype=np.float64)
+                    if self.parallel.is_partitioned and velocity.ndim == 2:
+                        ranges = self.mesh_data.get("global_boundary_ranges", {})
+                        if b_cfg.name in ranges:
+                            global_start, global_count = ranges[b_cfg.name]
+                            if velocity.shape == (global_count, 3):
+                                start = b_mesh["start_face"]
+                                faces = self.mesh_data["global_face_id"][
+                                    start : start + b_mesh["n_faces"]
+                                ]
+                                velocity = velocity[faces - global_start]
                     if velocity.shape not in {(3,), (b_mesh["n_faces"], 3)}:
                         raise ValueError(
                             f"Velocity value for patch {b_cfg.name!r} has shape {velocity.shape}; "
@@ -985,6 +1002,7 @@ class FVMSolver(CouplerInterfaceMixin):
         params = dict(self._resolved_setup.algorithm_params())
         params["_linear_backend"] = self._resolved_setup.execution.linear_backend
         params["_operator_backend"] = self.operator_backend
+        self.geo_data["_operator_backend"] = self.operator_backend
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
         params["_timer"] = self._timer
@@ -1817,6 +1835,7 @@ class FVMSolver(CouplerInterfaceMixin):
         stepping applies the configured maximum-Courant control.
         """
         control = self._time_config.adjustment
+        time_until_event = None
         if control is None:
             selected = float(self.time_step_size)
         else:
@@ -1827,19 +1846,30 @@ class FVMSolver(CouplerInterfaceMixin):
                 control,
             )
 
-            # OpenFOAM's adjustableRunTime pattern: CFL remains the stability
-            # ceiling, but a shorter accepted step lands exactly on the next
-            # time-based output, log, sample, or restart event.
+            # Find the nearest deadline first, then distribute the remaining
+            # interval over CFL-limited steps. Last-step clipping alone leaves
+            # tiny remainders and pressure spikes at otherwise harmless outputs.
             for schedule in self._run_event_schedules():
                 next_event_time = schedule.next_time_after(self.time)
                 if next_event_time is not None:
-                    selected = min(selected, next_event_time - self.time)
+                    distance = next_event_time - self.time
+                    time_until_event = (
+                        distance if time_until_event is None else min(time_until_event, distance)
+                    )
 
         # Lifecycle-managed runs land exactly on their physical horizon.
         remaining = float(self._time_config.end_time - self.time)
         tolerance = max(1.0e-14, abs(self._time_config.end_time) * 1.0e-12)
         if remaining > tolerance:
-            selected = min(selected, remaining)
+            time_until_event = (
+                remaining if time_until_event is None else min(time_until_event, remaining)
+            )
+        if time_until_event is not None:
+            selected = (
+                min(selected, time_until_event)
+                if control is None
+                else event_aligned_time_step_size(selected, time_until_event)
+            )
         self.time_step_size = selected
         return selected
 
@@ -1978,31 +2008,24 @@ class FVMSolver(CouplerInterfaceMixin):
                 if self._final_output_enabled:
                     self._execute_sampler_event("final")
                 if self._backup_config.write_at_end:
-                    backup_path = self._backup_config.path
-                    if not os.path.isabs(backup_path):
-                        backup_path = os.path.join(self.solution_dir, backup_path)
-                    self.save_state(backup_path)
+                    self._save_automatic_backup()
                 self.run_status = "complete" if converged else "not_converged"
             else:
                 end_time = float(self._time_config.end_time)
                 tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
                 while self.time < end_time - tolerance:
                     self.advance()
-                if self.auto_write and self._final_output_enabled:
-                    # Re-emitting the terminal step is intentional: PVD identity
-                    # replaces the same artifact instead of duplicating it.
+                if (
+                    self.auto_write
+                    and self._final_output_enabled
+                    and getattr(self, "_last_vtk_state", None)
+                    != (self.step, self.time, self._state_revision)
+                ):
                     self.write_vtk()
                 if self._final_output_enabled:
                     self._execute_sampler_event("final")
-                if (
-                    self._backup_config.write_at_end
-                    and self._step_phase == "accepted"
-                    and self.time >= self._time_config.end_time
-                ):
-                    backup_path = self._backup_config.path
-                    if not os.path.isabs(backup_path):
-                        backup_path = os.path.join(self.solution_dir, backup_path)
-                    self.save_state(backup_path)
+                if self._backup_config.write_at_end and self._step_phase == "accepted":
+                    self._save_automatic_backup()
                 self.run_status = "complete"
         except BaseException as error:
             primary_failure = error
@@ -2220,10 +2243,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.time >= self._time_config.end_time - end_tolerance
         )
         if scheduled_backup or final_backup:
-            backup_path = self._backup_config.path
-            if not os.path.isabs(backup_path):
-                backup_path = os.path.join(self.solution_dir, backup_path)
-            self.save_state(backup_path)
+            self._save_automatic_backup()
         self._timer.log("Restart backup", sink=self.logger)
 
         if not self._run_started and self.time >= self._time_config.end_time - end_tolerance:
@@ -2236,6 +2256,16 @@ class FVMSolver(CouplerInterfaceMixin):
         # vorticity handoff; dropping it here forced an identical full-mesh
         # reconstruction and global gather.  ``solve_pimple`` clears the cache
         # before its next assembly, retaining the former peak-memory behaviour.
+
+    def _save_automatic_backup(self) -> None:
+        """Write each configured checkpoint state once, including run finalization."""
+        path = self._backup_config.path
+        if not os.path.isabs(path):
+            path = os.path.join(self.solution_dir, path)
+        state = (self.step, self.time, self._state_revision, path)
+        if getattr(self, "_automatic_backup_state", None) != state:
+            self.save_state(path)
+            self._automatic_backup_state = state
 
     def save_state(self, path) -> str:
         """Flush output and atomically save the complete accepted FVM restart.
@@ -2407,15 +2437,15 @@ class FVMSolver(CouplerInterfaceMixin):
         workers wait at the same stage and receive the root's failure instead
         of entering a later MPI operation with a misleading success state.
         """
-        if not self.parallel.is_root and not self.parallel.is_partitioned:
-            self._collective_io_failure(None, "visualization output")
-            return
         local_error = None
         try:
-            self._write_vtk_local(filename)
+            if self.parallel.is_root or self.parallel.is_partitioned:
+                self._write_vtk_local(filename)
         except BaseException as error:
             local_error = error
         self._collective_io_failure(local_error, "visualization output")
+        if filename is None:
+            self._last_vtk_state = (self.step, self.time, self._state_revision)
 
     def _write_vtk_local(self, filename: str | None = None) -> None:
         """Export the current simulation state to a ``.vtu`` file with PVD time-series support.
@@ -2603,6 +2633,25 @@ class FVMSolver(CouplerInterfaceMixin):
     def __exit__(self, _exc_type, _exc_value, _traceback):
         status = "failed" if _exc_value is not None else None
         self.close(status=status, failure=_exc_value)
+
+    def evaluate(self, callback, *args, **kwargs):
+        """Run an analysis once against a complete, detached field snapshot.
+
+        Calls ``callback(snapshot, *args, **kwargs)`` and returns its result.
+        The library gathers interior cells and physical boundary faces, owns
+        output, and propagates failures. Callbacks contain ordinary analysis
+        code; no MPI calls or rank checks are needed. Only explicitly requested
+        analyses gather full fields; normal solver steps remain distributed.
+        """
+        from ..io.analysis import evaluate
+
+        return evaluate(self, callback, *args, **kwargs)
+
+    def write_csv(self, filename, rows, *, columns, append=False) -> None:
+        """Write a table once; relative filenames use the solution directory."""
+        from ..io.analysis import write_csv
+
+        write_csv(self, filename, rows, columns=columns, append=append)
 
     def info(self) -> None:
         """Print a summary of the current solver state.

@@ -283,7 +283,7 @@ def run_case(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("case", choices=tuple(PHYSICS_CIRCULATIONS))
-    parser.add_argument("viscous_scheme", choices=VISCOUS_SCHEMES)
+    parser.add_argument("case", nargs="?", default="vortex", choices=tuple(PHYSICS_CIRCULATIONS))
+    parser.add_argument("viscous_scheme", nargs="?", default="CS", choices=VISCOUS_SCHEMES)
     args = parser.parse_args()
     run_case(args.case, args.viscous_scheme)

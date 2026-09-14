@@ -143,5 +143,5 @@ def run(name: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", choices=tuple(CASES), required=True)
+    parser.add_argument("--case", choices=tuple(CASES), default="coarse")
     run(parser.parse_args().case)

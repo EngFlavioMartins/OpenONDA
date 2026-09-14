@@ -8,7 +8,7 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
-import csv
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +18,7 @@ from openonda.fvm.mesher import periodic_square_mesh
 from openonda.tutorial_runner import case_package
 
 __package__ = case_package(Path(__file__).parent)
-from .assets.decay_errors import history_row
+from .assets.decay_errors import flow_integrals, history_row
 
 CASE_DIR = Path(__file__).resolve().parent
 
@@ -56,7 +56,7 @@ def exact_velocity(centres: np.ndarray, time: float, kinematic_viscosity: float)
 def main() -> None:
     nsteps = int(round(FINAL_TIME / TIME_STEP_SIZE))
 
-    mesh = periodic_square_mesh(NUMBER_OF_CELLS)
+    mesh = partial(periodic_square_mesh, NUMBER_OF_CELLS)
 
     schemes = fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME)
     linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
@@ -89,19 +89,11 @@ def main() -> None:
         boundaries=boundaries,
     )
 
-    solution_dir = CASE_DIR / "solution"
     with fvm.create_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=mesh) as fvm_solver:
         centres = fvm_solver.geo_data["cell_centre"]
         fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
         fvm_solver.write_vtk()
-        initial_total_kinetic_energy = fvm.compute_kinetic_energy(
-            fvm_solver.velocity, fvm_solver.geo_data
-        )
-        initial_enstrophy = fvm.compute_enstrophy(
-            fvm_solver.velocity, fvm_solver.mesh_data, fvm_solver.geo_data
-        )
-
-        history_path = solution_dir / "history.csv"
+        initial_total_kinetic_energy, initial_enstrophy = fvm_solver.evaluate(flow_integrals)
         fields = (
             "step",
             "time",
@@ -116,29 +108,25 @@ def main() -> None:
             "max_courant_number",
         )
 
-        with history_path.open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=fields)
-            writer.writeheader()
-            writer.writerow(
-                history_row(
-                    fvm_solver,
-                    exact_velocity,
-                    KINEMATIC_VISCOSITY,
-                    initial_total_kinetic_energy,
-                    initial_enstrophy,
-                )
+        def record_history(*, append):
+            row = fvm_solver.evaluate(
+                history_row,
+                exact_velocity,
+                KINEMATIC_VISCOSITY,
+                initial_total_kinetic_energy,
+                initial_enstrophy,
             )
-            while fvm_solver.time < FINAL_TIME - 1.0e-14:
-                fvm_solver.advance()
-                writer.writerow(
-                    history_row(
-                        fvm_solver,
-                        exact_velocity,
-                        KINEMATIC_VISCOSITY,
-                        initial_total_kinetic_energy,
-                        initial_enstrophy,
-                    )
-                )
+            fvm_solver.write_csv(
+                "history.csv",
+                [[row[name] for name in fields]],
+                columns=fields,
+                append=append,
+            )
+
+        record_history(append=False)
+        while fvm_solver.time < FINAL_TIME - 1.0e-14:
+            fvm_solver.advance()
+            record_history(append=True)
 
 
 if __name__ == "__main__":

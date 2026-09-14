@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unperturbed Fig. 5 rings: an LES baseline and two stabilization methods."""
+"""Cheng et al. Fig. 5 rings: a DNS baseline and two stabilization methods."""
 
 import argparse
 from dataclasses import replace
@@ -14,6 +14,8 @@ REYNOLDS_NUMBER = 3000.0
 KINEMATIC_VISCOSITY = RING_CIRCULATION / REYNOLDS_NUMBER
 CORE_RADIUS = 0.1
 RING_SEPARATION = 1.0
+# Fig. 5 at Re=3000 excludes the instability perturbation. The paper's
+# epsilon/R0=0.05, n=8 axial perturbation belongs to Fig. 3 at Re=3415.
 DISTURBANCE_AMPLITUDE = 0.0
 DISTURBANCE_MODE = 8
 PARTICLE_SPACING = 0.05
@@ -21,9 +23,7 @@ PARTICLE_CORE_RADIUS = 0.05
 TOROIDAL_TAIL_FRACTION = 1.0e-4
 TIME_STEP_SIZE = 0.00375
 N_STEPS = 2400
-SMAGORINSKY_COEFFICIENT = 0.20
-LES_FILTER_WIDTH = 0.053
-MAX_N_PARTICLES = 120_000
+MAX_N_PARTICLES = 600_000
 TUTORIAL_DIR = Path(__file__).parent
 
 CASES = ("baseline", "stretching_viscosity", "p_moments")
@@ -31,6 +31,15 @@ CASES = ("baseline", "stretching_viscosity", "p_moments")
 
 def create_ring(x, group):
     centre = (x, 0.0, 0.0)
+    disturbance = (
+        vpm.WidnallDisturbance.single_mode(
+            amplitude=DISTURBANCE_AMPLITUDE,
+            mode=DISTURBANCE_MODE,
+            direction="axial",
+        )
+        if DISTURBANCE_AMPLITUDE > 0.0
+        else None
+    )
     tube = np.sqrt(CORE_RADIUS**2 - PARTICLE_CORE_RADIUS**2) * np.sqrt(
         -np.log(TOROIDAL_TAIL_FRACTION)
     )
@@ -40,9 +49,7 @@ def create_ring(x, group):
         circulation=RING_CIRCULATION,
         vortex_core_radius=CORE_RADIUS,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
-        disturbance=vpm.WidnallDisturbance.single_mode(
-            amplitude=DISTURBANCE_AMPLITUDE, mode=DISTURBANCE_MODE
-        ),
+        disturbance=disturbance,
         core_compensation=vpm.ParticleCoreCompensation(),
         distribution=vpm.ToroidalDistribution(
             centre=centre,
@@ -50,6 +57,7 @@ def create_ring(x, group):
             tube_radius=tube,
             spacing=PARTICLE_SPACING,
             core_radius_ratio=1.0,
+            disturbance=disturbance,
         ),
         group_id=group,
     )
@@ -104,12 +112,8 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 core_radius_ratio=1.0,
             ),
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
-                smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
-                filter_width=LES_FILTER_WIDTH,
-            ),
+            turbulence=vpm.TurbulenceConfig.dns(),
             stabilization=transfer,
-            domain_bounds=(-2, 12, -3, 3, -3, 3),
             max_n_particles=MAX_N_PARTICLES,
             write_precision="f32",
             random_seed=42,
@@ -127,7 +131,6 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             directory=name,
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10), initial=True),
-                vpm.RingDiagnosticsSampler(schedule=vpm.EverySteps(10), initial=True),
                 *core_section_samplers(),
             ),
         ),
@@ -135,7 +138,7 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             steps=n_steps,
             final_backup=True,
             health_limit_action="STOP",
-            resource_limits=vpm.ResourceLimits(max_particles=600_000),
+            resource_limits=vpm.ResourceLimits(max_particles=MAX_N_PARTICLES),
         ),
     )
 
@@ -159,6 +162,6 @@ def build_case(method, *, n_steps=N_STEPS, compute_device="AUTO"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("method", choices=CASES)
+    parser.add_argument("method", nargs="?", default="baseline", choices=CASES)
     case = build_case(parser.parse_args().method)
     vpm.VPMSolver(case).run()

@@ -91,7 +91,7 @@ class _CaseFileHandler(logging.FileHandler):
     """File handler used for the per-case coupler log."""
 
 
-def configure_logging(solution_dir: Path, logger: logging.Logger) -> None:
+def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.FileHandler:
     """Attach the case log while preserving caller-installed handlers."""
     log_path = (solution_dir / "coupler.log").resolve()
     for handler in list(logger.handlers):
@@ -109,6 +109,7 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> None:
         console_handler = logging.StreamHandler(_REAL_STDOUT)
         console_handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(console_handler)
+    return file_handler
 
 
 def flush_log(logger: logging.Logger) -> None:
@@ -573,60 +574,61 @@ def record_step(
     comm=None,
 ) -> None:
     """Persist diagnostics and synchronize a completed coupling step."""
-    t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
-    diagnostics = compute_diagnostics(coupler, transfer_result)
-    interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
-    if interface_iteration is not None:
-        diagnostics["interface_iteration"] = interface_iteration
-    timing_data = {
-        "vpm": float(t_vpm),
-        "vpm_boundary_condition": float(t_vpm_boundary_condition),
-        "fvm": float(t_fvm),
-        "transfer": float(t_transfer),
-        "total": float(sum(timing)),
-    }
-    if coupler._is_master:
-        diagnostics.update(
-            {"step": int(step), "time": float(time_end), "timing_seconds": timing_data}
-        )
-        coupler.coupling_diagnostics.append(diagnostics)
-        with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
-            "a", encoding="utf-8"
-        ) as stream:
-            stream.write(json.dumps(diagnostics, separators=(",", ":")) + "\n")
+    from .parallel import collective_phase
 
-        stats = coupler._step_transfer_stats or {}
-        logger.info(
-            format_coupler_log(
-                "vpm state",
-                ("particles, before", log_style.count(stats.get("n_before", 0))),
-                ("particles, after", log_style.count(stats.get("n_after", 0))),
-                (
-                    "vortex strength, before",
-                    f"{float(stats.get('sum_before', 0.0)):.4e}",
-                    "m^3/s",
-                ),
-                (
-                    "vortex strength, after",
-                    f"{float(stats.get('sum_after', 0.0)):.4e}",
-                    "m^3/s",
-                ),
+    with collective_phase(comm, "coupled step reporting"):
+        t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
+        diagnostics = compute_diagnostics(coupler, transfer_result)
+        interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
+        if interface_iteration is not None:
+            diagnostics["interface_iteration"] = interface_iteration
+        timing_data = {
+            "vpm": float(t_vpm),
+            "vpm_boundary_condition": float(t_vpm_boundary_condition),
+            "fvm": float(t_fvm),
+            "transfer": float(t_transfer),
+            "total": float(sum(timing)),
+        }
+        if coupler._is_master:
+            diagnostics.update(
+                {"step": int(step), "time": float(time_end), "timing_seconds": timing_data}
             )
-        )
-        logger.info(
-            format_coupler_log(
-                f"step {step:,} complete",
-                ("wall time", f"{timing_data['total']:.3f}", "s"),
-                ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
-                ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
-                ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
-                ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
-            )
-        )
-        flush_log(logger)
+            coupler.coupling_diagnostics.append(diagnostics)
+            with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
+                "a", encoding="utf-8"
+            ) as stream:
+                stream.write(json.dumps(diagnostics, separators=(",", ":")) + "\n")
 
-    if comm is not None and comm.Get_size() > 1:
-        comm.Barrier()
+            stats = coupler._step_transfer_stats or {}
+            logger.info(
+                format_coupler_log(
+                    "vpm state",
+                    ("particles, before", log_style.count(stats.get("n_before", 0))),
+                    ("particles, after", log_style.count(stats.get("n_after", 0))),
+                    (
+                        "vortex strength, before",
+                        f"{float(stats.get('sum_before', 0.0)):.4e}",
+                        "m^3/s",
+                    ),
+                    (
+                        "vortex strength, after",
+                        f"{float(stats.get('sum_after', 0.0)):.4e}",
+                        "m^3/s",
+                    ),
+                )
+            )
+            logger.info(
+                format_coupler_log(
+                    f"step {step:,} complete",
+                    ("wall time", f"{timing_data['total']:.3f}", "s"),
+                    ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
+                    ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
+                    ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
+                    ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
+                )
+            )
+            flush_log(logger)
+
     backup_due = (
         coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
     )

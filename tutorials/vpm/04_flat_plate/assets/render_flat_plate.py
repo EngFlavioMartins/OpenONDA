@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,6 +15,8 @@ import h5py
 import matplotlib
 import numpy as np
 import pyvista as pv
+
+from openonda.executables import find_executable
 
 
 ASSETS_DIR = Path(__file__).resolve().parent
@@ -46,23 +47,7 @@ def sha256(path: Path) -> str:
 
 
 def find_pvpython() -> Path:
-    configured = os.environ.get("OPENONDA_PARAVIEW_PYTHON")
-    candidates = [] if configured is None else [Path(configured)]
-    candidates.extend(
-        [
-            Path("/Applications/ParaView-6.1.0.app/Contents/bin/pvpython"),
-            Path("/Applications/ParaView.app/Contents/bin/pvpython"),
-        ]
-    )
-    from_path = shutil.which("pvpython")
-    if from_path:
-        candidates.append(Path(from_path))
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise FileNotFoundError(
-        "ParaView's pvpython was not found. Set OPENONDA_PARAVIEW_PYTHON to its executable."
-    )
+    return Path(find_executable("pvpython"))
 
 
 def read_native_state() -> dict[str, object]:
@@ -178,38 +163,38 @@ def write_overlay(omega_min: float, omega_max: float) -> None:
 
 
 def compile_overlay(figure_format: str) -> None:
-    subprocess.run(
-        [
-            "pdflatex",
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            "-output-directory",
-            str(FIGURE_DIR),
-            TEX_OUTPUT.name,
-        ],
-        cwd=FIGURE_DIR,
-        check=True,
-    )
-    for auxiliary in ("flat_plate_wake.aux", "flat_plate_wake.log"):
-        path = FIGURE_DIR / auxiliary
-        if path.exists():
-            path.unlink()
-    if figure_format == "png":
-        pdftoppm = shutil.which("pdftoppm")
-        if pdftoppm is None:
-            raise FileNotFoundError("pdftoppm is required to export the rendered PNG.")
+    with tempfile.TemporaryDirectory(prefix="flat-plate-overlay-") as temporary:
+        compiled_pdf = Path(temporary) / PDF_OUTPUT.name
         subprocess.run(
             [
-                pdftoppm,
-                "-png",
-                "-r",
-                "400",
-                "-singlefile",
-                str(PDF_OUTPUT),
-                str(PNG_OUTPUT.with_suffix("")),
+                "pdflatex",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-output-directory",
+                temporary,
+                TEX_OUTPUT.name,
             ],
+            cwd=FIGURE_DIR,
             check=True,
         )
+        if figure_format == "png":
+            pdftoppm = shutil.which("pdftoppm")
+            if pdftoppm is None:
+                raise FileNotFoundError("pdftoppm is required to export the rendered PNG.")
+            subprocess.run(
+                [
+                    pdftoppm,
+                    "-png",
+                    "-r",
+                    "400",
+                    "-singlefile",
+                    str(compiled_pdf),
+                    str(PNG_OUTPUT.with_suffix("")),
+                ],
+                check=True,
+            )
+        else:
+            shutil.copy2(compiled_pdf, PDF_OUTPUT)
 
 
 def main() -> None:
@@ -290,17 +275,13 @@ def main() -> None:
             "raw_png": str(RAW_OUTPUT),
             "raw_png_sha256": sha256(RAW_OUTPUT),
             "overlay_tex": str(TEX_OUTPUT),
-            "final_pdf": str(PDF_OUTPUT),
-            "final_pdf_sha256": sha256(PDF_OUTPUT),
         },
     }
-    if PNG_OUTPUT.is_file():
-        manifest["output"]["final_png"] = str(PNG_OUTPUT)
-        manifest["output"]["final_png_sha256"] = sha256(PNG_OUTPUT)
+    final_output = PNG_OUTPUT if args.format == "png" else PDF_OUTPUT
+    manifest["output"][f"final_{args.format}"] = str(final_output)
+    manifest["output"][f"final_{args.format}_sha256"] = sha256(final_output)
     MANIFEST_OUTPUT.write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"  Saved: {PDF_OUTPUT}")
-    if args.format == "png":
-        print(f"  Saved: {PNG_OUTPUT}")
+    print(f"  Saved: {final_output}")
     print(f"  Scene record: {MANIFEST_OUTPUT}")
 
 

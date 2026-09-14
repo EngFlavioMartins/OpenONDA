@@ -1899,237 +1899,243 @@ class VorticityTransfer:
         get_wall_triangles = getattr(fvm, "get_wall_surface_triangles", None)
         wall_triangles = get_wall_triangles() if callable(get_wall_triangles) else None
 
-        if len(self._cell_centre) == 0:
-            self._build_face_cell_index()
-            return
-        if len(self._cell_volume) != len(self._cell_centre):
-            raise RuntimeError("FVM cell-centre and cell-volume counts do not match")
-        _validate_particle_sources(
-            self._cell_centre,
-            self._cell_volume,
-            np.zeros_like(self._cell_centre),
-        )
-        if self.transfer_method == "buffered_m4_renewal":
-            self._cell_tree = cKDTree(self._cell_centre)
-            self._velocity_trace = FVMVelocityInterpolator(
+        from source.simulation.parallel import collective_phase
+
+        comm = getattr(getattr(fvm, "parallel", None), "comm", None)
+        with collective_phase(comm, "transfer geometry"):
+            if len(self._cell_centre) == 0:
+                self._build_face_cell_index()
+                return
+            if len(self._cell_volume) != len(self._cell_centre):
+                raise RuntimeError("FVM cell-centre and cell-volume counts do not match")
+            _validate_particle_sources(
                 self._cell_centre,
-                self._cell_tree,
-                neighbour_count=4,
+                self._cell_volume,
+                np.zeros_like(self._cell_centre),
             )
+            if self.transfer_method == "buffered_m4_renewal":
+                self._cell_tree = cKDTree(self._cell_centre)
+                self._velocity_trace = FVMVelocityInterpolator(
+                    self._cell_centre,
+                    self._cell_tree,
+                    neighbour_count=4,
+                )
 
-        if wall_faces is not None and len(wall_faces) and wall_normals is not None:
-            bounds = np.array(
-                [
-                    wall_faces[:, 0].min(),
-                    wall_faces[:, 0].max(),
-                    wall_faces[:, 1].min(),
-                    wall_faces[:, 1].max(),
-                    wall_faces[:, 2].min(),
-                    wall_faces[:, 2].max(),
-                ]
-            )
-            on_planes = np.zeros(len(wall_faces), dtype=bool)
-            complete_box = True
-            for axis in range(3):
-                aligned = np.isclose(np.abs(wall_normals[:, axis]), 1.0, rtol=0.0, atol=1.0e-10)
-                for coordinate in bounds[2 * axis : 2 * axis + 2]:
-                    on_face = aligned & np.isclose(
-                        wall_faces[:, axis], coordinate, rtol=0.0, atol=1.0e-9
+            if wall_faces is not None and len(wall_faces) and wall_normals is not None:
+                bounds = np.array(
+                    [
+                        wall_faces[:, 0].min(),
+                        wall_faces[:, 0].max(),
+                        wall_faces[:, 1].min(),
+                        wall_faces[:, 1].max(),
+                        wall_faces[:, 2].min(),
+                        wall_faces[:, 2].max(),
+                    ]
+                )
+                on_planes = np.zeros(len(wall_faces), dtype=bool)
+                complete_box = True
+                for axis in range(3):
+                    aligned = np.isclose(np.abs(wall_normals[:, axis]), 1.0, rtol=0.0, atol=1.0e-10)
+                    for coordinate in bounds[2 * axis : 2 * axis + 2]:
+                        on_face = aligned & np.isclose(
+                            wall_faces[:, axis], coordinate, rtol=0.0, atol=1.0e-9
+                        )
+                        on_planes |= on_face
+                        complete_box &= bool(np.any(on_face))
+                # A one/two-layer extruded cylinder also has every face centre
+                # on a z-extremum. Centres alone do not identify a box wall.
+                if complete_box and on_planes.all():
+                    self._body_bounds = bounds
+                    self._lattice_anchor = bounds[[0, 2, 4]]
+                    if self.transfer_method == "buffered_m4_renewal":
+                        # This is the lattice phase used by the 20-second renewal
+                        # run: no particle centre lies directly on a cube face.
+                        self._lattice_anchor -= 0.5 * self.particle_spacing
+
+            ibm = getattr(fvm, "ibm", None)
+            bodies = () if ibm is None else tuple(ibm.bodies)
+            self._solid_bodies = tuple(body for body in bodies if body.has_solid_geometry)
+            if self._solid_bodies:
+                self._body_bounds = None
+                self._lattice_anchor = self._cell_centre[0].copy()
+            elif self._body_bounds is None and wall_triangles is not None and len(wall_triangles):
+                self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_box),)
+            elif wall_patches and self._body_bounds is None:
+                raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
+            if self._lattice_anchor is None:
+                self._lattice_anchor = self._cell_centre[0].copy()
+
+            if self.transfer_method == "buffered_m4_renewal":
+                if self._cell_tree is None:
+                    raise RuntimeError("buffered M4' renewal requires an FVM cell tree")
+
+                def mesh_weight_at_node(points: np.ndarray) -> np.ndarray:
+                    # Distance to a donor centre is not a fluid-domain test:
+                    # coarse/anisotropic cells legitimately span many particles.
+                    # Solid exclusion uses wall geometry, independently of h.
+                    return np.all(
+                        (points >= self._fvm_box[::2]) & (points <= self._fvm_box[1::2]), axis=1
+                    ).astype(np.float64)
+
+                has_solid = bool(self._solid_bodies) or self._body_bounds is not None
+
+                def fluid_weight_at_node(points: np.ndarray) -> np.ndarray:
+                    return _smoothstep(
+                        self._signed_solid_distance(points),
+                        -self.particle_spacing,
+                        0.0,
                     )
-                    on_planes |= on_face
-                    complete_box &= bool(np.any(on_face))
-            # A one/two-layer extruded cylinder also has every face centre
-            # on a z-extremum. Centres alone do not identify a box wall.
-            if complete_box and on_planes.all():
-                self._body_bounds = bounds
-                self._lattice_anchor = bounds[[0, 2, 4]]
-                if self.transfer_method == "buffered_m4_renewal":
-                    # This is the lattice phase used by the 20-second renewal
-                    # run: no particle centre lies directly on a cube face.
-                    self._lattice_anchor -= 0.5 * self.particle_spacing
 
-        ibm = getattr(fvm, "ibm", None)
-        bodies = () if ibm is None else tuple(ibm.bodies)
-        self._solid_bodies = tuple(body for body in bodies if body.has_solid_geometry)
-        if self._solid_bodies:
-            self._body_bounds = None
-            self._lattice_anchor = self._cell_centre[0].copy()
-        elif self._body_bounds is None and wall_triangles is not None and len(wall_triangles):
-            self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_box),)
-        elif wall_patches and self._body_bounds is None:
-            raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
-        if self._lattice_anchor is None:
-            self._lattice_anchor = self._cell_centre[0].copy()
+                def interior_at_node(points: np.ndarray) -> np.ndarray:
+                    return self._points_in_solid(points, include_boundary=False)
 
-        if self.transfer_method == "buffered_m4_renewal":
-            if self._cell_tree is None:
-                raise RuntimeError("buffered M4' renewal requires an FVM cell tree")
-
-            def mesh_weight_at_node(points: np.ndarray) -> np.ndarray:
-                # Distance to a donor centre is not a fluid-domain test:
-                # coarse/anisotropic cells legitimately span many particles.
-                # Solid exclusion uses wall geometry, independently of h.
-                return np.all(
-                    (points >= self._fvm_box[::2]) & (points <= self._fvm_box[1::2]), axis=1
-                ).astype(np.float64)
-
-            has_solid = bool(self._solid_bodies) or self._body_bounds is not None
-
-            def fluid_weight_at_node(points: np.ndarray) -> np.ndarray:
-                return _smoothstep(
-                    self._signed_solid_distance(points),
-                    -self.particle_spacing,
-                    0.0,
+                self._stable_renewal_lattice = build_stable_renewal_lattice(
+                    self._box,
+                    self.particle_spacing,
+                    buffer_length=self.renewal_buffer_length,
+                    authority_ramp_width=self.eta_blend_width,
+                    vpm_dead_zone=self.vpm_only_width,
+                    lattice_anchor=self._lattice_anchor,
+                    mesh_weight_at_node=mesh_weight_at_node,
+                    fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
+                    interior_at_node=interior_at_node if has_solid else None,
+                )
+            else:
+                renewal_bounds = self._box.copy()
+                renewal_bounds[::2] -= self.renewal_buffer_length
+                renewal_bounds[1::2] += self.renewal_buffer_length
+                self._renewal_lattice = build_renewal_lattice(
+                    renewal_bounds,
+                    lattice_anchor=self._lattice_anchor,
+                    spacing=self.particle_spacing,
+                )
+                self._renewal_target_solid_mask = self._points_in_solid(
+                    self._renewal_lattice.position,
+                    include_boundary=False,
+                )
+            self._fvm_solid_mask = self._points_in_solid(
+                self._cell_centre,
+                include_boundary=True,
+            )
+            donor_eta = replacement_eta(self._cell_centre, self._box, 0.0)
+            self._authority_cell_mask = (donor_eta > 0.0) & ~self._fvm_solid_mask
+            donor_count = int(np.count_nonzero(self._authority_cell_mask))
+            if donor_count == 0:
+                raise ValueError("FVM transfer region contains no fluid cell centres")
+            self._build_face_cell_index()
+            lattice_count = (
+                len(self._stable_renewal_lattice.positions)
+                if self._stable_renewal_lattice is not None
+                else (0 if self._renewal_lattice is None else len(self._renewal_lattice.position))
+            )
+            geometry_rows: list[log_style.Row] = []
+            if self._stable_renewal_lattice is not None:
+                velocity = np.asarray(self.config.freestream_velocity, dtype=np.float64)
+                streamwise_axis = int(np.argmax(np.abs(velocity)))
+                downstream_is_maximum = velocity[streamwise_axis] >= 0.0
+                axis_name = "xyz"[streamwise_axis]
+                lattice = self._stable_renewal_lattice
+                planes = lattice.origin[streamwise_axis] + self.particle_spacing * np.arange(
+                    lattice.shape[streamwise_axis]
+                )
+                authority_grid = lattice.fvm_authority.reshape(lattice.shape)
+                plane_authority = np.max(
+                    np.moveaxis(authority_grid, streamwise_axis, 0).reshape(len(planes), -1),
+                    axis=1,
+                )
+                authoritative_planes = planes[plane_authority > 0.0]
+                face = self._box[2 * streamwise_axis + int(downstream_is_maximum)]
+                renewal_edge = lattice.renewal_bounds[
+                    2 * streamwise_axis + int(downstream_is_maximum)
+                ]
+                beyond_face = planes > face if downstream_is_maximum else planes < face
+                inside_renewal = (
+                    planes <= renewal_edge if downstream_is_maximum else planes >= renewal_edge
+                )
+                beyond_renewal = ~inside_renewal
+                support_edge = renewal_edge + (
+                    2.0 * self.particle_spacing
+                    if downstream_is_maximum
+                    else -2.0 * self.particle_spacing
+                )
+                inside_m4_support = (
+                    planes <= support_edge if downstream_is_maximum else planes >= support_edge
                 )
 
-            def interior_at_node(points: np.ndarray) -> np.ndarray:
-                return self._points_in_solid(points, include_boundary=False)
+                def downstream_extreme(values: np.ndarray) -> float:
+                    return float(values.max() if downstream_is_maximum else values.min())
 
-            self._stable_renewal_lattice = build_stable_renewal_lattice(
-                self._box,
-                self.particle_spacing,
-                buffer_length=self.renewal_buffer_length,
-                authority_ramp_width=self.eta_blend_width,
-                vpm_dead_zone=self.vpm_only_width,
-                lattice_anchor=self._lattice_anchor,
-                mesh_weight_at_node=mesh_weight_at_node,
-                fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
-                interior_at_node=interior_at_node if has_solid else None,
-            )
-        else:
-            renewal_bounds = self._box.copy()
-            renewal_bounds[::2] -= self.renewal_buffer_length
-            renewal_bounds[1::2] += self.renewal_buffer_length
-            self._renewal_lattice = build_renewal_lattice(
-                renewal_bounds,
-                lattice_anchor=self._lattice_anchor,
-                spacing=self.particle_spacing,
-            )
-            self._renewal_target_solid_mask = self._points_in_solid(
-                self._renewal_lattice.position,
-                include_boundary=False,
-            )
-        self._fvm_solid_mask = self._points_in_solid(
-            self._cell_centre,
-            include_boundary=True,
-        )
-        donor_eta = replacement_eta(self._cell_centre, self._box, 0.0)
-        self._authority_cell_mask = (donor_eta > 0.0) & ~self._fvm_solid_mask
-        donor_count = int(np.count_nonzero(self._authority_cell_mask))
-        if donor_count == 0:
-            raise ValueError("FVM transfer region contains no fluid cell centres")
-        self._build_face_cell_index()
-        lattice_count = (
-            len(self._stable_renewal_lattice.positions)
-            if self._stable_renewal_lattice is not None
-            else (0 if self._renewal_lattice is None else len(self._renewal_lattice.position))
-        )
-        geometry_rows: list[log_style.Row] = []
-        if self._stable_renewal_lattice is not None:
-            velocity = np.asarray(self.config.freestream_velocity, dtype=np.float64)
-            streamwise_axis = int(np.argmax(np.abs(velocity)))
-            downstream_is_maximum = velocity[streamwise_axis] >= 0.0
-            axis_name = "xyz"[streamwise_axis]
-            lattice = self._stable_renewal_lattice
-            planes = lattice.origin[streamwise_axis] + self.particle_spacing * np.arange(
-                lattice.shape[streamwise_axis]
-            )
-            authority_grid = lattice.fvm_authority.reshape(lattice.shape)
-            plane_authority = np.max(
-                np.moveaxis(authority_grid, streamwise_axis, 0).reshape(len(planes), -1),
-                axis=1,
-            )
-            authoritative_planes = planes[plane_authority > 0.0]
-            face = self._box[2 * streamwise_axis + int(downstream_is_maximum)]
-            renewal_edge = lattice.renewal_bounds[2 * streamwise_axis + int(downstream_is_maximum)]
-            beyond_face = planes > face if downstream_is_maximum else planes < face
-            inside_renewal = (
-                planes <= renewal_edge if downstream_is_maximum else planes >= renewal_edge
-            )
-            beyond_renewal = ~inside_renewal
-            support_edge = renewal_edge + (
-                2.0 * self.particle_spacing
-                if downstream_is_maximum
-                else -2.0 * self.particle_spacing
-            )
-            inside_m4_support = (
-                planes <= support_edge if downstream_is_maximum else planes >= support_edge
-            )
+                def upstream_extreme(values: np.ndarray) -> float:
+                    return float(values.min() if downstream_is_maximum else values.max())
 
-            def downstream_extreme(values: np.ndarray) -> float:
-                return float(values.max() if downstream_is_maximum else values.min())
-
-            def upstream_extreme(values: np.ndarray) -> float:
-                return float(values.min() if downstream_is_maximum else values.max())
-
-            donor_coordinate = self._cell_centre[self._authority_cell_mask, streamwise_axis]
-            geometry_rows.extend(
-                (
+                donor_coordinate = self._cell_centre[self._authority_cell_mask, streamwise_axis]
+                geometry_rows.extend(
                     (
-                        f"fvm last donor centre, {axis_name}",
-                        f"{downstream_extreme(donor_coordinate):.6f}",
-                        "m",
+                        (
+                            f"fvm last donor centre, {axis_name}",
+                            f"{downstream_extreme(donor_coordinate):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"fvm authority boundary, {axis_name}",
+                            f"{face:.6f}",
+                            "m",
+                        ),
+                        (
+                            f"last fvm-authoritative plane, {axis_name}",
+                            f"{downstream_extreme(authoritative_planes):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"first vpm-only release plane, {axis_name}",
+                            f"{upstream_extreme(planes[beyond_face]):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"last renewed input plane, {axis_name}",
+                            f"{downstream_extreme(planes[inside_renewal]):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"first persistent input plane, {axis_name}",
+                            f"{upstream_extreme(planes[beyond_renewal]):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"last m4-prime-reachable plane, {axis_name}",
+                            f"{downstream_extreme(planes[inside_m4_support]):.6f}",
+                            "m",
+                        ),
+                        (
+                            f"allocated m4-prime guard endpoint, {axis_name}",
+                            f"{downstream_extreme(planes):.6f}",
+                            "m",
+                        ),
+                    )
+                )
+            logger.info(
+                format_coupler_log(
+                    "replacement region",
+                    ("method", self.transfer_method),
+                    ("fvm fluid cells", f"{donor_count:,}"),
+                    *(
+                        (("authority ramp width, eta", "off"),)
+                        if self.eta_blend_width == 0.0
+                        else (("authority ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
                     ),
+                    ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
+                    ("renewal lattice nodes", f"{lattice_count:,}"),
+                    *geometry_rows,
                     (
-                        f"fvm authority boundary, {axis_name}",
-                        f"{face:.6f}",
-                        "m",
-                    ),
-                    (
-                        f"last fvm-authoritative plane, {axis_name}",
-                        f"{downstream_extreme(authoritative_planes):.6f}",
-                        "m",
-                    ),
-                    (
-                        f"first vpm-only release plane, {axis_name}",
-                        f"{upstream_extreme(planes[beyond_face]):.6f}",
-                        "m",
-                    ),
-                    (
-                        f"last renewed input plane, {axis_name}",
-                        f"{downstream_extreme(planes[inside_renewal]):.6f}",
-                        "m",
-                    ),
-                    (
-                        f"first persistent input plane, {axis_name}",
-                        f"{upstream_extreme(planes[beyond_renewal]):.6f}",
-                        "m",
-                    ),
-                    (
-                        f"last m4-prime-reachable plane, {axis_name}",
-                        f"{downstream_extreme(planes[inside_m4_support]):.6f}",
-                        "m",
-                    ),
-                    (
-                        f"allocated m4-prime guard endpoint, {axis_name}",
-                        f"{downstream_extreme(planes):.6f}",
-                        "m",
+                        "state",
+                        (
+                            "synchronized fvm velocity trace"
+                            if self.transfer_method == "buffered_m4_renewal"
+                            else "cell volume x fvm vorticity"
+                        ),
                     ),
                 )
             )
-        logger.info(
-            format_coupler_log(
-                "replacement region",
-                ("method", self.transfer_method),
-                ("fvm fluid cells", f"{donor_count:,}"),
-                *(
-                    (("authority ramp width, eta", "off"),)
-                    if self.eta_blend_width == 0.0
-                    else (("authority ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
-                ),
-                ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
-                ("renewal lattice nodes", f"{lattice_count:,}"),
-                *geometry_rows,
-                (
-                    "state",
-                    (
-                        "synchronized fvm velocity trace"
-                        if self.transfer_method == "buffered_m4_renewal"
-                        else "cell volume x fvm vorticity"
-                    ),
-                ),
-            )
-        )
 
     @staticmethod
     def _bounded_sample(index: np.ndarray, maximum_count: int) -> np.ndarray:

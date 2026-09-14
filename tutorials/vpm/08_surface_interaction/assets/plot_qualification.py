@@ -1,5 +1,6 @@
 """Plot the compact tandem-surface qualification summary."""
 
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -10,6 +11,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    args = parser.parse_args()
     summary = pd.read_csv(CASE_DIR / "samples/tandem/qualification_summary.csv")
     figure_dir = CASE_DIR / "figures"
     figure_dir.mkdir(parents=True, exist_ok=True)
@@ -21,9 +25,10 @@ def main() -> None:
         ylabel="force [N]",
     )
     axes.figure.tight_layout()
-    axes.figure.savefig(figure_dir / "tandem_loads.png", dpi=150)
+    output = figure_dir / f"tandem_loads.{args.format}"
+    axes.figure.savefig(output, dpi=150)
     plt.close(axes.figure)
-    print(f"Wrote qualification figure to {figure_dir / 'tandem_loads.png'}")
+    print(f"Wrote qualification figure to {output}")
 
 
 if __name__ == "__main__":

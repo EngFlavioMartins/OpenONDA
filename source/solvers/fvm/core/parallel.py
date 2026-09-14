@@ -3,18 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from typing import Protocol
 
 import numpy as np
 
-_MPI_SIZE_ENV = (
-    "OMPI_COMM_WORLD_SIZE",
-    "PMI_SIZE",
-    "PMIX_SIZE",
-    "MV2_COMM_WORLD_SIZE",
-    "SLURM_NTASKS",
-)
+from openonda.runtime import detected_world_size
 
 
 class _MPICommunicator(Protocol):
@@ -89,25 +82,6 @@ class _CellPartition(Protocol):
         """Update ghost rows in ``local_field`` through the halo schedule."""
 
         ...
-
-
-def detected_world_size() -> int:
-    """Best-effort launcher size without importing MPI.
-
-    Detecting this before importing ``mpi4py`` lets a rank launched under MPI
-    fail with an actionable dependency error instead of silently running an
-    independent serial simulation on every process.
-    """
-    values = []
-    for name in _MPI_SIZE_ENV:
-        raw = os.environ.get(name)
-        if raw is None:
-            continue
-        try:
-            values.append(int(raw))
-        except ValueError as error:
-            raise RuntimeError(f"Invalid MPI launcher variable {name}={raw!r}") from error
-    return max(values, default=1)
 
 
 @dataclass(frozen=True)
@@ -198,8 +172,8 @@ class ParallelContext:
             if launcher_size > 1:
                 raise RuntimeError(
                     f"FVM serial mode was launched with {launcher_size} MPI ranks. "
-                    "Use ExecutionConfig.petsc_replicated() with the fvm-parallel "
-                    "dependencies, or launch one process."
+                    "Create the solver with create_fvm_solver and set FVMSetup.cores "
+                    "to the requested process count; the factory owns MPI setup."
                 )
             return cls()
 
@@ -211,8 +185,8 @@ class ParallelContext:
                 from mpi4py import MPI
             except ImportError as error:
                 raise RuntimeError(
-                    "petsc_replicated mode requires mpi4py. Install the "
-                    "'fvm-parallel' optional dependency in an MPI/PETSc environment."
+                    "Parallel FVM requires mpi4py. Install OpenONDA's 'parallel' "
+                    "optional dependencies in an MPI/PETSc environment."
                 ) from error
             mpi = MPI
             comm = MPI.COMM_WORLD
@@ -227,8 +201,8 @@ class ParallelContext:
             from petsc4py import PETSc  # noqa: F401
         except ImportError as error:
             raise RuntimeError(
-                "petsc_replicated mode requires petsc4py linked to PETSc. "
-                "Install the 'fvm-parallel' optional dependency using the same MPI."
+                "Parallel FVM requires petsc4py linked to PETSc. Install OpenONDA's "
+                "'parallel' optional dependencies using the same MPI implementation."
             ) from error
         return cls(mode=mode, comm=comm, mpi=mpi, rank=rank, size=size)
 

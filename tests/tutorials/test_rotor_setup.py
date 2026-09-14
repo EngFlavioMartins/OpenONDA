@@ -131,7 +131,10 @@ def test_restart_preflight_caps_steps_near_authored_endpoint() -> None:
 
 
 def test_restart_pilot_help_is_lightweight() -> None:
-    script = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/assets/run_restart_pilot.py"
+    script = (
+        Path(__file__).parents[2]
+        / "tutorials/vpm/06_rotor_flow_PENDING/assets/run_restart_pilot.py"
+    )
     result = subprocess.run(
         [sys.executable, str(script), "--help"],
         cwd=script.parent.parent,
@@ -173,4 +176,6 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
 
 def test_allrun_keeps_literal_completion_launcher() -> None:
     launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/allrun.sh"
-    assert launcher.read_text() == "#!/bin/bash -e\n\npython setup.py --output-tag completion\n"
+    assert launcher.read_text() == (
+        '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\npython setup.py --output-tag completion\n'
+    )

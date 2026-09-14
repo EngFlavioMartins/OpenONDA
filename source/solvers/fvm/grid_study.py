@@ -318,24 +318,28 @@ def update_grid_study(
     else:
         cell_count = int(solver.mesh_data["n_cells"])
     report = None
-    if solver.parallel.is_root:
-        samples_dir = Path(solver.samples_dir)
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        metadata = {
-            "schema": "openonda-fvm-grid-run/1",
-            "case": solver.setup.case_name,
-            "cell_size": float(cell_size),
-            "cell_count": cell_count,
-            "end_time": float(solver.time),
-            "profiles": list(profiles),
-        }
-        (samples_dir / "grid_run.json").write_text(
-            json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-        )
-        completed = list(samples_dir.parent.glob("*/grid_run.json"))
-        if len(completed) >= 3:
-            report = analyse_grid_study(samples_dir.parent, Path(solver.solution_dir).parent)
-    solver.parallel.barrier()
+    failure = None
+    try:
+        if solver.parallel.is_root:
+            samples_dir = Path(solver.samples_dir)
+            samples_dir.mkdir(parents=True, exist_ok=True)
+            metadata = {
+                "schema": "openonda-fvm-grid-run/1",
+                "case": solver.setup.case_name,
+                "cell_size": float(cell_size),
+                "cell_count": cell_count,
+                "end_time": float(solver.time),
+                "profiles": list(profiles),
+            }
+            (samples_dir / "grid_run.json").write_text(
+                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+            )
+            completed = list(samples_dir.parent.glob("*/grid_run.json"))
+            if len(completed) >= 3:
+                report = analyse_grid_study(samples_dir.parent, Path(solver.solution_dir).parent)
+    except BaseException as error:
+        failure = error
+    solver._collective_io_failure(failure, "grid-study output")
     return report
 
 

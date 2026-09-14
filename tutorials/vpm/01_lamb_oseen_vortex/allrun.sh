@@ -1,4 +1,5 @@
 #!/bin/bash -e
+cd -- "$(dirname -- "$0")"
 
 python setup.py vortex CS
 python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge

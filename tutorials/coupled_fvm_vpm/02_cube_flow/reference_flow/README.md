@@ -4,40 +4,42 @@ This is the body-fitted Re=1000 cube reference case. The STL, domain, boundary
 types, refinement regions, LES model, samplers, and solver settings are declared
 in `create_solver()` in `setup.py`.
 
-Run the non-destructive five-grid study with:
+Run the four-grid study with:
 
 ```bash
 ./allrun.sh
 ```
 
-The script runs `very_coarse`, `coarse`, `medium`, `fine`, and `very_fine` in
-sequence at target `h/D = 0.22, 0.20, 0.18, 0.16, 0.14`. Fields and meshes
+The script runs `coarse`, `medium`, `fine`, and `dense` in
+sequence at target `h/D = 0.10, 0.08, 0.06, 0.04`. Fields and meshes
 are written below `solution/<name>/`; samples are written below
 `samples/<name>/`. It never invokes `allclean.sh`, never deletes outputs, and
 does not run postprocessing automatically. To run one case directly, use for
 example:
 
 ```bash
-python -u setup.py --name coarse --dx 0.20
+python -u setup.py --name fine --dx 0.06
 ```
 
-The outer domain is `[-7.5,15] x [-7.5,7.5] x [-7.5,7.5]`. The background
-cell-size target is `12h`; the near-body region
-`[-1.5,2.5] x [-1.5,1.5] x [-1.5,1.5]` uses `3h`, the downstream wake
-`[0,8] x [-2,2] x [-2,2]` uses `6h`, and the cube patch uses `h`. The native
-mesher applies these as upper-size controls. With this `12h` background,
-the nominal octree sizes resolve to `0.75h` on the cube, `1.5h` in the
-near-body box, and `3h` in the wake. Box targets are strict upper bounds:
-equality adds a refinement level. Changing the background while holding a
-target fixed can therefore change its resolved size abruptly. For example,
-`11.99h` resolves the near-body target to `2.9975h`, whereas `12h` resolves it
-to `1.5h`.
+The launcher uses the active OpenONDA installation. When working on source,
+install the checkout once with `python -m pip install -e .` from the repository
+root so edits apply from any case directory. MPI launch, thread limits and
+rank-owned output are handled by the FVM factory using the configured cores.
 
-To obtain nominal wall spacing exactly equal to `h`, use a background such
-as `8h` or `16h`; with the existing box requests those resolve the near body
-to `2h` and the wake to `4h`. These are octree spacings before surface
-projection and wrapper insertion. The final cells can have different shapes
-and volumes, and overlap and neighbour balancing can refine them further.
+Adaptive timesteps now divide the interval to the next output/sample/backup
+time into CFL-limited steps. This prevents an almost complete interval from
+being followed by a tiny remainder step, which caused pressure and drag
+spikes in the earlier fine run. The Courant target, BDF2 scheme and output
+times are unchanged. See the [diagnosis](../../../../studies/coupler_accuracy/cube-drift-and-drag-2026-09-14.md).
+
+The outer domain is `[-6.5,13] x [-6.5,6.5] x [-6.5,6.5]`. The background
+cell-size target is `12h`; the near-body region
+`[-1.5,3] x [-1.5,1.5] x [-1.5,1.5]` uses `h`, the downstream wake
+`[-2,8] x [-2,2] x [-2,2]` uses `2h`, and the cube patch uses `h`.
+The native mesher applies these as upper-size controls. The saved fine mesh
+has nominal cube-adjacent Cartesian spacing `0.045 m` for requested
+`h=0.06 m`, matching the coupled FVM's nominal local spacing. Surface fitting
+and wrapper cells still give different shapes and volumes in the two meshes.
 
 New mesh and time-step VTU/PVTU output includes `cell_volume` (m³),
 `cell_equivalent_size` (cube root of volume, m), `cell_size` (nominal octree

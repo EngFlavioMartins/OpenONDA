@@ -169,6 +169,6 @@ def run_case(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", required=True, choices=VARIANTS)
+    parser.add_argument("--variant", default="dns_transposed", choices=VARIANTS)
     args = parser.parse_args()
     run_case(args.variant)

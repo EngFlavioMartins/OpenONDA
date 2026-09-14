@@ -193,9 +193,12 @@ def main() -> None:
         directory=case.CASE_DIR,
     )
 
-    fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)
-    vpm_solver = vpm.VPMSolver(case.VPM_CASE)
-    coupler = coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
+    coupler = coupling.create_coupler(
+        case.FVM_SETUP,
+        case.VPM_CASE,
+        case.COUPLER_SETUP,
+        mesh=case.FVM_MESH,
+    )
     coupler.initialize()
     # The FVM backup deliberately keeps a strict configuration digest.  A
     # one-step diagnostic necessarily changes only ``end_time``; allow that
@@ -212,92 +215,99 @@ def main() -> None:
     finally:
         coupler.fvm_solver.load_state = load_fvm_state
 
-    if not coupler._is_master:
-        coupler.solve(start_step=start_step)
-        return
+    report = {}
 
-    assert coupler.vorticity_transfer is not None
-    transfer = coupler.vorticity_transfer
-    assert transfer._box is not None
-    spacing = float(coupler.vpm_particle_spacing)
-    report: dict = {
-        "seed_time": seed_time,
-        "vpm_step_size": float(coupler.vpm_time_step_size),
-        "gbd_threshold_scale": float(arguments.gbd_threshold_scale),
-        "fvm_restart_config_override": "end_time only",
-        "donor_geometry": _donor_geometry(transfer, spacing),
-    }
+    def instrument(vpm_solver):
+        assert coupler.vorticity_transfer is not None
+        transfer = coupler.vorticity_transfer
+        assert transfer._box is not None
+        spacing = float(coupler.vpm_particle_spacing)
+        report.update(
+            {
+                "seed_time": seed_time,
+                "vpm_step_size": float(coupler.vpm_time_step_size),
+                "gbd_threshold_scale": float(arguments.gbd_threshold_scale),
+                "fvm_restart_config_override": "end_time only",
+                "donor_geometry": _donor_geometry(transfer, spacing),
+            }
+        )
 
-    position, _strength, _velocity, group_id = _particle_arrays(vpm_solver)
-    release_mask = (position[:, 0] > float(transfer._box[1]) - spacing) & (
-        position[:, 0] < float(transfer._box[1])
-    )
-    reference_indices = np.flatnonzero(release_mask)
-    reference_position = position[reference_indices].copy()
-    group_id[release_mask] = _TAGGED_RELEASE_GROUP
-    _write_group_ids(vpm_solver, group_id)
-    report["post_injection_release_slab"] = _region_budgets(
-        vpm_solver, transfer_box=transfer._box, spacing=spacing, only_tagged=True
-    )
+        position, _strength, _velocity, group_id = _particle_arrays(vpm_solver)
+        release_mask = (position[:, 0] > float(transfer._box[1]) - spacing) & (
+            position[:, 0] < float(transfer._box[1])
+        )
+        reference_indices = np.flatnonzero(release_mask)
+        reference_position = position[reference_indices].copy()
+        group_id[release_mask] = _TAGGED_RELEASE_GROUP
+        _write_group_ids(vpm_solver, group_id)
+        report["post_injection_release_slab"] = _region_budgets(
+            vpm_solver, transfer_box=transfer._box, spacing=spacing, only_tagged=True
+        )
 
-    original_gbd = vpm_solver.physics.gbd_diffusion
+        original_gbd = vpm_solver.physics.gbd_diffusion
 
-    def record_pre_gbd(particles, time_step_size, *args, **kwargs):
-        if time_step_size > 0.0 and "after_advection_before_gbd" not in report:
-            p, _g, velocity, ids = _particle_arrays(vpm_solver)
-            tagged_index = np.flatnonzero(ids == _TAGGED_RELEASE_GROUP)
-            report["after_advection_before_gbd"] = _region_budgets(
-                vpm_solver, transfer_box=transfer._box, spacing=spacing, only_tagged=True
+        def record_pre_gbd(particles, time_step_size, *args, **kwargs):
+            if time_step_size > 0.0 and "after_advection_before_gbd" not in report:
+                p, _g, velocity, ids = _particle_arrays(vpm_solver)
+                tagged_index = np.flatnonzero(ids == _TAGGED_RELEASE_GROUP)
+                report["after_advection_before_gbd"] = _region_budgets(
+                    vpm_solver, transfer_box=transfer._box, spacing=spacing, only_tagged=True
+                )
+                if np.array_equal(tagged_index, reference_indices):
+                    displacement = p[tagged_index, 0] - reference_position[:, 0]
+                    report["tagged_advection"] = {
+                        "normal_displacement_x": _percentiles(displacement),
+                        "streamwise_velocity_x": _percentiles(velocity[tagged_index, 0]),
+                        "required_distance_to_leave": _percentiles(
+                            float(transfer._box[1]) - reference_position[:, 0]
+                        ),
+                    }
+                else:
+                    report["tagged_advection"] = {
+                        "warning": "particle topology changed before the physical GBD call",
+                        "tagged_count": int(len(tagged_index)),
+                        "reference_count": int(len(reference_indices)),
+                    }
+            return original_gbd(particles, time_step_size, *args, **kwargs)
+
+        vpm_solver.physics.gbd_diffusion = record_pre_gbd
+        original_transfer = transfer.transfer
+
+        def record_pre_replacement(vpm_state, velocity, velocity_gradient):
+            report["before_next_replacement"] = _region_budgets(
+                vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=False
             )
-            if np.array_equal(tagged_index, reference_indices):
-                displacement = p[tagged_index, 0] - reference_position[:, 0]
-                report["tagged_advection"] = {
-                    "normal_displacement_x": _percentiles(displacement),
-                    "streamwise_velocity_x": _percentiles(velocity[tagged_index, 0]),
-                    "required_distance_to_leave": _percentiles(
-                        float(transfer._box[1]) - reference_position[:, 0]
-                    ),
-                }
-            else:
-                report["tagged_advection"] = {
-                    "warning": "particle topology changed before the physical GBD call",
-                    "tagged_count": int(len(tagged_index)),
-                    "reference_count": int(len(reference_indices)),
-                }
-        return original_gbd(particles, time_step_size, *args, **kwargs)
+            report["before_next_replacement_tagged"] = _region_budgets(
+                vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=True
+            )
+            result = original_transfer(vpm_state, velocity, velocity_gradient)
+            report["after_next_replacement"] = _region_budgets(
+                vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=False
+            )
+            report["after_next_replacement_tagged"] = _region_budgets(
+                vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=True
+            )
+            report["replacement_result"] = {
+                "n_particles_removed": result.n_particles_removed,
+                "n_particles_injected": result.n_particles_injected,
+                "replaced_gamma_net": result.replaced_vortex_strength_net.tolist(),
+                "replaced_gamma_l1": result.replaced_vortex_strength_l1,
+                "injected_gamma_net": result.injected_vortex_strength_net.tolist(),
+                "injected_gamma_l1": result.injected_vortex_strength_l1,
+            }
+            return result
 
-    vpm_solver.physics.gbd_diffusion = record_pre_gbd
-    original_transfer = transfer.transfer
+        transfer.transfer = record_pre_replacement
 
-    def record_pre_replacement(vpm_state, velocity, velocity_gradient):
-        report["before_next_replacement"] = _region_budgets(
-            vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=False
-        )
-        report["before_next_replacement_tagged"] = _region_budgets(
-            vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=True
-        )
-        result = original_transfer(vpm_state, velocity, velocity_gradient)
-        report["after_next_replacement"] = _region_budgets(
-            vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=False
-        )
-        report["after_next_replacement_tagged"] = _region_budgets(
-            vpm_state, transfer_box=transfer._box, spacing=spacing, only_tagged=True
-        )
-        report["replacement_result"] = {
-            "n_particles_removed": result.n_particles_removed,
-            "n_particles_injected": result.n_particles_injected,
-            "replaced_gamma_net": result.replaced_vortex_strength_net.tolist(),
-            "replaced_gamma_l1": result.replaced_vortex_strength_l1,
-            "injected_gamma_net": result.injected_vortex_strength_net.tolist(),
-            "injected_gamma_l1": result.injected_vortex_strength_l1,
-        }
-        return result
+    def write_report(_vpm_solver):
+        output = case.CASE_DIR / "wake_handoff_diagnostic.json"
+        output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        print(f"Wake-handoff diagnostic written to {output}")
 
-    transfer.transfer = record_pre_replacement
-    coupler.solve(start_step=start_step)
-    output = case.CASE_DIR / "wake_handoff_diagnostic.json"
-    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    print(f"Wake-handoff diagnostic written to {output}")
+    with coupler:
+        coupler.apply_vpm(instrument)
+        coupler.solve(start_step=start_step)
+        coupler.apply_vpm(write_report)
 
 
 if __name__ == "__main__":

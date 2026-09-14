@@ -30,7 +30,7 @@ def create_solver(directory_name: str, dx: float):
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
-        max_cell_size=12*dx,
+        max_cell_size=12 * dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.
             msh.BoxRefinement(
@@ -163,8 +163,8 @@ def create_solver(directory_name: str, dx: float):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--dx", required=True, type=float)
+    parser.add_argument("--name", default="fine")
+    parser.add_argument("--dx", default=0.06, type=float)
     arguments = parser.parse_args()
     with create_solver(arguments.name, arguments.dx) as solver:
         solver.run()

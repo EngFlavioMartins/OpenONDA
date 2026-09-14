@@ -1,7 +1,8 @@
 """Rebuild the ring schematic and paired particle view from the saved LES run.
 
-Requires ParaView (PVPYTHON or installed pvpython), PyVista, and pdflatex.
-Uses a temporary build directory and keeps only PNG, PDF, and TeX outputs.
+Requires ParaView (PVPYTHON or installed pvpython), PyVista, and pdflatex;
+PNG export also requires pdftoppm. The temporary build produces PNG (default)
+or PDF figures, retaining their TeX sources and rendered image assets.
 No simulation samples or solver parameters are modified. Both snapshots use
 one orthographic field of view and the same strength-to-radius/color maps.
 """
@@ -14,11 +15,12 @@ if not __package__:
 
 
 from pathlib import Path
-import argparse, json, os, shutil, subprocess, tempfile
+import argparse, json, shutil, subprocess, tempfile
 import h5py, numpy as np, pyvista as pv
 from matplotlib import colormaps
 from .. import setup as s
 import openonda.vpm as vpm
+from openonda.executables import find_executable
 
 CASE = Path(__file__).resolve().parents[1]
 
@@ -64,6 +66,36 @@ def tex_document(body, height):
     )
 
 
+def export_document(work, output_dir, name, tex, figure_format, texbin):
+    """Compile the labelled scene and retain the requested figure format."""
+    (work / f"{name}.tex").write_text(tex)
+    subprocess.run(
+        [texbin, "-interaction=nonstopmode", "-halt-on-error", f"{name}.tex"],
+        cwd=work,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    shutil.copy2(work / f"{name}.tex", output_dir / f"{name}.tex")
+    if figure_format == "png":
+        pdftoppm = shutil.which("pdftoppm")
+        if pdftoppm is None:
+            raise FileNotFoundError("pdftoppm is required to export the rendered PNG.")
+        subprocess.run(
+            [
+                pdftoppm,
+                "-png",
+                "-r",
+                "400",
+                "-singlefile",
+                str(work / f"{name}.pdf"),
+                str(output_dir / name),
+            ],
+            check=True,
+        )
+    else:
+        shutil.copy2(work / f"{name}.pdf", output_dir / f"{name}.pdf")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -75,17 +107,12 @@ def main():
         "--schematic-only", action="store_true", help="Rebuild only the initial geometry diagram."
     )
     parser.add_argument("--output-dir", type=Path, default=CASE / "figures")
-    parser.add_argument("--pvpython", default=os.environ.get("PVPYTHON"))
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--pvpython")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    pvbin = args.pvpython or shutil.which("pvpython")
-    if not pvbin:
-        candidates = sorted(Path("/Applications").glob("ParaView*.app/Contents/bin/pvpython"))
-        if candidates:
-            pvbin = str(candidates[-1])
-    if not pvbin:
-        raise FileNotFoundError("Set PVPYTHON to the ParaView pvpython executable.")
-    texbin = shutil.which("pdflatex") or "/Library/TeX/texbin/pdflatex"
+    pvbin = find_executable("pvpython", args.pvpython)
+    texbin = find_executable("pdflatex")
     meta_path = CASE / "solution/les_transposed/vpm_metadata.json"
     if args.available and not meta_path.is_file():
         print("Skipping ring scenes until the LES run is available.")
@@ -258,8 +285,10 @@ def main():
             if args.schematic_only
             else ["particles_0", "particles_1", "schematic", "core_detail"]
         ):
-            shutil.copy2(work / f"{name}.png", args.output_dir / f"vortex_ring_{name}.png")
-            shutil.copy2(work / f"{name}.png", work / f"vortex_ring_{name}.png")
+            # The raw schematic must not collide with the labelled PNG export.
+            asset_name = "schematic_raw" if name == "schematic" else name
+            shutil.copy2(work / f"{name}.png", args.output_dir / f"vortex_ring_{asset_name}.png")
+            shutil.copy2(work / f"{name}.png", work / f"vortex_ring_{asset_name}.png")
         body = r"""\node[anchor=north west,inner sep=0] at (0,0) {\includegraphics[width=62.5mm]{vortex_ring_particles_0.png}};
 \node[anchor=north west,inner sep=0] at (62.5,0) {\includegraphics[width=62.5mm]{vortex_ring_particles_1.png}};
 \node[anchor=north west] at (1,0.5) {(a)};
@@ -284,7 +313,7 @@ def main():
             body += f"\\node[anchor=north,font=\\normalsize] at ({x},62.5) {{${label}$}};\n"
         body += r"\node[anchor=north,font=\normalsize] at (62.5,66.5) {$|\boldsymbol{\alpha}_p|/\max_q|\boldsymbol{\alpha}_{q,0}|$};"
         snapshot = tex_document(body, 74)
-        schematic_body = r"""\node[anchor=north west,inner sep=0] at (0,0) {\includegraphics[width=94mm,height=82mm]{vortex_ring_schematic.png}};
+        schematic_body = r"""\node[anchor=north west,inner sep=0] at (0,0) {\includegraphics[width=94mm,height=82mm]{vortex_ring_schematic_raw.png}};
 \node[anchor=north west,inner sep=0] at (90,8) {\includegraphics[width=35mm]{vortex_ring_core_detail.png}};
 \node at (29,36) {$R_0$};
 \node at (44,54) {$U_{\mathrm{ring}}\,\boldsymbol{e}_x$};
@@ -300,15 +329,7 @@ def main():
         if not args.schematic_only:
             documents.insert(0, ("vortex_ring_snapshots", snapshot))
         for name, tex in documents:
-            (work / f"{name}.tex").write_text(tex)
-            subprocess.run(
-                [texbin, "-interaction=nonstopmode", "-halt-on-error", f"{name}.tex"],
-                cwd=work,
-                check=True,
-                stdout=subprocess.DEVNULL,
-            )
-            for ext in ["tex", "pdf"]:
-                shutil.copy2(work / f"{name}.{ext}", args.output_dir / f"{name}.{ext}")
+            export_document(work, args.output_dir, name, tex, args.format, texbin)
 
 
 if __name__ == "__main__":

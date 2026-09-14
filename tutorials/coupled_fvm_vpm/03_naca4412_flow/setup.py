@@ -11,6 +11,7 @@ to study a different NACA 4412 case.
 from __future__ import annotations
 
 import math
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -52,7 +53,7 @@ VPM_LOGGING_INTERVAL_STEPS = round(SAMPLE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
 
 AIRFOIL_VERTICES = naca4_vertices(NACA_CODE, CHORD)
-FVM_MESH = msh.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
+FVM_MESH = partial(msh.coupling_box_mesh, FVM_BOX, SPACING, patch_name="numericalBoundary")
 AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],
@@ -187,12 +188,15 @@ COUPLER_SETUP = coupling.CouplerSetup(
 
 
 def main() -> None:
-    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.set_immersed_bodies(AIRFOIL, grid_spacing=SPACING)
-    fvm_solver.write_vtk()
-    vpm_solver = vpm.VPMSolver(VPM_CASE)
-    coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    coupled_solver.run()
+    with coupling.create_coupler(
+        FVM_SETUP,
+        VPM_CASE,
+        COUPLER_SETUP,
+        mesh=FVM_MESH,
+        immersed_bodies=AIRFOIL,
+        grid_spacing=SPACING,
+    ) as solver:
+        solver.run()
 
 
 if __name__ == "__main__":

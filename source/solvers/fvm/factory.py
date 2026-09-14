@@ -81,6 +81,7 @@ def _runtime_setup(
     parallel_mode = (
         "petsc_replicated"
         if setup.execution.parallel_mode == "petsc_replicated"
+        or any(boundary.velocity_type == "cyclic" for boundary in setup.boundaries)
         else "petsc_partitioned"
     )
     execution = replace(
@@ -93,10 +94,28 @@ def _runtime_setup(
         setup.output,
         asynchronous=False,
     )
+    # SciPy's direct solve is serial. Resolve that request to a tightly
+    # converged distributed solve; preserve every explicitly iterative method
+    # and never loosen an authored tolerance. The resolved choice is logged.
+    linear_options = {}
+    for equation in ("momentum", "pressure"):
+        method = getattr(setup.linear, f"{equation}_solver") or setup.linear.linear_solver
+        if method == "spsolve":
+            linear_options.update(
+                {
+                    f"{equation}_solver": "gmres",
+                    f"{equation}_tolerance": min(
+                        getattr(setup.linear, f"{equation}_tolerance"), 1e-10
+                    ),
+                    f"{equation}_relative_tolerance": 0.0,
+                    f"{equation}_final_relative_tolerance": 0.0,
+                }
+            )
     return replace(
         setup,
         execution=execution,
         output=output,
+        linear=replace(setup.linear, **linear_options) if linear_options else setup.linear,
     )
 
 
@@ -118,6 +137,8 @@ def _materialize_mesh(
         generated = mesh.build()
     else:
         generated = mesh
+    if isinstance(generated, BuildableMesh):
+        generated = generated.build()
     if isinstance(generated, tuple):
         generated = generated[0]
     if not isinstance(generated, dict):
@@ -183,6 +204,9 @@ def create_fvm_solver(
     solution_dir: str | Path | None = None,
     samples_dir: str | Path | None = None,
     mesh: MeshSource | None = None,
+    immersed_bodies=None,
+    grid_spacing: float | None = None,
+    require_empty_output: bool = False,
 ) -> FVMSolver:
     """Validate configuration, materialize a mesh, and construct an FVM solver.
 
@@ -201,6 +225,14 @@ def create_fvm_solver(
     mesh : path-like, mapping, BuildableMesh, callable, or None, optional
         Mesh source. ``.npz`` and Gmsh ``.msh`` files are supported. A callable
         or buildable object may return a mesh mapping or ``(mapping, report)``.
+    immersed_bodies : ImmersedBody or sequence, optional
+        Bodies attached before returning the solver. Their interpolation uses
+        a complete mesh; the factory selects replicated PETSc when parallel.
+    grid_spacing : float or None, optional
+        Mesh spacing for immersed-body interpolation.
+    require_empty_output : bool, default=False
+        Reject existing output directories before construction. The library
+        performs this check once, before any worker can create output.
 
     Returns
     -------
@@ -222,6 +254,15 @@ def create_fvm_solver(
     built on the rank required by the configured parallel layout.
     """
     validate_fvm_setup(setup)
+    if immersed_bodies is not None and setup.cores > 1:
+        setup = replace(
+            setup,
+            execution=replace(
+                setup.execution,
+                linear_backend="petsc",
+                parallel_mode="petsc_replicated",
+            ),
+        )
     runtime_setup = _runtime_setup(setup)
     validate_fvm_setup(runtime_setup)
     resolved_case_dir = Path(case_dir).resolve() if case_dir is not None else Path.cwd().resolve()
@@ -251,9 +292,7 @@ def create_fvm_solver(
 
         comm = MPI.COMM_WORLD
         is_root = MPI.COMM_WORLD.Get_rank() == 0
-        materialize_mesh_here = (
-            runtime_setup.execution.parallel_mode == "petsc_replicated" or is_root
-        )
+        materialize_mesh_here = is_root
 
     startup_logger = None
 
@@ -283,11 +322,16 @@ def create_fvm_solver(
 
     path_error = None
     try:
-        _prepare_output_directories(
-            resolved_solution_dir,
-            resolved_samples_dir,
-            create_samples=samples_requested,
-        )
+        if is_root:
+            if require_empty_output:
+                for destination in (resolved_solution_dir, resolved_samples_dir):
+                    if destination.exists():
+                        raise FileExistsError(f"Output directory already exists: {destination}")
+            _prepare_output_directories(
+                resolved_solution_dir,
+                resolved_samples_dir,
+                create_samples=samples_requested,
+            )
     except BaseException as error:
         path_error = error
     _raise_collective_failure(path_error, "output directory preparation")
@@ -320,6 +364,8 @@ def create_fvm_solver(
             startup_logger.close(status="failed", failure=logger_error)
     _raise_collective_failure(logger_error, "startup logging")
 
+    mesh_error = None
+    mesh_data = None
     try:
         with mesher_log_session(
             mesher_log_path if is_root else None,
@@ -342,8 +388,16 @@ def create_fvm_solver(
         if startup_logger is not None:
             startup_logger.info("component=fvm_startup status=mesh_materialized", flush=True)
     except BaseException as error:
-        _raise_collective_failure(error, "mesh materialization/export")
+        mesh_error = error
+    try:
+        _raise_collective_failure(mesh_error, "mesh materialization/export")
+    except BaseException as error:
+        if startup_logger is not None:
+            with suppress(BaseException):
+                startup_logger.close(status="failed", failure=error)
         raise
+    if comm is not None and runtime_setup.execution.parallel_mode == "petsc_replicated":
+        mesh_data = comm.bcast(mesh_data, root=0)
 
     try:
         from .core.solver import FVMSolver
@@ -356,6 +410,17 @@ def create_fvm_solver(
             mesh_data=mesh_data,
             logger=startup_logger,
         )
+        if immersed_bodies is not None:
+            attachment_error = None
+            try:
+                solver.set_immersed_bodies(immersed_bodies, grid_spacing=grid_spacing)
+            except BaseException as error:
+                attachment_error = error
+            try:
+                solver._collective_io_failure(attachment_error, "immersed-body construction")
+            except BaseException as error:
+                solver.close(status="failed", failure=error)
+                raise
         return solver
     except BaseException as error:
         if startup_logger is not None:

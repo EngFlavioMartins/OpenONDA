@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 import io
 
 import pytest
@@ -110,6 +110,61 @@ def test_variable_step_backward_coefficients_are_quadratic_exact() -> None:
     assert derivative == pytest.approx(0.0, abs=1.0e-14)
 
 
+def test_adaptive_sampling_does_not_create_the_cube_reference_sliver_step() -> None:
+    """Replay the time controller immediately before the saved t=8.4 drag spike."""
+    solver = object.__new__(FVMSolver)
+    solver.time = 8.389653072879867
+    solver.time_step_size = 0.008611637016626665
+    solver._time_config = fvm.TimeConfig(
+        time_step_size=0.01,
+        end_time=30.0,
+        adjustment=fvm.MaximumCourantTimeStep(maximum=0.9, maximum_time_step_size=0.04),
+    )
+    schedule = fvm.RunSchedule(every_time=0.05)
+    solver._run_event_schedules = lambda: (schedule,)
+    courant_rate = 0.3610601598897632 / solver.time_step_size
+    solver._measure_maximum_courant_number = lambda dt: courant_rate * dt
+    steps = []
+    while solver.time < 8.4 - 1.0e-12:
+        dt = solver._select_time_step_size()
+        steps.append(dt)
+        solver.time += dt
+
+    assert solver.time == pytest.approx(8.4, abs=1.0e-12)
+    assert len(steps) == 2
+    assert min(steps) > 0.005
+    assert max(steps) * courant_rate <= 0.9
+
+
+def test_adaptive_event_alignment_respects_cfl_and_every_schedule() -> None:
+    solver = object.__new__(FVMSolver)
+    solver.time = 0.0
+    solver.time_step_size = 0.013
+    solver._time_config = fvm.TimeConfig(
+        time_step_size=0.013,
+        end_time=0.3,
+        adjustment=fvm.MaximumCourantTimeStep(maximum=0.9),
+    )
+    schedules = (fvm.RunSchedule(every_time=0.05), fvm.RunSchedule(every_time=0.03))
+    solver._run_event_schedules = lambda: schedules
+    solver._measure_maximum_courant_number = lambda dt: 50 * dt
+    due_times = [[], []]
+    previous_step = solver.time_step_size
+    while solver.time < solver._time_config.end_time - 1.0e-12:
+        dt = solver._select_time_step_size()
+        assert dt <= 0.9 / 50 + 1.0e-14
+        assert dt <= 1.2 * previous_step + 1.0e-14
+        assert dt >= 0.5 * previous_step - 1.0e-14
+        solver.time += dt
+        for index, schedule in enumerate(schedules):
+            if schedule.is_due(0, solver.time, dt):
+                due_times[index].append(solver.time)
+        previous_step = dt
+
+    assert due_times[0] == pytest.approx([0.05 * k for k in range(1, 7)])
+    assert due_times[1] == pytest.approx([0.03 * k for k in range(1, 11)])
+
+
 def test_adaptive_backward_run_lands_exactly_on_end_time(tmp_path) -> None:
     setup = fvm.FVMSetup(
         case_name="adaptive_backward",
@@ -150,9 +205,9 @@ def test_adaptive_backward_run_lands_exactly_on_end_time(tmp_path) -> None:
         first_time_step_size = solver._accepted_time_step_size
         solver.advance()
 
-    assert first_time_step_size == pytest.approx(0.08)
-    assert solver._accepted_time_step_size == pytest.approx(0.02)
-    assert solver._previous_time_step_size == pytest.approx(0.02)
+    assert first_time_step_size == pytest.approx(0.05)
+    assert solver._accepted_time_step_size == pytest.approx(0.05)
+    assert solver._previous_time_step_size == pytest.approx(0.05)
     assert solver.time == pytest.approx(0.1)
     assert solver.step == 2
     solver.close()
@@ -194,3 +249,67 @@ def test_time_based_backup_is_an_exact_adaptive_step_deadline(tmp_path) -> None:
     assert solver._accepted_time_step_size == pytest.approx(0.03)
     assert (tmp_path / "solution" / "backup").is_file()
     solver.close()
+
+
+def test_output_deadline_does_not_generate_a_pressure_impulse(tmp_path) -> None:
+    """A 64-cell 3D channel reproduces the pressure jump from a tiny final step."""
+    setup = fvm.FVMSetup(
+        case_name="event_pressure",
+        logging=fvm.LoggingConfig(console=False),
+        backup=fvm.BackupConfig(schedule=None),
+        time=fvm.TimeConfig(
+            time_step_size=0.01,
+            end_time=1.0,
+            output_schedule=fvm.RunSchedule(every_n_steps=100000),
+        ),
+        schemes=fvm.DiscretizationConfig(
+            convection_scheme="linearUpwind", gradient_scheme="gauss", time_scheme="backward"
+        ),
+        linear=fvm.LinearSolverConfig(
+            linear_solver="spsolve",
+            pressure_solver="spsolve",
+            pressure_tolerance=1.0e-10,
+            momentum_tolerance=1.0e-10,
+        ),
+        pimple=fvm.PimpleControl(
+            n_outer_correctors=2,
+            n_correctors=2,
+            n_orthogonal_correctors=1,
+            velocity_relaxation=0.7,
+            pressure_relaxation=0.3,
+        ),
+        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.001),
+        boundaries=[
+            fvm.BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            fvm.BoundaryConfig.outlet("xmax"),
+            fvm.BoundaryConfig.wall("ymin"),
+            fvm.BoundaryConfig.wall("ymax"),
+            fvm.BoundaryConfig.wall("zmin"),
+            fvm.BoundaryConfig.wall("zmax"),
+        ],
+        initial_velocity=[1.0, 0.0, 0.0],
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = FVMSolver(setup, str(tmp_path), mesh_data=structured_box(4, 4, 4))
+        solver.auto_write = False
+        try:
+            for _ in range(20):
+                solver.advance()
+            end_time = solver.time + 0.010333964419951998 + 1.296270018258383e-5
+            solver._time_config = replace(
+                setup.time,
+                end_time=end_time,
+                adjustment=fvm.MaximumCourantTimeStep(
+                    maximum=100.0, maximum_time_step_size=0.010333964419951998
+                ),
+            )
+            for _ in range(2):
+                solver.advance()
+                diagnostic = solver.last_diagnostics
+                # The old last-step clipping gives a pressure span of 2.08;
+                # balanced steps keep it near the preceding physical span 0.033.
+                assert diagnostic.max_kinematic_pressure - diagnostic.min_kinematic_pressure < 0.1
+            assert solver.time == pytest.approx(end_time, abs=1.0e-12)
+            assert solver.last_diagnostics.max_continuity_error < 1.0e-6
+        finally:
+            solver.close()

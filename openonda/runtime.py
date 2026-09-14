@@ -17,7 +17,6 @@ _MPI_SIZE_VARIABLES = (
     "PMI_SIZE",
     "PMIX_SIZE",
     "MV2_COMM_WORLD_SIZE",
-    "SLURM_NTASKS",
 )
 _THREAD_VARIABLES = (
     "OMP_NUM_THREADS",
@@ -26,15 +25,52 @@ _THREAD_VARIABLES = (
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
 )
+_WORKER_THREADS: int | None = None
 
 
-def _world_size() -> int:
+def worker_thread_count() -> int:
+    """CPU budget for owner-only particle work between collective FVM solves.
+
+    MPI ranks each use one BLAS/Numba thread. While they wait for the particle
+    owner, that owner can use the case's CPU budget for Taichi/host kernels.
+    Standalone VPM defaults to the available CPUs. An explicit Taichi override
+    is still honoured for advanced callers.
+    """
+    requested = os.environ.get("TI_CPU_MAX_NUM_THREADS")
+    if requested is not None:
+        count = int(requested)
+        if count < 1:
+            raise ValueError("TI_CPU_MAX_NUM_THREADS must be positive")
+        return count
+    if _WORKER_THREADS is not None:
+        return _WORKER_THREADS
+    affinity = getattr(os, "sched_getaffinity", None)
+    return max(1, len(affinity(0)) if affinity is not None else (os.cpu_count() or 1))
+
+
+def detected_world_size() -> int:
+    """Read MPI launcher hints without initializing an MPI runtime.
+
+    An allocation such as SLURM_NTASKS reserves resources; it does not mean
+    this Python process already belongs to a multi-rank communicator. Only
+    launcher-specific variables are evidence that MPI has started.
+    """
     sizes = []
     for name in _MPI_SIZE_VARIABLES:
         value = os.environ.get(name)
         if value is not None:
-            sizes.append(int(value))
+            try:
+                size = int(value)
+                if size < 1:
+                    raise ValueError("MPI world size must be positive")
+            except ValueError as error:
+                raise RuntimeError(f"Invalid MPI launcher variable {name}={value!r}") from error
+            sizes.append(size)
     return max(sizes, default=1)
+
+
+def _world_size() -> int:
+    return detected_world_size()
 
 
 def _mpi_vendor() -> str:
@@ -112,15 +148,21 @@ class RunConfig:
         return self.cpu_cores > 1
 
     def _set_thread_count(self, count: int) -> None:
+        global _WORKER_THREADS
+        _WORKER_THREADS = self.cpu_cores
         # Numba fixes its pool capacity at import. Mutating NUMBA_NUM_THREADS
         # later breaks subsequent JIT compilation, including VPM diffusion
         # after an FVM solve in the same process. Mask active threads through
         # its runtime API, leaving the process pool capacity unchanged.
-        import numba
-
-        numba.set_num_threads(count)
         for name in _THREAD_VARIABLES:
             os.environ[name] = str(count)
+        import numba
+        from threadpoolctl import threadpool_limits
+
+        numba.set_num_threads(count)
+        # NumPy/SciPy are usually imported before solver construction. Merely
+        # setting environment variables here does not resize their live pools.
+        threadpool_limits(limits=count)
 
     def ensure_mpi(self, script: str | Path) -> None:
         """Ensure that ``script`` is running with the requested MPI world size.

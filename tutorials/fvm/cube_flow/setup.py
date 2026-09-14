@@ -9,6 +9,7 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import openonda.fvm as fvm
@@ -105,9 +106,9 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
 
 
 def main() -> None:
-    mesh, depth = square_cylinder_mesh(grid_spacing=SPACING, side_length=SIDE)
+    mesh = partial(square_cylinder_mesh, grid_spacing=SPACING, side_length=SIDE)
     solver = fvm.create_fvm_solver(
-        create_fvm_setup(depth), case_dir=Path(__file__).parent, mesh=mesh
+        create_fvm_setup(SPACING), case_dir=Path(__file__).parent, mesh=mesh
     )
     solver.run()
 

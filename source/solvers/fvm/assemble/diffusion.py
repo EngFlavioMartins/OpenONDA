@@ -12,7 +12,46 @@ Converted from uFVM cfdAssembleDiffusionTerm.m
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
+
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+
+
+@njit(cache=True)
+def _diffusion_interior_compiled(
+    field, gradient, diffusivity, owners, neighbours, areas, connections, weights, cf, ff, vf, tf
+):
+    for face in range(len(cf)):
+        owner, neighbour = owners[face], neighbours[face]
+        distance = np.sqrt(
+            connections[face, 0] ** 2 + connections[face, 1] ** 2 + connections[face, 2] ** 2
+        )
+        dot = 0.0
+        area_squared = 0.0
+        for axis in range(3):
+            dot += areas[face, axis] * connections[face, axis] / distance
+            area_squared += areas[face, axis] ** 2
+        if abs(dot) < 1e-30:
+            dot = 1e-30
+        orthogonal_area = area_squared / dot
+        weight = weights[face]
+        diffusion = (
+            diffusivity[0]
+            if len(diffusivity) == 1
+            else (weight * diffusivity[neighbour] + (1 - weight) * diffusivity[owner])
+        )
+        coefficient = diffusion * orthogonal_area / distance
+        correction = 0.0
+        for axis in range(3):
+            nonorthogonal = areas[face, axis] - orthogonal_area * connections[face, axis] / distance
+            face_gradient = (
+                weight * gradient[neighbour, axis] + (1 - weight) * gradient[owner, axis]
+            )
+            correction += face_gradient * nonorthogonal
+        correction *= -diffusion
+        cf[face], ff[face], vf[face] = coefficient, -coefficient, correction
+        if len(tf):
+            tf[face] = coefficient * field[owner] - coefficient * field[neighbour] + correction
 
 
 def assemble_diffusion_term_interior(
@@ -60,6 +99,25 @@ def assemble_diffusion_term_interior(
     flux_ff = np.empty(n_interior_faces, dtype=np.float64)
     flux_vf = np.empty(n_interior_faces, dtype=np.float64)
     flux_tf = np.empty(n_interior_faces, dtype=np.float64) if include_total_flux else None
+    if geo_data.get("_operator_backend") == "numba":
+        _diffusion_interior_compiled(
+            scalar_field,
+            scalar_field_gradient,
+            np.atleast_1d(diffusivity),
+            owners_all,
+            neighbours_all,
+            geo_data["face_area_vector"],
+            geo_data["cell_connection_vector"],
+            geo_data["face_interpolation_weight"],
+            flux_cf,
+            flux_ff,
+            flux_vf,
+            np.empty(0) if flux_tf is None else flux_tf,
+        )
+        result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+        if flux_tf is not None:
+            result["flux_tf"] = flux_tf
+        return result
 
     # Keep the temporary edge/gradient tensors bounded independently of mesh
     # size.  On the cube reference partition the all-face implementation held

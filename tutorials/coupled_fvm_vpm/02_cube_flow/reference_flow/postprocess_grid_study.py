@@ -27,7 +27,6 @@ import csv
 from dataclasses import dataclass
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any
 
@@ -1136,5 +1135,4 @@ def main() -> None:
 if __name__ == "__main__":
     # Keep Matplotlib's cache outside a source checkout when this script is
     # launched directly from a tutorial directory.
-    os.environ.setdefault("MPLCONFIGDIR", "/tmp/openonda-matplotlib-cache")
     main()

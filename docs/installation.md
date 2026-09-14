@@ -77,6 +77,14 @@ Making plotting optional requires first separating PyVista/VTK from the solver
 import and output paths; declaring an extra alone would leave an incomplete
 base installation. Documentation is Markdown, with no Sphinx build dependency.
 
+Solver factories configure CPU use internally. MPI runs limit BLAS and Numba
+to one thread per rank; `threadpoolctl` also updates libraries already loaded
+by Python. Coupled VPM work uses the case CPU budget on its owning rank while
+the other ranks wait. No per-tutorial thread exports are required. To construct
+a coupled run, pass an `FVMSetup`, `VPMCase` and `CouplerSetup` to
+`openonda.coupler.create_coupler` and use the returned driver as a context
+manager; the factory handles MPI ownership and cleanup.
+
 ## Optional external software
 
 - **Gmsh:** install `.[meshing]` for its Python API. Linux may also require

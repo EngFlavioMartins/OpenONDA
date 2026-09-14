@@ -24,6 +24,40 @@ class _RevisionedParticles:
         return self.state_revision
 
 
+def check_bounded_replacement(arch):
+    """Exercise shrinking, growing and chunk-boundary replacements on a device."""
+    ti.init(arch=arch, offline_cache=False)
+    try:
+        particles = Particles(max_n_particles=140_000)
+        rng = np.random.default_rng(73)
+        for count in (17, 65_549, 53, 0, 29):
+            state = {
+                "position": rng.normal(size=(count, 3)).astype(np.float32),
+                "velocity": rng.normal(size=(count, 3)).astype(np.float32),
+                "vortex_strength": rng.normal(size=(count, 3)).astype(np.float32),
+                "core_radius": rng.uniform(0.1, 0.2, count).astype(np.float32),
+                "particle_volume": rng.uniform(0.01, 0.02, count).astype(np.float32),
+                "kinematic_viscosity": rng.uniform(0.001, 0.002, count).astype(np.float32),
+                "eddy_viscosity": rng.uniform(0.002, 0.004, count).astype(np.float32),
+                "group_id": np.arange(count, dtype=np.int32) % 5,
+                "zone_id": np.arange(count, dtype=np.int32) % 7,
+                "velocity_gradient": rng.normal(size=(count, 3, 3)).astype(np.float32),
+                "strain_rate": rng.normal(size=(count, 3, 3)).astype(np.float32),
+            }
+            particles.replace_from_numpy(**state)
+            assert particles.n_particles_total == count
+            for name, expected in state.items():
+                np.testing.assert_array_equal(getattr(particles, name + "_cpu")(), expected)
+        assert not particles._native_matrix_uploads
+        assert not particles._native_vector_uploads
+    finally:
+        ti.reset()
+
+
+def test_particle_replacement_preserves_every_field_across_chunk_boundaries():
+    check_bounded_replacement(ti.cpu)
+
+
 def test_particle_snapshot_cache_invalidates_on_source_revision_not_step():
     particles = _RevisionedParticles()
 

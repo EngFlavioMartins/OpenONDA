@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import replace
 from pathlib import Path
-import sys
 
 
 CASE_DIR = Path(__file__).resolve().parents[1]
@@ -35,28 +34,20 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
 
 def _run_case(*, restart_from, restart_allowed_config_differences, max_coupling_steps):
     """Keep bounded and restarted research trials outside the tutorial entry point."""
-    case.RunConfig(cpu_cores=case.FVM_SETUP.cores, parallel_mode="mpi").ensure_runtime(
-        sys.argv[0]
-    )
     mesh = case.msh.CachedMesh(case.FVM_MESH, case.CASE_DIR / "constant" / "mesh.npz")
-    fvm_solver = case.fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=mesh)
-    vpm_solver = None
-    try:
-        if restart_from is None:
-            fvm_solver.write_vtk()
-        if fvm_solver.parallel.is_root:
-            vpm_solver = case.vpm.VPMSolver(case.VPM_CASE)
-        coupler = case.coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
+    with case.coupling.create_coupler(
+        case.FVM_SETUP,
+        case.VPM_CASE,
+        case.COUPLER_SETUP,
+        mesh=mesh,
+        require_empty_output=True,
+    ) as coupler:
         return coupler.run(
             restart_from=restart_from,
             restart_allowed_config_differences=restart_allowed_config_differences,
             max_coupling_steps=max_coupling_steps,
             backup_at_stop=True,
         )
-    finally:
-        fvm_solver.close()
-        if vpm_solver is not None:
-            vpm_solver.close()
 
 
 def main() -> None:
@@ -110,12 +101,6 @@ def main() -> None:
     if arguments.allow_transfer_config_differences and arguments.restart_from is None:
         raise ValueError("--allow-transfer-config-differences requires --restart-from")
     case.CASE_DIR = arguments.case_directory.resolve()
-    if any((case.CASE_DIR / name).exists() for name in ("solution", "samples")):
-        raise FileExistsError(
-            f"Trial directory is not empty: {case.CASE_DIR}. "
-            "Use a new isolated directory; trial output is never appended."
-        )
-    case.CASE_DIR.mkdir(parents=True, exist_ok=True)
 
     viscous = replace(
         case.VPM_CASE.numerics.viscous,

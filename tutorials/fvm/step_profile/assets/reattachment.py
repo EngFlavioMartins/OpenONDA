@@ -6,16 +6,15 @@ import os
 import numpy as np
 
 
-def reattachment_location(fvm_solver, step_height):
+def reattachment_location(fields, step_height):
     """Estimate x/h where the first downstream cell row turns to positive u."""
-    n_cells = fvm_solver.mesh_data["n_cells"]
-    centres = fvm_solver.geo_data["cell_centre"][:n_cells]
+    centres = fields.cell_centre
     downstream = centres[:, 0] > 0.0
     y0 = np.min(centres[downstream, 1])
     near_wall = downstream & np.isclose(centres[:, 1], y0, atol=1e-10)
     order = np.argsort(centres[near_wall, 0])
     x = centres[near_wall, 0][order]
-    u = fvm_solver.velocity[:n_cells, 0][near_wall][order]
+    u = fields.velocity[near_wall, 0][order]
 
     negative = np.flatnonzero(u < 0.0)
     if not len(negative):
@@ -29,11 +28,10 @@ def reattachment_location(fvm_solver, step_height):
     return float(x_re / step_height), float(np.min(u))
 
 
-def write_solution_tables(fvm_solver, solution_dir, history, step_height):
+def write_solution_tables(fields, solution_dir, history, step_height):
     """Write the cell fields and the reattachment/health history."""
     os.makedirs(solution_dir, exist_ok=True)
-    n_cells = fvm_solver.mesh_data["n_cells"]
-    centres = fvm_solver.geo_data["cell_centre"][:n_cells]
+    centres = fields.cell_centre
 
     fields_path = os.path.join(solution_dir, "fields.csv")
     with open(fields_path, "w", newline="") as stream:
@@ -49,8 +47,8 @@ def write_solution_tables(fvm_solver, solution_dir, history, step_height):
         )
         for centre, velocity, pressure in zip(
             centres,
-            fvm_solver.velocity[:n_cells],
-            fvm_solver.kinematic_pressure[:n_cells],
+            fields.velocity,
+            fields.kinematic_pressure,
             strict=True,
         ):
             writer.writerow(

@@ -14,7 +14,6 @@ Usage:
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -22,7 +21,6 @@ import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
-from openonda.runtime import RunConfig
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
@@ -63,10 +61,10 @@ INTERFACE_ITERATIONS = 12
 END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
-VPM_TIME_STEP_MULTIPLIER = 5
-
-
 FVM_TIME_STEP_SIZE = 0.01
+# The previous 0.05 s VPM step exceeded the strain limit at t=15.5 s.
+# Match the FVM step and keep samples/backups on exact common times.
+VPM_TIME_STEP_MULTIPLIER = 1
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
 VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIME_STEP_SIZE)
@@ -74,7 +72,7 @@ FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
 SAMPLE_SPACING = min(0.125, 2 * REFERENCE_FINE_DX)
-TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 10
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -124,14 +122,14 @@ FVM_SAMPLERS = (
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
-        end=[FVM_BOX[1],   0.0, 0.0],
+        end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name=f"fvm_centreline",
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
-        end=[FVM_BOX[1],   OFFAXIS_Y, 0.0],
+        end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name=f"fvm_offaxis_y075",
         schedule=FVM_SAMPLING_SCHEDULE,
@@ -306,24 +304,10 @@ VPM_CASE = vpm.VPMCase(
 
 
 def main() -> int:
-    RunConfig(cpu_cores=FVM_SETUP.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
     mesh = msh.CachedMesh(FVM_MESH, CASE_DIR / "constant" / "mesh.npz")
-
-    # Unfortunately, we don't know a way of initializing these solver that is not
-    # like the below. In a future patch, I plan to fix this...
-    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=mesh)
-    vpm_solver = None
-    if fvm_solver.parallel.is_root:
-        vpm_solver = vpm.VPMSolver(VPM_CASE)
-    coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-
-    # Run the simulation
-    coupled_solver.run()
-
-    # Close the solvers
-    fvm_solver.close()
-    if vpm_solver is not None:
-        vpm_solver.close()
+    with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=mesh) as solver:
+        solver.run()
+    return 0
 
 
 if __name__ == "__main__":

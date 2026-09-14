@@ -1,4 +1,5 @@
 #!/bin/bash -e
+# Usage: ./allplot.sh [png|pdf] (default: png)
 cd -- "$(dirname -- "$0")"
 
 python assets/plot_plate_polar.py --format "${1:-png}"

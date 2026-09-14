@@ -21,18 +21,18 @@ import numpy as np  # noqa: E402
 
 from . import _plotutil as util  # noqa: E402
 
-FIGURE_FORMAT = "png"
+FIGURE_FORMAT = "pdf"
 FIGURE_DPI = util.FIGURE_DPI
-FIGURE_HEIGHT_CM = 10.0
+FIGURE_HEIGHT_CM = 18.5
 FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
 
 # Manual layout controls (fractions of the fixed 12.5 cm canvas).
-LAYOUT_LEFT = 0.15
-LAYOUT_RIGHT = 0.98
+LAYOUT_LEFT = 0.18
+LAYOUT_RIGHT = 0.82
 LAYOUT_BOTTOM = 0.11
-LAYOUT_TOP = 0.95
+LAYOUT_TOP = 0.87
 LAYOUT_WSPACE = 0.58
-LAYOUT_HSPACE = 0.42
+LAYOUT_HSPACE = 0.80
 LEGEND_FONT_SIZE = util.FONT_SIZE_PT
 
 
@@ -41,13 +41,15 @@ def _records() -> list[dict]:
     if not path.exists():
         return []
     records = []
-    with path.open(encoding="utf-8") as stream:
-        for line in stream:
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                # A live writer may leave one temporarily incomplete final line.
-                continue
+    lines = path.read_text().splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            # A live writer may leave one temporarily incomplete final line.
+            if index == len(lines) - 1 and not line.endswith("\n"):
+                break
+            raise
     return records
 
 
@@ -55,9 +57,7 @@ def _values(records: list[dict], section: str, key: str) -> np.ndarray:
     # Unevaluated diagnostics are null, not zero; NaN keeps them off the plot.
     return np.asarray(
         [
-            np.nan
-            if row.get(section, {}).get(key, 0.0) is None
-            else row.get(section, {}).get(key, 0.0)
+            np.nan if row.get(section, {}).get(key) is None else row.get(section, {}).get(key)
             for row in records
         ],
         dtype=float,
@@ -65,12 +65,13 @@ def _values(records: list[dict], section: str, key: str) -> np.ndarray:
 
 
 def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
+    util._THEME.set_thesis_style()
     records = _records()
     if not records:
         raise SystemExit("No coupling diagnostics found in solution/.")
 
     time = np.asarray([row["time"] for row in records], dtype=float)
-    fig, axes = plt.subplots(2, 2, figsize=FIGURE_SIZE, dpi=dpi, sharex=True)
+    fig, axes = plt.subplots(4, 1, figsize=FIGURE_SIZE, dpi=dpi, sharex=True)
     fig.subplots_adjust(
         left=LAYOUT_LEFT,
         right=LAYOUT_RIGHT,
@@ -80,7 +81,7 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         hspace=LAYOUT_HSPACE,
     )
 
-    timing = axes[0, 0]
+    timing = axes[0]
     vpm = _values(records, "timing_seconds", "vpm")
     fvm = _values(records, "timing_seconds", "fvm")
     transfer = sum(
@@ -99,20 +100,22 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         colors=(util.COLORS["vpm"], util.COLORS["fvm"], util.COLORS["accent"]),
         alpha=0.85,
     )
-    timing.set(ylabel="s/step", title="Step cost")
+    timing.set(ylabel="Wall time [s]", title="(a) Cost per coupling interval")
     timing.legend(
-        loc="upper left",
-        ncol=1,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.22),
+        ncol=3,
+        frameon=False,
         fontsize=LEGEND_FONT_SIZE,
         handlelength=1.5,
         borderpad=0.3,
         labelspacing=0.25,
     )
 
-    population = axes[0, 1]
+    population = axes[1]
     population.plot(
         time,
-        np.asarray([row.get("n_transfer_particles", 0) for row in records]) / 1e6,
+        _values(records, "transfer", "n_particles_after") / 1e6,
         color=util.COLORS["vpm"],
         label="total",
     )
@@ -126,50 +129,57 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
             linestyle=style,
             label=label,
         )
-    population.set(ylabel=r"$N$ [million]", title="Particles")
+    population.set(ylabel=r"$N$ [million]", title="(b) Particle population")
     population.legend(
-        loc="upper left",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.22),
+        ncol=3,
+        frameon=False,
         fontsize=LEGEND_FONT_SIZE,
         handlelength=1.5,
         borderpad=0.3,
         labelspacing=0.25,
     )
 
-    fidelity = axes[1, 0]
+    fidelity = axes[2]
     state_change = np.sqrt(
         sum(
             _values(records, "transfer", f"state_change_vortex_strength_net_{axis}") ** 2
             for axis in "xyz"
         )
     )
-    fidelity.semilogy(
+    fidelity.plot(
         time,
-        np.maximum(state_change, 1e-30),
+        state_change,
         color=util.COLORS["fvm"],
     )
     fidelity.set(
-        xlabel="flow time [s]",
-        ylabel=r"$|\Delta\Gamma|$ [m$^3$/s]",
-        title="Net state change",
+        ylabel=r"$\|\Delta\sum_p\boldsymbol{\Gamma}_p\|$ [m$^3$/s]",
+        title="(c) Net transfer state change",
     )
 
-    quality = axes[1, 1]
+    quality = axes[3]
     for key, label, color in (
         ("replaced_vortex_strength_l1", "replaced", util.COLORS["fvm"]),
         ("injected_vortex_strength_l1", "injected", util.COLORS["accent"]),
     ):
-        quality.semilogy(
+        quality.plot(
             time,
-            np.maximum(_values(records, "transfer", key), 1e-30),
+            _values(records, "transfer", key),
             color=color,
             label=label,
         )
     quality.set(
         xlabel="flow time [s]",
-        ylabel=r"$\|\Gamma\|_1$ [m$^3$/s]",
-        title="State replacement",
+        ylabel=r"$\sum_p\|\boldsymbol{\Gamma}_p\|$ [m$^3$/s]",
+        title="(d) State replacement",
     )
-    quality.legend(loc="upper left", fontsize=LEGEND_FONT_SIZE)
+    quality.legend(loc="lower center", bbox_to_anchor=(0.5, 1.22), ncol=2, frameon=False)
+    from matplotlib.ticker import MaxNLocator
+
+    for ax in axes:
+        ax.yaxis.set_major_locator(MaxNLocator(4))
+    axes[3].set_xlabel("Flow time [s]")
 
     util.save(fig, "coupling_diagnostics", figure_format, dpi)
     plt.close(fig)

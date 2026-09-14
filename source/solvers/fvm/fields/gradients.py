@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
+
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
 _LSQ_QR_CONDITION_LIMIT = 1.0e8
@@ -95,12 +97,75 @@ def _correct_boundary_gradient(field_gradient, field_values, mesh_data, geo_data
     return field_gradient
 
 
+@njit(cache=True)
+def _accumulate_gauss_interior(values, owners, neighbours, weights, areas, n_faces, result):
+    for face in range(n_faces):
+        owner, neighbour = owners[face], neighbours[face]
+        weight = weights[face]
+        for component in range(values.shape[1]):
+            value = weight * values[neighbour, component] + (1 - weight) * values[owner, component]
+            for axis in range(3):
+                contribution = value * areas[face, axis]
+                result[owner, axis, component] += contribution
+                result[neighbour, axis, component] -= contribution
+
+
+@njit(cache=True)
+def _accumulate_gauss_boundary(
+    values, owners, neighbours, weights, areas, n_cells, n_interior, start, end, result
+):
+    for face in range(start, end):
+        owner = owners[face]
+        neighbour = neighbours[face]
+        for component in range(values.shape[1]):
+            value = values[n_cells + face - n_interior, component]
+            if neighbour >= 0:
+                weight = weights[face]
+                value = (
+                    weight * values[neighbour, component] + (1 - weight) * values[owner, component]
+                )
+            for axis in range(3):
+                result[owner, axis, component] += value * areas[face, axis]
+
+
+def _compute_gauss_gradient_compiled(field_values, mesh_data, geo_data):
+    n_cells = mesh_data["n_cells"]
+    n_interior = mesh_data["n_interior_faces"]
+    owners = mesh_data["owners"]
+    weights = geo_data["face_interpolation_weight"]
+    areas = geo_data["face_area_vector"]
+    result = np.zeros((len(field_values), 3, field_values.shape[1]))
+    _accumulate_gauss_interior(
+        field_values, owners, mesh_data["neighbours"], weights, areas, n_interior, result
+    )
+    neighbours = mesh_data.get("boundary_neighbour_cell")
+    if neighbours is None:
+        neighbours = np.full(mesh_data["n_faces"], -1, dtype=np.int32)
+    for boundary in mesh_data["boundary"]:
+        if not _is_empty_boundary(boundary):
+            start = boundary["start_face"]
+            _accumulate_gauss_boundary(
+                field_values,
+                owners,
+                neighbours,
+                weights,
+                areas,
+                n_cells,
+                n_interior,
+                start,
+                start + boundary["n_faces"],
+                result,
+            )
+    result[:n_cells] /= geo_data["cell_volume"][:, None, None]
+    return _finish_gauss_gradient(result, field_values, mesh_data, geo_data)
+
+
 def compute_gauss_gradient(field_values, mesh_data, geo_data):
     """Compute cell gradients with the linear Gauss theorem.
 
-    Uses deterministic ``bincount`` reductions for face accumulation. The
-    algorithm and interface are identical to
-    :func:`compute_gradient_gauss_linear`.
+    Uses compiled face accumulation with the Numba operator backend and
+    ``bincount`` reductions with NumPy. Both apply the same linear face
+    interpolation and boundary-normal correction.
 
     Parameters
     ----------
@@ -132,6 +197,8 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     # Determine field type
     if field_values.ndim == 1:
         field_values = field_values.reshape(-1, 1)
+    if geo_data.get("_operator_backend") == "numba":
+        return _compute_gauss_gradient_compiled(field_values, mesh_data, geo_data)
 
     n_total = field_values.shape[0]
     n_components = field_values.shape[1]
@@ -139,7 +206,6 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
-    n_boundary_faces = n_faces - n_interior_faces
 
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
@@ -232,6 +298,15 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     for i_component in range(n_components):
         field_gradient[:n_cells, :, i_component] /= cell_volume[:, np.newaxis]
 
+    return _finish_gauss_gradient(field_gradient, field_values, mesh_data, geo_data)
+
+
+def _finish_gauss_gradient(field_gradient, field_values, mesh_data, geo_data):
+    n_cells = mesh_data["n_cells"]
+    n_interior_faces = mesh_data["n_interior_faces"]
+    n_faces = mesh_data["n_faces"]
+    n_boundary_faces = n_faces - n_interior_faces
+    owners = mesh_data["owners"]
     # A localized rank contains every face needed for its owned cells, but
     # only a partial stencil for halo cells. Face schemes such as
     # linearUpwind and corrected laplacians interpolate gradients on both

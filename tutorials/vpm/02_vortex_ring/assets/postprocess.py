@@ -4,6 +4,7 @@
 Strict validation certifies a comparable four-case instability-onset campaign.
 ``--available`` only checks the sample files consumed by the plots, allowing
 figures to be rebuilt while another variant is still running.
+Figure checks use PNG by default; pass ``--format pdf`` after PDF exports.
 """
 
 from __future__ import annotations
@@ -179,9 +180,9 @@ def _readable_finite_csv(path: Path) -> bool:
     return bool(np.isfinite(numeric).all().all())
 
 
-def _figure_failures() -> list[str]:
+def _figure_failures(figure_format: str = "png") -> list[str]:
     failures = []
-    for extension in ("png", "pdf"):
+    for extension in ("png", "pdf") if figure_format == "both" else (figure_format,):
         for name in (
             "vortex_ring_motion",
             "vortex_ring_energy",
@@ -194,7 +195,7 @@ def _figure_failures() -> list[str]:
     return failures
 
 
-def validate_available(pre_plot: bool) -> int:
+def validate_available(pre_plot: bool, figure_format: str = "png") -> int:
     """Validate only the existing sample histories needed to draw the figures."""
     failures: list[str] = []
     available: dict[str, list[str]] = {}
@@ -214,7 +215,7 @@ def validate_available(pre_plot: bool) -> int:
             failures.append(f"no readable {csv_name} is available")
 
     if not pre_plot:
-        failures.extend(_figure_failures())
+        failures.extend(_figure_failures(figure_format))
     if failures:
         print("\n".join(f"[FAIL] {failure}" for failure in failures))
         return 1
@@ -223,7 +224,7 @@ def validate_available(pre_plot: bool) -> int:
     return 0
 
 
-def validate(pre_plot: bool) -> int:
+def validate(pre_plot: bool, figure_format: str = "png") -> int:
     """Require a complete, comparable instability-onset campaign."""
     failures: list[str] = []
     outcomes: list[tuple[float, str, str]] = []
@@ -292,7 +293,7 @@ def validate(pre_plot: bool) -> int:
                 failures.append(f"{name}: empty or non-finite {csv_name}")
 
     if not pre_plot:
-        failures.extend(_figure_failures())
+        failures.extend(_figure_failures(figure_format))
     if outcomes:
         ordered = sorted(outcomes, reverse=True)
         ranking = ", ".join(
@@ -370,7 +371,11 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
         "longest_sustained_variants": (
             [name for time, name in ranked if time == ranked[0][0]] if ranked else []
         ),
-        "figures": sorted(path.name for path in figures_dir.glob("*.pdf")),
+        "figures": sorted(
+            path.name
+            for path in figures_dir.glob("*")
+            if path.is_file() and path.suffix in (".png", ".pdf")
+        ),
     }
 
 
@@ -378,14 +383,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pre-plot", action="store_true", help="skip figure existence checks")
     parser.add_argument(
+        "--format",
+        choices=("png", "pdf", "both"),
+        default="png",
+        help="Figure format to check during validation (default: png).",
+    )
+    parser.add_argument(
         "--available",
         action="store_true",
         help="validate available plotting inputs without requiring a complete campaign",
     )
     args = parser.parse_args()
     if args.available:
-        return validate_available(pre_plot=args.pre_plot)
-    return validate(pre_plot=args.pre_plot)
+        return validate_available(pre_plot=args.pre_plot, figure_format=args.format)
+    return validate(pre_plot=args.pre_plot, figure_format=args.format)
 
 
 if __name__ == "__main__":

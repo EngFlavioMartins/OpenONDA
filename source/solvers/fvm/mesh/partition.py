@@ -538,6 +538,10 @@ def localize_mesh_and_geometry(
             )[local_cell_ids]
         ),
         "global_boundary_names": tuple(str(patch["name"]) for patch in mesh_data["boundary"]),
+        "global_boundary_ranges": {
+            str(patch["name"]): (int(patch["start_face"]), int(patch["n_faces"]))
+            for patch in mesh_data["boundary"]
+        },
         "partition": partition,
         "_n_owned": len(partition.owned_global_ids),
     }

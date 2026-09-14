@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 
 import numpy as np
@@ -33,6 +33,23 @@ def _petsc_row_preallocation(indptr, indices, row_start, row_end):
         diagonal[row] = local_count
         off_diagonal[row] = indptr[row + 1] - indptr[row] - local_count
     return diagonal, off_diagonal
+
+
+@njit(cache=True)
+def _maximum_relative_row_change(indptr, data, previous):
+    maximum = 0.0
+    for row in range(len(indptr) - 1):
+        difference = 0.0
+        norm = 0.0
+        for position in range(indptr[row], indptr[row + 1]):
+            reference = previous[position]
+            difference += abs(data[position] - reference)
+            norm += abs(reference)
+        relative = difference / max(norm, 1e-300)
+        if not np.isfinite(relative):
+            return np.inf
+        maximum = max(maximum, relative)
+    return maximum
 
 
 @dataclass(frozen=True)
@@ -147,8 +164,9 @@ class PartitionedLinearWorkspace:
 
     Coefficients and RHS values are replaced for every solve; ownership,
     topology, KSP method, and null-space treatment define the allocation
-    signature.  Retaining the allocation removes collective object churn
-    without allowing a stale preconditioner to change convergence behaviour.
+    signature. Retaining the allocation removes collective object churn.
+    Optional preconditioner reuse keeps the equation and verified convergence
+    tolerances unchanged, with a fresh setup if the lagged hierarchy fails.
     """
 
     def __init__(self, context) -> None:
@@ -173,6 +191,7 @@ class PartitionedLinearWorkspace:
         self.ksp = None
         self.nullspace = None
         self._signature = None
+        self._preconditioner_data = None
 
     def _destroy_objects(self) -> None:
         for name in ("ksp", "residual", "solution", "rhs", "matrix", "nullspace"):
@@ -181,6 +200,23 @@ class PartitionedLinearWorkspace:
                 value.destroy()
                 setattr(self, name, None)
         self._signature = None
+        self._preconditioner_data = None
+
+    def _can_reuse_preconditioner(self, system, tolerance):
+        """Bound every row's change against the matrix that built the PC.
+
+        Using the preceding solve would allow cumulative drift without rebuild.
+        Every rank makes the same decision, including ranks with no owned rows.
+        """
+        previous = self._preconditioner_data
+        if tolerance is None or previous is None:
+            return False
+        local_change = _maximum_relative_row_change(system.indptr, system.data, previous)
+        change = self.context.global_max(float(local_change))
+        return bool(np.isfinite(change) and change <= tolerance)
+
+    def _remember_preconditioner_matrix(self, system):
+        self._preconditioner_data = system.data.copy()
 
     def close(self) -> None:
         """Collectively destroy PETSc objects owned by this workspace."""
@@ -268,6 +304,7 @@ class PartitionedLinearWorkspace:
         constant_nullspace: bool,
         initial_guess: np.ndarray | None,
         matrix_values_unchanged: bool = False,
+        preconditioner_reuse_tolerance: float | None = None,
     ):
         """Update numeric values and solve using persistent PETSc objects."""
         try:
@@ -285,8 +322,12 @@ class PartitionedLinearWorkspace:
         assert self.residual is not None
         assert self.ksp is not None
 
-        reuse_preconditioner = bool(matrix_values_unchanged and not objects_rebuilt)
-        if not reuse_preconditioner:
+        matrix_unchanged = bool(matrix_values_unchanged and not objects_rebuilt)
+        reuse_preconditioner = matrix_unchanged or self._can_reuse_preconditioner(
+            system, preconditioner_reuse_tolerance
+        )
+        # A reusable PC must never prevent updating the actual equation.
+        if not matrix_unchanged:
             self.matrix.zeroEntries()
             self.matrix.setValuesCSR(
                 np.asarray(system.indptr, dtype=PETSc.IntType),
@@ -334,11 +375,18 @@ class PartitionedLinearWorkspace:
             uniform = self.rhs.duplicate()
             uniform.set(x_mean)
             self.matrix.mult(uniform, reference)
+            reference_norm = float(reference.norm())
             self.matrix.mult(self.solution, self.residual)
             self.residual.axpy(-1.0, reference)
             deviation = float(self.residual.norm())
             reference.aypx(-1.0, self.rhs)  # reference := b - A(x_mean)
-            norm_factor = max(deviation + float(reference.norm()), 1e-30)
+            # Match deviation_norm_factor in the serial/replicated path.
+            # A constant solution can leave only assembly roundoff; dividing
+            # that residual by another roundoff-sized number reports O(1).
+            norm_factor = max(
+                deviation + float(reference.norm()),
+                1e-12 * max(rhs_norm_pre, reference_norm, 1.0),
+            )
             reference.destroy()
             uniform.destroy()
         initial_residual = initial_residual_norm / norm_factor
@@ -385,10 +433,35 @@ class PartitionedLinearWorkspace:
             preconditioner_rebuilt=not reuse_preconditioner,
         )
         if not result.converged:
+            if reuse_preconditioner:
+                # A changed matrix can make a lagged PC ineffective. Rebuild
+                # once, keeping the same equation and convergence tolerances.
+                solution, retry = self.solve(
+                    system,
+                    method=method,
+                    tolerance=tolerance,
+                    relative_tolerance=relative_tolerance,
+                    max_iterations=max_iterations,
+                    constant_nullspace=constant_nullspace,
+                    initial_guess=initial_guess,
+                )
+                if preconditioner_reuse_tolerance is not None:
+                    self._remember_preconditioner_matrix(system)
+                return solution, replace(
+                    retry,
+                    setup_seconds=result.setup_seconds + retry.setup_seconds,
+                    solve_seconds=result.solve_seconds + retry.solve_seconds,
+                    iterations=result.iterations + retry.iterations,
+                )
             raise LinearSolveError(
                 f"Partitioned PETSc {method} failed after {result.iterations} iterations: "
                 f"{result.reason}"
             )
+        if not reuse_preconditioner:
+            if preconditioner_reuse_tolerance is not None:
+                self._remember_preconditioner_matrix(system)
+            else:
+                self._preconditioner_data = None
         return self.solution.getArray(readonly=True).copy(), result
 
 
@@ -432,6 +505,7 @@ def solve_local_partitioned_system(
     initial_guess=None,
     workspace: PartitionedLinearWorkspace | None = None,
     matrix_values_unchanged: bool = False,
+    preconditioner_reuse_tolerance: float | None = None,
 ):
     """Solve owned rows and return a refreshed owned-plus-halo local vector."""
     if context.partition is None:
@@ -460,6 +534,7 @@ def solve_local_partitioned_system(
             constant_nullspace=constant_nullspace,
             initial_guess=guess,
             matrix_values_unchanged=matrix_values_unchanged,
+            preconditioner_reuse_tolerance=preconditioner_reuse_tolerance,
         )
     local = np.empty(len(context.partition.local_global_ids), dtype=np.float64)
     local[:n_owned] = owned

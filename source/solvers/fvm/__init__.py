@@ -33,6 +33,7 @@ from .core.solver import FVMSolver
 from .core.state import FieldState
 from .factory import create_fvm_solver
 from .grid_study import analyse_grid_study, update_grid_study
+from .io.analysis import AnalysisSnapshot, BoundarySnapshot
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import (
     ForceSampler,
@@ -46,6 +47,8 @@ from .solve.linear_interface import LinearSolveResult
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
+    "AnalysisSnapshot",
+    "BoundarySnapshot",
     "BackupConfig",
     "Backup",
     "BoundaryConfig",

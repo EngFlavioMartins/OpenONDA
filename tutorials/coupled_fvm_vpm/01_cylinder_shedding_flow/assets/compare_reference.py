@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/openonda-matplotlib-cache")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -47,7 +45,7 @@ def common_history(candidate, reference, columns):
     return times, left, right, errors
 
 
-def compare(case_dir, reference_name, *, if_available=False):
+def compare(case_dir, reference_name, *, if_available=False, figure_format="png"):
     samples = case_dir / "samples"
     reference = case_dir / "reference_flow/samples" / reference_name
     force_file = reference / "forces_history.csv"
@@ -76,7 +74,7 @@ def compare(case_dir, reference_name, *, if_available=False):
         axis.grid(alpha=0.2)
     axes[0].legend()
     axes[-1].set_xlabel("t U∞/D")
-    fig.savefig(figures / "cylinder_reference_forces.png", dpi=180)
+    fig.savefig(figures / f"cylinder_reference_forces.{figure_format}", dpi=180)
     plt.close(fig)
 
     profiles = []
@@ -148,7 +146,7 @@ def compare(case_dir, reference_name, *, if_available=False):
             shown_reference.add(x)
         axes[0, 0].legend(fontsize=8)
         fig.suptitle(f"Velocity profiles at common t U∞/D = {snapshot_time:g}")
-        fig.savefig(figures / "cylinder_reference_profiles.png", dpi=180)
+        fig.savefig(figures / f"cylinder_reference_profiles.{figure_format}", dpi=180)
         plt.close(fig)
     destination = case_dir / "solution/cylinder_reference_comparison.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -161,5 +159,8 @@ if __name__ == "__main__":
     parser.add_argument("--reference", default="medium")
     parser.add_argument("--case-dir", type=Path, default=CASE_DIR)
     parser.add_argument("--if-available", action="store_true")
+    parser.add_argument("--format", choices=("png", "pdf"), default="png")
     args = parser.parse_args()
-    compare(args.case_dir, args.reference, if_available=args.if_available)
+    compare(
+        args.case_dir, args.reference, if_available=args.if_available, figure_format=args.format
+    )

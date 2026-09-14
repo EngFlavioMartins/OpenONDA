@@ -319,12 +319,8 @@ COUPLER_SETUP = coupling.CouplerSetup(
 
 
 def main() -> None:
-    mesh = FVM_MESH.build()
-    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=mesh)
-    fvm_solver.write_vtk()
-    vpm_solver = vpm.VPMSolver(VPM_CASE)
-    coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    coupled_solver.run(backup_at_stop=True)
+    with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=FVM_MESH) as solver:
+        solver.run(backup_at_stop=True)
 
 
 if __name__ == "__main__":

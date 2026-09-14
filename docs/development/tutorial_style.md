@@ -15,13 +15,21 @@ Use `tutorials/vpm/01_lamb_oseen_vortex/setup.py` and
   `try/except`, assertions, custom CLI validation, and environment checks out
   of `setup.py`.
 - Keep physical branching when it explains distinct models or motion. A few
-  comparison choices may use `argparse`; other inputs are edited in Python.
+  comparison choices may use `argparse`, with defaults so `python setup.py`
+  runs a case; other inputs are edited in Python.
   Keep one active `setup.py` per tutorial; place archival research tools in
   `assets/` when they are still needed for historical reproduction.
 - Use the installed public API. Never alter `sys.path` or `PYTHONPATH`.
   Ordinary imports come first: standard library, third party, OpenONDA. A
   case-local `case_package(Path(__file__).parent)` declaration supports local
   relative asset imports for both direct execution and installed workspaces.
+- Solver factories own MPI launch, thread limits, logging, and file ownership.
+  Pass a mesh builder/configuration to the FVM factory instead of building it
+  first. Use the configuration-based coupled factory rather than constructing
+  VPM on each process. Custom global field analyses use `solver.evaluate`;
+  tables use `solver.write_csv`. Never put rank checks in tutorial code.
+  `tests/tutorials/test_plain_entrypoints.py` guards FVM setups, launchers and
+  assets against MPI imports, rank checks and runtime environment workarounds.
 - Let the solvers write `vpm_metadata.json` and `fvm_metadata.json`. Analysis
   reads those files, including each run's recorded parameters; never generate
   a second tutorial configuration or metadata file.
@@ -34,10 +42,11 @@ The case root normally contains `setup.py`, `allrun.sh`, `allplot.sh`,
 it helps explain the case. Generated solution, samples, and figures are not
 inputs or installation resources.
 
-Launch from the case directory and list direct Python commands:
+Anchor each shell launcher to its own directory and list direct Python commands:
 
 ```bash
 #!/bin/bash -e
+cd -- "$(dirname -- "$0")"
 python setup.py --variant dns_direct
 python setup.py --variant dns_transposed
 ```

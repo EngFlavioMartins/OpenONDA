@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publication-style FVM/VPM and reference streamwise-velocity fields."""
+"""Matched 3D velocity differences on the saved z=0 slice."""
 
 if not __package__:
     from pathlib import Path as _CasePath
@@ -7,268 +7,248 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-
-from pathlib import Path
 import argparse
-import sys
-
+import csv
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from scipy.interpolate import griddata  # noqa: E402
-
-from . import _plotutil as util  # noqa: E402
-
-FIGURE_FORMAT = "png"
-FIGURE_DPI = util.FIGURE_DPI
-FIGURE_HEIGHT_CM = 7.5
-FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
-
-# Manual layout controls (fractions of the fixed 12.5 cm canvas).
-LAYOUT_LEFT = 0.11
-LAYOUT_RIGHT = 0.99
-LAYOUT_BOTTOM = 0.14
-LAYOUT_TOP = 0.90
-LAYOUT_WSPACE = 0.10
-LAYOUT_HSPACE = 0.72
-COLORBAR_HEIGHT_RATIO = 0.055
-
-BODY_HALF = 0.5
-BODY_MARGIN = 0.05
-OUTLET_BAND = 0.12
+import matplotlib.pyplot as plt
+import numpy as np
+from . import _plotutil as util
 
 
-def _body_mask(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    return (np.abs(x) <= BODY_HALF + BODY_MARGIN) & (np.abs(y) <= BODY_HALF + BODY_MARGIN)
+def _on_grid(source: dict, target: dict) -> np.ndarray:
+    """Match equivalent saved coordinates; never fill gaps or extrapolate."""
+    for key in ("x", "y"):
+        a, b = source[key], target[key]
+        tolerance = 4 * np.finfo(np.float32).eps * max(1, float(np.max(np.abs(b))))
+        if a.shape != b.shape or not np.allclose(a, b, rtol=0, atol=tolerance):
+            raise ValueError(
+                "Slice coordinates differ: resample the saved fields on one common grid"
+            )
+    result = np.array(source["velocity"], dtype=float, copy=True)
+    result[~source["valid"]] = np.nan
+    return result
 
 
-def _add_body(ax) -> None:
-    ax.add_patch(
-        plt.Rectangle(
-            (-BODY_HALF, -BODY_HALF),
-            2 * BODY_HALF,
-            2 * BODY_HALF,
-            facecolor=util.COLORS["background_light"],
-            edgecolor=util.COLORS["DarkText"],
-            lw=0.3,
+def area_weights(x: np.ndarray, y: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """Vertex quadrature over rectangles whose four corners are valid.
+
+    This matches the support used by the contour display. Report the covered
+    area, because an unsampled wall strip must not count as zero error.
+    """
+    if not np.allclose(x, x[:1, :]) or not np.allclose(y, y[:, :1]):
+        raise ValueError("Expected a rectilinear slice")
+    dx, dy = np.diff(x[0]), np.diff(y[:, 0])
+    if np.any(dx <= 0) or np.any(dy <= 0):
+        raise ValueError("Slice axes must increase")
+    cells = valid[:-1, :-1] & valid[1:, :-1] & valid[:-1, 1:] & valid[1:, 1:]
+    area = dy[:, None] * dx[None, :] * cells
+    weights = np.zeros_like(x)
+    weights[:-1, :-1] += area / 4
+    weights[1:, :-1] += area / 4
+    weights[:-1, 1:] += area / 4
+    weights[1:, 1:] += area / 4
+    return weights
+
+
+def differences(x, y, left, right):
+    if left.shape != (*x.shape, 3) or right.shape != left.shape:
+        raise ValueError("A velocity comparison requires all three components")
+    valid = np.all(np.isfinite(left), axis=-1) & np.all(np.isfinite(right), axis=-1)
+    valid &= ~((np.abs(x) <= 0.5 + 1e-12) & (np.abs(y) <= 0.5 + 1e-12))
+    weights = area_weights(x, y, valid)
+    if not np.any(weights > 0):
+        raise ValueError("No common sampled fluid area")
+    delta = np.where(valid[..., None], right - left, np.nan)
+    error = 100 * np.linalg.norm(delta, axis=-1)
+    # Discrete area-weighted RMS; maximum is over valid sample nodes, not pixels.
+    mean_square = np.sum(weights * np.nan_to_num(error) ** 2) / weights.sum()
+    stats = {
+        "rms_percent": float(np.sqrt(mean_square)),
+        "sampled_max_percent": float(np.nanmax(error)),
+        "covered_area_D2": float(weights.sum()),
+        "valid_nodes": int(valid.sum()),
+    }
+    return error, valid, stats
+
+
+def display_grid(x, y, vectors, valid, subdivisions=4):
+    """Bilinearly interpolate vectors for contours, then let callers take norms.
+
+    No smoothing or statistical calculation is performed on display pixels.
+    Quads with missing corners remain masked, including the wall-adjacent strip.
+    """
+    nx, ny = x.shape[1], x.shape[0]
+    tx = np.linspace(0, nx - 1, (nx - 1) * subdivisions + 1)
+    ty = np.linspace(0, ny - 1, (ny - 1) * subdivisions + 1)
+    ix = np.minimum(tx.astype(int), nx - 2)
+    iy = np.minimum(ty.astype(int), ny - 2)
+    wx, wy = (tx - ix)[None, :, None], (ty - iy)[:, None, None]
+    a = vectors[iy[:, None], ix[None, :]]
+    b = vectors[iy[:, None], ix[None, :] + 1]
+    c = vectors[iy[:, None] + 1, ix[None, :]]
+    d = vectors[iy[:, None] + 1, ix[None, :] + 1]
+    values = (1 - wy) * ((1 - wx) * a + wx * b) + wy * ((1 - wx) * c + wx * d)
+    good = valid[:-1, :-1] & valid[:-1, 1:] & valid[1:, :-1] & valid[1:, 1:]
+    values[~good[iy[:, None], ix[None, :]]] = np.nan
+    xx, yy = np.meshgrid(np.interp(tx, np.arange(nx), x[0]), np.interp(ty, np.arange(ny), y[:, 0]))
+    return xx, yy, values
+
+
+def _field_figure(
+    time, x, y, left, right, left_title, right_title, name, fmt, dpi, *, time_scale=1
+):
+    util._THEME.set_thesis_style()
+    error, valid, stats = differences(x, y, left, right)
+    xx, yy, dense_left = display_grid(x, y, left, valid)
+    _, _, dense_right = display_grid(x, y, right, valid)
+    dense_error = 100 * np.linalg.norm(dense_right - dense_left, axis=-1)
+    combined = np.concatenate((left[..., 0][valid], right[..., 0][valid]))
+    low, high = float(combined.min()), float(combined.max())
+    if high - low < 1e-8:
+        low, high = low - 0.01, high + 0.01
+    maximum = max(stats["sampled_max_percent"], 1e-6)
+
+    height_cm = 11.8
+    fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
+    axes = [
+        fig.add_axes((0.14, 6.6 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.56, 6.6 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.14, 1.27 / height_cm, 0.30, 3.75 / height_cm)),
+    ]
+    velocity_bar = fig.add_axes((0.56, 4.3 / height_cm, 0.30, 0.26 / height_cm))
+    error_bar = fig.add_axes((0.56, 2.8 / height_cm, 0.30, 0.26 / height_cm))
+    fig.text(0.5, 0.977, rf"$z/D=0,\quad tU_\infty/D={time * time_scale:g}$", ha="center", va="top")
+    levels = np.linspace(low, high, 41)
+    for ax, values, title in zip(axes[:2], (dense_left, dense_right), (left_title, right_title)):
+        velocity_plot = ax.contourf(
+            xx,
+            yy,
+            values[..., 0],
+            levels=levels,
+            cmap=util.COLORMAPS["velocity"],
+            corner_mask=False,
         )
+        ax.set_title(title)
+    error_plot = axes[2].contourf(
+        xx,
+        yy,
+        dense_error,
+        levels=np.linspace(0, maximum, 41),
+        cmap=util.COLORMAPS["error"],
+        corner_mask=False,
     )
+    axes[2].set_title("(c) Difference")
+    for ax in axes:
+        ax.set(
+            xlabel=r"$x/D$",
+            xlim=(x.min(), x.max()),
+            ylim=(y.min(), y.max()),
+            xticks=[-1, 0, 1],
+            yticks=[-1, 0, 1],
+            aspect="equal",
+        )
+        ax.set_facecolor(util.COLORS["background_light"])
+        ax.add_patch(
+            plt.Rectangle((-0.5, -0.5), 1, 1, facecolor="white", edgecolor="black", lw=0.5)
+        )
+    axes[0].set_ylabel(r"$y/D$")
+    axes[2].set_ylabel(r"$y/D$")
+    axes[1].tick_params(labelleft=False)
+    fig.colorbar(
+        velocity_plot,
+        cax=velocity_bar,
+        orientation="horizontal",
+        format="%.2g",
+        ticks=[low, (low + high) / 2, high],
+        label=r"$u_x/U_\infty$",
+    )
+    fig.colorbar(
+        error_plot,
+        cax=error_bar,
+        orientation="horizontal",
+        format="%.2g",
+        ticks=[0, maximum / 2, maximum],
+        label=r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]",
+    )
+    fig.text(
+        0.71,
+        1.2 / height_cm,
+        rf"RMS: {stats['rms_percent']:.2g}\%"
+        "\n"
+        rf"Max: {stats['sampled_max_percent']:.2g}\%",
+        ha="center",
+        va="center",
+    )
+    util.save(fig, f"{name}_t{time:.2f}", fmt, dpi)
+    plt.close(fig)
+    return {"figure": name, "time": time, **stats}
 
 
-def _on_grid(source: dict, target: dict, key: str) -> np.ndarray:
-    points = np.column_stack((source["x"].ravel(), source["y"].ravel()))
-    values = source[key].ravel()
-    result = griddata(points, values, (target["x"], target["y"]), method="linear")
-    missing = ~np.isfinite(result)
-    if np.any(missing):
-        result[missing] = griddata(
-            points,
-            values,
-            (target["x"][missing], target["y"][missing]),
-            method="nearest",
+def plot_frame(time, consts, figure_format="pdf", dpi=util.FIGURE_DPI):
+    fvm, vpm, reference = (util.load_slice(source, time) for source in ("fvm", "vpm", "reference"))
+    if any(item is None for item in (fvm, vpm, reference)):
+        raise ValueError(f"No exactly coincident fields at t={time:g}")
+    if consts["reference_length"] != 1:
+        raise ValueError("Cube geometry uses D=1")
+    speed = consts["freestream_speed"]
+    x, y = fvm["x"], fvm["y"]
+    fv = _on_grid(fvm, fvm) / speed
+    vp = _on_grid(vpm, fvm) / speed
+    rf = _on_grid(reference, fvm) / speed
+    # Every comparison uses the same support, so its RMS is comparable with
+    # the other pairings even where the fitted FVM boundary lacks a sample.
+    shared_valid = (
+        np.all(np.isfinite(fv), axis=-1)
+        & np.all(np.isfinite(vp), axis=-1)
+        & np.all(np.isfinite(rf), axis=-1)
+    )
+    for velocity in (fv, vp, rf):
+        velocity[~shared_valid] = np.nan
+    result = []
+    for left, right, lt, rt, name in (
+        (fv, vp, "(a) Coupled FVM", "(b) VPM", "velocity_fields"),
+        (rf, vp, "(a) Reference FVM", "(b) VPM", "reference_vpm_fields"),
+        (rf, fv, "(a) Reference FVM", "(b) Coupled FVM", "reference_fvm_fields"),
+    ):
+        result.append(
+            _field_figure(
+                time,
+                x,
+                y,
+                left,
+                right,
+                lt,
+                rt,
+                name,
+                figure_format,
+                dpi,
+                time_scale=speed / consts["reference_length"],
+            )
         )
     return result
 
 
-def _style_axes(
-    fig,
-    axes,
-    box,
-    velocity_plot,
-    error_plot,
-    velocity_colorbar_ax,
-    error_colorbar_ax,
-    vmax: float,
-    p95: float,
-) -> None:
-    for ax in axes:
-        ax.set_aspect("equal")
-        ax.set_xlim(box["xmin"], box["xmax"])
-        ax.set_ylim(box["ymin"], box["ymax"])
-        _add_body(ax)
-        ax.set_xlabel(r"$x/D$")
-    for ax in axes[1:]:
-        ax.tick_params(labelleft=False)
-    axes[0].set_ylabel(r"$y/D$")
-
-    fig.colorbar(
-        velocity_plot,
-        cax=velocity_colorbar_ax,
-        orientation="horizontal",
-        format="%.1f",
-        label=r"$u_x/U_\infty$",
-    ).set_ticks(np.linspace(-vmax, vmax, 3))
-    fig.colorbar(
-        error_plot,
-        cax=error_colorbar_ax,
-        orientation="horizontal",
-        format="%.1f",
-        extend="max",
-        label=r"$|\Delta u_x|/U_\infty$ [%]",
-    ).set_ticks(np.linspace(0, p95, 3))
-
-
-def _field_figure(
-    time: float,
-    x: np.ndarray,
-    y: np.ndarray,
-    left: np.ndarray,
-    right: np.ndarray,
-    left_title: str,
-    right_title: str,
-    name: str,
-    box: dict,
-    figure_format: str = FIGURE_FORMAT,
-    dpi: int = FIGURE_DPI,
-) -> tuple[float, float, float]:
-    error = np.abs(left - right) * 100.0
-    error[_body_mask(x, y)] = np.nan
-
-    vmax = max(float(np.nanmax(np.abs(left))), float(np.nanmax(np.abs(right))))
-    levels = np.linspace(-vmax, vmax, 41)
-    valid = np.isfinite(error)
-    p95 = float(np.nanpercentile(error[valid], 95)) if np.any(valid) else 1.0
-    p95 = max(p95, 1e-3)
-    maximum = float(np.nanmax(error[valid])) if np.any(valid) else 0.0
-
-    fig = plt.figure(figsize=FIGURE_SIZE, dpi=dpi)
-    grid = fig.add_gridspec(2, 3, height_ratios=(1.0, COLORBAR_HEIGHT_RATIO))
-    axes = np.asarray(
-        [
-            fig.add_subplot(grid[0, 0]),
-            fig.add_subplot(grid[0, 1]),
-            fig.add_subplot(grid[0, 2]),
-        ]
-    )
-    axes[1].sharex(axes[0])
-    axes[1].sharey(axes[0])
-    axes[2].sharex(axes[0])
-    axes[2].sharey(axes[0])
-    velocity_colorbar_ax = fig.add_subplot(grid[1, :2])
-    error_colorbar_ax = fig.add_subplot(grid[1, 2])
-    fig.subplots_adjust(
-        left=LAYOUT_LEFT,
-        right=LAYOUT_RIGHT,
-        bottom=LAYOUT_BOTTOM,
-        top=LAYOUT_TOP,
-        wspace=LAYOUT_WSPACE,
-        hspace=LAYOUT_HSPACE,
-    )
-    axes[0].contourf(x, y, left, levels=levels, cmap=util.COLORMAPS["velocity"], extend="both")
-    axes[0].set_title(left_title)
-    velocity_plot = axes[1].contourf(
-        x, y, right, levels=levels, cmap=util.COLORMAPS["velocity"], extend="both"
-    )
-    axes[1].set_title(right_title)
-    error_plot = axes[2].pcolormesh(
-        x, y, error, cmap=util.COLORMAPS["error"], vmin=0, vmax=p95, shading="auto"
-    )
-    axes[2].set_title("Error")
-    axes[2].text(
-        0.03,
-        0.97,
-        rf"$p_{{95}}={p95:.1f}\%$" "\n" rf"max $={maximum:.1f}\%$",
-        transform=axes[2].transAxes,
-        va="top",
-        fontsize=util.FONT_SIZE_PT,
-        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.5},
-    )
-    _style_axes(
-        fig,
-        axes,
-        box,
-        velocity_plot,
-        error_plot,
-        velocity_colorbar_ax,
-        error_colorbar_ax,
-        vmax,
-        p95,
-    )
-
-    util.save(fig, f"{name}_t{time:.2f}", figure_format, dpi)
-    plt.close(fig)
-    return float(np.nanmean(error[valid])), p95, maximum
-
-
-def plot_frame(
-    time: float,
-    consts: dict,
-    figure_format: str = FIGURE_FORMAT,
-    dpi: int = FIGURE_DPI,
-) -> None:
-    fvm = util.load_slice("fvm", time)
-    vpm = util.load_slice("vpm", time)
-    reference = util.load_slice("reference", time)
-    if fvm is None or vpm is None or reference is None:
-        return
-
-    freestream_speed = consts["freestream_speed"]
-    reference_length = consts["reference_length"]
-    x, y = fvm["x"] / reference_length, fvm["y"] / reference_length
-    fvm_velocity_x = fvm["velocity_x"] / freestream_speed
-    vpm_velocity_x = _on_grid(vpm, fvm, "velocity_x") / freestream_speed
-
-    mean, p95, maximum = _field_figure(
-        time,
-        x,
-        y,
-        fvm_velocity_x,
-        vpm_velocity_x,
-        "FVM",
-        "VPM",
-        "velocity_fields",
-        consts["box"],
-        figure_format,
-        dpi,
-    )
-    valid = np.isfinite(fvm_velocity_x) & np.isfinite(vpm_velocity_x)
-    outlet = valid & (x >= consts["box"]["xmax"] - OUTLET_BAND)
-    outlet_error = np.abs(fvm_velocity_x[outlet] - vpm_velocity_x[outlet]) * 100.0
-    print(
-        f"  velocity_fields t={time:.2f}: mean={mean:.1f}%, p95={p95:.1f}%, "
-        f"max={maximum:.1f}%, outlet mean={np.nanmean(outlet_error):.1f}%"
-    )
-
-    reference_x = reference["x"] / reference_length
-    reference_y = reference["y"] / reference_length
-    reference_velocity_x = reference["velocity_x"] / freestream_speed
-    vpm_reference_velocity_x = _on_grid(vpm, reference, "velocity_x") / freestream_speed
-    mean, p95, maximum = _field_figure(
-        time,
-        reference_x,
-        reference_y,
-        reference_velocity_x,
-        vpm_reference_velocity_x,
-        "Reference",
-        "VPM",
-        "reference_vpm_fields",
-        consts["box"],
-        figure_format,
-        dpi,
-    )
-    print(
-        f"  reference_vpm_fields t={time:.2f}: mean={mean:.1f}%, p95={p95:.1f}%, max={maximum:.1f}%"
-    )
-
-
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default=FIGURE_FORMAT)
-    parser.add_argument("--dpi", type=int, default=FIGURE_DPI, help="PNG resolution in dpi.")
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="pdf")
+    parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
-
-    times = util.common_times(
-        util.slice_times("fvm"),
-        util.slice_times("vpm"),
-        util.slice_times("reference"),
-    )
-    if times.size == 0:
-        raise SystemExit("No coincident field samples found in samples/.")
+    util.validate_plot_inputs()
+    times = util.common_times(*(util.slice_times(s) for s in ("fvm", "vpm", "reference")))
+    if not len(times):
+        raise SystemExit("No coincident field samples")
+    rows = []
     consts = util.run_constants()
     for time in times:
-        plot_frame(float(time), consts, args.format, args.dpi)
+        rows.extend(plot_frame(float(time), consts, args.format, args.dpi))
+    for prefix in ("velocity_fields", "reference_vpm_fields", "reference_fvm_fields"):
+        util.remove_obsolete_frames(prefix, times, args.format)
+    with (util.FIGURES / "field_differences.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 if __name__ == "__main__":

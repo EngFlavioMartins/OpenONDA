@@ -7,12 +7,11 @@ import numpy as np
 
 
 def write_profiles(
-    fvm_solver, sol_dir: str, kinematic_viscosity: float, freestream_velocity: float, stations
+    fields, sol_dir: str, kinematic_viscosity: float, freestream_velocity: float, stations
 ) -> None:
     """Sample u(y) at the stations and Cf(x) along the plate into CSV files."""
-    n = fvm_solver.mesh_data["n_cells"]
-    cell_centre = fvm_solver.geo_data["cell_centre"][:n]
-    u = fvm_solver.velocity[:n]
+    cell_centre = fields.cell_centre
+    u = fields.velocity
     xc, yc = cell_centre[:, 0], cell_centre[:, 1]
 
     # The plate uses a uniform x grid, so the column width is easy to find.
@@ -32,7 +31,7 @@ def write_profiles(
                 writer.writerow([station, x_col, y_i, u_i, v_i])
 
     # Skin friction from the wall-adjacent cell row: tau_w ~ mu * u1 / y1.
-    kinematic_pressure = fvm_solver.kinematic_pressure[:n]
+    kinematic_pressure = fields.kinematic_pressure
     y1 = yc.min()
     y_top = yc.max()
     wall = (np.abs(yc - y1) < 1e-12) & (xc > 0.0)
