@@ -411,7 +411,8 @@ def plot_diagnostics(reports, output, formats=("pdf", "png")):
         ax.set_xlabel(r"$t\Gamma_0/R_0^2$")
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=1, frameon=False)
-    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.09, top=0.89, hspace=0.33, wspace=0.70)
+    # Leave the three-row legend clear of the top panel titles.
+    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.09, top=0.84, hspace=0.33, wspace=0.70)
     save_figure(fig, output / "diagnostic_histories", axes.flat, formats)
     plt.close(fig)
 

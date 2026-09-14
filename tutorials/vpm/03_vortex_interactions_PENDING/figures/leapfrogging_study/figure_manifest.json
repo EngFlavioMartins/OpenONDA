@@ -1,8 +1,8 @@
 {
   "generator": "assets/plot_lbm_comparison.py",
-  "generator_sha256": "ec03efa96fd8032067530226d84f25ee73af170af8a5d1f673b9fb516083fd2f",
+  "generator_sha256": "98c1fc8044d5fa0cc430289b1290a499a53263486be099fc0c75c52072c7c320",
   "analysis": "lbm_agreement.json",
-  "analysis_sha256": "d1cce6bf67d05f42c157a0d4accc6b0dab3641e8c8dbdd7ce77e2145ac855e24",
+  "analysis_sha256": "87d7039c8141acee633df6c3054bb65b6ef5bdfd8b0c9a0676471d31bbc2c615",
   "runs": [
     {
       "name": "baseline",
@@ -13,36 +13,31 @@
     },
     {
       "name": "stretching_viscosity",
-      "status": "running",
+      "status": "completed",
       "metadata": "solution/stretching_viscosity/vpm_metadata.json",
-      "metadata_sha256": "600c993517a3c3790bd7e5cf9e86ef905f2c9d1d7c6ade8fc2784ec61252afd5",
+      "metadata_sha256": "0121b6ae6b0a706d7d3b8431e9ad696dae1832ee8a1eab98d5ddd81b5e608bbb",
       "color": "#5C3D9B"
+    },
+    {
+      "name": "p_moments",
+      "status": "running",
+      "metadata": "solution/p_moments/vpm_metadata.json",
+      "metadata_sha256": "33178d783f5f8ee1246e2eb190d7599617a0420af60daf828eede9728f0f46a9",
+      "color": "#B08A00"
     }
   ],
   "exports": [
     {
       "file": "core_trajectories.pdf",
-      "sha256": "895ce81b02c0af2022fec900420da5367be6ca5b417d96170627e9e2b4fac4fa"
-    },
-    {
-      "file": "core_trajectories.png",
-      "sha256": "57775a5f77a17d5ff976bd091bac135c22ad5d3166c4e63856b1c97fbea564e6"
+      "sha256": "7e96700a26e948e12a33d6f22840f736da6688769766547329f5bbafea7d0467"
     },
     {
       "file": "leapfrogging_history.pdf",
-      "sha256": "afbd34e550f8f2024e9a59c5a13435e1f3b2c1f7c57e5f12736fba96c0786d3b"
-    },
-    {
-      "file": "leapfrogging_history.png",
-      "sha256": "213bf02a7045d8024fdcfcd36a83391a6e2dc20948d6d8f92255d47ef57a1305"
+      "sha256": "aac8363751011ee62b0fb87d879ee002baf1b44d59e62ad64a8b1a576cd0bbae"
     },
     {
       "file": "diagnostic_histories.pdf",
-      "sha256": "b7452a77081c43222af31e229cbe4ca877d80d048e87595586415f9615ba7e91"
-    },
-    {
-      "file": "diagnostic_histories.png",
-      "sha256": "8daee8a224334371c9a12a0369f908870d6764bf5d6baf7ee3e436e673eed716"
+      "sha256": "be982ca70f246fbb324d5b3cbea6eacfe322f74a2f4e11f4eea3e6c9725c50c9"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "analysis_sha256": "ec03efa96fd8032067530226d84f25ee73af170af8a5d1f673b9fb516083fd2f",
+  "analysis_sha256": "98c1fc8044d5fa0cc430289b1290a499a53263486be099fc0c75c52072c7c320",
   "reference": "Cheng, Lou & Lim (2015), Fig. 5(b), DOI:10.1063/1.4915890",
   "reference_sha256": "b8773d273276de1d55f807e280fe3ceb57fda7a15c3fa83c5fc79b5c909baf01",
   "peak_merge_bridge": 0.9,
@@ -892,11 +892,11 @@
     },
     {
       "run": "p_moments",
-      "metadata_sha256": "168555e61de435f09666a6f3fcb90e6f58f73956c74c0465c33db96be52aefb0",
+      "metadata_sha256": "33178d783f5f8ee1246e2eb190d7599617a0420af60daf828eede9728f0f46a9",
       "status": "running",
       "identity_start_step": 0,
-      "completed_steps": 500,
-      "final_time": 1.875,
+      "completed_steps": 1400,
+      "final_time": 5.25,
       "wall_seconds": NaN,
       "settings": {
         "scenario": "leapfrog",
@@ -943,14 +943,14 @@
       "reference_seed_amplitude": 0.0,
       "reynolds_matches_reference": true,
       "seed_matches_reference": true,
-      "coherent_pair_end_time": 2.1,
+      "coherent_pair_end_time": 3.75,
       "tracked_x_extent_by_ring": {
-        "1": 2.2999958992004395,
-        "2": 3.239995002746582
+        "1": 5.139993190765381,
+        "2": 4.619993686676025
       },
       "both_cores_reached_x7": false,
-      "identity_termination": "all supplied samples contain a separated pair",
-      "coarser_snapshot_identity_termination": "all supplied samples contain a separated pair",
+      "identity_termination": "step 1040: not exactly two resolved peaks",
+      "coarser_snapshot_identity_termination": "step 1040: not exactly two resolved peaks",
       "bridge_limit": 0.5,
       "scores": [
         {
@@ -972,14 +972,28 @@
             0.55,
             2.5
           ],
-          "unavailable": "Both rings must cover the entire requested interval"
+          "samples_per_ring": 501,
+          "rms_radius_over_R0": 0.06939224861114303,
+          "per_ring_rms_radius_over_R0": [
+            0.08250736596640643,
+            0.05313287961240989
+          ],
+          "max_radius_error_over_R0": 0.15792280004573733,
+          "coarser_snapshot_rms_radius_over_R0": 0.06910788910930127
         },
         {
           "x_interval": [
             0.55,
             3.5
           ],
-          "unavailable": "Both rings must cover the entire requested interval"
+          "samples_per_ring": 501,
+          "rms_radius_over_R0": 0.10210763007354774,
+          "per_ring_rms_radius_over_R0": [
+            0.10661004543455113,
+            0.09739730207205888
+          ],
+          "max_radius_error_over_R0": 0.1979815948716449,
+          "coarser_snapshot_rms_radius_over_R0": 0.09987798821498006
         },
         {
           "x_interval": [
@@ -1006,15 +1020,26 @@
             ],
             "midpoint_x": 1.528746634721756,
             "radial_separation": 0.6337499916553497
+          },
+          {
+            "time": 3.4406250000000003,
+            "time_bracket": [
+              3.3,
+              3.45
+            ],
+            "midpoint_x": 4.434993863105774,
+            "radial_separation": 0.6200000047683716
           }
         ],
-        "successive_passage_intervals": [],
+        "successive_passage_intervals": [
+          2.2875000000000005
+        ],
         "full_cycle_periods": [],
         "lbm_passage_times": null,
         "lbm_temporal_phase_error": null,
         "reference_limitation": "The supplied LBM CSV has no time coordinate."
       },
-      "peaks_sha256": "5ca11c646432a54af36ecb2d14f51f4b752da7f90bb30b419c1351b9f06bd2fa",
+      "peaks_sha256": "8e1e274e3a65c363b3245782d4e21f70f24461406d14b31e9d99fff98349bb78",
       "sampler_fields": [
         {
           "file": "core_section_000000.vts",
@@ -1090,38 +1115,148 @@
           "file": "core_section_000560.vts",
           "time": 2.1,
           "sha256": "294b6229ff061cc8f87cae03565a5df72015808a4b966a01a661453b0b336eca"
+        },
+        {
+          "file": "core_section_000600.vts",
+          "time": 2.25,
+          "sha256": "28a9a1a786f2de5f28d7d0d26c5c9cce5a9bde79ddc7c3d5905e23cc7c5c53ae"
+        },
+        {
+          "file": "core_section_000640.vts",
+          "time": 2.4,
+          "sha256": "14a482400f7110e0384a565e4ca8840e044d5f4c2db587dc40528dd97589dbdc"
+        },
+        {
+          "file": "core_section_000680.vts",
+          "time": 2.55,
+          "sha256": "2b54b72afb617924b3743224c8d96a5304e0364163cc6f25ee8ac05ea843d395"
+        },
+        {
+          "file": "core_section_000720.vts",
+          "time": 2.7,
+          "sha256": "265474cfd607f7418772905159582ea75f5b78a6e942412b0c6ee0866c953e21"
+        },
+        {
+          "file": "core_section_000760.vts",
+          "time": 2.85,
+          "sha256": "d11fcdb8b5ed1dccd0c9a73c8f1cb5f957850e3cc6802048cbd5f08dc6f4cffd"
+        },
+        {
+          "file": "core_section_000800.vts",
+          "time": 3.0,
+          "sha256": "0e43086a5154706d49e26177a16643bbf770deb96092d5c76466d37c0ae44fc7"
+        },
+        {
+          "file": "core_section_000840.vts",
+          "time": 3.15,
+          "sha256": "06715fb9045cf247e402fb796368ab2dcf1ece1b173b9f31d489f4555a800255"
+        },
+        {
+          "file": "core_section_000880.vts",
+          "time": 3.3,
+          "sha256": "6893d9e82c865f6ed4d138284b7a2f8a6959c55d5dc6f05914b8735f3ce72e6c"
+        },
+        {
+          "file": "core_section_000920.vts",
+          "time": 3.45,
+          "sha256": "880315897a2230d3c45e44368b238584865bf7fc11372ba39c29dabf25101861"
+        },
+        {
+          "file": "core_section_000960.vts",
+          "time": 3.6,
+          "sha256": "683e132b90d8e07bcab8a07322535cfde086021c7e1c65f1b1645c5a70653cfe"
+        },
+        {
+          "file": "core_section_001000.vts",
+          "time": 3.75,
+          "sha256": "a3cd0b6795fdb85d10d83e0db2005f89b5a9e156ef30018a1735d9b8074c0908"
+        },
+        {
+          "file": "core_section_001040.vts",
+          "time": 3.9,
+          "sha256": "00f3994bd2b37e662a4cd87b9dceeb214fce8f3c7c7d676bac36f63ae6066c39"
+        },
+        {
+          "file": "core_section_001080.vts",
+          "time": 4.05,
+          "sha256": "88251a30e011625727cf6f4b2d8161ff3f0fe34ace85d01ab4c583626a91ca31"
+        },
+        {
+          "file": "core_section_001120.vts",
+          "time": 4.2,
+          "sha256": "6509a98a3aa01e5f1bcf6336f30bd30e38e949e188ede14400ccd0345c07a97f"
+        },
+        {
+          "file": "core_section_001160.vts",
+          "time": 4.35,
+          "sha256": "a9c9199fdca7e22dfb349373198bb6ba8276067b10acc19a170834f2fe44445b"
+        },
+        {
+          "file": "core_section_001200.vts",
+          "time": 4.5,
+          "sha256": "ea3f03b5ec6bf076afccd4a0bceb122ae221cb1812e5ad58a6c7c07eecc7b6bf"
+        },
+        {
+          "file": "core_section_001240.vts",
+          "time": 4.65,
+          "sha256": "2d7c9b204463902148eebcac572e28877e2cadbdff04974acd26393cb0378a3b"
+        },
+        {
+          "file": "core_section_001280.vts",
+          "time": 4.8,
+          "sha256": "4669b49bb1a425e39dfa6560bd91e1b0951402ce9e3e4c856c7f37ed53a0c73b"
+        },
+        {
+          "file": "core_section_001320.vts",
+          "time": 4.95,
+          "sha256": "ac31906114296dead9f99529b8dd4f0852e9221a69f0e0e72b9732d2b25210ca"
+        },
+        {
+          "file": "core_section_001360.vts",
+          "time": 5.1,
+          "sha256": "7432fedeb4f1a18fd1ce53d4a25b998ff6318f57b8b24c324558605c68b3f57e"
+        },
+        {
+          "file": "core_section_001400.vts",
+          "time": 5.25,
+          "sha256": "e7f950dce43910fd47ffa64dc7d735f8f5173c9fbe2b1eaede584d8214540ceb"
+        },
+        {
+          "file": "core_section_001440.vts",
+          "time": 5.4,
+          "sha256": "9655114b5d1dcbb90bffed49af9d089ef500a930c9b29bf3965a18ab4b48786e"
         }
       ],
       "self_diagnostics": {
         "file": "/Users/flaviomartins/OpenONDA/tutorials/vpm/03_vortex_interactions_PENDING/samples/p_moments/flow_integrals.csv",
-        "sha256": "17e3d20a05e3c3d69c9ada85452f19f6307718c4d78b7e2a55c1bdef516662b2",
-        "final_sample_time": 2.2125,
+        "sha256": "3b832d0bcb21e88b3bba57dc9c1de0cf4b67a66954ab28a236b5af919f6a9d3c",
+        "final_sample_time": 5.5125,
         "final": {
-          "n_particles_total": 29747.0,
-          "vorticity_divergence_error": 0.0532383097125191,
-          "vortex_strength_misalignment_degrees": 0.6921622905677067,
-          "lagrangian_cfl": 0.0629057617485523,
+          "n_particles_total": 80501.0,
+          "vorticity_divergence_error": 0.0598810184990188,
+          "vortex_strength_misalignment_degrees": 2.676930796726465,
+          "lagrangian_cfl": 0.050516642332077,
           "max_eddy_viscosity": 0.0,
           "max_effective_viscosity": 0.0010471974965184,
-          "n_stabilization_events": 591.0,
-          "n_regularization_events": 1.0,
+          "n_stabilization_events": 1473.0,
+          "n_regularization_events": 3.0,
           "stretching_viscosity_feedback_coefficient": 0.0
         },
         "maximum": {
-          "n_particles_total": 31040.0,
-          "vorticity_divergence_error": 0.0561194098035202,
-          "vortex_strength_misalignment_degrees": 0.6921622905677067,
+          "n_particles_total": 80501.0,
+          "vorticity_divergence_error": 0.0849775094323533,
+          "vortex_strength_misalignment_degrees": 9.01874765741571,
           "lagrangian_cfl": 0.1107267451286315,
           "max_eddy_viscosity": 0.0,
           "max_effective_viscosity": 0.0010471974965184,
-          "n_stabilization_events": 591.0,
-          "n_regularization_events": 1.0,
+          "n_stabilization_events": 1473.0,
+          "n_regularization_events": 3.0,
           "stretching_viscosity_feedback_coefficient": 0.0
         },
         "energy_measurements": [
           "unbounded_energy"
         ],
-        "final_energy_ratio": 0.8808138378347029
+        "final_energy_ratio": 0.7901549149290309
       },
       "core_definition": "positive curl(u)_z maxima on the z=0, y>=0 SurfaceSampler plane",
       "spatial_uncertainty": "grid-resolved peak coordinates; repeat with finer sampler spacing"
