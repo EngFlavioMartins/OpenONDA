@@ -1,8 +1,11 @@
 **/solution/
 **/samples/
-**/figures/
 **/__pycache__/
 **/*.log
 **/assets/*.msh
 **/assets/*.vtk
 **/assets/surfaces/
+
+# Keep every tutorial figure and its post-processing files in Git.
+!**/figures/
+!**/figures/**

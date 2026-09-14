@@ -67,6 +67,6 @@ repos:
       - id: check-added-large-files
         # Processed profiles can be a few MiB; raw states remain excluded.
         args: [--maxkb=10240]
-        # Preserve long-standing tutorial animation assets (previously tracked
-        # in the pre-restructure paths) that legitimately exceed the size gate.
-        exclude: "^tutorials/vpm/0[56]_(rotor_flow|quadcopter)/assets/(animation/)?.*\\.gif$"
+        # Tutorial figures are committed at their generated size. Preserve the
+        # long-standing animation assets that also exceed this size gate.
+        exclude: "^tutorials/(.*/figures/|vpm/0[56]_(rotor_flow|quadcopter)/assets/(animation/)?.*\\.gif$)"

@@ -52,6 +52,23 @@ def build_cell_face_csr(owners, neighbours, n_cells, n_faces):
     return _fill_cell_face_indices(owners, neighbours, offsets, n_interior, n_faces), offsets
 
 
+def pack_face_nodes(faces):
+    """Return contiguous polygon connectivity without padding ragged faces."""
+    if isinstance(faces, np.ndarray) and faces.ndim == 2:
+        nodes = np.ascontiguousarray(faces, dtype=np.int64).reshape(-1)
+        offsets = np.arange(len(faces) + 1, dtype=np.int64) * faces.shape[1]
+    else:
+        offsets = np.empty(len(faces) + 1, dtype=np.int64)
+        offsets[0] = 0
+        np.cumsum(np.fromiter(map(len, faces), dtype=np.int64, count=len(faces)), out=offsets[1:])
+        nodes = (
+            np.concatenate(faces).astype(np.int64, copy=False)
+            if len(faces)
+            else np.empty(0, dtype=np.int64)
+        )
+    return nodes, offsets
+
+
 @dataclass(frozen=True)
 class BoundaryPatch:
     """Stable identity of one mesh patch, independent of operator state.

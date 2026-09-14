@@ -20,6 +20,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
+
 from ..progress import mesh_stage
 from ..surface_classification import (
     SurfaceIndex,
@@ -134,6 +136,38 @@ class _TemplateTopologyExtractor(CartesianOctree):
         self.surface = cast(TriangulatedSurface, object())
         self.wall_patch_name = "defaultFaces"
         self._wall_patch_type = "patch"
+
+
+@njit(cache=True)
+def _expand_lattice_faces(encoded_faces, sx, sy):
+    """Split lattice edges at existing nodes without Python polygon scans."""
+    available = set(encoded_faces.reshape(-1))
+    flat = []
+    offsets = np.empty(len(encoded_faces) + 1, dtype=np.int64)
+    offsets[0] = 0
+    expanded_count = 0
+    for face_id in range(len(encoded_faces)):
+        face = encoded_faces[face_id]
+        for position in range(len(face)):
+            first = face[position]
+            second = face[(position + 1) % len(face)]
+            flat.append(first)
+            x, y, z = first % sx, (first // sx) % sy, first // (sx * sy)
+            dx = second % sx - x
+            dy = (second // sx) % sy - y
+            dz = second // (sx * sy) - z
+            length = max(abs(dx), abs(dy), abs(dz))
+            if length <= 1:
+                continue
+            dx, dy, dz = dx // length, dy // length, dz // length
+            for step in range(1, length):
+                candidate = x + step * dx + sx * (y + step * dy + sy * (z + step * dz))
+                if candidate in available:
+                    flat.append(candidate)
+        offsets[face_id + 1] = len(flat)
+        if offsets[face_id + 1] - offsets[face_id] > len(face):
+            expanded_count += 1
+    return np.asarray(flat, dtype=np.int64), offsets, expanded_count
 
 
 def _extract_mesh(
@@ -329,56 +363,12 @@ def _extract_mesh(
 
     sx = limits[0] + 1
     sy = limits[1] + 1
-    available_codes = set(map(int, np.unique(encoded_faces)))
-
-    def decode(code: int) -> tuple[int, int, int]:
-        """Decode one lattice code without allocating a temporary array."""
-        x = int(code % sx)
-        yz = int(code // sx)
-        return x, int(yz % sy), int(yz // sy)
-
-    # The extractor retains existing hanging points around a coarse polygon's
-    # perimeter. Most coarse/fine interfaces are split into fine quads, but a
-    # face shared by two coarse cells can therefore become an 8-node polygon.
-    # Its adjacency stays one face; dropping those collinear nodes changes the
-    # mandatory face-valence invariant.
-    expanded_encoded_faces: list[np.ndarray] = []
-    expanded_face_count = 0
-    available_code_set = set(map(int, available_codes))
-    for encoded_face in encoded_faces:
-        expanded: list[int] = []
-        for first_value, second_value in zip(encoded_face, np.roll(encoded_face, -1), strict=True):
-            first = int(first_value)
-            second = int(second_value)
-            expanded.append(first)
-            first_x, first_y, first_z = decode(first)
-            second_x, second_y, second_z = decode(second)
-            delta_x = second_x - first_x
-            delta_y = second_y - first_y
-            delta_z = second_z - first_z
-            length = max(abs(delta_x), abs(delta_y), abs(delta_z))
-            if length <= 1:
-                continue
-            step_x = delta_x // length
-            step_y = delta_y // length
-            step_z = delta_z // length
-            for offset in range(1, length):
-                candidate = int(
-                    (first_x + offset * step_x)
-                    + sx * (first_y + offset * step_y + sy * (first_z + offset * step_z))
-                )
-                if candidate in available_code_set:
-                    expanded.append(candidate)
-        if len(expanded) > len(encoded_face):
-            expanded_face_count += 1
-        expanded_encoded_faces.append(np.asarray(expanded, dtype=np.int64))
-
-    point_codes = np.unique(np.concatenate(expanded_encoded_faces))
-    flat_face_codes = np.concatenate(expanded_encoded_faces)
-    flat_face_indices = np.searchsorted(point_codes, flat_face_codes).astype(np.int32)
-    face_offsets = np.cumsum(
-        np.asarray([0, *(len(face) for face in expanded_encoded_faces)], dtype=np.int64)
+    # Retain hanging edge vertices with compiled integer lattice arithmetic.
+    flat_face_codes, face_offsets, expanded_face_count = _expand_lattice_faces(
+        encoded_faces, sx, sy
     )
+    point_codes = np.unique(flat_face_codes)
+    flat_face_indices = np.searchsorted(point_codes, flat_face_codes).astype(np.int32)
     indexed_faces = [
         flat_face_indices[start:stop]
         for start, stop in zip(face_offsets[:-1], face_offsets[1:], strict=True)

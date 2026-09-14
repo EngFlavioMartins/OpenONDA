@@ -1,0 +1,588 @@
+{
+  "baseline": {
+    "case": "/private/tmp/openonda-mesher-perf/baseline-src/tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+    "threads": 4,
+    "mesh_cache": "bypassed",
+    "runs": [
+      {
+        "run": 1,
+        "build_seconds": 569.0112230420054,
+        "cells": 303264,
+        "faces": 924588,
+        "points": 318192,
+        "stages": [
+          {
+            "stage": "octree seed refinement",
+            "seconds": 3.453
+          },
+          {
+            "stage": "octree balancing",
+            "seconds": 4.778
+          },
+          {
+            "stage": "object refinement",
+            "seconds": 13.471
+          },
+          {
+            "stage": "near-surface refinement",
+            "seconds": 0.84
+          },
+          {
+            "stage": "template topology extraction",
+            "seconds": 28.239
+          },
+          {
+            "stage": "template generation",
+            "seconds": 50.971
+          },
+          {
+            "stage": "surface topology check",
+            "seconds": 1.651
+          },
+          {
+            "stage": "surface projection",
+            "seconds": 1.612
+          },
+          {
+            "stage": "patch assignment",
+            "seconds": 48.447
+          },
+          {
+            "stage": "edge extraction",
+            "seconds": 17.203
+          },
+          {
+            "stage": "patch point remapping",
+            "seconds": 43.07
+          },
+          {
+            "stage": "surface optimisation",
+            "seconds": 133.301
+          },
+          {
+            "stage": "wrapper layer generation",
+            "seconds": 19.069
+          },
+          {
+            "stage": "mesh optimisation",
+            "seconds": 183.508
+          },
+          {
+            "stage": "wall constraint",
+            "seconds": 52.646
+          },
+          {
+            "stage": "final mesh validation",
+            "seconds": 17.417
+          }
+        ],
+        "sha256": {
+          "vertex_position": "9330446de34b4c25612d43837e2c52c4afd7c3a59f46869a3929e1ebc6bedd03",
+          "faces": "f1ed4edbaf1d89bf7435ff21564486734aa51515e7c49413773439f9e487e4fb",
+          "owners": "110677cb0928ef72a6903caa5d286b225cf6f85ffa07335c71622a76fedcf100",
+          "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
+        },
+        "surface_constraint": {
+          "method": "transactional_column_preserving_surface_projection",
+          "max_distance_before": 6.405844894530333e-07,
+          "max_distance_after": 8.326672684688674e-17,
+          "moved_inner_points": 3458,
+          "max_inner_displacement": 9.058682880556609e-07,
+          "column_translation_relaxation": 1.0,
+          "straightened_inner_points": 29596,
+          "protected_transition_points": 0,
+          "straightening_relaxation": 1.0,
+          "outer_domain_planes_constrained": false,
+          "baseline_intersecting_vtk_cells": 0,
+          "vtk_validation_scope": "moved_point_incident_cells",
+          "vtk_validation_cell_count": 58696,
+          "validated": true
+        },
+        "quality": {
+          "n_points": 318192,
+          "n_cells": 303264,
+          "n_faces": 924588,
+          "n_internal_faces": 894996,
+          "n_boundary_patches": 2,
+          "cells_with_unclosed_edges": 0,
+          "unclosed_cell_edges": 0,
+          "min_volume": 1.9720296921912788e-05,
+          "max_volume": 0.00014461935556569206,
+          "min_face_area": 0.0007354428596057152,
+          "max_non_orthogonality_deg": 36.53425626108365,
+          "p99_non_orthogonality_deg": 9.598460500700115,
+          "mean_non_orthogonality_deg": 0.38882618175483113,
+          "out_of_bounds_interpolation_weights": 0,
+          "max_skewness": 0.44457152598743055,
+          "p99_internal_face_skewness": 0.048218722429027944,
+          "max_skewness_face": 880932,
+          "max_aspect_ratio": 2.082923954661822,
+          "min_owner_face_pyramid_cosine": 0.7470310202903743,
+          "min_neighbour_face_pyramid_cosine": 0.747565076321807,
+          "inverted_owner_face_pyramids": 0,
+          "inverted_neighbour_face_pyramids": 0,
+          "max_adjacent_volume_scale_ratio": 1.4304052526479427,
+          "max_adjacent_cell_size_ratio": 1.0,
+          "max_lsq_condition": null,
+          "rank_deficient_lsq_cells": 0,
+          "svd_lsq_cells": 0,
+          "max_normalized_area_closure_error": 1.2885907262695884e-16,
+          "fluid_components": 1,
+          "fluid_cells": 303264,
+          "max_skewness_context": {
+            "face": 880932,
+            "face_centre": [
+              1.4829887499976475,
+              -1.4647274670489119,
+              1.4812728841871745
+            ],
+            "face_points": [
+              [
+                1.4713607450134891,
+                -1.4459356493892495,
+                1.4700104860029888
+              ],
+              [
+                1.4745163741350211,
+                -1.4753204769182438,
+                1.4729321246663647
+              ],
+              [
+                1.490287794424656,
+                -1.491519421001956,
+                1.4882838606877962
+              ],
+              [
+                1.4929606229764818,
+                -1.4485218134449673,
+                1.4910882456533934
+              ]
+            ],
+            "vertices": 4,
+            "owner": 296149,
+            "owner_centre": [
+              1.4839022929534562,
+              -1.4641381442137031,
+              1.4618715488982352
+            ],
+            "owner_layer": 0,
+            "neighbour": 296152,
+            "neighbour_centre": [
+              1.4635659535977086,
+              -1.464174631207404,
+              1.4826570063642366
+            ],
+            "neighbour_layer": 0
+          },
+          "patch_areas": {
+            "cube": 6.0,
+            "numericalBoundary": 53.498744986114446
+          },
+          "surface_conformance": {},
+          "surface_distance": {
+            "cube": {
+              "max": 8.326672684688674e-17,
+              "mean": 6.447427564606866e-18
+            }
+          }
+        }
+      }
+    ]
+  },
+  "updated_first_compile": {
+    "case": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+    "threads": 4,
+    "mesh_cache": "bypassed",
+    "numba_cache_dir": "/tmp/openonda-mesher-perf/final-jit-cache",
+    "environment": {
+      "platform": "macOS-27.0-arm64-arm-64bit",
+      "python": "3.11.15",
+      "numpy": "2.4.6",
+      "numba": "0.66.0"
+    },
+    "runs": [
+      {
+        "run": 1,
+        "build_seconds": 136.65332620800473,
+        "cells": 303264,
+        "faces": 924588,
+        "points": 318192,
+        "stages": [
+          {
+            "stage": "octree seed refinement",
+            "seconds": 1.727
+          },
+          {
+            "stage": "octree balancing",
+            "seconds": 2.668
+          },
+          {
+            "stage": "object refinement",
+            "seconds": 6.528
+          },
+          {
+            "stage": "near-surface refinement",
+            "seconds": 0.785
+          },
+          {
+            "stage": "template topology extraction",
+            "seconds": 13.527
+          },
+          {
+            "stage": "template generation",
+            "seconds": 25.328
+          },
+          {
+            "stage": "surface topology check",
+            "seconds": 1.423
+          },
+          {
+            "stage": "surface projection",
+            "seconds": 1.075
+          },
+          {
+            "stage": "patch assignment",
+            "seconds": 10.771
+          },
+          {
+            "stage": "edge extraction",
+            "seconds": 10.796
+          },
+          {
+            "stage": "patch point remapping",
+            "seconds": 5.484
+          },
+          {
+            "stage": "surface optimisation",
+            "seconds": 16.603
+          },
+          {
+            "stage": "wrapper layer generation",
+            "seconds": 8.133
+          },
+          {
+            "stage": "mesh optimisation",
+            "seconds": 23.487
+          },
+          {
+            "stage": "wall constraint",
+            "seconds": 30.653
+          },
+          {
+            "stage": "final mesh validation",
+            "seconds": 2.821
+          }
+        ],
+        "sha256": {
+          "vertex_position": "9330446de34b4c25612d43837e2c52c4afd7c3a59f46869a3929e1ebc6bedd03",
+          "faces": "f1ed4edbaf1d89bf7435ff21564486734aa51515e7c49413773439f9e487e4fb",
+          "owners": "110677cb0928ef72a6903caa5d286b225cf6f85ffa07335c71622a76fedcf100",
+          "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
+        },
+        "surface_constraint": {
+          "method": "transactional_column_preserving_surface_projection",
+          "max_distance_before": 6.405844894530333e-07,
+          "max_distance_after": 8.326672684688674e-17,
+          "moved_inner_points": 3458,
+          "max_inner_displacement": 9.058682880556609e-07,
+          "column_translation_relaxation": 1.0,
+          "straightened_inner_points": 29596,
+          "protected_transition_points": 0,
+          "straightening_relaxation": 1.0,
+          "outer_domain_planes_constrained": false,
+          "baseline_intersecting_vtk_cells": 0,
+          "vtk_validation_scope": "moved_point_incident_cells",
+          "vtk_validation_cell_count": 58696,
+          "validated": true
+        },
+        "quality": {
+          "n_points": 318192,
+          "n_cells": 303264,
+          "n_faces": 924588,
+          "n_internal_faces": 894996,
+          "n_boundary_patches": 2,
+          "cells_with_unclosed_edges": 0,
+          "unclosed_cell_edges": 0,
+          "min_volume": 1.9720296921912788e-05,
+          "max_volume": 0.00014461935556569206,
+          "min_face_area": 0.0007354428596057152,
+          "max_non_orthogonality_deg": 36.53425626108365,
+          "p99_non_orthogonality_deg": 9.598460500700115,
+          "mean_non_orthogonality_deg": 0.38882618175483113,
+          "out_of_bounds_interpolation_weights": 0,
+          "max_skewness": 0.44457152598743055,
+          "p99_internal_face_skewness": 0.048218722429027944,
+          "max_skewness_face": 880932,
+          "max_aspect_ratio": 2.082923954661822,
+          "min_owner_face_pyramid_cosine": 0.7470310202903743,
+          "min_neighbour_face_pyramid_cosine": 0.747565076321807,
+          "inverted_owner_face_pyramids": 0,
+          "inverted_neighbour_face_pyramids": 0,
+          "max_adjacent_volume_scale_ratio": 1.4304052526479427,
+          "max_adjacent_cell_size_ratio": 1.0,
+          "max_lsq_condition": null,
+          "rank_deficient_lsq_cells": 0,
+          "svd_lsq_cells": 0,
+          "max_normalized_area_closure_error": 1.2885907262695884e-16,
+          "fluid_components": 1,
+          "fluid_cells": 303264,
+          "max_skewness_context": {
+            "face": 880932,
+            "face_centre": [
+              1.4829887499976475,
+              -1.4647274670489119,
+              1.4812728841871745
+            ],
+            "face_points": [
+              [
+                1.4713607450134891,
+                -1.4459356493892495,
+                1.4700104860029888
+              ],
+              [
+                1.4745163741350211,
+                -1.4753204769182438,
+                1.4729321246663647
+              ],
+              [
+                1.490287794424656,
+                -1.491519421001956,
+                1.4882838606877962
+              ],
+              [
+                1.4929606229764818,
+                -1.4485218134449673,
+                1.4910882456533934
+              ]
+            ],
+            "vertices": 4,
+            "owner": 296149,
+            "owner_centre": [
+              1.4839022929534562,
+              -1.4641381442137031,
+              1.4618715488982352
+            ],
+            "owner_layer": 0,
+            "neighbour": 296152,
+            "neighbour_centre": [
+              1.4635659535977086,
+              -1.464174631207404,
+              1.4826570063642366
+            ],
+            "neighbour_layer": 0
+          },
+          "patch_areas": {
+            "cube": 6.0,
+            "numericalBoundary": 53.498744986114446
+          },
+          "surface_conformance": {},
+          "surface_distance": {
+            "cube": {
+              "max": 8.326672684688674e-17,
+              "mean": 6.447427564606866e-18
+            }
+          }
+        },
+        "cartesian_cache_identity": "558863af46a1d724b41b05f80492725bfa4f237d6bbf806377741aa5bd0bf940"
+      }
+    ]
+  },
+  "updated_one_thread": {
+    "case": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+    "threads": 1,
+    "mesh_cache": "bypassed",
+    "numba_cache_dir": "/tmp/openonda-mesher-perf/final-jit-cache",
+    "environment": {
+      "platform": "macOS-27.0-arm64-arm-64bit",
+      "python": "3.11.15",
+      "numpy": "2.4.6",
+      "numba": "0.66.0"
+    },
+    "runs": [
+      {
+        "run": 1,
+        "build_seconds": 116.61420745801297,
+        "cells": 303264,
+        "faces": 924588,
+        "points": 318192,
+        "stages": [
+          {
+            "stage": "octree seed refinement",
+            "seconds": 1.42
+          },
+          {
+            "stage": "octree balancing",
+            "seconds": 1.112
+          },
+          {
+            "stage": "object refinement",
+            "seconds": 5.689
+          },
+          {
+            "stage": "near-surface refinement",
+            "seconds": 0.585
+          },
+          {
+            "stage": "template topology extraction",
+            "seconds": 10.196
+          },
+          {
+            "stage": "template generation",
+            "seconds": 19.092
+          },
+          {
+            "stage": "surface topology check",
+            "seconds": 1.008
+          },
+          {
+            "stage": "surface projection",
+            "seconds": 1.256
+          },
+          {
+            "stage": "patch assignment",
+            "seconds": 12.153
+          },
+          {
+            "stage": "edge extraction",
+            "seconds": 11.888
+          },
+          {
+            "stage": "patch point remapping",
+            "seconds": 5.934
+          },
+          {
+            "stage": "surface optimisation",
+            "seconds": 5.494
+          },
+          {
+            "stage": "wrapper layer generation",
+            "seconds": 8.533
+          },
+          {
+            "stage": "mesh optimisation",
+            "seconds": 19.296
+          },
+          {
+            "stage": "wall constraint",
+            "seconds": 28.719
+          },
+          {
+            "stage": "final mesh validation",
+            "seconds": 3.158
+          }
+        ],
+        "sha256": {
+          "vertex_position": "9330446de34b4c25612d43837e2c52c4afd7c3a59f46869a3929e1ebc6bedd03",
+          "faces": "f1ed4edbaf1d89bf7435ff21564486734aa51515e7c49413773439f9e487e4fb",
+          "owners": "110677cb0928ef72a6903caa5d286b225cf6f85ffa07335c71622a76fedcf100",
+          "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
+        },
+        "surface_constraint": {
+          "method": "transactional_column_preserving_surface_projection",
+          "max_distance_before": 6.405844894530333e-07,
+          "max_distance_after": 8.326672684688674e-17,
+          "moved_inner_points": 3458,
+          "max_inner_displacement": 9.058682880556609e-07,
+          "column_translation_relaxation": 1.0,
+          "straightened_inner_points": 29596,
+          "protected_transition_points": 0,
+          "straightening_relaxation": 1.0,
+          "outer_domain_planes_constrained": false,
+          "baseline_intersecting_vtk_cells": 0,
+          "vtk_validation_scope": "moved_point_incident_cells",
+          "vtk_validation_cell_count": 58696,
+          "validated": true
+        },
+        "quality": {
+          "n_points": 318192,
+          "n_cells": 303264,
+          "n_faces": 924588,
+          "n_internal_faces": 894996,
+          "n_boundary_patches": 2,
+          "cells_with_unclosed_edges": 0,
+          "unclosed_cell_edges": 0,
+          "min_volume": 1.9720296921912788e-05,
+          "max_volume": 0.00014461935556569206,
+          "min_face_area": 0.0007354428596057152,
+          "max_non_orthogonality_deg": 36.53425626108365,
+          "p99_non_orthogonality_deg": 9.598460500700115,
+          "mean_non_orthogonality_deg": 0.38882618175483113,
+          "out_of_bounds_interpolation_weights": 0,
+          "max_skewness": 0.44457152598743055,
+          "p99_internal_face_skewness": 0.048218722429027944,
+          "max_skewness_face": 880932,
+          "max_aspect_ratio": 2.082923954661822,
+          "min_owner_face_pyramid_cosine": 0.7470310202903743,
+          "min_neighbour_face_pyramid_cosine": 0.747565076321807,
+          "inverted_owner_face_pyramids": 0,
+          "inverted_neighbour_face_pyramids": 0,
+          "max_adjacent_volume_scale_ratio": 1.4304052526479427,
+          "max_adjacent_cell_size_ratio": 1.0,
+          "max_lsq_condition": null,
+          "rank_deficient_lsq_cells": 0,
+          "svd_lsq_cells": 0,
+          "max_normalized_area_closure_error": 1.2885907262695884e-16,
+          "fluid_components": 1,
+          "fluid_cells": 303264,
+          "max_skewness_context": {
+            "face": 880932,
+            "face_centre": [
+              1.4829887499976475,
+              -1.4647274670489119,
+              1.4812728841871745
+            ],
+            "face_points": [
+              [
+                1.4713607450134891,
+                -1.4459356493892495,
+                1.4700104860029888
+              ],
+              [
+                1.4745163741350211,
+                -1.4753204769182438,
+                1.4729321246663647
+              ],
+              [
+                1.490287794424656,
+                -1.491519421001956,
+                1.4882838606877962
+              ],
+              [
+                1.4929606229764818,
+                -1.4485218134449673,
+                1.4910882456533934
+              ]
+            ],
+            "vertices": 4,
+            "owner": 296149,
+            "owner_centre": [
+              1.4839022929534562,
+              -1.4641381442137031,
+              1.4618715488982352
+            ],
+            "owner_layer": 0,
+            "neighbour": 296152,
+            "neighbour_centre": [
+              1.4635659535977086,
+              -1.464174631207404,
+              1.4826570063642366
+            ],
+            "neighbour_layer": 0
+          },
+          "patch_areas": {
+            "cube": 6.0,
+            "numericalBoundary": 53.498744986114446
+          },
+          "surface_conformance": {},
+          "surface_distance": {
+            "cube": {
+              "max": 8.326672684688674e-17,
+              "mean": 6.447427564606866e-18
+            }
+          }
+        },
+        "cartesian_cache_identity": "558863af46a1d724b41b05f80492725bfa4f237d6bbf806377741aa5bd0bf940"
+      }
+    ]
+  }
+}

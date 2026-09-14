@@ -30,16 +30,20 @@ native particle, memory, and numerical-health limits. A stopped method does
 not prevent later commands in `allrun.sh` from running.
 
 Each run starts at t=0 and writes to matching
-`solution/fig5_<method>/` and `samples/fig5_<method>/`
+`solution/<method>/` and `samples/<method>/`
 directories. `allclean.sh` removes them before a full rerun. For one method
 run directly, clear that method's old output directories first; the solver
 appends samples and rejects duplicate initial times.
 
-`allplot.sh` reads exactly these three run names. It writes core sections and
-trajectory comparisons to `figures/leapfrogging_study/`. The supplied LBM
-trajectory is the unperturbed Fig. 5 case; it does not provide a time or a
+`allplot.sh` reads these three cases and writes meridional vorticity sections,
+diagnostic histories, and leapfrogging kinematics to
+`figures/leapfrogging_study/`. All figures use the thesis Matplotlib template
+and are at most 12.5 cm wide. Each simulation has one color and marker in
+every plot; solid and dashed lines distinguish the two rings. The supplied
+LBM trajectory is the unperturbed Fig. 5 case; it does not provide a time or a
 three-dimensional breakdown field. See [reference provenance](assets/references/README.md).
 
-Older seeded and diagnostic experiments remain under `assets/` for historical
-reproduction. Their legacy helper, `assets/legacy_les.py`, is not used by
-`allrun.sh` or `allplot.sh`.
+`assets/` contains the figure scripts, the shared `postprocess.py` plotting
+helper, and the digitized LBM reference. `allplot.sh` uses whatever sampler
+output has been saved so far; unfinished cases are skipped until they produce
+data.

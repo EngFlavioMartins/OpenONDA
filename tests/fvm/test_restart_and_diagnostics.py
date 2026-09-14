@@ -268,6 +268,8 @@ def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_p
     assert str(solution / "mesher.log") in console.getvalue()
     assert "START    meshing session" in observed["mesher_log"]
     assert "START    mesh materialization" in observed["mesher_log"]
+    assert "Mesher: mesh materialization..." in console.getvalue()
+    assert "Mesher: mesh materialization completed in" in console.getvalue()
     completed_log = (solution / "mesher.log").read_text(encoding="utf-8")
     assert "DONE     mesh materialization" in completed_log
     assert "DONE     mesh backup export" in completed_log

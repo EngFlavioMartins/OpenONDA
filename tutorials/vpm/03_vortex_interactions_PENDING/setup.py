@@ -27,11 +27,6 @@ MAX_N_PARTICLES = 120_000
 TUTORIAL_DIR = Path(__file__).parent
 
 CASES = ("baseline", "stretching_viscosity", "p_moments")
-CASE_LABELS = {
-    "fig5_baseline": "Baseline",
-    "fig5_stretching_viscosity": "Stretching viscosity",
-    "fig5_p_moments": "Moment-preserving relaxation",
-}
 
 
 def create_ring(x, group):
@@ -140,17 +135,13 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             steps=n_steps,
             final_backup=True,
             health_limit_action="STOP",
-            resource_limits=vpm.ResourceLimits(
-                max_particles=600_000,
-                max_rss_bytes=12 * 1024**3,
-                min_available_memory_bytes=2 * 1024**3,
-            ),
+            resource_limits=vpm.ResourceLimits(max_particles=600_000),
         ),
     )
 
 
 def build_case(method, *, n_steps=N_STEPS, compute_device="AUTO"):
-    case = baseline_case(f"fig5_{method}", n_steps=n_steps, compute_device=compute_device)
+    case = baseline_case(method, n_steps=n_steps, compute_device=compute_device)
     base = case.numerics.stabilization
     if method == "baseline":
         return case
@@ -159,7 +150,7 @@ def build_case(method, *, n_steps=N_STEPS, compute_device="AUTO"):
     else:  # p_moments
         added = replace(
             base,
-            pedrizzetti_relaxation_factor=0.384684814725 * TIME_STEP_SIZE,
+            pedrizzetti_relaxation_factor=0.385 * TIME_STEP_SIZE,
             pedrizzetti_relaxation_preserve_vortex_strength=False,
             pedrizzetti_relaxation_preserve_moments=True,
         )

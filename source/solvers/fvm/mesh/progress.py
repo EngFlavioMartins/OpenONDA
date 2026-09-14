@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -20,7 +20,7 @@ def _clean(value: Any) -> str:
 class MesherLog:
     """A line-buffered progress sink owned by one mesh-materialization run."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, reporter: Callable[[str], None] | None = None) -> None:
         """Open a line-buffered meshing log at ``path``.
 
         Parameters
@@ -39,6 +39,7 @@ class MesherLog:
         self._stream: TextIO = self.path.open("a", encoding="utf-8", buffering=1)
         self._started = perf_counter()
         self._closed = False
+        self._reporter = reporter
         if existed:
             self._stream.write("\n")
         timestamp = datetime.now(UTC).isoformat(timespec="seconds")
@@ -54,6 +55,11 @@ class MesherLog:
         )
         self._stream.write(f"{elapsed:10.3f}s  {status:<8} {activity}{suffix}\n")
         self._stream.flush()
+        if self._reporter is not None and activity != "meshing session":
+            if status == "START":
+                self._reporter(f"  Mesher: {activity}...")
+            elif status == "DONE":
+                self._reporter(f"  Mesher: {activity} completed in {details.get('seconds', '?')}s")
 
     def close(self, *, failure: BaseException | None = None) -> None:
         """Finish the session with a durable success or failure record."""
@@ -142,13 +148,14 @@ def mesher_log_session(
     path: str | Path | None,
     *,
     announce: bool = False,
+    reporter: Callable[[str], None] | None = None,
 ) -> Iterator[MesherLog | None]:
     """Activate a live mesher log without adding paths to mesher public APIs."""
     if path is None:
         yield None
         return
 
-    logger = MesherLog(path)
+    logger = MesherLog(path, reporter=reporter)
     if announce:
         print(f"Mesher log: {logger.path}", flush=True)
     token = _ACTIVE_MESHER_LOG.set(logger)

@@ -31,7 +31,7 @@ induction is unbounded; the GBD computational lattice is not a periodic
 induction boundary condition. This remaining difference prevents calling the
 overlay a fully matched benchmark.
 
-`assets/assess_lbm_agreement.py` compares field-core maxima at equal axial
+`assets/plot_lbm_comparison.py` compares field-core maxima at equal axial
 positions, weights the two initially distinct cores equally, and refuses
 extrapolation. It stops assigning identities when there are not exactly two
 maxima or their straight-line bridge reaches the explicit diagnostic cutoff

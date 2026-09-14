@@ -46,6 +46,7 @@ def test_point_incident_subset_detects_same_intersections_as_full_mesh():
     affected = cells_incident_to_points(mesh, [point])
     assert len(affected) == 8
     subset, source_point_ids = extract_cell_subset_mesh(mesh, affected, return_point_ids=True)
+    reused_grid = VTKExporter(subset)._grid
 
     for movement in (0.0, 1.1):
         trial = np.asarray(mesh["vertex_position"]).copy()
@@ -58,5 +59,10 @@ def test_point_incident_subset_detects_same_intersections_as_full_mesh():
         local = validate_vtk_cell_intersections(
             VTKExporter(subset)._grid, maximum_intersections=subset["n_cells"]
         )
+        reused_grid.points = trial[source_point_ids]
+        reused = validate_vtk_cell_intersections(
+            reused_grid, maximum_intersections=subset["n_cells"]
+        )
+        assert reused == local
         assert whole["intersecting_cells"] == local["intersecting_cells"]
         assert whole["intersecting_cells"] == (0 if movement == 0.0 else 4)

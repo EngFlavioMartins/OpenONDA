@@ -6,7 +6,7 @@ import pytest
 
 from tests._tutorial_helpers import load_tutorial_module
 
-_assessment = load_tutorial_module("vpm/vortex_interactions", "assets.assess_lbm_agreement")
+_assessment = load_tutorial_module("vpm/vortex_interactions", "assets.plot_lbm_comparison")
 coherent_tracks = _assessment.coherent_tracks
 radius_score = _assessment.radius_score
 
@@ -38,6 +38,26 @@ def test_core_identity_survives_overtaking_and_peak_rank_changes():
     tracks, reason = coherent_tracks(pd.DataFrame(rows))
     assert tracks.time.max() == 1
     assert "bridge" in reason
+
+
+def test_core_tracking_uses_the_first_saved_field_when_step_zero_is_missing():
+    peaks = pd.DataFrame(
+        [
+            {
+                "step": step,
+                "time": time,
+                "x": x,
+                "radius": 1.0,
+                "n_peaks": 2,
+                "strongest_peak_pair_bridge_ratio": 0.0,
+            }
+            for step, time, positions in ((800, 3.0, (2.0, 3.0)), (840, 3.15, (2.2, 3.2)))
+            for x in positions
+        ]
+    )
+    tracks, _ = coherent_tracks(peaks)
+    assert sorted(tracks.step.unique()) == [800, 840]
+    np.testing.assert_allclose(tracks[tracks.ring == 1].x, [3.0, 3.2])
 
 
 def test_uniform_distance_score_weights_rings_equally_and_keeps_radius_error():
@@ -89,7 +109,9 @@ def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_p
 
     analysis = _assessment
 
-    monkeypatch.setattr(analysis, "STUDY_DIR", tmp_path)
+    monkeypatch.setattr(
+        analysis, "sample_directory", lambda run: tmp_path / run / "samples/diagnostics"
+    )
     reports = []
     for run, dt, multiplier in (("coarse", 0.01, 1.1), ("fine", 0.005, 1.0)):
         folder = tmp_path / run / "samples/diagnostics"
@@ -139,37 +161,46 @@ def test_high_saddle_grouping_preserves_separate_cores_and_reports_lobe_extent()
     assert len(raw) == 3
     peaks = _assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.9)
     assert len(peaks) == 2
-    assert all(p['raw_n_peaks'] == 3 and p['n_peaks'] == 2 for p in peaks)
-    grouped = next(p for p in peaks if p['cluster_n_peaks'] == 2)
-    assert grouped['cluster_x_span'] == [2.0, 4.0]
-    assert all(p['strongest_peak_pair_bridge_ratio'] == 0 for p in peaks)
+    assert all(p["raw_n_peaks"] == 3 and p["n_peaks"] == 2 for p in peaks)
+    grouped = next(p for p in peaks if p["cluster_n_peaks"] == 2)
+    assert grouped["cluster_x_span"] == [2.0, 4.0]
+    assert all(p["strongest_peak_pair_bridge_ratio"] == 0 for p in peaks)
     omega[3, 2] = 1.0
     assert len(_assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.9)) == 3
 
 
 def test_passage_timing_resolves_a_known_period_without_inventing_reference_time():
     times = np.linspace(0, 4 * np.pi, 101)
-    tracks = pd.DataFrame([
-        {"time": time, "ring": ring, "x": time + sign * np.cos(time),
-         "radius": 1 + sign * 0.2 * np.sin(time)}
-        for time in times for ring, sign in ((1, 1), (2, -1))
-    ])
+    tracks = pd.DataFrame(
+        [
+            {
+                "time": time,
+                "ring": ring,
+                "x": time + sign * np.cos(time),
+                "radius": 1 + sign * 0.2 * np.sin(time),
+            }
+            for time in times
+            for ring, sign in ((1, 1), (2, -1))
+        ]
+    )
     measured = _assessment.leapfrog_events(tracks)
     expected = np.pi * np.array([0.5, 1.5, 2.5, 3.5])
     np.testing.assert_allclose([row["time"] for row in measured["passages"]], expected, atol=1e-3)
     np.testing.assert_allclose(measured["full_cycle_periods"], 2 * np.pi, atol=1e-3)
-    for event, time in zip(measured["passages"], expected):
+    for event, time in zip(measured["passages"], expected, strict=True):
         assert event["time_bracket"][0] <= time <= event["time_bracket"][1]
     assert measured["lbm_temporal_phase_error"] is None
     assert measured["lbm_passage_times"] is None
 
 
 def test_axial_contact_requires_order_reversal_and_zero_plateaus_are_counted_once():
-    tracks = pd.DataFrame([
-        {"time": time, "ring": ring, "x": time + sign * distance, "radius": 1 + sign * 0.2}
-        for time, distance in enumerate([1, 0, 1, 0, 0, -1])
-        for ring, sign in ((1, 1), (2, -1))
-    ])
+    tracks = pd.DataFrame(
+        [
+            {"time": time, "ring": ring, "x": time + sign * distance, "radius": 1 + sign * 0.2}
+            for time, distance in enumerate([1, 0, 1, 0, 0, -1])
+            for ring, sign in ((1, 1), (2, -1))
+        ]
+    )
     events = _assessment.leapfrog_events(tracks)["passages"]
     assert len(events) == 1
     assert events[0]["time_bracket"] == [2, 5]

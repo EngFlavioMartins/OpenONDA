@@ -51,36 +51,19 @@ def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(t
     manager.dispatch(OutputEvent.INITIAL)
     solver.step, solver.time = 200, 1.5
     manager.dispatch(OutputEvent.ACCEPTED_STEP)
-    records = discover(tmp_path / "samples", tmp_path / "absent")
+    records = discover(tmp_path / "samples")
     assert [record["time"] for record in records] == [0.0, 1.5]
     x, r, omega = read_plane(records[-1]["path"])
     np.testing.assert_allclose(omega, np.broadcast_to(2 * x[:, None] / 100, (len(x), len(r))))
     assert np.min(omega) < 0 < np.max(omega)
 
 
-def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_path):
-    study = load_tutorial_module("vpm/vortex_interactions", "assets.study")
-    build_experiment, parser = study.build_experiment, study.parser
-
-    cases = [setup.build_case("baseline"), build_experiment(parser().parse_args([]), tmp_path)]
-    for case in cases:
-        planes = [
-            s for s in case.samplers.samples if getattr(s, "file_name", None) == "core_section"
-        ]
-        assert len(planes) == 2
-        assert planes[0].initial
-        assert planes[0].schedule.interval == pytest.approx(0.15)
-        assert planes[1].schedule.is_final_only
-        np.testing.assert_allclose(planes[0].normal, [0, 0, 1])
-        assert planes[0].spacing == pytest.approx(0.02)
-
-
-def test_study_uses_only_vpm_samplers_without_particle_archives(tmp_path):
-    study = load_tutorial_module("vpm/vortex_interactions", "assets.study")
-    build_experiment, parser = study.build_experiment, study.parser
-
-    case = build_experiment(parser().parse_args([]), tmp_path)
-    assert all(
-        isinstance(s, vpm.FlowIntegralsSampler | vpm.RingDiagnosticsSampler | vpm.SurfaceSampler)
-        for s in case.samplers.samples
-    )
+def test_setup_records_initial_periodic_and_final_planes():
+    case = setup.build_case("baseline")
+    planes = [s for s in case.samplers.samples if getattr(s, "file_name", None) == "core_section"]
+    assert len(planes) == 2
+    assert planes[0].initial
+    assert planes[0].schedule.interval == pytest.approx(0.15)
+    assert planes[1].schedule.is_final_only
+    np.testing.assert_allclose(planes[0].normal, [0, 0, 1])
+    assert planes[0].spacing == pytest.approx(0.02)

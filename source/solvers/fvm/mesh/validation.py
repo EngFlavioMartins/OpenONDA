@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+from numba import types
+from numba.typed import Dict
 import numpy as np
+
+from source._numba import cacheable_njit as njit
+
+from .topology import build_cell_face_csr, pack_face_nodes
+
+_EDGE_KEY_TYPE = types.UniTuple(types.int64, 2)
 
 
 class MeshValidationError(ValueError):
@@ -142,6 +150,33 @@ def validate_topology(mesh_data):
     }
 
 
+@njit(cache=True)
+def _cell_edge_incidence_kernel(nodes, offsets, cell_faces, cell_offsets):
+    bad_cells = 0
+    bad_edges = 0
+    first_bad_cell = -1
+    for cell in range(len(cell_offsets) - 1):
+        incidences = Dict.empty(_EDGE_KEY_TYPE, types.int64)
+        for entry in range(cell_offsets[cell], cell_offsets[cell + 1]):
+            face = cell_faces[entry]
+            first, stop = offsets[face], offsets[face + 1]
+            for position in range(first, stop):
+                a = nodes[position]
+                b = nodes[first if position + 1 == stop else position + 1]
+                edge = (min(a, b), max(a, b))
+                incidences[edge] = incidences.get(edge, 0) + 1
+        invalid = 0
+        for count in incidences.values():
+            if count != 2:
+                invalid += 1
+        if invalid:
+            bad_cells += 1
+            bad_edges += invalid
+            if first_bad_cell < 0:
+                first_bad_cell = cell
+    return bad_cells, bad_edges, first_bad_cell
+
+
 def validate_cell_edge_incidence(mesh_data) -> dict[str, int]:
     """Require every finite-volume cell polygon edge to occur twice.
 
@@ -156,28 +191,13 @@ def validate_cell_edge_incidence(mesh_data) -> dict[str, int]:
     faces = mesh_data["faces"]
     owners = np.asarray(mesh_data["owners"], dtype=np.int64)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
-    cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
-    for face_id, owner in enumerate(owners):
-        cell_faces[int(owner)].append(face_id)
-    for face_id, neighbour in enumerate(neighbours[:n_internal]):
-        cell_faces[int(neighbour)].append(face_id)
-
-    bad_cells = 0
-    bad_edges = 0
-    first_bad_cell = -1
-    for cell_id, face_ids in enumerate(cell_faces):
-        incidences: dict[tuple[int, int], int] = {}
-        for face_id in face_ids:
-            face = np.asarray(faces[face_id], dtype=np.int64)
-            for first, second in zip(face, np.roll(face, -1), strict=True):
-                edge = (int(min(first, second)), int(max(first, second)))
-                incidences[edge] = incidences.get(edge, 0) + 1
-        invalid = [count for count in incidences.values() if count != 2]
-        if invalid:
-            bad_cells += 1
-            bad_edges += len(invalid)
-            if first_bad_cell < 0:
-                first_bad_cell = cell_id
+    nodes, offsets = pack_face_nodes(faces)
+    cell_faces, cell_offsets = build_cell_face_csr(
+        owners, neighbours[:n_internal], n_cells, len(faces)
+    )
+    bad_cells, bad_edges, first_bad_cell = _cell_edge_incidence_kernel(
+        nodes, offsets, cell_faces, cell_offsets
+    )
 
     _require(
         bad_cells == 0,

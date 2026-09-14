@@ -6,6 +6,8 @@ docs/LBM.pdf filter=lfs diff=lfs merge=lfs -text
 tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/mesh_evidence/** filter=lfs diff=lfs merge=lfs -text
 tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/centreline.csv filter=lfs diff=lfs merge=lfs -text
 tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/offaxis_y075.csv filter=lfs diff=lfs merge=lfs -text
+tutorials/**/figures/**/*.log -diff
+tutorials/**/figures/**/*.aux -diff
 studies/coupler_accuracy/results/cube-3d-native-velocity-curl-integrals/velocity-curl-integrals.npy filter=lfs diff=lfs merge=lfs -text
 tutorials/vpm/05_delta_wing/samples/delta_wing/vlm_chordwise_front_wing.csv filter=lfs diff=lfs merge=lfs -text
 tutorials/vpm/05_delta_wing/samples/delta_wing/vlm_chordwise_rear_wing.csv filter=lfs diff=lfs merge=lfs -text

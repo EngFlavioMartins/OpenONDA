@@ -19,6 +19,9 @@ from typing import Any
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
+
+from ..topology import pack_face_nodes
 from .cfmesh_surface_optimisation import (
     _dot,
     _face_area_vector,
@@ -27,6 +30,25 @@ from .cfmesh_surface_optimisation import (
 )
 
 _VSMALL = 1.0e-300
+
+
+@njit(cache=True, fastmath=False)
+def _core_cell_references(points, vertices, offsets, owners, neighbours, n_cells):
+    """Accumulate source-face means in the original face traversal order."""
+    references = np.zeros((n_cells, 3), dtype=np.float64)
+    counts = np.zeros(n_cells, dtype=np.int32)
+    for face in range(len(owners)):
+        first, stop = offsets[face], offsets[face + 1]
+        centre = np.zeros(3, dtype=np.float64)
+        for entry in range(first, stop):
+            centre += points[vertices[entry]]
+        centre /= stop - first
+        references[owners[face]] += centre
+        counts[owners[face]] += 1
+        if face < len(neighbours):
+            references[neighbours[face]] += centre
+            counts[neighbours[face]] += 1
+    return references, counts
 
 
 def _area_vector(coordinates: np.ndarray) -> np.ndarray:
@@ -521,17 +543,15 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
             signature = tuple(sorted(map(int, face)))
             records[signature].append((face, cell_id, boundary_patch))
 
-    cell_references = np.zeros((n_core_cells + len(new_cells), 3), dtype=np.float64)
-    reference_counts = np.zeros(n_core_cells + len(new_cells), dtype=np.int32)
-    for face_id, face in enumerate(source_faces):
-        centre = points[face].mean(axis=0)
-        owner = int(source_owners[face_id])
-        cell_references[owner] += centre
-        reference_counts[owner] += 1
-        if face_id < n_internal:
-            neighbour = int(source_neighbours[face_id])
-            cell_references[neighbour] += centre
-            reference_counts[neighbour] += 1
+    source_vertices, source_offsets = pack_face_nodes(source_faces)
+    cell_references, reference_counts = _core_cell_references(
+        points,
+        source_vertices,
+        source_offsets,
+        source_owners,
+        source_neighbours,
+        n_core_cells + len(new_cells),
+    )
     for local_cell, entries in enumerate(new_cells):
         unique_points = np.unique(np.concatenate([entry[0] for entry in entries]))
         cell_id = n_core_cells + local_cell
@@ -638,13 +658,8 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
             source_order[int(owner_value)].append(face_id)
             if face_id < n_internal:
                 source_order[int(source_neighbours[face_id])].append(face_id)
-    cfmesh_cell_face_order = [
-        [
-            face_by_signature[tuple(sorted(map(int, source_faces[source_face_id])))]
-            for source_face_id in cell
-        ]
-        for cell in source_order
-    ]
+    source_face_map = [face_by_signature[tuple(sorted(map(int, face)))] for face in source_faces]
+    cfmesh_cell_face_order = [[source_face_map[face] for face in cell] for cell in source_order]
     for local_cell, entries in enumerate(new_cells):
         ordered_faces: list[np.ndarray] = []
         if local_cell < len(interface_cells):

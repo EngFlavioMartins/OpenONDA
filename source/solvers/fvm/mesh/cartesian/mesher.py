@@ -1256,6 +1256,7 @@ class CartesianMesher:
             )
             validation_mesh: dict[str, Any] | None = None
             validation_point_ids: np.ndarray | None = None
+            validation_grid = None
             if len(affected_cells):
                 if len(affected_cells) > int(mesh_data["n_cells"]) // 2:
                     validation_mesh = mesh_data
@@ -1263,8 +1264,9 @@ class CartesianMesher:
                     validation_mesh, validation_point_ids = extract_cell_subset_mesh(
                         mesh_data, affected_cells, return_point_ids=True
                     )
+                validation_grid = VTKExporter(validation_mesh)._grid
                 baseline_vtk = validate_vtk_cell_intersections(
-                    VTKExporter(validation_mesh)._grid,
+                    validation_grid,
                     maximum_intersections=int(validation_mesh["n_cells"]),
                 )
                 baseline_intersections = int(baseline_vtk["intersecting_cells"])
@@ -1284,10 +1286,14 @@ class CartesianMesher:
                     # self-intersecting polyhedron created at multi-patch
                     # wrapper corners. Check every cell whose vertices moved.
                     if validation_mesh is not None:
+                        # Straightening changes coordinates only. Reuse the
+                        # baseline's cell/face connectivity, but run VTK's
+                        # intersection predicate on every candidate geometry.
                         if validation_point_ids is not None:
                             validation_mesh["vertex_position"] = trial[validation_point_ids]
+                        validation_grid.points = validation_mesh["vertex_position"]
                         validate_vtk_cell_intersections(
-                            VTKExporter(validation_mesh)._grid,
+                            validation_grid,
                             maximum_intersections=baseline_intersections,
                         )
                 except Exception as exc:

@@ -240,7 +240,14 @@ def native_volume_pass(request):
 
 
 @pytest.mark.slow
-def test_surface_partition_passes_match_native_on_identical_inputs():
+@pytest.mark.parametrize("parallel", [False, True])
+def test_surface_partition_passes_match_native_on_identical_inputs(monkeypatch, parallel):
+    if parallel:
+        from source.solvers.fvm.mesh.cartesian import cfmesh_surface_optimisation as surface
+
+        monkeypatch.setattr(
+            surface, "_surface_optimisation_updates_serial", surface._surface_optimisation_updates
+        )
     path = Path(__file__).parent / "fixtures" / "cfmesh_surface_partition_passes.npz"
     with np.load(path, allow_pickle=False) as data:
         mesh = {

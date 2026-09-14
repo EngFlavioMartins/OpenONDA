@@ -1,0 +1,364 @@
+{
+  "analysis_sha256": "f5eed6dfe6c6e8c6ebf2ba56c22437f810a8ae0847e8ddc3393e66d69d4d089c",
+  "reference": "Cheng, Lou & Lim (2015), Fig. 5(b), DOI:10.1063/1.4915890",
+  "reference_sha256": "b8773d273276de1d55f807e280fe3ceb57fda7a15c3fa83c5fc79b5c909baf01",
+  "peak_merge_bridge": 0.9,
+  "scoring": "Equal-ring, uniform-x RMS radius discrepancy; linear interpolation; no extrapolation or fitting",
+  "limitation": "A kinematic discrepancy, not a matched-boundary or converged benchmark error estimate. Reynolds number and seed differences are recorded per run; mismatched inputs do not validate the seeded breakdown scenario.",
+  "requested_runs": [
+    "baseline",
+    "stretching_viscosity",
+    "p_moments"
+  ],
+  "unavailable_runs": [
+    "stretching_viscosity",
+    "p_moments"
+  ],
+  "runs": [
+    {
+      "run": "baseline",
+      "status": "running",
+      "identity_start_step": 0,
+      "completed_steps": 1200,
+      "final_time": 4.5,
+      "wall_seconds": NaN,
+      "settings": {
+        "scenario": "leapfrog",
+        "method": "baseline",
+        "reynolds_number": 3000.0000000000005,
+        "amplitude": 0.0,
+        "spacing": 0.05,
+        "core_ratio": 1.0,
+        "dt": 0.00375,
+        "integrator": "SSPRK3",
+        "diffusion": "CS",
+        "smagorinsky": 0.2,
+        "frequency": 0.0,
+        "capacity": 120000,
+        "filter_width": 0.053,
+        "regularization": {
+          "regularization_capacity_core_radius": null,
+          "regularization_capacity_divergence_trigger": null,
+          "regularization_capacity_energy_rate_trigger": null,
+          "regularization_capacity_fraction": 1.0,
+          "regularization_capacity_grid_spacing": null,
+          "regularization_capacity_max_particles": null,
+          "regularization_capacity_misalignment_trigger": null,
+          "regularization_core_radius": 0.05,
+          "regularization_core_radius_trigger": 0.1,
+          "regularization_divergence_trigger": null,
+          "regularization_grid_spacing": 0.05,
+          "regularization_interval_steps": 20,
+          "regularization_max_events": null,
+          "regularization_max_particles": 120000,
+          "regularization_misalignment_trigger": null,
+          "regularization_projection_max_correction": 0.2,
+          "regularization_projection_trigger": 0.08,
+          "regularization_solenoidal_remesh": false,
+          "regularization_start_step": 0,
+          "regularization_tail_budget": 0.003,
+          "regularization_total_enstrophy_dissipation_limit": 0.01,
+          "regularization_total_kinetic_energy_dissipation_limit": 0.01,
+          "regularization_transfer_only": true
+        }
+      },
+      "reference_reynolds_number": 3000,
+      "reference_seed_amplitude": 0.0,
+      "reynolds_matches_reference": true,
+      "seed_matches_reference": true,
+      "coherent_pair_end_time": 3.6,
+      "tracked_x_extent_by_ring": {
+        "1": 4.819993495941162,
+        "2": 4.279994010925293
+      },
+      "both_cores_reached_x7": false,
+      "identity_termination": "step 1000: not exactly two resolved peaks",
+      "coarser_snapshot_identity_termination": "step 1120: not exactly two resolved peaks",
+      "bridge_limit": 0.5,
+      "scores": [
+        {
+          "x_interval": [
+            0.55,
+            1.5
+          ],
+          "samples_per_ring": 501,
+          "rms_radius_over_R0": 0.02181625304330395,
+          "per_ring_rms_radius_over_R0": [
+            0.02837307126819968,
+            0.012118853927191284
+          ],
+          "max_radius_error_over_R0": 0.05570885910767509,
+          "coarser_snapshot_rms_radius_over_R0": 0.03122970002597236
+        },
+        {
+          "x_interval": [
+            0.55,
+            2.5
+          ],
+          "samples_per_ring": 501,
+          "rms_radius_over_R0": 0.05148398947343278,
+          "per_ring_rms_radius_over_R0": [
+            0.06661619325432909,
+            0.0293851176703949
+          ],
+          "max_radius_error_over_R0": 0.11952194874998734,
+          "coarser_snapshot_rms_radius_over_R0": 0.05140099244086212
+        },
+        {
+          "x_interval": [
+            0.55,
+            3.5
+          ],
+          "samples_per_ring": 501,
+          "rms_radius_over_R0": 0.06808813938661928,
+          "per_ring_rms_radius_over_R0": [
+            0.07432909802209217,
+            0.061214170234395945
+          ],
+          "max_radius_error_over_R0": 0.1401076833772228,
+          "coarser_snapshot_rms_radius_over_R0": 0.06687313606994777
+        },
+        {
+          "x_interval": [
+            0.55,
+            5.5
+          ],
+          "unavailable": "Both rings must cover the entire requested interval"
+        },
+        {
+          "x_interval": [
+            0.55,
+            7.0
+          ],
+          "unavailable": "Both rings must cover the entire requested interval"
+        }
+      ],
+      "leapfrogging": {
+        "passages": [
+          {
+            "time": 1.157142857142857,
+            "time_bracket": [
+              1.05,
+              1.2
+            ],
+            "midpoint_x": 1.5114252226693288,
+            "radial_separation": 0.6199999621936253
+          },
+          {
+            "time": 3.25,
+            "time_bracket": [
+              3.15,
+              3.3
+            ],
+            "midpoint_x": 4.053327560424805,
+            "radial_separation": 0.5866666436195374
+          }
+        ],
+        "successive_passage_intervals": [
+          2.092857142857143
+        ],
+        "full_cycle_periods": [],
+        "lbm_passage_times": null,
+        "lbm_temporal_phase_error": null,
+        "reference_limitation": "The supplied LBM CSV has no time coordinate."
+      },
+      "peaks_sha256": "a7e0ee9f6e9d6c90d08e35557201055a01280c3d1298e59bc67b696f95a759f0",
+      "sampler_fields": [
+        {
+          "file": "core_section_000000.vts",
+          "time": 0.0,
+          "sha256": "b02f356a5189908f1d346219a914f843f587267cf24f0f2a415e946f39a45c30"
+        },
+        {
+          "file": "core_section_000040.vts",
+          "time": 0.15,
+          "sha256": "b6a22d755d6de7863410475a14a5ba5d9f14029018f086d9324d8c98aab35c6d"
+        },
+        {
+          "file": "core_section_000080.vts",
+          "time": 0.3,
+          "sha256": "ee26b1dbaa8d574fbfefc59338619b0aa53ef192b7a9fcf7ec8784d448895d70"
+        },
+        {
+          "file": "core_section_000120.vts",
+          "time": 0.45,
+          "sha256": "64186503252999de9eeaa391c85cc604484156e4ad7c18775030152d7a86eb66"
+        },
+        {
+          "file": "core_section_000160.vts",
+          "time": 0.6,
+          "sha256": "bd3c1fedd1668652dee6b09e813b321eb96a78f740219b6818976d6f0885fdb0"
+        },
+        {
+          "file": "core_section_000200.vts",
+          "time": 0.75,
+          "sha256": "8c11f942daa48e70af1ed0ba89d3710d41beae11319ef747673da1f847ed65bd"
+        },
+        {
+          "file": "core_section_000240.vts",
+          "time": 0.9,
+          "sha256": "43a0bb8d8a09f88f7b334b032868af1655afda2425ceb0ab88f8413eb8faa6fc"
+        },
+        {
+          "file": "core_section_000280.vts",
+          "time": 1.05,
+          "sha256": "d48f664ce1ade739eb5c79c89a8af22a45b1674eced0369138e83c7e862bf405"
+        },
+        {
+          "file": "core_section_000320.vts",
+          "time": 1.2,
+          "sha256": "4bb61c5a3274d92c59f1d7b0b8db5e1c3add4d8e35b4fddff086d1c9440b392f"
+        },
+        {
+          "file": "core_section_000360.vts",
+          "time": 1.35,
+          "sha256": "d422cf6af6949bfeb76fadf92214d1743e26fea89d6975389f82b04d776e1239"
+        },
+        {
+          "file": "core_section_000400.vts",
+          "time": 1.5,
+          "sha256": "7a7d1f5099b2a7648514ac00a0c5b5ccee1803bb189a11b15ab70cfb519466b2"
+        },
+        {
+          "file": "core_section_000440.vts",
+          "time": 1.65,
+          "sha256": "b2cee620d788cb4b189473b0952cfd6faf0799a7470bffc576ab52e56ba10323"
+        },
+        {
+          "file": "core_section_000480.vts",
+          "time": 1.8,
+          "sha256": "692949e22801ed219bd54fd6c628dab4fceeacb361b18eec0fdccde1aaab4636"
+        },
+        {
+          "file": "core_section_000520.vts",
+          "time": 1.95,
+          "sha256": "d5f75d01d3e53be7bd82a5d107cfba6fe363e3dc7e888a11c995d5ac5739ab83"
+        },
+        {
+          "file": "core_section_000560.vts",
+          "time": 2.1,
+          "sha256": "55ddf08e1d55fb405f4c6e593348cb02a9f4d65d6e6b982c12c864b8529b6ca9"
+        },
+        {
+          "file": "core_section_000600.vts",
+          "time": 2.25,
+          "sha256": "e6b7295c71d03979a357253d5dce0bc0326fbee8c4525a5fa69d5f763324415d"
+        },
+        {
+          "file": "core_section_000640.vts",
+          "time": 2.4,
+          "sha256": "5670ac4657bcc3eca0c5d7fe7fc54b10c49133cabec6c43fe251c15de8ee3826"
+        },
+        {
+          "file": "core_section_000680.vts",
+          "time": 2.55,
+          "sha256": "29ba8162bb6b3228c6737fd8513eb1ca37d34c7dc433fbfc7f12ae9c186940bb"
+        },
+        {
+          "file": "core_section_000720.vts",
+          "time": 2.7,
+          "sha256": "22dba5f776abfdb008c2dd1e04f5bbfc836c72b697e56704426cc003fc7a285a"
+        },
+        {
+          "file": "core_section_000760.vts",
+          "time": 2.85,
+          "sha256": "e118c72d3cdd919b832afe51a905a91ed68c8e26bcbde1f4de92562809c565bd"
+        },
+        {
+          "file": "core_section_000800.vts",
+          "time": 3.0,
+          "sha256": "62e126db55bd7ace47f64ced922ac9d084722f6f271d3d1e57ab89c6a7c661c1"
+        },
+        {
+          "file": "core_section_000840.vts",
+          "time": 3.15,
+          "sha256": "e79e62ccc9da4d1c6059f443c1c83406bf1ed57c17b224827e868569e9afefba"
+        },
+        {
+          "file": "core_section_000880.vts",
+          "time": 3.3,
+          "sha256": "28c4047d5b75d393dcb1864809a15ec3840fbcc3c461b36d984ee43e1c89c1e4"
+        },
+        {
+          "file": "core_section_000920.vts",
+          "time": 3.45,
+          "sha256": "08dced8e901e26818ce08a3482719a136cf9104ca13f21fa4d72d1e76d16922b"
+        },
+        {
+          "file": "core_section_000960.vts",
+          "time": 3.6,
+          "sha256": "428ec5b447545429f03e8f1f8f61b5927f7e3a8a795c1672c6d95a232d5d958c"
+        },
+        {
+          "file": "core_section_001000.vts",
+          "time": 3.75,
+          "sha256": "0913f60120e4bd015755d3ba8abd8d5509a650641b93a88e3af38a1684cbdc43"
+        },
+        {
+          "file": "core_section_001040.vts",
+          "time": 3.9,
+          "sha256": "659b7a8e85d6dbb18e9f485e6677a2c288b33e98cfdb1557c52906b55efd60c4"
+        },
+        {
+          "file": "core_section_001080.vts",
+          "time": 4.05,
+          "sha256": "8fc5afe027df67cdc9b014a7f7a656710f81dc2d4d4e63a7bce51adbaa87c4a7"
+        },
+        {
+          "file": "core_section_001120.vts",
+          "time": 4.2,
+          "sha256": "92a21a84b239ce4066bfbfc17a2b6e55e9fbc90e0186b94587cbfb4e92c6492b"
+        },
+        {
+          "file": "core_section_001160.vts",
+          "time": 4.35,
+          "sha256": "4e68a51b5c24b7ae9a9a63b00c874918e7d327db5fc19aeba903da16d3e8f23a"
+        },
+        {
+          "file": "core_section_001200.vts",
+          "time": 4.5,
+          "sha256": "936f3585e0999d6fa19847fa9cdb28ae5b6d038c012d149d8b235acbd1fc1ba6"
+        },
+        {
+          "file": "core_section_001240.vts",
+          "time": 4.65,
+          "sha256": "1cf546468ea6d0cbefd2a6b6b3b069bcd21dba8df1b7af767bff1f96a6effec2"
+        }
+      ],
+      "self_diagnostics": {
+        "file": "/Users/flaviomartins/OpenONDA/tutorials/vpm/03_vortex_interactions_PENDING/samples/baseline/flow_integrals.csv",
+        "sha256": "3f3a0d8f4d40f5dea68ba647a9e6b2ba184554133e8fab35b601e12fc60793be",
+        "final_sample_time": 4.6875,
+        "final": {
+          "n_particles_total": 104526.0,
+          "vorticity_divergence_error": 0.0471021050159981,
+          "vortex_strength_misalignment_degrees": 0.7077881653058193,
+          "lagrangian_cfl": 0.0275452473945915,
+          "max_eddy_viscosity": 0.0009346244041807,
+          "max_effective_viscosity": 0.0019818218424916,
+          "n_stabilization_events": 6.0,
+          "n_regularization_events": 6.0,
+          "stretching_viscosity_feedback_coefficient": 0.0
+        },
+        "maximum": {
+          "n_particles_total": 104526.0,
+          "vorticity_divergence_error": 0.0573379904594272,
+          "vortex_strength_misalignment_degrees": 1.121776808489782,
+          "lagrangian_cfl": 0.1069631454348564,
+          "max_eddy_viscosity": 0.0036739790812134,
+          "max_effective_viscosity": 0.0047211768105626,
+          "n_stabilization_events": 6.0,
+          "n_regularization_events": 6.0,
+          "stretching_viscosity_feedback_coefficient": 0.0
+        },
+        "energy_measurements": [
+          "periodic_fourier_energy"
+        ],
+        "final_energy_ratio": 0.728130511405573
+      },
+      "core_definition": "positive curl(u)_z maxima on the z=0, y>=0 SurfaceSampler plane",
+      "spatial_uncertainty": "grid-resolved peak coordinates; repeat with finer sampler spacing"
+    }
+  ],
+  "temporal_field_comparisons": []
+}

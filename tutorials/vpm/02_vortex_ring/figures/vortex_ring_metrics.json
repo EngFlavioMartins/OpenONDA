@@ -1,0 +1,99 @@
+{
+  "dns_direct": {
+    "status": "instability_detected",
+    "normalized_end_time": 6.660176425610362,
+    "final_vector_drift": 0.009234598881095136,
+    "initial_vector_norm": 0.00018495882083532214,
+    "final_tube_change_percent": 17.03180260349526,
+    "maximum_absolute_tube_change_percent": 17.03180260349526,
+    "speed_reference_relative_rms_percent": 4.135425296593532,
+    "final_speed_reference_difference_percent": -2.353292059500234,
+    "energy_change_percent": -22.141808394985308,
+    "positive_energy_rates": 0,
+    "max_misalignment_degrees": 25.148479129511024,
+    "maximum_strength_ratio": 5.22534319514452,
+    "final_mean_particle_radius_over_R0": 0.1173894926905632,
+    "missing_sample_steps": [],
+    "common_step_100": {
+      "normalized_time": 6.283185307179586,
+      "tube_change_percent": 13.16758263109774,
+      "vector_drift": 0.008048793387487055,
+      "relative_speed_rms_percent": 4.176939575031987,
+      "mean_absolute_energy_rate_residual": 0.022302744906785556
+    }
+  },
+  "dns_transposed": {
+    "status": "horizon_reached",
+    "normalized_end_time": 188.49555921538757,
+    "final_vector_drift": 0.00033427459150021856,
+    "initial_vector_norm": 0.00018495882083532214,
+    "final_tube_change_percent": -0.33089786535417387,
+    "maximum_absolute_tube_change_percent": 0.4423824246725383,
+    "speed_reference_relative_rms_percent": 3.0209945046939324,
+    "final_speed_reference_difference_percent": null,
+    "energy_change_percent": -68.93669898463033,
+    "positive_energy_rates": 0,
+    "max_misalignment_degrees": 4.066375000619587,
+    "maximum_strength_ratio": 1.1619658452650916,
+    "final_mean_particle_radius_over_R0": 0.5061917304992676,
+    "missing_sample_steps": [
+      2440,
+      2445,
+      2450,
+      2455
+    ],
+    "common_step_100": {
+      "normalized_time": 6.283185307179586,
+      "tube_change_percent": -0.3646475874799937,
+      "vector_drift": 1.303382388373072e-05,
+      "relative_speed_rms_percent": 3.894504703320095,
+      "mean_absolute_energy_rate_residual": 0.020076605492289287
+    }
+  },
+  "dns_mixed": {
+    "status": "instability_detected",
+    "normalized_end_time": 19.854865570687494,
+    "final_vector_drift": 0.0008061792224485974,
+    "initial_vector_norm": 0.00018495882083532214,
+    "final_tube_change_percent": 13.928605121849458,
+    "maximum_absolute_tube_change_percent": 13.928605121849458,
+    "speed_reference_relative_rms_percent": 4.036410665341359,
+    "final_speed_reference_difference_percent": -3.886869010532712,
+    "energy_change_percent": -32.57701485867063,
+    "positive_energy_rates": 0,
+    "max_misalignment_degrees": 25.03315278538684,
+    "maximum_strength_ratio": 3.528682603564022,
+    "final_mean_particle_radius_over_R0": 0.1771243512630462,
+    "missing_sample_steps": [],
+    "common_step_100": {
+      "normalized_time": 6.283185307179586,
+      "tube_change_percent": -0.3681490104709195,
+      "vector_drift": 0.00012480601277324759,
+      "relative_speed_rms_percent": 3.9045681395302316,
+      "mean_absolute_energy_rate_residual": 0.020142211779344592
+    }
+  },
+  "les_transposed": {
+    "status": "horizon_reached",
+    "normalized_end_time": 188.49555921538757,
+    "final_vector_drift": 2.180556161696477e-06,
+    "initial_vector_norm": 0.00018495882083532214,
+    "final_tube_change_percent": -0.24691183567917552,
+    "maximum_absolute_tube_change_percent": 0.37367085740032113,
+    "speed_reference_relative_rms_percent": 4.397315427558002,
+    "final_speed_reference_difference_percent": null,
+    "energy_change_percent": -69.76974699449592,
+    "positive_energy_rates": 0,
+    "max_misalignment_degrees": 4.064281444624678,
+    "maximum_strength_ratio": 1.1670467896323473,
+    "final_mean_particle_radius_over_R0": 0.5210383534431458,
+    "missing_sample_steps": [],
+    "common_step_100": {
+      "normalized_time": 6.283185307179586,
+      "tube_change_percent": -0.2860965331430765,
+      "vector_drift": 8.575571852511043e-07,
+      "relative_speed_rms_percent": 4.641045459936731,
+      "mean_absolute_energy_rate_residual": 0.017795500334043264
+    }
+  }
+}

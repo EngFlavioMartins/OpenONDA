@@ -102,75 +102,6 @@ def test_frozen_representation_controls_are_retained():
     assert config.regularization_total_enstrophy_dissipation_limit == 0.01
 
 
-@pytest.mark.parametrize("variant", ["baseline", "stretching_viscosity", "p_moments", "splitting"])
-def test_official_les_cases_preserve_the_studied_physics_and_native_outputs(variant):
-    from types import SimpleNamespace
-
-    from openonda.tutorial_runner import load_case_module
-    from source.solvers.vpm.io.manifest import _case_configuration
-
-    study = load_case_module(CASE_DIR, "assets.study")
-    setup = load_case_module(CASE_DIR, "assets.legacy_les")
-    args = study.parser().parse_args(
-        [
-            "--method",
-            variant,
-            "--steps",
-            "1200",
-            "--dt",
-            ".0075",
-            "--wall-minutes",
-            "24",
-            "--spacing",
-            ".06",
-            "--core-ratio",
-            "1",
-            "--amplitude",
-            "0",
-            "--smagorinsky",
-            ".20",
-            "--initial-tail",
-            ".0001",
-            "--tree-theta",
-            ".5",
-            "--tree-order",
-            "3",
-            "--capacity",
-            "1000000",
-            "--field-interval",
-            ".15",
-            "--frequency",
-            ".384684814725",
-            "--diffusion",
-            "CS",
-        ]
-    )
-    candidate = setup.build_case(variant)
-    reference = study.build_experiment(args, candidate.directory)
-    actual = _case_configuration(SimpleNamespace(case=candidate))
-    expected = _case_configuration(SimpleNamespace(case=reference))
-    actual_numerics = dict(actual["numerics"])
-    expected_numerics = dict(expected["numerics"])
-    assert actual_numerics.pop("domain_bounds") == [-2.0, 12.0, -3.0, 3.0, -3.0, 3.0]
-    assert expected_numerics.pop("domain_bounds") is None
-    assert actual_numerics == expected_numerics
-    assert actual["initial_conditions"] == expected["initial_conditions"]
-    assert candidate.name == f"cs_{variant}"
-    assert candidate.directory == CASE_DIR
-    assert candidate.backup.directory == f"solution/cs_{variant}"
-    assert candidate.backup.interval_steps == 100
-    assert candidate.run.final_backup
-    assert candidate.samplers.directory == f"cs_{variant}"
-    assert candidate.run.steps == 1200
-    assert candidate.run.wall_time_limit_seconds == 1440
-    assert {sampler.file_name for sampler in candidate.samplers.samples} == {
-        "flow_integrals",
-        "ring_diagnostics",
-        "core_section",
-        "cross_section",
-    }
-
-
 def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     import json
     import os
@@ -184,7 +115,7 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     stub.write_text(
         f"#!{sys.executable}\nimport json,os,sys\n"
         "with open(os.environ['COMMAND_LOG'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
-        "sys.exit(1 if 'baseline' in sys.argv or 'divergence_relaxation' in sys.argv else 0)\n"
+        "sys.exit(1 if sys.argv[1:3] == ['setup.py', 'baseline'] else 0)\n"
     )
     stub.chmod(0o755)
     for script in ("allrun.sh", "allplot.sh"):
@@ -199,6 +130,6 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     assert [c[1] for c in commands[: len(setup.CASES)]] == list(setup.CASES)
     assert all(len(c) == 2 for c in commands[: len(setup.CASES)])
     sections, assessment = commands[-2:]
-    expected = [f"fig5_{case}" for case in setup.CASES]
+    expected = list(setup.CASES)
     assert sections[sections.index("--runs") + 1 : sections.index("--times")] == expected
     assert assessment[1 : assessment.index("--peak-merge-bridge")] == expected

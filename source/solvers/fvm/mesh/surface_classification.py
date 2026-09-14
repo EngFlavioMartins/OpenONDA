@@ -116,47 +116,85 @@ def triangle_box_overlap(
     ``v0``, ``v1``, ``v2`` have shape ``(n, 3)``; returns a boolean mask of
     shape ``(n,)``.
     """
-    t0 = v0 - box_centre
-    t1 = v1 - box_centre
-    t2 = v2 - box_centre
+    return _triangle_box_overlap_mask_kernel(box_centre, box_half, v0, v1, v2)
 
-    tri_min = np.minimum(np.minimum(t0, t1), t2)
-    tri_max = np.maximum(np.maximum(t0, t1), t2)
-    overlap = np.all((tri_min <= box_half) & (tri_max >= -box_half), axis=1)
 
-    e0 = t1 - t0
-    e1 = t2 - t1
-    e2 = t0 - t2
-    normal = np.cross(e0, e1)
-    dist = np.einsum("ij,ij->i", normal, t0)
-    radius = (
-        box_half[0] * np.abs(normal[:, 0])
-        + box_half[1] * np.abs(normal[:, 1])
-        + box_half[2] * np.abs(normal[:, 2])
-    )
-    overlap &= np.abs(dist) <= np.where(radius > 0.0, radius, np.finfo(np.float64).eps)
-
-    axes_x = np.array([1.0, 0.0, 0.0])
-    axes_y = np.array([0.0, 1.0, 0.0])
-    axes_z = np.array([0.0, 0.0, 1.0])
-    for edge in (e0, e1, e2):
-        for base in (axes_x, axes_y, axes_z):
-            axis = np.cross(np.broadcast_to(base, edge.shape), edge)
-            axis_norm = np.linalg.norm(axis, axis=1)
-            valid = axis_norm > 1.0e-14
-            p0 = np.einsum("ij,ij->i", t0, axis)
-            p1 = np.einsum("ij,ij->i", t1, axis)
-            p2 = np.einsum("ij,ij->i", t2, axis)
-            proj_min = np.minimum(np.minimum(p0, p1), p2)
-            proj_max = np.maximum(np.maximum(p0, p1), p2)
-            r = (
-                box_half[0] * np.abs(axis[:, 0])
-                + box_half[1] * np.abs(axis[:, 1])
-                + box_half[2] * np.abs(axis[:, 2])
-            )
-            separated = valid & ((proj_min > r) | (proj_max < -r))
-            overlap &= ~separated
-    return overlap
+@njit(cache=True, fastmath=False)
+def _triangle_box_overlap_mask_kernel(
+    box_centre: np.ndarray,
+    box_half: np.ndarray,
+    v0: np.ndarray,
+    v1: np.ndarray,
+    v2: np.ndarray,
+) -> np.ndarray:
+    """Compiled mask form retaining the public separating-axis tolerances."""
+    result = np.zeros(len(v0), dtype=np.bool_)
+    for index in range(len(v0)):
+        t0x = v0[index, 0] - box_centre[0]
+        t0y = v0[index, 1] - box_centre[1]
+        t0z = v0[index, 2] - box_centre[2]
+        t1x = v1[index, 0] - box_centre[0]
+        t1y = v1[index, 1] - box_centre[1]
+        t1z = v1[index, 2] - box_centre[2]
+        t2x = v2[index, 0] - box_centre[0]
+        t2y = v2[index, 1] - box_centre[1]
+        t2z = v2[index, 2] - box_centre[2]
+        if (
+            max(t0x, t1x, t2x) < -box_half[0]
+            or min(t0x, t1x, t2x) > box_half[0]
+            or max(t0y, t1y, t2y) < -box_half[1]
+            or min(t0y, t1y, t2y) > box_half[1]
+            or max(t0z, t1z, t2z) < -box_half[2]
+            or min(t0z, t1z, t2z) > box_half[2]
+        ):
+            continue
+        e0x = t1x - t0x
+        e0y = t1y - t0y
+        e0z = t1z - t0z
+        e1x = t2x - t1x
+        e1y = t2y - t1y
+        e1z = t2z - t1z
+        e2x = t0x - t2x
+        e2y = t0y - t2y
+        e2z = t0z - t2z
+        nx = e0y * e1z - e0z * e1y
+        ny = e0z * e1x - e0x * e1z
+        nz = e0x * e1y - e0y * e1x
+        radius = box_half[0] * abs(nx) + box_half[1] * abs(ny) + box_half[2] * abs(nz)
+        if abs(nx * t0x + ny * t0y + nz * t0z) > (
+            radius if radius > 0.0 else np.finfo(np.float64).eps
+        ):
+            continue
+        for edge_id in range(3):
+            if edge_id == 0:
+                ex, ey, ez = e0x, e0y, e0z
+            elif edge_id == 1:
+                ex, ey, ez = e1x, e1y, e1z
+            else:
+                ex, ey, ez = e2x, e2y, e2z
+            # The three cross products with the Cartesian box axes are
+            # (0,-ez,ey), (ez,0,-ex), and (-ey,ex,0).
+            for axis_id in range(3):
+                if axis_id == 0:
+                    ax, ay, az = 0.0, -ez, ey
+                elif axis_id == 1:
+                    ax, ay, az = ez, 0.0, -ex
+                else:
+                    ax, ay, az = -ey, ex, 0.0
+                if np.sqrt(ax * ax + ay * ay + az * az) <= 1.0e-14:
+                    continue
+                p0 = t0x * ax + t0y * ay + t0z * az
+                p1 = t1x * ax + t1y * ay + t1z * az
+                p2 = t2x * ax + t2y * ay + t2z * az
+                radius = box_half[0] * abs(ax) + box_half[1] * abs(ay) + box_half[2] * abs(az)
+                if max(p0, p1, p2) < -radius or min(p0, p1, p2) > radius:
+                    break
+            else:
+                continue
+            break
+        else:
+            result[index] = True
+    return result
 
 
 @njit(cache=True, fastmath=False)
@@ -381,8 +419,9 @@ class SurfaceIndex:
 
     def box_intersects_surface(self, box_min: np.ndarray, box_max: np.ndarray) -> bool:
         """True if any triangle has positive-area overlap with the box."""
-        if np.any(box_max < self.surface_lower) or np.any(box_min > self.surface_upper):
-            return False
+        for axis in range(3):
+            if box_max[axis] < self.surface_lower[axis] or box_min[axis] > self.surface_upper[axis]:
+                return False
         candidates = self.candidate_triangles(box_min, box_max)
         if candidates.size == 0:
             return False
@@ -409,6 +448,15 @@ class SurfaceIndex:
         points = np.atleast_2d(points)
         n = len(points)
         result = np.zeros(n, dtype=bool)
+        if n == 1:
+            # Most scalar octree queries lie outside the body's bounding box.
+            # Reject them before building ray candidates or NumPy temporaries.
+            for axis in range(3):
+                if (
+                    points[0, axis] < self.surface_lower[axis]
+                    or points[0, axis] > self.surface_upper[axis]
+                ):
+                    return result
         resolved = np.zeros(n, dtype=bool)
         v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
         if n == 1:

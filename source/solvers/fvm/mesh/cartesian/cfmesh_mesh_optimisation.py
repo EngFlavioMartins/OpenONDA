@@ -29,6 +29,22 @@ def _scalar_dot(first: np.ndarray, second: np.ndarray) -> float:
     return float(first[0] * second[0] + first[1] * second[1] + first[2] * second[2])
 
 
+@register_jitable
+def _cross_offsets(first, second, origin):
+    ax, ay, az = first[0] - origin[0], first[1] - origin[1], first[2] - origin[2]
+    bx, by, bz = second[0] - origin[0], second[1] - origin[1], second[2] - origin[2]
+    return ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+
+
+@register_jitable
+def _dot_offset(vector, point, origin):
+    return (
+        vector[0] * (point[0] - origin[0])
+        + vector[1] * (point[1] - origin[1])
+        + vector[2] * (point[2] - origin[2])
+    )
+
+
 def _mesh_addressing(
     faces: list[np.ndarray],
     owners: np.ndarray,
@@ -298,23 +314,20 @@ def _bad_face_scan_kernel(
         # pyramidPointFaceRef has the opposite sign to the stored face area
         # for the owner side.  Testing the equivalent dot products avoids a
         # second polygon triangulation and matches the VSMALL=1e-300 gate.
-        if _scalar_dot(area, centre - cell_centres[owner]) <= 0.0:
+        if _dot_offset(area, centre, cell_centres[owner]) <= 0.0:
             bad.add(face_id)
         if face_id < len(neighbours):
             neighbour = int(neighbours[face_id])
-            if _scalar_dot(area, centre - cell_centres[neighbour]) >= 0.0:
+            if _dot_offset(area, centre, cell_centres[neighbour]) >= 0.0:
                 bad.add(face_id)
 
-        coordinates = points[face]
         area_magnitude = float(np.sqrt(_mag_squared(area)))
         if area_magnitude < _VSMALL:
             bad.add(face_id)
         if len(face) > 3 and area_magnitude > _VSMALL:
             triangle_areas = np.empty(len(face), dtype=np.float64)
             for j in range(len(face)):
-                normal = np.cross(
-                    coordinates[(j + 1) % len(face)] - coordinates[j], centre - coordinates[j]
-                )
+                normal = _cross_offsets(points[face[(j + 1) % len(face)]], centre, points[face[j]])
                 triangle_areas[j] = 0.5 * np.sqrt(_mag_squared(normal))
             if area_magnitude / (float(triangle_areas.sum()) + _VSMALL) < 0.8:
                 bad.add(face_id)
@@ -322,16 +335,18 @@ def _bad_face_scan_kernel(
         for edge_index in range(len(face)):
             current = points[int(face[edge_index])]
             following = points[int(face[(edge_index + 1) % len(face)])]
-            owner_volume = (1.0 / 6.0) * _scalar_dot(
-                np.cross(following - centre, current - centre),
-                cell_centres[owner] - centre,
+            owner_volume = (1.0 / 6.0) * _dot_offset(
+                _cross_offsets(following, current, centre),
+                cell_centres[owner],
+                centre,
             )
             if owner_volume < _VSMALL:
                 bad.add(face_id)
             if face_id < len(neighbours):
-                neighbour_volume = (1.0 / 6.0) * _scalar_dot(
-                    np.cross(current - centre, following - centre),
-                    cell_centres[int(neighbours[face_id])] - centre,
+                neighbour_volume = (1.0 / 6.0) * _dot_offset(
+                    _cross_offsets(current, following, centre),
+                    cell_centres[int(neighbours[face_id])],
+                    centre,
                 )
                 if neighbour_volume < _VSMALL:
                     bad.add(face_id)
@@ -1309,6 +1324,19 @@ def _run_cfmesh_low_quality(
     return trace
 
 
+@njit(cache=True, fastmath=False)
+def _interior_laplacian_updates(centres, cell_ids, offsets):
+    """Average incident cells in the same sorted order as the serial smoother."""
+    updates = np.empty((len(offsets) - 1, 3), dtype=np.float64)
+    for point in range(len(updates)):
+        value = np.zeros(3, dtype=np.float64)
+        first, stop = offsets[point], offsets[point + 1]
+        for entry in range(first, stop):
+            value += centres[cell_ids[entry]]
+        updates[point] = value / (stop - first)
+    return updates
+
+
 def optimise_cfmesh_mesh(
     mesh_data: dict[str, Any],
     *,
@@ -1355,6 +1383,12 @@ def optimise_cfmesh_mesh(
     if any(not point_cells[int(point_id)] for point_id in smooth_points):
         raise ValueError("cfMesh mesh optimization found an inside point without incident cells")
 
+    from .cfmesh_surface_optimisation import _pack_rows
+
+    smooth_cells, smooth_offsets = _pack_rows(
+        [sorted(point_cells[int(point)]) for point in smooth_points]
+    )
+
     for _iteration in range(iterations):
         cell_centres = _cfmesh_cell_centres(
             points,
@@ -1365,15 +1399,7 @@ def optimise_cfmesh_mesh(
             cell_face_order=cell_face_order,
             cell_faces=cell_faces,
         )
-        updates = np.asarray(
-            [
-                cell_centres[np.asarray(sorted(point_cells[int(point_id)]), dtype=np.int32)].mean(
-                    axis=0
-                )
-                for point_id in smooth_points
-            ],
-            dtype=np.float64,
-        )
+        updates = _interior_laplacian_updates(cell_centres, smooth_cells, smooth_offsets)
         points[smooth_points] = updates
 
     bad_after_laplacian = _cfmesh_bad_faces(

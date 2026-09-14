@@ -321,7 +321,14 @@ def create_fvm_solver(
     _raise_collective_failure(logger_error, "startup logging")
 
     try:
-        with mesher_log_session(mesher_log_path if is_root else None):
+        with mesher_log_session(
+            mesher_log_path if is_root else None,
+            reporter=(
+                (lambda message: startup_logger.message(message, flush=True))
+                if startup_logger is not None
+                else None
+            ),
+        ):
             with mesh_stage("mesh materialization") as materialization:
                 mesh_data = _materialize_mesh(mesh, is_root=materialize_mesh_here)
                 if mesh_data is not None:

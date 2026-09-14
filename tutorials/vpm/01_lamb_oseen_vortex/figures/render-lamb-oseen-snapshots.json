@@ -1,0 +1,110 @@
+{
+  "source_backup": "/Users/flaviomartins/OpenONDA/tutorials/vpm/lamb_oseen_vortex/solution/merging_gbd/vpm_000927.h5",
+  "initial_particles": 3618,
+  "final_particles": 118469,
+  "final_time": 29.972999999691,
+  "sample_plane_z": 1.25,
+  "solution": "merging_gbd",
+  "velocity_scale": 1.2732395447351628,
+  "vorticity_scale": 20.371832715762604,
+  "styles": [
+    {
+      "time": 0.0,
+      "normalised_time": 0.0,
+      "vorticity_limits": [
+        0.06911901437463666,
+        0.8639876796829583
+      ],
+      "velocity_limits": [
+        0,
+        0.7092225826959082
+      ],
+      "sphere_radius_range": [
+        0.0002021006198176215,
+        0.035
+      ],
+      "sphere_strength_reference": 0.017611770339733646,
+      "scene_pixels": [
+        3000,
+        2250
+      ]
+    },
+    {
+      "time": 29.972999999691,
+      "normalised_time": 3.619381132038159,
+      "vorticity_limits": [
+        0.0037093783119129284,
+        0.0463672288989116
+      ],
+      "velocity_limits": [
+        0,
+        0.22942214561456503
+      ],
+      "sphere_radius_range": [
+        8.794847963145003e-05,
+        0.03500000014901161
+      ],
+      "sphere_strength_reference": 0.0007536155171692371,
+      "scene_pixels": [
+        3000,
+        2250
+      ]
+    }
+  ],
+  "sphere_encoding": "Opaque shaded spheres with radius 0.035*(abs(strength)/frame_max_strength)^0.65. Glyph radius is not the Gaussian core radius.",
+  "renderer": "CPU analytic ray-sphere intersections, Phong shading and a depth buffer; streamlines are depth tested against spheres.",
+  "colour_clipping": "Particle upper limit min(95th percentile, 0.8*peak), lower limit 0.08*upper; values below lower are pale grey. Velocity upper limit 99th percentile. All limits are per frame and indicated by extended colour bars.",
+  "vorticity_definition": "Gaussian reconstruction at particle positions, truncated beyond five maximum radii",
+  "normalised_vorticity_absolute_tail_bounds": [
+    1.6794052781011378e-09,
+    1.6800598661430122e-09
+  ],
+  "velocity_definition": "direct 3-D Gaussian Biot-Savart sum on z=L/4",
+  "field_grid": [
+    149,
+    149
+  ],
+  "view_limits": [
+    [
+      [
+        -3.5707140616282973,
+        -2.6731696209835545
+      ],
+      [
+        3.5617820163732286,
+        2.6756078646534687
+      ]
+    ],
+    [
+      [
+        -3.5707140616282973,
+        -2.6731696209835545
+      ],
+      [
+        3.5617820163732286,
+        2.6756078646534687
+      ]
+    ]
+  ],
+  "framing": "Both states share the orthographic projection, field of view, raster dimensions and axes rectangle. Bounds enclose both particle clouds and the sampling plane. Colour limits and size normalisation are per frame.",
+  "camera": {
+    "projection": "orthographic",
+    "view_vector_unnormalised": [
+      0.7,
+      0.61,
+      -0.37
+    ],
+    "in_plane_rotation_degrees": 25,
+    "axes_rectangle": [
+      0.005,
+      0.045,
+      0.99,
+      0.95
+    ],
+    "pixels_per_length_unit": 420.4699122442838
+  },
+  "figure_size_mm": [
+    125,
+    85
+  ]
+}
