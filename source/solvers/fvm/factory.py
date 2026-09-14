@@ -140,7 +140,8 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
         with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=solution_dir) as temporary:
             staging = Path(temporary)
             save_native_mesh(mesh_data, staging / "mesh.npz")
-            VTKExporter(mesh_data, output).export(str(staging / "mesh.vtu"), fields)
+            exporter = VTKExporter(mesh_data, output)
+            exporter.export(str(staging / "mesh.vtu"), fields)
             existing = [solution_dir / name for name in ("mesh.npz", "mesh.vtu")]
             if any(path.exists() for path in existing):
                 previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=solution_dir))
@@ -159,7 +160,7 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
     with mesh_stage("mesh geometry and final visualisation") as stage:
         geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
         fields = mesh_cell_fields(mesh_data, geometry["cell_volume"])
-        VTKExporter(mesh_data, output).export(str(solution_dir / "mesh.vtu"), fields)
+        exporter.export(str(solution_dir / "mesh.vtu"), fields)
         stage.details(cells=mesh_data.get("n_cells"), faces=mesh_data.get("n_faces"))
 
 

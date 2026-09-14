@@ -1,0 +1,13 @@
+{
+  "dimension": 3,
+  "ranks": 4,
+  "accepted_coupling_steps": 2,
+  "accepted_fvm_steps": 10,
+  "sweeps": [
+    3,
+    3
+  ],
+  "forces_written": 2,
+  "atomic_backup_step": 2,
+  "scope": "Coarse MPI lifecycle check; not a fine-case accuracy comparison."
+}

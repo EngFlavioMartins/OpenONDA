@@ -63,13 +63,13 @@ def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_pat
     build_experiment, parser = study.build_experiment, study.parser
 
     cases = [setup.build_case("baseline"), build_experiment(parser().parse_args([]), tmp_path)]
-    for case, interval in zip(cases, (1.5, 0.15), strict=True):
+    for case in cases:
         planes = [
             s for s in case.samplers.samples if getattr(s, "file_name", None) == "core_section"
         ]
         assert len(planes) == 2
         assert planes[0].initial
-        assert planes[0].schedule.interval == pytest.approx(interval)
+        assert planes[0].schedule.interval == pytest.approx(0.15)
         assert planes[1].schedule.is_final_only
         np.testing.assert_allclose(planes[0].normal, [0, 0, 1])
         assert planes[0].spacing == pytest.approx(0.02)

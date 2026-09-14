@@ -8,13 +8,13 @@ All case parameters are kept below in one explicit configuration block. Edit
 them here to define a different case.
 
 Usage:
-    python setup.py
+    ./allrun.sh
 """
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -22,6 +22,7 @@ import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
+from openonda.runtime import RunConfig
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
@@ -30,28 +31,24 @@ FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
 REYNOLDS = 1000.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS
-SMAGORINSKY_CK = 0.094
-SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
 FVM_CORES = 4
 FVM_BOX = (-1.50, 1.50, -1.50, 1.50, -1.50, 1.50)
-FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
-TRANSFER_REGION_BOX = FVM_WAKE_BOX
-SURFACE_CELL_SIZE = 0.015625
-FVM_MAX_CELL_SIZE = 0.25
+TRANSFER_REGION_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
+REFERENCE_FINE_DX = 0.06
+SURFACE_CELL_SIZE = REFERENCE_FINE_DX
+FVM_MAX_CELL_SIZE = 12 * REFERENCE_FINE_DX
 PIMPLE_CORRECTORS = 2
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 PARTICLE_LIMIT = 1_500_000
-VPM_CORE_RADIUS_RATIO = 1.0
+VPM_CORE_RADIUS_RATIO = 1.1
 GBD_VORTICITY_FLOOR = 0.02
-VPM_PARTICLE_SPACING = 2 * SURFACE_CELL_SIZE
+VPM_PARTICLE_SPACING = REFERENCE_FINE_DX
 ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
-VPM_VISCOUS_SCHEME = "GBD"
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -59,7 +56,8 @@ TRANSFER_METHOD = "buffered_m4_renewal"
 TRANSFER_VORTICITY_CUTOFF = 0.05
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 TRANSFER_AMPLIFICATION_CAP = 1.8
-FVM_CONSISTENCY_WIDTH = FVM_BOX[1] - TRANSFER_REGION_BOX[1]
+FVM_CONSISTENCY_WIDTH = 0.0
+INTERFACE_ITERATIONS = 12
 
 # Time and output
 END_TIME = 20.0
@@ -68,41 +66,14 @@ WRITE_SOLUTION_BACKUP = 0.5
 VPM_TIME_STEP_MULTIPLIER = 5
 
 
-def resolve_case_timing(
-    fvm_time_step_size: float,
-    vpm_time_step_multiplier: int,
-    write_solution_backup: float,
-    sampling_period: float,
-) -> tuple[float, float, int, int, int, int]:
-    """Resolve compatible solver steps and exact integer output intervals."""
+FVM_TIME_STEP_SIZE = 0.01
+VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
+FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
+VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIME_STEP_SIZE)
+FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
+VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
-    vpm_steps_per_sample = round(sampling_period / (vpm_time_step_multiplier * fvm_time_step_size))
-    vpm_time_step_size = sampling_period / vpm_steps_per_sample
-    fvm_time_step_size = vpm_time_step_size / vpm_time_step_multiplier
-    intervals = (
-        round(write_solution_backup / fvm_time_step_size),
-        round(write_solution_backup / vpm_time_step_size),
-        round(sampling_period / fvm_time_step_size),
-        round(sampling_period / vpm_time_step_size),
-    )
-    return fvm_time_step_size, vpm_time_step_size, *intervals
-
-
-(
-    FVM_TIME_STEP_SIZE,
-    VPM_TIME_STEP_SIZE,
-    FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
-    VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
-    FVM_SAMPLING_INTERVAL_STEPS,
-    VPM_SAMPLING_INTERVAL_STEPS,
-) = resolve_case_timing(
-    fvm_time_step_size=0.010,
-    vpm_time_step_multiplier=VPM_TIME_STEP_MULTIPLIER,
-    write_solution_backup=WRITE_SOLUTION_BACKUP,
-    sampling_period=SAMPLING_INTERVAL_TIME,
-)
-VPM_LOGGING_INTERVAL_STEPS = 20
-SAMPLE_SPACING = VPM_PARTICLE_SPACING
+SAMPLE_SPACING = min(0.125, 2 * REFERENCE_FINE_DX)
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 10
 
 # Case files and derived sampling data
@@ -128,17 +99,16 @@ FVM_MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=FVM_MAX_CELL_SIZE,
-    boundary_cell_size=SURFACE_CELL_SIZE,
-    min_cell_size=SURFACE_CELL_SIZE,
+    boundary_cell_size=REFERENCE_FINE_DX,
+    patch_refinements=(msh.PatchRefinement("cube", SURFACE_CELL_SIZE),),
     refinements=(
         msh.BoxRefinement(
-            name="wakeBox",
-            bounds=FVM_WAKE_BOX,
-            cell_size=SURFACE_CELL_SIZE * 2.0,
+            name="nearBody",
+            bounds=FVM_BOX,
+            cell_size=REFERENCE_FINE_DX,
         ),
     ),
 )
-
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.EverySteps(VPM_SAMPLING_INTERVAL_STEPS)
@@ -154,16 +124,16 @@ FVM_SAMPLERS = (
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
-        end=[FVM_BOX[1], 0.0, 0.0],
+        end=[FVM_BOX[1],   0.0, 0.0],
         spacing=SAMPLE_SPACING,
-        file_name="fvm_centreline",
+        file_name=f"fvm_centreline",
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
-        end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
+        end=[FVM_BOX[1],   OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
-        file_name="fvm_offaxis_y075",
+        file_name=f"fvm_offaxis_y075",
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.SurfaceSampler(
@@ -224,10 +194,7 @@ FVM_SETUP = fvm.FVMSetup(
     ),
     samplers=FVM_SAMPLERS,
     transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-    turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
-        subgrid_kinetic_energy_coefficient=SMAGORINSKY_CK,
-        subgrid_dissipation_coefficient=SMAGORINSKY_CE,
-    ),
+    turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(),
     boundaries=[
         fvm.BoundaryConfig(
             name="numericalBoundary",
@@ -248,6 +215,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     backup_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
+    interface_iterations=INTERFACE_ITERATIONS,
     eta_blend_width=ETA_BLEND_WIDTH,
     vpm_only_width=0.0,
     transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
@@ -255,36 +223,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
-
-
-def make_vpm_viscous_config(scheme: str) -> vpm.ViscousConfig:
-    common = {
-        "particle_spacing": VPM_PARTICLE_SPACING,
-        "core_radius_ratio": VPM_CORE_RADIUS_RATIO,
-    }
-    return {
-        "CS": vpm.ViscousConfig.cs(
-            kinematic_viscosity=KINEMATIC_VISCOSITY,
-            **common,
-        ),
-        "DVH": vpm.ViscousConfig.dvh(
-            padding=5.0,
-            kinematic_viscosity=KINEMATIC_VISCOSITY,
-            threshold_mode="absolute",
-            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-            max_nodes=PARTICLE_LIMIT,
-            **common,
-        ),
-        "GBD": vpm.ViscousConfig.gbd(
-            padding=5.0,
-            kinematic_viscosity=KINEMATIC_VISCOSITY,
-            threshold_mode="absolute",
-            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-            max_nodes=PARTICLE_LIMIT,
-            **common,
-        ),
-        "NONE": vpm.ViscousConfig.inviscid(**common),
-    }[scheme.upper()]
 
 
 VPM_SAMPLERS = (
@@ -321,6 +259,7 @@ VPM_SAMPLERS = (
         schedule=VPM_SAMPLING_SCHEDULE,
     ),
 )
+
 VPM_PANEL_SOLVER = vpm.PanelSolver(
     max_n_panels=128,
     float_dtype="f32",
@@ -328,24 +267,29 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
     boundary_condition_type="NEUMANN",
     density=DENSITY,
     freestream_velocity=np.asarray(FREESTREAM_VELOCITY),
-    coupling_scope="vpm_boundary_condition",
+    coupling_scope="fvm_vpm",
 )
 VPM_CASE = vpm.VPMCase(
     name="coupled_replacement_flow",
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
-        viscous=make_vpm_viscous_config(VPM_VISCOUS_SCHEME),
-        integrator=vpm.RK2() if VPM_SCHEME == "RK2" else vpm.SSPRK3(),
-        turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(
-            subgrid_kinetic_energy_coefficient=SMAGORINSKY_CK,
-            subgrid_dissipation_coefficient=SMAGORINSKY_CE,
+        viscous=vpm.ViscousConfig.gbd(
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            particle_spacing=VPM_PARTICLE_SPACING,
+            core_radius_ratio=VPM_CORE_RADIUS_RATIO,
+            padding=5.0,
+            threshold_mode="absolute",
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
+            max_nodes=PARTICLE_LIMIT,
         ),
-        induction=vpm.FMMInduction(),
+        integrator=vpm.RK2(),
+        turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(),
+        induction=vpm.TreecodeInduction(),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",
-        compute_device="CPU",  # FMM supports CPU on macOS; Vulkan is available on Linux.
+        compute_device="AUTO",
         max_n_particles=PARTICLE_LIMIT,
         max_evaluation_points=PARTICLE_LIMIT,
         domain_bounds=list(VPM_DOMAIN),
@@ -361,24 +305,25 @@ VPM_CASE = vpm.VPMCase(
 )
 
 
-def main(
-    *,
-    restart_from: Path | None = None,
-    restart_allowed_config_differences: Collection[str] = (),
-    max_coupling_steps: int | None = None,
-    backup_at_stop: bool = False,
-) -> int:
-    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    if restart_from is None:
-        fvm_solver.write_vtk()
-    vpm_solver = vpm.VPMSolver(VPM_CASE)
+def main() -> int:
+    RunConfig(cpu_cores=FVM_SETUP.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
+    mesh = msh.CachedMesh(FVM_MESH, CASE_DIR / "constant" / "mesh.npz")
+
+    # Unfortunately, we don't know a way of initializing these solver that is not
+    # like the below. In a future patch, I plan to fix this...
+    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=mesh)
+    vpm_solver = None
+    if fvm_solver.parallel.is_root:
+        vpm_solver = vpm.VPMSolver(VPM_CASE)
     coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    return coupled_solver.run(
-        restart_from=restart_from,
-        restart_allowed_config_differences=restart_allowed_config_differences,
-        max_coupling_steps=max_coupling_steps,
-        backup_at_stop=backup_at_stop,
-    )
+
+    # Run the simulation
+    coupled_solver.run()
+
+    # Close the solvers
+    fvm_solver.close()
+    if vpm_solver is not None:
+        vpm_solver.close()
 
 
 if __name__ == "__main__":

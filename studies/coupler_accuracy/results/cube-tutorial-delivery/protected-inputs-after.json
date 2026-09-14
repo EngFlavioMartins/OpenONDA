@@ -1,0 +1,22 @@
+{
+  "tutorials/coupled_fvm_vpm/02_cube_flow/allplot.sh": "aa32c91fe5f3f21438f7f1d147d110cec7da88dec7854691f448536e1abe58d7",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/analyze_renewal_oracle.py": "5960446c247d570d28b0e7cdf27ffdd88af34fb3b4b6b39656364df0381ebbb0",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_l1_lattice_trial.py": "a8bef86be06cc82c05167b921373963f0390bbb76f752d3b2a8a136bd8e70e9f",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_reference_util.py": "4f8c40b2251d814d2a8058e431c81ec478fc7588e16323be0a0f0ff9b16ddf14",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/diagnose_wake_handoff.py": "7c5ec44631c7c3046060af4a8f804293fb08d0f7bdf696a39efd6ae924a58a15",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_profiles.py": "609b2401b4c1277ac99a47ec6f9b22448e7e6266a27aa24fe8140ba200aab849",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/measure_trial_errors.py": "27ebff1e2bcba06b1d825124593e5fa3ca5d57fd86ef1e800637479627bf462f",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_calibration_matrix.py": "385529901f98d76dbe51e5ffdc36cb639cb625648ee45536e5fe8d128e4f9b92",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/report_l1_acceptance.py": "1c866d0ee194cd1cf559f6cba11bc05138b255d72ce765c85df76a28603e572a",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_frames_util.py": "466b63fd3881a21e88d8ee65db227ec809ec67c8c7739367c178c7977fa920cc",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/run_trial.py": "6821f245b8ea7c3e3e274bb5ff74c82764810f6daedd9f82b290fe5bd2bc38e1",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/extract_profiles.py": "8d0c0ba9cdf1c6db5ab61840d67c54eb3e346f5ae613868b1d00917a4250ee57",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/audit_mesh_geometry.py": "0535863a3c0485a01809569d5b425099ad854c41942879e535b2f60811318cc1",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/validate_plot_inputs.py": "4fed3d0e13ea3b5bfe0a91c1be92af75369a2525b4b53e2af0443dc773e716f2",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/_plotutil.py": "02a567459cc041d20e1aa559bb71b626ea237611ed7e4938903f0af2000d3da5",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_coupling_diagnostics.py": "78412471a361eb6497928f87e3961470d466aee3b3ade5801ed5ab5408fda92a",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_fields.py": "d960e9af91c240954721149dbfeb7e0666c56727098e92c26493e2c09c364249",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/check_run.py": "f7f9a0bc94feee09962079ac9335795fc53bc30e8f7efa85ed06af16b028f41d",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/setup.py": "241b56ec638a17f4c6e73e259be88c0746d3f88eb46696da607e378e8bc97371",
+  "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/allrun.sh": "deb4aacd7d1f422716a7ec54f1ac2596060a6cb61ae7f7f3c1067d0410e8b2dc"
+}

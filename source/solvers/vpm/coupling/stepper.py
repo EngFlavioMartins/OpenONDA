@@ -47,7 +47,7 @@ class CouplingStepper:
         """Advance panel–VPM coupling and append any shed particles."""
         solver = self.solver
         panel_solver = solver.panel_solver
-        if getattr(panel_solver, "coupling_scope", "full") == "vpm_boundary_condition":
+        if getattr(panel_solver, "coupling_scope", "full") in ("vpm_boundary_condition", "fvm_vpm"):
             return
         new_particles = panel_solver.advance(
             particles=solver.particles,

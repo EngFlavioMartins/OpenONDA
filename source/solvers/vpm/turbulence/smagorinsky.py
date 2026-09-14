@@ -16,6 +16,7 @@ class SmagorinskyModel:
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
+        filter_width: float | None = None,
     ) -> None:
         """Configure and allocate the equilibrium Smagorinsky model.
 
@@ -33,6 +34,8 @@ class SmagorinskyModel:
             the subgrid kinetic-energy coefficient.
         accumulator_dtype : Taichi primitive type, default=ti.f32
             Scalar type for filter-width and strain-rate work fields.
+        filter_width : float or None, default=None
+            Fixed LES filter in metres; None uses particle volume^(1/3).
 
         Notes
         -----
@@ -45,6 +48,8 @@ class SmagorinskyModel:
         self.particle_kernel = particle_kernel.upper()
         self.smagorinsky_coefficient = smagorinsky_coefficient
         self.subgrid_dissipation_coefficient = subgrid_dissipation_coefficient
+        self.filter_width = filter_width
+        self._uses_fixed_filter = filter_width is not None
         self.subgrid_kinetic_energy_coefficient = (
             smagorinsky_coefficient**2 * subgrid_dissipation_coefficient**0.5
         ) ** (2.0 / 3.0)
@@ -96,7 +101,7 @@ class SmagorinskyModel:
             ("c_s", f"{self.smagorinsky_coefficient:.4f}"),
             ("c_k", f"{self.subgrid_kinetic_energy_coefficient:.6f}"),
             ("c_e", f"{self.subgrid_dissipation_coefficient:.4f}"),
-            ("filter width", "V_p^(1/3)"),
+            ("filter width", "V_p^(1/3)" if self.filter_width is None else f"{self.filter_width:.8g} m (fixed)"),
         ]
 
     @ti.kernel
@@ -107,10 +112,13 @@ class SmagorinskyModel:
         n_particles_total: ti.i32,
     ):
         for i in range(n_particles_total):
-            local_particle_volume = particle_volume[i]
-            filter_width[i] = (
-                ti.pow(local_particle_volume, 1.0 / 3.0) if local_particle_volume > 0.0 else 0.0
-            )
+            if ti.static(self._uses_fixed_filter):
+                filter_width[i] = self.filter_width
+            else:
+                local_particle_volume = particle_volume[i]
+                filter_width[i] = (
+                    ti.pow(local_particle_volume, 1.0 / 3.0) if local_particle_volume > 0.0 else 0.0
+                )
 
     @ti.kernel
     def _compute_strain_rate_magnitude(

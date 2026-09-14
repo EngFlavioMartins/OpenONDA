@@ -1,0 +1,11 @@
+{
+  "resumed_from_coupling_step": 2,
+  "accepted_coupling_step": 3,
+  "accepted_fvm_step": 15,
+  "time": 0.15,
+  "converged": true,
+  "sweeps": 3,
+  "force_rows_written": 1,
+  "atomic_backup_verified": true,
+  "scope": "Small 3D four-rank MPI restart check, not a fine-resolution accuracy test."
+}

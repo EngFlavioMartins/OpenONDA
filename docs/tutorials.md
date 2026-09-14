@@ -23,8 +23,8 @@ python setup.py --variant dns_direct
 ```
 
 Edit the inputs in `setup.py` to define your experiment; for a short ring check,
-reduce `N_STEPS` there before running. The shell files have
-one purpose each:
+reduce `N_STEPS` there before running. The shell files expose three simple
+actions:
 
 ```bash
 ./allrun.sh    # Run the simulations listed in the file.
@@ -32,10 +32,11 @@ one purpose each:
 ./allclean.sh  # Remove generated output when you choose to.
 ```
 
-Running does not invoke cleaning, plotting, or result validation. Existing
-outputs remain until you explicitly clean them; individual solvers may
-replace their own output files when rerun. Launch the shell files from the
-case directory. Direct Python setup paths also work from other directories.
+Most run scripts leave existing outputs in place. A case that requires fresh
+outputs, such as vortex interactions, calls `allclean.sh` explicitly at the
+start of `allrun.sh`. Running does not invoke plotting or result validation.
+Launch the shell files from the case directory. Direct Python setup paths also
+work from other directories.
 No interpreter variables or module-runner commands are required.
 
 The installed CLI performs the same separate actions from any directory:
@@ -53,14 +54,13 @@ python setup.py vortex CS
 python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
 
 # In the vortex-interactions case:
-python setup_les.py --variant baseline
-python setup_les.py --variant p_moments
-python setup_les.py --variant halfdt
+python setup.py baseline
+python setup.py stretching_viscosity
+python setup.py p_moments
 ```
 
-`setup_les.py` preserves the three-run LES experiment; `setup.py` contains the
-six stabilization comparisons. Advanced individual research trials remain in
-`assets/study.py`. There is no Python campaign wrapper behind `allrun.sh`.
+The vortex-interactions comparison has one LES baseline and two stabilization
+methods. Historical individual research trials remain in `assets/`.
 
 Validators are explicit, for example `python assets/postprocess.py --available`
 in the ring case. They and the plotters read the solvers' `vpm_metadata.json`

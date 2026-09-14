@@ -1,0 +1,91 @@
+{
+  "schema": "openonda-wake-prefix-figures-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "verification": {
+    "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/long-wake-prefix-verification-3d.json",
+    "sha256": "ec49ae141efe0ca019d2fb1447e66e14dc270ffc50cb5e34fb50fb9aa90e2020"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/plot_accepted_wake_prefix_3d.py",
+      "sha256": "748b496c4ca1fffc7b0ae26b42801c2ee49aaafd97f99c5c278e30740cd67927"
+    }
+  ],
+  "figures": [
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/forces.png",
+      "sha256": "969ff0e5e85e26cfe1a80d04bf0b58d582618f459937886941c66f59a7fabc03"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/forces.svg",
+      "sha256": "71c757e31197a9d22ce11a2196523480e25c059cac7d037ff463ce3d71479e2d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/profiles.png",
+      "sha256": "9a03a72ea6e85de6a63824773b9c1ae6d022e5eba4811111c1edea9ead8dcf0f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/profiles.svg",
+      "sha256": "b33c567f0ac2ce4c325880817a171a5b0a504492d849cbb8dbf5e36871956a9b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/velocity-errors.png",
+      "sha256": "6e3c1a7e2130461f1c9e00d4516585af1e4768bea7e755922cb67a7a46b352a0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-figures/velocity-errors.svg",
+      "sha256": "147eca8775cd342b888daeda6b0b82c2b36ef57cbbe6e133f33d852774bcd085"
+    }
+  ],
+  "near_wake_direct_comparisons": [
+    {
+      "physical_time": 0.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 5.912284462520803e-08,
+          "saved_query_minus_reference_rms": 0.0013795465606560055,
+          "direct_minus_reference_rms": 0.0013795545235367596
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 3.6251447981211044e-08,
+          "saved_query_minus_reference_rms": 0.0024135997371957257,
+          "direct_minus_reference_rms": 0.0024135996265006376
+        }
+      }
+    },
+    {
+      "physical_time": 1.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 1.1455511534544336e-07,
+          "saved_query_minus_reference_rms": 0.010341841626362626,
+          "direct_minus_reference_rms": 0.010341828855066553
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 1.2729963614323297e-07,
+          "saved_query_minus_reference_rms": 0.0076244221661006875,
+          "direct_minus_reference_rms": 0.007624445796159747
+        }
+      }
+    },
+    {
+      "physical_time": 2.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 6.336556834082647e-07,
+          "saved_query_minus_reference_rms": 0.018133778711908372,
+          "direct_minus_reference_rms": 0.018133973522346906
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 2.0607819761986843e-07,
+          "saved_query_minus_reference_rms": 0.008408422656644796,
+          "direct_minus_reference_rms": 0.008408419787883245
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "These plots cover the verified accepted prefix only. They do not imply completed long-run or developed-wake validation."
+  ]
+}

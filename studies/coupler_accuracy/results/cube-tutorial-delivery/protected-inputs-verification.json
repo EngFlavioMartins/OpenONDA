@@ -1,0 +1,8 @@
+{
+  "plot_scripts_checked": 18,
+  "plot_scripts_byte_identical": true,
+  "concurrently_changed_files": [
+    "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/setup.py"
+  ],
+  "note": "The reference setup changed during validation; this task did not edit or restore it. Current reference grid runs and configuration were preserved."
+}

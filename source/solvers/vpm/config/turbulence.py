@@ -24,6 +24,10 @@ class TurbulenceConfig:
         model.
     subgrid_dissipation_coefficient : float, default=1.048
         Positive dimensionless equilibrium dissipation coefficient ``C_e``.
+    filter_width : float or None, default=None
+        Fixed LES filter width in metres. None retains the local particle
+        volume^(1/3) rule. A fixed width separates the closure scale from
+        quadrature changes during spatial refinement or redistribution.
 
     Attributes
     ----------
@@ -51,6 +55,9 @@ class TurbulenceConfig:
     subgrid_dissipation_coefficient: float = 1.048
     """SGS dissipation coefficient ``C_e``."""
 
+    filter_width: float | None = None
+    """Optional fixed LES filter width in metres."""
+
     flow_model: str = field(default="DNS", init=False)
     """Solver flow-model category derived from ``model``."""
 
@@ -68,6 +75,10 @@ class TurbulenceConfig:
             or self.subgrid_dissipation_coefficient <= 0.0
         ):
             raise ValueError("subgrid_dissipation_coefficient must be finite and positive")
+        if self.filter_width is not None and (
+            not math.isfinite(self.filter_width) or self.filter_width <= 0.0
+        ):
+            raise ValueError("filter_width must be finite and positive or None")
         flow_model = {
             "DNS": "DNS",
             "LES_SMAGORINSKY": "LES",
@@ -93,12 +104,14 @@ class TurbulenceConfig:
     def les_smagorinsky(
         smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
+        filter_width: float | None = None,
     ) -> TurbulenceConfig:
         """Return the equilibrium Smagorinsky LES configuration."""
         return TurbulenceConfig(
             model="LES_SMAGORINSKY",
             smagorinsky_coefficient=smagorinsky_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
+            filter_width=filter_width,
         )
 
     @staticmethod

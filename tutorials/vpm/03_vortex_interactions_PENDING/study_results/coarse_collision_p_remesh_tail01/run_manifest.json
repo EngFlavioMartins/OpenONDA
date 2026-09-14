@@ -1,7 +1,0 @@
-{
-  "error": "RuntimeError: regularization candidate changed dE/E=-2.979e-02, dZ/Z=-5.607e-03; no dissipative enstrophy-preserving root (lambda=2.815e-03: dE/E=-2.432e-02, dZ/Z=-2.266e-10; lambda=-2.003e+00: dE/E=-2.432e-02, dZ/Z=-1.023e-09)",
-  "planned_steps": 400,
-  "status": "failed",
-  "step": 99,
-  "time": 0.772060628988
-}

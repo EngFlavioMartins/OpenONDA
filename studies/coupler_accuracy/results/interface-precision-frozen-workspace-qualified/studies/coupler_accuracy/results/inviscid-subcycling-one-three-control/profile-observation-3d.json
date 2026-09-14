@@ -1,0 +1,224 @@
+{
+  "schema": "openonda-interface-profile-observation-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "profile_every_fvm_steps": 5,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/fields.py",
+      "sha256": "fcd9a690aed2a29f137fdf611c32453f6d99bcade678d04ab39426c8b74ef6ee"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    }
+  ],
+  "frames": [
+    {
+      "fvm_step": 0,
+      "coupling_step": 0,
+      "physical_time": 0.5,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/profiles-fvm-step-000000.npz",
+        "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_kinematic_pressure": "0ba076b81a82f50daa219d729d33d89bfdbb194241a79967278b6c8fe3b7aa40",
+        "full_volumetric_face_flux": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_old": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_older": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_velocity_old": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_velocity_older": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "small_velocity": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_kinematic_pressure": "8b437da3d75eb01414e3c1f056517ff7078718db57e1ad680c73130e0af118e0",
+        "small_volumetric_face_flux": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_old": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_older": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_velocity_old": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_velocity_older": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "vpm_position": "4169cec85c685416b5f73b7438b9754505fdeff8e8f11d073d8cdd59fe3e0388",
+        "vpm_velocity": "a26f2b829940490d8da8481b53c9c40a814220138a3d41db50522a7ed22dc482",
+        "vpm_vortex_strength": "7e48d2371b1ae95cbd0c023f901e72f1144c24cc034b731f10b52dbd0cd96e4c",
+        "vpm_core_radius": "645266c1f1d3935e14e95c0811ed8da26e44b3c631e82033d26f3a327a2fdc26",
+        "vpm_particle_volume": "9d94c05211a7998ad622e8be5221bdc87403c169513769de081f5ae7f4217a58",
+        "vpm_kinematic_viscosity": "866bfd0caf1c7eb00214cf764d791439bebfc22ff4783196dba85136a91bfb8f",
+        "vpm_eddy_viscosity": "a9c780506a4e590527f17d2ae51e9d4e37f9819956a9903071988b0943db244a",
+        "vpm_group_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_zone_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_velocity_gradient": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_strain_rate": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "panel_strength": "4337da3ffdc5114ec81278f6fb40ed1db44c139cadd829855a36e6915b095cb7"
+      }
+    },
+    {
+      "fvm_step": 5,
+      "coupling_step": 1,
+      "physical_time": 0.55,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/profiles-fvm-step-000005.npz",
+        "sha256": "1db25fe3da2855bbf012826266e6bf836e4802b216fa191d90db518fcefb0a9b"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "9db13e8d2eea14897e5a10d375e11db399cfb45f83e4036aff3761eeac9395e5",
+        "full_kinematic_pressure": "399211134926cc5e96a78c4af71bf59bcca24f013e80cd8511eceebf6640126b",
+        "full_volumetric_face_flux": "d8ff54ccdbfb16c39ef143758350fdaf99c0362052bab44cc083449d2f3325b3",
+        "full_volumetric_face_flux_old": "d8ff54ccdbfb16c39ef143758350fdaf99c0362052bab44cc083449d2f3325b3",
+        "full_volumetric_face_flux_older": "2c6e65d3606d1a8f76a20427bd26157e89339d0613be7ad9c08b5ed6c6468a71",
+        "full_velocity_old": "9db13e8d2eea14897e5a10d375e11db399cfb45f83e4036aff3761eeac9395e5",
+        "full_velocity_older": "3fc52fc4471efd424909ff7edb620ed05e8c690e4b94848ab84413a039262902",
+        "full_clock": "0852a615265ae6afed3a70b740ca12e96093194bfc05680d26d2748611f1afc8",
+        "small_velocity": "7e2aab9adad06f2b1e3b791be661de0e26b407c3ac749ab611c3b89f3a785667",
+        "small_kinematic_pressure": "fadc37868a3b96d98441277ae8184d9fe1611d6bfb9194a9d6128f2aaa880082",
+        "small_volumetric_face_flux": "d47399980cc3e51e4c57222fa44cec0a3d33471367fd09379c02d5eabe974199",
+        "small_volumetric_face_flux_old": "d47399980cc3e51e4c57222fa44cec0a3d33471367fd09379c02d5eabe974199",
+        "small_volumetric_face_flux_older": "2874d1da2dcf6b750918f7eb2555c8946128ffb800df3f43318de2452fe73159",
+        "small_velocity_old": "7e2aab9adad06f2b1e3b791be661de0e26b407c3ac749ab611c3b89f3a785667",
+        "small_velocity_older": "01af4b6574bb1d4e4a42f9123ad7382308d328faea2c13ba3e1e2dda6b0cf334",
+        "small_clock": "0852a615265ae6afed3a70b740ca12e96093194bfc05680d26d2748611f1afc8",
+        "vpm_position": "6899de3f6f7b8c79a121bf2769efcbed9adbc7b2c305ba01dd815002ddfbfa4e",
+        "vpm_velocity": "1c099fd2a152f197e32dab4367887082d8ade06e8e5f2128d44199faf818ea12",
+        "vpm_vortex_strength": "189e0965570cbae3eae7ff14289a36586a29b5bf3ff4480caeb2ed999e6a4060",
+        "vpm_core_radius": "2b282677224745057780119b2d0188f8a20b8e6995084f877041dbe816622a74",
+        "vpm_particle_volume": "40b5f7254d4333ba3d7cf206ab633c79e54586dbb9cc09a79584682d4388e00f",
+        "vpm_kinematic_viscosity": "e785013ad1bc94d89a8885e618900dd896e18cdad687848a27b0a670c4f558c1",
+        "vpm_eddy_viscosity": "e8f83a8cf44b0fb77ecbdee611e97ec3e6dcc49d91a75e4a83e389bb109f09d7",
+        "vpm_group_id": "5d03e8e667590f5a40b26d2831be159af98ee0ddd705b00f42f1337251736e4e",
+        "vpm_zone_id": "5d03e8e667590f5a40b26d2831be159af98ee0ddd705b00f42f1337251736e4e",
+        "vpm_velocity_gradient": "f251b65dcd5556c4f6172c16d5a55bcb0a487913b071bbe0f67efdd015d3fbf3",
+        "vpm_strain_rate": "1a410f539927f25c6852ecd4d742285d1aa5c053b8a48096106604ddb1c428b6",
+        "vpm_clock": "8ad836d18bd632fc90080c9978309fc79aa0dd7235fb4a9a1d0e6ff3964c26b1",
+        "panel_strength": "b72321c8a4001e30b0bcdcf72af42a0d06c2d1f6625b9e4e54a3cbe376322fb0"
+      }
+    },
+    {
+      "fvm_step": 10,
+      "coupling_step": 2,
+      "physical_time": 0.6,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/profiles-fvm-step-000010.npz",
+        "sha256": "2f3cd4f421b8007ccd90e97c2f24aa344fc691addab4d3ba05be05388542b22d"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "f5e6295ff5cdd36575b481b48f3a4bdfae44a6b0d4b771d8f1c0378f4c815f9a",
+        "full_kinematic_pressure": "4aeabc8047c2c52a9b9684d0f8afa798deb12ae1356f3a4f9e01ccfe6b97a903",
+        "full_volumetric_face_flux": "10d8e04998430607962ee936551b0cc9b2314702a765070fb0abdd4d51362959",
+        "full_volumetric_face_flux_old": "10d8e04998430607962ee936551b0cc9b2314702a765070fb0abdd4d51362959",
+        "full_volumetric_face_flux_older": "1ae4e3c309f47629567093a39ad391f5f835cbce0e4ffcfb1078bcebbe7f8fc8",
+        "full_velocity_old": "f5e6295ff5cdd36575b481b48f3a4bdfae44a6b0d4b771d8f1c0378f4c815f9a",
+        "full_velocity_older": "f4d298973c1b38486f750a9fadd24bc2b8d63ef7effde70ec469f1f292d63e87",
+        "full_clock": "d4da99839a54887650d857bfbbfbab656f57afc8c844954d887dd0bef6b2a066",
+        "small_velocity": "5f49a6b0e5b0ec0622207c3d4bd34646db0657ed4211d782f191cdfa7be578c1",
+        "small_kinematic_pressure": "35f177970ad1924d097e83f0dc32348e31cc13575f8334810b323e1126d077ce",
+        "small_volumetric_face_flux": "1fde54d1e27ea834e37184f125f7a58c95c7d80c489944fad36a5fa67cf8629d",
+        "small_volumetric_face_flux_old": "1fde54d1e27ea834e37184f125f7a58c95c7d80c489944fad36a5fa67cf8629d",
+        "small_volumetric_face_flux_older": "4a036fbb4fa746e9138ab2fb288bc4bfa6007e8a0bfc1e604cfcc14694b958f5",
+        "small_velocity_old": "5f49a6b0e5b0ec0622207c3d4bd34646db0657ed4211d782f191cdfa7be578c1",
+        "small_velocity_older": "0d572c9c05ba4bbf28d78d4173fb2500935721dfbed926d28fd57c710047c198",
+        "small_clock": "d4da99839a54887650d857bfbbfbab656f57afc8c844954d887dd0bef6b2a066",
+        "vpm_position": "11a2b1cdec0b00bd45d1cacc32e0f4703f9563797badc5d87a38087bf858b2d4",
+        "vpm_velocity": "4cec7e289aa1ae2dddc9f6ec35447acf41419a29133bb089a17612c0c13f181e",
+        "vpm_vortex_strength": "8778b3a4cf6fc89e92af37c34c81f8c71e1986a0f74abb52d11526f9b78b0a3f",
+        "vpm_core_radius": "4b1e31fa4fb64f7103dc241be6c9ef6f1d0c41d4b9787cc9ee909426dac35cb8",
+        "vpm_particle_volume": "b2c9dd891a457dd848b32050837e90603577a450c9e40f413a12ec88d0d53f45",
+        "vpm_kinematic_viscosity": "d75fb046d27c6103ce5ee61272fc0bb4f593bc4d273ba159523b15b526e8d6ea",
+        "vpm_eddy_viscosity": "413199a7aaf56f9bb375a6313285dbd31731db96d94466a3ad284aa4d64370ad",
+        "vpm_group_id": "18e24bd76690e94410eaee310b16b89c237aef2e038c6ea2d9cb33d09491e100",
+        "vpm_zone_id": "18e24bd76690e94410eaee310b16b89c237aef2e038c6ea2d9cb33d09491e100",
+        "vpm_velocity_gradient": "aac96e028c6fad3ea36c2f220aca35502dd3b259f4b94e62219176c82570237d",
+        "vpm_strain_rate": "f8ed52718b7bba23d076feb323160a610ec4ed3b043ccaa90b143c4f8e095bb6",
+        "vpm_clock": "aa327544a9df758285f058d37a27be625e19ae8c33265e0a22aafba98e2070a7",
+        "panel_strength": "b7b6d7c3e922f1cb99dfc08437bc248712a0bdc29f2671a6dced28f3a7b9f029"
+      }
+    },
+    {
+      "fvm_step": 15,
+      "coupling_step": 3,
+      "physical_time": 0.65,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/profiles-fvm-step-000015.npz",
+        "sha256": "d9da39c9ec66b2d852fc46fc98c1938c795ce94e627ca9225d13de5f5a3d3f2d"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "e7a3e636ae08fb8d4d7856f699ab2bc4f114de64aa132ea1d96d91a43b133467",
+        "full_kinematic_pressure": "6ed1aae24de71c79ef782d05b35a4823ac9a33142a5dfdc79ca184623d9b0db5",
+        "full_volumetric_face_flux": "691e1e817267b3117bd85e65ff8c379c35492cab91ada57c9d7c96e58ca55454",
+        "full_volumetric_face_flux_old": "691e1e817267b3117bd85e65ff8c379c35492cab91ada57c9d7c96e58ca55454",
+        "full_volumetric_face_flux_older": "7bb82073c3b60f911731670a9d1d0c8f7c02bacfb120640ddef369504d3545aa",
+        "full_velocity_old": "e7a3e636ae08fb8d4d7856f699ab2bc4f114de64aa132ea1d96d91a43b133467",
+        "full_velocity_older": "4c3d01418c6a07b0542cd4d0fa001139266a5a6edde1180fca3b9a42bc995503",
+        "full_clock": "6f1622a750afc7c32b29cce70e7ff44a69716e61a62f97f2b3cca119fe4e1abc",
+        "small_velocity": "9c7db218ff10c8800bf2d65fc6508337f428d85b1657b353425466bcebab7697",
+        "small_kinematic_pressure": "4a3ac9e60ac552255d4cac9aeab46ad589b91a9e47f8c6bb89a65ec097751999",
+        "small_volumetric_face_flux": "8bd611be79f0ec3fefd2013a81e72c968aa35798fcba8c46f85d62fd268ce1e3",
+        "small_volumetric_face_flux_old": "8bd611be79f0ec3fefd2013a81e72c968aa35798fcba8c46f85d62fd268ce1e3",
+        "small_volumetric_face_flux_older": "3e3ad53aa3ab37fae008ca611b0217106b70cb4aeb5f670e56079415fedd5fb4",
+        "small_velocity_old": "9c7db218ff10c8800bf2d65fc6508337f428d85b1657b353425466bcebab7697",
+        "small_velocity_older": "6ef0fd2214314c1bceb68db10a8f6503951eb1bcfa97a685d2d987c4ca869a23",
+        "small_clock": "6f1622a750afc7c32b29cce70e7ff44a69716e61a62f97f2b3cca119fe4e1abc",
+        "vpm_position": "21e34d40c00cb07de515602e617a1c1319e4d4c14a6f96a115ed6bb5efa5140c",
+        "vpm_velocity": "523cf2163bde4013a5c59858fef70872bbe2ad55ab8ed58c3e801d313875304f",
+        "vpm_vortex_strength": "f2a4fd6886b1b99c52575bf443f03dc6998c9429559002c268a36a8ef85ca2a1",
+        "vpm_core_radius": "61fc5957ec0e61e29943c6dc47bdffacba4c544cd97a598e0175673d2bb1fdf8",
+        "vpm_particle_volume": "fb3e7f35aae3e8a1d887221dedb07da159f3fb07c8c5c66e0cddf6c5541cc2be",
+        "vpm_kinematic_viscosity": "fa83bc6adc9dcad7438ff0317561d04bbd3b465a18350e61b339d309247a86a7",
+        "vpm_eddy_viscosity": "faa86d962dbdbbee61bc81215ec9cf911c5cfdc803206efcdd1216c945279a3c",
+        "vpm_group_id": "17aa718c2b971ee303ac7615a63f6847d002637d93fc8ef6e2c34daa9b673057",
+        "vpm_zone_id": "17aa718c2b971ee303ac7615a63f6847d002637d93fc8ef6e2c34daa9b673057",
+        "vpm_velocity_gradient": "3d370019409d5cbf8a65fb68f55e4b49dd44619f936276b7aa00a0f8fbf85c0f",
+        "vpm_strain_rate": "0286bb00740cc0f8ff305f7e2acbe0fda93b920577a63503d6f270295175c4fa",
+        "vpm_clock": "692ab8e6a057d5e8387a76bbf4908aaf8ff303012a90a7fc76847b2c123e24f5",
+        "panel_strength": "abad412716cb0561f5aa1ec5bf5a6a0494abe622b4c177b2962de3adce5c28bd"
+      }
+    }
+  ],
+  "sampling": {
+    "line_x_bounds": [
+      -3.0,
+      10.0
+    ],
+    "line_y": [
+      0.0,
+      0.75
+    ],
+    "line_z": 0.0,
+    "spacing": 0.0625,
+    "fvm_reconstruction": "affine",
+    "fvm_neighbours": 12,
+    "body_points_excluded": true,
+    "small_profile_bounds": [
+      -1.5,
+      1.5
+    ]
+  },
+  "limitations": [
+    "Profiles observe full 3D fields along two lines; this does not replace any 3D solver operation with a 2D approximation.",
+    "The same small-FVM stencil evaluates hybrid and reference cell fields. The full-reference line also uses its full mesh, and this separate stencil effect is retained.",
+    "Primary fields and clocks must be bitwise unchanged by each observation. A separate advancing control must still qualify any cache effects.",
+    "Only accepted coupling states are observed, including the common initial state. No reference field feeds the hybrid."
+  ],
+  "shared_cell_coordinate_maximum_difference": 8.881784197001252e-16,
+  "geometry": {
+    "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/profile-geometry.npz",
+    "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+  },
+  "cadence_report": {
+    "path": "studies/coupler_accuracy/results/inviscid-subcycling-one-three-control/interface-cadence-3d.json",
+    "sha256": "95a021f787a9a829d5a172c89bbcf7c66893fcba8834ffd4c691e398aea40c22"
+  }
+}

@@ -372,7 +372,11 @@ def _update_fixed_flux_pressure_boundaries(
             and boundary.get("_directional_fixed_flux_pressure", False)
         ):
             fixed_flux_patches.append(boundary)
-    if not fixed_flux_patches:
+    parallel = mesh_data.get("_parallel_context")
+    has_fixed_flux = bool(fixed_flux_patches)
+    if parallel is not None and parallel.is_partitioned:
+        has_fixed_flux = bool(parallel.global_max(int(has_fixed_flux)))
+    if not has_fixed_flux:
         return kinematic_pressure_gradient
 
     if kinematic_pressure_gradient is None:
@@ -442,6 +446,10 @@ def _update_fixed_flux_pressure_boundaries(
             kinematic_pressure[ghost] = kinematic_pressure[own] + delta
         changed = True
 
+    if parallel is not None and parallel.is_partitioned:
+        # Gradient reconstruction exchanges halo data, including on ranks
+        # without physical boundary faces. Its entry must be collective.
+        changed = bool(parallel.global_max(int(changed)))
     if changed:
         kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
         if kinematic_pressure_gradient.ndim == 3:

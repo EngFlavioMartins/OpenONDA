@@ -2,8 +2,9 @@
 
 A tutorial is executable documentation. Start with the physical inputs, then
 show geometry and resolution, numerical choices, output, construction, and run.
-Use `tutorials/fvm/cube_flow/setup.py` and `tutorials/vpm/02_vortex_ring/setup.py`
-as examples of the layout.
+Use `tutorials/vpm/01_lamb_oseen_vortex/setup.py` and
+`tutorials/vpm/02_vortex_ring/setup.py` as VPM examples. The
+[code guidelines](code_guidelines.md) explain their physics-first structure.
 
 - Group related inputs and add short unit comments. Prefer the names used by
   the public API (`time_step_size`, `kinematic_viscosity`, `particle_spacing`).
@@ -15,8 +16,8 @@ as examples of the layout.
   of `setup.py`.
 - Keep physical branching when it explains distinct models or motion. A few
   comparison choices may use `argparse`; other inputs are edited in Python.
-  Separate substantially different experiments into small physical setup
-  files, as in `vortex_interactions/setup_les.py`.
+  Keep one active `setup.py` per tutorial; place archival research tools in
+  `assets/` when they are still needed for historical reproduction.
 - Use the installed public API. Never alter `sys.path` or `PYTHONPATH`.
   Ordinary imports come first: standard library, third party, OpenONDA. A
   case-local `case_package(Path(__file__).parent)` declaration supports local
@@ -33,23 +34,21 @@ The case root normally contains `setup.py`, `allrun.sh`, `allplot.sh`,
 it helps explain the case. Generated solution, samples, and figures are not
 inputs or installation resources.
 
-Launchers anchor execution to their case directory, then list direct Python commands:
+Launch from the case directory and list direct Python commands:
 
 ```bash
 #!/bin/bash -e
-cd -- "$(dirname -- "$0")"
-
 python setup.py --variant dns_direct
 python setup.py --variant dns_transposed
 ```
 
-The shebang stops on command failure. Keep the single directory change so an
-absolute-path launch also works. Do not add loops, functions, interpreter
-variables, logging, cleanup, or plotting to `allrun.sh`. `allplot.sh` plots native
+The shebang stops on command failure. Do not add loops, functions, interpreter
+variables, logging, or plotting to `allrun.sh`. If the case needs a clean start,
+call `allclean.sh` explicitly before the run commands. `allplot.sh` plots native
 sampled data; postprocessing those samples is appropriate, while duplicating a
 solver sampler or checkpoint extractor is not. Validation is an explicit Python
-command. `allclean.sh` anchors deletion with the same directory change and only
-removes generated outputs.
+command. `allclean.sh` anchors deletion to its own directory and only removes
+generated outputs.
 `openonda tutorial run`, `plot`, and `clean` provide the corresponding actions
 from any directory using the active installation.
 

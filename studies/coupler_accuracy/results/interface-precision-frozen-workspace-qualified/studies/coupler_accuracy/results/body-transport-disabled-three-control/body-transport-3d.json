@@ -1,0 +1,230 @@
+{
+  "schema": "openonda-body-transport-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "body_transport_enabled": false,
+  "gradient_qualification": {
+    "path": "studies/coupler_accuracy/results/analytical-panel-gradient-stage-qualified/analytical-panel-gradient-qualification-3d.json",
+    "sha256": "989d636b5786b44b1931e121387dfce6000b57ffb95da511a2f8bb4f1ae3e132"
+  },
+  "outer_dt": 0.05,
+  "fvm_dt": 0.01,
+  "requested_exchanges": 3,
+  "frozen_original_files_verified": 799,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_body_transport_3d.py",
+      "sha256": "159910b160f287de030e3df59b1791e9183845e44b0c86c982180d1ea90d4c52"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_body_transport_3d.py",
+      "sha256": "add2879e68b2119089800b909cd15027b41411c116d7887065299567d1e8b8b4"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/analytical_panel_gradient_3d.py",
+      "sha256": "80aa98cc5620c3c4340b11d5b57e59370ac5e62ae3f6cbc7d742ba7825cecb39"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    }
+  ],
+  "outer_advances": [
+    {
+      "start_time": 0.0,
+      "start_step": 0,
+      "outer_dt": 0.05,
+      "enabled": false,
+      "panels": 108,
+      "panel_strength_sha256": "fe82790b9f22191d08120c25259b8a6e76c61351be443777c338d6338c9a0e7e",
+      "stages": [
+        {
+          "time": 0.0,
+          "index": 0,
+          "count": 21747,
+          "position_sha256": "b8093914af0e53e2029e6266a64a98b05043ba1b9b7d130824f72287ae62be61",
+          "minimum_cube_clearance": 0.03125,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        },
+        {
+          "time": 0.05,
+          "index": 1,
+          "count": 21747,
+          "position_sha256": "2edfede3c6ebabc20f8eb6564f6e6520e0197da24d4247d81b0ed3d4eb29e05a",
+          "minimum_cube_clearance": 0.006497383117675781,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.05,
+      "accepted_step": 1,
+      "panel_strength_unchanged_during_vpm_advance": true,
+      "stage_hooks_restored": true,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.05,
+      "start_step": 1,
+      "outer_dt": 0.05,
+      "enabled": false,
+      "panels": 108,
+      "panel_strength_sha256": "7e78427ab2d21540d48ce7df05735ffa9911be56a32e1bf4155b35c05108d48e",
+      "stages": [
+        {
+          "time": 0.05,
+          "index": 0,
+          "count": 22030,
+          "position_sha256": "7d1b17ecf0a2bbf60bfc229f573c35297c278715fcad6737412d4c50804bb822",
+          "minimum_cube_clearance": 0.03125,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        },
+        {
+          "time": 0.1,
+          "index": 1,
+          "count": 22030,
+          "position_sha256": "e27a978ece7023ba9f4d7d097769598235631dbe7267ad4f4cfcf3ebadc3e222",
+          "minimum_cube_clearance": 0.006814479827880859,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.1,
+      "accepted_step": 2,
+      "panel_strength_unchanged_during_vpm_advance": true,
+      "stage_hooks_restored": true,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.1,
+      "start_step": 2,
+      "outer_dt": 0.05,
+      "enabled": false,
+      "panels": 108,
+      "panel_strength_sha256": "db73915df1c948a5835a0cf1268695528cc82184318a2a40a2bfb0875b7d72fb",
+      "stages": [
+        {
+          "time": 0.1,
+          "index": 0,
+          "count": 22376,
+          "position_sha256": "b08efa5562c2ee7b4e2831bb9f9474d7dce32a6b396e2f1b353580e9523f16ec",
+          "minimum_cube_clearance": 0.03125,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        },
+        {
+          "time": 0.15000000000000002,
+          "index": 1,
+          "count": 22376,
+          "position_sha256": "437eb95c5f1373bb0113cb9b01cd8a869a19f7fe914f4998404cc82ec75e6016",
+          "minimum_cube_clearance": 0.006711423397064209,
+          "body_velocity_calls": 0,
+          "body_gradient_calls": 0
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.15,
+      "accepted_step": 3,
+      "panel_strength_unchanged_during_vpm_advance": true,
+      "stage_hooks_restored": true,
+      "schedule_checks_passed": true
+    }
+  ],
+  "limitations": [
+    "Only RK stage callbacks change: the native source-panel velocity and a qualified analytical f64 source Jacobian are added at actual temporary stage positions.",
+    "Stored particle/panel precision, FVM dt, RK/GBD step, physical exchange/renewal and outer stabilization retain their existing settings.",
+    "Panel strengths are fixed within each VPM interval, as in the baseline. Panel boundary solves still occur in the existing FVM-coupling path; panel advancement and shedding remain disabled.",
+    "The analytical source gradient uses J[i,j]=du_i/dx_j; the native StageRHS retains its transposed stretching convention and all production recovery gates.",
+    "This is a fully 3D serial laminar cube experiment with fixed-predictor interface replay, not a production option or developed-wake qualification."
+  ],
+  "elapsed_seconds": 83.51289837500372,
+  "child_reports": [
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/accepted-fvm-checkpoints-3d.json",
+      "sha256": "c0aa95b32267c886a30aa978590515015a8aa8ce78084987079fccba25d61c54"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/profile-observation-3d.json",
+      "sha256": "491ef2cd9ad814977755ffe33f465a06f285cab762f44eaffc7e0ee7a79849be"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/interface-cadence-3d.json",
+      "sha256": "c62e00a99dd57c9ddeb1a19da0a25499e5b08310b0034386ba83caa91b95978f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/interface-iteration-3d.json",
+      "sha256": "72f4c4bbe430914809114bd9bda8d38cff6d336f7292c5a908f05ec8a264d5ab"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/panel-target-precision-3d.json",
+      "sha256": "09c43ab05405a3da7924322c3847d6d6724a22c9dff1f8fff7aaf2ba1b6f5f08"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-disabled-three-control/trial/cube-coupled-trial.json",
+      "sha256": "c6dcb141f9f4e3f229ec5eeea755023d6f81f4acebe427010f8d719992da42db"
+    }
+  ]
+}

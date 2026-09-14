@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
 from source.vtk_output import configure_writer
 from source.write_precision import cast_for_write
 
@@ -27,6 +28,110 @@ _vtk: Any = vtk
 _CELL_GEOMETRY_FIELDS = frozenset(
     ("cell_size", "refinement_level", "boundary_layer_index", "cell_volume", "cell_equivalent_size")
 )
+
+
+@njit(cache=True)
+def _hex_vertices_from_faces(
+    faces: np.ndarray,
+    cell_face_indices: np.ndarray,
+    cell_face_offset: np.ndarray,
+    cell_face_reversed: np.ndarray,
+    neighbours: np.ndarray,
+    n_internal_faces: int,
+) -> tuple[np.ndarray, bool]:
+    """Recover the legacy VTK hex order from six oriented quad faces per cell.
+
+    A failed topology check leaves the general polyhedron exporter in charge.
+    The optional reversal array is empty when orientation comes from neighbours.
+    """
+    n_cells = len(cell_face_offset) - 1
+    vertices = np.empty((n_cells, 8), dtype=np.int64)
+    for cell in range(n_cells):
+        start = int(cell_face_offset[cell])
+        if int(cell_face_offset[cell + 1]) - start != 6:
+            return vertices, False
+        local_faces = np.empty((6, 4), dtype=np.int64)
+        unique_nodes = np.empty(8, dtype=np.int64)
+        unique_count = 0
+        for local in range(6):
+            face_id = int(cell_face_indices[start + local])
+            reverse = (
+                bool(cell_face_reversed[start + local])
+                if len(cell_face_reversed)
+                else face_id < n_internal_faces and int(neighbours[face_id]) == cell
+            )
+            for corner in range(4):
+                node = int(faces[face_id, 3 - corner if reverse else corner])
+                local_faces[local, corner] = node
+                seen = False
+                for index in range(unique_count):
+                    if unique_nodes[index] == node:
+                        seen = True
+                        break
+                if not seen:
+                    if unique_count == 8:
+                        return vertices, False
+                    unique_nodes[unique_count] = node
+                    unique_count += 1
+        if unique_count != 8:
+            return vertices, False
+
+        opposite = -1
+        for local in range(1, 6):
+            disjoint = True
+            for corner in range(4):
+                for base in range(4):
+                    if local_faces[local, corner] == local_faces[0, base]:
+                        disjoint = False
+                        break
+                if not disjoint:
+                    break
+            if disjoint:
+                opposite = local
+                break
+        if opposite < 0:
+            return vertices, False
+
+        for corner in range(4):
+            base_node = local_faces[0, 3 - corner]
+            vertices[cell, corner] = base_node
+            top_node = -1
+            for local in range(6):
+                for edge in range(4):
+                    first = local_faces[local, edge]
+                    second = local_faces[local, (edge + 1) % 4]
+                    if first == base_node:
+                        adjacent = second
+                    elif second == base_node:
+                        adjacent = first
+                    else:
+                        continue
+                    on_base = False
+                    for base in range(4):
+                        if adjacent == local_faces[0, base]:
+                            on_base = True
+                            break
+                    if on_base:
+                        continue
+                    if top_node >= 0 and top_node != adjacent:
+                        return vertices, False
+                    top_node = adjacent
+            if top_node < 0:
+                return vertices, False
+            vertices[cell, corner + 4] = top_node
+        for corner in range(4):
+            top_node = vertices[cell, 4 + corner]
+            for other in range(corner):
+                if top_node == vertices[cell, 4 + other]:
+                    return vertices, False
+            on_opposite = False
+            for opposite_corner in range(4):
+                if top_node == local_faces[opposite, opposite_corner]:
+                    on_opposite = True
+                    break
+            if not on_opposite:
+                return vertices, False
+    return vertices, True
 
 
 def mesh_cell_fields(
@@ -184,6 +289,35 @@ class VTKExporter:
             )
             self.mesh_data["cell_face_indices"] = cell_face_indices
             self.mesh_data["cell_face_offset"] = cell_face_offset
+
+        # cfMesh can finish with only hexahedra after discarding its original
+        # cell-vertex table. Recover the same VTK ordering in compiled code,
+        # rather than repeating Python face/adjacency work for every cell.
+        if n_cells >= 1000 and cell_types is not None and np.all(np.asarray(cell_types) == 5):
+            try:
+                quad_faces = np.asarray(faces, dtype=np.int32)
+            except (TypeError, ValueError):
+                quad_faces = np.empty((0, 0), dtype=np.int32)
+            if quad_faces.shape == (self.mesh_data["n_faces"], 4):
+                vertices, valid = _hex_vertices_from_faces(
+                    quad_faces,
+                    np.asarray(cell_face_indices),
+                    np.asarray(cell_face_offset),
+                    np.asarray(cell_face_reversed, dtype=np.bool_)
+                    if cell_face_reversed is not None
+                    else np.empty(0, dtype=np.bool_),
+                    np.asarray(neighbours),
+                    int(self.mesh_data["n_interior_faces"]),
+                )
+                if valid:
+                    cells = np.empty((n_cells, 9), dtype=np.int64)
+                    cells[:, 0] = 8
+                    cells[:, 1:] = vertices
+                    return _pyvista.UnstructuredGrid(
+                        cells.ravel(),
+                        np.full(n_cells, _pyvista.CellType.HEXAHEDRON, dtype=np.uint8),
+                        points,
+                    )
 
         # Keep ordinary six-quad/eight-corner cells as native VTK hexahedra.
         # This preserves the expected hex-dominant cfMesh appearance in

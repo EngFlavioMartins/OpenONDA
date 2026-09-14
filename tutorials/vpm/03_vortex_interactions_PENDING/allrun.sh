@@ -1,6 +1,6 @@
-#!/bin/bash -e
+#!/bin/bash
+./allclean.sh || exit 1
 
-python setup_les.py --variant baseline
-python setup_les.py --variant stretching_viscosity
-python setup_les.py --variant p_moments
-python setup_les.py --variant splitting
+python setup.py baseline
+python setup.py stretching_viscosity
+python setup.py p_moments

@@ -18,7 +18,7 @@ from source.solvers.vpm.config.fingerprint import numerical_configuration
 
 TUTORIAL = Path(__file__).resolve().parents[1]
 __package__ = case_package(TUTORIAL) + ".assets"
-from .. import setup_les
+from . import legacy_les as setup_les
 from .run_filter_pair_continuation import _installed_vpm_manifest, _sha256
 
 

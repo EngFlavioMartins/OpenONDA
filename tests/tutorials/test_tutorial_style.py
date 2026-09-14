@@ -34,6 +34,8 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
                 # Destructive commands retain exactly one case-local directory change.
                 assert line.startswith(("cd -- ", "rm -")), (script, line)
                 continue
+            if script.name == "allrun.sh" and line == "./allclean.sh || exit 1":
+                continue
             assert line.startswith("python "), (script, line)
             command = shlex.split(line)
             assert (script.parent / command[1]).is_file(), (script, command[1])

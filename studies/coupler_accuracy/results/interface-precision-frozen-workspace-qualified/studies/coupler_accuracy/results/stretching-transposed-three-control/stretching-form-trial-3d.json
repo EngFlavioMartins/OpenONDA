@@ -1,0 +1,333 @@
+{
+  "schema": "openonda-stretching-form-trial-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "stretching_scheme": "TRANSPOSED",
+  "native_stretching_scheme": "TRANSPOSED",
+  "geometric_separation_factor": 3.0,
+  "consistency_qualification": {
+    "path": "studies/coupler_accuracy/results/particle-stretching-consistency-at-one-point-five/particle-stretching-consistency-3d.json",
+    "sha256": "c0e4332928a989495787785c29fabeeeb4cb464f041494ae4632e11cfac9d743"
+  },
+  "induction_factory_calls": 1,
+  "execution_environment": {
+    "TI_CPU_MAX_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "TI_OFFLINE_CACHE_FILE_PATH": "/private/tmp/openonda-coupler-frozen-taichi"
+  },
+  "outer_dt": 0.05,
+  "fvm_dt": 0.01,
+  "requested_exchanges": 3,
+  "frozen_original_files_verified": 799,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_stretching_form_3d.py",
+      "sha256": "6077afe26fd4cce12fd9a407709cd0e5f762dde0fd04488934e443718285e9cc"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_stretching_form_3d.py",
+      "sha256": "ada198dafc5b30ab8afa97c15e4f3d0fcdbf0ff620b4cfac6545ce5a04f610a7"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/device.py",
+      "sha256": "bbd70cd6f8b2a0dc508197b6a3337db0207cbdf68e188ada38821c3deb86aaa6"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/stretching.py",
+      "sha256": "3ea8684db6c60b616661317fc4182c1b0a46f96d7d99410db304a1f88f77316b"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/base.py",
+      "sha256": "f1451bc224c93ff743d592a17514ce5205c9c4dcfbe1c89b2d58bd9ee5674e90"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    }
+  ],
+  "outer_advances": [
+    {
+      "start_time": 0.0,
+      "start_step": 0,
+      "outer_dt": 0.05,
+      "stretching_scheme": "TRANSPOSED",
+      "start_total_strength": [
+        1.1185039448666917e-05,
+        2.042941416280364e-05,
+        1.1417148987780124e-05
+      ],
+      "stages": [
+        {
+          "time": 0.0,
+          "index": 0,
+          "count": 21747,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 115627,
+          "near_pairs": 118728,
+          "p2p_interactions_excluding_self": 79108668,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 2.1490967685999784e-09,
+          "total_strength_rate": [
+            -4.830316964188341e-07,
+            -3.554248205972499e-06,
+            8.241600262692828e-06
+          ],
+          "sum_strength_rate_norms": 11.441401969993077,
+          "normalized_total_strength_rate": 7.855964142001203e-07
+        },
+        {
+          "time": 0.05,
+          "index": 1,
+          "count": 21747,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 136366,
+          "near_pairs": 137600,
+          "p2p_interactions_excluding_self": 80491066,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 2.275070812296498e-09,
+          "total_strength_rate": [
+            -8.604526767408416e-05,
+            -7.462991404949548e-05,
+            6.341251083341604e-06
+          ],
+          "sum_strength_rate_norms": 11.88938830370239,
+          "normalized_total_strength_rate": 9.594881376692479e-06
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.05,
+      "accepted_step": 1,
+      "schedule_checks_passed": true,
+      "accepted_total_strength_before_fvm_renewal": [
+        1.0183054086492643e-05,
+        0.10956294788167664,
+        -0.10951127317599657
+      ]
+    },
+    {
+      "start_time": 0.05,
+      "start_step": 1,
+      "outer_dt": 0.05,
+      "stretching_scheme": "TRANSPOSED",
+      "start_total_strength": [
+        -3.338249538504959e-07,
+        9.916187602887483e-05,
+        -9.964739797574396e-05
+      ],
+      "stages": [
+        {
+          "time": 0.05,
+          "index": 0,
+          "count": 22030,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 120322,
+          "near_pairs": 122433,
+          "p2p_interactions_excluding_self": 75222652,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 1.9460797036352506e-09,
+          "total_strength_rate": [
+            -5.771804190146668e-07,
+            -8.420224895999695e-06,
+            1.3208918068663422e-05
+          ],
+          "sum_strength_rate_norms": 11.920099782510466,
+          "normalized_total_strength_rate": 1.3150143767207583e-06
+        },
+        {
+          "time": 0.1,
+          "index": 1,
+          "count": 22030,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 137872,
+          "near_pairs": 144519,
+          "p2p_interactions_excluding_self": 85236514,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 2.108900387653989e-09,
+          "total_strength_rate": [
+            6.756889232262253e-05,
+            6.136529819400494e-06,
+            -3.395043095810735e-05
+          ],
+          "sum_strength_rate_norms": 12.373448851447494,
+          "normalized_total_strength_rate": 6.131457733698871e-06
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.1,
+      "accepted_step": 2,
+      "schedule_checks_passed": true,
+      "accepted_total_strength_before_fvm_renewal": [
+        5.066309172964759e-06,
+        0.10090566450372151,
+        -0.10093662645484577
+      ]
+    },
+    {
+      "start_time": 0.1,
+      "start_step": 2,
+      "outer_dt": 0.05,
+      "stretching_scheme": "TRANSPOSED",
+      "start_total_strength": [
+        4.3667883762462355e-06,
+        7.383802536942152e-05,
+        -8.318681374652748e-05
+      ],
+      "stages": [
+        {
+          "time": 0.1,
+          "index": 0,
+          "count": 22376,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 132006,
+          "near_pairs": 130727,
+          "p2p_interactions_excluding_self": 73652446,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 2.028796946412781e-09,
+          "total_strength_rate": [
+            1.6511291207610412e-06,
+            9.822207056586763e-06,
+            -7.888462544514141e-06
+          ],
+          "sum_strength_rate_norms": 12.211435289140178,
+          "normalized_total_strength_rate": 1.0404594740160415e-06
+        },
+        {
+          "time": 0.15000000000000002,
+          "index": 1,
+          "count": 22376,
+          "stretching_scheme": "TRANSPOSED",
+          "geometric_separation_factor": 3.0,
+          "m2l_pairs": 145958,
+          "near_pairs": 146418,
+          "p2p_interactions_excluding_self": 84515780,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true,
+          "contraction_check_passed": true,
+          "contraction_check_maximum_difference": 2.0111906584574513e-09,
+          "total_strength_rate": [
+            -8.526463668423467e-05,
+            -0.00027416993534501444,
+            0.00016956875918339165
+          ],
+          "sum_strength_rate_norms": 12.651469463705244,
+          "normalized_total_strength_rate": 2.6357081193907014e-05
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.15,
+      "accepted_step": 3,
+      "schedule_checks_passed": true,
+      "accepted_total_strength_before_fvm_renewal": [
+        8.970261635839367e-06,
+        0.10072635213993975,
+        -0.10076428672858717
+      ]
+    }
+  ],
+  "limitations": [
+    "Only the existing public FMM stretching formulation changes. The native factor-three induction approximation, f32 precision and all time steps remain fixed.",
+    "The original vpm_boundary_condition scope still excludes body velocity/gradient from particle stages. FVM exchange, renewal, diffusion/remapping, panel updates and outer stabilization retain their original schedules.",
+    "Every recorded stage checks its selected contraction against the actual native Jacobian and temporary strengths. This is a contraction check, not an independent exact-gradient evaluation of every intermediate state.",
+    "The stage total-strength rate measures the conservation difference between formulations. Outer strength changes also include GBD, trimming and stabilization, and precede FVM renewal.",
+    "This is a controlled fully 3D serial laminar experiment. A conservation tradeoff or improved profile must be measured, not inferred from continuum equivalence of the forms."
+  ],
+  "elapsed_seconds": 232.0858059579914,
+  "child_reports": [
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/accepted-fvm-checkpoints-3d.json",
+      "sha256": "04976c038056150c6a0bf811a193c36bf1e3ff731f6008e249dccd9dc952964e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/profile-observation-3d.json",
+      "sha256": "eaab9f5db83993c77769b260aab14e6f0fa2c9a4dac74e18446fdd15d8e384e9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/interface-cadence-3d.json",
+      "sha256": "2fb070c52cfa6b97573c85d22218b52dd3410731964ae57626a3328d58744da0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/interface-iteration-3d.json",
+      "sha256": "199c9f982b6768f12123622daba365effac48c63f066817788eeaea9bb64d314"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/panel-target-precision-3d.json",
+      "sha256": "acf5fb56df5ee85e6ed85546daf19592f4e807665b606b8d3c3dc436927e1b9d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/stretching-transposed-three-control/trial/cube-coupled-trial.json",
+      "sha256": "9e61238d3d6d3e396a917e67fe7e88caa622de84a980af5f59bba6feca0632c3"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "time": "2026-09-13T20:19:01.781177+00:00",
+  "run": "interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/long-wake-twenty-time-iterated",
+  "last_observed_complete_coupling_step": 189,
+  "reason": "Prioritize user-requested cube tutorial validation and release CPU/memory; retained all saved numerical data.",
+  "signal": "SIGTERM"
+}

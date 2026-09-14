@@ -686,7 +686,10 @@ def apply_fvm_boundary(
         adjustment.maximum if adjustment is not None else None,
     )
 
-    coupler.fvm_solver.advance_time()
+    if getattr(coupler.setup, "interface_iterations", 1) > 1:
+        coupler.fvm_solver.advance_time(defer_output=True)
+    else:
+        coupler.fvm_solver.advance_time()
     coupler.fvm_solver.logger.step_end(time.perf_counter() - step_wall_time_start)
 
     if prescribed_velocity.shape[0] > 0:

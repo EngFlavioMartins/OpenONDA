@@ -15,6 +15,12 @@ Neither diagnostic establishes the cause of the advancing drag difference or
 qualifies a new production transfer. The requested small-domain force and
 velocity-profile agreement remains unachieved.
 
+The subsequent [face-flux moment study](flux-moment-compatibility-3d.md)
+examines the additional constraint on a divergence-free reconstruction's cell
+velocity integral. A hard moment fit needs large normal-flow changes in both
+the reference and hybrid, even after resolving warped-face geometry. It is
+retained as a qualified diagnostic, not an advancing transfer candidate.
+
 ## Exact replay of the reference
 
 The [reference replay script](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_reference_flux_replay_3d.py)

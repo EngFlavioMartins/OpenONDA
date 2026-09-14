@@ -16,6 +16,7 @@ from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
 from ..validation import (
+    cells_incident_to_points,
     extract_cell_subset_mesh,
     validate_cell_area_closure,
     validate_geometry,
@@ -1246,11 +1247,29 @@ class CartesianMesher:
             validation_error: Exception | None = None
             from ...io.vtk_exporter import VTKExporter
 
-            baseline_vtk = validate_vtk_cell_intersections(
-                VTKExporter(mesh_data)._grid,
-                maximum_intersections=int(mesh_data["n_cells"]),
+            # Only target points move during straightening. Every other cell
+            # has identical geometry in the baseline and each trial, so the
+            # VTK no-regression comparison needs their incident cells only.
+            # Keep the full path when the affected region is most of the mesh.
+            affected_cells = cells_incident_to_points(
+                mesh_data, np.fromiter(targets, dtype=np.int32, count=len(targets))
             )
-            baseline_intersections = int(baseline_vtk["intersecting_cells"])
+            validation_mesh: dict[str, Any] | None = None
+            validation_point_ids: np.ndarray | None = None
+            if len(affected_cells):
+                if len(affected_cells) > int(mesh_data["n_cells"]) // 2:
+                    validation_mesh = mesh_data
+                else:
+                    validation_mesh, validation_point_ids = extract_cell_subset_mesh(
+                        mesh_data, affected_cells, return_point_ids=True
+                    )
+                baseline_vtk = validate_vtk_cell_intersections(
+                    VTKExporter(validation_mesh)._grid,
+                    maximum_intersections=int(validation_mesh["n_cells"]),
+                )
+                baseline_intersections = int(baseline_vtk["intersecting_cells"])
+            else:
+                baseline_intersections = 0
             for relaxation in (1.0, 0.75, 0.5, 0.25, 0.125, 0.0):
                 trial = candidate.copy()
                 for inner_id, target in targets.items():
@@ -1263,13 +1282,14 @@ class CartesianMesher:
                         raise ValueError("Wrapper straightening worsens unacceptable skewness")
                     # Positive face-pyramid volumes do not detect every
                     # self-intersecting polyhedron created at multi-patch
-                    # wrapper corners.  Do not let straightening introduce
-                    # any beyond the pre-straightening baseline; reference-flow
-                    # publication separately retains the strict zero limit.
-                    validate_vtk_cell_intersections(
-                        VTKExporter(mesh_data)._grid,
-                        maximum_intersections=baseline_intersections,
-                    )
+                    # wrapper corners. Check every cell whose vertices moved.
+                    if validation_mesh is not None:
+                        if validation_point_ids is not None:
+                            validation_mesh["vertex_position"] = trial[validation_point_ids]
+                        validate_vtk_cell_intersections(
+                            VTKExporter(validation_mesh)._grid,
+                            maximum_intersections=baseline_intersections,
+                        )
                 except Exception as exc:
                     validation_error = exc
                     continue
@@ -1300,6 +1320,12 @@ class CartesianMesher:
             raise ValueError(
                 f"Surface-constrained cfMesh wall projection failed transactional validation: {exc}"
             ) from exc
+        if validation_mesh is None:
+            vtk_validation_scope = "none"
+        elif validation_point_ids is None:
+            vtk_validation_scope = "all_cells"
+        else:
+            vtk_validation_scope = "moved_point_incident_cells"
         mesh_data["mesh_generation"]["surface_constraint"] = {
             "method": "transactional_column_preserving_surface_projection",
             "max_distance_before": max_before,
@@ -1312,6 +1338,10 @@ class CartesianMesher:
             "straightening_relaxation": accepted_relaxation,
             "outer_domain_planes_constrained": constrain_domain_planes,
             "baseline_intersecting_vtk_cells": baseline_intersections,
+            "vtk_validation_scope": vtk_validation_scope,
+            "vtk_validation_cell_count": (
+                int(validation_mesh["n_cells"]) if validation_mesh is not None else 0
+            ),
             "validated": True,
         }
 

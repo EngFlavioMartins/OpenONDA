@@ -10,8 +10,13 @@ single-precision Taichi runtime.
 This is a qualified component result. Its scale is relevant to the few-`1e-6`
 residual floor in the [interface-iteration experiment](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/interface-iteration-3d.md).
 It is much smaller than that experiment's remaining reference boundary errors.
-An advancing precision comparison is being qualified in a frozen source copy;
-no production precision policy has changed.
+A matched three-interval experiment in a frozen source copy connects this
+evaluation error to the iteration floor: all three intervals converge in three
+sweeps with promoted queries, versus 9, 7 and a capped 12 with native queries.
+The final drag coefficients differ by only `6.28e-8`. The completed longer
+promoted-query comparison now converges **all 20 intervals in three sweeps
+each**, retaining the drag-history improvement from 2.082% to 0.555% RMS
+relative error. No production precision policy has changed.
 
 ## Same source field, independent derivative reference
 
@@ -106,8 +111,89 @@ contains 786 code files and 13 input files. Its experiments use that copy as
 both working directory and `PYTHONPATH`, with a separate Taichi/Numba cache.
 Installed dependencies still come from the OpenONDA Python environment.
 
-The zero/one-sweep control is being repeated in that workspace before the
-three-interval convergence comparison. The required next evidence is exact
-control identity, successful first-map replay in every interval, and measured
-convergence with the original thresholds. A fully converged longer trajectory
-and developed-wake force/profile agreement remain outstanding.
+The [frozen zero/one-sweep verification](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-one-step-verification.json)
+passes: comparison histories, 17 decoded FVM entries, 11 boundary-history
+entries and 11 numeric VPM datasets match bitwise. It checks 93 source/artifact
+records and ten independent metrics with zero metric difference.
+
+## Matched medium advancing precision pair
+
+The frozen pair uses the same 16,936 small-FVM cells, `h=0.0625`, 108-panel body,
+laminar model, physical initial time `0.5`, `dt_FVM=0.01`, coupling interval
+`0.05`, and maximum 12 sweeps. The native and promoted runs use identical
+captured source bytes; the promoted runner changes only its documented
+auxiliary-query evaluation. Each endpoint map replays its own fields and
+clocks bitwise. The full-reference histories and saved reference fields match
+exactly, as do the two runs' initial comparison records.
+
+| Coupling interval | Native queries: sweeps | Native final derivative residual | Promoted queries: sweeps | Promoted final derivative residual |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 9, converged | 6.12196e-10 | 3, converged | 9.66791e-9 |
+| 2 | 7, converged | 9.60352e-7 | 3, converged | 8.81209e-9 |
+| 3 | 12, capped | 3.06841e-6 | 3, converged | 1.20049e-8 |
+
+Residuals are in `U∞/D`; both normal-velocity and derivative tolerances remain
+`1e-6`. The promoted normal residuals at acceptance are about `2e-8 U∞`.
+The promoted query reaches the existing criteria earlier; it is not claimed
+to have a smaller final residual in every individual interval. Total logical
+sweeps decrease from 28 to 9, excluding one replay evaluation per interval.
+
+At physical time `0.65`, the native and promoted drag coefficients are
+`1.460416220203181` and `1.4604162830031233`. Whole-small-FVM velocity errors are
+`0.00272785137` and `0.00272784191 U∞`; near-body errors are `0.00066224658` and
+`0.00066224240 U∞`. These close results support removing the numerical floor
+without materially changing this short corrected trajectory. They do not
+establish a new improvement in reference accuracy from precision alone.
+
+The [promoted trajectory verification](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-three-step-verification.json)
+checks 192 source/artifact records and 36 independent metrics with zero
+difference. The [precision-pair verifier](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-pair-verification.json)
+checks all 799 original frozen files and 59 additional native-run metrics,
+including an independent final force reconstruction, with maximum difference
+`2.22e-16`. The frozen native run's complete comparison prefix and first-map
+fingerprints also match the earlier 20-interval native run exactly through
+these three intervals.
+
+## Complete 20-interval comparison
+
+Both promoted-query runs finish at physical time `1.5`, with the full FVM
+advancing independently through the same 100 steps. The iterated run converges
+all 20 intervals in three sweeps each: 60 logical sweeps plus 20 first-map
+replays. The largest accepted normal and derivative residuals are
+`2.49465e-8 U∞` and `1.81032e-8 U∞/D`, below the unchanged `1e-6` thresholds.
+The earlier native-query run required 186 logical sweeps and converged only
+12 intervals. Wall-time ratios are not used as a controlled performance claim.
+
+| Metric | Promoted-query original coupling | Promoted-query iterated interface |
+| --- | ---: | ---: |
+| Drag-history RMS relative error, 20 accepted endpoints | 2.082312% | 0.555068% |
+| Final drag coefficient | 1.0577668953 | 1.0885607283 |
+| Final signed drag error | −2.094460% | +0.755778% |
+| Final whole-small-FVM velocity RMS / U∞ | 0.0076863010 | 0.0076637453 |
+| Final near-body FVM velocity RMS / U∞ | 0.0020049769 | 0.0019549317 |
+| Final sampled VPM velocity RMS / U∞ | 0.0312452878 | 0.0312425995 |
+
+The full-reference final drag coefficient is `1.0803953399803075`. Final FVM
+velocity errors decrease 0.293% over the whole small domain and 2.496% near the
+body. The sampled VPM error is essentially unchanged; these samples are at
+matched FVM cell centres, not exterior-wake profiles. Early transient velocity
+changes need not have the same sign as the final difference.
+
+The [complete verification](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-twenty-step-verification.json)
+checks 243 source/artifact records and 138 independent metrics, with zero
+metric difference. It verifies every map replay, unchanged reference histories
+and final reference fields, the exact short zero/one-sweep control, and final
+wall forces and velocity norms recomputed from saved arrays. The full control
+matches the short control's shared prefix. It does not claim a separate
+20-interval zero/one-sweep trajectory identity.
+
+![Verified fully converged 3D coupling trajectory](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-twenty-step-trajectory.png)
+
+The plot was visually checked. Interface consistency now has a reliably
+converged advancing comparison, while substantial reference error remains.
+The subsequent [time-resolution experiment](interface-time-resolution-3d.md)
+reduces the exchange/VPM step from `0.05` to `0.01` at fixed FVM step and mesh.
+All 100 iterated intervals converge, but its modest common-time drag improvement
+comes with 13.49% larger final whole-FVM velocity error. Developed
+three-dimensional wake profiles and near-roundoff hybrid agreement remain
+outstanding.

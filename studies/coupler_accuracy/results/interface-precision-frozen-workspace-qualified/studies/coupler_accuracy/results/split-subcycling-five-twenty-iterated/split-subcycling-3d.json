@@ -1,0 +1,4258 @@
+{
+  "schema": "openonda-split-subcycling-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "vpm_substeps": 5,
+  "substep_dt": 0.01,
+  "outer_dt": 0.05,
+  "fvm_dt": 0.01,
+  "requested_exchanges": 20,
+  "gbd_correction_limit": 0.08,
+  "frozen_original_files_verified": 799,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_split_subcycling_3d.py",
+      "sha256": "54a5834c5c9a1758cd1ed08ba35685869d93a024c04c9095f5926fc744442058"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_split_subcycling_3d.py",
+      "sha256": "828f466977098e3f57f8619d1f9c4e3a237174640886e04515db1494e61e37bc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "source/coupler/config/types.py",
+      "sha256": "caf866ea9008ee51e7ee27eeb0faf85e7902d68a9899bf4b023897959e4690f1"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    }
+  ],
+  "outer_advances": [
+    {
+      "start_time": 0.0,
+      "start_step": 0,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 21747,
+      "rk_calls": [
+        {
+          "time": 0.0,
+          "dt": 0.01,
+          "count": 21747
+        },
+        {
+          "time": 0.01,
+          "dt": 0.01,
+          "count": 23554
+        },
+        {
+          "time": 0.02,
+          "dt": 0.01,
+          "count": 23490
+        },
+        {
+          "time": 0.03,
+          "dt": 0.01,
+          "count": 23436
+        },
+        {
+          "time": 0.04,
+          "dt": 0.01,
+          "count": 23399
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.0,
+          "index": 0,
+          "count": 21747
+        },
+        {
+          "time": 0.01,
+          "index": 1,
+          "count": 21747
+        },
+        {
+          "time": 0.01,
+          "index": 0,
+          "count": 23554
+        },
+        {
+          "time": 0.02,
+          "index": 1,
+          "count": 23554
+        },
+        {
+          "time": 0.02,
+          "index": 0,
+          "count": 23490
+        },
+        {
+          "time": 0.03,
+          "index": 1,
+          "count": 23490
+        },
+        {
+          "time": 0.03,
+          "index": 0,
+          "count": 23436
+        },
+        {
+          "time": 0.04,
+          "index": 1,
+          "count": 23436
+        },
+        {
+          "time": 0.04,
+          "index": 0,
+          "count": 23399
+        },
+        {
+          "time": 0.05,
+          "index": 1,
+          "count": 23399
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 0,
+          "particles_before": 21747,
+          "particles_after": 23554,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 41313,
+            "retained_node_count": 23554,
+            "pruned_node_count": 17759,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00036403157531024184,
+            "normalized_vortex_strength_residual": 5.295175189291806e-10,
+            "normalized_linear_impulse_residual": 3.827147310465812e-10,
+            "normalized_angular_impulse_residual": 9.831061666615855e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 0,
+          "particles_before": 23554,
+          "particles_after": 23490,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43958,
+            "retained_node_count": 23490,
+            "pruned_node_count": 20468,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00013647432523343232,
+            "normalized_vortex_strength_residual": 4.3309240646626905e-10,
+            "normalized_linear_impulse_residual": 1.778894936899556e-10,
+            "normalized_angular_impulse_residual": 6.067182013850047e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 0,
+          "particles_before": 23490,
+          "particles_after": 23436,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43910,
+            "retained_node_count": 23436,
+            "pruned_node_count": 20474,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0001396001031791827,
+            "normalized_vortex_strength_residual": 1.1527485514909787e-10,
+            "normalized_linear_impulse_residual": 4.725379862064661e-10,
+            "normalized_angular_impulse_residual": 9.911869652826311e-12
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 0,
+          "particles_before": 23436,
+          "particles_after": 23399,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43837,
+            "retained_node_count": 23399,
+            "pruned_node_count": 20438,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00013609720049378396,
+            "normalized_vortex_strength_residual": 2.2336605953369079e-10,
+            "normalized_linear_impulse_residual": 1.962386806683914e-10,
+            "normalized_angular_impulse_residual": 3.05567609758855e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 0,
+          "particles_before": 23399,
+          "particles_after": 23381,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43869,
+            "retained_node_count": 23381,
+            "pruned_node_count": 20488,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00013592706355155967,
+            "normalized_vortex_strength_residual": 4.23181000245171e-10,
+            "normalized_linear_impulse_residual": 2.1586340162986987e-10,
+            "normalized_angular_impulse_residual": 6.770941906519231e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.05,
+      "accepted_step": 1,
+      "particles_at_exit": 23381,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.05,
+      "start_step": 1,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 22047,
+      "rk_calls": [
+        {
+          "time": 0.05,
+          "dt": 0.01,
+          "count": 22047
+        },
+        {
+          "time": 0.060000000000000005,
+          "dt": 0.01,
+          "count": 22685
+        },
+        {
+          "time": 0.07,
+          "dt": 0.01,
+          "count": 22635
+        },
+        {
+          "time": 0.08,
+          "dt": 0.01,
+          "count": 22588
+        },
+        {
+          "time": 0.09,
+          "dt": 0.01,
+          "count": 22574
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.05,
+          "index": 0,
+          "count": 22047
+        },
+        {
+          "time": 0.060000000000000005,
+          "index": 1,
+          "count": 22047
+        },
+        {
+          "time": 0.060000000000000005,
+          "index": 0,
+          "count": 22685
+        },
+        {
+          "time": 0.07,
+          "index": 1,
+          "count": 22685
+        },
+        {
+          "time": 0.07,
+          "index": 0,
+          "count": 22635
+        },
+        {
+          "time": 0.08,
+          "index": 1,
+          "count": 22635
+        },
+        {
+          "time": 0.08,
+          "index": 0,
+          "count": 22588
+        },
+        {
+          "time": 0.09,
+          "index": 1,
+          "count": 22588
+        },
+        {
+          "time": 0.09,
+          "index": 0,
+          "count": 22574
+        },
+        {
+          "time": 0.09999999999999999,
+          "index": 1,
+          "count": 22574
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 1,
+          "particles_before": 22047,
+          "particles_after": 22685,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 42919,
+            "retained_node_count": 22685,
+            "pruned_node_count": 20234,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00039781621629072833,
+            "normalized_vortex_strength_residual": 2.53382711642464e-10,
+            "normalized_linear_impulse_residual": 4.332267892893857e-10,
+            "normalized_angular_impulse_residual": 2.0819454391283608e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 1,
+          "particles_before": 22685,
+          "particles_after": 22635,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44056,
+            "retained_node_count": 22635,
+            "pruned_node_count": 21421,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00016426891267542104,
+            "normalized_vortex_strength_residual": 5.217559332378926e-10,
+            "normalized_linear_impulse_residual": 1.7437127511426247e-10,
+            "normalized_angular_impulse_residual": 8.153747470214658e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 1,
+          "particles_before": 22635,
+          "particles_after": 22588,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43994,
+            "retained_node_count": 22588,
+            "pruned_node_count": 21406,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017363791753664056,
+            "normalized_vortex_strength_residual": 3.679283782544765e-10,
+            "normalized_linear_impulse_residual": 3.366617253396598e-10,
+            "normalized_angular_impulse_residual": 6.9849676018022e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 1,
+          "particles_before": 22588,
+          "particles_after": 22574,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43853,
+            "retained_node_count": 22574,
+            "pruned_node_count": 21279,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00016590012583724229,
+            "normalized_vortex_strength_residual": 4.313159657113042e-10,
+            "normalized_linear_impulse_residual": 1.5071237151581413e-10,
+            "normalized_angular_impulse_residual": 8.733609719978342e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 1,
+          "particles_before": 22574,
+          "particles_after": 22567,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43885,
+            "retained_node_count": 22567,
+            "pruned_node_count": 21318,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00016759804508569617,
+            "normalized_vortex_strength_residual": 4.02261249930782e-10,
+            "normalized_linear_impulse_residual": 1.6865215758387022e-10,
+            "normalized_angular_impulse_residual": 5.4631906786023095e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.1,
+      "accepted_step": 2,
+      "particles_at_exit": 22567,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.1,
+      "start_step": 2,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 22410,
+      "rk_calls": [
+        {
+          "time": 0.1,
+          "dt": 0.01,
+          "count": 22410
+        },
+        {
+          "time": 0.11,
+          "dt": 0.01,
+          "count": 22789
+        },
+        {
+          "time": 0.12000000000000001,
+          "dt": 0.01,
+          "count": 22779
+        },
+        {
+          "time": 0.13,
+          "dt": 0.01,
+          "count": 22732
+        },
+        {
+          "time": 0.14,
+          "dt": 0.01,
+          "count": 22715
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.1,
+          "index": 0,
+          "count": 22410
+        },
+        {
+          "time": 0.11,
+          "index": 1,
+          "count": 22410
+        },
+        {
+          "time": 0.11,
+          "index": 0,
+          "count": 22789
+        },
+        {
+          "time": 0.12,
+          "index": 1,
+          "count": 22789
+        },
+        {
+          "time": 0.12000000000000001,
+          "index": 0,
+          "count": 22779
+        },
+        {
+          "time": 0.13,
+          "index": 1,
+          "count": 22779
+        },
+        {
+          "time": 0.13,
+          "index": 0,
+          "count": 22732
+        },
+        {
+          "time": 0.14,
+          "index": 1,
+          "count": 22732
+        },
+        {
+          "time": 0.14,
+          "index": 0,
+          "count": 22715
+        },
+        {
+          "time": 0.15000000000000002,
+          "index": 1,
+          "count": 22715
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 2,
+          "particles_before": 22410,
+          "particles_after": 22789,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43298,
+            "retained_node_count": 22789,
+            "pruned_node_count": 20509,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035829111976200885,
+            "normalized_vortex_strength_residual": 8.169280176452055e-10,
+            "normalized_linear_impulse_residual": 1.5832550991512405e-10,
+            "normalized_angular_impulse_residual": 1.1398643504838911e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 2,
+          "particles_before": 22789,
+          "particles_after": 22779,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44116,
+            "retained_node_count": 22779,
+            "pruned_node_count": 21337,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0001692226622691173,
+            "normalized_vortex_strength_residual": 3.8751489240320825e-10,
+            "normalized_linear_impulse_residual": 2.2326104969816434e-10,
+            "normalized_angular_impulse_residual": 4.5294429995176624e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 2,
+          "particles_before": 22779,
+          "particles_after": 22732,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43978,
+            "retained_node_count": 22732,
+            "pruned_node_count": 21246,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017638910974474017,
+            "normalized_vortex_strength_residual": 4.6293531339014204e-10,
+            "normalized_linear_impulse_residual": 2.7571193228882296e-10,
+            "normalized_angular_impulse_residual": 5.7762032325544736e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 2,
+          "particles_before": 22732,
+          "particles_after": 22715,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43904,
+            "retained_node_count": 22715,
+            "pruned_node_count": 21189,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017378161983267867,
+            "normalized_vortex_strength_residual": 2.9008791032289644e-10,
+            "normalized_linear_impulse_residual": 1.0517710040823325e-10,
+            "normalized_angular_impulse_residual": 6.97788901186086e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 2,
+          "particles_before": 22715,
+          "particles_after": 22693,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43907,
+            "retained_node_count": 22693,
+            "pruned_node_count": 21214,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00018464586049638754,
+            "normalized_vortex_strength_residual": 3.287366700277504e-10,
+            "normalized_linear_impulse_residual": 4.3302643606489753e-10,
+            "normalized_angular_impulse_residual": 4.634000936093565e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.15,
+      "accepted_step": 3,
+      "particles_at_exit": 22693,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.15,
+      "start_step": 3,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 22578,
+      "rk_calls": [
+        {
+          "time": 0.15,
+          "dt": 0.01,
+          "count": 22578
+        },
+        {
+          "time": 0.16,
+          "dt": 0.01,
+          "count": 24250
+        },
+        {
+          "time": 0.16999999999999998,
+          "dt": 0.01,
+          "count": 24198
+        },
+        {
+          "time": 0.18,
+          "dt": 0.01,
+          "count": 24171
+        },
+        {
+          "time": 0.19,
+          "dt": 0.01,
+          "count": 24149
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.15,
+          "index": 0,
+          "count": 22578
+        },
+        {
+          "time": 0.16,
+          "index": 1,
+          "count": 22578
+        },
+        {
+          "time": 0.16,
+          "index": 0,
+          "count": 24250
+        },
+        {
+          "time": 0.17,
+          "index": 1,
+          "count": 24250
+        },
+        {
+          "time": 0.16999999999999998,
+          "index": 0,
+          "count": 24198
+        },
+        {
+          "time": 0.18,
+          "index": 1,
+          "count": 24198
+        },
+        {
+          "time": 0.18,
+          "index": 0,
+          "count": 24171
+        },
+        {
+          "time": 0.19,
+          "index": 1,
+          "count": 24171
+        },
+        {
+          "time": 0.19,
+          "index": 0,
+          "count": 24149
+        },
+        {
+          "time": 0.2,
+          "index": 1,
+          "count": 24149
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 3,
+          "particles_before": 22578,
+          "particles_after": 24250,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43459,
+            "retained_node_count": 24250,
+            "pruned_node_count": 19209,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00037063866169083766,
+            "normalized_vortex_strength_residual": 5.065902934756356e-10,
+            "normalized_linear_impulse_residual": 1.542419362116545e-10,
+            "normalized_angular_impulse_residual": 1.0679578487241923e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 3,
+          "particles_before": 24250,
+          "particles_after": 24198,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45399,
+            "retained_node_count": 24198,
+            "pruned_node_count": 21201,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00013771622898335387,
+            "normalized_vortex_strength_residual": 3.107156606764144e-10,
+            "normalized_linear_impulse_residual": 9.606205998931799e-11,
+            "normalized_angular_impulse_residual": 6.956685653940115e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 3,
+          "particles_before": 24198,
+          "particles_after": 24171,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45373,
+            "retained_node_count": 24171,
+            "pruned_node_count": 21202,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00013444442171076413,
+            "normalized_vortex_strength_residual": 2.0620736214882408e-10,
+            "normalized_linear_impulse_residual": 1.7620933282275288e-10,
+            "normalized_angular_impulse_residual": 5.029795537481578e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 3,
+          "particles_before": 24171,
+          "particles_after": 24149,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45333,
+            "retained_node_count": 24149,
+            "pruned_node_count": 21184,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0001350746142265343,
+            "normalized_vortex_strength_residual": 3.657620522312547e-10,
+            "normalized_linear_impulse_residual": 3.11981358731794e-10,
+            "normalized_angular_impulse_residual": 7.671314696490014e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 3,
+          "particles_before": 24149,
+          "particles_after": 24130,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45306,
+            "retained_node_count": 24130,
+            "pruned_node_count": 21176,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0001362154890833712,
+            "normalized_vortex_strength_residual": 1.8568070193865745e-10,
+            "normalized_linear_impulse_residual": 1.0938587876794622e-10,
+            "normalized_angular_impulse_residual": 3.538235015360416e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.2,
+      "accepted_step": 4,
+      "particles_at_exit": 24130,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.2,
+      "start_step": 4,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 22671,
+      "rk_calls": [
+        {
+          "time": 0.2,
+          "dt": 0.01,
+          "count": 22671
+        },
+        {
+          "time": 0.21000000000000002,
+          "dt": 0.01,
+          "count": 24167
+        },
+        {
+          "time": 0.22,
+          "dt": 0.01,
+          "count": 24106
+        },
+        {
+          "time": 0.23,
+          "dt": 0.01,
+          "count": 24067
+        },
+        {
+          "time": 0.24000000000000002,
+          "dt": 0.01,
+          "count": 24035
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.2,
+          "index": 0,
+          "count": 22671
+        },
+        {
+          "time": 0.21000000000000002,
+          "index": 1,
+          "count": 22671
+        },
+        {
+          "time": 0.21000000000000002,
+          "index": 0,
+          "count": 24167
+        },
+        {
+          "time": 0.22000000000000003,
+          "index": 1,
+          "count": 24167
+        },
+        {
+          "time": 0.22,
+          "index": 0,
+          "count": 24106
+        },
+        {
+          "time": 0.23,
+          "index": 1,
+          "count": 24106
+        },
+        {
+          "time": 0.23,
+          "index": 0,
+          "count": 24067
+        },
+        {
+          "time": 0.24000000000000002,
+          "index": 1,
+          "count": 24067
+        },
+        {
+          "time": 0.24000000000000002,
+          "index": 0,
+          "count": 24035
+        },
+        {
+          "time": 0.25,
+          "index": 1,
+          "count": 24035
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 4,
+          "particles_before": 22671,
+          "particles_after": 24167,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43588,
+            "retained_node_count": 24167,
+            "pruned_node_count": 19421,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003752875110472359,
+            "normalized_vortex_strength_residual": 2.271304682190876e-10,
+            "normalized_linear_impulse_residual": 3.268253296552777e-10,
+            "normalized_angular_impulse_residual": 7.49998173084155e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 4,
+          "particles_before": 24167,
+          "particles_after": 24106,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45755,
+            "retained_node_count": 24106,
+            "pruned_node_count": 21649,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0001756593675609729,
+            "normalized_vortex_strength_residual": 5.869548998415111e-10,
+            "normalized_linear_impulse_residual": 9.308395013773659e-11,
+            "normalized_angular_impulse_residual": 7.542658859313415e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 4,
+          "particles_before": 24106,
+          "particles_after": 24067,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45657,
+            "retained_node_count": 24067,
+            "pruned_node_count": 21590,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017342325911482736,
+            "normalized_vortex_strength_residual": 5.132289096335951e-10,
+            "normalized_linear_impulse_residual": 3.8465844012082635e-10,
+            "normalized_angular_impulse_residual": 7.597406436908954e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 4,
+          "particles_before": 24067,
+          "particles_after": 24035,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45642,
+            "retained_node_count": 24035,
+            "pruned_node_count": 21607,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017303472447824242,
+            "normalized_vortex_strength_residual": 3.097065752502415e-10,
+            "normalized_linear_impulse_residual": 2.921930116558247e-10,
+            "normalized_angular_impulse_residual": 1.0113131420801201e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 4,
+          "particles_before": 24035,
+          "particles_after": 24008,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45633,
+            "retained_node_count": 24008,
+            "pruned_node_count": 21625,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00017914200860225755,
+            "normalized_vortex_strength_residual": 1.6103567972018642e-10,
+            "normalized_linear_impulse_residual": 2.0884358425257035e-10,
+            "normalized_angular_impulse_residual": 4.6394174013646365e-12
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.25,
+      "accepted_step": 5,
+      "particles_at_exit": 24008,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.25,
+      "start_step": 5,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 22877,
+      "rk_calls": [
+        {
+          "time": 0.25,
+          "dt": 0.01,
+          "count": 22877
+        },
+        {
+          "time": 0.26,
+          "dt": 0.01,
+          "count": 23066
+        },
+        {
+          "time": 0.27,
+          "dt": 0.01,
+          "count": 23067
+        },
+        {
+          "time": 0.28,
+          "dt": 0.01,
+          "count": 23051
+        },
+        {
+          "time": 0.29,
+          "dt": 0.01,
+          "count": 23035
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.25,
+          "index": 0,
+          "count": 22877
+        },
+        {
+          "time": 0.26,
+          "index": 1,
+          "count": 22877
+        },
+        {
+          "time": 0.26,
+          "index": 0,
+          "count": 23066
+        },
+        {
+          "time": 0.27,
+          "index": 1,
+          "count": 23066
+        },
+        {
+          "time": 0.27,
+          "index": 0,
+          "count": 23067
+        },
+        {
+          "time": 0.28,
+          "index": 1,
+          "count": 23067
+        },
+        {
+          "time": 0.28,
+          "index": 0,
+          "count": 23051
+        },
+        {
+          "time": 0.29000000000000004,
+          "index": 1,
+          "count": 23051
+        },
+        {
+          "time": 0.29,
+          "index": 0,
+          "count": 23035
+        },
+        {
+          "time": 0.3,
+          "index": 1,
+          "count": 23035
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 5,
+          "particles_before": 22877,
+          "particles_after": 23066,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44166,
+            "retained_node_count": 23066,
+            "pruned_node_count": 21100,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00030130572556621033,
+            "normalized_vortex_strength_residual": 2.5729833827796664e-10,
+            "normalized_linear_impulse_residual": 8.46298477073649e-11,
+            "normalized_angular_impulse_residual": 3.813979591471146e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 5,
+          "particles_before": 23066,
+          "particles_after": 23067,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44611,
+            "retained_node_count": 23067,
+            "pruned_node_count": 21544,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00019474200457071682,
+            "normalized_vortex_strength_residual": 3.529977588754265e-10,
+            "normalized_linear_impulse_residual": 2.243250351571621e-10,
+            "normalized_angular_impulse_residual": 5.5768151996476945e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 5,
+          "particles_before": 23067,
+          "particles_after": 23051,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44584,
+            "retained_node_count": 23051,
+            "pruned_node_count": 21533,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00019904335769963625,
+            "normalized_vortex_strength_residual": 3.0235703832430886e-10,
+            "normalized_linear_impulse_residual": 2.2660303371062488e-10,
+            "normalized_angular_impulse_residual": 5.556059150329777e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 5,
+          "particles_before": 23051,
+          "particles_after": 23035,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44567,
+            "retained_node_count": 23035,
+            "pruned_node_count": 21532,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00021179871704848203,
+            "normalized_vortex_strength_residual": 2.3758377722027155e-10,
+            "normalized_linear_impulse_residual": 2.409401033786061e-10,
+            "normalized_angular_impulse_residual": 2.7865729525234217e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 5,
+          "particles_before": 23035,
+          "particles_after": 23016,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44555,
+            "retained_node_count": 23016,
+            "pruned_node_count": 21539,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00020931666623894352,
+            "normalized_vortex_strength_residual": 2.0371595200918957e-10,
+            "normalized_linear_impulse_residual": 9.33566367689066e-11,
+            "normalized_angular_impulse_residual": 2.1062490993074753e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.3,
+      "accepted_step": 6,
+      "particles_at_exit": 23016,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.3,
+      "start_step": 6,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 23062,
+      "rk_calls": [
+        {
+          "time": 0.3,
+          "dt": 0.01,
+          "count": 23062
+        },
+        {
+          "time": 0.31,
+          "dt": 0.01,
+          "count": 23230
+        },
+        {
+          "time": 0.32,
+          "dt": 0.01,
+          "count": 23211
+        },
+        {
+          "time": 0.32999999999999996,
+          "dt": 0.01,
+          "count": 23203
+        },
+        {
+          "time": 0.33999999999999997,
+          "dt": 0.01,
+          "count": 23199
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.3,
+          "index": 0,
+          "count": 23062
+        },
+        {
+          "time": 0.31,
+          "index": 1,
+          "count": 23062
+        },
+        {
+          "time": 0.31,
+          "index": 0,
+          "count": 23230
+        },
+        {
+          "time": 0.32,
+          "index": 1,
+          "count": 23230
+        },
+        {
+          "time": 0.32,
+          "index": 0,
+          "count": 23211
+        },
+        {
+          "time": 0.33,
+          "index": 1,
+          "count": 23211
+        },
+        {
+          "time": 0.32999999999999996,
+          "index": 0,
+          "count": 23203
+        },
+        {
+          "time": 0.33999999999999997,
+          "index": 1,
+          "count": 23203
+        },
+        {
+          "time": 0.33999999999999997,
+          "index": 0,
+          "count": 23199
+        },
+        {
+          "time": 0.35,
+          "index": 1,
+          "count": 23199
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 6,
+          "particles_before": 23062,
+          "particles_after": 23230,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 42848,
+            "retained_node_count": 23230,
+            "pruned_node_count": 19618,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00025853563215425896,
+            "normalized_vortex_strength_residual": 3.0282671627515116e-10,
+            "normalized_linear_impulse_residual": 3.2342488467664295e-10,
+            "normalized_angular_impulse_residual": 7.623941998330301e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 6,
+          "particles_before": 23230,
+          "particles_after": 23211,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43278,
+            "retained_node_count": 23211,
+            "pruned_node_count": 20067,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002483415611284537,
+            "normalized_vortex_strength_residual": 5.96984309585532e-10,
+            "normalized_linear_impulse_residual": 1.249545687384538e-10,
+            "normalized_angular_impulse_residual": 7.055979172505824e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 6,
+          "particles_before": 23211,
+          "particles_after": 23203,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43332,
+            "retained_node_count": 23203,
+            "pruned_node_count": 20129,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00024883354649949015,
+            "normalized_vortex_strength_residual": 2.014199778821959e-10,
+            "normalized_linear_impulse_residual": 3.6244202459334303e-10,
+            "normalized_angular_impulse_residual": 7.395164588317818e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 6,
+          "particles_before": 23203,
+          "particles_after": 23199,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43371,
+            "retained_node_count": 23199,
+            "pruned_node_count": 20172,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002550292425625415,
+            "normalized_vortex_strength_residual": 4.1765040882942437e-10,
+            "normalized_linear_impulse_residual": 2.1430894546577634e-10,
+            "normalized_angular_impulse_residual": 5.7963944907115684e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 6,
+          "particles_before": 23199,
+          "particles_after": 23196,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43389,
+            "retained_node_count": 23196,
+            "pruned_node_count": 20193,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002704548283104172,
+            "normalized_vortex_strength_residual": 1.8536729278375546e-10,
+            "normalized_linear_impulse_residual": 1.335677151262609e-10,
+            "normalized_angular_impulse_residual": 4.10205480529718e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.35,
+      "accepted_step": 7,
+      "particles_at_exit": 23196,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.35,
+      "start_step": 7,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 23274,
+      "rk_calls": [
+        {
+          "time": 0.35,
+          "dt": 0.01,
+          "count": 23274
+        },
+        {
+          "time": 0.36,
+          "dt": 0.01,
+          "count": 23488
+        },
+        {
+          "time": 0.37,
+          "dt": 0.01,
+          "count": 23458
+        },
+        {
+          "time": 0.38,
+          "dt": 0.01,
+          "count": 23461
+        },
+        {
+          "time": 0.38999999999999996,
+          "dt": 0.01,
+          "count": 23459
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.35,
+          "index": 0,
+          "count": 23274
+        },
+        {
+          "time": 0.36,
+          "index": 1,
+          "count": 23274
+        },
+        {
+          "time": 0.36,
+          "index": 0,
+          "count": 23488
+        },
+        {
+          "time": 0.37,
+          "index": 1,
+          "count": 23488
+        },
+        {
+          "time": 0.37,
+          "index": 0,
+          "count": 23458
+        },
+        {
+          "time": 0.38,
+          "index": 1,
+          "count": 23458
+        },
+        {
+          "time": 0.38,
+          "index": 0,
+          "count": 23461
+        },
+        {
+          "time": 0.39,
+          "index": 1,
+          "count": 23461
+        },
+        {
+          "time": 0.38999999999999996,
+          "index": 0,
+          "count": 23459
+        },
+        {
+          "time": 0.39999999999999997,
+          "index": 1,
+          "count": 23459
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 7,
+          "particles_before": 23274,
+          "particles_after": 23488,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43465,
+            "retained_node_count": 23488,
+            "pruned_node_count": 19977,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002956816613406146,
+            "normalized_vortex_strength_residual": 7.828187295201903e-11,
+            "normalized_linear_impulse_residual": 7.317027761801026e-11,
+            "normalized_angular_impulse_residual": 2.7219050485517003e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 7,
+          "particles_before": 23488,
+          "particles_after": 23458,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43930,
+            "retained_node_count": 23458,
+            "pruned_node_count": 20472,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002810129489149116,
+            "normalized_vortex_strength_residual": 4.958548241762356e-10,
+            "normalized_linear_impulse_residual": 5.028137581965417e-10,
+            "normalized_angular_impulse_residual": 6.947423912086915e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 7,
+          "particles_before": 23458,
+          "particles_after": 23461,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43936,
+            "retained_node_count": 23461,
+            "pruned_node_count": 20475,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002776621487200468,
+            "normalized_vortex_strength_residual": 2.801225167868893e-10,
+            "normalized_linear_impulse_residual": 4.158204858166432e-10,
+            "normalized_angular_impulse_residual": 2.812973358261918e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 7,
+          "particles_before": 23461,
+          "particles_after": 23459,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43918,
+            "retained_node_count": 23459,
+            "pruned_node_count": 20459,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002855814975406008,
+            "normalized_vortex_strength_residual": 2.5195497658416836e-10,
+            "normalized_linear_impulse_residual": 2.0626463885682945e-10,
+            "normalized_angular_impulse_residual": 5.078534803054531e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 7,
+          "particles_before": 23459,
+          "particles_after": 23460,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43916,
+            "retained_node_count": 23460,
+            "pruned_node_count": 20456,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003036035158585986,
+            "normalized_vortex_strength_residual": 2.385501376040723e-10,
+            "normalized_linear_impulse_residual": 7.435293041699828e-11,
+            "normalized_angular_impulse_residual": 7.522475638869636e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.4,
+      "accepted_step": 8,
+      "particles_at_exit": 23460,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.4,
+      "start_step": 8,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 23465,
+      "rk_calls": [
+        {
+          "time": 0.4,
+          "dt": 0.01,
+          "count": 23465
+        },
+        {
+          "time": 0.41000000000000003,
+          "dt": 0.01,
+          "count": 23734
+        },
+        {
+          "time": 0.42000000000000004,
+          "dt": 0.01,
+          "count": 23720
+        },
+        {
+          "time": 0.43000000000000005,
+          "dt": 0.01,
+          "count": 23728
+        },
+        {
+          "time": 0.44,
+          "dt": 0.01,
+          "count": 23732
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.4,
+          "index": 0,
+          "count": 23465
+        },
+        {
+          "time": 0.41000000000000003,
+          "index": 1,
+          "count": 23465
+        },
+        {
+          "time": 0.41000000000000003,
+          "index": 0,
+          "count": 23734
+        },
+        {
+          "time": 0.42000000000000004,
+          "index": 1,
+          "count": 23734
+        },
+        {
+          "time": 0.42000000000000004,
+          "index": 0,
+          "count": 23720
+        },
+        {
+          "time": 0.43000000000000005,
+          "index": 1,
+          "count": 23720
+        },
+        {
+          "time": 0.43000000000000005,
+          "index": 0,
+          "count": 23728
+        },
+        {
+          "time": 0.44000000000000006,
+          "index": 1,
+          "count": 23728
+        },
+        {
+          "time": 0.44,
+          "index": 0,
+          "count": 23732
+        },
+        {
+          "time": 0.45,
+          "index": 1,
+          "count": 23732
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 8,
+          "particles_before": 23465,
+          "particles_after": 23734,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43947,
+            "retained_node_count": 23734,
+            "pruned_node_count": 20213,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003026540436766167,
+            "normalized_vortex_strength_residual": 7.754171492073928e-10,
+            "normalized_linear_impulse_residual": 2.3928553382702777e-10,
+            "normalized_angular_impulse_residual": 9.688256777850302e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 8,
+          "particles_before": 23734,
+          "particles_after": 23720,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44299,
+            "retained_node_count": 23720,
+            "pruned_node_count": 20579,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002908563129682826,
+            "normalized_vortex_strength_residual": 5.63041425651357e-10,
+            "normalized_linear_impulse_residual": 2.577209021614818e-10,
+            "normalized_angular_impulse_residual": 8.920591658519828e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 8,
+          "particles_before": 23720,
+          "particles_after": 23728,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44358,
+            "retained_node_count": 23728,
+            "pruned_node_count": 20630,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.000286867372525798,
+            "normalized_vortex_strength_residual": 5.58718245636943e-10,
+            "normalized_linear_impulse_residual": 2.5894577890453193e-10,
+            "normalized_angular_impulse_residual": 1.1248599801422174e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 8,
+          "particles_before": 23728,
+          "particles_after": 23732,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44384,
+            "retained_node_count": 23732,
+            "pruned_node_count": 20652,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0002875173818047214,
+            "normalized_vortex_strength_residual": 6.230534933397385e-10,
+            "normalized_linear_impulse_residual": 1.0884335760827903e-10,
+            "normalized_angular_impulse_residual": 6.658681287017991e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 8,
+          "particles_before": 23732,
+          "particles_after": 23732,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44414,
+            "retained_node_count": 23732,
+            "pruned_node_count": 20682,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.000309820502830926,
+            "normalized_vortex_strength_residual": 2.4592218568900053e-10,
+            "normalized_linear_impulse_residual": 4.680215655642751e-10,
+            "normalized_angular_impulse_residual": 5.747853203225187e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.45,
+      "accepted_step": 9,
+      "particles_at_exit": 23732,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.45,
+      "start_step": 9,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 23687,
+      "rk_calls": [
+        {
+          "time": 0.45,
+          "dt": 0.01,
+          "count": 23687
+        },
+        {
+          "time": 0.46,
+          "dt": 0.01,
+          "count": 24033
+        },
+        {
+          "time": 0.47000000000000003,
+          "dt": 0.01,
+          "count": 23994
+        },
+        {
+          "time": 0.48,
+          "dt": 0.01,
+          "count": 23986
+        },
+        {
+          "time": 0.49,
+          "dt": 0.01,
+          "count": 23994
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.45,
+          "index": 0,
+          "count": 23687
+        },
+        {
+          "time": 0.46,
+          "index": 1,
+          "count": 23687
+        },
+        {
+          "time": 0.46,
+          "index": 0,
+          "count": 24033
+        },
+        {
+          "time": 0.47000000000000003,
+          "index": 1,
+          "count": 24033
+        },
+        {
+          "time": 0.47000000000000003,
+          "index": 0,
+          "count": 23994
+        },
+        {
+          "time": 0.48000000000000004,
+          "index": 1,
+          "count": 23994
+        },
+        {
+          "time": 0.48,
+          "index": 0,
+          "count": 23986
+        },
+        {
+          "time": 0.49,
+          "index": 1,
+          "count": 23986
+        },
+        {
+          "time": 0.49,
+          "index": 0,
+          "count": 23994
+        },
+        {
+          "time": 0.5,
+          "index": 1,
+          "count": 23994
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 9,
+          "particles_before": 23687,
+          "particles_after": 24033,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 44647,
+            "retained_node_count": 24033,
+            "pruned_node_count": 20614,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00031651587843937616,
+            "normalized_vortex_strength_residual": 4.5630467468064455e-10,
+            "normalized_linear_impulse_residual": 5.6913792076273095e-11,
+            "normalized_angular_impulse_residual": 7.905656713751327e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 9,
+          "particles_before": 24033,
+          "particles_after": 23994,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45087,
+            "retained_node_count": 23994,
+            "pruned_node_count": 21093,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003032679632596904,
+            "normalized_vortex_strength_residual": 3.2696623487560143e-10,
+            "normalized_linear_impulse_residual": 3.5078619524715634e-10,
+            "normalized_angular_impulse_residual": 1.0974811510079565e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 9,
+          "particles_before": 23994,
+          "particles_after": 23986,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45069,
+            "retained_node_count": 23986,
+            "pruned_node_count": 21083,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003052497419162357,
+            "normalized_vortex_strength_residual": 5.902476029494337e-10,
+            "normalized_linear_impulse_residual": 2.3957201012332243e-10,
+            "normalized_angular_impulse_residual": 9.925967064466691e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 9,
+          "particles_before": 23986,
+          "particles_after": 23994,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45044,
+            "retained_node_count": 23994,
+            "pruned_node_count": 21050,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003046229206354858,
+            "normalized_vortex_strength_residual": 4.790819160047784e-10,
+            "normalized_linear_impulse_residual": 3.495382358591817e-10,
+            "normalized_angular_impulse_residual": 7.537306484126209e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 9,
+          "particles_before": 23994,
+          "particles_after": 23992,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45034,
+            "retained_node_count": 23992,
+            "pruned_node_count": 21042,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003279769916413253,
+            "normalized_vortex_strength_residual": 7.438209250068183e-10,
+            "normalized_linear_impulse_residual": 1.172488152463024e-10,
+            "normalized_angular_impulse_residual": 1.1977029835387003e-10
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.5,
+      "accepted_step": 10,
+      "particles_at_exit": 23992,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.5,
+      "start_step": 10,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 23990,
+      "rk_calls": [
+        {
+          "time": 0.5,
+          "dt": 0.01,
+          "count": 23990
+        },
+        {
+          "time": 0.51,
+          "dt": 0.01,
+          "count": 24358
+        },
+        {
+          "time": 0.52,
+          "dt": 0.01,
+          "count": 24347
+        },
+        {
+          "time": 0.53,
+          "dt": 0.01,
+          "count": 24352
+        },
+        {
+          "time": 0.54,
+          "dt": 0.01,
+          "count": 24344
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.5,
+          "index": 0,
+          "count": 23990
+        },
+        {
+          "time": 0.51,
+          "index": 1,
+          "count": 23990
+        },
+        {
+          "time": 0.51,
+          "index": 0,
+          "count": 24358
+        },
+        {
+          "time": 0.52,
+          "index": 1,
+          "count": 24358
+        },
+        {
+          "time": 0.52,
+          "index": 0,
+          "count": 24347
+        },
+        {
+          "time": 0.53,
+          "index": 1,
+          "count": 24347
+        },
+        {
+          "time": 0.53,
+          "index": 0,
+          "count": 24352
+        },
+        {
+          "time": 0.54,
+          "index": 1,
+          "count": 24352
+        },
+        {
+          "time": 0.54,
+          "index": 0,
+          "count": 24344
+        },
+        {
+          "time": 0.55,
+          "index": 1,
+          "count": 24344
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 10,
+          "particles_before": 23990,
+          "particles_after": 24358,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45194,
+            "retained_node_count": 24358,
+            "pruned_node_count": 20836,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003330315340091624,
+            "normalized_vortex_strength_residual": 4.216770013326794e-10,
+            "normalized_linear_impulse_residual": 1.9940087354683758e-10,
+            "normalized_angular_impulse_residual": 7.887707877007304e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 10,
+          "particles_before": 24358,
+          "particles_after": 24347,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45696,
+            "retained_node_count": 24347,
+            "pruned_node_count": 21349,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003058127674745898,
+            "normalized_vortex_strength_residual": 4.1224231520433206e-10,
+            "normalized_linear_impulse_residual": 1.1874011958694696e-10,
+            "normalized_angular_impulse_residual": 7.765490001903855e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 10,
+          "particles_before": 24347,
+          "particles_after": 24352,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45675,
+            "retained_node_count": 24352,
+            "pruned_node_count": 21323,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003080179941800356,
+            "normalized_vortex_strength_residual": 3.9406108935477294e-10,
+            "normalized_linear_impulse_residual": 2.6549460816099174e-10,
+            "normalized_angular_impulse_residual": 6.022745398454953e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 10,
+          "particles_before": 24352,
+          "particles_after": 24344,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45680,
+            "retained_node_count": 24344,
+            "pruned_node_count": 21336,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00031353938143460194,
+            "normalized_vortex_strength_residual": 2.590517325434211e-10,
+            "normalized_linear_impulse_residual": 1.5018001001665514e-10,
+            "normalized_angular_impulse_residual": 5.366107042480369e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 10,
+          "particles_before": 24344,
+          "particles_after": 24339,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45652,
+            "retained_node_count": 24339,
+            "pruned_node_count": 21313,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00033518048668152887,
+            "normalized_vortex_strength_residual": 3.878139610886666e-10,
+            "normalized_linear_impulse_residual": 3.123603365705265e-10,
+            "normalized_angular_impulse_residual": 1.0153948365305982e-10
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.55,
+      "accepted_step": 11,
+      "particles_at_exit": 24339,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.55,
+      "start_step": 11,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 24249,
+      "rk_calls": [
+        {
+          "time": 0.55,
+          "dt": 0.01,
+          "count": 24249
+        },
+        {
+          "time": 0.56,
+          "dt": 0.01,
+          "count": 24734
+        },
+        {
+          "time": 0.5700000000000001,
+          "dt": 0.01,
+          "count": 24711
+        },
+        {
+          "time": 0.5800000000000001,
+          "dt": 0.01,
+          "count": 24695
+        },
+        {
+          "time": 0.5900000000000001,
+          "dt": 0.01,
+          "count": 24665
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.55,
+          "index": 0,
+          "count": 24249
+        },
+        {
+          "time": 0.56,
+          "index": 1,
+          "count": 24249
+        },
+        {
+          "time": 0.56,
+          "index": 0,
+          "count": 24734
+        },
+        {
+          "time": 0.5700000000000001,
+          "index": 1,
+          "count": 24734
+        },
+        {
+          "time": 0.5700000000000001,
+          "index": 0,
+          "count": 24711
+        },
+        {
+          "time": 0.5800000000000001,
+          "index": 1,
+          "count": 24711
+        },
+        {
+          "time": 0.5800000000000001,
+          "index": 0,
+          "count": 24695
+        },
+        {
+          "time": 0.5900000000000001,
+          "index": 1,
+          "count": 24695
+        },
+        {
+          "time": 0.5900000000000001,
+          "index": 0,
+          "count": 24665
+        },
+        {
+          "time": 0.6000000000000001,
+          "index": 1,
+          "count": 24665
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 11,
+          "particles_before": 24249,
+          "particles_after": 24734,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 45679,
+            "retained_node_count": 24734,
+            "pruned_node_count": 20945,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003589525447994092,
+            "normalized_vortex_strength_residual": 3.979315955384355e-10,
+            "normalized_linear_impulse_residual": 1.1810599869673482e-10,
+            "normalized_angular_impulse_residual": 8.729080432316119e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 11,
+          "particles_before": 24734,
+          "particles_after": 24711,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 46589,
+            "retained_node_count": 24711,
+            "pruned_node_count": 21878,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003246128212548221,
+            "normalized_vortex_strength_residual": 2.851502605983917e-10,
+            "normalized_linear_impulse_residual": 1.880607019024709e-10,
+            "normalized_angular_impulse_residual": 2.226371067089762e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 11,
+          "particles_before": 24711,
+          "particles_after": 24695,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 46496,
+            "retained_node_count": 24695,
+            "pruned_node_count": 21801,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.000326479351613399,
+            "normalized_vortex_strength_residual": 3.6371605551587565e-10,
+            "normalized_linear_impulse_residual": 7.0548045251901e-11,
+            "normalized_angular_impulse_residual": 6.338035327984692e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 11,
+          "particles_before": 24695,
+          "particles_after": 24665,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 46480,
+            "retained_node_count": 24665,
+            "pruned_node_count": 21815,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003373956345084224,
+            "normalized_vortex_strength_residual": 3.119574578391056e-10,
+            "normalized_linear_impulse_residual": 1.927438540496015e-10,
+            "normalized_angular_impulse_residual": 7.500916301161366e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 11,
+          "particles_before": 24665,
+          "particles_after": 24670,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 46354,
+            "retained_node_count": 24670,
+            "pruned_node_count": 21684,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003543890514307796,
+            "normalized_vortex_strength_residual": 2.3495356151811236e-10,
+            "normalized_linear_impulse_residual": 1.9101832102221519e-10,
+            "normalized_angular_impulse_residual": 3.693244678658158e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.6,
+      "accepted_step": 12,
+      "particles_at_exit": 24670,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.6,
+      "start_step": 12,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 24532,
+      "rk_calls": [
+        {
+          "time": 0.6,
+          "dt": 0.01,
+          "count": 24532
+        },
+        {
+          "time": 0.61,
+          "dt": 0.01,
+          "count": 25152
+        },
+        {
+          "time": 0.62,
+          "dt": 0.01,
+          "count": 25101
+        },
+        {
+          "time": 0.63,
+          "dt": 0.01,
+          "count": 25077
+        },
+        {
+          "time": 0.64,
+          "dt": 0.01,
+          "count": 25019
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.6,
+          "index": 0,
+          "count": 24532
+        },
+        {
+          "time": 0.61,
+          "index": 1,
+          "count": 24532
+        },
+        {
+          "time": 0.61,
+          "index": 0,
+          "count": 25152
+        },
+        {
+          "time": 0.62,
+          "index": 1,
+          "count": 25152
+        },
+        {
+          "time": 0.62,
+          "index": 0,
+          "count": 25101
+        },
+        {
+          "time": 0.63,
+          "index": 1,
+          "count": 25101
+        },
+        {
+          "time": 0.63,
+          "index": 0,
+          "count": 25077
+        },
+        {
+          "time": 0.64,
+          "index": 1,
+          "count": 25077
+        },
+        {
+          "time": 0.64,
+          "index": 0,
+          "count": 25019
+        },
+        {
+          "time": 0.65,
+          "index": 1,
+          "count": 25019
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 12,
+          "particles_before": 24532,
+          "particles_after": 25152,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 46454,
+            "retained_node_count": 25152,
+            "pruned_node_count": 21302,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003775935055855124,
+            "normalized_vortex_strength_residual": 1.4982136597953432e-10,
+            "normalized_linear_impulse_residual": 1.476110949448182e-10,
+            "normalized_angular_impulse_residual": 6.210540330766984e-12
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 12,
+          "particles_before": 25152,
+          "particles_after": 25101,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 47575,
+            "retained_node_count": 25101,
+            "pruned_node_count": 22474,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003432179498089185,
+            "normalized_vortex_strength_residual": 1.8957417806422633e-10,
+            "normalized_linear_impulse_residual": 1.6915283829407196e-10,
+            "normalized_angular_impulse_residual": 4.8639871058999526e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 12,
+          "particles_before": 25101,
+          "particles_after": 25077,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 47474,
+            "retained_node_count": 25077,
+            "pruned_node_count": 22397,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003420669424273907,
+            "normalized_vortex_strength_residual": 3.5704665434371254e-10,
+            "normalized_linear_impulse_residual": 2.339943107501351e-10,
+            "normalized_angular_impulse_residual": 6.11508771373838e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 12,
+          "particles_before": 25077,
+          "particles_after": 25019,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 47454,
+            "retained_node_count": 25019,
+            "pruned_node_count": 22435,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035891472365002933,
+            "normalized_vortex_strength_residual": 3.1309086427303276e-10,
+            "normalized_linear_impulse_residual": 2.860324984091331e-11,
+            "normalized_angular_impulse_residual": 4.0336867520972115e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 12,
+          "particles_before": 25019,
+          "particles_after": 25006,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 47283,
+            "retained_node_count": 25006,
+            "pruned_node_count": 22277,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003787307518556156,
+            "normalized_vortex_strength_residual": 3.4990337766303125e-10,
+            "normalized_linear_impulse_residual": 1.956665984497325e-10,
+            "normalized_angular_impulse_residual": 7.263992721841965e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.65,
+      "accepted_step": 13,
+      "particles_at_exit": 25006,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.65,
+      "start_step": 13,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 25018,
+      "rk_calls": [
+        {
+          "time": 0.65,
+          "dt": 0.01,
+          "count": 25018
+        },
+        {
+          "time": 0.66,
+          "dt": 0.01,
+          "count": 25668
+        },
+        {
+          "time": 0.67,
+          "dt": 0.01,
+          "count": 25607
+        },
+        {
+          "time": 0.68,
+          "dt": 0.01,
+          "count": 25555
+        },
+        {
+          "time": 0.6900000000000001,
+          "dt": 0.01,
+          "count": 25527
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.65,
+          "index": 0,
+          "count": 25018
+        },
+        {
+          "time": 0.66,
+          "index": 1,
+          "count": 25018
+        },
+        {
+          "time": 0.66,
+          "index": 0,
+          "count": 25668
+        },
+        {
+          "time": 0.67,
+          "index": 1,
+          "count": 25668
+        },
+        {
+          "time": 0.67,
+          "index": 0,
+          "count": 25607
+        },
+        {
+          "time": 0.68,
+          "index": 1,
+          "count": 25607
+        },
+        {
+          "time": 0.68,
+          "index": 0,
+          "count": 25555
+        },
+        {
+          "time": 0.6900000000000001,
+          "index": 1,
+          "count": 25555
+        },
+        {
+          "time": 0.6900000000000001,
+          "index": 0,
+          "count": 25527
+        },
+        {
+          "time": 0.7000000000000001,
+          "index": 1,
+          "count": 25527
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 13,
+          "particles_before": 25018,
+          "particles_after": 25668,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 47365,
+            "retained_node_count": 25668,
+            "pruned_node_count": 21697,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003802807785232245,
+            "normalized_vortex_strength_residual": 2.485305220244588e-10,
+            "normalized_linear_impulse_residual": 1.434686398762125e-10,
+            "normalized_angular_impulse_residual": 4.6372735458647215e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 13,
+          "particles_before": 25668,
+          "particles_after": 25607,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48361,
+            "retained_node_count": 25607,
+            "pruned_node_count": 22754,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003386377152116907,
+            "normalized_vortex_strength_residual": 7.78745062477595e-10,
+            "normalized_linear_impulse_residual": 2.6329421581685496e-10,
+            "normalized_angular_impulse_residual": 1.2294474868327116e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 13,
+          "particles_before": 25607,
+          "particles_after": 25555,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48242,
+            "retained_node_count": 25555,
+            "pruned_node_count": 22687,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00034453895096722643,
+            "normalized_vortex_strength_residual": 7.881501798904888e-10,
+            "normalized_linear_impulse_residual": 3.0590749086612693e-10,
+            "normalized_angular_impulse_residual": 1.3561563006479338e-10
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 13,
+          "particles_before": 25555,
+          "particles_after": 25527,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48121,
+            "retained_node_count": 25527,
+            "pruned_node_count": 22594,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003473184079626786,
+            "normalized_vortex_strength_residual": 8.540322481713457e-11,
+            "normalized_linear_impulse_residual": 2.0396836331305138e-10,
+            "normalized_angular_impulse_residual": 5.1463827223418015e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 13,
+          "particles_before": 25527,
+          "particles_after": 25513,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48055,
+            "retained_node_count": 25513,
+            "pruned_node_count": 22542,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003711756111425562,
+            "normalized_vortex_strength_residual": 1.437064023720389e-10,
+            "normalized_linear_impulse_residual": 1.0657716736425476e-10,
+            "normalized_angular_impulse_residual": 2.943638112419868e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.7,
+      "accepted_step": 14,
+      "particles_at_exit": 25513,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.7,
+      "start_step": 14,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 25392,
+      "rk_calls": [
+        {
+          "time": 0.7,
+          "dt": 0.01,
+          "count": 25392
+        },
+        {
+          "time": 0.71,
+          "dt": 0.01,
+          "count": 26059
+        },
+        {
+          "time": 0.72,
+          "dt": 0.01,
+          "count": 26012
+        },
+        {
+          "time": 0.73,
+          "dt": 0.01,
+          "count": 25966
+        },
+        {
+          "time": 0.74,
+          "dt": 0.01,
+          "count": 25942
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.7,
+          "index": 0,
+          "count": 25392
+        },
+        {
+          "time": 0.71,
+          "index": 1,
+          "count": 25392
+        },
+        {
+          "time": 0.71,
+          "index": 0,
+          "count": 26059
+        },
+        {
+          "time": 0.72,
+          "index": 1,
+          "count": 26059
+        },
+        {
+          "time": 0.72,
+          "index": 0,
+          "count": 26012
+        },
+        {
+          "time": 0.73,
+          "index": 1,
+          "count": 26012
+        },
+        {
+          "time": 0.73,
+          "index": 0,
+          "count": 25966
+        },
+        {
+          "time": 0.74,
+          "index": 1,
+          "count": 25966
+        },
+        {
+          "time": 0.74,
+          "index": 0,
+          "count": 25942
+        },
+        {
+          "time": 0.75,
+          "index": 1,
+          "count": 25942
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 14,
+          "particles_before": 25392,
+          "particles_after": 26059,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48062,
+            "retained_node_count": 26059,
+            "pruned_node_count": 22003,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0004034119442061271,
+            "normalized_vortex_strength_residual": 2.6837524865966305e-10,
+            "normalized_linear_impulse_residual": 1.8514200939663673e-10,
+            "normalized_angular_impulse_residual": 4.972484691152503e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 14,
+          "particles_before": 26059,
+          "particles_after": 26012,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49109,
+            "retained_node_count": 26012,
+            "pruned_node_count": 23097,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00034809057638880985,
+            "normalized_vortex_strength_residual": 4.957879674694836e-10,
+            "normalized_linear_impulse_residual": 1.4544290336236546e-10,
+            "normalized_angular_impulse_residual": 8.938522510077906e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 14,
+          "particles_before": 26012,
+          "particles_after": 25966,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49038,
+            "retained_node_count": 25966,
+            "pruned_node_count": 23072,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035695633701591736,
+            "normalized_vortex_strength_residual": 2.6173985300956547e-10,
+            "normalized_linear_impulse_residual": 3.441123218256619e-10,
+            "normalized_angular_impulse_residual": 3.8730827539834486e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 14,
+          "particles_before": 25966,
+          "particles_after": 25942,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48944,
+            "retained_node_count": 25942,
+            "pruned_node_count": 23002,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035894469511412943,
+            "normalized_vortex_strength_residual": 1.6565974710430798e-10,
+            "normalized_linear_impulse_residual": 1.2279772174223428e-10,
+            "normalized_angular_impulse_residual": 4.505660932492274e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 14,
+          "particles_before": 25942,
+          "particles_after": 25916,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48878,
+            "retained_node_count": 25916,
+            "pruned_node_count": 22962,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003849838317750959,
+            "normalized_vortex_strength_residual": 3.5708001947111856e-10,
+            "normalized_linear_impulse_residual": 1.2072619913419448e-10,
+            "normalized_angular_impulse_residual": 4.705463000162154e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.75,
+      "accepted_step": 15,
+      "particles_at_exit": 25916,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.75,
+      "start_step": 15,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 25933,
+      "rk_calls": [
+        {
+          "time": 0.75,
+          "dt": 0.01,
+          "count": 25933
+        },
+        {
+          "time": 0.76,
+          "dt": 0.01,
+          "count": 26662
+        },
+        {
+          "time": 0.77,
+          "dt": 0.01,
+          "count": 26597
+        },
+        {
+          "time": 0.78,
+          "dt": 0.01,
+          "count": 26557
+        },
+        {
+          "time": 0.79,
+          "dt": 0.01,
+          "count": 26510
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.75,
+          "index": 0,
+          "count": 25933
+        },
+        {
+          "time": 0.76,
+          "index": 1,
+          "count": 25933
+        },
+        {
+          "time": 0.76,
+          "index": 0,
+          "count": 26662
+        },
+        {
+          "time": 0.77,
+          "index": 1,
+          "count": 26662
+        },
+        {
+          "time": 0.77,
+          "index": 0,
+          "count": 26597
+        },
+        {
+          "time": 0.78,
+          "index": 1,
+          "count": 26597
+        },
+        {
+          "time": 0.78,
+          "index": 0,
+          "count": 26557
+        },
+        {
+          "time": 0.79,
+          "index": 1,
+          "count": 26557
+        },
+        {
+          "time": 0.79,
+          "index": 0,
+          "count": 26510
+        },
+        {
+          "time": 0.8,
+          "index": 1,
+          "count": 26510
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 15,
+          "particles_before": 25933,
+          "particles_after": 26662,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 48984,
+            "retained_node_count": 26662,
+            "pruned_node_count": 22322,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003991350654043347,
+            "normalized_vortex_strength_residual": 1.0699187965787143e-10,
+            "normalized_linear_impulse_residual": 2.9189538207153895e-10,
+            "normalized_angular_impulse_residual": 8.642845220220845e-12
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 15,
+          "particles_before": 26662,
+          "particles_after": 26597,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49953,
+            "retained_node_count": 26597,
+            "pruned_node_count": 23356,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003431578643429503,
+            "normalized_vortex_strength_residual": 2.1170343958327036e-10,
+            "normalized_linear_impulse_residual": 3.122981072373082e-10,
+            "normalized_angular_impulse_residual": 2.392539299635979e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 15,
+          "particles_before": 26597,
+          "particles_after": 26557,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49858,
+            "retained_node_count": 26557,
+            "pruned_node_count": 23301,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003447126970507309,
+            "normalized_vortex_strength_residual": 3.593567793912892e-10,
+            "normalized_linear_impulse_residual": 3.954504664371783e-10,
+            "normalized_angular_impulse_residual": 2.9464980742249106e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 15,
+          "particles_before": 26557,
+          "particles_after": 26510,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49800,
+            "retained_node_count": 26510,
+            "pruned_node_count": 23290,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003561861033835342,
+            "normalized_vortex_strength_residual": 2.6182587293125447e-10,
+            "normalized_linear_impulse_residual": 1.285922397902553e-10,
+            "normalized_angular_impulse_residual": 2.3583145242383627e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 15,
+          "particles_before": 26510,
+          "particles_after": 26496,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49688,
+            "retained_node_count": 26496,
+            "pruned_node_count": 23192,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003735717748960104,
+            "normalized_vortex_strength_residual": 4.1235059547802803e-10,
+            "normalized_linear_impulse_residual": 1.572142273827826e-10,
+            "normalized_angular_impulse_residual": 8.919128968603548e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.8,
+      "accepted_step": 16,
+      "particles_at_exit": 26496,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.8,
+      "start_step": 16,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 26403,
+      "rk_calls": [
+        {
+          "time": 0.8,
+          "dt": 0.01,
+          "count": 26403
+        },
+        {
+          "time": 0.81,
+          "dt": 0.01,
+          "count": 27125
+        },
+        {
+          "time": 0.8200000000000001,
+          "dt": 0.01,
+          "count": 27036
+        },
+        {
+          "time": 0.8300000000000001,
+          "dt": 0.01,
+          "count": 26986
+        },
+        {
+          "time": 0.8400000000000001,
+          "dt": 0.01,
+          "count": 26957
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.8,
+          "index": 0,
+          "count": 26403
+        },
+        {
+          "time": 0.81,
+          "index": 1,
+          "count": 26403
+        },
+        {
+          "time": 0.81,
+          "index": 0,
+          "count": 27125
+        },
+        {
+          "time": 0.8200000000000001,
+          "index": 1,
+          "count": 27125
+        },
+        {
+          "time": 0.8200000000000001,
+          "index": 0,
+          "count": 27036
+        },
+        {
+          "time": 0.8300000000000001,
+          "index": 1,
+          "count": 27036
+        },
+        {
+          "time": 0.8300000000000001,
+          "index": 0,
+          "count": 26986
+        },
+        {
+          "time": 0.8400000000000001,
+          "index": 1,
+          "count": 26986
+        },
+        {
+          "time": 0.8400000000000001,
+          "index": 0,
+          "count": 26957
+        },
+        {
+          "time": 0.8500000000000001,
+          "index": 1,
+          "count": 26957
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 16,
+          "particles_before": 26403,
+          "particles_after": 27125,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 49708,
+            "retained_node_count": 27125,
+            "pruned_node_count": 22583,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0004029906213555641,
+            "normalized_vortex_strength_residual": 3.202172971061558e-10,
+            "normalized_linear_impulse_residual": 1.245173799488547e-10,
+            "normalized_angular_impulse_residual": 4.245372894719142e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 16,
+          "particles_before": 27125,
+          "particles_after": 27036,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 50874,
+            "retained_node_count": 27036,
+            "pruned_node_count": 23838,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00034604717204942266,
+            "normalized_vortex_strength_residual": 1.1568691186334599e-10,
+            "normalized_linear_impulse_residual": 1.4106055621122624e-10,
+            "normalized_angular_impulse_residual": 9.630377178175492e-12
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 16,
+          "particles_before": 27036,
+          "particles_after": 26986,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 50708,
+            "retained_node_count": 26986,
+            "pruned_node_count": 23722,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00034719149974214356,
+            "normalized_vortex_strength_residual": 3.2123597141611264e-10,
+            "normalized_linear_impulse_residual": 2.7368477403310186e-10,
+            "normalized_angular_impulse_residual": 7.011302741941648e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 16,
+          "particles_before": 26986,
+          "particles_after": 26957,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 50623,
+            "retained_node_count": 26957,
+            "pruned_node_count": 23666,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003498601412873594,
+            "normalized_vortex_strength_residual": 1.6857422694217522e-10,
+            "normalized_linear_impulse_residual": 2.0629497661411116e-10,
+            "normalized_angular_impulse_residual": 3.155172549555349e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 16,
+          "particles_before": 26957,
+          "particles_after": 26948,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 50532,
+            "retained_node_count": 26948,
+            "pruned_node_count": 23584,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003714944296907694,
+            "normalized_vortex_strength_residual": 2.6060216286729366e-10,
+            "normalized_linear_impulse_residual": 1.366305796384193e-10,
+            "normalized_angular_impulse_residual": 3.212538244478215e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.85,
+      "accepted_step": 17,
+      "particles_at_exit": 26948,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.85,
+      "start_step": 17,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 26790,
+      "rk_calls": [
+        {
+          "time": 0.85,
+          "dt": 0.01,
+          "count": 26790
+        },
+        {
+          "time": 0.86,
+          "dt": 0.01,
+          "count": 27536
+        },
+        {
+          "time": 0.87,
+          "dt": 0.01,
+          "count": 27446
+        },
+        {
+          "time": 0.88,
+          "dt": 0.01,
+          "count": 27386
+        },
+        {
+          "time": 0.89,
+          "dt": 0.01,
+          "count": 27340
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.85,
+          "index": 0,
+          "count": 26790
+        },
+        {
+          "time": 0.86,
+          "index": 1,
+          "count": 26790
+        },
+        {
+          "time": 0.86,
+          "index": 0,
+          "count": 27536
+        },
+        {
+          "time": 0.87,
+          "index": 1,
+          "count": 27536
+        },
+        {
+          "time": 0.87,
+          "index": 0,
+          "count": 27446
+        },
+        {
+          "time": 0.88,
+          "index": 1,
+          "count": 27446
+        },
+        {
+          "time": 0.88,
+          "index": 0,
+          "count": 27386
+        },
+        {
+          "time": 0.89,
+          "index": 1,
+          "count": 27386
+        },
+        {
+          "time": 0.89,
+          "index": 0,
+          "count": 27340
+        },
+        {
+          "time": 0.9,
+          "index": 1,
+          "count": 27340
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 17,
+          "particles_before": 26790,
+          "particles_after": 27536,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 50429,
+            "retained_node_count": 27536,
+            "pruned_node_count": 22893,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00041591526715357464,
+            "normalized_vortex_strength_residual": 3.8337065941501656e-10,
+            "normalized_linear_impulse_residual": 2.2351477216655494e-10,
+            "normalized_angular_impulse_residual": 5.993948764500989e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 17,
+          "particles_before": 27536,
+          "particles_after": 27446,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 51486,
+            "retained_node_count": 27446,
+            "pruned_node_count": 24040,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003420153629938853,
+            "normalized_vortex_strength_residual": 3.1502197118337555e-10,
+            "normalized_linear_impulse_residual": 2.1291538975891318e-10,
+            "normalized_angular_impulse_residual": 6.573638831834615e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 17,
+          "particles_before": 27446,
+          "particles_after": 27386,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 51403,
+            "retained_node_count": 27386,
+            "pruned_node_count": 24017,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003481255632767086,
+            "normalized_vortex_strength_residual": 3.799696886460044e-10,
+            "normalized_linear_impulse_residual": 8.404078775920681e-11,
+            "normalized_angular_impulse_residual": 7.459284746788627e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 17,
+          "particles_before": 27386,
+          "particles_after": 27340,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 51336,
+            "retained_node_count": 27340,
+            "pruned_node_count": 23996,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035333974555021373,
+            "normalized_vortex_strength_residual": 1.5367916239178153e-10,
+            "normalized_linear_impulse_residual": 1.4694749461862538e-10,
+            "normalized_angular_impulse_residual": 4.3192793245856804e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 17,
+          "particles_before": 27340,
+          "particles_after": 27320,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 51249,
+            "retained_node_count": 27320,
+            "pruned_node_count": 23929,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00037789566659705154,
+            "normalized_vortex_strength_residual": 1.1239582911295881e-10,
+            "normalized_linear_impulse_residual": 1.2622240136328176e-10,
+            "normalized_angular_impulse_residual": 3.53546519124931e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.9,
+      "accepted_step": 18,
+      "particles_at_exit": 27320,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.9,
+      "start_step": 18,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 27255,
+      "rk_calls": [
+        {
+          "time": 0.9,
+          "dt": 0.01,
+          "count": 27255
+        },
+        {
+          "time": 0.91,
+          "dt": 0.01,
+          "count": 27997
+        },
+        {
+          "time": 0.92,
+          "dt": 0.01,
+          "count": 27896
+        },
+        {
+          "time": 0.93,
+          "dt": 0.01,
+          "count": 27815
+        },
+        {
+          "time": 0.9400000000000001,
+          "dt": 0.01,
+          "count": 27784
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.9,
+          "index": 0,
+          "count": 27255
+        },
+        {
+          "time": 0.91,
+          "index": 1,
+          "count": 27255
+        },
+        {
+          "time": 0.91,
+          "index": 0,
+          "count": 27997
+        },
+        {
+          "time": 0.92,
+          "index": 1,
+          "count": 27997
+        },
+        {
+          "time": 0.92,
+          "index": 0,
+          "count": 27896
+        },
+        {
+          "time": 0.93,
+          "index": 1,
+          "count": 27896
+        },
+        {
+          "time": 0.93,
+          "index": 0,
+          "count": 27815
+        },
+        {
+          "time": 0.9400000000000001,
+          "index": 1,
+          "count": 27815
+        },
+        {
+          "time": 0.9400000000000001,
+          "index": 0,
+          "count": 27784
+        },
+        {
+          "time": 0.9500000000000001,
+          "index": 1,
+          "count": 27784
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 18,
+          "particles_before": 27255,
+          "particles_after": 27997,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 51184,
+            "retained_node_count": 27997,
+            "pruned_node_count": 23187,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0004300343667973333,
+            "normalized_vortex_strength_residual": 3.0844127560864313e-10,
+            "normalized_linear_impulse_residual": 1.7761293833092684e-10,
+            "normalized_angular_impulse_residual": 2.564667212261717e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 18,
+          "particles_before": 27997,
+          "particles_after": 27896,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52362,
+            "retained_node_count": 27896,
+            "pruned_node_count": 24466,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003506709723188118,
+            "normalized_vortex_strength_residual": 4.2724729319304835e-10,
+            "normalized_linear_impulse_residual": 2.8486401079625095e-10,
+            "normalized_angular_impulse_residual": 3.74989451763322e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 18,
+          "particles_before": 27896,
+          "particles_after": 27815,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52301,
+            "retained_node_count": 27815,
+            "pruned_node_count": 24486,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.000359929282005423,
+            "normalized_vortex_strength_residual": 2.7252127304123967e-10,
+            "normalized_linear_impulse_residual": 9.728015238332286e-11,
+            "normalized_angular_impulse_residual": 4.860296731545153e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 18,
+          "particles_before": 27815,
+          "particles_after": 27784,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52262,
+            "retained_node_count": 27784,
+            "pruned_node_count": 24478,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00036585232173839657,
+            "normalized_vortex_strength_residual": 2.064475013463142e-10,
+            "normalized_linear_impulse_residual": 1.6128888182489482e-10,
+            "normalized_angular_impulse_residual": 2.242486695773941e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 18,
+          "particles_before": 27784,
+          "particles_after": 27755,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52225,
+            "retained_node_count": 27755,
+            "pruned_node_count": 24470,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00038878921101236324,
+            "normalized_vortex_strength_residual": 3.2327457168389364e-10,
+            "normalized_linear_impulse_residual": 2.1415059114847969e-10,
+            "normalized_angular_impulse_residual": 2.9725114307792957e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.95,
+      "accepted_step": 19,
+      "particles_at_exit": 27755,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.95,
+      "start_step": 19,
+      "outer_dt": 0.05,
+      "vpm_substeps": 5,
+      "substep_dt": 0.01,
+      "particles_at_entry": 27735,
+      "rk_calls": [
+        {
+          "time": 0.95,
+          "dt": 0.01,
+          "count": 27735
+        },
+        {
+          "time": 0.96,
+          "dt": 0.01,
+          "count": 28509
+        },
+        {
+          "time": 0.97,
+          "dt": 0.01,
+          "count": 28409
+        },
+        {
+          "time": 0.98,
+          "dt": 0.01,
+          "count": 28341
+        },
+        {
+          "time": 0.99,
+          "dt": 0.01,
+          "count": 28279
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.95,
+          "index": 0,
+          "count": 27735
+        },
+        {
+          "time": 0.96,
+          "index": 1,
+          "count": 27735
+        },
+        {
+          "time": 0.96,
+          "index": 0,
+          "count": 28509
+        },
+        {
+          "time": 0.97,
+          "index": 1,
+          "count": 28509
+        },
+        {
+          "time": 0.97,
+          "index": 0,
+          "count": 28409
+        },
+        {
+          "time": 0.98,
+          "index": 1,
+          "count": 28409
+        },
+        {
+          "time": 0.98,
+          "index": 0,
+          "count": 28341
+        },
+        {
+          "time": 0.99,
+          "index": 1,
+          "count": 28341
+        },
+        {
+          "time": 0.99,
+          "index": 0,
+          "count": 28279
+        },
+        {
+          "time": 1.0,
+          "index": 1,
+          "count": 28279
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.01,
+          "substep": 0,
+          "accepted_step_before": 19,
+          "particles_before": 27735,
+          "particles_after": 28509,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52107,
+            "retained_node_count": 28509,
+            "pruned_node_count": 23598,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0004390632500991468,
+            "normalized_vortex_strength_residual": 2.734478471432134e-10,
+            "normalized_linear_impulse_residual": 2.638250079887813e-10,
+            "normalized_angular_impulse_residual": 2.838144909606198e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 1,
+          "accepted_step_before": 19,
+          "particles_before": 28509,
+          "particles_after": 28409,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 53059,
+            "retained_node_count": 28409,
+            "pruned_node_count": 24650,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00035050334481196024,
+            "normalized_vortex_strength_residual": 3.884298366676985e-11,
+            "normalized_linear_impulse_residual": 8.699107005438097e-11,
+            "normalized_angular_impulse_residual": 1.1256035666286764e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 2,
+          "accepted_step_before": 19,
+          "particles_before": 28409,
+          "particles_after": 28341,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52980,
+            "retained_node_count": 28341,
+            "pruned_node_count": 24639,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0003532645521051888,
+            "normalized_vortex_strength_residual": 1.7627131307064505e-10,
+            "normalized_linear_impulse_residual": 2.684076458511532e-10,
+            "normalized_angular_impulse_residual": 4.650376060868997e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 3,
+          "accepted_step_before": 19,
+          "particles_before": 28341,
+          "particles_after": 28279,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52887,
+            "retained_node_count": 28279,
+            "pruned_node_count": 24608,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00036401463250194596,
+            "normalized_vortex_strength_residual": 1.2930175188415722e-10,
+            "normalized_linear_impulse_residual": 2.180299792738692e-10,
+            "normalized_angular_impulse_residual": 3.387942930848567e-11
+          },
+          "recovery_checked": true
+        },
+        {
+          "dt": 0.01,
+          "substep": 4,
+          "accepted_step_before": 19,
+          "particles_before": 28279,
+          "particles_after": 28279,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 52807,
+            "retained_node_count": 28279,
+            "pruned_node_count": 24528,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.00038166867512771317,
+            "normalized_vortex_strength_residual": 4.5222089330342157e-10,
+            "normalized_linear_impulse_residual": 1.5663943326071946e-10,
+            "normalized_angular_impulse_residual": 4.763936582996998e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 1.0,
+      "accepted_step": 20,
+      "particles_at_exit": 28279,
+      "schedule_checks_passed": true
+    }
+  ],
+  "limitations": [
+    "Each inner update is the native RK2 advection/stretching followed by GBD diffusion/remapping. Their physical stage times advance while the canonical outer clock commits once.",
+    "FVM dt, exchange/accepted renewal and outer stabilization retain their original schedules. Every inner GBD recovery receives the same unchanged production gate.",
+    "This changes diffusion/remapping frequency and operator splitting together; it does not isolate their individual errors.",
+    "The vpm_boundary_condition panel scope still excludes the body velocity/gradient from particle stages while including them in target queries.",
+    "This is a fully 3D serial laminar cube experiment with fixed-predictor interface replay, not a production option or developed-wake qualification."
+  ],
+  "elapsed_seconds": 1028.678171624997,
+  "child_reports": [
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints-3d.json",
+      "sha256": "af9f8aca9ac3bfffd3f1be6e82745680c7e86a46c7568094826b2008e66c3e0d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/profile-observation-3d.json",
+      "sha256": "6966bc861f63546c5bab9e4dc964fbff4ae663757d033b4a249898e99deeaf3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/interface-cadence-3d.json",
+      "sha256": "a9a5d4ddd10a77c99f29a5cc3617a04b13453395845c3b181673e077c9b8869e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/interface-iteration-3d.json",
+      "sha256": "f42b79a1cf14e819a11114604c8624ec78ecb69d5f07b595e7368b58a7e2700f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/panel-target-precision-3d.json",
+      "sha256": "470e5d1cdffe206083b4cfceba4cef4048cd181be28443180ba21d39fd9d724a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/trial/cube-coupled-trial.json",
+      "sha256": "e96f9912c3a097ee9ab6392ca00a8e72706eaf1950de06b8cd3996b79f4b00eb"
+    }
+  ]
+}

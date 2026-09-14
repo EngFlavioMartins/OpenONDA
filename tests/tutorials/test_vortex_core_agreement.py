@@ -53,6 +53,13 @@ def test_uniform_distance_score_weights_rings_equally_and_keeps_radius_error():
     )
     score = radius_score(tracks, reference, 0, 1)
     assert score["rms_radius_over_R0"] == pytest.approx(np.sqrt((0.1**2 + 0.2**2) / 2))
+    duplicate = tracks.iloc[[1]].copy()
+    duplicate["time"] += 0.01
+    repeated = pd.concat([tracks, duplicate], ignore_index=True)
+    assert radius_score(repeated, reference, 0, 1) == score
+    repeated.loc[repeated.index[-1], "radius"] += 0.01
+    with pytest.raises(ValueError, match="monotone"):
+        radius_score(repeated, reference, 0, 1)
     with pytest.raises(ValueError, match="entire requested interval"):
         radius_score(tracks, reference, 0, 1.1)
     tracks.loc[2, "x"] = -1
@@ -115,6 +122,29 @@ def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_p
     assert comparisons[1]["time"] == 0.1
     assert comparisons[1]["velocity_relative_l2"] == pytest.approx(0.1)
     assert comparisons[1]["vorticity_relative_l2"] == pytest.approx(0.1)
+    reports[0]["settings"]["filter_width"] = None
+    reports[1]["settings"]["filter_width"] = 0.05
+    assert analysis.temporal_field_comparisons(reports) == []
+    reports[0]["settings"]["filter_width"] = 0.05
+    reports[0]["settings"]["dt"] = reports[1]["settings"]["dt"]
+    assert analysis.temporal_field_comparisons(reports) == []
+
+
+def test_high_saddle_grouping_preserves_separate_cores_and_reports_lobe_extent():
+    x, r = np.arange(11.0), np.arange(5.0)
+    omega = np.zeros((11, 5))
+    omega[2:5, 2] = [10.0, 9.8, 9.9]
+    omega[8, 2] = 10.5
+    raw = _assessment.sampled_peaks(x, r, omega)
+    assert len(raw) == 3
+    peaks = _assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.9)
+    assert len(peaks) == 2
+    assert all(p['raw_n_peaks'] == 3 and p['n_peaks'] == 2 for p in peaks)
+    grouped = next(p for p in peaks if p['cluster_n_peaks'] == 2)
+    assert grouped['cluster_x_span'] == [2.0, 4.0]
+    assert all(p['strongest_peak_pair_bridge_ratio'] == 0 for p in peaks)
+    omega[3, 2] = 1.0
+    assert len(_assessment.sampled_peaks(x, r, omega, peak_merge_bridge=0.9)) == 3
 
 
 def test_passage_timing_resolves_a_known_period_without_inventing_reference_time():

@@ -33,6 +33,32 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
 )
 
 
+def _run_case(*, restart_from, restart_allowed_config_differences, max_coupling_steps):
+    """Keep bounded and restarted research trials outside the tutorial entry point."""
+    case.RunConfig(cpu_cores=case.FVM_SETUP.cores, parallel_mode="mpi").ensure_runtime(
+        sys.argv[0]
+    )
+    mesh = case.msh.CachedMesh(case.FVM_MESH, case.CASE_DIR / "constant" / "mesh.npz")
+    fvm_solver = case.fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=mesh)
+    vpm_solver = None
+    try:
+        if restart_from is None:
+            fvm_solver.write_vtk()
+        if fvm_solver.parallel.is_root:
+            vpm_solver = case.vpm.VPMSolver(case.VPM_CASE)
+        coupler = case.coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
+        return coupler.run(
+            restart_from=restart_from,
+            restart_allowed_config_differences=restart_allowed_config_differences,
+            max_coupling_steps=max_coupling_steps,
+            backup_at_stop=True,
+        )
+    finally:
+        fvm_solver.close()
+        if vpm_solver is not None:
+            vpm_solver.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -136,13 +162,12 @@ def main() -> None:
             else arguments.transfer_boundary_prune_multiplier
         ),
     )
-    case.main(
+    _run_case(
         restart_from=(None if arguments.restart_from is None else arguments.restart_from.resolve()),
         restart_allowed_config_differences=(
             TRANSFER_RESTART_ALLOWLIST if arguments.allow_transfer_config_differences else ()
         ),
         max_coupling_steps=arguments.coupling_steps,
-        backup_at_stop=True,
     )
 
 

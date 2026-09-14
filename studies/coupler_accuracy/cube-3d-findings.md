@@ -7,15 +7,113 @@ span replication, two-dimensional kernel, fitted force scale, or phase shift is
 used here. The short runs are component and coupling diagnostics, not validation
 of a statistically developed Re=1000 wake.
 
-The latest [interface-iteration experiment](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/interface-iteration-3d.md)
-completes 20 matched-medium intervals. RMS relative drag error falls from
-2.082% to 0.555%, and final drag error changes from −2.096% to +0.756%.
-Final near-body FVM velocity error falls 2.50%, while whole-domain error falls
-only 0.30%. Twelve intervals converge and eight reach the fixed 12-sweep cap.
-Independent wall-force, field and map-replay checks pass. The final replacement
-jump is nearly removed, but substantial reference boundary errors remain.
-This is promising short-run progress; the requested developed-wake
-force/profile agreement is still unachieved.
+The latest [interface-iteration experiment](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/interface-iteration-3d.md),
+with [promoted auxiliary panel queries](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/panel-derivative-precision-3d.md),
+completes 20 matched-medium intervals with **all 20 converged in three sweeps
+each**. RMS relative drag error falls from 2.082% to 0.555%, and final drag
+error changes from −2.094% to +0.756%. Final near-body FVM velocity error falls
+2.50%, while whole-domain error falls only 0.29%. Independent wall-force,
+field and map-replay checks pass. This is promising short-run progress; the
+requested developed-wake force/profile agreement is still unachieved.
+
+The precision test isolates cancellation in single-precision body-velocity
+differences. Independent surface quadrature and frozen-source advancing
+controls qualify the mechanism. The earlier native-query trajectory converged
+12 intervals, with eight reaching the 12-sweep cap. Promoted queries retain its
+force improvement with reliable convergence. Both promoted trajectories run
+from immutable source copies after shared-workspace edits disrupted an earlier
+attempt. Substantial reference boundary error remains after convergence.
+
+The completed [time-resolution pair](interface-time-resolution-3d.md) exchanges
+data after each FVM step (`0.01` instead of `0.05`), keeping the FVM step and
+spatial resolution fixed. All 100 iterated intervals converge. Common-time
+drag RMS error decreases from 0.555% to 0.488%, but final whole-FVM velocity
+error increases 13.49%. The dense history also exposes an 11.01% relative drag
+error at the first interval. Exact controls and 440 independent metric checks
+pass. This changes VPM time integration and renewal frequency together and
+does not separate their effects. The larger interval remains selected for
+the next benchmark comparison. The sampled VPM velocity metric is inside the
+small FVM domain; it is not an exterior-wake profile measurement.
+
+The [inviscid time-isolation experiment](inviscid-time-isolation-3d.md) completes
+20 exchanges with five RK2 substeps per exchange, preserving diffusion/remapping,
+FVM exchange and accepted renewal at `0.05`. All intervals converge. Relative
+drag-history RMS error changes from 0.555068% to 0.555463%; final whole-FVM
+velocity error increases only 0.0313% relative to baseline. Two component tests,
+a bitwise three-interval wrapper control and 140 independent scalar checks
+qualify the comparison. Inviscid RK refinement alone does not reproduce the
+large cadence effect. The [body-field audit](body-query-and-transport-3d.md)
+also finds that the selected panel scope completes target queries with a body
+field that is absent from RK stages. This is a measured configuration
+distinction, with its advancing consequence now measured below.
+
+The completed [RK/GBD substep experiment](split-time-isolation-3d.md) holds
+exchange, renewal and outer stabilization at `0.05` while refining both
+particle updates to `0.01`. All 20 intervals converge. Drag-history RMS
+error increases to 0.583542%, and final whole-FVM velocity error rises
+1.079% relative to baseline. Centreline near-wake error increases from
+1.102% to 1.308% of freestream speed, with a small off-axis improvement.
+The wrapper control is bitwise neutral, all 100 GBD recovery gates pass,
+and 140 independent scalar checks reproduce the reported results exactly.
+This does not support a general substep accuracy fix.
+
+The [body-stage probe](body-query-and-transport-3d.md) now executes the actual
+stage RHS on the saved 28,441-particle state. Independent quadrature confirms
+the omitted body contribution and reveals error in the native finite-difference
+gradient. A qualified analytical Jacobian avoids that cancellation. Its
+advancing comparison preserves the existing panel-update and exchange schedules.
+All 20 intervals converge; drag-history RMS error falls from 0.555068% to
+0.521061%, and final near-body FVM velocity error falls 6.121% relative to
+baseline. Both exterior near-wake profiles improve, while the maximum
+instantaneous drag error increases slightly. The independent comparator
+passes 141 scalar checks, including ten reconstructed force vectors.
+This is a useful short-run improvement, not developed-wake qualification.
+The extended body-enabled run now has a verified 40-interval prefix through
+time `2.5`: drag-history RMS error falls from `0.803030%` to `0.730295%`,
+and endpoint centreline near-wake error falls from `2.064%` to `1.813% U∞`.
+Eighteen independent wall-force reconstructions and 276 scalar checks pass.
+The body-enabled run continues toward time `4.0`.
+
+The [particle-stage induction audit](particle-stage-induction-3d.md) also
+shows that the accurate direct profile queries do not validate the separate
+hierarchical FMM stage evaluator. Native stretching-rate errors on the saved
+state are 0.449% near the body and 1.105% in the sampled wake. Increasing
+the geometric separation factor reduces these errors, with more direct
+interactions and greater cost. The complete 20-interval factor-six comparison
+does not improve the short coupled solution: drag-history RMS error changes
+from 0.555068% to 0.555345%, and whole-FVM velocity error increases 0.05365%
+relative to baseline. The off-axis wake line improves slightly. A bitwise
+wrapper control, schedule checks and 141 independent scalar checks pass;
+the stricter setting is not selected as an accuracy fix for this window.
+
+The [stretching-consistency audit](particle-stretching-consistency-3d.md)
+measures the remaining representation distinction on that same accepted
+state: the Gaussian sum and velocity curl differ by 4.13% near the body
+and 15.23% in the sampled wake. Direct/transposed stretching contrasts
+are substantially larger than the FMM evaluation error, but are not errors
+against the full FVM trajectory. The existing guarded correction fails
+its residual target with both tested sweep budgets, so it has not been
+enabled in the coupled solver.
+
+The [profile-observation qualification](profile-validation-3d.md) adds actual
+centreline and off-axis queries through the exterior. A three-interval control
+has bitwise identical histories and checkpoints with these observations added.
+The study uses explicitly matched FVM interpolation and separately measures
+stencil truncation at the small-domain boundary. The tutorial reference files
+are now present; their different meshes prevent direct substitution for the
+matched study's reference.
+
+The selected precision-corrected variant is now advancing in a
+[longer wake comparison](long-wake-comparison-3d.md), from physical time `0.5`
+to `20.5`. Both FVMs save canonical states at every profile time. The checkpoint
+writer preserves the short control bitwise, and all eight independently
+recomputed qualification forces match exactly. The [accepted prefix through
+time 4.0](long-wake-prefix-through-four-3d.md) is now independently verified:
+all 70 exchanges converge, relative drag-history RMS error is 0.759%, and
+30 wall-force reconstructions reproduce the recorded drag exactly. However,
+near-wake velocity RMS errors reach 2.846% of freestream speed on the centreline
+and 2.444% off-axis. Direct evaluation of the same sources leaves these errors
+essentially unchanged. Completion and developed-wake agreement remain unproven.
 
 The [velocity-projection and mass-flux audit](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/velocity-projection-and-mass-flux-3d.md)
 reproduces the fully meshed reference velocity and pressure bitwise and recovers
@@ -33,6 +131,17 @@ The advancing endpoint audit also measures a fixed-time boundary change after
 particle replacement: `0.0007143 U∞` in normal velocity and `0.0043508 U∞/D`
 in the derivative for the control. This motivated the fixed-predictor
 interface-iteration study above.
+
+The [face-flux moment follow-up](flux-moment-compatibility-3d.md) tests whether
+the conserved flux can support the stored cell velocity integral. Exact face
+triangles remove the diagnostic's constant-field geometry error, while
+ordinary affine traces still leave a near-body moment discrepancy in both
+solvers. Hard enforcement reaches small residuals but requires about
+`0.25 U∞` RMS normal-flow changes on the same shared faces, with much larger
+local peaks near cube corners. Five component tests, 80 independently
+recomputed observation metrics and eight constrained-fit checks pass. This
+rejects that hard-preservation approach; it does not identify a new production
+fix or establish an accuracy limit for every possible coupler.
 
 The [continuous-curl reconstruction study](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/continuous-curl-reconstruction-3d.md)
 qualifies a locally solenoidal source on both physical meshes. Retaining its
@@ -331,16 +440,19 @@ simulation, and future oracle runs now do so as well.
 
 ## Geometry and a valid comparison
 
-The cube reference's `samples/` and `solution/` were not found in accessible Git
+During the initial recovery audit, the cube reference's `samples/` and `solution/` were not found in accessible Git
 history, project archives, or installed tutorial copies. The surviving sample
 archive contains coupled results. macOS privacy restrictions prevented inspection
-of Trash and the Time Machine directory. No deleted reference data have been
-recovered or reconstructed from figures.
+of Trash and the Time Machine directory. This investigation did not recover
+those deleted files or reconstruct data from figures. A later
+[inventory](profile-validation-3d.md) now finds reference files present, with
+different meshes from the matched study; it does not establish who recovered
+or regenerated them.
 
-The checked-in configurations do not currently describe matching resolutions:
+The configurations inspected at that time did not describe matching resolutions:
 the coupled wall request is `0.015625`, whereas the reference's coarse, medium,
 and fine requests are `0.125`, `0.0625`, and `0.03125`. The time policies also
-differ. Reusing their labels or old figures would not establish equivalence.
+differed. Reusing their labels or old figures would not establish equivalence.
 
 The new experiment builds a full 3D native reference mesh, then extracts the
 small domain **without remeshing its cells**. Assertions compare every shared

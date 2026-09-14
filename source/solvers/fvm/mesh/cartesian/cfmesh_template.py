@@ -1448,6 +1448,21 @@ def project_cfmesh_template(
     mesh_data["mesh_generation"]["workflow_checkpoint"] = "surfaceProjection"
 
 
+def _patch_alignment_weight(
+    max_distance_squared: float, distance_squared: float, normal_alignment: float
+) -> float:
+    """Evaluate cfMesh's distance/normal score without an overflowing ratio.
+
+    Projected face centres can have zero distance to a candidate surface.
+    Dividing squared distances by the tiny distance floor can then overflow,
+    even though the square root is representable. Take both square roots
+    before dividing; retain the floor and the common numerator so all-zero
+    distances still produce zero weights and preserve candidate-order ties.
+    """
+    distance = np.sqrt(max(distance_squared, np.finfo(np.float64).tiny))
+    return float(np.sqrt(max_distance_squared) / distance * normal_alignment)
+
+
 def assign_cfmesh_patches(
     mesh_data: dict[str, Any],
     *,
@@ -1576,10 +1591,7 @@ def assign_cfmesh_patches(
             max_distance_squared = max(item[1] for item in candidates)
             best_patch = max(
                 candidates,
-                key=lambda item: (
-                    np.sqrt(max_distance_squared / max(item[1], np.finfo(np.float64).tiny))
-                    * item[2]
-                ),
+                key=lambda item: _patch_alignment_weight(max_distance_squared, item[1], item[2]),
             )[0]
             if best_patch != int(face_patch_ids[local_face_id]):
                 updated[local_face_id] = best_patch

@@ -1,0 +1,106 @@
+{
+  "schema": "openonda-wake-prefix-figures-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "verification": {
+    "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/long-wake-prefix-verification-3d.json",
+    "sha256": "0260fea2adc33a9d15a23edfa62b65226a7319a6617c281dca71e84128e81cea"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/plot_accepted_wake_prefix_3d.py",
+      "sha256": "748b496c4ca1fffc7b0ae26b42801c2ee49aaafd97f99c5c278e30740cd67927"
+    }
+  ],
+  "figures": [
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/forces.png",
+      "sha256": "aba979eff8472e5c822ee59a597be80e30db9524e7efa343ff8938bf9207dbdd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/forces.svg",
+      "sha256": "f2f54f83618988d96bce024f4d8ce2be3532010eb3fff2bfb0284c593a8e10c3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/profiles.png",
+      "sha256": "56c217d7d03d87b289f8a33933332d60c66f8e8b4531cdbe0900980a32ce6cbe"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/profiles.svg",
+      "sha256": "92213de03907cb9dd7a32af935b1674e996ba8076c30e0f027a995819b4848ec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/velocity-errors.png",
+      "sha256": "dc997e66c02ab484b4262b907267b0d8bd3847c85e0b1c1e7b798b9a96144469"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-figures/velocity-errors.svg",
+      "sha256": "800a14cacd79aa68e533d8241a30ce735cf136e8be2fe651a756f2461db0c88b"
+    }
+  ],
+  "near_wake_direct_comparisons": [
+    {
+      "physical_time": 0.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 5.912284462520803e-08,
+          "saved_query_minus_reference_rms": 0.0013795465606560055,
+          "direct_minus_reference_rms": 0.0013795545235367596
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 3.6251447981211044e-08,
+          "saved_query_minus_reference_rms": 0.0024135997371957257,
+          "direct_minus_reference_rms": 0.0024135996265006376
+        }
+      }
+    },
+    {
+      "physical_time": 1.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 1.5319950477584808e-07,
+          "saved_query_minus_reference_rms": 0.011018528022612164,
+          "direct_minus_reference_rms": 0.011018512987948545
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 1.3565507619204862e-07,
+          "saved_query_minus_reference_rms": 0.007721031917922684,
+          "direct_minus_reference_rms": 0.007721023633078693
+        }
+      }
+    },
+    {
+      "physical_time": 2.5,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 7.759438380720034e-07,
+          "saved_query_minus_reference_rms": 0.02063764569868189,
+          "direct_minus_reference_rms": 0.0206375912505634
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 1.9087826773797043e-07,
+          "saved_query_minus_reference_rms": 0.008550605726466674,
+          "direct_minus_reference_rms": 0.008550596636413759
+        }
+      }
+    },
+    {
+      "physical_time": 4.0,
+      "regions": {
+        "centreline": {
+          "direct_minus_saved_query_rms": 1.226933615251078e-06,
+          "saved_query_minus_reference_rms": 0.028460652556663683,
+          "direct_minus_reference_rms": 0.028460126032457417
+        },
+        "offaxis_y075": {
+          "direct_minus_saved_query_rms": 3.608576417501564e-07,
+          "saved_query_minus_reference_rms": 0.024438436749565317,
+          "direct_minus_reference_rms": 0.0244383816162637
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "These plots cover the verified accepted prefix only. They do not imply completed long-run or developed-wake validation."
+  ]
+}

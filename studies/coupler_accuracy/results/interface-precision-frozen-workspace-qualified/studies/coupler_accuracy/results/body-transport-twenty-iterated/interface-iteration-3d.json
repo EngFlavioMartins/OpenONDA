@@ -1,0 +1,1983 @@
+{
+  "schema": "openonda-interface-iteration-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "maximum_sweeps": 12,
+  "relaxation": 1.0,
+  "normal_tolerance": 1e-06,
+  "gradient_tolerance": 1e-06,
+  "execution_environment": {
+    "TI_CPU_MAX_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    }
+  ],
+  "sweeps": [
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009993896465653653,
+      "gradient_residual_rms": 0.0024100450611373716,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "11640d2b8f7f343ba12352fdb214929b4e1337bbeda415dbadd988814f7dcb46",
+          "fvm_kinematic_pressure": "488a1e4b78555243b2bca7feb9b9b354235ac767c66cae8c99a0bf4bfcba606d",
+          "fvm_volumetric_face_flux": "d45cf7acb453a6c08da1e4a0aa9b30dbee7c36be0844c127284d3327aa4dd98e",
+          "fvm_volumetric_face_flux_old": "d45cf7acb453a6c08da1e4a0aa9b30dbee7c36be0844c127284d3327aa4dd98e",
+          "fvm_volumetric_face_flux_older": "fd9074db9d51c23743e3db19d891ae0aebf3c8c0020df1c8fe990e02a9a09aab",
+          "fvm_velocity_old": "11640d2b8f7f343ba12352fdb214929b4e1337bbeda415dbadd988814f7dcb46",
+          "fvm_velocity_older": "0e0daeafc8c5f87c8063224c2193e772d9f8dc02ee40418ba6f07821b6bb61eb",
+          "vpm_position": "a9f10c7ff2ea244429866146ed040221c5f809b882e905c18f1271f3bcfeffeb",
+          "vpm_velocity": "f1cd90edbb7308a20e0bbd495c7013b8aec1fbd69e2d7203704cf3179e3370d7",
+          "vpm_vortex_strength": "62b2bb9cf0bacb4f422046289b55b3a29ae8eec58ab26d190ec7f7e738830142",
+          "vpm_core_radius": "30384533949b9273b7f573aebad92c5a275f0b77bd3abaaafb9fdc1ea957f321",
+          "vpm_particle_volume": "25291184d575b58709fb838f8592aa4cb69028161058ab6903f108625ede1880",
+          "vpm_kinematic_viscosity": "f8fede198fb445573a859872ec7506691cc1081e4dfcad3f3131db9bba2ade08",
+          "vpm_eddy_viscosity": "9c06fbfe4fc57a7d94c71610d83d4adf9cf2b4bcf186454b3119bbeb2d581eb6",
+          "vpm_group_id": "f51a221db21c0c87e78ea0aeb46c9eb28308b66d35964bdd1971a6dee1d33f5a",
+          "vpm_zone_id": "f51a221db21c0c87e78ea0aeb46c9eb28308b66d35964bdd1971a6dee1d33f5a",
+          "vpm_velocity_gradient": "46e88c40b7c3ae5d4d2b8b66476814fe0a5b034cdb1cb7759ee8372f7c24fb9b",
+          "vpm_strain_rate": "46e88c40b7c3ae5d4d2b8b66476814fe0a5b034cdb1cb7759ee8372f7c24fb9b",
+          "post_trace_velocity_boundary_condition": "bad90e3fb717e3d1de343794faa9131ea7b42de841576b195684065ea4134c9b",
+          "post_trace_normal_velocity_boundary_condition": "4d3fdb196b45aebbb98cde8bd4313997c3154e19d92ca04063e51b527b331d26",
+          "post_trace_tangential_gradient_boundary_condition": "f1930414d122e02d806d58204086f300d1abc4875228106a757edff1378995a7",
+          "clocks": "2525ef9786802b4e5d0eb92e8fb367761c235281b53e8130e1a878be5ce9034a",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4855999577354566,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000001-sweep-01.npz",
+        "sha256": "d5fea8c4f30c2cf104601f6cd1ec6951d3a126403715917274985c8223669fec"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 2,
+      "normal_residual_rms": 4.646307208483028e-07,
+      "gradient_residual_rms": 1.4419135824185548e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4865814836034292,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000001-sweep-02.npz",
+        "sha256": "061cc9ba7568599d24a6c3d05a95e49ae51914370aa6f0a2c4c43842b0960919"
+      }
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.05,
+      "sweep": 3,
+      "normal_residual_rms": 1.0044786413816217e-08,
+      "gradient_residual_rms": 5.602270605314546e-09,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 5,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4865796525069046,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000001-sweep-03.npz",
+        "sha256": "009b640307480fba4714c3d945681b2fa5924eaa6cb11a7a89c5964aa7554f0f"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009525920107319671,
+      "gradient_residual_rms": 0.0022712718033702584,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "1b9d1a40b0c9e75d895a86e4846fad66a1f04951555b12c3c7aa5b16a59b993b",
+          "fvm_kinematic_pressure": "75eebe413a051522c4d3654755b15986dcfc25a7d020bf5fcf309adf152933ac",
+          "fvm_volumetric_face_flux": "a767816b2240283d40bf3fd2bb08040ff2bb663993d8481fccd8d10912803b36",
+          "fvm_volumetric_face_flux_old": "a767816b2240283d40bf3fd2bb08040ff2bb663993d8481fccd8d10912803b36",
+          "fvm_volumetric_face_flux_older": "6135088b306470e8eab6c5b1c6b0ed0604a404d71db1b5bc72a8f5f7727300b3",
+          "fvm_velocity_old": "1b9d1a40b0c9e75d895a86e4846fad66a1f04951555b12c3c7aa5b16a59b993b",
+          "fvm_velocity_older": "a123826c86c3aaf1dc99358262e5401a54ba74ad9133e673e6cf7429afc982a4",
+          "vpm_position": "c7b039a941e4e807080f3bb61cf3ce830ef54fc268468285df70431d8dcfe2c4",
+          "vpm_velocity": "f3027104a7ab378982d4bf54f9d58bdb8988be26b3a9fc70f10fb32790dbf882",
+          "vpm_vortex_strength": "781869f16e2e949e7a9d342269bb043e290f8b7ca53f1cb26b6e82c8d16b4131",
+          "vpm_core_radius": "bf24518c0cbf52093f3e5014302d27b276b0254ac6de90d3c6a4b815f3fca1c0",
+          "vpm_particle_volume": "7ff4d523fe9fde23a26b88c48e1d91ec039c2c4f716ef70909119324ae2496f2",
+          "vpm_kinematic_viscosity": "4b2a45fcb2d3718a94f1b7ddf57b2fb7d7c4c3a41e678c87fb265d48252765fb",
+          "vpm_eddy_viscosity": "b9e8cca40b93f38001521f89e8fec7f3a9b698db73fe1398b0037057dcd9d34d",
+          "vpm_group_id": "eac59d8a09615e9b1eeeba8ade6724b53398adb3255794364a2af7a2c91a3678",
+          "vpm_zone_id": "eac59d8a09615e9b1eeeba8ade6724b53398adb3255794364a2af7a2c91a3678",
+          "vpm_velocity_gradient": "a1aa625e6e1470ebe635cab866b09f037d0fe60146201a58cdf084745d16196e",
+          "vpm_strain_rate": "a1aa625e6e1470ebe635cab866b09f037d0fe60146201a58cdf084745d16196e",
+          "post_trace_velocity_boundary_condition": "25b34974f81b55cd19ef0144cc320d34360dc849083d9566717c0e458443e0f6",
+          "post_trace_normal_velocity_boundary_condition": "f37be67e425c1999199a7dfb277c2e05aa2a26cec531ef61c3aec4f0776b342a",
+          "post_trace_tangential_gradient_boundary_condition": "0f0e8a4a617dcd19aa2537f3c7958ab02792a313d41e1b1e492b8755604257d2",
+          "clocks": "7de45503e586a3498be124c33fa72aad5ab8ca7ebc80adf4af880ea681e8421d",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4526353514486752,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000002-sweep-01.npz",
+        "sha256": "c25c5e8a14806905ad6902e590e1a689ebb0e374355297a451e61910df26665a"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 2,
+      "normal_residual_rms": 5.851838032290025e-07,
+      "gradient_residual_rms": 1.5790737649427417e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4809780949329319,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000002-sweep-02.npz",
+        "sha256": "715dd62dfd0df7a8cf13fa8f751e738fb1f57ee9fa649dbc4ca7c524d357e7c4"
+      }
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_time": 0.1,
+      "sweep": 3,
+      "normal_residual_rms": 2.0847431599022617e-08,
+      "gradient_residual_rms": 1.12007463132356e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 10,
+      "accepted_transfer_step": 3,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4810276202638941,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000002-sweep-03.npz",
+        "sha256": "82ae45f0aa0fc5aa98e79eb5ba5a99ae4f232eb8cece64f98dd33b74fc93a531"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009812428339260892,
+      "gradient_residual_rms": 0.002344835538799433,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "a4ea89182b96d474a546646cf69c6b2ed9a09c377e5b814f718e973bd66f37d4",
+          "fvm_kinematic_pressure": "b8bcdfacc4f83c2f062b124459d0f850f44a2bc3a0a2dc7136dd86cc6b4fd223",
+          "fvm_volumetric_face_flux": "e7433fc6ace8226791f2322f1fdecebfa628648784ef58b0a0e3bd4199fa3b86",
+          "fvm_volumetric_face_flux_old": "e7433fc6ace8226791f2322f1fdecebfa628648784ef58b0a0e3bd4199fa3b86",
+          "fvm_volumetric_face_flux_older": "c64177181f8232d96f3794a8e1ee92bdc6f6431049afd1a80b64ac10b8f93cb5",
+          "fvm_velocity_old": "a4ea89182b96d474a546646cf69c6b2ed9a09c377e5b814f718e973bd66f37d4",
+          "fvm_velocity_older": "86229da779ca685d2ad4817a5c8b5d06e4f94241996946667a46a4a09cff110c",
+          "vpm_position": "753a4a5166bbdc691bd03b8c303bfbf405b6cdb9f016850b07ed68a38e45dad4",
+          "vpm_velocity": "6e8fccaeadf4c0c1d6591f2ef92499d48373a496ee02d1b1157c697cd570a39e",
+          "vpm_vortex_strength": "e7435e65d2d67165de86c936c93a15b65e428584511765197c0a15939d1ee681",
+          "vpm_core_radius": "4bd79109670d3bf0e02f05853d7be2ed55876fac0d2004f760d5deb1e95475f0",
+          "vpm_particle_volume": "fb41b5fccb88f091e83146cbebb1759ce2fdd9f876d58d6e488c3015eea7257a",
+          "vpm_kinematic_viscosity": "0ddf9ee95135b284d07fda6c6db36294927beb1abce1a92361fc6fb09175b0f2",
+          "vpm_eddy_viscosity": "494ec9ee53eb022bcc1eb7decb28ca30f476b7b1c8d21a4eecfc046d173bba75",
+          "vpm_group_id": "1791bca4f4faccd97e5f55561f6d68884b21c3b69cde3935d25f92293fe09f47",
+          "vpm_zone_id": "1791bca4f4faccd97e5f55561f6d68884b21c3b69cde3935d25f92293fe09f47",
+          "vpm_velocity_gradient": "864d04db7be8192d7f2e521961e92f344a8ddfdcd27f77637fcbea9d4551f565",
+          "vpm_strain_rate": "864d04db7be8192d7f2e521961e92f344a8ddfdcd27f77637fcbea9d4551f565",
+          "post_trace_velocity_boundary_condition": "066f926648dbf763e1820751389145c1c9441b17ed2185a3b6268854e08d8fa3",
+          "post_trace_normal_velocity_boundary_condition": "6af9581243ee4ea840840b7ab6a32a727b66905796396a0cad7c8d7888f429c9",
+          "post_trace_tangential_gradient_boundary_condition": "8273e308fb77bbd548fc67fe383edfc0b26310f7fde188264279c8379771dcf6",
+          "clocks": "11c4302d8b08bb54fb796500f7730944c335eb58d3ec3891467c6e337a2d2138",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4230511912956203,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000003-sweep-01.npz",
+        "sha256": "1a1743aea664361673997c7e50e3bc3b67122544e1cdb1a081d92b04b607e3e6"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 2,
+      "normal_residual_rms": 7.377425128106661e-07,
+      "gradient_residual_rms": 1.6558044231311638e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4603058691770643,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000003-sweep-02.npz",
+        "sha256": "dfd0cf3321492e89de3d684707b4094f2f9f01c66400af7254a911ed6cc653f1"
+      }
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_time": 0.15,
+      "sweep": 3,
+      "normal_residual_rms": 2.3350947481572428e-08,
+      "gradient_residual_rms": 1.3441331410022396e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 15,
+      "accepted_transfer_step": 4,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4603851866154178,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000003-sweep-03.npz",
+        "sha256": "2f310c9da1bd8e68c9c9f3cd41e6ad4766fd05cfd403865831eef8ad6884338e"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008709632339091353,
+      "gradient_residual_rms": 0.002099407435100879,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "0a1b0a26b1c23170fb956e43fc58b1ae570ebdbd19a44bc65eac7c0380a62d50",
+          "fvm_kinematic_pressure": "4331204adf0585e5e5069e5b5e86f8b62882536bdd5abddfbcf1c87b0f7d540c",
+          "fvm_volumetric_face_flux": "50c9fed634abaa9461b5a63609147211ae3fd59383a27e72f2f9223a94a09770",
+          "fvm_volumetric_face_flux_old": "50c9fed634abaa9461b5a63609147211ae3fd59383a27e72f2f9223a94a09770",
+          "fvm_volumetric_face_flux_older": "bbbd87624934be700f49aa22b12b3cd80919cff2fb251afbcae7f5b1973d082f",
+          "fvm_velocity_old": "0a1b0a26b1c23170fb956e43fc58b1ae570ebdbd19a44bc65eac7c0380a62d50",
+          "fvm_velocity_older": "bfed1f03c04fda84cbe8d1d8963734cfb834b7c9595a2339e95d11a75a122170",
+          "vpm_position": "7cc9982d555764379ea75dd97414059fb4a98057538e2e93ded65864313fb60a",
+          "vpm_velocity": "54f6f885cbbfccb4a86ad1335261e0d612f9b972c041dec711e6519587f0f306",
+          "vpm_vortex_strength": "64e85d9175a58130a2ad5b55a83f8737b3c5a196a35788df3628861c1b1a3556",
+          "vpm_core_radius": "249b7d8ddac3068bbe3aea8e8649a78d91b690650d01221fc3aeb759c30b1a05",
+          "vpm_particle_volume": "38818f0e34d38fef7fa1944e4c2e5641a886f96f8ea47a86cbc8495c0a61838b",
+          "vpm_kinematic_viscosity": "c67e20b8435faca287daa2512730b356f38dbb56c38f9e492388ef3fa17bdec6",
+          "vpm_eddy_viscosity": "373427c262807099f0d797960af398e19357cf608d02573043f1251a38ff43a6",
+          "vpm_group_id": "e1fc96174487f107269b3a4753b2c8c7f9da84ded1b6842b43cfedd2cff75eb6",
+          "vpm_zone_id": "e1fc96174487f107269b3a4753b2c8c7f9da84ded1b6842b43cfedd2cff75eb6",
+          "vpm_velocity_gradient": "6c45e88a6583136602e7822aef2d8fa3d6e8da5b9de6183bc8e9ce8e7d475945",
+          "vpm_strain_rate": "6c45e88a6583136602e7822aef2d8fa3d6e8da5b9de6183bc8e9ce8e7d475945",
+          "post_trace_velocity_boundary_condition": "ab59375d354c87739b9c5e97c2f6ced174f304949b18ca435832a4096bb2dc35",
+          "post_trace_normal_velocity_boundary_condition": "7b537e06a6feac728211ef470b63bf4f1b34cf1632427de0abcd9d91a2703edf",
+          "post_trace_tangential_gradient_boundary_condition": "43a23ece281505d045775c3b9d573c96c56c82d89ca905121e9f32c3da4e9f41",
+          "clocks": "678fa62b3b427f88990e77ff2ce5f1184c464e9e77e58802f0e51e455f841223",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4145284364392443,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000004-sweep-01.npz",
+        "sha256": "bc1432886a87b60d5666d6a8fc6cd500ef8e73536c1f6dc7c7bdbd9f5bb2c084"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 2,
+      "normal_residual_rms": 6.702811591211487e-07,
+      "gradient_residual_rms": 2.054667214758619e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4386772116137942,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000004-sweep-02.npz",
+        "sha256": "4571a6e8d07c65314a7b2ab352cc36f9039f958bb6d5b247e70b9c4af990c617"
+      }
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_time": 0.2,
+      "sweep": 3,
+      "normal_residual_rms": 2.0584883492815873e-08,
+      "gradient_residual_rms": 9.971851314423148e-09,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 20,
+      "accepted_transfer_step": 5,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4387247974673472,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000004-sweep-03.npz",
+        "sha256": "fbe91d10e86c0ae98d5d94d0b78dc24339677a50d5d5c62ebcf766ed72e12967"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 1,
+      "normal_residual_rms": 0.000862276810571825,
+      "gradient_residual_rms": 0.0020672179730070336,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "e8441245d7dfdbce4268a7695df7b13f0d34e1e09246c742e258f90b02eae7c4",
+          "fvm_kinematic_pressure": "f0eef589a193e1dc6a3beebc172dd192e3ed055f038b37bdeca95df83d9e15ac",
+          "fvm_volumetric_face_flux": "94e1be5eea9fe3a515a5af89c3e130b9b25503bc03ddf2e849db5044b4ef6e90",
+          "fvm_volumetric_face_flux_old": "94e1be5eea9fe3a515a5af89c3e130b9b25503bc03ddf2e849db5044b4ef6e90",
+          "fvm_volumetric_face_flux_older": "f85bf7d886ea2faa6ae6bce1c56de1d2f2677e0b39b3dfc300afa4975779930b",
+          "fvm_velocity_old": "e8441245d7dfdbce4268a7695df7b13f0d34e1e09246c742e258f90b02eae7c4",
+          "fvm_velocity_older": "b00a52e0ceacbbbddd1f8b943a74f70f0fa3023761a0ae94c1008219bdc83747",
+          "vpm_position": "1f2379519e54711e6bfb4e9330f46e2369a25405e0bea631293c25735cf00864",
+          "vpm_velocity": "57b6531f1b26c0c825d1d09c75d16a0b404c92090cba3a8135612d635307698c",
+          "vpm_vortex_strength": "59d500bffe8f5362a752033d1418b3e8dbfc3215321f24169ff88653d422b88e",
+          "vpm_core_radius": "ede2d0f3409c5d4edd532f5975b3214081d362c206b8c709cfbc020f5475fa61",
+          "vpm_particle_volume": "2094a416d60ab2355c99a4ffc2f74493255bfb288b9ebebb227c4ea108e27c16",
+          "vpm_kinematic_viscosity": "de405bc423b2ea8d0fb1387cb157b9757fa0c2127f99c12f9b559e1ee674d4f7",
+          "vpm_eddy_viscosity": "69100bcfda131d9056afd5197eeb0431180e737cdad79460ab0015f7150edda5",
+          "vpm_group_id": "789ce39d5f453de0243eda4387712cd646a7741882d981dedbf6af7a090927cd",
+          "vpm_zone_id": "789ce39d5f453de0243eda4387712cd646a7741882d981dedbf6af7a090927cd",
+          "vpm_velocity_gradient": "0ff9fac4bdc4150f283356f01f48512798ea8d4144e0d611ba0f94f161482a21",
+          "vpm_strain_rate": "0ff9fac4bdc4150f283356f01f48512798ea8d4144e0d611ba0f94f161482a21",
+          "post_trace_velocity_boundary_condition": "40cb21a6b9f425dfb05bf0e6fb771b8114f1f5b9aac6102af30c15b6286b3465",
+          "post_trace_normal_velocity_boundary_condition": "c6bd45a5d35cea8a282fa244731eb920537b7a026fffe52eb1b4660056fcf14b",
+          "post_trace_tangential_gradient_boundary_condition": "3c54c3d4963a721cf44f4d4139b21427e313cd3da25e15a5fcf3516ec7ccb897",
+          "clocks": "94518694398f4653f529d2f0461ddacce5efa855bf00bb1ac162645998f999cf",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3846169722535506,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000005-sweep-01.npz",
+        "sha256": "c9311bb0fa28f0a9b7380d6c2dbf94d9dfd4e51201d8de517d027f264d928209"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 2,
+      "normal_residual_rms": 5.394367069488712e-07,
+      "gradient_residual_rms": 1.4951544408296154e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.4073751123576845,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000005-sweep-02.npz",
+        "sha256": "4c9dd482070d4b12bb08ecc4cb73e58314dd79c85ef36d74d6e25812abe5d946"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_time": 0.25,
+      "sweep": 3,
+      "normal_residual_rms": 2.01223920067716e-08,
+      "gradient_residual_rms": 1.048552190493394e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 25,
+      "accepted_transfer_step": 6,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.407420296171578,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000005-sweep-03.npz",
+        "sha256": "8c25d9dc9e100e2ae07a0a1db3e8db706c4fabc43bff10eb300b2b67987efbd8"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008989724521449672,
+      "gradient_residual_rms": 0.0021500412135592767,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "bd8a00607bdb70859d373ef3d6be0ae67699a911be2af3b2a994355571f69219",
+          "fvm_kinematic_pressure": "1c2a622a4d13be0013eef2ff85fb1225ce6d6f16ef3928715b90dafd2c043eb7",
+          "fvm_volumetric_face_flux": "e5b344f1d5a761e65245decd691d907e8a24d7a771c874493aced00d9a70a5c4",
+          "fvm_volumetric_face_flux_old": "e5b344f1d5a761e65245decd691d907e8a24d7a771c874493aced00d9a70a5c4",
+          "fvm_volumetric_face_flux_older": "c42902cfc14eaf684f9cae39395e5c6cf303e5e4829aed2f641d011f2bc66a24",
+          "fvm_velocity_old": "bd8a00607bdb70859d373ef3d6be0ae67699a911be2af3b2a994355571f69219",
+          "fvm_velocity_older": "3d2ca7015f705a0f1f8ef5d15285469b02e7e75e7fb8a50898a8edc561929f85",
+          "vpm_position": "5ff314d0433e00ea8922dd6c91ae8e7bb742df4238f954d68880500a167c49cf",
+          "vpm_velocity": "748287863ace57a43505288a5f1f5a0cbb2dfe8c440b035b64205196cc7bcbeb",
+          "vpm_vortex_strength": "d3949566a9606a389504f415cf17985c95da817f7d882612b971f8617e0b8c73",
+          "vpm_core_radius": "0bdd17734bacf51ef08669768382be0b1abeb463f069cd3d4e7ed2ac6f13f2cf",
+          "vpm_particle_volume": "011b9c2d1912ed15f776a21cf713714ff9df2a5c829bcacc7dad99ed0e013379",
+          "vpm_kinematic_viscosity": "5f98e1935c01dcb333f90c661bb2cae75cd5defd6cea0a0c94b0df92ff6d343a",
+          "vpm_eddy_viscosity": "6a9fe015ddca0e0fd161b2b113447b51b0767caf5a042c37aae1527743d63828",
+          "vpm_group_id": "e81373e37e9d8bdfa5fb004e8572955eea745f0106590c212b53a908980dde34",
+          "vpm_zone_id": "e81373e37e9d8bdfa5fb004e8572955eea745f0106590c212b53a908980dde34",
+          "vpm_velocity_gradient": "e3f3ee65292bca8ef3b74a082e0c5f9673decca7c06be4179f6a095660e546ca",
+          "vpm_strain_rate": "e3f3ee65292bca8ef3b74a082e0c5f9673decca7c06be4179f6a095660e546ca",
+          "post_trace_velocity_boundary_condition": "a09da622688e6967e5ed6df775c926c70653193021cf005c93bc9c08bab00cf3",
+          "post_trace_normal_velocity_boundary_condition": "6d592302532c5a05ee5b082e5da2f285bf378243d9e6233e95fcb199444fec8a",
+          "post_trace_tangential_gradient_boundary_condition": "ad9c9f5877f3a346198f71c2686c6afdb6a20a079511398f9b5a0ad34b1b2b36",
+          "clocks": "20606efecc8a1928704d1a025a3bc16714d5546e880cb722ad644501a44e415e",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.342887146574314,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000006-sweep-01.npz",
+        "sha256": "0da9238cfd2c5f28b7d30a39475a8b23263e6730e56e921f7b6a28f8155e0855"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 2,
+      "normal_residual_rms": 7.159261351117485e-07,
+      "gradient_residual_rms": 1.9865546753866606e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3780768174254627,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000006-sweep-02.npz",
+        "sha256": "e4bc6279a08998f69fd9b2fb48eaf0e9454b15961b5d5775997302128b845ac3"
+      }
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_time": 0.3,
+      "sweep": 3,
+      "normal_residual_rms": 2.3315927871350898e-08,
+      "gradient_residual_rms": 1.3991414999234581e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 30,
+      "accepted_transfer_step": 7,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3781614486364202,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000006-sweep-03.npz",
+        "sha256": "870be92ea0bc0d927934ad8c372e7a5b13a5f7e99cc0e1d28cf968148af39d74"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009206897897769088,
+      "gradient_residual_rms": 0.002231925416220943,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "00b9bc053529915275cd87509f5869979ce49974bea2a374bd7fa257acbdfc1c",
+          "fvm_kinematic_pressure": "1002806a58e1a36d789d2632e5ba324bfc5ce3e41b22b230e644fbeeaf5cec16",
+          "fvm_volumetric_face_flux": "ee82e4922f4261fdc8d9c74e2a5a2cb19f8284b0e53cbdcfa0cd2cf9921b23a6",
+          "fvm_volumetric_face_flux_old": "ee82e4922f4261fdc8d9c74e2a5a2cb19f8284b0e53cbdcfa0cd2cf9921b23a6",
+          "fvm_volumetric_face_flux_older": "380f2fb17aa0019cf15300f6d033916cdf7433ea3369804db317a4dde8c8ec6c",
+          "fvm_velocity_old": "00b9bc053529915275cd87509f5869979ce49974bea2a374bd7fa257acbdfc1c",
+          "fvm_velocity_older": "8055cafdf8de383a92547a063373af08233c142916b56ba84740541a4638c443",
+          "vpm_position": "4582ef817adae1d57a5a0b81212085c3cdfe24761467d5b570794c5cf49880ee",
+          "vpm_velocity": "48d1adbfbbbb142e0cdd29fdd6b9c1147f96e0f2d424f228577362839af5f271",
+          "vpm_vortex_strength": "3a029da0f4316c3af8dd59692f3bb7589eeb89dc2165708cac560147c5d91b83",
+          "vpm_core_radius": "2370aa98ca79c33cf5c87cc699514d570315a7c3f9c0d71e83da6107a6e1525c",
+          "vpm_particle_volume": "bb92f0e65968829c0058506a41faf763d878990cea5f1cfb71326b975a8db395",
+          "vpm_kinematic_viscosity": "e740f5eee0c8dbff620bf57bd395b045726af38983cf3cd9664d3d0cfa7225e6",
+          "vpm_eddy_viscosity": "19b72aa063a7c94fa0b8543d4d399e692553fe4f56418be73b74ec4e68d53474",
+          "vpm_group_id": "79b3fcd1d43a3675242463a95e1ded4b0bae60cdadb6af47d58ab04d110da50f",
+          "vpm_zone_id": "79b3fcd1d43a3675242463a95e1ded4b0bae60cdadb6af47d58ab04d110da50f",
+          "vpm_velocity_gradient": "aa10f8d819b7bae82a608fbdd8febb94bce503ad86751ddaecae20ad3a36ea48",
+          "vpm_strain_rate": "aa10f8d819b7bae82a608fbdd8febb94bce503ad86751ddaecae20ad3a36ea48",
+          "post_trace_velocity_boundary_condition": "e9cb9de44591789f6abc2cbbc3d3b9d8dadb075530ebe162462b53788c5b16fb",
+          "post_trace_normal_velocity_boundary_condition": "01ebbeb1c488ffe50dfc13ece6dfa0288da463969c0473073490293c7dca8df4",
+          "post_trace_tangential_gradient_boundary_condition": "a2419cb6a4e5d449b0f2dbbfe64b5d901a345dc8cdcf31a199e48ebf18c817fe",
+          "clocks": "944570eaeae7020f4e6f3877bf59ab0778ab2ea70ca57be87649949b64b6a847",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3117463629592567,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000007-sweep-01.npz",
+        "sha256": "fd2af77c6a80e8b8f5d9ade4b3fdc119b7940241bd7350c1ea6e291081c73d33"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 2,
+      "normal_residual_rms": 8.779068773039961e-07,
+      "gradient_residual_rms": 1.7770818744834263e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3505199629456612,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000007-sweep-02.npz",
+        "sha256": "a8286cbb6d68595fd2e03117b8f2276ea88e25d8f39a624cc1bbcffdfbdd135b"
+      }
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_time": 0.35,
+      "sweep": 3,
+      "normal_residual_rms": 2.410812757415062e-08,
+      "gradient_residual_rms": 1.3986606136245284e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 35,
+      "accepted_transfer_step": 8,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3506212454035655,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000007-sweep-03.npz",
+        "sha256": "728a8d978eb727fadda6e8de0f2251d64be94e2b566fc23647e939ef9fa12195"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 1,
+      "normal_residual_rms": 0.0009063160154722903,
+      "gradient_residual_rms": 0.002294509637004066,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "054492d7b6414e1e187d80e3df0efd847ceeb6e36f481184df4485ea74033d46",
+          "fvm_kinematic_pressure": "7f249b268cc5a85c4788ed03591e74665de149b1dc250b4e3c89bdbba8bf389f",
+          "fvm_volumetric_face_flux": "1af4ea8e3d847dd8538831bc62be8ecf2f85cdaf3ad5e09a917c57c4ef4afad9",
+          "fvm_volumetric_face_flux_old": "1af4ea8e3d847dd8538831bc62be8ecf2f85cdaf3ad5e09a917c57c4ef4afad9",
+          "fvm_volumetric_face_flux_older": "e135a1056fa085add16563c7c72e3be65563e3d6a195d4a02c6a3944742f52f4",
+          "fvm_velocity_old": "054492d7b6414e1e187d80e3df0efd847ceeb6e36f481184df4485ea74033d46",
+          "fvm_velocity_older": "43540ba6eef46b786bc1b68062e6265b442787e2b2ee650650a0e5d7152561c2",
+          "vpm_position": "1ff18701dd083774e43bdcbf756fae1603cac0ea60d2604fe6a05bbc98429466",
+          "vpm_velocity": "940bfb3abe16713bccaf4690d1919b1c100dc81fc9b70daa3bde4815a12ae412",
+          "vpm_vortex_strength": "b3779f108132dba2b6c0e964e4aaf458dcbd025d55a6546ecd56e510dd080e2c",
+          "vpm_core_radius": "edc7cc1f1c259d6f625f44e40d6ace88b8c5053d984ad2accd2253b9ba02deee",
+          "vpm_particle_volume": "f99b6a8c5ce9f8422c2c480215d5daa9954cdeab7fb10468e667a1dcb3635ad2",
+          "vpm_kinematic_viscosity": "f70c78fb01ed800ae8da64356a4e7c4e6b49c2e30672be0e6819cd61426c89ea",
+          "vpm_eddy_viscosity": "9f134069ae22bf4612031c2bc7167760846ff882e73e6d20693a10996cb3777d",
+          "vpm_group_id": "8405d68261c35a27c26e5bec326a976ff7b91f3ef2e323388116026540f7ab3e",
+          "vpm_zone_id": "8405d68261c35a27c26e5bec326a976ff7b91f3ef2e323388116026540f7ab3e",
+          "vpm_velocity_gradient": "d8f34cfe43ea9d64408456f422f687ff777a0fd2531b93632a00b1afdd212e85",
+          "vpm_strain_rate": "d8f34cfe43ea9d64408456f422f687ff777a0fd2531b93632a00b1afdd212e85",
+          "post_trace_velocity_boundary_condition": "71c637fc02e28fd25ee668a54878cf1a2a1d7520d56c74a7ff17e2c4c6c903a6",
+          "post_trace_normal_velocity_boundary_condition": "a8bef835805404fcd73d6d25878cc8135b8729674da5c071132a6bad229034d1",
+          "post_trace_tangential_gradient_boundary_condition": "883132d4b5a8ead6c4a6227d6b4efa0ad5fc70b2e1441b35210ebc76d8f8ba00",
+          "clocks": "d3f39368975407d09421359ffb5a8a0e2e3d5a069875638edfe6345ee6063d99",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2857938187172704,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000008-sweep-01.npz",
+        "sha256": "73b7de201060337813dd80118410dba864f93c22c9b0288e934ba96642a0cf49"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 2,
+      "normal_residual_rms": 9.269628571721916e-07,
+      "gradient_residual_rms": 1.8911184233137436e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3243784746929201,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000008-sweep-02.npz",
+        "sha256": "da194e1a05e664c5301f0ddf9fdc89a52a2bfa5052ff445ec7d2d4181069b32e"
+      }
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_time": 0.4,
+      "sweep": 3,
+      "normal_residual_rms": 2.4092417886604042e-08,
+      "gradient_residual_rms": 1.5427651383403523e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 40,
+      "accepted_transfer_step": 9,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3244910661403182,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000008-sweep-03.npz",
+        "sha256": "4eb89973548a6ff73c2ece6d95656f0bb7c0c5ec178076cf85c03815f90f1f31"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 1,
+      "normal_residual_rms": 0.000892658264235502,
+      "gradient_residual_rms": 0.0034435496488941218,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "3e11b708ec6493dd98045a200d204c951cb4d60b8f955b63a854f4577d4c699a",
+          "fvm_kinematic_pressure": "3f286abd5ceef7cc1281e7bf26fdc048f758f9cd80d1e48fe2c96c4d5dd926de",
+          "fvm_volumetric_face_flux": "6c4a8885d849373858481cfbf6a05f45ed696df8393f4150244cbe0841830f78",
+          "fvm_volumetric_face_flux_old": "6c4a8885d849373858481cfbf6a05f45ed696df8393f4150244cbe0841830f78",
+          "fvm_volumetric_face_flux_older": "3d4f80dc4adce011941ba97c889d1cb8d853c320aea7971744eab02119b01cb8",
+          "fvm_velocity_old": "3e11b708ec6493dd98045a200d204c951cb4d60b8f955b63a854f4577d4c699a",
+          "fvm_velocity_older": "335f483b7704153e1b71c852baccd180c98a3c29c218fb6872d9d56254494b81",
+          "vpm_position": "822a29d696f5d77a12081e637d39e371b4a44e3c8130106b21117f88d826f233",
+          "vpm_velocity": "e92afe32c547fcbf8866283024a57683b485f8709a51de980b73fff5f60ec8b6",
+          "vpm_vortex_strength": "13b37d728f0c99abf2549dcf48839536c32ecb890cfe11235681b837a75f75d6",
+          "vpm_core_radius": "15d3236d3e8eaea3bb9a613fdd51691bf69a495b6c6782911f68d487ebe4fecf",
+          "vpm_particle_volume": "b5bfcf00982c35ce3107e9fb604742a1f9e07ef0d013c5c69600ab880b645bc7",
+          "vpm_kinematic_viscosity": "edce61e37998188ea851a8b1a0f080b1b0084aea9d843e47328081731ed62a89",
+          "vpm_eddy_viscosity": "2d95893313cf7ea272ea90b535ffa9b522baf4136ca6638183b40b85122a45ee",
+          "vpm_group_id": "bf0d38b99ee302bb1b8fca7a118771c386a99e4f433eb813e947793d5c02ef6f",
+          "vpm_zone_id": "bf0d38b99ee302bb1b8fca7a118771c386a99e4f433eb813e947793d5c02ef6f",
+          "vpm_velocity_gradient": "9950f9b187b29453ac3cec6a22bc5259af026de96287e798652c9a3cdd93c367",
+          "vpm_strain_rate": "9950f9b187b29453ac3cec6a22bc5259af026de96287e798652c9a3cdd93c367",
+          "post_trace_velocity_boundary_condition": "952b825b3287a7cfe284ed69190dbb7bddf3bb3c30081b162d113577e0c374ea",
+          "post_trace_normal_velocity_boundary_condition": "842686457ce89d70a06f6430351eaab45305e7e58c59f73f8ee89887a70ab435",
+          "post_trace_tangential_gradient_boundary_condition": "06c0226d26b304f1d79859c0b0bd8a97cf53abde3f433cdfa6b3ba41dacf8359",
+          "clocks": "8e53d502cebccc4d514af9f6095aed77775d08aa832b9751a108b9aa10251eb0",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.262263305067173,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000009-sweep-01.npz",
+        "sha256": "bc429f3c49579350515d6a7bacac232da5bcafca2d9d7713cba68ea10242590d"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 2,
+      "normal_residual_rms": 8.732951217104271e-07,
+      "gradient_residual_rms": 1.709378493956086e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.3006334906094579,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000009-sweep-02.npz",
+        "sha256": "04cb87068984ac1ee17b9e2df6d10865e5d22160f023da6519af59bd5a890d2a"
+      }
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_time": 0.45,
+      "sweep": 3,
+      "normal_residual_rms": 2.501991320766422e-08,
+      "gradient_residual_rms": 1.6976169202631288e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 45,
+      "accepted_transfer_step": 10,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.300742247625377,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000009-sweep-03.npz",
+        "sha256": "8f0cac5fcfbb0cadd5328558341ff9b6985d4ca9878172f30f26fc037cfaad19"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008863032855819595,
+      "gradient_residual_rms": 0.0030809994129177075,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "767c20b8984ecf6deb80bb9705742a9e11a22760c6f6858d7b5b6738944c06de",
+          "fvm_kinematic_pressure": "3c7889b32136f585edf55abf19debcdd2746015616f5a1b5400c8bcf22f25822",
+          "fvm_volumetric_face_flux": "380848a9afed0779d74406b94a161e78cfd47422d7ca70f59f0c7ff84ad6bcba",
+          "fvm_volumetric_face_flux_old": "380848a9afed0779d74406b94a161e78cfd47422d7ca70f59f0c7ff84ad6bcba",
+          "fvm_volumetric_face_flux_older": "a99b40efc0bad6e445b3ffc0d53b850a1aec798999a6a57d63df2cb3c08da08c",
+          "fvm_velocity_old": "767c20b8984ecf6deb80bb9705742a9e11a22760c6f6858d7b5b6738944c06de",
+          "fvm_velocity_older": "70cb7f51dc65af913ab9e4c9713a68eb879ad70233980d0e668a73ce33114322",
+          "vpm_position": "57154614256f578b5a09f55d8b14d111c90c2f7fdac84170069ea037c47f198e",
+          "vpm_velocity": "5eaf1c197d83ccccfc7a563901f9674451a91995a90391cf28d226ad5d4bad67",
+          "vpm_vortex_strength": "8fbf0d2538599cee127bb7876ae5843df8580b754cbfc1a2c153c1f6dc6c5c77",
+          "vpm_core_radius": "fef5052b4b69e634b628bd441a68e18ec9113fa82d9c20aa97ca094bbe5c70b8",
+          "vpm_particle_volume": "7487d28d1cc3e096d764e5a06ca1108a9e1c0d09a460601e131443ebf947f0a2",
+          "vpm_kinematic_viscosity": "18bca7f494d071f3b981e4b106c0c7e51301f00e0296fcff8c36fd1793e63289",
+          "vpm_eddy_viscosity": "5d123ba10b0b0cf1ae29502c493aa318cd0748592f62934b42b3c5b78bd7a29b",
+          "vpm_group_id": "e00d884e909fd12a6282c9be05f788aa2718354a52f74befe5993acba049c8dc",
+          "vpm_zone_id": "e00d884e909fd12a6282c9be05f788aa2718354a52f74befe5993acba049c8dc",
+          "vpm_velocity_gradient": "c97c5cedbb0798868bc899fd38a5bca7f72c1b3d6cbe04128eee7a9b0bc3a6e3",
+          "vpm_strain_rate": "c97c5cedbb0798868bc899fd38a5bca7f72c1b3d6cbe04128eee7a9b0bc3a6e3",
+          "post_trace_velocity_boundary_condition": "b13b3b4008d76accb1ab8444657321c74a76df900c182aa35fea8d742bbb4fab",
+          "post_trace_normal_velocity_boundary_condition": "3281846417fdf07f825348bac01d5df0e4247f126f635392c1015bbba974b0f6",
+          "post_trace_tangential_gradient_boundary_condition": "e0a01cfdc65b2fd2cc444fe66323508f198e7bd474eaff58be755e3c2910fc83",
+          "clocks": "f9d2bb42b55804c94afb15b17980ebbbad223082e29e51f945f2f2454d61f713",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.237758284084379,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000010-sweep-01.npz",
+        "sha256": "4b9d0787ac59fc80fcb58920443eb07e4f86d2812d746c32b6700baff8095440"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 2,
+      "normal_residual_rms": 8.732084188481475e-07,
+      "gradient_residual_rms": 1.5176765675033338e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2758765506408172,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000010-sweep-02.npz",
+        "sha256": "667b25417b057f8edeab0b2def4c152eccc009afc304808e033b57c2872a90c3"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_time": 0.5,
+      "sweep": 3,
+      "normal_residual_rms": 2.5166280928283135e-08,
+      "gradient_residual_rms": 1.608219992076217e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 50,
+      "accepted_transfer_step": 11,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.275989062408383,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000010-sweep-03.npz",
+        "sha256": "9bba2f47a61b69476370afb1834b79d4aeeddbcdf51697bf6267521cb7b8db87"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008781793448173668,
+      "gradient_residual_rms": 0.00367107053572088,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "9ce1ef6e3d33e962cc539cb56928f41621efaf23b71bb575b65020982c68a7b4",
+          "fvm_kinematic_pressure": "b117ec1966e56aaccdc1ce504415326986e7ab8e34cf826cdd34c1177e883a2c",
+          "fvm_volumetric_face_flux": "c3009fb8a6a9f265125bb2fd46715214bdb2b126e9d8188ce7b7ae8840895eee",
+          "fvm_volumetric_face_flux_old": "c3009fb8a6a9f265125bb2fd46715214bdb2b126e9d8188ce7b7ae8840895eee",
+          "fvm_volumetric_face_flux_older": "6be468730c4dd3a134e846c0147dc193d36ead7a26b1de0494fa34c8761e3609",
+          "fvm_velocity_old": "9ce1ef6e3d33e962cc539cb56928f41621efaf23b71bb575b65020982c68a7b4",
+          "fvm_velocity_older": "8abfa4ebde6b6bfcb85fd620a0b365a3114d46304ffad8e751cafa7fc930ee4b",
+          "vpm_position": "f79e5806dd364db78b16847eb2884b37106f98766215718418235840e7fe0dcd",
+          "vpm_velocity": "058c6a4b6275c571eefb544ee6c5c2773b28e08a6f7fcf01969296d948b0b3c1",
+          "vpm_vortex_strength": "1e769d7155f1fff4a2c3e613a3ec5fc77ef797157e7f1432a46f01fd67acb62b",
+          "vpm_core_radius": "7cb610ff100c35d0bf30eacbbf000b05bdc4f33f6521b1f190ed47332b749efc",
+          "vpm_particle_volume": "055496c738c73c12718db79750eb393abfdcfed8fe266673f60a9262784388f4",
+          "vpm_kinematic_viscosity": "11111ebc3cb33501384b9f8a67df6dd9916bf8ff7773253f315344167e56ab40",
+          "vpm_eddy_viscosity": "d1da1eebf2b780da4518ce5bb46393ce771a391c6180d9820dc04e45da46802b",
+          "vpm_group_id": "26014cc3159e54f47f9155f48c41921961cde9ed1ba41a1889db2904a13b772b",
+          "vpm_zone_id": "26014cc3159e54f47f9155f48c41921961cde9ed1ba41a1889db2904a13b772b",
+          "vpm_velocity_gradient": "a08cf68d58ec2a401cc2737cb5987c3e7217a8dae8939666528a7ff6bb8aa5c4",
+          "vpm_strain_rate": "a08cf68d58ec2a401cc2737cb5987c3e7217a8dae8939666528a7ff6bb8aa5c4",
+          "post_trace_velocity_boundary_condition": "e87e3952479c3dc15902a4a697b930d8655466667e820f06e72d3235e221b471",
+          "post_trace_normal_velocity_boundary_condition": "28d0d9b298770dbe4a068deabbbcf1a18098988b6f64d20cd803fe68be75b857",
+          "post_trace_tangential_gradient_boundary_condition": "4a01ed0efaff00e55a7bc28d8c2df58e619126f182a74f6262a544d2bc12b635",
+          "clocks": "24d948d8a6b215873af6a8ebb6c06c7d0cd1eb4fb7107f4a9be0ab1e5bde2883",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2131053393530782,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000011-sweep-01.npz",
+        "sha256": "e91e944cf81549a27ae1e57aaf5331797ac2211a78d00912ec9e5a9b2936ca40"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 2,
+      "normal_residual_rms": 9.109123962065063e-07,
+      "gradient_residual_rms": 1.8898182726175578e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.25089857390212,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000011-sweep-02.npz",
+        "sha256": "f5fb0fc518728e91006eeff8abfbfb9c02a61c7d79066440197e1bcb7c811309"
+      }
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_time": 0.55,
+      "sweep": 3,
+      "normal_residual_rms": 2.577766431003968e-08,
+      "gradient_residual_rms": 1.646877037469593e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 55,
+      "accepted_transfer_step": 12,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2510138685267638,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000011-sweep-03.npz",
+        "sha256": "d23dfa6870b447dc3093eaf0a1f3fde158df470e0dfca174f1530f2239199846"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008625310266173431,
+      "gradient_residual_rms": 0.003510964640392792,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "1407cdaaebf0ddea7eb028df584522ff29654e93336dfad88e2e5c44d43d16f1",
+          "fvm_kinematic_pressure": "45ed684d66af59eb5dbd0e849a925a60878ff7cc1e5d96b70dfa62191e248ce3",
+          "fvm_volumetric_face_flux": "0be802b8393bdb3ed2fa1d4952106d39daee4481fe7658bb1137cec3d674173f",
+          "fvm_volumetric_face_flux_old": "0be802b8393bdb3ed2fa1d4952106d39daee4481fe7658bb1137cec3d674173f",
+          "fvm_volumetric_face_flux_older": "bd47d59bfea771f5cfd905dfd5abdf76f7ccc4c8bcd91b2ee42f5483741bc20c",
+          "fvm_velocity_old": "1407cdaaebf0ddea7eb028df584522ff29654e93336dfad88e2e5c44d43d16f1",
+          "fvm_velocity_older": "aec4835b255c9a6578bb498920afa3898c9df379a20b3794498993481b473f76",
+          "vpm_position": "5eee8ae75c59a8ad81a3c0efc5e3b91d8555978434042b7d9bf8ae13690c33eb",
+          "vpm_velocity": "c3688eadf965d17ec3582e229a9b7f5260f8da202beda306906cce76bc6b215a",
+          "vpm_vortex_strength": "f852d27bc999b2c84ba1352ffb2384ae1060ca322f016912cce228f02a9f5116",
+          "vpm_core_radius": "908d496873ce0fdf1d06955483d7f399ed14338d23020bd5e2417a418822c8ec",
+          "vpm_particle_volume": "e8e9ef1809968227ec73bb8d6e19470322767290340a0975f5c665b00ac08350",
+          "vpm_kinematic_viscosity": "82e719b3be83edc2741e5e5a944e3595e9a4f1d096d09dbf61b1a0df707e9a7c",
+          "vpm_eddy_viscosity": "423304c97bcb6c9bfdbcceaeaaadaff8ffcbc3388244cb937dd7c44c08ebb705",
+          "vpm_group_id": "85fe144f3573273abd875187277706fabece6d355c264fbc1895bc962343401f",
+          "vpm_zone_id": "85fe144f3573273abd875187277706fabece6d355c264fbc1895bc962343401f",
+          "vpm_velocity_gradient": "1751a3342cfd36957c2adc22ceb13acb4728dcbc48c5e0d7d1d8af90e588986f",
+          "vpm_strain_rate": "1751a3342cfd36957c2adc22ceb13acb4728dcbc48c5e0d7d1d8af90e588986f",
+          "post_trace_velocity_boundary_condition": "d267dc64545b5be6945ecd66ee894c5195d5ed6933c382f0e5fce64531b9b120",
+          "post_trace_normal_velocity_boundary_condition": "a00339e616f4e24d0a38c66a823627e2f29acca60ab63d18303f22b27c5f3de9",
+          "post_trace_tangential_gradient_boundary_condition": "d9ca456369630c2580e3e8371b460601b606c4924e67c9ea0d871c98eead946d",
+          "clocks": "5c631ed698e72f829a455f2deba2bb322a7d2e61116beb02ef52e16e6a58114e",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.191048207130059,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000012-sweep-01.npz",
+        "sha256": "3681c6223e6f435cd99e79a528e847a29deccc30ce9c4860a50f860d2b1af6dc"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 2,
+      "normal_residual_rms": 9.059529660678986e-07,
+      "gradient_residual_rms": 1.5402304768947403e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2283592526538039,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000012-sweep-02.npz",
+        "sha256": "68ec39455f8e25666cee33ea5afa26f6a156f88ddfd9cfa9cfc5ae0163b1bd2d"
+      }
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_time": 0.6,
+      "sweep": 3,
+      "normal_residual_rms": 2.5764305177893505e-08,
+      "gradient_residual_rms": 1.778790674777265e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 60,
+      "accepted_transfer_step": 13,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.228476995527727,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000012-sweep-03.npz",
+        "sha256": "cc693330ef9405de721380cdf4ab624771cbcfdc681f72642bf497f02c2d98ac"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008460256135206092,
+      "gradient_residual_rms": 0.00395942668207342,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "bbb1036778855e4c67754a13902a7cffef6e5f62afc7fbe64a1654eb8551666e",
+          "fvm_kinematic_pressure": "519c3b20109222e21aa8b2a08c2689b596d3aac612a07952bffb45bbd401cfe9",
+          "fvm_volumetric_face_flux": "2b5d68473bb8b525e7486f84f8d4d2dc400abfa9dce77d9a670f5b8b41193084",
+          "fvm_volumetric_face_flux_old": "2b5d68473bb8b525e7486f84f8d4d2dc400abfa9dce77d9a670f5b8b41193084",
+          "fvm_volumetric_face_flux_older": "cf45266cea57c38cbedd7de37079b903794128b68a288eeb035fb2a7d87c9bbd",
+          "fvm_velocity_old": "bbb1036778855e4c67754a13902a7cffef6e5f62afc7fbe64a1654eb8551666e",
+          "fvm_velocity_older": "9519164f81fbd5f879a17ff56237cba52f5e8e5422d4da51db6d6af8938112d6",
+          "vpm_position": "ed5a50ff68b086cf2ab121ecfe6a352433e993cdb743b9243a76fdb51b3e565e",
+          "vpm_velocity": "8871c940a9d1ac77342af317622964e202e8d52fb240e3f8f9cc413c7adbb736",
+          "vpm_vortex_strength": "43f39c80aa6654436baa979a6a16c8373c89359566c99b0f120f200bd9394219",
+          "vpm_core_radius": "82d1de57bfb350dd7425c7cf916170a4f8f422736d1e42021e4c569c1ab35ed5",
+          "vpm_particle_volume": "6681859bda769b656574d601d51dce64b55b44ab62012912b2c423c2b23e7f18",
+          "vpm_kinematic_viscosity": "1a974ffff2107afbbcea89d91e42363bfba4dd12bd8d62ed83757b58b0b23002",
+          "vpm_eddy_viscosity": "264c5a5af8c2b9aabf942bc2ce1f7c0d3ccd8a03d09f021093e5739231086d8a",
+          "vpm_group_id": "4bbed846737523f14564810fd76c9f9609de513c2d25765f3a10dd355b9d606d",
+          "vpm_zone_id": "4bbed846737523f14564810fd76c9f9609de513c2d25765f3a10dd355b9d606d",
+          "vpm_velocity_gradient": "9362704e699831c6c8fbcd7e244f5c446459cfd23626cbe31aedac2623572b77",
+          "vpm_strain_rate": "9362704e699831c6c8fbcd7e244f5c446459cfd23626cbe31aedac2623572b77",
+          "post_trace_velocity_boundary_condition": "e388a05bfa31f2b643e13f874f471f973d0eea52cc0cbdc681da02133c7b274a",
+          "post_trace_normal_velocity_boundary_condition": "20d7bf2ec16e0a870d2cd02bc5470a2577f3522748f623e49247cfd95f9c51f7",
+          "post_trace_tangential_gradient_boundary_condition": "e87e12f570c6c5a6e3b0d01c2374bb3a2b6a783da59467159cb887c7ae700b81",
+          "clocks": "3937bc12fc8b8397a53b8dfdb3740b71db62cf725d0c0d5ca37f4e68d36adbb5",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1704258911938574,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000013-sweep-01.npz",
+        "sha256": "2564bd35732ba6264ec28d6e3d3b82e6f64a45650afe27221a1f5bb573929bd3"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 2,
+      "normal_residual_rms": 1.1733879979894186e-06,
+      "gradient_residual_rms": 3.994669468316007e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.206974100044684,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000013-sweep-02.npz",
+        "sha256": "4786d3584d61157a385ce2783d542405dec81d1e8880032e6c462891c393a58d"
+      }
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_time": 0.65,
+      "sweep": 3,
+      "normal_residual_rms": 2.527765157911228e-08,
+      "gradient_residual_rms": 1.7005947639029138e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 65,
+      "accepted_transfer_step": 14,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.2070848590451995,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000013-sweep-03.npz",
+        "sha256": "4b370f1b6dc826143927997f06c992b26eb9319d6831f38b258c278b1e3c2f48"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 1,
+      "normal_residual_rms": 0.0008298420545457764,
+      "gradient_residual_rms": 0.004683050221321567,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "5e2d69fabd69c55077198225fc10884377ce89b95c9b6996d2a5903c8a677cbd",
+          "fvm_kinematic_pressure": "79ebc94b55ef5391023326f928adb88a57861a65ef9cee88196d35ba7bd4f2b0",
+          "fvm_volumetric_face_flux": "06b09be8811514e75e4126382809ef007037edbecb785b882ea2678e9a869670",
+          "fvm_volumetric_face_flux_old": "06b09be8811514e75e4126382809ef007037edbecb785b882ea2678e9a869670",
+          "fvm_volumetric_face_flux_older": "cd3984c02d5a8c9353e3775c75b4b2c58cee84b0e3760ef3df95f0adb72ce387",
+          "fvm_velocity_old": "5e2d69fabd69c55077198225fc10884377ce89b95c9b6996d2a5903c8a677cbd",
+          "fvm_velocity_older": "c8d116eb04e4b639dd0e99aaeb8b5f7830fe6de1dddba8c0efb7ef8a6291ab15",
+          "vpm_position": "25f5a62123a1b9bb359cc2b232633d4fe9d3123d92fa7af8ffe968153371cccb",
+          "vpm_velocity": "bfc22342584f31b099d4d526595b905100bd29cfb70b42460ac01f32ea12c64d",
+          "vpm_vortex_strength": "5111d2b3e8b8774a28aa213295e1c92ab9f325b8b79aa312452a8839bfb81d03",
+          "vpm_core_radius": "81eb4138156a8bc2c3ad2bd99411e83eeaac36350bfcf0c5e0a2618bac8815b6",
+          "vpm_particle_volume": "03cab0a863c383f2eb5621143137bdf9eb676009504810605cfb69937871a388",
+          "vpm_kinematic_viscosity": "275d19044f29307143a82e35b81d043baa5dac1b9defaf0dc5afdd72b2ba2d68",
+          "vpm_eddy_viscosity": "9a6d830fe65ead82bff4d910570f1eeefcb914fc708f61118d4574517ce3d63c",
+          "vpm_group_id": "dc2e00c34464120e95aec87adb6e0af4d0ef645f434362c1e7d0e4c4aec1e899",
+          "vpm_zone_id": "dc2e00c34464120e95aec87adb6e0af4d0ef645f434362c1e7d0e4c4aec1e899",
+          "vpm_velocity_gradient": "b653b359d6232cbac5e1766e8b7cc7fc4bea929ef2b48e113f4205339238af6b",
+          "vpm_strain_rate": "b653b359d6232cbac5e1766e8b7cc7fc4bea929ef2b48e113f4205339238af6b",
+          "post_trace_velocity_boundary_condition": "56ff13fcf819455ef7390f023392e916feedc079fb3082b47fad7ae7894668b2",
+          "post_trace_normal_velocity_boundary_condition": "3c525636da9c12eab2ff4f61a6b740903a31a3b514bdb065931425b09d416e66",
+          "post_trace_tangential_gradient_boundary_condition": "b9ab8afed12a192d444d20e6d581849a7f99ccbb10f276f1d2c91d94eb99c56f",
+          "clocks": "8973dde1c71ddb931938031e507f58d14301f20f2ac949a73ce31484a48ccd55",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1487570038322228,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000014-sweep-01.npz",
+        "sha256": "409c2b759edce81b90ba97969c4076545abf5a7e6af327e03f679b277be1c9f7"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 2,
+      "normal_residual_rms": 8.876818091498343e-07,
+      "gradient_residual_rms": 1.6320708078234133e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1846877888964444,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000014-sweep-02.npz",
+        "sha256": "9770d46544313ab00a7021576b2023f2aebd620e7c186ad10916e593b13ca08b"
+      }
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_time": 0.7,
+      "sweep": 3,
+      "normal_residual_rms": 2.5912344916714713e-08,
+      "gradient_residual_rms": 1.7865559559736217e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 70,
+      "accepted_transfer_step": 15,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1848023199268107,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000014-sweep-03.npz",
+        "sha256": "3433ce70d0b571eeb163315ed8a0fbaff61f9faa9ae57f7aa6f0600d719f4065"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 1,
+      "normal_residual_rms": 0.000809534403398206,
+      "gradient_residual_rms": 0.004667757273768543,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "7f22f9d8870a0d87b02beb1c7597a113aa7f27ba7fbf653156fb7afbcb5239aa",
+          "fvm_kinematic_pressure": "1d9966396949cd0ca7f62b95461bde7ecca5f927e31c7810ac8136bbfbfd9dcd",
+          "fvm_volumetric_face_flux": "8f4ca5a580c3086075c2f529210de9a6f0f2bc2b735db58931f0444fc10ee193",
+          "fvm_volumetric_face_flux_old": "8f4ca5a580c3086075c2f529210de9a6f0f2bc2b735db58931f0444fc10ee193",
+          "fvm_volumetric_face_flux_older": "7bbf27562fdba72423828f6555517997e3e43488fa312608fc742f00cdad322c",
+          "fvm_velocity_old": "7f22f9d8870a0d87b02beb1c7597a113aa7f27ba7fbf653156fb7afbcb5239aa",
+          "fvm_velocity_older": "70d55cd73b8d050c6c5677b9efbb6ba7a4a35d90bc815e703b4eda6b8c0a9395",
+          "vpm_position": "5289dfa1045923a89adaa677b952c2236d01fe9df242db9e440c7827aaf331dc",
+          "vpm_velocity": "84428453c88d0216344ec92fa77902d4d497078af33e2a8ff570892643dd4a90",
+          "vpm_vortex_strength": "1a4367ec47c5ec86b3fdea1b16b600126c6934b2d1813d45603a2086f4e74e8d",
+          "vpm_core_radius": "f0d8c35916d1c6d00600a05da4304eaf46ba3acc2dadf490d98ff3928b2375f9",
+          "vpm_particle_volume": "521f422df51c8ec9f4a00c9b3ed26853317b2999fbfdaf00a93dca54e0fef85d",
+          "vpm_kinematic_viscosity": "9cb96a81251a1d675e4f2ab3f7775421ab18ebc77f2628b63f16ff4107fa02c6",
+          "vpm_eddy_viscosity": "8d733c1bab0dc5e38f9a8830059f47fc9cf4d20f5825fb213b81af5d4f707123",
+          "vpm_group_id": "9e5bf2f79259a81dba8387098c9f910af6733341edf2f25089f12f52797c2885",
+          "vpm_zone_id": "9e5bf2f79259a81dba8387098c9f910af6733341edf2f25089f12f52797c2885",
+          "vpm_velocity_gradient": "5a901c64dffb95e589b85c114f46f69c3fb900a14e309e856eaafe0bb0ce40c5",
+          "vpm_strain_rate": "5a901c64dffb95e589b85c114f46f69c3fb900a14e309e856eaafe0bb0ce40c5",
+          "post_trace_velocity_boundary_condition": "c0c47b1ca4f15a4454a3b5f42ed73281c3a5013138ce8e5abe2fb99f49ea07c0",
+          "post_trace_normal_velocity_boundary_condition": "e546bf29d6da278e9e7e09021bd9ebefaee5742c8d4b290040d8ba9b25a28f6e",
+          "post_trace_tangential_gradient_boundary_condition": "e2b8eaac5fb67e7f5951888be156a0908759925d3bd731646eef10de93ce2dba",
+          "clocks": "438fa377ff57bf866a239af925ae7e1db4aac32e52398758689aaab500efa4d3",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1292620399126665,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000015-sweep-01.npz",
+        "sha256": "1a729ce7956728a2fc57b98b127ef3d3c735f076d626125c7a25ef4d2b33e55e"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 2,
+      "normal_residual_rms": 9.275517634781329e-07,
+      "gradient_residual_rms": 1.6353622505898535e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1650801513473594,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000015-sweep-02.npz",
+        "sha256": "9c4c9f32f8ceed8d7a20bacb9b59396f2d05755bdf3a4c7f63940941d46e8a2e"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_time": 0.75,
+      "sweep": 3,
+      "normal_residual_rms": 2.564870231554877e-08,
+      "gradient_residual_rms": 1.7576361693932722e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 75,
+      "accepted_transfer_step": 16,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1652012610113192,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000015-sweep-03.npz",
+        "sha256": "23bfec8de6c4dc2679913b6a1a6e9ebd668b4433b35493b534fd7f3b2f598161"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 1,
+      "normal_residual_rms": 0.000787751038933734,
+      "gradient_residual_rms": 0.004222506441469461,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "9565ba63f42ebed5ffde0b9e283b139b51a9e4bce83de5f016a66992124907ac",
+          "fvm_kinematic_pressure": "ea3c5febcc13264d77bda058f44641e7e9e5f4508fe415b3c9dfde672cc5ed31",
+          "fvm_volumetric_face_flux": "e252b9b05e735ac4283f06f2bb7c77fef06967f1df548024c57bff9e4faae7a2",
+          "fvm_volumetric_face_flux_old": "e252b9b05e735ac4283f06f2bb7c77fef06967f1df548024c57bff9e4faae7a2",
+          "fvm_volumetric_face_flux_older": "d04b1bd830582b9059543996e1bdac4e5ab9d64c8788beddb386a108ee860127",
+          "fvm_velocity_old": "9565ba63f42ebed5ffde0b9e283b139b51a9e4bce83de5f016a66992124907ac",
+          "fvm_velocity_older": "52109ce4fea8995c48c4cca986375f57de3a4fa57f09b18c2fb7fc8dc547f2c9",
+          "vpm_position": "8c0f2b73f6e003588665173fea88055284f0d8bec114f003574487f43ba7a92b",
+          "vpm_velocity": "edb274a9a0a4231a91b8bd63c1b2a0b030219e557d568b94ef251a16c4d4c209",
+          "vpm_vortex_strength": "91dd92b685cb901f016ce5a81b13ea90409373a434ea3e555cf747b53efa246a",
+          "vpm_core_radius": "12e36c299590304616c1c6c17bca1373800b494d077bedb5f1777e2177fa3efb",
+          "vpm_particle_volume": "3e13fbcdde4f9222620e116668b5d53631165c3dd3324cf0bfedcb907c7fd77a",
+          "vpm_kinematic_viscosity": "739db05815de453f446706e3c53b757c72ba57309afada3d9ce30722395e2814",
+          "vpm_eddy_viscosity": "13250c34d457b8593a7f554ed1091bdfdac188015d417cb7eafe339147fc1d51",
+          "vpm_group_id": "4ced2e0fa2ff79243133ecfdc2c3ea559d0f26af3b035ba93e7834fa7e192429",
+          "vpm_zone_id": "4ced2e0fa2ff79243133ecfdc2c3ea559d0f26af3b035ba93e7834fa7e192429",
+          "vpm_velocity_gradient": "40cb2c5d150b62f7512791821a90c55a14384a7eb9eee792067f99c49a6b654a",
+          "vpm_strain_rate": "40cb2c5d150b62f7512791821a90c55a14384a7eb9eee792067f99c49a6b654a",
+          "post_trace_velocity_boundary_condition": "f7eff5066061e5716c0ffa2d66ecae1e836251b741691a9aa44f313a0797b778",
+          "post_trace_normal_velocity_boundary_condition": "67b7e4bfd11da5deccd93f77cb6d1802f3f2d5243b1a3e51aa87736ce7b942a9",
+          "post_trace_tangential_gradient_boundary_condition": "8b17ad4c22312a08e22d34dcb5e775b7f3d22b1369c4b8b91662f8d7b0a56a5e",
+          "clocks": "0469998e6298c861626238144fe597209cdc0eddfde2797de54f504b7fdf95de",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1111484724291758,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000016-sweep-01.npz",
+        "sha256": "b6c3589741e860dbad3b7400a0b4eb81be42a9ef8d63dee97251ced0c8f50ea5"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 2,
+      "normal_residual_rms": 9.031085481708365e-07,
+      "gradient_residual_rms": 1.6651878929920472e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.145993020511219,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000016-sweep-02.npz",
+        "sha256": "7fc967696582f84e02c344fe2aae33d7974a573d4792c0de9c6c0119b3159a75"
+      }
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_time": 0.8,
+      "sweep": 3,
+      "normal_residual_rms": 2.6312769402615398e-08,
+      "gradient_residual_rms": 1.8223131083734106e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 80,
+      "accepted_transfer_step": 17,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1461088741970462,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000016-sweep-03.npz",
+        "sha256": "87a4909c54ea71b2748df3c14f2811529aa1efe1b793a23a16bb55e472f3d40f"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007672889584665639,
+      "gradient_residual_rms": 0.0040653618071897785,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "6cb1ac12e864dd4151b1a36c81a77d915bb03f32db09927e0e3bc2bcea66ce19",
+          "fvm_kinematic_pressure": "df2e0020b72b6ee60a0b43980789eb900c77f19b65cab443950f3a47220c4155",
+          "fvm_volumetric_face_flux": "56d3aff1131fc58039db567c446fe33e2352f8573e17c5d2f4f536beed5903d0",
+          "fvm_volumetric_face_flux_old": "56d3aff1131fc58039db567c446fe33e2352f8573e17c5d2f4f536beed5903d0",
+          "fvm_volumetric_face_flux_older": "fd897838fca3974b04d094e63fbc956e3104ac38abc037830342539480c90f89",
+          "fvm_velocity_old": "6cb1ac12e864dd4151b1a36c81a77d915bb03f32db09927e0e3bc2bcea66ce19",
+          "fvm_velocity_older": "e263b8e306345521cdc2b37db5245d58dbf8efbd7ade6f8dac826d3e20738541",
+          "vpm_position": "aaa091ea7f680d31b341691de85f71c443891e97fb624068279433c9c404c7dc",
+          "vpm_velocity": "99ae3afb2c5e68d65c5bce5235f65d980fd03dcaa9db9a324b57078a04bc039b",
+          "vpm_vortex_strength": "6492620810a34885dfc3083f04282ae4b3321c22ad2577189df9714a721bfc38",
+          "vpm_core_radius": "27b784997b2ff1a8f8be36801dd172417f129b8fd9b5a59cb028a7b4ccc3a248",
+          "vpm_particle_volume": "637c0e75750d587bb0cd0284a4d6fe3e6b03c94784866a01bdd572a7305b640d",
+          "vpm_kinematic_viscosity": "e128c16b9cbe298cf0dc850b30a125a35a794e4d76f37f9a0cc0914adb9b1be0",
+          "vpm_eddy_viscosity": "bc7b795981c7bcfdcdd7ea3dd7b05903ac901613505f927616b1ede6e6fc7f49",
+          "vpm_group_id": "ff1fb1e0156a70c88637bb030cdd6b285120e6c656fb7f222abed4a4d606ab6d",
+          "vpm_zone_id": "ff1fb1e0156a70c88637bb030cdd6b285120e6c656fb7f222abed4a4d606ab6d",
+          "vpm_velocity_gradient": "30deb711eed6c9c4ff7a0bb34a2125f2f1ff0a8627ed47708b9d2bca51efd5c5",
+          "vpm_strain_rate": "30deb711eed6c9c4ff7a0bb34a2125f2f1ff0a8627ed47708b9d2bca51efd5c5",
+          "post_trace_velocity_boundary_condition": "059a6916db04894cab862063c4cd9eac9d4ced7062460ce4d1a07b6ef3a7b52e",
+          "post_trace_normal_velocity_boundary_condition": "d0478f956fa96122e7b047b49419092c000011feedaa98d67e8792eb4a88ff3f",
+          "post_trace_tangential_gradient_boundary_condition": "11953ea0fa19a227e005448ce44a3c2d418fa7ac770a35a2a667b2c8da1629dd",
+          "clocks": "86fd4cbf36e9f83fdb379daf2faae396897a99a9335dbcda85ec491010eae829",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0952336519067882,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000017-sweep-01.npz",
+        "sha256": "a4152429bcb2c453469cc87778414a42ba6f52e62130045a98ef76d4f0646b5b"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 2,
+      "normal_residual_rms": 1.0593075708683685e-06,
+      "gradient_residual_rms": 2.9825526215331653e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1293899064513335,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000017-sweep-02.npz",
+        "sha256": "7d51cc6ba0e850b0cb0fbac6289a5d9d4fb6ec59ce3bc549bde9460f21d37718"
+      }
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_time": 0.85,
+      "sweep": 3,
+      "normal_residual_rms": 2.5646047880261297e-08,
+      "gradient_residual_rms": 1.7653675407319304e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 85,
+      "accepted_transfer_step": 18,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1295022260862904,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000017-sweep-03.npz",
+        "sha256": "fb1a2ae5df74c6d7bf28626aa613983875877e98bbb544bbeff9c936c87c246e"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007555173013311211,
+      "gradient_residual_rms": 0.004112825290476622,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "48ed19f3c8a2fec492ebd98c39bd4440dcd71ba6c385b4e2febee9aa2de2838a",
+          "fvm_kinematic_pressure": "864cb432c28bc6061ae189b1ff8985ff4f789b33db548c31a848872417b3855b",
+          "fvm_volumetric_face_flux": "34ed0fe7171b6b5374eb8d00382efeb8c24f8517eab67f24a44208fb2407d14a",
+          "fvm_volumetric_face_flux_old": "34ed0fe7171b6b5374eb8d00382efeb8c24f8517eab67f24a44208fb2407d14a",
+          "fvm_volumetric_face_flux_older": "c62a1cfcbe69ed6491a83e500e356e6772114a3ac618ece9884c1854aff67db7",
+          "fvm_velocity_old": "48ed19f3c8a2fec492ebd98c39bd4440dcd71ba6c385b4e2febee9aa2de2838a",
+          "fvm_velocity_older": "93bf2f213350383222b45a996a5922cb93eb040d046d0a0dd92f63223f31154a",
+          "vpm_position": "645c1ddda91a4c7ccae216822d14aeab3cd7ab2124991028e029407d5ce6ca64",
+          "vpm_velocity": "cf646f651438f3a4e97988be9ae2feb64ad0c96b6b3eb1876942482b7a084dce",
+          "vpm_vortex_strength": "51c0bfffecf4b33666868fd2c3c1bd8231ba5a96325f6ae6be9ed7237bd2e03e",
+          "vpm_core_radius": "d1fe0d3de2441863cab7cf7596163162d35fb9b224d9e03adca76ed2d91f3b49",
+          "vpm_particle_volume": "d1c04d11600ed771e01e162e8816adb908ad425ef792cffc0aee2216794e3c44",
+          "vpm_kinematic_viscosity": "e417b9ad850f756129d9266a2dab07a9d07e5e5f1b88ee02f82953a5d053f9e0",
+          "vpm_eddy_viscosity": "112b0cdfe374e561faf1a910da2daf7445819a1aeb42f0ddb202b9504c29acfd",
+          "vpm_group_id": "feae7bce759c5fa0a5a81adbacafd2399ee21605699686ef84593ffdd3c1cd48",
+          "vpm_zone_id": "feae7bce759c5fa0a5a81adbacafd2399ee21605699686ef84593ffdd3c1cd48",
+          "vpm_velocity_gradient": "29d67dce28b0de756b45c2f68e90542ac247e1ea356ef6568755d3656cfb7147",
+          "vpm_strain_rate": "29d67dce28b0de756b45c2f68e90542ac247e1ea356ef6568755d3656cfb7147",
+          "post_trace_velocity_boundary_condition": "1102c30b8f9875449c470f1097589b3f646df536a4d9933707773e2a3a862455",
+          "post_trace_normal_velocity_boundary_condition": "aad29cfd6f195f5f2fec360a60e9fb2c6c4fa45738c141bb5d8dda3aa91803c8",
+          "post_trace_tangential_gradient_boundary_condition": "9df5c53ac2642a41b9ed2034e6f2f7b2bbe39220749da9c4036ab3f49db2896e",
+          "clocks": "b424a491486f52d00770fa3a3c5697d3987ef1409753a7a1934ca1000f570c4f",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0804708854907834,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000018-sweep-01.npz",
+        "sha256": "4d38f3399c589dd834b8a4c528e76c518edb55dff62be6ae2abcde1d47f533b5"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 2,
+      "normal_residual_rms": 8.891760608343956e-07,
+      "gradient_residual_rms": 1.4985199750804333e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1147272835987985,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000018-sweep-02.npz",
+        "sha256": "557ae2b818faff41a9e9c3f703bde96dd41dfe0e8ca0ce99002f44be09a9c257"
+      }
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_time": 0.9,
+      "sweep": 3,
+      "normal_residual_rms": 2.6014164545898272e-08,
+      "gradient_residual_rms": 1.744969561351868e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 90,
+      "accepted_transfer_step": 19,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1148433024921791,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000018-sweep-03.npz",
+        "sha256": "b00787a303de941fbccab04f32f94e6962cd74dc24d0b1171579704c0339b9fd"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007409728030879202,
+      "gradient_residual_rms": 0.0043152690625697715,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "e9ab547de9e666d4d0cc78a1e85c3fca3311d13174aa60c76ae33fea6159e039",
+          "fvm_kinematic_pressure": "80939f82597bc617a34f7fc021bf02e6ae670bd45485298a7de3759585b139d2",
+          "fvm_volumetric_face_flux": "8de0cfe4364cf7ac6de18930398ff39358b1e7b3faf11264b297c612da3cb12e",
+          "fvm_volumetric_face_flux_old": "8de0cfe4364cf7ac6de18930398ff39358b1e7b3faf11264b297c612da3cb12e",
+          "fvm_volumetric_face_flux_older": "ecad7c624d9e58de30d2f1edd7987a6afc59f8d20c46e6e603b2cc7b61d22514",
+          "fvm_velocity_old": "e9ab547de9e666d4d0cc78a1e85c3fca3311d13174aa60c76ae33fea6159e039",
+          "fvm_velocity_older": "bab4003c4629d9a9ad4b255b3431254dec587ddf43aaf84e091ec4ac7b0290b0",
+          "vpm_position": "a7d672b16a541a267a05bffd84afd8e85604ef970b196b7a8b850d854d2f3cdb",
+          "vpm_velocity": "598606d7cbf530c00a52054a72f58cbef2d0653b252a1da6d69b110c63e38693",
+          "vpm_vortex_strength": "5f59a58d375ea6d8227cd8aebf136323673d842167d7502a7385d00d4b3024a8",
+          "vpm_core_radius": "50de20706b134acfe71c20eebf0c8177aa07aff158246b3d49b2d98b249b8e0b",
+          "vpm_particle_volume": "dca803cb2f1673a52a76154907d01a38d299ccf84a7765695b56e4045169cf8e",
+          "vpm_kinematic_viscosity": "b24b269e27bc619921b9937f602a21d3aa0d828ad874f9352f93857eb70040af",
+          "vpm_eddy_viscosity": "0c9e4497933abc12d9563a94572cec252d9b891ac2489c9dd246c8a40cbfd54e",
+          "vpm_group_id": "6b6654e6973b4f1b7bd790898a4b1af55f079fb402f467371e358aa22f332066",
+          "vpm_zone_id": "6b6654e6973b4f1b7bd790898a4b1af55f079fb402f467371e358aa22f332066",
+          "vpm_velocity_gradient": "5e3ddfc65d54b2f03dd13fe37fb96d6e79813fea256942a3043f31d0b2192169",
+          "vpm_strain_rate": "5e3ddfc65d54b2f03dd13fe37fb96d6e79813fea256942a3043f31d0b2192169",
+          "post_trace_velocity_boundary_condition": "96268c5a35380835ea3f00b9687c37498a6562fe2aaaa4f5b2f490aec75027a4",
+          "post_trace_normal_velocity_boundary_condition": "d847f6749a426cdcd1406fac06137b0ff8ee1d6aa420170b93c4b457ee243777",
+          "post_trace_tangential_gradient_boundary_condition": "41fea31a7a0d5dc8aaaf5f297353d685db1b6ff2fc1514101e75e17f09150af9",
+          "clocks": "3ab8cdafac4f99099c90f10271f311abd9f74fed2bdf9ce5322a15e673dd1a28",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.066936395538462,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000019-sweep-01.npz",
+        "sha256": "a7ecc36e72609503d44da2361e0c92af2e35d8cb9f4554ede737eeb767847fe9"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 2,
+      "normal_residual_rms": 1.077728209721055e-06,
+      "gradient_residual_rms": 2.2126038080942113e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.1011797178870946,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000019-sweep-02.npz",
+        "sha256": "9e0b41be324a968e4e4b997ccb41f0d8e4aca7500d4c73fd0e4990e770b21629"
+      }
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_time": 0.95,
+      "sweep": 3,
+      "normal_residual_rms": 2.6995032919695637e-08,
+      "gradient_residual_rms": 1.8365517340699044e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 95,
+      "accepted_transfer_step": 20,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.101300765696625,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000019-sweep-03.npz",
+        "sha256": "86cd17eef87f14854f771767cfe7cffe062a305c981b9e981e45d1952cf231e2"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 1,
+      "normal_residual_rms": 0.0007118428092924367,
+      "gradient_residual_rms": 0.004428295183637539,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "bbf0da56132b8f98d02942e2236c3c01500e02b7d82986f9103168cc2d98bc27",
+          "fvm_kinematic_pressure": "b2162f92ea3bf7c693953a23eb8663fe0c69ab55cef489eb8bbaa3cf303ac82c",
+          "fvm_volumetric_face_flux": "95aacf43d7f80b1e8d04562d68cc662ca0e1bdb2ce0da6c8ddc8e5918e58a48c",
+          "fvm_volumetric_face_flux_old": "95aacf43d7f80b1e8d04562d68cc662ca0e1bdb2ce0da6c8ddc8e5918e58a48c",
+          "fvm_volumetric_face_flux_older": "35bebe9ed45ba9fc09f3079119dac103216178a6621a90b2976c6b4ecc17cbb5",
+          "fvm_velocity_old": "bbf0da56132b8f98d02942e2236c3c01500e02b7d82986f9103168cc2d98bc27",
+          "fvm_velocity_older": "fb12dee128f90c8b4df2ad18282468a27228dd7f3f61adeb79f085ffe2660c2c",
+          "vpm_position": "2e2c1540d2e7d68d50f1709d909ec903ebaee044c09a00c352c30a95bd9693d9",
+          "vpm_velocity": "7e5b866992d2652b902a0c64763b7d9604bd636710b68f05d4836ce053e94322",
+          "vpm_vortex_strength": "44f0b557d5cc44a8d7d17fb78342c9bb4cef914f546a024f36b2dafb8f333741",
+          "vpm_core_radius": "1fa43bd47867f5eb8817a4fdaa6c529c7edd3b6c29a987e41439dc3809b51fe6",
+          "vpm_particle_volume": "10fc68a2c0d96fac18ca550c0643bfc3eb86e88f82ab92752d3d3df67b91a7c5",
+          "vpm_kinematic_viscosity": "a12aa5af07028c025c0add7bba4a5ded19e543f0ef7fb62d3845ac946b9f6e8c",
+          "vpm_eddy_viscosity": "c31002c6e8cdfd10dc6d8792548d53c7f79f3731c8691492bdab35ae36cca54f",
+          "vpm_group_id": "93bf0d13f3f30ff6bead155b92520f1c8a919a32adf05593e68ed8d89cb50be5",
+          "vpm_zone_id": "93bf0d13f3f30ff6bead155b92520f1c8a919a32adf05593e68ed8d89cb50be5",
+          "vpm_velocity_gradient": "13114ad508b3ddface559710c2322339822af4eaf67ff600a126309d1a274724",
+          "vpm_strain_rate": "13114ad508b3ddface559710c2322339822af4eaf67ff600a126309d1a274724",
+          "post_trace_velocity_boundary_condition": "e74951bffa26b3d677a716db058aa68ba2dbb4dd6b20ae679a2f03549d789bdb",
+          "post_trace_normal_velocity_boundary_condition": "5dff049bc9c57f355eb75db4fc05e141035d945963ae9a04247672fef7ce9ccf",
+          "post_trace_tangential_gradient_boundary_condition": "2d818bb939fd15bf6a760e5cf63ae3ed9631b099ea88b32528d6145749ad3b02",
+          "clocks": "8919c378fc86a09be11a97424d1eec0d8609bdfe6ee3238b96735f0980d5fba8",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.053398541223406,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000020-sweep-01.npz",
+        "sha256": "bdaafed84936dc65e0317a208c9191bc6217570819a8a92e4c7dcf5815c976ce"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 2,
+      "normal_residual_rms": 9.221797286215198e-07,
+      "gradient_residual_rms": 1.5234032968322442e-06,
+      "converged": false,
+      "map_evaluations": 3,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.087729032890373,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000020-sweep-02.npz",
+        "sha256": "741517c9a89821fabf8fa4ab697cb51bc918438dc31eac1b1ec57f1a8c02eebd"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_time": 1.0,
+      "sweep": 3,
+      "normal_residual_rms": 2.6285520471981473e-08,
+      "gradient_residual_rms": 1.8046006122514402e-08,
+      "converged": true,
+      "map_evaluations": 4,
+      "map_replay": null,
+      "accepted_fvm_step": 100,
+      "accepted_transfer_step": 21,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 1.0878488128981725,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/boundary-step-000020-sweep-03.npz",
+        "sha256": "c12dbb6cc82cab3cc1a7acccb05be21cd24cb0c6288879831d9d9788d6a92dd0"
+      }
+    }
+  ],
+  "limitations": [
+    "Only interface consistency is changed. The FVM start and advected VPM predictor are fixed within every interval; particle renewal never uses a prior sweep as its starting cloud.",
+    "The first endpoint map in each interval is replayed from the saved states and required to match numerical fields and clocks bitwise.",
+    "Zero sweeps selects the original unmodified partitioned algorithm. One sweep tests the wrapper and replay path without a numerical correction.",
+    "The fixed tolerances measure interface residuals; they are not acceptance tolerances for force or velocity agreement with the reference.",
+    "A completed bounded run can contain unconverged intervals; convergence flags are explicit and no production mode is changed.",
+    "Serial buffered-M4 mixed/flux-pressure study without a consistency band; no developed-wake validation is implied."
+  ],
+  "converged_intervals": 20,
+  "observed_intervals": 20,
+  "comparison": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705,
+      "drag_coefficient_difference": 0.0,
+      "particles": 6429
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_flow_time": 0.05,
+      "physical_time": 0.55,
+      "fvm_velocity_rms_over_Uinf": 0.0024131971523165124,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.000725022422079316,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0367760390177974,
+      "full_drag_coefficient": 1.5090799958339747,
+      "hybrid_drag_coefficient": 1.4865796525069046,
+      "drag_coefficient_difference": -0.02250034332707007,
+      "particles": 22038
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_flow_time": 0.1,
+      "physical_time": 0.6,
+      "fvm_velocity_rms_over_Uinf": 0.0026211007994463263,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006953021229192986,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03568643293070215,
+      "full_drag_coefficient": 1.486079170256125,
+      "hybrid_drag_coefficient": 1.4810276202638941,
+      "drag_coefficient_difference": -0.005051549992230786,
+      "particles": 22392
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_flow_time": 0.15,
+      "physical_time": 0.65,
+      "fvm_velocity_rms_over_Uinf": 0.0027285477416582843,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006618998560634094,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0348456747320656,
+      "full_drag_coefficient": 1.4650546185458297,
+      "hybrid_drag_coefficient": 1.4603851866154178,
+      "drag_coefficient_difference": -0.004669431930411916,
+      "particles": 22586
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_flow_time": 0.2,
+      "physical_time": 0.7,
+      "fvm_velocity_rms_over_Uinf": 0.002854689300819506,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006300602333453219,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.034174257176124316,
+      "full_drag_coefficient": 1.4436512495695992,
+      "hybrid_drag_coefficient": 1.4387247974673472,
+      "drag_coefficient_difference": -0.004926452102252066,
+      "particles": 22648
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_flow_time": 0.25,
+      "physical_time": 0.75,
+      "fvm_velocity_rms_over_Uinf": 0.0029708633710832113,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005912841705185466,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03361249307695976,
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.407420296171578,
+      "drag_coefficient_difference": -0.004470004002590677,
+      "particles": 22882
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_flow_time": 0.3,
+      "physical_time": 0.8,
+      "fvm_velocity_rms_over_Uinf": 0.003076775719282569,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005524831799834017,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0331622361846866,
+      "full_drag_coefficient": 1.3814860276095515,
+      "hybrid_drag_coefficient": 1.3781614486364202,
+      "drag_coefficient_difference": -0.0033245789731313202,
+      "particles": 23072
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_flow_time": 0.35,
+      "physical_time": 0.85,
+      "fvm_velocity_rms_over_Uinf": 0.003197139546483211,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005095194352659093,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03280928790647131,
+      "full_drag_coefficient": 1.3528429561245168,
+      "hybrid_drag_coefficient": 1.3506212454035655,
+      "drag_coefficient_difference": -0.002221710720951231,
+      "particles": 23284
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_flow_time": 0.4,
+      "physical_time": 0.9,
+      "fvm_velocity_rms_over_Uinf": 0.003377499145988589,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0004766362626523913,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032520974536981065,
+      "full_drag_coefficient": 1.3251828343240502,
+      "hybrid_drag_coefficient": 1.3244910661403182,
+      "drag_coefficient_difference": -0.0006917681837319556,
+      "particles": 23523
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_flow_time": 0.45,
+      "physical_time": 0.95,
+      "fvm_velocity_rms_over_Uinf": 0.003641794924560724,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00048219969180542593,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03228996184288157,
+      "full_drag_coefficient": 1.299674528453869,
+      "hybrid_drag_coefficient": 1.300742247625377,
+      "drag_coefficient_difference": 0.0010677191715078305,
+      "particles": 23757
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_flow_time": 0.5,
+      "physical_time": 1.0,
+      "fvm_velocity_rms_over_Uinf": 0.004008586352163559,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005488150103313493,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032111904046831986,
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.275989062408383,
+      "drag_coefficient_difference": 0.003117313088041085,
+      "particles": 24069
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_flow_time": 0.55,
+      "physical_time": 1.05,
+      "fvm_velocity_rms_over_Uinf": 0.0044910124268169455,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006657973590233574,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03196488607051235,
+      "full_drag_coefficient": 1.2463331973842469,
+      "hybrid_drag_coefficient": 1.2510138685267638,
+      "drag_coefficient_difference": 0.004680671142516912,
+      "particles": 24445
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_flow_time": 0.6,
+      "physical_time": 1.1,
+      "fvm_velocity_rms_over_Uinf": 0.005053947811029528,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0008037355104450008,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0318333950928851,
+      "full_drag_coefficient": 1.2228278165771698,
+      "hybrid_drag_coefficient": 1.228476995527727,
+      "drag_coefficient_difference": 0.0056491789505572765,
+      "particles": 24818
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_flow_time": 0.65,
+      "physical_time": 1.15,
+      "fvm_velocity_rms_over_Uinf": 0.005613980476114682,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0009405955166390685,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031719850489749034,
+      "full_drag_coefficient": 1.200371041321157,
+      "hybrid_drag_coefficient": 1.2070848590451995,
+      "drag_coefficient_difference": 0.006713817724042448,
+      "particles": 25274
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_flow_time": 0.7,
+      "physical_time": 1.2,
+      "fvm_velocity_rms_over_Uinf": 0.006116043405311855,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0010800881101542116,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03162531655052862,
+      "full_drag_coefficient": 1.1793654420697106,
+      "hybrid_drag_coefficient": 1.1848023199268107,
+      "drag_coefficient_difference": 0.00543687785710012,
+      "particles": 25670
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_flow_time": 0.75,
+      "physical_time": 1.25,
+      "fvm_velocity_rms_over_Uinf": 0.006516050089444026,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0012078629826455282,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0315384425709835,
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1652012610113192,
+      "drag_coefficient_difference": 0.005885326785043166,
+      "particles": 26253
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_flow_time": 0.8,
+      "physical_time": 1.3,
+      "fvm_velocity_rms_over_Uinf": 0.006801843565796562,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0013191447144582406,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031457830697661684,
+      "full_drag_coefficient": 1.1418336834682312,
+      "hybrid_drag_coefficient": 1.1461088741970462,
+      "drag_coefficient_difference": 0.004275190728814993,
+      "particles": 26688
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_flow_time": 0.85,
+      "physical_time": 1.35,
+      "fvm_velocity_rms_over_Uinf": 0.0070014559911048034,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0014322436147031605,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03138670805195602,
+      "full_drag_coefficient": 1.125024781496457,
+      "hybrid_drag_coefficient": 1.1295022260862904,
+      "drag_coefficient_difference": 0.004477444589833457,
+      "particles": 27096
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_flow_time": 0.9,
+      "physical_time": 1.4,
+      "fvm_velocity_rms_over_Uinf": 0.00716380725118928,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0015592374841821156,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0313310787289697,
+      "full_drag_coefficient": 1.1094366266728828,
+      "hybrid_drag_coefficient": 1.1148433024921791,
+      "drag_coefficient_difference": 0.005406675819296325,
+      "particles": 27606
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_flow_time": 0.95,
+      "physical_time": 1.45,
+      "fvm_velocity_rms_over_Uinf": 0.0073120800695491575,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0016909847754533766,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031281171182750166,
+      "full_drag_coefficient": 1.0938074851469775,
+      "hybrid_drag_coefficient": 1.101300765696625,
+      "drag_coefficient_difference": 0.007493280549647485,
+      "particles": 28102
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_flow_time": 1.0,
+      "physical_time": 1.5,
+      "fvm_velocity_rms_over_Uinf": 0.007462459906076393,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0018352666487396346,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03123169496112875,
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0878488128981725,
+      "drag_coefficient_difference": 0.007453472917865023,
+      "particles": 28572
+    }
+  ],
+  "elapsed_seconds": 1035.5008976660029
+}

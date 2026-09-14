@@ -1,11 +1,18 @@
 # Fixed-predictor interface iteration in the fully 3D cube
 
-The completed 20-interval matched-medium comparison improves drag agreement:
-RMS relative drag error falls from 2.082% to 0.555%, and final drag error changes
-from −2.096% to +0.756%. Final near-body FVM velocity error falls 2.50%; the
-whole-domain error falls only 0.30%. Twelve intervals converge, while eight
-reach the fixed 12-sweep cap. This is a verified bounded experiment, not a
-fully converged trajectory or the requested developed-wake force/profile match.
+The latest 20-interval matched-medium comparison, with
+[promoted auxiliary panel queries](panel-derivative-precision-3d.md), converges
+all 20 intervals in three sweeps each. RMS relative drag error falls from
+2.082% to 0.555%, and final drag error changes from −2.094% to +0.756%.
+Final near-body FVM velocity error falls 2.50%; the whole-domain error falls
+only 0.29%. This is a verified short transient, with remaining reference error
+despite interface convergence. The requested developed-wake force/profile
+match is still unachieved.
+
+The original native-query comparison documented below converged twelve
+intervals, while eight reached the fixed 12-sweep cap. Its force improvement
+motivated isolating the numerical derivative floor and repeating the complete
+comparison with corrected query precision.
 
 The first interval alone gave the opposite force conclusion: nine sweeps
 reduced both boundary residuals below the original `1e-6` thresholds and
@@ -162,10 +169,19 @@ then compares it with post-replacement VPM history and the replayed reference:
 
 Both cut fluxes remain conservative to roundoff. Closing the interface removes
 most of its replacement jump but leaves substantial reference boundary errors.
-The next experiment isolates the precision of the auxiliary panel queries used
-by derivative differences. It tests the small residual floor separately from
-the much larger boundary-reconstruction error. Production defaults remain
-unchanged, and developed-wake force/profile agreement remains unvalidated.
+The [auxiliary panel precision experiment](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/panel-derivative-precision-3d.md)
+now connects the small residual floor to single-precision query differences.
+In a matched frozen-source test, promoted queries converge the first three
+intervals in three sweeps each, while retaining the corrected drag to `6.28e-8`
+at the third endpoint. The complete promoted-query comparison now converges
+all 20 intervals in three sweeps each, with final drag `1.0885607282705918`
+against reference `1.0803953399803075`. Its
+[independent verification](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-twenty-step-verification.json)
+checks 243 source/artifact records and 138 independently recomputed metrics,
+with zero metric difference. Production defaults remain unchanged, and
+developed-wake force/profile agreement remains unvalidated.
+
+![Fully converged precision-corrected 3D interface trajectory](/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/interface-precision-frozen-workspace-qualified/studies/coupler_accuracy/results/precision-twenty-step-trajectory.png)
 
 ## Reproduction
 

@@ -4,7 +4,7 @@ Every figure is built from sampler output alone — the line CSVs and slice VTS
 files under ``samples/`` — so plotting needs no solver, no GPU and no raw
 field dumps. Three solutions are compared:
 
-``reference``  fully meshed FVM (reference_flow/samples/)
+``reference``  selected fully meshed FVM reference samples
 ``fvm``        the coupled run's FVM near field (samples/fvm_*)
 ``vpm``        the coupled run's VPM far field  (samples/vpm_*)
 """
@@ -12,6 +12,7 @@ field dumps. Three solutions are compared:
 from __future__ import annotations
 
 import json
+import os
 import matplotlib
 from functools import lru_cache
 from pathlib import Path
@@ -22,7 +23,12 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples"
+REFERENCE_SAMPLES = Path(
+    os.environ.get(
+        "OPENONDA_CUBE_REFERENCE_SAMPLES",
+        str(CASE_DIR / "reference_flow" / "samples"),
+    )
+)
 FIGURES = CASE_DIR / "figures"
 
 # Keep one publication theme: reference and coupled figures are intended to be

@@ -24,7 +24,7 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from .. import setup_les
+from . import legacy_les as setup_les
 
 
 ROOT = Path(__file__).resolve().parents[1]

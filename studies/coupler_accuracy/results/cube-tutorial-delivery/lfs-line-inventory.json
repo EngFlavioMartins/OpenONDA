@@ -1,0 +1,62 @@
+[
+  {
+    "path": ".git/lfs/objects/67/d9/67d984ed0c9d95c44a65433987913c4baaed0082e2e6cc0bb26a1cacabe0d688",
+    "bytes": 745842,
+    "rows": 3760,
+    "times": 10,
+    "first_time": 0.049999999999999996,
+    "last_time": 0.5000000000000003,
+    "last_x": "10.0",
+    "last_y": "0.75"
+  },
+  {
+    "path": ".git/lfs/objects/05/86/05866dd6ed273e96d8ba94c5b66663c3c1e03c5e7e3b50c1eb333a4af9fe8512",
+    "bytes": 29216781,
+    "rows": 150400,
+    "times": 400,
+    "first_time": 0.05,
+    "last_time": 20.000000000000327,
+    "last_x": "10.0",
+    "last_y": "0.75"
+  },
+  {
+    "path": ".git/lfs/objects/4b/39/4b39b16b9cb1e444495fcb40a0be11908f53646cf4ffd862cc48344d49fa0fe6",
+    "bytes": 29379693,
+    "rows": 150400,
+    "times": 400,
+    "first_time": 0.05,
+    "last_time": 20.000000000000327,
+    "last_x": "10.0",
+    "last_y": "0.0"
+  },
+  {
+    "path": ".git/lfs/objects/7d/ad/7dad0699b1dd176dfe5e0eaa9e43fc68d2a731a9221ab32c3522532a6d2dac3e",
+    "bytes": 749603,
+    "rows": 3760,
+    "times": 10,
+    "first_time": 0.049999999999999996,
+    "last_time": 0.5000000000000003,
+    "last_x": "10.0",
+    "last_y": "0.75"
+  },
+  {
+    "path": ".git/lfs/objects/a7/d2/a7d295a4cf1661e915515f8335b854ee7c5db5907bcbcdd069f5c96b27cad79c",
+    "bytes": 29530094,
+    "rows": 150400,
+    "times": 400,
+    "first_time": 0.05,
+    "last_time": 20.000000000000327,
+    "last_x": "10.0",
+    "last_y": "0.0"
+  },
+  {
+    "path": ".git/lfs/objects/4f/18/4f185a637aaa14e36d9c9793dc3fecf3dfe9c96d53d788caec18e09c70c612e8",
+    "bytes": 29367182,
+    "rows": 150400,
+    "times": 400,
+    "first_time": 0.05,
+    "last_time": 20.000000000000327,
+    "last_x": "10.0",
+    "last_y": "0.75"
+  }
+]

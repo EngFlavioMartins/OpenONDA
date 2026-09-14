@@ -617,13 +617,19 @@ def solve_momentum_predictor(
     # Solve for each component
     velocity_star = np.zeros((n_cells + n_boundary, 3))
     matrices_are_shared = all(mom_eqs[name]["A"] is mom_eqs["x"]["A"] for name in ("y", "z"))
+    parallel_context = solver_kwargs.pop("parallel_context", None)
+    component_diagonal = not matrices_are_shared
+    if parallel_context is not None and parallel_context.is_partitioned:
+        # A rank without mixed boundary faces may still exchange with one
+        # that has them. All halo messages and pressure operators need the
+        # same trailing shape; local matrix sharing remains independent.
+        component_diagonal = bool(parallel_context.global_max(int(component_diagonal)))
     # Standard boundaries retain the compact shared diagonal.  The
     # directional mixed condition returns component diagonals for the
     # pressure/Rhie-Chow vector path that already supports them.
-    momentum_diagonal = np.empty(n_cells if matrices_are_shared else (n_cells, 3), dtype=np.float64)
+    momentum_diagonal = np.empty((n_cells, 3) if component_diagonal else n_cells, dtype=np.float64)
     solve_diagnostics = {}
     linear_backend = solver_kwargs.pop("linear_backend", "scipy")
-    parallel_context = solver_kwargs.pop("parallel_context", None)
     partitioned_workspace = solver_kwargs.pop("partitioned_workspace", None)
 
     if solver == "spsolve" and linear_backend == "scipy" and matrices_are_shared:
@@ -651,7 +657,7 @@ def solve_momentum_predictor(
         if X.ndim == 1:
             X = X[:, np.newaxis]
 
-        momentum_diagonal[:] = diag_new
+        momentum_diagonal[:] = diag_new[:, None] if component_diagonal else diag_new
         for i_comp, comp_name in enumerate(["x", "y", "z"]):
             velocity_star[:n_cells, i_comp] = X[:, i_comp]
             b_relaxed = B[:, i_comp]
@@ -712,7 +718,7 @@ def solve_momentum_predictor(
                 shared_relaxed_diagonal = A_relaxed.diagonal() / under_relaxation
                 A_relaxed.setdiag(shared_relaxed_diagonal)
             diag_new = shared_relaxed_diagonal
-            momentum_diagonal[:] = diag_new
+            momentum_diagonal[:] = diag_new[:, None] if component_diagonal else diag_new
             component_ilu_key = shared_ilu_key
         else:
             diag_new = A_relaxed.diagonal() / under_relaxation

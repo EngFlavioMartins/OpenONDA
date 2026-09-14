@@ -1,0 +1,265 @@
+{
+  "schema": "openonda-interface-profile-observation-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "profile_every_fvm_steps": 25,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/fields.py",
+      "sha256": "fcd9a690aed2a29f137fdf611c32453f6d99bcade678d04ab39426c8b74ef6ee"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    }
+  ],
+  "frames": [
+    {
+      "fvm_step": 0,
+      "coupling_step": 0,
+      "physical_time": 0.5,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profiles-fvm-step-000000.npz",
+        "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_kinematic_pressure": "0ba076b81a82f50daa219d729d33d89bfdbb194241a79967278b6c8fe3b7aa40",
+        "full_volumetric_face_flux": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_old": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_older": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_velocity_old": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_velocity_older": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "small_velocity": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_kinematic_pressure": "8b437da3d75eb01414e3c1f056517ff7078718db57e1ad680c73130e0af118e0",
+        "small_volumetric_face_flux": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_old": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_older": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_velocity_old": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_velocity_older": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "vpm_position": "4169cec85c685416b5f73b7438b9754505fdeff8e8f11d073d8cdd59fe3e0388",
+        "vpm_velocity": "a26f2b829940490d8da8481b53c9c40a814220138a3d41db50522a7ed22dc482",
+        "vpm_vortex_strength": "7e48d2371b1ae95cbd0c023f901e72f1144c24cc034b731f10b52dbd0cd96e4c",
+        "vpm_core_radius": "645266c1f1d3935e14e95c0811ed8da26e44b3c631e82033d26f3a327a2fdc26",
+        "vpm_particle_volume": "9d94c05211a7998ad622e8be5221bdc87403c169513769de081f5ae7f4217a58",
+        "vpm_kinematic_viscosity": "866bfd0caf1c7eb00214cf764d791439bebfc22ff4783196dba85136a91bfb8f",
+        "vpm_eddy_viscosity": "a9c780506a4e590527f17d2ae51e9d4e37f9819956a9903071988b0943db244a",
+        "vpm_group_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_zone_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_velocity_gradient": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_strain_rate": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "panel_strength": "4337da3ffdc5114ec81278f6fb40ed1db44c139cadd829855a36e6915b095cb7"
+      }
+    },
+    {
+      "fvm_step": 25,
+      "coupling_step": 5,
+      "physical_time": 0.75,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profiles-fvm-step-000025.npz",
+        "sha256": "1eda9a1fa5bee62316916e2280e885fe967090447d970ff27886c847428f494e"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_kinematic_pressure": "2a055c227aa5bf4aa758f22d272a4cffcd1946b726d5363fa2c82eadcd664f78",
+        "full_volumetric_face_flux": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_old": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_older": "4e58eef3b5b10fbc5ce75ef891f4830d34b1220ce80b753b4d58c846b2a75946",
+        "full_velocity_old": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_velocity_older": "2a37e7f1f785988ce0abd70bf967ca241f572a507aa62b9e342c92e28e13b4d4",
+        "full_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "small_velocity": "a6da0c0567b636fb66b83da455a974272463d2dd9cf79e1afa3cdfb97898ff94",
+        "small_kinematic_pressure": "a0e3784ab5a1286985f93888a64248aa45de2396b87940892a07f1d29473d160",
+        "small_volumetric_face_flux": "57cc1f0184c37dafb891eecba1ceb2ac3bacd23e769c74c65d448dbf06c909a6",
+        "small_volumetric_face_flux_old": "57cc1f0184c37dafb891eecba1ceb2ac3bacd23e769c74c65d448dbf06c909a6",
+        "small_volumetric_face_flux_older": "43d8bb009cd6e5914f075451acee74618df9373d908af80ac0fb7b69d7967199",
+        "small_velocity_old": "a6da0c0567b636fb66b83da455a974272463d2dd9cf79e1afa3cdfb97898ff94",
+        "small_velocity_older": "7cb75c32787a94fd524d904ef5617877f36b84ec72a7986f8a0244130f6f0fa9",
+        "small_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "vpm_position": "eced626867446b2c7c7e1ff9c0d232f7dcbc213f79ececdb35207669f130e5fa",
+        "vpm_velocity": "184a16a65f68464c87fe2b2c0f0ec27277ef6eb27a5322126f108f057853f5b6",
+        "vpm_vortex_strength": "13bb2fb880bcd7eef5e5ebbbc0db8005fa042a75daf46cdee7a4d8894ac4a42c",
+        "vpm_core_radius": "ec063aab3c3863d1b7c7cec49f7f00e219592993d308168e131bb764e3fac175",
+        "vpm_particle_volume": "1ce913b8c6a7395c462d22c1600cbce6ecf714c2206d2243474622a58c7928a6",
+        "vpm_kinematic_viscosity": "30ef6123409812a3a7e8c43f06383c1a625f010f4a10115f6466d745ef3b86c1",
+        "vpm_eddy_viscosity": "1aec48c8807dba8341c6886b8842ec454b0cd3dfe97c6a4e1fd90eea8f9d14ed",
+        "vpm_group_id": "1a8922ab5101c7df47493f9e954b095c18912d332b712930c5eaa818fe55fba2",
+        "vpm_zone_id": "1a8922ab5101c7df47493f9e954b095c18912d332b712930c5eaa818fe55fba2",
+        "vpm_velocity_gradient": "5d00c60f4f34a38fab83585d526bda6fdac1217c5d799ff85e5dda8924f77ada",
+        "vpm_strain_rate": "fab21393ca4c7a3fd574ea494edba153557d3055521f1aa308a26ab6f51426eb",
+        "vpm_clock": "6d811476ad1efbfa75e85abed9088c3f915447c25cc4b06dfd5615ae75af5e62",
+        "panel_strength": "c497209b32835c20981dd1d7d01ec0bb58c96c543db1a432e7054362316ef249"
+      }
+    },
+    {
+      "fvm_step": 50,
+      "coupling_step": 10,
+      "physical_time": 1.0,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profiles-fvm-step-000050.npz",
+        "sha256": "ced6837df4a882baf075c6ae7e94ed6bb639cdbd1e6de46eba5e11af2cfb213e"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_kinematic_pressure": "aa7147a12e86130ba45f683c6ea17073febbe89b6a1d69076724c866e380e27e",
+        "full_volumetric_face_flux": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_old": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_older": "5b1609b61f50f535c54299c09b255f5aacc5bad738e77ead1204bc2156eca7f3",
+        "full_velocity_old": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_velocity_older": "18752bdd2322a8d3836d28041a3e362706f9ba83b91ffef8ec99a40557682449",
+        "full_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "small_velocity": "2c0b50f37c3b4f00948766e954be32293e05ead50a752b5df116fa7e2f6efdf6",
+        "small_kinematic_pressure": "60502bc61190cd405bfa6e4801ed3d8ad28db9d1cb134dd14de9b3836303dc06",
+        "small_volumetric_face_flux": "2f544bf16ab6a0ab8933ea78a3d7ee75aba78a72786eaa3139c551ea3bd031a2",
+        "small_volumetric_face_flux_old": "2f544bf16ab6a0ab8933ea78a3d7ee75aba78a72786eaa3139c551ea3bd031a2",
+        "small_volumetric_face_flux_older": "6e677c7a5d8bee7a58be31f3b6acf49f1fde157376e5f3e20cd67fde7cde9d71",
+        "small_velocity_old": "2c0b50f37c3b4f00948766e954be32293e05ead50a752b5df116fa7e2f6efdf6",
+        "small_velocity_older": "1c29ea86e77383784d30f466f6f6e05b02361600f647c2bc3f78d0cfe574acc1",
+        "small_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "vpm_position": "57154614256f578b5a09f55d8b14d111c90c2f7fdac84170069ea037c47f198e",
+        "vpm_velocity": "6f844f5a47204bd833791a50892314c3adfe3fb1c02c961c841cac19d8c96a81",
+        "vpm_vortex_strength": "ebdc1c977b72a953066252068a2f8e256f072115d1701db49f49d7358566673c",
+        "vpm_core_radius": "fef5052b4b69e634b628bd441a68e18ec9113fa82d9c20aa97ca094bbe5c70b8",
+        "vpm_particle_volume": "7487d28d1cc3e096d764e5a06ca1108a9e1c0d09a460601e131443ebf947f0a2",
+        "vpm_kinematic_viscosity": "18bca7f494d071f3b981e4b106c0c7e51301f00e0296fcff8c36fd1793e63289",
+        "vpm_eddy_viscosity": "5d123ba10b0b0cf1ae29502c493aa318cd0748592f62934b42b3c5b78bd7a29b",
+        "vpm_group_id": "e00d884e909fd12a6282c9be05f788aa2718354a52f74befe5993acba049c8dc",
+        "vpm_zone_id": "e00d884e909fd12a6282c9be05f788aa2718354a52f74befe5993acba049c8dc",
+        "vpm_velocity_gradient": "68acdfcfbeffa87213fddd8368e4bf7dc6659fa5d3b76ce6c1a246f15b959e88",
+        "vpm_strain_rate": "1454d435cf9a48d5dbeac018902be01cb1dc43fa40871b1f98c5c8fd5ac70c21",
+        "vpm_clock": "2ff68f07dbb642904b5de9da75543c9e82071cfbad44aa1e540440c04f41a0dc",
+        "panel_strength": "23358025828f71443d77d0704d7c1082ff107e3b43e1c3db551b82c3e250a287"
+      }
+    },
+    {
+      "fvm_step": 75,
+      "coupling_step": 15,
+      "physical_time": 1.25,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profiles-fvm-step-000075.npz",
+        "sha256": "9b73e37e35c25fbf81ab4f15dc41108c56d9e4b0624f8243c5173c41631ad103"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_kinematic_pressure": "2046d320e04c4cfa090e146fec24104329b2394d1bd732a98f4d930a1c0bd4fb",
+        "full_volumetric_face_flux": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_old": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_older": "e108a86e46c0b664d1c4cd7f89525ee83b8c389d1ab98b03ae5d2d8db981508a",
+        "full_velocity_old": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_velocity_older": "4210905d83be251b30d31ab4aa33f94807ad063b3da11e1ee364954d34c8f131",
+        "full_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "small_velocity": "dd27cee6cd79e0a402f7aa7bfe61790368b7108491a2548771f3f83f0e952794",
+        "small_kinematic_pressure": "aace691991542ce24bb3c104f5a6b352676a7284e12c3802dbb9ecf9c2e473cd",
+        "small_volumetric_face_flux": "d28f6f0c675232c01e13d145539a38d30eb2dab8806330bf22e65a2deca8c7b0",
+        "small_volumetric_face_flux_old": "d28f6f0c675232c01e13d145539a38d30eb2dab8806330bf22e65a2deca8c7b0",
+        "small_volumetric_face_flux_older": "46a32b91a3e5d4aa54af5420d7b09ae0362d5bb1a0600eb2ada60e62e9eb55ca",
+        "small_velocity_old": "dd27cee6cd79e0a402f7aa7bfe61790368b7108491a2548771f3f83f0e952794",
+        "small_velocity_older": "5250bb8bd41168f199ccc23734ea7b0674cf4777cf65582f44ac90b4ff338875",
+        "small_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "vpm_position": "6de31de86773a5da7a983646645af62eb98f5180d6ff9b33b52733edfadcb721",
+        "vpm_velocity": "d347b2cf34c900c915d555a0ef128f60b4db8276ba670afc291c34f2f59506e2",
+        "vpm_vortex_strength": "e15e690a19414a6ee16829b6284f074c7fec048cfd5107e869c0c40fa2756072",
+        "vpm_core_radius": "b917155aced36ebc5dacfe25c1a1514674fa907710a0b3723412f2bc2c3fcb15",
+        "vpm_particle_volume": "e0c1c1e10368e162ef8357de98bc7bbc518426eb4f410fe44dcce34f02ea4ccc",
+        "vpm_kinematic_viscosity": "e7fffdd9b450e1b523b9e05b5965fcc66d8200791fb4df4a8c3a852fbbe3584c",
+        "vpm_eddy_viscosity": "9e7d8001948ee127f825564be25353ceb4407b9f5b298a4cb810535b39af753d",
+        "vpm_group_id": "fd5846921e9b99faabdf1d3182e32d359e0e25407f58c54d12f441b6f517082b",
+        "vpm_zone_id": "fd5846921e9b99faabdf1d3182e32d359e0e25407f58c54d12f441b6f517082b",
+        "vpm_velocity_gradient": "95dd99f239fa89776a4b4600576817bec99d9943a86958e535f70a32c566edeb",
+        "vpm_strain_rate": "e05faec3de3f60795c925dbc40cf8ed51bef5e9a6726729d8915bd15d912993b",
+        "vpm_clock": "8ae79f58ec1b2b119fadc386288ef065f8dab8e2bbfa8f1045af5c0c3618e3f7",
+        "panel_strength": "598840401be7f691beceb2f3de1815433c3eb85a290d585571c5535194d034e8"
+      }
+    },
+    {
+      "fvm_step": 100,
+      "coupling_step": 20,
+      "physical_time": 1.5,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profiles-fvm-step-000100.npz",
+        "sha256": "b187cf82ad23ce7a851d3b5f329ca90d35c045c197e478d77d464b1a0267a676"
+      },
+      "observer_state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_kinematic_pressure": "4dc5943a6cf6be8f7d384e4e22baecd34ec5c505635b8fd033663d1379f42d82",
+        "full_volumetric_face_flux": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_old": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_older": "ecc3bb63b3a81a7989d0ab7380cca6d15cec23e88016f535e9e3d723bd78ccfa",
+        "full_velocity_old": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_velocity_older": "a7d4cbfa70e967c130ec376f6e23270e43d23a238af12d48bf530af6e86bb6c6",
+        "full_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "small_velocity": "68ce4b1ef58d1adf50cd80456f179f46404f1710aca4f602ce8fee62baa4f3b8",
+        "small_kinematic_pressure": "974b00af8e329dcf565ace6f9cce9196c4c3301ff64fb7cdc73fae24dec9ec7a",
+        "small_volumetric_face_flux": "9f09fe9fe29daa9196f570ac8b665ae0d16de5693a5e0da1bbb8ed7e1e27259d",
+        "small_volumetric_face_flux_old": "9f09fe9fe29daa9196f570ac8b665ae0d16de5693a5e0da1bbb8ed7e1e27259d",
+        "small_volumetric_face_flux_older": "f0884638d67f1d5042e3c3ac0ac57ef146f4e6dd70a5e2eaa567ad771869d1d8",
+        "small_velocity_old": "68ce4b1ef58d1adf50cd80456f179f46404f1710aca4f602ce8fee62baa4f3b8",
+        "small_velocity_older": "f2767bd590d46381b7ab31279135674956ead8bf8ba0a91249f606677fd8ecd1",
+        "small_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "vpm_position": "eb0caa882a6f1221e30009362e1ec7d092449e7d8547a21ee6f005f9b6fc885d",
+        "vpm_velocity": "64718b119c8f8dd0d5980a4ca51903b72f1581347f6aba8e6b56bf557ccbd744",
+        "vpm_vortex_strength": "6345887ab3ff02e18803353fff1a327df38a4d41aab77b293a5a2aa19c842390",
+        "vpm_core_radius": "3ef70a412b3665048a5580a6611074e002593c0bd45681c4fc6793ea6e6ad07a",
+        "vpm_particle_volume": "ee6bbf529b3c64d6b63012246a7aca917de336684a2bb4679512b162759677a9",
+        "vpm_kinematic_viscosity": "e5a5c63a3c709ede76919a7efe53496acb663a165a065d838add09dfdcbc20ea",
+        "vpm_eddy_viscosity": "b49cb27944f7404303590df2300ca81f215d436726e9e621f6575a62d7ddc0cd",
+        "vpm_group_id": "72e0288d5a857de8e94e44f352f888783bcdf803feeaedbed3c7ea3a38b566e6",
+        "vpm_zone_id": "72e0288d5a857de8e94e44f352f888783bcdf803feeaedbed3c7ea3a38b566e6",
+        "vpm_velocity_gradient": "440acf3f8663650ab8d66457055a79d9ed0cb3eda2120cdcd080b246dbb33418",
+        "vpm_strain_rate": "17de36dc76ca32feb720d43e99d851dd993577f6264e2e0fde57d413029e2778",
+        "vpm_clock": "8e52eb8d39defc5ebaa61cbccbb053665840cbd468aab3507e83b700d6bd52e7",
+        "panel_strength": "75ccda835a9fdf3b9be03a6040e50fccf82348a72c2476065328375c37a7347d"
+      }
+    }
+  ],
+  "sampling": {
+    "line_x_bounds": [
+      -3.0,
+      10.0
+    ],
+    "line_y": [
+      0.0,
+      0.75
+    ],
+    "line_z": 0.0,
+    "spacing": 0.0625,
+    "fvm_reconstruction": "affine",
+    "fvm_neighbours": 12,
+    "body_points_excluded": true,
+    "small_profile_bounds": [
+      -1.5,
+      1.5
+    ]
+  },
+  "limitations": [
+    "Profiles observe full 3D fields along two lines; this does not replace any 3D solver operation with a 2D approximation.",
+    "The same small-FVM stencil evaluates hybrid and reference cell fields. The full-reference line also uses its full mesh, and this separate stencil effect is retained.",
+    "Primary fields and clocks must be bitwise unchanged by each observation. A separate advancing control must still qualify any cache effects.",
+    "Only accepted coupling states are observed, including the common initial state. No reference field feeds the hybrid."
+  ],
+  "shared_cell_coordinate_maximum_difference": 8.881784197001252e-16,
+  "geometry": {
+    "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/profile-geometry.npz",
+    "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+  },
+  "cadence_report": {
+    "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/interface-cadence-3d.json",
+    "sha256": "99bf8ff8ece49cc0c7927d0d367f207209d9a9553e1ccafad1289ffc5e24c826"
+  }
+}

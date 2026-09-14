@@ -1,7 +1,0 @@
-{
-  "error": "HealthError: VPM accepted state at step 183: vorticity divergence error 1.242e-01 exceeds maximum=1.200e-01.",
-  "planned_steps": 400,
-  "status": "resolution_lost",
-  "step": 183,
-  "time": 1.427142374796
-}

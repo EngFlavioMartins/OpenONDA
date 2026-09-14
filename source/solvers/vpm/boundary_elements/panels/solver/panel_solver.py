@@ -176,6 +176,10 @@ class PanelSolver:
       never refreshed by a coupler. One-way, postprocessing-only aerodynamic
       force evaluation; the two names are not currently distinguished from
       each other.
+    - ``"fvm_vpm"``: the external coupler owns source-strength refresh, as in
+      ``"vpm_boundary_condition"``. The accepted body velocity and analytical
+      source Jacobian also enter each particle RK stage. Differentiated target
+      queries use f64 evaluation. No panel force history or shedding is advanced.
 
     Examples
     --------
@@ -198,7 +202,7 @@ class PanelSolver:
         density: float = 1.225,
         freestream_velocity: np.ndarray | None = None,
         logging_interval_steps: int = 1,
-        coupling_scope: Literal["full", "vpm_boundary_condition", "normal", "pressure"] = "full",
+        coupling_scope: Literal["full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"] = "full",
         raise_on_non_convergence: bool = True,
         memory_budget_bytes: int = 4 * 1024**3,
         diagnostic_interval_steps: int = 0,
@@ -242,10 +246,12 @@ class PanelSolver:
         logging_interval_steps : int, default=1
             Number of completed steps between force/diagnostic log records.
             Values below one are clamped to one.
-        coupling_scope : {"full", "vpm_boundary_condition", "normal", "pressure"}, default="full"
+        coupling_scope : {"full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"}, default="full"
             Controls whether panel motion, force evaluation, and panel-induced
             velocity participate in a VPM coupling step.  See the class
-            docstring for the exact scope semantics.
+            docstring for the exact scope semantics. ``fvm_vpm`` adds the solved
+            body field to particle RK transport, leaves panel refresh to the FVM
+            coupler, and uses analytical source gradients without wake shedding.
         raise_on_non_convergence : bool, default=True
             Raise when an iterative solve fails its residual criterion instead
             of returning the unconverged circulation.
@@ -299,10 +305,12 @@ class PanelSolver:
             None if freestream_velocity is None else np.array(freestream_velocity, dtype=np.float64)
         )
         self.logging_interval_steps = max(1, int(logging_interval_steps))
-        if coupling_scope not in ("full", "vpm_boundary_condition", "normal", "pressure"):
+        if coupling_scope not in ("full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"):
             raise ValueError(
-                "coupling_scope must be 'full', 'vpm_boundary_condition', 'normal', or 'pressure'"
+                "coupling_scope must be 'full', 'vpm_boundary_condition', 'fvm_vpm', 'normal', or 'pressure'"
             )
+        if coupling_scope == "fvm_vpm" and boundary_condition_type != "NEUMANN":
+            raise ValueError("fvm_vpm coupling requires Neumann source panels")
         self.coupling_scope = coupling_scope
         self.raise_on_non_convergence = raise_on_non_convergence
         self.memory_budget_bytes = memory_budget_bytes
@@ -1519,15 +1527,32 @@ class PanelSolver:
 
         return velocity
 
+    def compute_source_velocity_f64(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate the direct source field in f64 for differentiated queries.
+
+        Stored geometry and solved strengths retain their configured precision.
+        Promoting the evaluation avoids f32 cancellation in boundary differences.
+        """
+        if self.boundary_condition_type != "NEUMANN":
+            raise ValueError("Source velocity requires Neumann panels")
+        self._ensure_initialized()
+        points = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
+        count = self.lattice.n_panels
+        arrays = [np.ascontiguousarray(field.to_numpy()[:count], dtype=np.float64)
+                  for field in (self.lattice.vertex_position, self.lattice.normal,
+                                self.lattice.source_strength)]
+        velocity = np.zeros_like(points)
+        compute_source_induced_velocity_kernel(*arrays, points, velocity)
+        return velocity
+
     def compute_induced_velocity_gradient(
         self, points: np.ndarray, time: float | None = None
     ) -> np.ndarray:
         """Evaluate the target Jacobian of the panel velocity operator.
 
-        The centered difference deliberately calls :meth:`compute_induced_velocity`
-        rather than duplicating the source-panel formulas. This keeps the
-        stretching field consistent with the selected direct/far-field panel
-        velocity path, including the current solved strengths and body state.
+        The ``fvm_vpm`` scope uses the analytical direct source Jacobian in
+        f64. Other scopes use centered differences of
+        :meth:`compute_induced_velocity`, including its direct/far-field policy.
         ``time`` is accepted for the stage-provider protocol; panel strengths
         are the already-solved accepted-step field and are not re-solved for a
         temporary RK stage.
@@ -1542,6 +1567,15 @@ class PanelSolver:
         self._ensure_initialized()
         if self.lattice is None or self.lattice.n_panels == 0:
             return np.zeros((count, 3, 3), dtype=np.result_type(points, np.float64))
+
+        if self.coupling_scope == "fvm_vpm":
+            from ..kernels.source_gradient import source_panel_gradient
+
+            count = self.lattice.n_panels
+            return source_panel_gradient(
+                points, self.lattice.vertex_position.to_numpy()[:count],
+                self.lattice.source_strength.to_numpy()[:count],
+            )
 
         dtype = np.float32 if self.float_dtype == "f32" else np.float64
         points = np.asarray(points, dtype=dtype)

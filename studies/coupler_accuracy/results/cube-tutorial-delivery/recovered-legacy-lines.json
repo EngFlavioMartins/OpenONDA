@@ -1,0 +1,22 @@
+[
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/centreline.csv",
+    "sha256": "4b39b16b9cb1e444495fcb40a0be11908f53646cf4ffd862cc48344d49fa0fe6",
+    "bytes": 29379693,
+    "frames": 400,
+    "time_start": 0.05,
+    "time_end": 20.0,
+    "sampling_spacing": 0.04,
+    "mesh_resolution": "not recorded in CSV; not inferred from probe spacing"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/offaxis_y075.csv",
+    "sha256": "05866dd6ed273e96d8ba94c5b66663c3c1e03c5e7e3b50c1eb333a4af9fe8512",
+    "bytes": 29216781,
+    "frames": 400,
+    "time_start": 0.05,
+    "time_end": 20.0,
+    "sampling_spacing": 0.04,
+    "mesh_resolution": "not recorded in CSV; not inferred from probe spacing"
+  }
+]

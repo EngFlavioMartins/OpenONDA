@@ -1,0 +1,4379 @@
+{
+  "schema": "openonda-long-wake-prefix-verification-3d/2",
+  "status": "complete",
+  "scope": "fixed accepted prefix",
+  "spatial_dimensions": 3,
+  "run_directory": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated",
+  "captured_reports": [
+    {
+      "role": "iteration",
+      "original_path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/interface-iteration-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/interface-iteration-3d.json",
+        "sha256": "fd74e1951c6273cca40afc6aca9bcc2a32bf5acd138720d184ee9ccf4e940b11"
+      }
+    },
+    {
+      "role": "trial",
+      "original_path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/cube-coupled-trial.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/trial/cube-coupled-trial.json",
+        "sha256": "0a453a8e9f189e74e8c206d817f5fd6019a503a9bed273a1387161cb243f4a07"
+      }
+    },
+    {
+      "role": "history",
+      "original_path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/comparison-history.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/trial/comparison-history.json",
+        "sha256": "39b8f338cf740db946be377e03d127559e8fcae2b71c6a34341da029eec1ffd4"
+      }
+    },
+    {
+      "role": "profiles",
+      "original_path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profile-observation-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/profile-observation-3d.json",
+        "sha256": "3d914e6a404100931cdff144601833a9611303737aadeee9320c90e304ec3d6b"
+      }
+    },
+    {
+      "role": "checkpoints",
+      "original_path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/accepted-fvm-checkpoints-3d.json",
+        "sha256": "9153be1c364e3f1587243375b299e1f31b1cb1e7388a9475cf9d66d62b507356"
+      }
+    }
+  ],
+  "parent_status_at_capture": {
+    "iteration": "running",
+    "trial": "running",
+    "profiles": "running",
+    "checkpoints": "running"
+  },
+  "through_coupling_step": 70,
+  "physical_time_bounds": [
+    0.5,
+    4.0
+  ],
+  "frozen_original_files_verified": 799,
+  "recorded_short_prefix_equal_intervals": 20,
+  "converged_intervals": 70,
+  "replayed_intervals": 70,
+  "independent_scalar_checks": 480,
+  "maximum_scalar_check_difference": 0.0,
+  "independently_recomputed_wall_forces": 30,
+  "profile_frames": [
+    {
+      "coupling_step": 0,
+      "fvm_step": 0,
+      "physical_time": 0.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.7028547226505122,
+            1.0473423231762238e-05,
+            -1.4502841133768002e-05
+          ],
+          "viscous_force": [
+            0.09048424852984024,
+            -2.1125846023897653e-06,
+            -4.651829302161172e-07
+          ],
+          "pressure_drag_coefficient": 1.4057094453010244,
+          "viscous_drag_coefficient": 0.1809684970596805,
+          "drag_coefficient": 1.586677942360705,
+          "coefficient_vector": [
+            1.586677942360705,
+            1.6721677258744947e-05,
+            -2.9936048127968237e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.7028547226505122,
+            1.0473423231762238e-05,
+            -1.4502841133768002e-05
+          ],
+          "viscous_force": [
+            0.09048424852984024,
+            -2.1125846023897653e-06,
+            -4.651829302161172e-07
+          ],
+          "pressure_drag_coefficient": 1.4057094453010244,
+          "viscous_drag_coefficient": 0.1809684970596805,
+          "drag_coefficient": 1.586677942360705,
+          "coefficient_vector": [
+            1.586677942360705,
+            1.6721677258744947e-05,
+            -2.9936048127968237e-05
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.012104029906905274,
+          "streamwise_rms_over_Uinf": 0.012101805299094211,
+          "vector_maximum_over_Uinf": 0.10052231993370532
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004440157730750278,
+          "streamwise_rms_over_Uinf": 0.004420584475580475,
+          "vector_maximum_over_Uinf": 0.010511107070486183
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0009489108011433977,
+          "streamwise_rms_over_Uinf": 0.0009486893209616677,
+          "vector_maximum_over_Uinf": 0.001991502969048059
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0013795465606560055,
+          "streamwise_rms_over_Uinf": 0.0013790310798574494,
+          "vector_maximum_over_Uinf": 0.001991502969048059
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006947178971750098,
+          "streamwise_rms_over_Uinf": 0.0006947158096990728,
+          "vector_maximum_over_Uinf": 0.0011972642768240944
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.0021459875171103045,
+          "streamwise_rms_over_Uinf": 0.0021366803969561834,
+          "vector_maximum_over_Uinf": 0.01185557815627885
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0017613009049513265,
+          "streamwise_rms_over_Uinf": 0.001755050991522319,
+          "vector_maximum_over_Uinf": 0.010511107070486183
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0,
+          "streamwise_rms_over_Uinf": 0.0,
+          "vector_maximum_over_Uinf": 0.0
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.00300307996478038,
+          "streamwise_rms_over_Uinf": 0.0029851624437139345,
+          "vector_maximum_over_Uinf": 0.01185557815627885
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.01011995649702401,
+          "streamwise_rms_over_Uinf": 0.007340138505854659,
+          "vector_maximum_over_Uinf": 0.04406756805603429
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003493418881740469,
+          "streamwise_rms_over_Uinf": 0.003333698395542468,
+          "vector_maximum_over_Uinf": 0.0061758014914855795
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0014343819026307436,
+          "streamwise_rms_over_Uinf": 0.0014228102670175644,
+          "vector_maximum_over_Uinf": 0.005335221541738988
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0024135997371957257,
+          "streamwise_rms_over_Uinf": 0.0023918115419772697,
+          "vector_maximum_over_Uinf": 0.005335221541738988
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006981735736400417,
+          "streamwise_rms_over_Uinf": 0.000695868862714188,
+          "vector_maximum_over_Uinf": 0.0012145321191763172
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0017415507639284694,
+          "streamwise_rms_over_Uinf": 0.0016405802675092803,
+          "vector_maximum_over_Uinf": 0.006486522357935597
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0016553650745698564,
+          "streamwise_rms_over_Uinf": 0.001610435453943015,
+          "vector_maximum_over_Uinf": 0.0061758014914855795
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0,
+          "streamwise_rms_over_Uinf": 0.0,
+          "vector_maximum_over_Uinf": 0.0
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011174679509255473,
+          "streamwise_rms_over_Uinf": 0.0006465333605713568,
+          "vector_maximum_over_Uinf": 0.006486522357935597
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.3877787807814457e-16,
+        "panel_kernel_check_maximum_difference": 4.9812313562130894e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 2.909525374482019e-07,
+          "streamwise_rms_over_Uinf": 2.843700463160491e-07,
+          "vector_maximum_over_Uinf": 2.617833735017903e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000000.npz",
+          "sha256": "dd9edf6d7b3f2427b87ea9edf60aaa0e4ffd5b63405ccc0b42b96144fb541730"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000000.npz",
+        "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "fvm_step": 25,
+      "physical_time": 0.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.6422714882921403,
+            1.8428651258994508e-05,
+            6.036379868473599e-06
+          ],
+          "viscous_force": [
+            0.06367366179494409,
+            -9.706564375110344e-07,
+            2.968835680871197e-07
+          ],
+          "pressure_drag_coefficient": 1.2845429765842806,
+          "viscous_drag_coefficient": 0.12734732358988818,
+          "drag_coefficient": 1.4118903001741687,
+          "coefficient_vector": [
+            1.4118903001741687,
+            3.491598964296695e-05,
+            1.2666526873121438e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.6401011442636096,
+            -0.0001570264154886796,
+            -0.0001669058412662655
+          ],
+          "viscous_force": [
+            0.06370474040415153,
+            -9.689841058416036e-06,
+            -8.453280278064817e-06
+          ],
+          "pressure_drag_coefficient": 1.2802022885272193,
+          "viscous_drag_coefficient": 0.12740948080830305,
+          "drag_coefficient": 1.4076117693355223,
+          "coefficient_vector": [
+            1.4076117693355223,
+            -0.00033343251309419125,
+            -0.0003507182430886606
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.00794571316239028,
+          "streamwise_rms_over_Uinf": 0.00793995476379475,
+          "vector_maximum_over_Uinf": 0.04840808362052743
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0016764480898116595,
+          "streamwise_rms_over_Uinf": 0.0016282035645706551,
+          "vector_maximum_over_Uinf": 0.004586152596909409
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0024347714966333404,
+          "streamwise_rms_over_Uinf": 0.00243457082576056,
+          "vector_maximum_over_Uinf": 0.01680710318712314
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004386714869656071,
+          "streamwise_rms_over_Uinf": 0.0043863367592239105,
+          "vector_maximum_over_Uinf": 0.01680710318712314
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006165476026228798,
+          "streamwise_rms_over_Uinf": 0.0006165458870028191,
+          "vector_maximum_over_Uinf": 0.0009321949656231644
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.00452795898657608,
+          "streamwise_rms_over_Uinf": 0.004520671074310568,
+          "vector_maximum_over_Uinf": 0.04433300890484103
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.003304972049727734,
+          "streamwise_rms_over_Uinf": 0.0033012189224833253,
+          "vector_maximum_over_Uinf": 0.018434828931409443
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0061834218540414345,
+          "streamwise_rms_over_Uinf": 0.006181397003123357,
+          "vector_maximum_over_Uinf": 0.018434828931409443
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005324105499083254,
+          "streamwise_rms_over_Uinf": 0.005308865852177803,
+          "vector_maximum_over_Uinf": 0.025907645217920813
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.019582006042444595,
+          "streamwise_rms_over_Uinf": 0.018898187888952464,
+          "vector_maximum_over_Uinf": 0.12602278063154038
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0015523555733481039,
+          "streamwise_rms_over_Uinf": 0.0013264103004699726,
+          "vector_maximum_over_Uinf": 0.002471684977067901
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0009305545475414021,
+          "streamwise_rms_over_Uinf": 0.000877255385240587,
+          "vector_maximum_over_Uinf": 0.0049396452457853915
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0014166924506222127,
+          "streamwise_rms_over_Uinf": 0.0012972340688913253,
+          "vector_maximum_over_Uinf": 0.0049396452457853915
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006248834906671183,
+          "streamwise_rms_over_Uinf": 0.0006237472804489587,
+          "vector_maximum_over_Uinf": 0.0009614244093777336
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0014087104803908053,
+          "streamwise_rms_over_Uinf": 0.0011939637587707736,
+          "vector_maximum_over_Uinf": 0.00819529182629704
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0014423738711963653,
+          "streamwise_rms_over_Uinf": 0.0013087020732048728,
+          "vector_maximum_over_Uinf": 0.009753858336258485
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.002300001554236706,
+          "streamwise_rms_over_Uinf": 0.0020754508583125456,
+          "vector_maximum_over_Uinf": 0.009753858336258485
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0013308262003088852,
+          "streamwise_rms_over_Uinf": 0.0007022865161143273,
+          "vector_maximum_over_Uinf": 0.006648884676687646
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000025.npz",
+        "sha256": "f87a5352a1d0efadf4531a7521e000af51c6a7aa0769b98ef6874665052a4797"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "fvm_step": 50,
+      "physical_time": 1.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5902543249941322,
+            1.9744654326217103e-05,
+            6.641559332713006e-06
+          ],
+          "viscous_force": [
+            0.04618154966603874,
+            3.021559042876421e-07,
+            7.323052251141186e-07
+          ],
+          "pressure_drag_coefficient": 1.1805086499882644,
+          "viscous_drag_coefficient": 0.09236309933207748,
+          "drag_coefficient": 1.2728717493203419,
+          "coefficient_vector": [
+            1.2728717493203419,
+            4.009362046100949e-05,
+            1.4747729115654248e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5921504010152597,
+            -0.0001418031012279637,
+            -0.00016037471263015743
+          ],
+          "viscous_force": [
+            0.04621646278070631,
+            -8.789253494397631e-06,
+            -8.589435847303434e-06
+          ],
+          "pressure_drag_coefficient": 1.1843008020305195,
+          "viscous_drag_coefficient": 0.09243292556141262,
+          "drag_coefficient": 1.2767337275919322,
+          "coefficient_vector": [
+            1.2767337275919322,
+            -0.00030118470944472266,
+            -0.00033792829695492173
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.00820742272388715,
+          "streamwise_rms_over_Uinf": 0.008202310599495638,
+          "vector_maximum_over_Uinf": 0.061684385940107736
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0016559711645369203,
+          "streamwise_rms_over_Uinf": 0.0016054563852145151,
+          "vector_maximum_over_Uinf": 0.004361100915674607
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003980399168657504,
+          "streamwise_rms_over_Uinf": 0.003979619037121512,
+          "vector_maximum_over_Uinf": 0.02012522168673888
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.007265423826238393,
+          "streamwise_rms_over_Uinf": 0.007263973043021451,
+          "vector_maximum_over_Uinf": 0.02012522168673888
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006713730543369185,
+          "streamwise_rms_over_Uinf": 0.0006713623414264667,
+          "vector_maximum_over_Uinf": 0.0010217851198922963
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.008741564327649746,
+          "streamwise_rms_over_Uinf": 0.008738226048627507,
+          "vector_maximum_over_Uinf": 0.08957075106896932
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006828665612370813,
+          "streamwise_rms_over_Uinf": 0.006826318905605856,
+          "vector_maximum_over_Uinf": 0.058631442262391996
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.014504901218114548,
+          "streamwise_rms_over_Uinf": 0.01450344264338427,
+          "vector_maximum_over_Uinf": 0.058631442262391996
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006239059946131793,
+          "streamwise_rms_over_Uinf": 0.006231729380059912,
+          "vector_maximum_over_Uinf": 0.030941317317166744
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.024829515538071077,
+          "streamwise_rms_over_Uinf": 0.024021472564701257,
+          "vector_maximum_over_Uinf": 0.14860367495026036
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0018049678501618398,
+          "streamwise_rms_over_Uinf": 0.0015430581546685455,
+          "vector_maximum_over_Uinf": 0.002715853105359898
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0022131467048849434,
+          "streamwise_rms_over_Uinf": 0.001203279429381796,
+          "vector_maximum_over_Uinf": 0.014916310025154433
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003943414883509951,
+          "streamwise_rms_over_Uinf": 0.001955458113108036,
+          "vector_maximum_over_Uinf": 0.014916310025154433
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006778462840370107,
+          "streamwise_rms_over_Uinf": 0.0006766893297116521,
+          "vector_maximum_over_Uinf": 0.0010400696171943482
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0021565692904588945,
+          "streamwise_rms_over_Uinf": 0.0011802400367549827,
+          "vector_maximum_over_Uinf": 0.014916310025154433
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0021679169361593343,
+          "streamwise_rms_over_Uinf": 0.00121835427004178,
+          "vector_maximum_over_Uinf": 0.014916310025154433
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.002203666863201228,
+          "streamwise_rms_over_Uinf": 0.0010707651086732614,
+          "vector_maximum_over_Uinf": 0.008933884191647557
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0012432070362893644,
+          "streamwise_rms_over_Uinf": 0.0008984401733108679,
+          "vector_maximum_over_Uinf": 0.0068179036911155564
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000050.npz",
+        "sha256": "5fe5b8ca3a3d569f8a27c08b7fabb9752744817856c3e119e94800a9cd592ffc"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "fvm_step": 75,
+      "physical_time": 1.25,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5453500054286482,
+            2.344831604135896e-05,
+            4.8719711402520245e-06
+          ],
+          "viscous_force": [
+            0.03430796168448983,
+            9.852046164102523e-07,
+            6.376243432422682e-07
+          ],
+          "pressure_drag_coefficient": 1.0907000108572964,
+          "viscous_drag_coefficient": 0.06861592336897966,
+          "drag_coefficient": 1.159315934226276,
+          "coefficient_vector": [
+            1.159315934226276,
+            4.8867041315538425e-05,
+            1.1019190966988585e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5485583743319447,
+            -0.00031034937691330934,
+            -0.0003526467065161975
+          ],
+          "viscous_force": [
+            0.03440465363419872,
+            -1.156744873716176e-05,
+            -1.2148384071504326e-05
+          ],
+          "pressure_drag_coefficient": 1.0971167486638893,
+          "viscous_drag_coefficient": 0.06880930726839744,
+          "drag_coefficient": 1.1659260559322868,
+          "coefficient_vector": [
+            1.1659260559322868,
+            -0.0006438336513009422,
+            -0.0007295901811754037
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.00941045123418109,
+          "streamwise_rms_over_Uinf": 0.009400961747895318,
+          "vector_maximum_over_Uinf": 0.06134637069185942
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0017342640222699928,
+          "streamwise_rms_over_Uinf": 0.001686275134971889,
+          "vector_maximum_over_Uinf": 0.00457870052974798
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004127723617212865,
+          "streamwise_rms_over_Uinf": 0.004114142468645805,
+          "vector_maximum_over_Uinf": 0.01934806669900221
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.007529469391695687,
+          "streamwise_rms_over_Uinf": 0.007504174313132101,
+          "vector_maximum_over_Uinf": 0.01934806669900221
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007178203012845879,
+          "streamwise_rms_over_Uinf": 0.0007177336831999245,
+          "vector_maximum_over_Uinf": 0.0010751567334367892
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.013985169391211402,
+          "streamwise_rms_over_Uinf": 0.013978568784786418,
+          "vector_maximum_over_Uinf": 0.14538629900446662
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01204905351953872,
+          "streamwise_rms_over_Uinf": 0.01204189762575132,
+          "vector_maximum_over_Uinf": 0.11659569222805848
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.028220745134043393,
+          "streamwise_rms_over_Uinf": 0.028213027711130087,
+          "vector_maximum_over_Uinf": 0.11659569222805848
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005868469295097953,
+          "streamwise_rms_over_Uinf": 0.005860528827826149,
+          "vector_maximum_over_Uinf": 0.028822491833341325
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.027957633199172164,
+          "streamwise_rms_over_Uinf": 0.027080898556868647,
+          "vector_maximum_over_Uinf": 0.15975759156706895
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0021441539691401004,
+          "streamwise_rms_over_Uinf": 0.001875362101041912,
+          "vector_maximum_over_Uinf": 0.003036179795864627
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0035165642647178,
+          "streamwise_rms_over_Uinf": 0.002035655589923048,
+          "vector_maximum_over_Uinf": 0.0166537011547733
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.006386977522371948,
+          "streamwise_rms_over_Uinf": 0.003583542784508418,
+          "vector_maximum_over_Uinf": 0.0166537011547733
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007221727931337687,
+          "streamwise_rms_over_Uinf": 0.0007209541207855768,
+          "vector_maximum_over_Uinf": 0.0010823424279862597
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.00441246063467243,
+          "streamwise_rms_over_Uinf": 0.0024795913730059306,
+          "vector_maximum_over_Uinf": 0.033162087473153676
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.004289425381487641,
+          "streamwise_rms_over_Uinf": 0.0023421808443136786,
+          "vector_maximum_over_Uinf": 0.03132718512498642
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006473308693721108,
+          "streamwise_rms_over_Uinf": 0.003189771243265711,
+          "vector_maximum_over_Uinf": 0.03132718512498642
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011137872339063864,
+          "streamwise_rms_over_Uinf": 0.0007787215388158273,
+          "vector_maximum_over_Uinf": 0.007000530859018679
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000075.npz",
+        "sha256": "182e714097cab86635eac0c1406d2241c15b80dc12cc2dfa706b8dba4fcfc67d"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "fvm_step": 100,
+      "physical_time": 1.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5137556645352241,
+            1.6904829042875975e-05,
+            -2.761384358679483e-06
+          ],
+          "viscous_force": [
+            0.026442005454929585,
+            1.5925116378195092e-06,
+            4.5207957832186777e-07
+          ],
+          "pressure_drag_coefficient": 1.0275113290704483,
+          "viscous_drag_coefficient": 0.05288401090985917,
+          "drag_coefficient": 1.0803953399803075,
+          "coefficient_vector": [
+            1.0803953399803075,
+            3.6994681361390966e-05,
+            -4.61860956071523e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5176882052109778,
+            -0.00014974979448243895,
+            -0.00018343388656967194
+          ],
+          "viscous_force": [
+            0.02659215892431808,
+            -1.1487478989321688e-05,
+            -1.3702121542680953e-05
+          ],
+          "pressure_drag_coefficient": 1.0353764104219556,
+          "viscous_drag_coefficient": 0.05318431784863616,
+          "drag_coefficient": 1.0885607282705918,
+          "coefficient_vector": [
+            1.0885607282705918,
+            -0.0003224745469435213,
+            -0.0003942720162247058
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.011025037118318579,
+          "streamwise_rms_over_Uinf": 0.011003513447804123,
+          "vector_maximum_over_Uinf": 0.05259599924112072
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0019258222039437983,
+          "streamwise_rms_over_Uinf": 0.0018826743228615842,
+          "vector_maximum_over_Uinf": 0.004984420187282834
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.006009417973663124,
+          "streamwise_rms_over_Uinf": 0.0059809081711559775,
+          "vector_maximum_over_Uinf": 0.031144737425052933
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.011018528022612164,
+          "streamwise_rms_over_Uinf": 0.010965687259748128,
+          "vector_maximum_over_Uinf": 0.031144737425052933
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.000757351502039854,
+          "streamwise_rms_over_Uinf": 0.0007571865681363832,
+          "vector_maximum_over_Uinf": 0.0011208894952853298
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.01679034263224236,
+          "streamwise_rms_over_Uinf": 0.01678032149200158,
+          "vector_maximum_over_Uinf": 0.17284088855881613
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.014857571095442775,
+          "streamwise_rms_over_Uinf": 0.014842707989012802,
+          "vector_maximum_over_Uinf": 0.14405129722690566
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03417926602695894,
+          "streamwise_rms_over_Uinf": 0.03416357226466523,
+          "vector_maximum_over_Uinf": 0.14405129722690566
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005935593378777785,
+          "streamwise_rms_over_Uinf": 0.005886848719140457,
+          "vector_maximum_over_Uinf": 0.029047338396365828
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02966804057756219,
+          "streamwise_rms_over_Uinf": 0.028670234584801065,
+          "vector_maximum_over_Uinf": 0.16617423954669272
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002538702339515466,
+          "streamwise_rms_over_Uinf": 0.002280382505983767,
+          "vector_maximum_over_Uinf": 0.0034052453425758365
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004235452694186948,
+          "streamwise_rms_over_Uinf": 0.002927851898023427,
+          "vector_maximum_over_Uinf": 0.01647454669719323
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.007721031917922684,
+          "streamwise_rms_over_Uinf": 0.005270041019163848,
+          "vector_maximum_over_Uinf": 0.01647454669719323
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007578666621905992,
+          "streamwise_rms_over_Uinf": 0.0007562364492759463,
+          "vector_maximum_over_Uinf": 0.0011027187959137688
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.004742520456091072,
+          "streamwise_rms_over_Uinf": 0.0029129382846687017,
+          "vector_maximum_over_Uinf": 0.03056066848398934
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.004690883773365753,
+          "streamwise_rms_over_Uinf": 0.0028696498575205833,
+          "vector_maximum_over_Uinf": 0.030073332318230787
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006395989344759864,
+          "streamwise_rms_over_Uinf": 0.0029639105873858957,
+          "vector_maximum_over_Uinf": 0.030073332318230787
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0010563791233517469,
+          "streamwise_rms_over_Uinf": 0.00068177255970138,
+          "vector_maximum_over_Uinf": 0.007155169855160301
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.3877787807814457e-16,
+        "panel_kernel_check_maximum_difference": 4.85722573273506e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 7.648477984506957e-07,
+          "streamwise_rms_over_Uinf": 7.321832273110449e-07,
+          "vector_maximum_over_Uinf": 5.247734502127247e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000020.npz",
+          "sha256": "8c62c08b87bf8dccd4f4452697fe899c3b21dc57d92e2c98571aa81241a5f727"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000100.npz",
+        "sha256": "eba309f7aa675c3d09729eff1d3778bc7f40d9c530eb8467f4af6b4dde699c4d"
+      }
+    },
+    {
+      "coupling_step": 25,
+      "fvm_step": 125,
+      "physical_time": 1.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.4910435150783724,
+            -7.17280241051491e-06,
+            -1.540584666528998e-05
+          ],
+          "viscous_force": [
+            0.02120521122312143,
+            2.0937460458210176e-06,
+            2.7505661705885056e-07
+          ],
+          "pressure_drag_coefficient": 0.9820870301567448,
+          "viscous_drag_coefficient": 0.04241042244624286,
+          "drag_coefficient": 1.0244974526029877,
+          "coefficient_vector": [
+            1.0244974526029877,
+            -1.0158112729387785e-05,
+            -3.026158009646226e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4950644302844462,
+            -0.00010161525504484716,
+            -0.00010511167340812369
+          ],
+          "viscous_force": [
+            0.021428126810037033,
+            -1.3009235027994872e-05,
+            -1.5754724581110937e-05
+          ],
+          "pressure_drag_coefficient": 0.9901288605688924,
+          "viscous_drag_coefficient": 0.042856253620074065,
+          "drag_coefficient": 1.0329851141889665,
+          "coefficient_vector": [
+            1.0329851141889665,
+            -0.00022924898014568405,
+            -0.00024173279597846926
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.012644691451184827,
+          "streamwise_rms_over_Uinf": 0.012609661368892973,
+          "vector_maximum_over_Uinf": 0.04959122024884131
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0022173275644805468,
+          "streamwise_rms_over_Uinf": 0.002180130001568777,
+          "vector_maximum_over_Uinf": 0.005483056166107379
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00829582315278664,
+          "streamwise_rms_over_Uinf": 0.008261381988665443,
+          "vector_maximum_over_Uinf": 0.04010995717342823
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.015247150064990887,
+          "streamwise_rms_over_Uinf": 0.015183476158340198,
+          "vector_maximum_over_Uinf": 0.04010995717342823
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007944424028591202,
+          "streamwise_rms_over_Uinf": 0.0007941247231256563,
+          "vector_maximum_over_Uinf": 0.001163520117226593
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.018585963212966045,
+          "streamwise_rms_over_Uinf": 0.018571144502952202,
+          "vector_maximum_over_Uinf": 0.18695003665363227
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.016610980322990444,
+          "streamwise_rms_over_Uinf": 0.016592476301278126,
+          "vector_maximum_over_Uinf": 0.15684959956197664
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.036869671818768324,
+          "streamwise_rms_over_Uinf": 0.03685420676383916,
+          "vector_maximum_over_Uinf": 0.15684959956197664
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006291568029582495,
+          "streamwise_rms_over_Uinf": 0.006134442149318507,
+          "vector_maximum_over_Uinf": 0.030702467466865502
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.030174772206058287,
+          "streamwise_rms_over_Uinf": 0.029085359436567756,
+          "vector_maximum_over_Uinf": 0.1690943722738291
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0029670434764496457,
+          "streamwise_rms_over_Uinf": 0.002723723124221904,
+          "vector_maximum_over_Uinf": 0.0038131483389930586
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00456870420747534,
+          "streamwise_rms_over_Uinf": 0.0033193746272926713,
+          "vector_maximum_over_Uinf": 0.016239065015030345
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008335578660048108,
+          "streamwise_rms_over_Uinf": 0.005998726437085485,
+          "vector_maximum_over_Uinf": 0.016239065015030345
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007870107110983193,
+          "streamwise_rms_over_Uinf": 0.000784571020919634,
+          "vector_maximum_over_Uinf": 0.0011181517471082704
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0052347919830069735,
+          "streamwise_rms_over_Uinf": 0.003236798252213377,
+          "vector_maximum_over_Uinf": 0.034689614681079534
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.00518824413277929,
+          "streamwise_rms_over_Uinf": 0.00317791085450187,
+          "vector_maximum_over_Uinf": 0.03414239652744402
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.007250362547857564,
+          "streamwise_rms_over_Uinf": 0.0029767322037447695,
+          "vector_maximum_over_Uinf": 0.03414239652744402
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.001099796762717152,
+          "streamwise_rms_over_Uinf": 0.0007343081844378804,
+          "vector_maximum_over_Uinf": 0.007284700582962753
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000125.npz",
+        "sha256": "6822781d019e4314140559cf23f18162354066cd20199467fcccc6313dd2234b"
+      }
+    },
+    {
+      "coupling_step": 30,
+      "fvm_step": 150,
+      "physical_time": 2.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.47572894564182855,
+            1.9005451983399545e-05,
+            -1.5634277706009765e-06
+          ],
+          "viscous_force": [
+            0.017555671031995717,
+            2.5103396714417035e-06,
+            1.2833481924183343e-07
+          ],
+          "pressure_drag_coefficient": 0.9514578912836571,
+          "viscous_drag_coefficient": 0.035111342063991434,
+          "drag_coefficient": 0.9865692333476486,
+          "coefficient_vector": [
+            0.9865692333476486,
+            4.30315833096825e-05,
+            -2.870185902718286e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4797822525329123,
+            -0.00010197316139948776,
+            -0.0001847241450628238
+          ],
+          "viscous_force": [
+            0.01785028755060572,
+            -1.4784096498356616e-05,
+            -1.7228045019931652e-05
+          ],
+          "pressure_drag_coefficient": 0.9595645050658246,
+          "viscous_drag_coefficient": 0.03570057510121144,
+          "drag_coefficient": 0.995265080167036,
+          "coefficient_vector": [
+            0.995265080167036,
+            -0.00023351451579568875,
+            -0.0004039043801655109
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.013792425927458279,
+          "streamwise_rms_over_Uinf": 0.013743371902859175,
+          "vector_maximum_over_Uinf": 0.05652621697717727
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002590427853265034,
+          "streamwise_rms_over_Uinf": 0.002558690458294052,
+          "vector_maximum_over_Uinf": 0.0060574048480178935
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.010078538452803695,
+          "streamwise_rms_over_Uinf": 0.010035430401916628,
+          "vector_maximum_over_Uinf": 0.0429426687082512
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.018540388588207106,
+          "streamwise_rms_over_Uinf": 0.018460771799579168,
+          "vector_maximum_over_Uinf": 0.0429426687082512
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008204617526289836,
+          "streamwise_rms_over_Uinf": 0.0008199186849126191,
+          "vector_maximum_over_Uinf": 0.0012051881624265673
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.019613387315720248,
+          "streamwise_rms_over_Uinf": 0.019588442847712346,
+          "vector_maximum_over_Uinf": 0.19300644232047606
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.017557350816762272,
+          "streamwise_rms_over_Uinf": 0.017535280905643335,
+          "vector_maximum_over_Uinf": 0.1608660543283023
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03758761345383898,
+          "streamwise_rms_over_Uinf": 0.037576446968122415,
+          "vector_maximum_over_Uinf": 0.1608660543283023
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006750612923942292,
+          "streamwise_rms_over_Uinf": 0.0064956435564759805,
+          "vector_maximum_over_Uinf": 0.03293547494755982
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.029822420708060102,
+          "streamwise_rms_over_Uinf": 0.028705610277950492,
+          "vector_maximum_over_Uinf": 0.17098320126424835
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0034078517986008043,
+          "streamwise_rms_over_Uinf": 0.0031849860071980376,
+          "vector_maximum_over_Uinf": 0.004271818676769186
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004815047635390109,
+          "streamwise_rms_over_Uinf": 0.00365124659826461,
+          "vector_maximum_over_Uinf": 0.016204180935886575
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008788374081888473,
+          "streamwise_rms_over_Uinf": 0.006614330916307491,
+          "vector_maximum_over_Uinf": 0.016204180935886575
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008145565466479602,
+          "streamwise_rms_over_Uinf": 0.0008108823337706279,
+          "vector_maximum_over_Uinf": 0.0011215047441088084
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.005325901560545008,
+          "streamwise_rms_over_Uinf": 0.0037343388550604866,
+          "vector_maximum_over_Uinf": 0.032456850981177704
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005238395575908816,
+          "streamwise_rms_over_Uinf": 0.003618117116919795,
+          "vector_maximum_over_Uinf": 0.0307716667021792
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006856078571055388,
+          "streamwise_rms_over_Uinf": 0.0037236534142082974,
+          "vector_maximum_over_Uinf": 0.0307716667021792
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011973978541168614,
+          "streamwise_rms_over_Uinf": 0.0008649801263303577,
+          "vector_maximum_over_Uinf": 0.007399076653984027
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000150.npz",
+        "sha256": "fffb3d327e185aae754ec723130311050d378af9aa260e6a5b4057d9bbea32ab"
+      }
+    },
+    {
+      "coupling_step": 35,
+      "fvm_step": 175,
+      "physical_time": 2.25,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.46692162280367444,
+            2.2690833496756167e-05,
+            -1.196633535323669e-06
+          ],
+          "viscous_force": [
+            0.014872126169281505,
+            2.7323538851780804e-06,
+            -3.2112408748068577e-08
+          ],
+          "pressure_drag_coefficient": 0.9338432456073489,
+          "viscous_drag_coefficient": 0.02974425233856301,
+          "drag_coefficient": 0.9635874979459119,
+          "coefficient_vector": [
+            0.9635874979459119,
+            5.084637476386849e-05,
+            -2.457491888143475e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4719524235998038,
+            5.668176416803486e-05,
+            -3.9613870498462404e-05
+          ],
+          "viscous_force": [
+            0.015224043377233688,
+            -1.1249091854270072e-05,
+            -1.587239662816783e-05
+          ],
+          "pressure_drag_coefficient": 0.9439048471996077,
+          "viscous_drag_coefficient": 0.030448086754467377,
+          "drag_coefficient": 0.9743529339540751,
+          "coefficient_vector": [
+            0.9743529339540751,
+            9.086534462752958e-05,
+            -0.00011097253425326047
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.014175715425817649,
+          "streamwise_rms_over_Uinf": 0.014110883385540684,
+          "vector_maximum_over_Uinf": 0.0627102532759481
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003005142525632022,
+          "streamwise_rms_over_Uinf": 0.0029777018981490726,
+          "vector_maximum_over_Uinf": 0.006666492080290897
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.010821405213695177,
+          "streamwise_rms_over_Uinf": 0.010754103010930615,
+          "vector_maximum_over_Uinf": 0.040154580536372456
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.019913618903586137,
+          "streamwise_rms_over_Uinf": 0.01978934343945278,
+          "vector_maximum_over_Uinf": 0.040154580536372456
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008158172996296235,
+          "streamwise_rms_over_Uinf": 0.0008150597044569506,
+          "vector_maximum_over_Uinf": 0.0012250252329335408
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.020247750292574286,
+          "streamwise_rms_over_Uinf": 0.02020758664348688,
+          "vector_maximum_over_Uinf": 0.19747656725505242
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.018079897472021683,
+          "streamwise_rms_over_Uinf": 0.018047471050107337,
+          "vector_maximum_over_Uinf": 0.1632812007913309
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03816852169651939,
+          "streamwise_rms_over_Uinf": 0.03815889971172963,
+          "vector_maximum_over_Uinf": 0.1632812007913309
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0071561810874390995,
+          "streamwise_rms_over_Uinf": 0.0068607693396051635,
+          "vector_maximum_over_Uinf": 0.035006476066994675
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02911748163310269,
+          "streamwise_rms_over_Uinf": 0.027956470909529615,
+          "vector_maximum_over_Uinf": 0.1750696578162954
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003836089368873812,
+          "streamwise_rms_over_Uinf": 0.003639805360584931,
+          "vector_maximum_over_Uinf": 0.004771698266606438
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004679026343351884,
+          "streamwise_rms_over_Uinf": 0.003596936327216538,
+          "vector_maximum_over_Uinf": 0.015529878143559613
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008529111324628406,
+          "streamwise_rms_over_Uinf": 0.0065050073920550995,
+          "vector_maximum_over_Uinf": 0.015529878143559613
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.000839503222683541,
+          "streamwise_rms_over_Uinf": 0.000835142710429008,
+          "vector_maximum_over_Uinf": 0.0011338722054929813
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.005130577878596909,
+          "streamwise_rms_over_Uinf": 0.003782088655897735,
+          "vector_maximum_over_Uinf": 0.029101270169132738
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.004996170043890802,
+          "streamwise_rms_over_Uinf": 0.0036089969656416298,
+          "vector_maximum_over_Uinf": 0.02599060274918466
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006204569407342064,
+          "streamwise_rms_over_Uinf": 0.0036272152410905117,
+          "vector_maximum_over_Uinf": 0.02599060274918466
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0013628036084596628,
+          "streamwise_rms_over_Uinf": 0.0010774652473872547,
+          "vector_maximum_over_Uinf": 0.007503376524100173
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000175.npz",
+        "sha256": "40f7840aa80356831e2b562d22cd4ebfb5ab62342e3d65008a1e81a7ec044107"
+      }
+    },
+    {
+      "coupling_step": 40,
+      "fvm_step": 200,
+      "physical_time": 2.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.46342937233330833,
+            2.6307879331897082e-05,
+            9.556758240230397e-07
+          ],
+          "viscous_force": [
+            0.012679712715328756,
+            2.852811211215595e-06,
+            -1.8583598819499636e-07
+          ],
+          "pressure_drag_coefficient": 0.9268587446666167,
+          "viscous_drag_coefficient": 0.02535942543065751,
+          "drag_coefficient": 0.9522181700972742,
+          "coefficient_vector": [
+            0.9522181700972742,
+            5.8321381086225354e-05,
+            1.5396796716560866e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.46845678137796365,
+            0.0001554422462770235,
+            0.00015570865718819615
+          ],
+          "viscous_force": [
+            0.013091228929496304,
+            -5.366775886656541e-06,
+            -9.653948859483463e-06
+          ],
+          "pressure_drag_coefficient": 0.9369135627559273,
+          "viscous_drag_coefficient": 0.02618245785899261,
+          "drag_coefficient": 0.96309602061492,
+          "coefficient_vector": [
+            0.96309602061492,
+            0.0003001509407807339,
+            0.0002921094166574254
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.014426716806713728,
+          "streamwise_rms_over_Uinf": 0.01432450348431633,
+          "vector_maximum_over_Uinf": 0.06819806898400942
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0034333171339496586,
+          "streamwise_rms_over_Uinf": 0.0034087404467391842,
+          "vector_maximum_over_Uinf": 0.007278649023489825
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.01121347493043693,
+          "streamwise_rms_over_Uinf": 0.011096713832869321,
+          "vector_maximum_over_Uinf": 0.039823054328183276
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.02063764569868189,
+          "streamwise_rms_over_Uinf": 0.020422008044720618,
+          "vector_maximum_over_Uinf": 0.039823054328183276
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008191581218199214,
+          "streamwise_rms_over_Uinf": 0.0008184294519036093,
+          "vector_maximum_over_Uinf": 0.0014774236533279942
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.02078702198287945,
+          "streamwise_rms_over_Uinf": 0.02072460499452729,
+          "vector_maximum_over_Uinf": 0.2015155746370039
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.018550596437556167,
+          "streamwise_rms_over_Uinf": 0.01849677364259758,
+          "vector_maximum_over_Uinf": 0.1661279226460351
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03900645375013846,
+          "streamwise_rms_over_Uinf": 0.03899662397582009,
+          "vector_maximum_over_Uinf": 0.1661279226460351
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.007367782005190208,
+          "streamwise_rms_over_Uinf": 0.007077362623493858,
+          "vector_maximum_over_Uinf": 0.036128967240406686
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02847137059589667,
+          "streamwise_rms_over_Uinf": 0.027260519608303342,
+          "vector_maximum_over_Uinf": 0.17907348241157434
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004240155379273676,
+          "streamwise_rms_over_Uinf": 0.004074550493107156,
+          "vector_maximum_over_Uinf": 0.005296794764790211
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004691751884533825,
+          "streamwise_rms_over_Uinf": 0.003709218336338352,
+          "vector_maximum_over_Uinf": 0.017181086750311655
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008550605726466674,
+          "streamwise_rms_over_Uinf": 0.006712832953442783,
+          "vector_maximum_over_Uinf": 0.017181086750311655
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008489609450690484,
+          "streamwise_rms_over_Uinf": 0.0008456003798362379,
+          "vector_maximum_over_Uinf": 0.0011856866914820516
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.005338724318310225,
+          "streamwise_rms_over_Uinf": 0.003911480723379029,
+          "vector_maximum_over_Uinf": 0.02987368279740558
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005202651794227245,
+          "streamwise_rms_over_Uinf": 0.003724089020509371,
+          "vector_maximum_over_Uinf": 0.026584025231204136
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006749038517756893,
+          "streamwise_rms_over_Uinf": 0.0035828713427241508,
+          "vector_maximum_over_Uinf": 0.026584025231204136
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.001592656436555973,
+          "streamwise_rms_over_Uinf": 0.0013514125107816602,
+          "vector_maximum_over_Uinf": 0.007597979714013183
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 5.551115123125783e-16,
+        "panel_kernel_check_maximum_difference": 3.469446951953614e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 1.0745353289847053e-06,
+          "streamwise_rms_over_Uinf": 1.0341016784457125e-06,
+          "vector_maximum_over_Uinf": 9.649354518601543e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000040.npz",
+          "sha256": "490b3cebbd33c3e1cc288670c79d905aa5c8ab6cb3c7b5032667ef8e55830663"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000200.npz",
+        "sha256": "bb2cf49874f15222001e0901699af852b9d80fe73d838a1268e627fb6cfa0518"
+      }
+    },
+    {
+      "coupling_step": 45,
+      "fvm_step": 225,
+      "physical_time": 2.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.463897515515039,
+            3.479213182572632e-05,
+            -1.6946792250896122e-06
+          ],
+          "viscous_force": [
+            0.010699082435068421,
+            2.96008564218393e-06,
+            -2.0999046416693495e-07
+          ],
+          "pressure_drag_coefficient": 0.927795031030078,
+          "viscous_drag_coefficient": 0.021398164870136842,
+          "drag_coefficient": 0.9491931959002148,
+          "coefficient_vector": [
+            0.9491931959002148,
+            7.55044349358205e-05,
+            -3.8093393785130945e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.46831820453140816,
+            0.00015245111072856437,
+            9.647471667149132e-05
+          ],
+          "viscous_force": [
+            0.01115123979919693,
+            -1.40404015214988e-06,
+            -5.9282987841504605e-06
+          ],
+          "pressure_drag_coefficient": 0.9366364090628163,
+          "viscous_drag_coefficient": 0.02230247959839386,
+          "drag_coefficient": 0.9589388886612101,
+          "coefficient_vector": [
+            0.9589388886612101,
+            0.000302094141152829,
+            0.00018109283577468171
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.014770140048104558,
+          "streamwise_rms_over_Uinf": 0.014622594517984715,
+          "vector_maximum_over_Uinf": 0.07270215954895826
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003835657385942969,
+          "streamwise_rms_over_Uinf": 0.003813280476573338,
+          "vector_maximum_over_Uinf": 0.007843793108436857
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.011579272102670228,
+          "streamwise_rms_over_Uinf": 0.011401064871620273,
+          "vector_maximum_over_Uinf": 0.04054383747793005
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.021257498824600565,
+          "streamwise_rms_over_Uinf": 0.020927503495020417,
+          "vector_maximum_over_Uinf": 0.04054383747793005
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0012892484852630732,
+          "streamwise_rms_over_Uinf": 0.0012887575039140081,
+          "vector_maximum_over_Uinf": 0.006656843524220859
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021077463752378112,
+          "streamwise_rms_over_Uinf": 0.02099157755795735,
+          "vector_maximum_over_Uinf": 0.20350774028807248
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.018833083719064274,
+          "streamwise_rms_over_Uinf": 0.018751271223515328,
+          "vector_maximum_over_Uinf": 0.16788694704144405
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.039334946271875365,
+          "streamwise_rms_over_Uinf": 0.03932330114719444,
+          "vector_maximum_over_Uinf": 0.16788694704144405
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.007387358096238483,
+          "streamwise_rms_over_Uinf": 0.007128676788789467,
+          "vector_maximum_over_Uinf": 0.03627005511799544
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.028201395681912798,
+          "streamwise_rms_over_Uinf": 0.026975972572111578,
+          "vector_maximum_over_Uinf": 0.18241195605413146
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00460755460930535,
+          "streamwise_rms_over_Uinf": 0.004469991295253984,
+          "vector_maximum_over_Uinf": 0.005812133020463237
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005576716369535022,
+          "streamwise_rms_over_Uinf": 0.00466834476192861,
+          "vector_maximum_over_Uinf": 0.01756915745385711
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.010200022633064016,
+          "streamwise_rms_over_Uinf": 0.00850959869760367,
+          "vector_maximum_over_Uinf": 0.01756915745385711
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008413136727259272,
+          "streamwise_rms_over_Uinf": 0.0008377637845556771,
+          "vector_maximum_over_Uinf": 0.0012046406470237676
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.006048804000569506,
+          "streamwise_rms_over_Uinf": 0.004676489601361426,
+          "vector_maximum_over_Uinf": 0.028667703474361608
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005956188829928949,
+          "streamwise_rms_over_Uinf": 0.004546571861714753,
+          "vector_maximum_over_Uinf": 0.026144181493428658
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.007389243717452766,
+          "streamwise_rms_over_Uinf": 0.004230253103521013,
+          "vector_maximum_over_Uinf": 0.026144181493428658
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0018211675383843994,
+          "streamwise_rms_over_Uinf": 0.0016082076613992784,
+          "vector_maximum_over_Uinf": 0.009093451807162006
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000225.npz",
+        "sha256": "10b1594eaf2f9160d7105ea517cfc6a095894e5b765efffd2900a8fa7105d1b8"
+      }
+    },
+    {
+      "coupling_step": 50,
+      "fvm_step": 250,
+      "physical_time": 3.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.4676755082475159,
+            3.7478184146668206e-05,
+            4.088254366570307e-06
+          ],
+          "viscous_force": [
+            0.008832287650499381,
+            3.0676490048336676e-06,
+            -2.2842119049909474e-07
+          ],
+          "pressure_drag_coefficient": 0.9353510164950318,
+          "viscous_drag_coefficient": 0.017664575300998762,
+          "drag_coefficient": 0.9530155917960306,
+          "coefficient_vector": [
+            0.9530155917960306,
+            8.109166630300375e-05,
+            7.719666352142423e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4714561482548976,
+            0.00019375626937894656,
+            0.000203846563775924
+          ],
+          "viscous_force": [
+            0.009304970368366155,
+            1.898456464072861e-06,
+            -2.167980642797861e-06
+          ],
+          "pressure_drag_coefficient": 0.9429122965097952,
+          "viscous_drag_coefficient": 0.01860994073673231,
+          "drag_coefficient": 0.9615222372465275,
+          "coefficient_vector": [
+            0.9615222372465275,
+            0.00039130945168603884,
+            0.00040335716626625225
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.015107225728375062,
+          "streamwise_rms_over_Uinf": 0.014908410352840715,
+          "vector_maximum_over_Uinf": 0.07568390343725304
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004196552844151921,
+          "streamwise_rms_over_Uinf": 0.004175810591255332,
+          "vector_maximum_over_Uinf": 0.008340112497041892
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.011880929765667075,
+          "streamwise_rms_over_Uinf": 0.011616836272901858,
+          "vector_maximum_over_Uinf": 0.04049749532449743
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.02149922035642871,
+          "streamwise_rms_over_Uinf": 0.021002879967574092,
+          "vector_maximum_over_Uinf": 0.04049749532449743
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002716891391105269,
+          "streamwise_rms_over_Uinf": 0.002716618765308501,
+          "vector_maximum_over_Uinf": 0.013367321026443163
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021041331398532433,
+          "streamwise_rms_over_Uinf": 0.020924122742999856,
+          "vector_maximum_over_Uinf": 0.2022370067285757
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.018850251516735455,
+          "streamwise_rms_over_Uinf": 0.018727220808307223,
+          "vector_maximum_over_Uinf": 0.16727097680907196
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03897266362751937,
+          "streamwise_rms_over_Uinf": 0.03895681568653366,
+          "vector_maximum_over_Uinf": 0.16727097680907196
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0072408773562351505,
+          "streamwise_rms_over_Uinf": 0.007025002297247183,
+          "vector_maximum_over_Uinf": 0.03554152677380666
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.028428963004012656,
+          "streamwise_rms_over_Uinf": 0.027223242572692923,
+          "vector_maximum_over_Uinf": 0.18449977183085725
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0049314467399378566,
+          "streamwise_rms_over_Uinf": 0.004818353428693079,
+          "vector_maximum_over_Uinf": 0.006290779470972249
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.006655815784751733,
+          "streamwise_rms_over_Uinf": 0.005880403623845698,
+          "vector_maximum_over_Uinf": 0.018777152626441567
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.012191681598660551,
+          "streamwise_rms_over_Uinf": 0.010753233084268505,
+          "vector_maximum_over_Uinf": 0.018777152626441567
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0009088693944384992,
+          "streamwise_rms_over_Uinf": 0.0008983960905277204,
+          "vector_maximum_over_Uinf": 0.0025196841511176135
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.006831425938397249,
+          "streamwise_rms_over_Uinf": 0.005697787288413747,
+          "vector_maximum_over_Uinf": 0.023056005215446606
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006838411311736172,
+          "streamwise_rms_over_Uinf": 0.005699934763821012,
+          "vector_maximum_over_Uinf": 0.0238035176296595
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.008037164286835333,
+          "streamwise_rms_over_Uinf": 0.005588424429939925,
+          "vector_maximum_over_Uinf": 0.0238035176296595
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.001982196196123117,
+          "streamwise_rms_over_Uinf": 0.0017849853582436867,
+          "vector_maximum_over_Uinf": 0.010099670493460356
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000250.npz",
+        "sha256": "19b5a6fd9709a0e21d8d3fff1cbb70f8ac1ec21bd6bad3de660154fe87f71c93"
+      }
+    },
+    {
+      "coupling_step": 55,
+      "fvm_step": 275,
+      "physical_time": 3.25,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.47258222777992526,
+            4.493322535764063e-05,
+            1.1608927158644538e-05
+          ],
+          "viscous_force": [
+            0.007037424821682932,
+            3.3622662148155822e-06,
+            -9.65754644839841e-08
+          ],
+          "pressure_drag_coefficient": 0.9451644555598505,
+          "viscous_drag_coefficient": 0.014074849643365864,
+          "drag_coefficient": 0.9592393052032164,
+          "coefficient_vector": [
+            0.9592393052032164,
+            9.659098314491243e-05,
+            2.3024703388321108e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4756662236901531,
+            3.90133267122328e-05,
+            6.38793467076206e-05
+          ],
+          "viscous_force": [
+            0.007530320845628193,
+            3.048120274224428e-06,
+            -5.907505596441864e-07
+          ],
+          "pressure_drag_coefficient": 0.9513324473803062,
+          "viscous_drag_coefficient": 0.015060641691256387,
+          "drag_coefficient": 0.9663930890715626,
+          "coefficient_vector": [
+            0.9663930890715626,
+            8.412289397291446e-05,
+            0.00012657719229595282
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.015567319295505396,
+          "streamwise_rms_over_Uinf": 0.01534436416615973,
+          "vector_maximum_over_Uinf": 0.0769719338006748
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0045034659427927665,
+          "streamwise_rms_over_Uinf": 0.00448390326112356,
+          "vector_maximum_over_Uinf": 0.008752743705163431
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.012463499354620022,
+          "streamwise_rms_over_Uinf": 0.012126955303577063,
+          "vector_maximum_over_Uinf": 0.04011621666261816
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.022065625268518105,
+          "streamwise_rms_over_Uinf": 0.02141868989528888,
+          "vector_maximum_over_Uinf": 0.04011621666261816
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004146291337962047,
+          "streamwise_rms_over_Uinf": 0.004145985806993511,
+          "vector_maximum_over_Uinf": 0.014888078695362923
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021271393306298566,
+          "streamwise_rms_over_Uinf": 0.021124948438279514,
+          "vector_maximum_over_Uinf": 0.2011748160769591
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01917157301171166,
+          "streamwise_rms_over_Uinf": 0.019009347989677954,
+          "vector_maximum_over_Uinf": 0.16720643323694281
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.039113864519449065,
+          "streamwise_rms_over_Uinf": 0.03909008676942456,
+          "vector_maximum_over_Uinf": 0.16720643323694281
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.007031420126556551,
+          "streamwise_rms_over_Uinf": 0.006862998096959665,
+          "vector_maximum_over_Uinf": 0.03447396723818948
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02901847925807822,
+          "streamwise_rms_over_Uinf": 0.02785748143556868,
+          "vector_maximum_over_Uinf": 0.1853880398094784
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005207165748766762,
+          "streamwise_rms_over_Uinf": 0.0051132596595643365,
+          "vector_maximum_over_Uinf": 0.006710111637170454
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00819122199197503,
+          "streamwise_rms_over_Uinf": 0.007592912553379132,
+          "vector_maximum_over_Uinf": 0.027758173886739342
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.014971656199550374,
+          "streamwise_rms_over_Uinf": 0.013895027325687662,
+          "vector_maximum_over_Uinf": 0.027758173886739342
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0012871659593588266,
+          "streamwise_rms_over_Uinf": 0.0011079461414191534,
+          "vector_maximum_over_Uinf": 0.005847925214728505
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.008140492204484,
+          "streamwise_rms_over_Uinf": 0.007225580216998588,
+          "vector_maximum_over_Uinf": 0.027758173886739342
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.008206845271444545,
+          "streamwise_rms_over_Uinf": 0.0073000579446969235,
+          "vector_maximum_over_Uinf": 0.027758173886739342
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.009368652498517817,
+          "streamwise_rms_over_Uinf": 0.007381141119343029,
+          "vector_maximum_over_Uinf": 0.025806747157363943
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.002044504987853404,
+          "streamwise_rms_over_Uinf": 0.0018538075344384265,
+          "vector_maximum_over_Uinf": 0.010292546435094257
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000275.npz",
+        "sha256": "c2caf8ebd4e015908b4f0df16eb6a5a76f03e4590e2f81f0871ad57f236f6fd9"
+      }
+    },
+    {
+      "coupling_step": 60,
+      "fvm_step": 300,
+      "physical_time": 3.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.4788906557469981,
+            3.742288759166733e-05,
+            4.749764315260081e-06
+          ],
+          "viscous_force": [
+            0.005337013813440687,
+            3.607724603547322e-06,
+            8.6841018004227e-09
+          ],
+          "pressure_drag_coefficient": 0.9577813114939961,
+          "viscous_drag_coefficient": 0.010674027626881374,
+          "drag_coefficient": 0.9684553391208776,
+          "coefficient_vector": [
+            0.9684553391208776,
+            8.20612243904293e-05,
+            9.516896834121007e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.48070847274996925,
+            3.214779662690843e-05,
+            -3.83925089679001e-05
+          ],
+          "viscous_force": [
+            0.005824869878774264,
+            4.578309457339786e-06,
+            -1.1389390761645408e-07
+          ],
+          "pressure_drag_coefficient": 0.9614169454999385,
+          "viscous_drag_coefficient": 0.011649739757548528,
+          "drag_coefficient": 0.9730666852574871,
+          "coefficient_vector": [
+            0.9730666852574871,
+            7.345221216849644e-05,
+            -7.701280575103312e-05
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.016258582806680744,
+          "streamwise_rms_over_Uinf": 0.016010476280431535,
+          "vector_maximum_over_Uinf": 0.07665548801374232
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004758644204716761,
+          "streamwise_rms_over_Uinf": 0.0047399970833203325,
+          "vector_maximum_over_Uinf": 0.009085665086882789
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.01350792747403372,
+          "streamwise_rms_over_Uinf": 0.013127329587809324,
+          "vector_maximum_over_Uinf": 0.038426120811137415
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.023858167006089778,
+          "streamwise_rms_over_Uinf": 0.02312537173358198,
+          "vector_maximum_over_Uinf": 0.038426120811137415
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004617260321260874,
+          "streamwise_rms_over_Uinf": 0.004615564309456991,
+          "vector_maximum_over_Uinf": 0.015047295609101799
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021284780222764768,
+          "streamwise_rms_over_Uinf": 0.02110794832160136,
+          "vector_maximum_over_Uinf": 0.19362648868212176
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01932962484529397,
+          "streamwise_rms_over_Uinf": 0.01913139123163514,
+          "vector_maximum_over_Uinf": 0.16076715122154547
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.038070335094697594,
+          "streamwise_rms_over_Uinf": 0.038037103984534124,
+          "vector_maximum_over_Uinf": 0.16076715122154547
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006799269234421574,
+          "streamwise_rms_over_Uinf": 0.006674978716248088,
+          "vector_maximum_over_Uinf": 0.03326727011533782
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.029798739544415368,
+          "streamwise_rms_over_Uinf": 0.02868402314999544,
+          "vector_maximum_over_Uinf": 0.18498913237469292
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005441494840436746,
+          "streamwise_rms_over_Uinf": 0.005361787356590197,
+          "vector_maximum_over_Uinf": 0.0070674690159027095
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.010063283782937834,
+          "streamwise_rms_over_Uinf": 0.009607140617828391,
+          "vector_maximum_over_Uinf": 0.036294026446960816
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.018129458137561193,
+          "streamwise_rms_over_Uinf": 0.017614611330176725,
+          "vector_maximum_over_Uinf": 0.036294026446960816
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002552748626857176,
+          "streamwise_rms_over_Uinf": 0.0012137717693353632,
+          "vector_maximum_over_Uinf": 0.014058635783981154
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.009751817965957612,
+          "streamwise_rms_over_Uinf": 0.009017580622480002,
+          "vector_maximum_over_Uinf": 0.036294026446960816
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.009843018811961157,
+          "streamwise_rms_over_Uinf": 0.009122649778314864,
+          "vector_maximum_over_Uinf": 0.036294026446960816
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0108474164202358,
+          "streamwise_rms_over_Uinf": 0.009204224410433916,
+          "vector_maximum_over_Uinf": 0.028566157032996965
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.002006100889696397,
+          "streamwise_rms_over_Uinf": 0.0018118682135891359,
+          "vector_maximum_over_Uinf": 0.00969644689790094
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000300.npz",
+        "sha256": "16f669c396cb8e1f5e0bbd637302d1f99febcc8bdc56d7e92ff4f830bc966445"
+      }
+    },
+    {
+      "coupling_step": 65,
+      "fvm_step": 325,
+      "physical_time": 3.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.48503837230376834,
+            2.804957398575865e-05,
+            4.5412572250965247e-07
+          ],
+          "viscous_force": [
+            0.0037547947331387074,
+            3.929788428151116e-06,
+            1.5167994234054498e-07
+          ],
+          "pressure_drag_coefficient": 0.9700767446075367,
+          "viscous_drag_coefficient": 0.007509589466277415,
+          "drag_coefficient": 0.9775863340738141,
+          "coefficient_vector": [
+            0.9775863340738141,
+            6.395872482781954e-05,
+            1.211611329700395e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.48555932553277936,
+            0.00018224859783130614,
+            0.0001746555212514299
+          ],
+          "viscous_force": [
+            0.00423002398189528,
+            7.323459409607373e-06,
+            1.0716326146601976e-06
+          ],
+          "pressure_drag_coefficient": 0.9711186510655587,
+          "viscous_drag_coefficient": 0.00846004796379056,
+          "drag_coefficient": 0.9795786990293492,
+          "coefficient_vector": [
+            0.9795786990293492,
+            0.00037914411448182705,
+            0.0003514543077321802
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.017023929493568093,
+          "streamwise_rms_over_Uinf": 0.016764902125227698,
+          "vector_maximum_over_Uinf": 0.07511682183727081
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004972858749790309,
+          "streamwise_rms_over_Uinf": 0.00495486407082574,
+          "vector_maximum_over_Uinf": 0.009356682601514132
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.01477447505356903,
+          "streamwise_rms_over_Uinf": 0.014389911323065621,
+          "vector_maximum_over_Uinf": 0.0396695529545427
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.02623274980960038,
+          "streamwise_rms_over_Uinf": 0.025504205935205974,
+          "vector_maximum_over_Uinf": 0.0396695529545427
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004743953256336153,
+          "streamwise_rms_over_Uinf": 0.004724578571415911,
+          "vector_maximum_over_Uinf": 0.015094433097923637
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021216239440111893,
+          "streamwise_rms_over_Uinf": 0.021019856330555458,
+          "vector_maximum_over_Uinf": 0.18272577656618091
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.019434512734802203,
+          "streamwise_rms_over_Uinf": 0.019215580711028368,
+          "vector_maximum_over_Uinf": 0.15105769034273167
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0363310196335699,
+          "streamwise_rms_over_Uinf": 0.03629011801286696,
+          "vector_maximum_over_Uinf": 0.15105769034273167
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006556254461038382,
+          "streamwise_rms_over_Uinf": 0.006467827001117241,
+          "vector_maximum_over_Uinf": 0.031974962068298085
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.030693069445778823,
+          "streamwise_rms_over_Uinf": 0.02961479069989719,
+          "vector_maximum_over_Uinf": 0.18314457155049363
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005642328939212371,
+          "streamwise_rms_over_Uinf": 0.005573117134059387,
+          "vector_maximum_over_Uinf": 0.0073679325927356425
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.011969599122444661,
+          "streamwise_rms_over_Uinf": 0.011588225049528474,
+          "vector_maximum_over_Uinf": 0.04268181432693334
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.021065415826661934,
+          "streamwise_rms_over_Uinf": 0.020911635682396807,
+          "vector_maximum_over_Uinf": 0.04268181432693334
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00425101393624295,
+          "streamwise_rms_over_Uinf": 0.002834251547416138,
+          "vector_maximum_over_Uinf": 0.017137998679211338
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.011379324918220577,
+          "streamwise_rms_over_Uinf": 0.010798242715408343,
+          "vector_maximum_over_Uinf": 0.04268181432693334
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01147673340224056,
+          "streamwise_rms_over_Uinf": 0.010912729934025076,
+          "vector_maximum_over_Uinf": 0.04268181432693334
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.012188621621205844,
+          "streamwise_rms_over_Uinf": 0.01095525801571432,
+          "vector_maximum_over_Uinf": 0.02970922326645849
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0018986128530463404,
+          "streamwise_rms_over_Uinf": 0.0016904022707683567,
+          "vector_maximum_over_Uinf": 0.00854061200373272
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000325.npz",
+        "sha256": "8a433e371cf149ac63bd98ca69a1d3c421c14d0f39077596655fbd0fbd6fc4af"
+      }
+    },
+    {
+      "coupling_step": 70,
+      "fvm_step": 350,
+      "physical_time": 4.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.49214400626804855,
+            1.886074687803272e-05,
+            -1.6960770121074442e-06
+          ],
+          "viscous_force": [
+            0.002332921469911204,
+            4.425570435100052e-06,
+            4.1548623647189066e-07
+          ],
+          "pressure_drag_coefficient": 0.9842880125360971,
+          "viscous_drag_coefficient": 0.004665842939822408,
+          "drag_coefficient": 0.9889538554759195,
+          "coefficient_vector": [
+            0.9889538554759195,
+            4.657263462626555e-05,
+            -2.561181551271107e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.49138128029710837,
+            0.0002009417156289987,
+            0.00021149016793562216
+          ],
+          "viscous_force": [
+            0.002783884612084477,
+            8.438412587778176e-06,
+            3.4265325990241586e-06
+          ],
+          "pressure_drag_coefficient": 0.9827625605942167,
+          "viscous_drag_coefficient": 0.005567769224168954,
+          "drag_coefficient": 0.9883303298183856,
+          "coefficient_vector": [
+            0.9883303298183856,
+            0.00041876025643355376,
+            0.00042983340106929265
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.017691490326284535,
+          "streamwise_rms_over_Uinf": 0.017504214970455685,
+          "vector_maximum_over_Uinf": 0.07286129355864306
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005154695231571967,
+          "streamwise_rms_over_Uinf": 0.00513705750823922,
+          "vector_maximum_over_Uinf": 0.009580630907020556
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.015962910689994423,
+          "streamwise_rms_over_Uinf": 0.015702967737879308,
+          "vector_maximum_over_Uinf": 0.04330425158362483
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.028460652556663683,
+          "streamwise_rms_over_Uinf": 0.0279871954958795,
+          "vector_maximum_over_Uinf": 0.04330425158362483
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004845987008932537,
+          "streamwise_rms_over_Uinf": 0.0047914748041360195,
+          "vector_maximum_over_Uinf": 0.015121506093724068
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.021425286315220848,
+          "streamwise_rms_over_Uinf": 0.021279018460435735,
+          "vector_maximum_over_Uinf": 0.17451818931543622
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01981627424839118,
+          "streamwise_rms_over_Uinf": 0.019651961106282353,
+          "vector_maximum_over_Uinf": 0.1443103666488164
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03540082609369134,
+          "streamwise_rms_over_Uinf": 0.03534723256498385,
+          "vector_maximum_over_Uinf": 0.1443103666488164
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006279423706336165,
+          "streamwise_rms_over_Uinf": 0.006216696744823431,
+          "vector_maximum_over_Uinf": 0.03046089958081582
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.03160645781708124,
+          "streamwise_rms_over_Uinf": 0.030543337076110646,
+          "vector_maximum_over_Uinf": 0.18019197628115471
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0058171429517177775,
+          "streamwise_rms_over_Uinf": 0.005755142696620793,
+          "vector_maximum_over_Uinf": 0.007617885198378291
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.013954188199017056,
+          "streamwise_rms_over_Uinf": 0.01361309412571334,
+          "vector_maximum_over_Uinf": 0.048926668571676935
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.024438436749565317,
+          "streamwise_rms_over_Uinf": 0.024283347332779412,
+          "vector_maximum_over_Uinf": 0.048926668571676935
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005196499680702171,
+          "streamwise_rms_over_Uinf": 0.004102568809721568,
+          "vector_maximum_over_Uinf": 0.017158118394474304
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.013122830661353736,
+          "streamwise_rms_over_Uinf": 0.012622644541881785,
+          "vector_maximum_over_Uinf": 0.048926668571676935
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01321555903542494,
+          "streamwise_rms_over_Uinf": 0.012733737536352279,
+          "vector_maximum_over_Uinf": 0.048926668571676935
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.01370839560307098,
+          "streamwise_rms_over_Uinf": 0.01269019052852927,
+          "vector_maximum_over_Uinf": 0.03280097070190386
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0017606171952464778,
+          "streamwise_rms_over_Uinf": 0.001528779877374514,
+          "vector_maximum_over_Uinf": 0.007975401293736752
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.1102230246251565e-15,
+        "panel_kernel_check_maximum_difference": 4.163336342344337e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 2.051359016218345e-06,
+          "streamwise_rms_over_Uinf": 2.0025921441827156e-06,
+          "vector_maximum_over_Uinf": 1.936429444497701e-05
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000070.npz",
+          "sha256": "c3030c2569e5bd23d23e721ca2317841cbea8ec6c4ad712c117293b609c473c5"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000350.npz",
+        "sha256": "fc10b7d2338aaa14231bb126c57949e721b302488c40d62b6b96fd319cea7e24"
+      }
+    }
+  ],
+  "comparison_history": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705,
+      "drag_coefficient_difference": 0.0,
+      "particles": 6429
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_flow_time": 0.05,
+      "physical_time": 0.55,
+      "fvm_velocity_rms_over_Uinf": 0.002413921937746722,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0007256951925531843,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03677604367921395,
+      "full_drag_coefficient": 1.5090799958339747,
+      "hybrid_drag_coefficient": 1.4867254893250548,
+      "drag_coefficient_difference": -0.022354506508919902,
+      "particles": 22037
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_flow_time": 0.1,
+      "physical_time": 0.6,
+      "fvm_velocity_rms_over_Uinf": 0.002621689237946372,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006964437651190851,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.035686780864612196,
+      "full_drag_coefficient": 1.486079170256125,
+      "hybrid_drag_coefficient": 1.4810985624133859,
+      "drag_coefficient_difference": -0.0049806078427390155,
+      "particles": 22374
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_flow_time": 0.15,
+      "physical_time": 0.65,
+      "fvm_velocity_rms_over_Uinf": 0.002727841910817231,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006622424011757835,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.034846422924989455,
+      "full_drag_coefficient": 1.4650546185458297,
+      "hybrid_drag_coefficient": 1.4604162830031233,
+      "drag_coefficient_difference": -0.004638335542706429,
+      "particles": 22580
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_flow_time": 0.2,
+      "physical_time": 0.7,
+      "fvm_velocity_rms_over_Uinf": 0.002852354204213858,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006298472912737144,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03417498166779497,
+      "full_drag_coefficient": 1.4436512495695992,
+      "hybrid_drag_coefficient": 1.4388308956046563,
+      "drag_coefficient_difference": -0.004820353964942958,
+      "particles": 22640
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_flow_time": 0.25,
+      "physical_time": 0.75,
+      "fvm_velocity_rms_over_Uinf": 0.0029669354714238565,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.000591124720605087,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03361371511709685,
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.4076117693355223,
+      "drag_coefficient_difference": -0.004278530838646377,
+      "particles": 22882
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_flow_time": 0.3,
+      "physical_time": 0.8,
+      "fvm_velocity_rms_over_Uinf": 0.0030717576531616637,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005514934009575119,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.033163548820316954,
+      "full_drag_coefficient": 1.3814860276095515,
+      "hybrid_drag_coefficient": 1.378387387420326,
+      "drag_coefficient_difference": -0.0030986401892254545,
+      "particles": 23074
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_flow_time": 0.35,
+      "physical_time": 0.85,
+      "fvm_velocity_rms_over_Uinf": 0.00319405113569957,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005099026112796865,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032812015396876,
+      "full_drag_coefficient": 1.3528429561245168,
+      "hybrid_drag_coefficient": 1.3508597304027514,
+      "drag_coefficient_difference": -0.001983225721765347,
+      "particles": 23268
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_flow_time": 0.4,
+      "physical_time": 0.9,
+      "fvm_velocity_rms_over_Uinf": 0.0033794229994068524,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0004797131439741493,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0325256383948349,
+      "full_drag_coefficient": 1.3251828343240502,
+      "hybrid_drag_coefficient": 1.324736386328638,
+      "drag_coefficient_difference": -0.00044644799541204705,
+      "particles": 23502
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_flow_time": 0.45,
+      "physical_time": 0.95,
+      "fvm_velocity_rms_over_Uinf": 0.0036554966202908814,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0004910769929357908,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032295958462003976,
+      "full_drag_coefficient": 1.299674528453869,
+      "hybrid_drag_coefficient": 1.3011642356519102,
+      "drag_coefficient_difference": 0.0014897071980410903,
+      "particles": 23723
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_flow_time": 0.5,
+      "physical_time": 1.0,
+      "fvm_velocity_rms_over_Uinf": 0.0040385075632374265,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005689793830161667,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03211995367319037,
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.2767337275919322,
+      "drag_coefficient_difference": 0.003861978271590294,
+      "particles": 24030
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_flow_time": 0.55,
+      "physical_time": 1.05,
+      "fvm_velocity_rms_over_Uinf": 0.004537376210134962,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006974746400810048,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03197620316994787,
+      "full_drag_coefficient": 1.2463331973842469,
+      "hybrid_drag_coefficient": 1.2517359763446698,
+      "drag_coefficient_difference": 0.00540277896042296,
+      "particles": 24394
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_flow_time": 0.6,
+      "physical_time": 1.1,
+      "fvm_velocity_rms_over_Uinf": 0.005122976023850944,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0008477093235831122,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03184716525488973,
+      "full_drag_coefficient": 1.2228278165771698,
+      "hybrid_drag_coefficient": 1.2291422537966525,
+      "drag_coefficient_difference": 0.006314437219482771,
+      "particles": 24772
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_flow_time": 0.65,
+      "physical_time": 1.15,
+      "fvm_velocity_rms_over_Uinf": 0.005705399593305144,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0009950179682942087,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031733326551095335,
+      "full_drag_coefficient": 1.200371041321157,
+      "hybrid_drag_coefficient": 1.2077957084436495,
+      "drag_coefficient_difference": 0.0074246671224924565,
+      "particles": 25191
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_flow_time": 0.7,
+      "physical_time": 1.2,
+      "fvm_velocity_rms_over_Uinf": 0.006222959300366484,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0011401843958020665,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03163716822075222,
+      "full_drag_coefficient": 1.1793654420697106,
+      "hybrid_drag_coefficient": 1.185471584760018,
+      "drag_coefficient_difference": 0.006106142690307292,
+      "particles": 25573
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_flow_time": 0.75,
+      "physical_time": 1.25,
+      "fvm_velocity_rms_over_Uinf": 0.006639998481807487,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0012775834882385478,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031549776867098776,
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1659260559322868,
+      "drag_coefficient_difference": 0.00661012170601083,
+      "particles": 26139
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_flow_time": 0.8,
+      "physical_time": 1.3,
+      "fvm_velocity_rms_over_Uinf": 0.006953506103575028,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.001403412765978017,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03146889268126418,
+      "full_drag_coefficient": 1.1418336834682312,
+      "hybrid_drag_coefficient": 1.1472922500172138,
+      "drag_coefficient_difference": 0.00545856654898258,
+      "particles": 26576
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_flow_time": 0.85,
+      "physical_time": 1.35,
+      "fvm_velocity_rms_over_Uinf": 0.0071821759263870615,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0015287580235818483,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03139751760163447,
+      "full_drag_coefficient": 1.125024781496457,
+      "hybrid_drag_coefficient": 1.130492802491773,
+      "drag_coefficient_difference": 0.005468020995316181,
+      "particles": 26995
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_flow_time": 0.9,
+      "physical_time": 1.4,
+      "fvm_velocity_rms_over_Uinf": 0.007360542805733525,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0016642209848508397,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031342315642863806,
+      "full_drag_coefficient": 1.1094366266728828,
+      "hybrid_drag_coefficient": 1.115773650149059,
+      "drag_coefficient_difference": 0.006337023476176151,
+      "particles": 27483
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_flow_time": 0.95,
+      "physical_time": 1.45,
+      "fvm_velocity_rms_over_Uinf": 0.00751335779683129,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.001803821879634821,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03129216414408664,
+      "full_drag_coefficient": 1.0938074851469775,
+      "hybrid_drag_coefficient": 1.102145766942377,
+      "drag_coefficient_difference": 0.008338281795399638,
+      "particles": 27987
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_flow_time": 1.0,
+      "physical_time": 1.5,
+      "fvm_velocity_rms_over_Uinf": 0.007663745315412817,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0019549316740846935,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03124259950024201,
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0885607282705918,
+      "drag_coefficient_difference": 0.008165388290284348,
+      "particles": 28441
+    },
+    {
+      "coupling_step": 21,
+      "elapsed_flow_time": 1.05,
+      "physical_time": 1.55,
+      "fvm_velocity_rms_over_Uinf": 0.00781639450909372,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002106859026056567,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031194997116752728,
+      "full_drag_coefficient": 1.0669789917706591,
+      "hybrid_drag_coefficient": 1.0751248846847572,
+      "drag_coefficient_difference": 0.008145892914098063,
+      "particles": 28959
+    },
+    {
+      "coupling_step": 22,
+      "elapsed_flow_time": 1.1,
+      "physical_time": 1.6,
+      "fvm_velocity_rms_over_Uinf": 0.00797382551217917,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002257350805842378,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03115356479507067,
+      "full_drag_coefficient": 1.0551362311667554,
+      "hybrid_drag_coefficient": 1.0634495386625293,
+      "drag_coefficient_difference": 0.00831330749577397,
+      "particles": 29467
+    },
+    {
+      "coupling_step": 23,
+      "elapsed_flow_time": 1.15,
+      "physical_time": 1.65,
+      "fvm_velocity_rms_over_Uinf": 0.008130720378628503,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00240700124742386,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031108730958839197,
+      "full_drag_coefficient": 1.0438994011010552,
+      "hybrid_drag_coefficient": 1.0525629178875322,
+      "drag_coefficient_difference": 0.008663516786477032,
+      "particles": 29976
+    },
+    {
+      "coupling_step": 24,
+      "elapsed_flow_time": 1.2,
+      "physical_time": 1.7,
+      "fvm_velocity_rms_over_Uinf": 0.00827090469849102,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00254646195422948,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031052845056184438,
+      "full_drag_coefficient": 1.0337961900666681,
+      "hybrid_drag_coefficient": 1.0427765237369064,
+      "drag_coefficient_difference": 0.008980333670238316,
+      "particles": 30480
+    },
+    {
+      "coupling_step": 25,
+      "elapsed_flow_time": 1.25,
+      "physical_time": 1.75,
+      "fvm_velocity_rms_over_Uinf": 0.008377820755860837,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002667558732455362,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031001541885717278,
+      "full_drag_coefficient": 1.0244974526029877,
+      "hybrid_drag_coefficient": 1.0329851141889665,
+      "drag_coefficient_difference": 0.0084876615859788,
+      "particles": 31087
+    },
+    {
+      "coupling_step": 26,
+      "elapsed_flow_time": 1.3,
+      "physical_time": 1.8,
+      "fvm_velocity_rms_over_Uinf": 0.008464299306188559,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0027895975671400064,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030952760744331356,
+      "full_drag_coefficient": 1.0156594408402495,
+      "hybrid_drag_coefficient": 1.0254747613810062,
+      "drag_coefficient_difference": 0.009815320540756733,
+      "particles": 31607
+    },
+    {
+      "coupling_step": 27,
+      "elapsed_flow_time": 1.35,
+      "physical_time": 1.85,
+      "fvm_velocity_rms_over_Uinf": 0.008526525978291738,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0029061956659019185,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030907938875921522,
+      "full_drag_coefficient": 1.006991664082099,
+      "hybrid_drag_coefficient": 1.0173379844148358,
+      "drag_coefficient_difference": 0.010346320332736747,
+      "particles": 32152
+    },
+    {
+      "coupling_step": 28,
+      "elapsed_flow_time": 1.4,
+      "physical_time": 1.9,
+      "fvm_velocity_rms_over_Uinf": 0.008585655331780285,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003023811161739511,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0308748258283387,
+      "full_drag_coefficient": 0.9993689979621401,
+      "hybrid_drag_coefficient": 1.0091176672622941,
+      "drag_coefficient_difference": 0.009748669300154056,
+      "particles": 32615
+    },
+    {
+      "coupling_step": 29,
+      "elapsed_flow_time": 1.45,
+      "physical_time": 1.95,
+      "fvm_velocity_rms_over_Uinf": 0.008627461488305187,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003129974631032517,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03084826906888309,
+      "full_drag_coefficient": 0.9928261591365428,
+      "hybrid_drag_coefficient": 1.002697443085811,
+      "drag_coefficient_difference": 0.009871283949268284,
+      "particles": 33102
+    },
+    {
+      "coupling_step": 30,
+      "elapsed_flow_time": 1.5,
+      "physical_time": 2.0,
+      "fvm_velocity_rms_over_Uinf": 0.008671051459992602,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0032374674728601204,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03082155060308541,
+      "full_drag_coefficient": 0.9865692333476486,
+      "hybrid_drag_coefficient": 0.995265080167036,
+      "drag_coefficient_difference": 0.008695846819387398,
+      "particles": 33635
+    },
+    {
+      "coupling_step": 31,
+      "elapsed_flow_time": 1.55,
+      "physical_time": 2.05,
+      "fvm_velocity_rms_over_Uinf": 0.008683243456058518,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003325024937814266,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030785854815448745,
+      "full_drag_coefficient": 0.9806583243433719,
+      "hybrid_drag_coefficient": 0.9901358188072192,
+      "drag_coefficient_difference": 0.00947749446384738,
+      "particles": 34207
+    },
+    {
+      "coupling_step": 32,
+      "elapsed_flow_time": 1.6,
+      "physical_time": 2.1,
+      "fvm_velocity_rms_over_Uinf": 0.008679143968159372,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0034112904566522147,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030742756509113504,
+      "full_drag_coefficient": 0.9753311401790559,
+      "hybrid_drag_coefficient": 0.9848481789959466,
+      "drag_coefficient_difference": 0.0095170388168907,
+      "particles": 34730
+    },
+    {
+      "coupling_step": 33,
+      "elapsed_flow_time": 1.65,
+      "physical_time": 2.15,
+      "fvm_velocity_rms_over_Uinf": 0.008694848690966175,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0035171193649511682,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03070739200025826,
+      "full_drag_coefficient": 0.9711006629902551,
+      "hybrid_drag_coefficient": 0.9807519157567488,
+      "drag_coefficient_difference": 0.009651252766493701,
+      "particles": 35363
+    },
+    {
+      "coupling_step": 34,
+      "elapsed_flow_time": 1.7,
+      "physical_time": 2.2,
+      "fvm_velocity_rms_over_Uinf": 0.008718814410627431,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0036281494061830687,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03067284580609633,
+      "full_drag_coefficient": 0.9676017071521348,
+      "hybrid_drag_coefficient": 0.977249821670613,
+      "drag_coefficient_difference": 0.009648114518478246,
+      "particles": 35876
+    },
+    {
+      "coupling_step": 35,
+      "elapsed_flow_time": 1.75,
+      "physical_time": 2.25,
+      "fvm_velocity_rms_over_Uinf": 0.008742811854587501,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003735502064968736,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03063316598343928,
+      "full_drag_coefficient": 0.9635874979459119,
+      "hybrid_drag_coefficient": 0.9743529339540751,
+      "drag_coefficient_difference": 0.010765436008163154,
+      "particles": 36445
+    },
+    {
+      "coupling_step": 36,
+      "elapsed_flow_time": 1.8,
+      "physical_time": 2.3,
+      "fvm_velocity_rms_over_Uinf": 0.008782196600294214,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0038502326454836417,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03059446573342685,
+      "full_drag_coefficient": 0.9605322057020654,
+      "hybrid_drag_coefficient": 0.9708741035809474,
+      "drag_coefficient_difference": 0.010341897878881956,
+      "particles": 37013
+    },
+    {
+      "coupling_step": 37,
+      "elapsed_flow_time": 1.85,
+      "physical_time": 2.35,
+      "fvm_velocity_rms_over_Uinf": 0.00881891686177337,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003960642307310495,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030548467542131138,
+      "full_drag_coefficient": 0.9582734432274024,
+      "hybrid_drag_coefficient": 0.9690762964939311,
+      "drag_coefficient_difference": 0.010802853266528745,
+      "particles": 37574
+    },
+    {
+      "coupling_step": 38,
+      "elapsed_flow_time": 1.9,
+      "physical_time": 2.4,
+      "fvm_velocity_rms_over_Uinf": 0.008863092226580164,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004079005028787155,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030498182046836554,
+      "full_drag_coefficient": 0.9554563070943277,
+      "hybrid_drag_coefficient": 0.9668329830446138,
+      "drag_coefficient_difference": 0.01137667595028613,
+      "particles": 38243
+    },
+    {
+      "coupling_step": 39,
+      "elapsed_flow_time": 1.95,
+      "physical_time": 2.45,
+      "fvm_velocity_rms_over_Uinf": 0.008911087992833373,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004202466973487007,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030442457689544795,
+      "full_drag_coefficient": 0.9537759603206376,
+      "hybrid_drag_coefficient": 0.9647468783247647,
+      "drag_coefficient_difference": 0.010970918004127084,
+      "particles": 38734
+    },
+    {
+      "coupling_step": 40,
+      "elapsed_flow_time": 2.0,
+      "physical_time": 2.5,
+      "fvm_velocity_rms_over_Uinf": 0.008956926037728706,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004323163380272656,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030384854676764977,
+      "full_drag_coefficient": 0.9522181700972742,
+      "hybrid_drag_coefficient": 0.96309602061492,
+      "drag_coefficient_difference": 0.010877850517645782,
+      "particles": 39334
+    },
+    {
+      "coupling_step": 41,
+      "elapsed_flow_time": 2.05,
+      "physical_time": 2.55,
+      "fvm_velocity_rms_over_Uinf": 0.009001728574253265,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004441007499708384,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030326682361660116,
+      "full_drag_coefficient": 0.951322264403709,
+      "hybrid_drag_coefficient": 0.9616785897697914,
+      "drag_coefficient_difference": 0.01035632536608233,
+      "particles": 39942
+    },
+    {
+      "coupling_step": 42,
+      "elapsed_flow_time": 2.1,
+      "physical_time": 2.6,
+      "fvm_velocity_rms_over_Uinf": 0.009043091723341511,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004565820691694905,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03026749181708916,
+      "full_drag_coefficient": 0.950613210625725,
+      "hybrid_drag_coefficient": 0.9608006935029492,
+      "drag_coefficient_difference": 0.010187482877224152,
+      "particles": 40485
+    },
+    {
+      "coupling_step": 43,
+      "elapsed_flow_time": 2.15,
+      "physical_time": 2.65,
+      "fvm_velocity_rms_over_Uinf": 0.009082200194329574,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004691807391522094,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030209946439357833,
+      "full_drag_coefficient": 0.9504360806559338,
+      "hybrid_drag_coefficient": 0.9608213752048417,
+      "drag_coefficient_difference": 0.010385294548907908,
+      "particles": 41079
+    },
+    {
+      "coupling_step": 44,
+      "elapsed_flow_time": 2.2,
+      "physical_time": 2.7,
+      "fvm_velocity_rms_over_Uinf": 0.00911715707351918,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004809153848120458,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030155948656253265,
+      "full_drag_coefficient": 0.9492753058111962,
+      "hybrid_drag_coefficient": 0.9595657401393105,
+      "drag_coefficient_difference": 0.010290434328114273,
+      "particles": 41594
+    },
+    {
+      "coupling_step": 45,
+      "elapsed_flow_time": 2.25,
+      "physical_time": 2.75,
+      "fvm_velocity_rms_over_Uinf": 0.009148595058311759,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004923939377300647,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03010519329108479,
+      "full_drag_coefficient": 0.9491931959002148,
+      "hybrid_drag_coefficient": 0.9589388886612101,
+      "drag_coefficient_difference": 0.00974569276099535,
+      "particles": 42229
+    },
+    {
+      "coupling_step": 46,
+      "elapsed_flow_time": 2.3,
+      "physical_time": 2.8,
+      "fvm_velocity_rms_over_Uinf": 0.009184028521438108,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005048823621124098,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030058474862114843,
+      "full_drag_coefficient": 0.9496854016781714,
+      "hybrid_drag_coefficient": 0.9584925474926056,
+      "drag_coefficient_difference": 0.008807145814434203,
+      "particles": 42815
+    },
+    {
+      "coupling_step": 47,
+      "elapsed_flow_time": 2.35,
+      "physical_time": 2.85,
+      "fvm_velocity_rms_over_Uinf": 0.0092093972118156,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005165133909691538,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030014843010389623,
+      "full_drag_coefficient": 0.9508134408791621,
+      "hybrid_drag_coefficient": 0.9593507197553276,
+      "drag_coefficient_difference": 0.00853727887616551,
+      "particles": 43388
+    },
+    {
+      "coupling_step": 48,
+      "elapsed_flow_time": 2.4,
+      "physical_time": 2.9,
+      "fvm_velocity_rms_over_Uinf": 0.009221400578896493,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005277025268757074,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.02997385584922921,
+      "full_drag_coefficient": 0.951729742778659,
+      "hybrid_drag_coefficient": 0.9598679566204315,
+      "drag_coefficient_difference": 0.00813821384177249,
+      "particles": 43963
+    },
+    {
+      "coupling_step": 49,
+      "elapsed_flow_time": 2.45,
+      "physical_time": 2.95,
+      "fvm_velocity_rms_over_Uinf": 0.009227246220412974,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005389064852648416,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029933651961978502,
+      "full_drag_coefficient": 0.9523478720717035,
+      "hybrid_drag_coefficient": 0.9608075543665057,
+      "drag_coefficient_difference": 0.008459682294802207,
+      "particles": 44553
+    },
+    {
+      "coupling_step": 50,
+      "elapsed_flow_time": 2.5,
+      "physical_time": 3.0,
+      "fvm_velocity_rms_over_Uinf": 0.00924412589943646,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005509959216520024,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.02989606566428423,
+      "full_drag_coefficient": 0.9530155917960306,
+      "hybrid_drag_coefficient": 0.9615222372465275,
+      "drag_coefficient_difference": 0.008506645450496952,
+      "particles": 45142
+    },
+    {
+      "coupling_step": 51,
+      "elapsed_flow_time": 2.55,
+      "physical_time": 3.05,
+      "fvm_velocity_rms_over_Uinf": 0.00927240691456,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0056335710495981715,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029862465216117542,
+      "full_drag_coefficient": 0.9543442065559917,
+      "hybrid_drag_coefficient": 0.9623771899106112,
+      "drag_coefficient_difference": 0.008032983354619438,
+      "particles": 45807
+    },
+    {
+      "coupling_step": 52,
+      "elapsed_flow_time": 2.6,
+      "physical_time": 3.1,
+      "fvm_velocity_rms_over_Uinf": 0.009314971915027576,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005758770234758371,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029833123253787463,
+      "full_drag_coefficient": 0.9556819885035877,
+      "hybrid_drag_coefficient": 0.9633268902328503,
+      "drag_coefficient_difference": 0.0076449017292626875,
+      "particles": 46412
+    },
+    {
+      "coupling_step": 53,
+      "elapsed_flow_time": 2.65,
+      "physical_time": 3.15,
+      "fvm_velocity_rms_over_Uinf": 0.009365495568574519,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005880722711790246,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029805320879870086,
+      "full_drag_coefficient": 0.9566608124785767,
+      "hybrid_drag_coefficient": 0.9642994060543584,
+      "drag_coefficient_difference": 0.007638593575781671,
+      "particles": 47065
+    },
+    {
+      "coupling_step": 54,
+      "elapsed_flow_time": 2.7,
+      "physical_time": 3.2,
+      "fvm_velocity_rms_over_Uinf": 0.009409143847913626,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.005994694475068212,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029780075770434452,
+      "full_drag_coefficient": 0.9576765661916306,
+      "hybrid_drag_coefficient": 0.9655217541441282,
+      "drag_coefficient_difference": 0.007845187952497668,
+      "particles": 47692
+    },
+    {
+      "coupling_step": 55,
+      "elapsed_flow_time": 2.75,
+      "physical_time": 3.25,
+      "fvm_velocity_rms_over_Uinf": 0.009457012401273744,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.006117181165899907,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029756269888441433,
+      "full_drag_coefficient": 0.9592393052032164,
+      "hybrid_drag_coefficient": 0.9663930890715626,
+      "drag_coefficient_difference": 0.007153783868346197,
+      "particles": 48266
+    },
+    {
+      "coupling_step": 56,
+      "elapsed_flow_time": 2.8,
+      "physical_time": 3.3,
+      "fvm_velocity_rms_over_Uinf": 0.009513843847021346,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.006249916160280677,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029731916475736236,
+      "full_drag_coefficient": 0.9614330050726609,
+      "hybrid_drag_coefficient": 0.9669719884441144,
+      "drag_coefficient_difference": 0.005538983371453421,
+      "particles": 48861
+    },
+    {
+      "coupling_step": 57,
+      "elapsed_flow_time": 2.85,
+      "physical_time": 3.35,
+      "fvm_velocity_rms_over_Uinf": 0.009568697485413181,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00638272212372,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029707607713695062,
+      "full_drag_coefficient": 0.9636994197899879,
+      "hybrid_drag_coefficient": 0.9683984010620361,
+      "drag_coefficient_difference": 0.004698981272048264,
+      "particles": 49452
+    },
+    {
+      "coupling_step": 58,
+      "elapsed_flow_time": 2.9,
+      "physical_time": 3.4,
+      "fvm_velocity_rms_over_Uinf": 0.009629031331262946,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0065159898038506265,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029685965717258855,
+      "full_drag_coefficient": 0.9660260708767947,
+      "hybrid_drag_coefficient": 0.969923624925651,
+      "drag_coefficient_difference": 0.0038975540488562777,
+      "particles": 50086
+    },
+    {
+      "coupling_step": 59,
+      "elapsed_flow_time": 2.95,
+      "physical_time": 3.45,
+      "fvm_velocity_rms_over_Uinf": 0.009674385284036196,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.006644329531147897,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.02966225870115589,
+      "full_drag_coefficient": 0.9672837638123277,
+      "hybrid_drag_coefficient": 0.9716403699430017,
+      "drag_coefficient_difference": 0.004356606130674012,
+      "particles": 50732
+    },
+    {
+      "coupling_step": 60,
+      "elapsed_flow_time": 3.0,
+      "physical_time": 3.5,
+      "fvm_velocity_rms_over_Uinf": 0.00971609599199408,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00677715586827122,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.02964070106669768,
+      "full_drag_coefficient": 0.9684553391208776,
+      "hybrid_drag_coefficient": 0.9730666852574871,
+      "drag_coefficient_difference": 0.004611346136609518,
+      "particles": 51372
+    },
+    {
+      "coupling_step": 61,
+      "elapsed_flow_time": 3.05,
+      "physical_time": 3.55,
+      "fvm_velocity_rms_over_Uinf": 0.009766105020064511,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.006918273513623421,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029624835020508125,
+      "full_drag_coefficient": 0.9699282430850817,
+      "hybrid_drag_coefficient": 0.9742222704756405,
+      "drag_coefficient_difference": 0.00429402739055873,
+      "particles": 51990
+    },
+    {
+      "coupling_step": 62,
+      "elapsed_flow_time": 3.1,
+      "physical_time": 3.6,
+      "fvm_velocity_rms_over_Uinf": 0.009808615149136658,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007048347369468844,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029605069628297356,
+      "full_drag_coefficient": 0.9730885891052212,
+      "hybrid_drag_coefficient": 0.9749396020998368,
+      "drag_coefficient_difference": 0.0018510129946155418,
+      "particles": 52635
+    },
+    {
+      "coupling_step": 63,
+      "elapsed_flow_time": 3.15,
+      "physical_time": 3.65,
+      "fvm_velocity_rms_over_Uinf": 0.009850325807476409,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007179996557090917,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029586516752405683,
+      "full_drag_coefficient": 0.9747322142056783,
+      "hybrid_drag_coefficient": 0.9770337425056521,
+      "drag_coefficient_difference": 0.002301528299973765,
+      "particles": 53290
+    },
+    {
+      "coupling_step": 64,
+      "elapsed_flow_time": 3.2,
+      "physical_time": 3.7,
+      "fvm_velocity_rms_over_Uinf": 0.009901021337792451,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007313667667762849,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029568261392111203,
+      "full_drag_coefficient": 0.9759755840075898,
+      "hybrid_drag_coefficient": 0.9785045534170054,
+      "drag_coefficient_difference": 0.0025289694094156046,
+      "particles": 53907
+    },
+    {
+      "coupling_step": 65,
+      "elapsed_flow_time": 3.25,
+      "physical_time": 3.75,
+      "fvm_velocity_rms_over_Uinf": 0.009952173728587947,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0074481571690154565,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029549394510578378,
+      "full_drag_coefficient": 0.9775863340738141,
+      "hybrid_drag_coefficient": 0.9795786990293492,
+      "drag_coefficient_difference": 0.0019923649555351197,
+      "particles": 54517
+    },
+    {
+      "coupling_step": 66,
+      "elapsed_flow_time": 3.3,
+      "physical_time": 3.8,
+      "fvm_velocity_rms_over_Uinf": 0.010006474049129984,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007582959885288743,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029531572629895145,
+      "full_drag_coefficient": 0.9798960265956631,
+      "hybrid_drag_coefficient": 0.9804025480638675,
+      "drag_coefficient_difference": 0.0005065214682044017,
+      "particles": 55141
+    },
+    {
+      "coupling_step": 67,
+      "elapsed_flow_time": 3.35,
+      "physical_time": 3.85,
+      "fvm_velocity_rms_over_Uinf": 0.010069800996897204,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007725828352736437,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029512712250023644,
+      "full_drag_coefficient": 0.9819740791139708,
+      "hybrid_drag_coefficient": 0.9817447968679754,
+      "drag_coefficient_difference": -0.00022928224599538805,
+      "particles": 55749
+    },
+    {
+      "coupling_step": 68,
+      "elapsed_flow_time": 3.4,
+      "physical_time": 3.9,
+      "fvm_velocity_rms_over_Uinf": 0.010140624029704932,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.007873748193560074,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029493698824204998,
+      "full_drag_coefficient": 0.9842683649907108,
+      "hybrid_drag_coefficient": 0.9835986727271567,
+      "drag_coefficient_difference": -0.000669692263554067,
+      "particles": 56535
+    },
+    {
+      "coupling_step": 69,
+      "elapsed_flow_time": 3.45,
+      "physical_time": 3.95,
+      "fvm_velocity_rms_over_Uinf": 0.01021282478029089,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.008023858128715448,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029473065751989692,
+      "full_drag_coefficient": 0.9862777448100487,
+      "hybrid_drag_coefficient": 0.985861023586044,
+      "drag_coefficient_difference": -0.00041672122400471245,
+      "particles": 57306
+    },
+    {
+      "coupling_step": 70,
+      "elapsed_flow_time": 3.5,
+      "physical_time": 4.0,
+      "fvm_velocity_rms_over_Uinf": 0.010289512783950237,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.008176499226665145,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.029450371109016108,
+      "full_drag_coefficient": 0.9889538554759195,
+      "hybrid_drag_coefficient": 0.9883303298183856,
+      "drag_coefficient_difference": -0.0006235256575338743,
+      "particles": 57970
+    }
+  ],
+  "profile_geometry": {
+    "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profile-geometry.npz",
+    "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/interface-iteration-3d.json",
+      "sha256": "fd74e1951c6273cca40afc6aca9bcc2a32bf5acd138720d184ee9ccf4e940b11"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/trial/cube-coupled-trial.json",
+      "sha256": "0a453a8e9f189e74e8c206d817f5fd6019a503a9bed273a1387161cb243f4a07"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/trial/comparison-history.json",
+      "sha256": "39b8f338cf740db946be377e03d127559e8fcae2b71c6a34341da029eec1ffd4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/profile-observation-3d.json",
+      "sha256": "3d914e6a404100931cdff144601833a9611303737aadeee9320c90e304ec3d6b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/captured-reports/accepted-fvm-checkpoints-3d.json",
+      "sha256": "9153be1c364e3f1587243375b299e1f31b1cb1e7388a9475cf9d66d62b507356"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/fields.py",
+      "sha256": "fcd9a690aed2a29f137fdf611c32453f6d99bcade678d04ab39426c8b74ef6ee"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/interface-iteration-3d.json",
+      "sha256": "7e626336cc1ecca2cb96409f2e55205defb6d8aa22ff9473fbd253f928050d79"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profile-geometry.npz",
+      "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/full/solution/mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000001-sweep-01.npz",
+      "sha256": "1ea6c63f9d485c4b1d0c4b64ea62075339e757c2d55c08a5bd7554d7812790d5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000001-sweep-02.npz",
+      "sha256": "ac1ced7566351361df4555886e6ee9ceb68d114d1043bd1847cd0f0b69455d2d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000001-sweep-03.npz",
+      "sha256": "782965c157529c42e0e0ca05c0321e466ee65ec77ddb7e6fec5e7a64b9ad0348"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000002-sweep-01.npz",
+      "sha256": "8d36b87cd130a85957351d65db3a21895ae207107e48cfcc007a8427e06da664"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000002-sweep-02.npz",
+      "sha256": "e63807e9c48a50df07f2cf2c955ab1f1658e4c22b0cd96fa91e75d12ceb13385"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000002-sweep-03.npz",
+      "sha256": "30d0a7abfb4534c9cb99ae0306d3adee6b639fb8c8e112ce23204fcfe32699ec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000003-sweep-01.npz",
+      "sha256": "2f794d39facfcb852ab4e849294177b4d2975e87247f868452b9d6828450fec4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000003-sweep-02.npz",
+      "sha256": "a839c32f21d74a81f1ad68f0d5651ca41617a03274cef0cc9bcc687f45d50244"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000003-sweep-03.npz",
+      "sha256": "8ee986f3ed7e9426d8b7ebbfc054b9ebaee548a8bb87616ae433a91d88169098"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000004-sweep-01.npz",
+      "sha256": "fe85c76d8ce02f209bb58f3b42edf3e81359963e4ae34ab931616c82959318ee"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000004-sweep-02.npz",
+      "sha256": "bda5da1b00ca441537f4b5d9ecf5f363f792e3a112b1538a94501a8864cac89e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000004-sweep-03.npz",
+      "sha256": "4f4f5342a134bc5602a13096e720dc858ddae7099f0c1ee79f1e7c7c93073058"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000005-sweep-01.npz",
+      "sha256": "520337437a354e76e4074bdf1376138fc34ddead9e84b64d68b26172f941043e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000005-sweep-02.npz",
+      "sha256": "4e475cd4824c42dfb47ddd948d763928245d1dfb37f8b8cdcdc081ec90a4b47e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000005-sweep-03.npz",
+      "sha256": "f5eeffe1d3decb871a09951ec51570da184fa71ea3842a0ee7c9c9438c064797"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000006-sweep-01.npz",
+      "sha256": "fbd0f82ab894c1dd3dfa849f9a01d30e5a4ecfe8ea8c0a42a8c43bc56dca1ce6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000006-sweep-02.npz",
+      "sha256": "19765701a05796aa13a4d3954b5f18be808f6f14910f37ea632a006261b5040f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000006-sweep-03.npz",
+      "sha256": "5f2e72bb48381ccee9d9e635e4e2b38162bc98a7b77e4ccacabeba6e9a20237e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000007-sweep-01.npz",
+      "sha256": "693c375dfb5c24b17a5e0dfe8d47eb0d553d8c912d307f0ea4b67a4de0768908"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000007-sweep-02.npz",
+      "sha256": "86ebfbcebb8ec8f77042ef4681a6379483871b8e7e3f9384e4a0fab20b1ff9a9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000007-sweep-03.npz",
+      "sha256": "30ccc13c445d33db4680cbd2b603b3950715b1195ccb49950e45be31b8abe9bf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000008-sweep-01.npz",
+      "sha256": "7fa8f8ee0480f302f98f1a8dcfd703ec91372034846252247fa8aed86fa29386"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000008-sweep-02.npz",
+      "sha256": "5596c16a5b40f482ff1775f2aaee137ca27eb66e65a1b93414ba068dd07371b3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000008-sweep-03.npz",
+      "sha256": "34ef4d35bba34e698e57f3786a500736b90c3ef62a88bc2c62cebcdd2dc77c7d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000009-sweep-01.npz",
+      "sha256": "ecfca10193320de78246ae7e2d3c79b2e7bf39307d1c4f6d6799f5e47367cbb3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000009-sweep-02.npz",
+      "sha256": "37aa82e83b5d60c0b4cc82737634a13d385a5dd5cef92fcbbdc844bbe230471d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000009-sweep-03.npz",
+      "sha256": "287c33f3fc8f09c7b8cbf7828e8c6912e6b9105a8462537e6bf1b1436dbe7c49"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000010-sweep-01.npz",
+      "sha256": "f0074588560a9a1a9c5e3512e0cf9c57cafa1ebce2fa2dd9b5d7a61a9a66ed12"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000010-sweep-02.npz",
+      "sha256": "ea2bbe803cc4f05d5bda00c5d650bd1ca91ccb73e52bb5811ee32430c6fdac2e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000010-sweep-03.npz",
+      "sha256": "0b535517d701223d851efc3376d4536b4ca09b322fd4f78d173dfde46945e01e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000011-sweep-01.npz",
+      "sha256": "9ea471fa0be799c941c3c9f3e71685231cf2b8709b00339c4533fdd06ae5a965"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000011-sweep-02.npz",
+      "sha256": "7684e95f62557f625fd1cc22c7819017cc758248aa6ea81b3afb538bb0952ff2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000011-sweep-03.npz",
+      "sha256": "3a45d6b9b955e95bcab9c67761359723c514f0e7a7cbac04cbe7d15c9d097ec0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000012-sweep-01.npz",
+      "sha256": "e711d70a2e44a156655de4c7cef19088ed18905c4a89da02f3162020ad103bef"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000012-sweep-02.npz",
+      "sha256": "bc9c4761815e47ce143270ffbebed68729365967aa8aa7a18d0da97e5e91c953"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000012-sweep-03.npz",
+      "sha256": "51c3919631853bc5d7cb716e7e43d097c75372c5ef33e8210ce4e93a74f99305"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000013-sweep-01.npz",
+      "sha256": "9ffbd9b0a9346bb7263d1a716288562e225178ffc7b253e8f2802418aaf372d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000013-sweep-02.npz",
+      "sha256": "10edacd4bb14317def70d64bdd6148f82c628ca47a1600eb4ffd3323d39c7c80"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000013-sweep-03.npz",
+      "sha256": "c012df08656e09752c60727530dbd79e6f68ea006ffa26011277355584c16eb1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000014-sweep-01.npz",
+      "sha256": "d577487fa891a68961498393e21262a59a63d618e45d084822a1042661d8251a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000014-sweep-02.npz",
+      "sha256": "a9201e799e9993b405d48d926f0a0b7023ec56ee39080bb307897ad9125dc741"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000014-sweep-03.npz",
+      "sha256": "3aa5ef6fd59343fa8c8c5d434127e04a3cb9254c849f40c2b3e46f9bc3b68aa3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000015-sweep-01.npz",
+      "sha256": "113eef943b155bcfd770e5e26ba9dfefdbe213e7da0cf50a87d56126cf3621e3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000015-sweep-02.npz",
+      "sha256": "1cb0b995aa812bd82f8967b1e5a16585db963901bbbaee2f1452dfcd3682ef76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000015-sweep-03.npz",
+      "sha256": "053108d6bcbfea306d29558ca890aebb785f1957c2e6928bf4b7bd2190520b4f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000016-sweep-01.npz",
+      "sha256": "a76634c0621606dcc1b3dd6e8341be16909459792a2a1593ae61f3a7fcab9d6c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000016-sweep-02.npz",
+      "sha256": "1753ec496b6afd0af941633a4978d4878401f4fd69058b2761fcb730605c4878"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000016-sweep-03.npz",
+      "sha256": "a9a69ad771cac5378a8764adabecfd5f73aa336aa029e9bcc7f4599c5457fccd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000017-sweep-01.npz",
+      "sha256": "f329ea0e9caace70656ed80d037964fee027f7f46cdd6f1e5d1c8dbcedff2cf4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000017-sweep-02.npz",
+      "sha256": "a2dba3e7db272a2f4023bb02c4bf4450a7ada4ffe0a2c097079c9e1658d9a054"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000017-sweep-03.npz",
+      "sha256": "bda1706380c208e550fcdc38c7ce36f20755259978a0cf17f97d64e65225a1b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000018-sweep-01.npz",
+      "sha256": "15f181dc7c460bc2a9820a9286ca253b01b76683de379bfa95c47c6e9fe656d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000018-sweep-02.npz",
+      "sha256": "113369f511d9d868fcda55822f854be4fdd1deb9b8048b27f2a8737607682695"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000018-sweep-03.npz",
+      "sha256": "17a50bd301d488eebb20e9f1a8a0c7ec6aa66f8377cd155579de03b39da52f80"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000019-sweep-01.npz",
+      "sha256": "d42fc9cc974855e70ae73cf8fce03848de7d0d278cdb2e1d4a39549a1cfc9394"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000019-sweep-02.npz",
+      "sha256": "4ffc3a0c968dbc97077dcc88f71d163159099481dc9abcf7e413dd4337ab12ac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000019-sweep-03.npz",
+      "sha256": "65bccc594ff9bccb97746788804562fc89cfb51a4c27a94b3ab401fc6816f122"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000020-sweep-01.npz",
+      "sha256": "c70352391ffd3b465e16ae96ffc0e2c34791061dd6f13af1cb16052d0aa8c8f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000020-sweep-02.npz",
+      "sha256": "16d3bdc2f299c6ae6a3f2b7c481771164181e915b9fb635ee089d2aabcbd63be"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000020-sweep-03.npz",
+      "sha256": "fd74f5c8dae380d262c3d4330d93d1ccdd0f0c56c6ce21255e45255fd86a3771"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000021-sweep-01.npz",
+      "sha256": "676812d914985e84d5145b143d966f34500932c8ebebbefe85fe7689e0bb10fc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000021-sweep-02.npz",
+      "sha256": "90480a2c083569b30db567e3e294ef90b20f81dd0b7a4eb3f38312a57abb11d8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000021-sweep-03.npz",
+      "sha256": "85a11849ff5d1364dc8478eabdd0760880ce32f90c384a6e64f49e415a5c51d9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000022-sweep-01.npz",
+      "sha256": "35b3e7e818855fd68a012bd9b661890fcb243003302d7131ef04510327cb0385"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000022-sweep-02.npz",
+      "sha256": "82c77ab6a94401402723b467119f9d1b0f701f7fd9f71e7b39a00f80d0bd7d9d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000022-sweep-03.npz",
+      "sha256": "6038739e3d808dc926c43df082b3d1b8feb512aa355bd8435cb6accec7d31aa0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000023-sweep-01.npz",
+      "sha256": "8b087f599c9fa0ea493c34bafd9a4f81c0ecad9a080728a2fc4acfd9ec9f07ea"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000023-sweep-02.npz",
+      "sha256": "e226b1785ce28b4c42d442795a8da2a689179276d1679baea9086f6115a0210c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000023-sweep-03.npz",
+      "sha256": "2053ad813251068f02920451e77af8aff184d9734690d2043e7aa549886b0607"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000024-sweep-01.npz",
+      "sha256": "c082c4396ff402409880f8e0eb0d721af037a3e87436007152c9a8a42608d371"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000024-sweep-02.npz",
+      "sha256": "c812d12dbcbad0cc15bffe380cec5b5561abc1023363d122fab72cf6d2002e28"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000024-sweep-03.npz",
+      "sha256": "40273abd199c5db28466b8dc7df2f78b0b63d239f89a6f6c9889156f407a4205"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000025-sweep-01.npz",
+      "sha256": "37cd2a969a81a0ced594366bf912e4b23756c3457b144a958b4c13ccf18e5d4e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000025-sweep-02.npz",
+      "sha256": "025ea8ad2b0888e4fec538f99dd0cf3aeb581290925044905d40a04443a9b10a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000025-sweep-03.npz",
+      "sha256": "676f8498cec71bc9bc176d9a221551a77a8281d584614fe7aa4649bed4fa98bf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000026-sweep-01.npz",
+      "sha256": "c86415ef7ab11176fb958dd2d988d89411e5bc40a40b679d5972ef3a03d7e095"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000026-sweep-02.npz",
+      "sha256": "86e2d656c3255276e76cb9783ecf426fc3d6ee4d99ce16e1c824cac1ac22783c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000026-sweep-03.npz",
+      "sha256": "437118166d38a3bf8ee8bdf44a77afb1b794f65e027112429f842e1dd959848f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000027-sweep-01.npz",
+      "sha256": "2da5f7997c0958107c20c989674b34fc3d64b4132b7857b3f1c6ba92998bca8f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000027-sweep-02.npz",
+      "sha256": "f8329bcb26affe1ed5f96689077d9d19d0b4eb3e02db33e5a0baaa27c5e1c5b8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000027-sweep-03.npz",
+      "sha256": "bd494bef67262c1826738a75d950369561ed9be96e43eeeb75deb0fe62a415c7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000028-sweep-01.npz",
+      "sha256": "51d5b4cbd6a537bd0a927ad25d9c4d23e69e20ca12d3c226096b08898920e321"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000028-sweep-02.npz",
+      "sha256": "649ce7f59947a51ebc5c52e3cac42b943545c6ed402fa6c995343c045172d975"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000028-sweep-03.npz",
+      "sha256": "2ef8d5b5414e6096364f9d325dd6fc69e162790f33ab7fc40c5b9c383f3c484a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000029-sweep-01.npz",
+      "sha256": "7ac83acc7c1484bd9cd4090eae5f961183a1a579dfb32511b5945402f9818ecf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000029-sweep-02.npz",
+      "sha256": "417f312580d0b6112a51d9398ceecfbe6f2c8cb20cca4260a3c84f97a24b328d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000029-sweep-03.npz",
+      "sha256": "8bca2bcebc6c91a994b8f04c5801ae4af1762c736a165f9a8ae26c188708eeac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000030-sweep-01.npz",
+      "sha256": "d79d771a8eb790bc0ea6e9c40557a605fc4cb6d572ab7dbb49fa98104bec1164"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000030-sweep-02.npz",
+      "sha256": "04453faa857c93244452bd433c16cc5e3a34b88b359a85a81d658e048eb34008"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000030-sweep-03.npz",
+      "sha256": "a4f149ad2cef9f31e6ff59690aec2b4ba0ad4effbaaa96c3530f5d6989db4e26"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000031-sweep-01.npz",
+      "sha256": "d5b08c4dec6547527cdb46a5163ad50b6367495240eacf3943f732b4d8020fdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000031-sweep-02.npz",
+      "sha256": "727cefb20ab72237345113d0868d9b83dd1b1e680fd2909667fb24407c2fdda3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000031-sweep-03.npz",
+      "sha256": "ab2d4d4170cd6cf39f67f7f2fb642222cb5b25588b5dcc3a6716b0369a3f9289"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000032-sweep-01.npz",
+      "sha256": "0372a069defeeab8b8d7323c9f7908605e7467f08256067a1c275b2d4b86e0b6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000032-sweep-02.npz",
+      "sha256": "1978df14de257afcd2ef6aff744325b3eba48ebc9c5261498b7d5737c71139d7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000032-sweep-03.npz",
+      "sha256": "d08353f8ae2ee5d2edf307f8e674c7b35c26053b6a38e97655bfddb1c8229751"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000033-sweep-01.npz",
+      "sha256": "982fa424d61dfca3546756dcfdadd9f5b86c0bce8f5467e14a7232737456a89c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000033-sweep-02.npz",
+      "sha256": "692a1f5b77b20ffb20202102a6b52499d58ae58f9b43b97d51de0ead3710f065"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000033-sweep-03.npz",
+      "sha256": "8acf1721052eef760ec4cf6e5395c5a1920bd37992ec4573addb26251f1f24a0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000034-sweep-01.npz",
+      "sha256": "45738e22bea15cc69d3e6c4882cedd42dcb5dbc705ee3a2113490b0ed01d28a4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000034-sweep-02.npz",
+      "sha256": "c3100875150bfdd79378d430af55f2f851fed6b87e7f16fbb203378156ea1c04"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000034-sweep-03.npz",
+      "sha256": "4ee8b6e132a9ef696349188b4fa834e25343dbd4998341fbc9b8e619f261995e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000035-sweep-01.npz",
+      "sha256": "245ca9fc80ea323b8dba425b29ede767c527092bfa7ed188f38f35085c610d77"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000035-sweep-02.npz",
+      "sha256": "26068b17e9718041c1307aec29dac600722ba97b4bb55d5379267a54dee3f108"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000035-sweep-03.npz",
+      "sha256": "21b5c29eb7bd5acced7dd69ee3b4f0d6e993e9eeab3166a1fab899bedcfc1f37"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000036-sweep-01.npz",
+      "sha256": "212d7d15d35fe04a2c20d8a0a34c9b4594cd7729efb736cbf51934cff28095a1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000036-sweep-02.npz",
+      "sha256": "6fcc818fa1f18fadeb29c9b47e86a35e588572fb3a9d851dfa8b70ab9452aa52"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000036-sweep-03.npz",
+      "sha256": "d20a61fc8b86a19177cec30e3c8fa438273eea8d4221ff0dd940fc382bc59ede"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000037-sweep-01.npz",
+      "sha256": "dd3fed5b1847bab676f86c2d8dd12dc775a6fffedf401ddcc2d2b1c39abfb4d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000037-sweep-02.npz",
+      "sha256": "8f80e33e9fd7ca65667cdec7e1d2dc8a98724789a4a3194624bad7a0fff3b919"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000037-sweep-03.npz",
+      "sha256": "4e96b3010c04df821bf67ad520d318f7f55cca950dbcf1d16f9e86e171b7593b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000038-sweep-01.npz",
+      "sha256": "df776b66d27e9e8be2136f5f9f9edf6a432fd4b914793a2887f95958b9fbb16a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000038-sweep-02.npz",
+      "sha256": "16d961f5f9453040803e00bff04fdc9a730068472b28c16244f800cfe64079fe"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000038-sweep-03.npz",
+      "sha256": "839c1d8e17e9351a7a0dcd30078dfd52ddee2ed4733607483c77563be41b5c44"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000039-sweep-01.npz",
+      "sha256": "a1c532eddc7c0cbd7c32ab5c361729bba2f2aaeecc2e970c0b60dfc3f517df49"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000039-sweep-02.npz",
+      "sha256": "6c49977f79d29c0aca7db55f9fb70712e5ff46125ffd1bd0c60b728442922be9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000039-sweep-03.npz",
+      "sha256": "fba10a8d300a17633936d7d91f8fa16df4dea07f2d75df4931015e3cec1ea18c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000040-sweep-01.npz",
+      "sha256": "345a4938e5c7eb18f139071cb6968a15dfe6508c8d6722edcee0adeb4e01cf0c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000040-sweep-02.npz",
+      "sha256": "dfc184e0f190fbf27d953f9e380ea435ca633e42d02c089456fa9a9ec5a0c0dd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000040-sweep-03.npz",
+      "sha256": "0401687a42c8aa0f33e6474696b102eb6c0153479c63be84f75bd8d79a96e27e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000041-sweep-01.npz",
+      "sha256": "fd7797be06c565c558d322b98baac8a045bb6efea44db7b38d6cbc6407e11ddc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000041-sweep-02.npz",
+      "sha256": "05a51c61988d5324be67762f9dc4af11647d3b1c8631543f8d17c0b6a0d5e8f0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000041-sweep-03.npz",
+      "sha256": "1d0d9715802aa92293d591ce269c0fea9f987a7098f802063d7f67ba22209545"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000042-sweep-01.npz",
+      "sha256": "5f60cf38a61c0bf13becc6132322bd5bbb7888f80033544cc6431e818fd15672"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000042-sweep-02.npz",
+      "sha256": "1ad21149dedabb60c82ada6c2d734448acb932d24e4602e41be2ab66fae8e2e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000042-sweep-03.npz",
+      "sha256": "b14e5eb60fc220a90b143aec151568217ffcb8cdab181b32bbcd13b411328173"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000043-sweep-01.npz",
+      "sha256": "8fd10377e9b21419b194dfc6fa1f9f5a26f1a6afca30f2df97f7181975834a61"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000043-sweep-02.npz",
+      "sha256": "825f34ca1d8b1e7d6e89a74662dbe203649a6b429e0eb5f1113c3aa91e37524e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000043-sweep-03.npz",
+      "sha256": "9b1634c12890c511ff8210609886f2e4d4e167a055d1f448ad515f9d157ec963"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000044-sweep-01.npz",
+      "sha256": "21d3b52da9b430b8182a5907f3799e97ddf8812a7a46355f3e182d0efed80769"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000044-sweep-02.npz",
+      "sha256": "4f00b0d2ac84136316e90bc06598372f32c7637d0a7eaf3b1875fc346976d82a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000044-sweep-03.npz",
+      "sha256": "47a4b2357338aa5f5e4f2c64fb383a2d7083e038228afa145d9e4748deb3c750"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000045-sweep-01.npz",
+      "sha256": "7d32a7f1d864491bf36f263ad36fbd9403ff9c1a64468a0481bb88440d87979d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000045-sweep-02.npz",
+      "sha256": "77be98bf37da7e7bc49846b91f7f4e9b95f882c04e3905b07cab7469f5980a7c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000045-sweep-03.npz",
+      "sha256": "193695379cc65fb972792f2f5a1ce0e97ab6a5f7ebee413255843df41f2b9d0e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000046-sweep-01.npz",
+      "sha256": "06f97514359d65c820a66b0da66ed7ae112bf556dcb16c01725191ed29a1d69f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000046-sweep-02.npz",
+      "sha256": "f06509317128c522504f2b99dda386ebd96b9c09076bc62387fe33c50a5cc95d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000046-sweep-03.npz",
+      "sha256": "1fdb03dc9b368492c9fb0cc533c8ffe8c78836d08e2834c632294a464488f3a1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000047-sweep-01.npz",
+      "sha256": "ad54a2b810722752190dad3ef30bad103dbefd7b33e4285a51cc5a13b7375508"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000047-sweep-02.npz",
+      "sha256": "7a5aee63654638ae1a36d8046ecb705af383734f16c020e078d7fa7b7bc23d7f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000047-sweep-03.npz",
+      "sha256": "c8e15290fa2f7d221e455909bac88df4412e0831609fb4d167c58421f3927139"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000048-sweep-01.npz",
+      "sha256": "204ba148f85ecfb02eff95342ff2fa31422420ba329d8f7b7545e7e646a6e2c6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000048-sweep-02.npz",
+      "sha256": "d004284bde6821693e1340c586cff77d8d1da163cf8ae57d686343a23d3ba06b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000048-sweep-03.npz",
+      "sha256": "280cc552af4840982eb81ad054d9ef9b22bb87fdf0627ce54f148f4c9959ed15"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000049-sweep-01.npz",
+      "sha256": "b29746a1f1f30f82da6a49d923bcdbbfaa3eaa7703ef9a039fec373400201eb5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000049-sweep-02.npz",
+      "sha256": "98a0b9fbea0e83384a501fe5b914abba0152339cdb85af63672d797a17673ec5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000049-sweep-03.npz",
+      "sha256": "ae427232d5af7ee259a99559430f2978b2948e32640c8a15972b00c20474d2f8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000050-sweep-01.npz",
+      "sha256": "ac7261347b5108d2d94d213362f6f361bb84483695d74faa652411216c273384"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000050-sweep-02.npz",
+      "sha256": "2b3c08fe765c89071002a553961a7cac1803630b66b3fb8c0c26bdfdddd3560b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000050-sweep-03.npz",
+      "sha256": "8ea51c28336dae16291a4097a76ca2dba48c00e755eefd4fc049bf32a30268cb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000051-sweep-01.npz",
+      "sha256": "7dd167ecbe060f753eb4141e2f1300bfbd563e7f78db1b2d1e273f36366d6c26"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000051-sweep-02.npz",
+      "sha256": "4b07d33345ee0c5fec4436f208ae8a9a588ffb7ec081a695841b4e50163dbf54"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000051-sweep-03.npz",
+      "sha256": "51902103c754e345b927e483250085e22b287b01d454b38b3252763ee1104aca"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000052-sweep-01.npz",
+      "sha256": "e17ba812502163a403dec6a420afcb299b8c1eec6345a75de15f0a1b95ae0431"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000052-sweep-02.npz",
+      "sha256": "ed49f335c0f43083edd4f196f9df3ca5a34c8a8ec55fe6eda7d1b5e1ad73dc40"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000052-sweep-03.npz",
+      "sha256": "72371fa8c50fc7d633a6bbaac9a9536d1f254bc1a68460600b666596aa30f839"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000053-sweep-01.npz",
+      "sha256": "9efd404f10e0dc2998fd759ea9ef431c8d1aedd37b0c5706de0a37bdc1c432c7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000053-sweep-02.npz",
+      "sha256": "cbe26d1dcdb8ce694eb410f91f0f67f9010a53b0409a58e125be86629ee269b7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000053-sweep-03.npz",
+      "sha256": "a5c42a1db3047a1dc1be882995c34ef32f4538fee9f824224857d0e3a5be7611"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000054-sweep-01.npz",
+      "sha256": "baad0c653deaa031f0ba045e1f1d8dffa426c65583683087550f7e4b00443138"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000054-sweep-02.npz",
+      "sha256": "c67b0338da46416ecc7ae114852bd97e27086c0e5ea42142c2b596a1a367c4d2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000054-sweep-03.npz",
+      "sha256": "1f252717927cb2bac8d669f87259f3cc5c6c9239850fa77a7ad70f5015ba641c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000055-sweep-01.npz",
+      "sha256": "c0d9902895419a7ecae3a8593a9feb735684db3ee6feee2efd60135437742d91"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000055-sweep-02.npz",
+      "sha256": "2df1c1c05627c4d5704294f4826d44d1376aeedc3ce6d9d625cc7bc70b69c998"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000055-sweep-03.npz",
+      "sha256": "f26122cf6f010d6be525c97543fbb459b49a888ba71703a440e8ef43db46e337"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000056-sweep-01.npz",
+      "sha256": "2ddf792eddf514d5eb5a808a476e53c8f555298a23adbb7f690d1c0b53dbf720"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000056-sweep-02.npz",
+      "sha256": "cb1abeec06fb0504218ab69e613be9e651a10e33ceb891eb92aa3d810657c4f3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000056-sweep-03.npz",
+      "sha256": "31927c567fa216adc38bc91cb6cc380be9fa4aef07dfac86e6ddd2b24d8f96ff"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000057-sweep-01.npz",
+      "sha256": "a90e65952e66bbbab2db6a79b32bc3e6ab77854c66c0ed5fd7012e947b63363d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000057-sweep-02.npz",
+      "sha256": "c320626c92a13ea6bf9e8b9772376f484e91800feb01b34a012e1c06354013c7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000057-sweep-03.npz",
+      "sha256": "2f10aadef9444a2eba1a84ad42c4f7178c104ac71c9a563937b26875ff76c8a5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000058-sweep-01.npz",
+      "sha256": "cd798fac4704acdca07e8f09a8df88a922b42e007acc578bf0bfe93c0036f865"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000058-sweep-02.npz",
+      "sha256": "133d8966bba1493d037cb7baf18d331e91b80e28467dcd3341420fd8772e773f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000058-sweep-03.npz",
+      "sha256": "db9c161a091bb244f8bd71a09f1441ca8f882f4b03c085c832426739d1c86be2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000059-sweep-01.npz",
+      "sha256": "e659b34616fab1f1f6a836a2a9898781cad5656a480bd5a6670e078670105469"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000059-sweep-02.npz",
+      "sha256": "faf7a853256cc8eef8cdf47381f60334e27d019485785357d69233769a3212e4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000059-sweep-03.npz",
+      "sha256": "efa9e68bf2cfabe1f9a218749b311403903004b5db839cb7b2ab12e8fb4591f3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000060-sweep-01.npz",
+      "sha256": "d96346650c851a5983d0b04474cbe63db603920f9b1f480b3d5efa9aa4772eeb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000060-sweep-02.npz",
+      "sha256": "3825fb40d490947f873d66459a04831b6bf21d213f3746e58834e10e0d92a868"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000060-sweep-03.npz",
+      "sha256": "9807eb8e8b6c5176c34582d19f88a3d95e6d1966ca82bd93faaf05a8bf299672"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000061-sweep-01.npz",
+      "sha256": "ff0ede90d701c121b40202d6d01847aa54c2620659258f64d8b880e4dee6e932"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000061-sweep-02.npz",
+      "sha256": "dcfd2a8dd86e26a7b7b5e3f3595d34dbbed8e4c7f982cb1294c98537bbfb7246"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000061-sweep-03.npz",
+      "sha256": "1aec8da8b5d3a04806a5f4a767814e4c52ef1850c97126775c113c8f4f4eef27"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000062-sweep-01.npz",
+      "sha256": "0de2cd9e8a35943859d6cbd116d82e47fdeb856033694c95fb1e7812f8bf5f07"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000062-sweep-02.npz",
+      "sha256": "c06ed0a353e46dd3c363d48c1cb32deb94e30470084528d5957093bde45e9aea"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000062-sweep-03.npz",
+      "sha256": "5a1273a86448a2272d3b74faa4db227758527927854348d86bd42e47bc6b1717"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000063-sweep-01.npz",
+      "sha256": "03b4a8e6c8983b7890a3155db4080c4fca87d326921a09f0b3bb2c8f70508822"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000063-sweep-02.npz",
+      "sha256": "46a2aec9384f4bfaa19cdb4ff9fbbef47ed49e40d67688f615f3adec4f577b35"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000063-sweep-03.npz",
+      "sha256": "3cd6363c8cdfd1a7e785ec8a5c3ad4967894055e894e1d69be8e8f0223e99a4a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000064-sweep-01.npz",
+      "sha256": "fe95eb4831064ef06db7ac667f0a378c4b7cf49c8409015798d85d9c155a9c5d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000064-sweep-02.npz",
+      "sha256": "4032b7952fd508e6f14cee145fb035f8ab8c41b90ccd8cb3e022efb657d377af"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000064-sweep-03.npz",
+      "sha256": "d2ef143b7e9a3cf7073ce1eb316a5e9ea1e4c645e429f092bbf5f01043ffef0d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000065-sweep-01.npz",
+      "sha256": "9467e00de37fbf84fbf9e0f4acb7072f89112bbf5695941572939d24439023f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000065-sweep-02.npz",
+      "sha256": "6626568b9aeab3356659c2a4ab1f270760761dada5e8488608f36c56f4f87768"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000065-sweep-03.npz",
+      "sha256": "6296f93173b17fde08a199556d96a3fb2ddbf9adbbe247ef138f7edaa8131251"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000066-sweep-01.npz",
+      "sha256": "35dac149363b1490d73f2e6da42300ba7e8b1dfbe03e119709bd392bd357be20"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000066-sweep-02.npz",
+      "sha256": "cd18738728bf9f964b149b0b1b7ec3af2d3378efa28f4224a715b2f153c2a889"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000066-sweep-03.npz",
+      "sha256": "644c622c877fbc5f8088b1563512218bab3271824d88371ab5d4d7111b34fa0d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000067-sweep-01.npz",
+      "sha256": "75a21b63847a716ead3334b46d9066e66c510b42cbe41076e3799caacc591fec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000067-sweep-02.npz",
+      "sha256": "f269bb5da7d276da77ff7e0a4135dc632b6853271a6d41612ce851df50b020d2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000067-sweep-03.npz",
+      "sha256": "cc8b48badd2f47f0b97b1299a47086a0fd77058b6ebb67e08bb58996f3a61f58"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000068-sweep-01.npz",
+      "sha256": "90ab088329f44d082146f709515ab02b17c6e775cdee5d2a2767d17de83b5c0c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000068-sweep-02.npz",
+      "sha256": "8815e38cc13996573deb7ee41db8e7c1fc5668cd49e64187c9e11830cab280c6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000068-sweep-03.npz",
+      "sha256": "1275adc725ef9215bced41d00609907391380b70e46b82feef04a46fc0492d25"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000069-sweep-01.npz",
+      "sha256": "658ebe5bc4256592c64c076492a2c6cfd60442c697e5b4ad636089ff51274c92"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000069-sweep-02.npz",
+      "sha256": "3e181671c9f45f78a38e65dd9e37b25d4824d1f20a4edb01a30ab83026c5e1b1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000069-sweep-03.npz",
+      "sha256": "a658baee1a39bb375706fef971e6d9283c1e5fe443c4f7d038b8d083d369f39c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000070-sweep-01.npz",
+      "sha256": "3bb76cba2a123e7f1d11270bd8f1df4edef0e04c1a936521327a28f5bebb1219"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000070-sweep-02.npz",
+      "sha256": "ea013d2e0dc91c1f8c062e925609ad75d5784860f886a53ae73b9ffa4c0ecc1d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/boundary-step-000070-sweep-03.npz",
+      "sha256": "8c8bd7e16f7d79cf8f43de55b66856bed6ca195628c42ad1645f27f4f9c47eda"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000000.npz",
+      "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000000.npz",
+      "sha256": "3662a1c2c709a8bf575bf79ec28f8be3decdff4b2739623ed85112dccf1fb305"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000000.npz",
+      "sha256": "2d6391e611021a6c4f924e2354aed25ffc72fde58df22d84e6aee3dd92d892fd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000000.npz",
+      "sha256": "dd9edf6d7b3f2427b87ea9edf60aaa0e4ffd5b63405ccc0b42b96144fb541730"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000025.npz",
+      "sha256": "f87a5352a1d0efadf4531a7521e000af51c6a7aa0769b98ef6874665052a4797"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000025.npz",
+      "sha256": "1041f7a76d849ce4b2c40a3ad850a22ab68ca14ce2235814a353c8b59e75da76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000025.npz",
+      "sha256": "19e67821f3fb1277ee854b8e078da3725c1fbb0a1c00f00a97e02382200d9352"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000050.npz",
+      "sha256": "5fe5b8ca3a3d569f8a27c08b7fabb9752744817856c3e119e94800a9cd592ffc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000050.npz",
+      "sha256": "f362b1dfbd9e6d555d616cae10b772d83bba740ffe3f1a81a43199d59f3691c0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000050.npz",
+      "sha256": "859d249d215a97e8f358be05983e52e2a2aa8111903848f81217b7664e2788b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000075.npz",
+      "sha256": "182e714097cab86635eac0c1406d2241c15b80dc12cc2dfa706b8dba4fcfc67d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000075.npz",
+      "sha256": "a658e18efce5d4b938a806aae2173eeff9d68486a98e28b40cd452db68604d2b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000075.npz",
+      "sha256": "2f92ee9fc5735ad1373abcc59980beff979957d20570a1b89c242cb8d6d32507"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000100.npz",
+      "sha256": "eba309f7aa675c3d09729eff1d3778bc7f40d9c530eb8467f4af6b4dde699c4d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000100.npz",
+      "sha256": "cd9cd0262aa7d76e8faaeb8ce8f17a3955052e7fde90f29abfef8898fb90350d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000100.npz",
+      "sha256": "d7507254c93de5471f6e807acd781c4608b45572764fc6dd894ce2246e1c7b65"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000020.npz",
+      "sha256": "8c62c08b87bf8dccd4f4452697fe899c3b21dc57d92e2c98571aa81241a5f727"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000125.npz",
+      "sha256": "6822781d019e4314140559cf23f18162354066cd20199467fcccc6313dd2234b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000125.npz",
+      "sha256": "861657370637664646591adfea85e00e2a1b77b9f47b85023ce08ee6be64e446"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000125.npz",
+      "sha256": "0747f9b715d278f0749cccdd0d4cf6a0b5e85cc498883934f9b452889f92db96"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000150.npz",
+      "sha256": "fffb3d327e185aae754ec723130311050d378af9aa260e6a5b4057d9bbea32ab"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000150.npz",
+      "sha256": "e65fa177989aa45dd3a35622481dc98884ecefd5870d1fa13e778f4740d20947"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000150.npz",
+      "sha256": "ea7cc68c99b027ec0af9e70c9abdd94b61b146e1448333a70b9175aac2cc316d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000175.npz",
+      "sha256": "40f7840aa80356831e2b562d22cd4ebfb5ab62342e3d65008a1e81a7ec044107"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000175.npz",
+      "sha256": "fa0b11074dc4329313c22527ee4022a62024ce5e3e56c2ef3d230f3394ceab16"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000175.npz",
+      "sha256": "9dce050f09cd766d8f02a0919768e3f54345a6d8422e0f6e77617359dea4ba00"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000200.npz",
+      "sha256": "bb2cf49874f15222001e0901699af852b9d80fe73d838a1268e627fb6cfa0518"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000200.npz",
+      "sha256": "8c933c66dc7b434e9d862aa93dc449ace80a08083693b7407a26c41acb848baa"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000200.npz",
+      "sha256": "a1dc62f92f6352b2dac1e0b74540773c3572258ef146a613e51c1780d2fbd84e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000040.npz",
+      "sha256": "490b3cebbd33c3e1cc288670c79d905aa5c8ab6cb3c7b5032667ef8e55830663"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000225.npz",
+      "sha256": "10b1594eaf2f9160d7105ea517cfc6a095894e5b765efffd2900a8fa7105d1b8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000225.npz",
+      "sha256": "f63aacb40e295560198ccb7f34a07793d6049831671de428b9ff82a36282b938"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000225.npz",
+      "sha256": "5490f9c8b124598e7fa60016ef0e2f0136052b6389cace94e8a0405b2b5af9c3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000250.npz",
+      "sha256": "19b5a6fd9709a0e21d8d3fff1cbb70f8ac1ec21bd6bad3de660154fe87f71c93"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000250.npz",
+      "sha256": "96fd6c510964459edb12ca6676d1ac8d8d36340f95c67dffe6470ab66220ef2f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000250.npz",
+      "sha256": "e89b9470d10de31e37007e8ba910067eb0cb9cdbb5341bee34d52f3fa6687326"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000275.npz",
+      "sha256": "c2caf8ebd4e015908b4f0df16eb6a5a76f03e4590e2f81f0871ad57f236f6fd9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000275.npz",
+      "sha256": "ebf3bfcd00e6a2e58d5e2198414fd922896656462d9a9a4674c4bd691dd2c1e1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000275.npz",
+      "sha256": "fda49392d25f54eb21705f4570649014a3abc4db4e471e9fd37f64284c967509"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000300.npz",
+      "sha256": "16f669c396cb8e1f5e0bbd637302d1f99febcc8bdc56d7e92ff4f830bc966445"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000300.npz",
+      "sha256": "5f4a79614c0142ec0a2d207533761a693b5fa8d2c1c0069db8ec7e9540545255"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000300.npz",
+      "sha256": "b4d795d68e8628ab049c82c7b96d1796bc2af151945d0b36d1311ba63be43fdf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000325.npz",
+      "sha256": "8a433e371cf149ac63bd98ca69a1d3c421c14d0f39077596655fbd0fbd6fc4af"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000325.npz",
+      "sha256": "8a0ab029535bd81fb3f24301e6606a7b1f4601471537ae47954a10fe53e1c075"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000325.npz",
+      "sha256": "9e65f7544fa8f238f2dc4471f06bd6873c4886c82621b4f3a329a44f7b92b3a8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/profiles-fvm-step-000350.npz",
+      "sha256": "fc10b7d2338aaa14231bb126c57949e721b302488c40d62b6b96fd319cea7e24"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000350.npz",
+      "sha256": "2fad389811e9be6c6eae8a849e2d2f8307168c78e6743d1563f0e956f6dcd42c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000350.npz",
+      "sha256": "f37e033abb7196c3a98a8bee6448247a25001e19f39ca46c761b3c97555245ef"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/long-wake-prefix-through-four-qualified/direct-profile-step-000070.npz",
+      "sha256": "c3030c2569e5bd23d23e721ca2317841cbea8ec6c4ad712c117293b609c473c5"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_accepted_wake_prefix_3d.py",
+      "sha256": "b0bbb191586a26329dca6a015f86aeeb51917136c468f943458bb0aee5a85bef"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_snapshot_induction.py",
+      "sha256": "30c5d9371460b527b3194c0134bcf7d4b4e9168811d107d54070a7b10edd524b"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_face_trials_3d.py",
+      "sha256": "c1f4b4ed1b6cf9ed256179a86c503ce4690c73c550095f94eb627210326c7b89"
+    }
+  ],
+  "drag_relative_rms_percent": 0.7589452392313049,
+  "maximum_absolute_relative_drag_percent": 1.4813334329944488,
+  "force_component_difference_rms_at_profile_times": [
+    0.007414317019127748,
+    0.0003197586694833266,
+    0.0003562782871964813
+  ],
+  "elapsed_seconds": 13.25243216700619,
+  "limitations": [
+    "Complete means this fixed prefix was verified, not that the parent long run completed, the wake is developed, or the requested agreement was achieved.",
+    "Drag is recorded every exchange; all three wall-force components are independently reconstructed only at profile/checkpoint times, every 0.25 flow-time units.",
+    "Short-run prefix agreement compares the recorded 20-interval history. No separate unobserved 70-interval control or bitwise comparison of every intermediate primitive state is claimed.",
+    "The profiles are one-dimensional observations of the actual 3D flow. Upstream, near-wake and far-wake regions are reported separately.",
+    "The composite uses hybrid FVM inside the small box and VPM outside. Raw and matched-sampling comparisons separately expose interpolation-stencil differences.",
+    "Direct profile checks use the same saved rounded particles and body strengths. Their difference from runtime queries includes tree approximation and evaluation arithmetic, not particle representation error.",
+    "Independent direct-kernel cross-checks use eight particle targets and all profile panel targets at each requested direct-check time; the body strengths are not re-solved.",
+    "History RMS statistics exclude the common initial observation; the complete unshifted history is retained."
+  ]
+}

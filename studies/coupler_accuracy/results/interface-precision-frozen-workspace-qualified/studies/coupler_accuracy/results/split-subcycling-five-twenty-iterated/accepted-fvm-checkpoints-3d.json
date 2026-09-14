@@ -1,0 +1,286 @@
+{
+  "schema": "openonda-accepted-fvm-checkpoints-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    }
+  ],
+  "frames": [
+    {
+      "fvm_step": 0,
+      "coupling_step": 0,
+      "physical_time": 0.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/full-000000.npz",
+          "sha256": "3662a1c2c709a8bf575bf79ec28f8be3decdff4b2739623ed85112dccf1fb305"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/hybrid-000000.npz",
+          "sha256": "2d6391e611021a6c4f924e2354aed25ffc72fde58df22d84e6aee3dd92d892fd"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_kinematic_pressure": "0ba076b81a82f50daa219d729d33d89bfdbb194241a79967278b6c8fe3b7aa40",
+        "full_volumetric_face_flux": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_old": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_older": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_velocity_old": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_velocity_older": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "small_velocity": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_kinematic_pressure": "8b437da3d75eb01414e3c1f056517ff7078718db57e1ad680c73130e0af118e0",
+        "small_volumetric_face_flux": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_old": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_older": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_velocity_old": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_velocity_older": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "vpm_position": "4169cec85c685416b5f73b7438b9754505fdeff8e8f11d073d8cdd59fe3e0388",
+        "vpm_velocity": "a26f2b829940490d8da8481b53c9c40a814220138a3d41db50522a7ed22dc482",
+        "vpm_vortex_strength": "7e48d2371b1ae95cbd0c023f901e72f1144c24cc034b731f10b52dbd0cd96e4c",
+        "vpm_core_radius": "645266c1f1d3935e14e95c0811ed8da26e44b3c631e82033d26f3a327a2fdc26",
+        "vpm_particle_volume": "9d94c05211a7998ad622e8be5221bdc87403c169513769de081f5ae7f4217a58",
+        "vpm_kinematic_viscosity": "866bfd0caf1c7eb00214cf764d791439bebfc22ff4783196dba85136a91bfb8f",
+        "vpm_eddy_viscosity": "a9c780506a4e590527f17d2ae51e9d4e37f9819956a9903071988b0943db244a",
+        "vpm_group_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_zone_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_velocity_gradient": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_strain_rate": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "panel_strength": "4337da3ffdc5114ec81278f6fb40ed1db44c139cadd829855a36e6915b095cb7"
+      },
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705
+    },
+    {
+      "fvm_step": 25,
+      "coupling_step": 5,
+      "physical_time": 0.75,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/full-000025.npz",
+          "sha256": "1041f7a76d849ce4b2c40a3ad850a22ab68ca14ce2235814a353c8b59e75da76"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/hybrid-000025.npz",
+          "sha256": "0feb95b5609547fd76067dc9d72517dc7b5c9528ec7643354b188128128556b4"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_kinematic_pressure": "2a055c227aa5bf4aa758f22d272a4cffcd1946b726d5363fa2c82eadcd664f78",
+        "full_volumetric_face_flux": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_old": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_older": "4e58eef3b5b10fbc5ce75ef891f4830d34b1220ce80b753b4d58c846b2a75946",
+        "full_velocity_old": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_velocity_older": "2a37e7f1f785988ce0abd70bf967ca241f572a507aa62b9e342c92e28e13b4d4",
+        "full_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "small_velocity": "ba0eb688e213d291f7b0e2982f357ac7180ebfbe61548e6cc2233620ee65c51f",
+        "small_kinematic_pressure": "0e60e814cc63d74e89793ce2fac1e9cc772c03aff41b3c0db8f2d91609d68885",
+        "small_volumetric_face_flux": "6a0e5ed3da69897d6d1b375ba99103615168e72d0b06657006fc685536d47f70",
+        "small_volumetric_face_flux_old": "6a0e5ed3da69897d6d1b375ba99103615168e72d0b06657006fc685536d47f70",
+        "small_volumetric_face_flux_older": "7be212d93b397b8eee7aceed98fcdfd46f68de46223a6914f3aa61a10041ab86",
+        "small_velocity_old": "ba0eb688e213d291f7b0e2982f357ac7180ebfbe61548e6cc2233620ee65c51f",
+        "small_velocity_older": "a251b2447a077136000bcc7129ba2ba544d51d14e68a03db622099e262b21bee",
+        "small_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "vpm_position": "4e72c401372c43fb3d49bf5b7329d5104b2c00f5f87075a0f34011e2bcdebda3",
+        "vpm_velocity": "c481513a6e93ef022b9e01dff108af7a2a56ff328a582c7d8e262f0f9504c426",
+        "vpm_vortex_strength": "90655cab46425940558f90285a2cc6b560ad78ed930fb9137989730a8df3ddd1",
+        "vpm_core_radius": "73a4119dee8bcbac9310e7ed5cde7ad2550e84b19b3afe35e68e0c99c09a1361",
+        "vpm_particle_volume": "d69d0c0ec11c4bc90f900849a918cb62bbc54c921f5a9ccb284bca66540bcd5c",
+        "vpm_kinematic_viscosity": "84fb5cfcc460ae4eb72ebc379886cea6e43759bcb57603593608e0bd1fe16eae",
+        "vpm_eddy_viscosity": "45cbe99259fa92c964c99b1ba42f86e47d48c1a25820cd35b2353f287b4db0cf",
+        "vpm_group_id": "af400b5f1c963ae7c75ec17fa4540fcf04172c1286f407105e7a626c5d0dc80c",
+        "vpm_zone_id": "af400b5f1c963ae7c75ec17fa4540fcf04172c1286f407105e7a626c5d0dc80c",
+        "vpm_velocity_gradient": "02f9009b6fe4109adc7e3fb184c18edf765fd4a1232309e860b52f04061bcb42",
+        "vpm_strain_rate": "b4fe76eb83272869971886f1b40421cd80aaaa63d12475505ef532b6b0a30e5f",
+        "vpm_clock": "6d811476ad1efbfa75e85abed9088c3f915447c25cc4b06dfd5615ae75af5e62",
+        "panel_strength": "08e08abaf42be5d9b34a5bf384a48b0e4d0aab9935e17d3296d5deb4f9608439"
+      },
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.407983600425928
+    },
+    {
+      "fvm_step": 50,
+      "coupling_step": 10,
+      "physical_time": 1.0,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/full-000050.npz",
+          "sha256": "f362b1dfbd9e6d555d616cae10b772d83bba740ffe3f1a81a43199d59f3691c0"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/hybrid-000050.npz",
+          "sha256": "b05c6af2122581fc007565dacb882e9fa9685e3908b419203400e75a73922530"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_kinematic_pressure": "aa7147a12e86130ba45f683c6ea17073febbe89b6a1d69076724c866e380e27e",
+        "full_volumetric_face_flux": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_old": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_older": "5b1609b61f50f535c54299c09b255f5aacc5bad738e77ead1204bc2156eca7f3",
+        "full_velocity_old": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_velocity_older": "18752bdd2322a8d3836d28041a3e362706f9ba83b91ffef8ec99a40557682449",
+        "full_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "small_velocity": "dd4d20e7ebb84c4739e4c2f90b121c9425be1a2a4ce7be045f92cb8fd4d64bff",
+        "small_kinematic_pressure": "c0582a7266b9880379fbd6aafc2dc871ae28e6ca5fb63773a8a4731b5c996105",
+        "small_volumetric_face_flux": "e3b1911d032e756fa5461f9834278aa6a6b1dde19bce6ec7b3063fb917a6e287",
+        "small_volumetric_face_flux_old": "e3b1911d032e756fa5461f9834278aa6a6b1dde19bce6ec7b3063fb917a6e287",
+        "small_volumetric_face_flux_older": "3a7cba6f3d58067e6b2657e1a6c8beed2f0b1bf4167134f20cf57191980e8edd",
+        "small_velocity_old": "dd4d20e7ebb84c4739e4c2f90b121c9425be1a2a4ce7be045f92cb8fd4d64bff",
+        "small_velocity_older": "ef77b38d4ca84f8d22b7e33eeb83840c4e02f72305a5b6c1901754cbccdc8af1",
+        "small_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "vpm_position": "b319b12b5f9cd7c7340f68943aa5acedf10e116af9e59c3f44586a20201303d6",
+        "vpm_velocity": "790d50a8f07fdf7be7180e1c36bcd10d30d9d0e76c8b5977e92cbe81f7354760",
+        "vpm_vortex_strength": "c39211498f8077a2d3d62870e74ec26b6ef1869fa39a53a5d160bedbcc37227d",
+        "vpm_core_radius": "e8f630c14ce73be7ff93ed69fd26d7b28248ac8ce6c4a7dc9d4a58b65cae0125",
+        "vpm_particle_volume": "9d4f986cdb9d980c453f0b0c64e0875527802f7b1dd56cf3aca91c8aa84b68d0",
+        "vpm_kinematic_viscosity": "312bbd8ecaaf5dd58b9bd4b396c1fbdf7f1ef095beff08d826b44fdf9a22ab8f",
+        "vpm_eddy_viscosity": "a21509753087c270c2fb982af3e3b6501a4ce61b36d0b3d31aea73dad27ec1cf",
+        "vpm_group_id": "3700b2ea9e5bc4c3bc3b8d337aeed1cb1c329101329f45691b5c05fbba12253b",
+        "vpm_zone_id": "3700b2ea9e5bc4c3bc3b8d337aeed1cb1c329101329f45691b5c05fbba12253b",
+        "vpm_velocity_gradient": "0121105b9786bd362958c54fe51a457b0b8086e345e8519aaed0261e422406fd",
+        "vpm_strain_rate": "72d0ca1eed59edaa64c99cd50a25e6085ff35693599d197ad7db36e6b6d8ec2b",
+        "vpm_clock": "2ff68f07dbb642904b5de9da75543c9e82071cfbad44aa1e540440c04f41a0dc",
+        "panel_strength": "b2c08d11c40169973049bd6261f4a178f79836fd1098ef5b3877abd6c552984d"
+      },
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.2764380949480347
+    },
+    {
+      "fvm_step": 75,
+      "coupling_step": 15,
+      "physical_time": 1.25,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/full-000075.npz",
+          "sha256": "a658e18efce5d4b938a806aae2173eeff9d68486a98e28b40cd452db68604d2b"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/hybrid-000075.npz",
+          "sha256": "23047dfc547d47132caa48fc59c16a396534307da17c5473c4546e96946401c2"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_kinematic_pressure": "2046d320e04c4cfa090e146fec24104329b2394d1bd732a98f4d930a1c0bd4fb",
+        "full_volumetric_face_flux": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_old": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_older": "e108a86e46c0b664d1c4cd7f89525ee83b8c389d1ab98b03ae5d2d8db981508a",
+        "full_velocity_old": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_velocity_older": "4210905d83be251b30d31ab4aa33f94807ad063b3da11e1ee364954d34c8f131",
+        "full_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "small_velocity": "4d836b7d7ec475ef7bbd7f7f03255a2b2212def1d217377eaacfe5afebcc871b",
+        "small_kinematic_pressure": "8d42cc4ed1e2f810ac333db949456270156ceca3812fdde78b4a87079d1afaca",
+        "small_volumetric_face_flux": "65f2a7b68a245a1288a012c1185cb9eb638e837ed7d915d74c5bd786bcddab68",
+        "small_volumetric_face_flux_old": "65f2a7b68a245a1288a012c1185cb9eb638e837ed7d915d74c5bd786bcddab68",
+        "small_volumetric_face_flux_older": "5fb79365d1cfe7f5082f80b33fb5614ee26c4fba09067f6ad1a69aeb38f92e8f",
+        "small_velocity_old": "4d836b7d7ec475ef7bbd7f7f03255a2b2212def1d217377eaacfe5afebcc871b",
+        "small_velocity_older": "3a110bfd0425ffc0e1474ae5e5a4fb4d1230a76137722b65f54b44cadc5ce59f",
+        "small_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "vpm_position": "2fee5509707ec6be01ed87362ffa429d668f909aa1d78f3991f5e4a726737261",
+        "vpm_velocity": "299db6d329de1673c0ed8911f029142d66824e0496f90ead8dde7fa7e7becd2c",
+        "vpm_vortex_strength": "11bca845503ec53c6e57f30201fb040519b33ef974ecf0c80cced3397e34bd5b",
+        "vpm_core_radius": "7c6afe596849be122b69b7c83121ac7bbb1e33fd44ee5ee815cfcf135c296e9b",
+        "vpm_particle_volume": "173287682439c74b001501591ae6b6f3b071103dedc4e2d6a71f803b905c0c20",
+        "vpm_kinematic_viscosity": "08f5d48c2967a284ddea54ab17a727d653e4c123dc56eac5026eea1cb13aa285",
+        "vpm_eddy_viscosity": "ee6118ea47ff14b9a01444db7b1226ccc995c351ec41bd9d17b84ff514e0abd5",
+        "vpm_group_id": "2ca45ec6f2ae3b9139b0bcca3db4c0bd7a20b09bfda1b4b16626b10a1f2ccac7",
+        "vpm_zone_id": "2ca45ec6f2ae3b9139b0bcca3db4c0bd7a20b09bfda1b4b16626b10a1f2ccac7",
+        "vpm_velocity_gradient": "34cc3a104b6c4113d5800511111a4132265a5d24888052b7b1b5d11701191179",
+        "vpm_strain_rate": "d9111c2bd15312e8539872581cdf374618d153ed94bf0e9055c45b32a4b1ec5d",
+        "vpm_clock": "8ae79f58ec1b2b119fadc386288ef065f8dab8e2bbfa8f1045af5c0c3618e3f7",
+        "panel_strength": "4cec0dffb0c848d84b7c2a429e4d7ee976ae0057b6878cc3fde7e0657f3edf3a"
+      },
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1662492756028788
+    },
+    {
+      "fvm_step": 100,
+      "coupling_step": 20,
+      "physical_time": 1.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/full-000100.npz",
+          "sha256": "cd9cd0262aa7d76e8faaeb8ce8f17a3955052e7fde90f29abfef8898fb90350d"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/accepted-fvm-checkpoints/hybrid-000100.npz",
+          "sha256": "80985c812c78ad670211ea899b0f78853e77a0122e93a82f96a56595805eecfe"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_kinematic_pressure": "4dc5943a6cf6be8f7d384e4e22baecd34ec5c505635b8fd033663d1379f42d82",
+        "full_volumetric_face_flux": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_old": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_older": "ecc3bb63b3a81a7989d0ab7380cca6d15cec23e88016f535e9e3d723bd78ccfa",
+        "full_velocity_old": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_velocity_older": "a7d4cbfa70e967c130ec376f6e23270e43d23a238af12d48bf530af6e86bb6c6",
+        "full_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "small_velocity": "4a132e1ea4dc7f45743adffc56da848a4f924b130bc5bc63dd29b9931745ed7e",
+        "small_kinematic_pressure": "bed12f9725a930f0b210f25eaca4af94734bb0ddf4d740683a7454d7fcf29dc0",
+        "small_volumetric_face_flux": "ca8af98b60a1395550d26b3e2685abef6f4cb0ecd20c13717f844da10cc0fc8d",
+        "small_volumetric_face_flux_old": "ca8af98b60a1395550d26b3e2685abef6f4cb0ecd20c13717f844da10cc0fc8d",
+        "small_volumetric_face_flux_older": "0359c50019761103563dc1986009c69e054232ac83757b0486f3cd5f4c9bdc1d",
+        "small_velocity_old": "4a132e1ea4dc7f45743adffc56da848a4f924b130bc5bc63dd29b9931745ed7e",
+        "small_velocity_older": "53e0a4dfc183e46a5a81ebb043c173190ac27fa5678617f0409c3f6225d8ece9",
+        "small_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "vpm_position": "05b736c13b665d9d5443133fc0e7c4a191d4272750387dded815bce7e63f1c71",
+        "vpm_velocity": "97d1b69870077baa61929f35a938a0baa6fbb17f6c404dd17728d0524d4523e2",
+        "vpm_vortex_strength": "9c538e0b64d17f6bf32a939685b187cf077e841a3f88ddb8f61e94f940c5b111",
+        "vpm_core_radius": "e6e4cfe941b36ea6be8ce62f24aec9e5e6606da64c099af6fe9299d2c1411c76",
+        "vpm_particle_volume": "0a295a13ad5394e090adee44c53a63e198a76404a9cfd48ed2a42e14fcc88203",
+        "vpm_kinematic_viscosity": "b937664a73027526881be165f7c8aead34659c75658484dc677a561ebf07aadf",
+        "vpm_eddy_viscosity": "cf4e7c9ee9d2e336ce145a5bba519ff64a3bdd1dc30d19c5923277e50548c6c7",
+        "vpm_group_id": "172fd665525e3ebe5568c4beaf5bb8adf1605fe2cc85e091c2b7890464e0ecc7",
+        "vpm_zone_id": "172fd665525e3ebe5568c4beaf5bb8adf1605fe2cc85e091c2b7890464e0ecc7",
+        "vpm_velocity_gradient": "e99babfeb848ee25b0fe2b22d7b512d29602bf3d09932f07b7b7185ea6f3164a",
+        "vpm_strain_rate": "00fe6956040198e176de3de4f87864bf8ca11ae3d4540d78434af470f7cbd080",
+        "vpm_clock": "8e52eb8d39defc5ebaa61cbccbb053665840cbd468aab3507e83b700d6bd52e7",
+        "panel_strength": "34cbf980679516692b3d3bb99fd529dedad80912acaabbb01037a94fa0797e59"
+      },
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0894640661795911
+    }
+  ],
+  "limitations": [
+    "Checkpoints observe the independent full FVM and hybrid FVM after accepted coupling intervals. Neither checkpoint feeds the hybrid.",
+    "Both canonical FVM states are saved at every profile time, allowing independent force and field reconstruction.",
+    "This does not add a coupled restart schedule or claim that the VPM state is fully restartable at every profile time.",
+    "The underlying fixed-predictor and precision study remains serial, laminar, fully 3D and scoped to the 108-panel cube."
+  ],
+  "meshes": {
+    "full": {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/trial/full/solution/mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    "hybrid": {
+      "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    }
+  },
+  "profile_report": {
+    "path": "studies/coupler_accuracy/results/split-subcycling-five-twenty-iterated/profile-observation-3d.json",
+    "sha256": "6966bc861f63546c5bab9e4dc964fbff4ae663757d033b4a249898e99deeaf3e"
+  }
+}

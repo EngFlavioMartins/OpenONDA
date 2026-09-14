@@ -65,7 +65,7 @@ def test_fixed_sigma_coverage_contrast_preserves_ring_circulation_and_impulse():
 
 
 def test_coverage_qualification_holds_core_physics_and_filter_scale_controls():
-    setup = load_case_module(CASE_DIRECTORY, "setup_les")
+    setup = load_case_module(CASE_DIRECTORY, "assets.legacy_les")
     case = setup.build_case(
         "baseline",
         scenario="seeded_breakdown",

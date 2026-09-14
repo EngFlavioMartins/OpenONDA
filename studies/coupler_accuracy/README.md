@@ -5,6 +5,10 @@ physical problem. The production changes fix independently reproduced defects.
 **The requested matched hybrid trajectory has not yet been demonstrated.**
 Passing the component tests below must not be reported as achieving that result.
 
+The [verified before/after curves and recorded runtimes](verified-progress-3d.md)
+give a concise account of the demonstrated simulation improvements and the
+performance evidence that is still missing.
+
 **The required solver and acceptance benchmark are fully three-dimensional.**
 The cylinder slices and span-integrated kernels below are historical component
 diagnostics only. They are not candidate replacements for the 3D solver. The
@@ -18,12 +22,101 @@ coupled comparisons, matched laminar/LES isolation, complete-stress component
 qualification, mixed-boundary convection correction, and frozen-renewal tests.
 They supersede the cylinder slices below as the route to complete solver qualification.
 
-The latest [interface-iteration experiment](interface-iteration-3d.md) completes
-20 matched-medium intervals. RMS relative drag error falls from 2.082% to
-0.555%; final drag error changes from −2.096% to +0.756%, with a 2.50% reduction
-in final near-body FVM velocity error. Twelve intervals converge and eight
-reach the 12-sweep cap. Exact replay and independent endpoint checks pass.
+The latest [interface-iteration experiment](interface-iteration-3d.md), with
+[promoted auxiliary panel queries](panel-derivative-precision-3d.md), completes
+20 matched-medium intervals with **all 20 converged in three sweeps each**.
+RMS relative drag error falls from 2.082% to 0.555%; final drag error changes
+from −2.094% to +0.756%, with a 2.50% reduction in final near-body FVM velocity
+error. Exact replay and independent force/field checks pass. The earlier native
+query run converged only 12 intervals and reached the 12-sweep cap in eight.
 This remains a scoped experiment, with substantial reference errors unresolved.
+Production defaults remain unchanged.
+
+The completed [time-resolution comparison](interface-time-resolution-3d.md)
+keeps the same mesh and `dt_FVM=0.01`, reducing the exchange/VPM step from
+`0.05` to `0.01`. All 100 iterated intervals converge. Drag-history RMS error
+at common times decreases from 0.555% to 0.488%, but final whole-FVM velocity
+error increases 13.49%. The denser history also exposes an 11.01% first-interval
+drag error. Exact controls and 440 independent metric checks pass; the shorter
+interval is not selected as a general accuracy improvement.
+
+The [inviscid time-isolation comparison](inviscid-time-isolation-3d.md) now
+refines RK2 alone to `0.01` while retaining the `0.05` diffusion, exchange and
+renewal schedules. All 20 intervals converge. Drag-history RMS error changes
+only from 0.555068% to 0.555463%, and final whole-FVM velocity error increases
+0.0313% relative to baseline. The bitwise wrapper control, two component tests
+and 140 independent scalar checks pass. Thus inviscid RK refinement alone
+does not reproduce the much larger combined-cadence effect. A separate
+[body-field audit](body-query-and-transport-3d.md) identifies that the selected
+panel mode includes the body correction in queries but excludes it from
+particle transport; its advancing effect is now measured below.
+
+The completed [RK/GBD substep comparison](split-time-isolation-3d.md) now
+refines both to `0.01` while retaining exchange/renewal at `0.05`. All 20
+intervals converge, but drag-history RMS error increases to 0.583542%.
+Final whole-FVM velocity error rises 1.079% relative to baseline; centreline
+near-wake error rises from 1.102% to 1.308% of freestream speed. The off-axis
+line improves slightly. A bitwise wrapper control, all 100 recorded GBD
+recovery gates and 140 independent scalar checks pass. This is not an
+accuracy fix. The four-schedule comparison retains the fine-exchange
+startup pulse and does not assign additive causes to interacting errors.
+
+An [actual body-stage probe](body-query-and-transport-3d.md) restores 28,441
+accepted particles and verifies the omitted velocity/stretching contribution.
+Independent surface quadrature exposes cancellation in the native body
+gradient. A separate analytical gradient agrees with that reference to
+1.37e−14 on 256 checked targets. The controlled 20-interval body-transport
+comparison now reduces drag-history RMS error from 0.555068% to 0.521061%.
+Final near-body FVM velocity error falls 6.121% relative to baseline;
+centreline and off-axis near-wake errors both improve. All intervals converge
+and 141 independent scalar checks pass. Maximum instantaneous drag error
+increases slightly. This is a short-run improvement, with developed-wake
+agreement still unproven. Its extended 40-interval prefix is now verified
+through time 2.5: drag-history RMS error falls from 0.803030% to 0.730295%,
+and centreline near-wake error falls from 2.064% to 1.813% of freestream.
+Eighteen force reconstructions and 276 scalar checks pass. The body-enabled
+run continues toward time 4.0.
+
+The [particle-stage induction audit](particle-stage-induction-3d.md) separates
+the FMM's hierarchical stage path from its direct point-query fallback.
+On the saved state, stretching-rate errors are 0.449% near the body and
+1.105% in the sampled near wake. A stricter geometric separation factor
+reduces them substantially at increased computational cost; its default
+control and repeated stages replay bitwise. Its 20-interval advancing
+comparison is now complete: drag-history RMS error changes from 0.555068%
+to 0.555345%, and whole-FVM velocity error increases 0.05365% relative to
+baseline. The off-axis wake line improves slightly. The bitwise wrapper
+control and 141 independent scalar checks pass. This stricter setting is
+not selected as a coupled accuracy improvement over the tested short window.
+
+A [stretching-consistency audit](particle-stretching-consistency-3d.md)
+finds that the Gaussian vorticity sum differs from the curl of induced
+velocity by 4.13% near the body and 15.23% in the sampled wake. Direct and
+transposed strength rates also differ materially on this same state, even
+with the qualified direct Jacobian. This is a representation/formulation
+contrast, not a measured error against the FVM trajectory. The existing
+guarded correction was rejected by its residual target with both three
+and six allowed sweeps, retaining the same final acceptance limits. A
+separate direct/transposed stretching comparison is now advancing after
+its instrumented transposed control passed bitwise state/history checks.
+
+The [profile observer](profile-validation-3d.md) now supplies matched centreline
+and off-axis profiles, including exterior points. Its three-interval advancing
+control is bitwise unchanged by observation. It separately measures the FVM
+sampling-stencil difference at the cut boundary. Reference samples are also
+currently present in the tutorial, but their meshes differ from this study.
+
+The selected variant is now in a [longer 3D wake comparison](long-wake-comparison-3d.md),
+advancing from physical time `0.5` to `20.5` with the same small domain and
+matched medium mesh. Canonical checkpoints of both FVMs accompany every
+profile frame; the checkpoint observer and eight independent force checks
+pass their short qualification. The [first 70 exchanges are now independently
+verified](long-wake-prefix-through-four-3d.md), through time `4.0`: relative
+drag-history RMS error is 0.759%, but centreline and off-axis near-wake
+velocity errors reach 2.846% and 2.444% of freestream speed. Thirty wall-force
+reconstructions and 480 scalar checks pass. Direct source evaluation leaves
+the wake mismatch essentially unchanged. The parent run remains in progress;
+the requested force/profile agreement is still unmet.
 
 The [velocity-projection and mass-flux audit](velocity-projection-and-mass-flux-3d.md)
 recovers the reference's face flux with bitwise velocity/pressure replay.
@@ -31,6 +124,15 @@ Conserved FVM flux differs from the flux of interpolated cell velocity in both
 the reference and hybrid. Matching native circulation does not determine that
 flux. The reconstruction's velocity projection also improves its unprojected
 counterfactual in both meshes, ruling out that proposed shortcut.
+
+The [face-flux moment study](flux-moment-compatibility-3d.md) now measures a
+further requirement for preserving cell velocity. Exact triangle integration
+removes a false constant-field discrepancy, but ordinary affine face traces
+remain incompatible with the stored means. A hard moment fit needs roughly
+`0.25 U∞` RMS normal-flow changes on identical shared faces in both full and
+hybrid states, despite tiny constraint residuals. Five component tests,
+independent surface quadrature and mapped-face checks qualify this rejection;
+it is not a production transfer improvement.
 
 The [continuous-curl reconstruction comparison](continuous-curl-reconstruction-3d.md)
 holds cell circulation and first moments fixed while changing local source

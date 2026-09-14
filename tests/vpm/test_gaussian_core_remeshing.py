@@ -138,3 +138,79 @@ def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
                 regularization_interval_steps=10, regularization_grid_spacing=0.1
             ),
         )
+
+
+@pytest.mark.parametrize("transfer", [0.002, 0.02])
+def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(monkeypatch, transfer):
+    from source.solvers.vpm.config.stabilization import StabilizationConfig
+    from source.solvers.vpm.stabilization import regularization
+
+    arrays, _ = _particles()
+    arrays.update(particle_volume=np.ones(2), velocity=np.zeros((2, 3)))
+    original = {key: value.astype(np.float32) if value.dtype.kind == 'f' else value.copy()
+                for key, value in arrays.items()}
+    current = {key: value.copy() for key, value in original.items()}
+    particles = SimpleNamespace(**{
+        key + '_cpu': lambda key=key: current[key].copy() for key in current
+    })
+    replacements = []
+
+    def replace(**data):
+        replacements.append(data)
+        current.update({key: np.asarray(value).copy() for key, value in data.items()})
+
+    calls = []
+
+    def integrals(*args):
+        calls.append(args)
+        value = 1.0 if len(calls) == 1 else 1.0 + transfer
+        return {'total_kinetic_energy': value, 'total_enstrophy': value, 'total_helicity': 0.0}
+
+    monkeypatch.setattr(regularization, '_transfer_integrals', integrals)
+    monkeypatch.setattr(regularization, 'discretization_health', lambda *args: {
+        'vorticity_divergence_error': 1.0, 'vortex_strength_misalignment_degrees': 90.0,
+    })
+    monkeypatch.setattr(
+        'source.solvers.vpm.stabilization.divergence_relaxation.constrained_divergence_relaxation',
+        lambda *args, **kwargs: pytest.fail('transfer-only mode must not project'),
+    )
+    cfg = StabilizationConfig(
+        regularization_interval_steps=1, regularization_grid_spacing=.04,
+        regularization_core_radius=.07, regularization_max_particles=100000,
+        regularization_transfer_only=True,
+        regularization_total_kinetic_energy_dissipation_limit=.01,
+        regularization_total_enstrophy_dissipation_limit=.01,
+    )
+    ctx = SimpleNamespace(
+        particles=particles, np_dtype=np.float32,
+        mutations=SimpleNamespace(replace=replace),
+        state=SimpleNamespace(particles_removed=0, vortex_strength_removed=np.zeros(3)),
+        metrics=SimpleNamespace(kinetic_energy_rate=0.0),
+    )
+    if transfer > .01:
+        with pytest.raises(RuntimeError, match='declared transfer interval'):
+            regularization.regularize(ctx, cfg)
+        for key in original:
+            np.testing.assert_array_equal(current[key], original[key])
+    else:
+        outcome = regularization.regularize(ctx, cfg)
+        np.testing.assert_array_equal(current['core_radius'], np.float32(.07))
+        assert not outcome.projected
+        assert outcome.total_kinetic_energy_change_relative == pytest.approx(transfer)
+        assert outcome.total_enstrophy_change_relative == pytest.approx(transfer)
+        assert len(replacements) == 1  # No adaptive broadening or enstrophy adjustment.
+        assert len(calls) == 2
+
+
+def test_new_transfer_and_filter_defaults_preserve_old_checkpoint_contract():
+    from source.solvers.vpm.io.backup import _configuration_mismatches
+
+    old = {'stabilization': {}, 'turbulence': {}}
+    expected = {'stabilization': {'regularization_transfer_only': False},
+                'turbulence': {'filter_width': None}}
+    assert _configuration_mismatches(expected, old) == []
+    expected['stabilization']['regularization_transfer_only'] = True
+    expected['turbulence']['filter_width'] = .07
+    assert _configuration_mismatches(expected, old) == [
+        'stabilization.regularization_transfer_only', 'turbulence.filter_width',
+    ]

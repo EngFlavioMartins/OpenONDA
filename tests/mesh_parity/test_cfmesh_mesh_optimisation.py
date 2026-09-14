@@ -21,6 +21,8 @@ from source.solvers.fvm.mesh.cartesian.cfmesh_mesh_optimisation import (
 )
 from source.solvers.fvm.mesh.cartesian.cfmesh_surface_optimisation import (
     _gradients,
+    _inverted_boundary_points,
+    _inverted_boundary_points_vectorized,
     _optimise_point,
     _optimise_point_kernel,
     _smooth_partition_points,
@@ -203,6 +205,33 @@ def test_surface_optimizer_skips_collapsed_opposite_edge_in_gradients():
     np.testing.assert_array_equal(hessian, 1.0e-300 * np.eye(2))
 
 
+def test_vectorized_inversion_check_uses_polygon_area_weighted_centres():
+    """A non-planar quad must not falsely invert its shared corner."""
+    side = 3
+    points = np.asarray(
+        [(float(x), float(y), 0.0) for y in range(side + 1) for x in range(side + 1)]
+    )
+    points += 0.2 * np.random.default_rng(256).standard_normal(points.shape)
+    faces = [
+        np.asarray(
+            (
+                y * (side + 1) + x,
+                y * (side + 1) + x + 1,
+                (y + 1) * (side + 1) + x + 1,
+                (y + 1) * (side + 1) + x,
+            ),
+            dtype=np.int32,
+        )
+        for y in range(side)
+        for x in range(side)
+    ]
+    patch_ids = np.asarray([x // 2 for _y in range(side) for x in range(side)])
+    mesh = {"vertex_position": points, "faces": faces, "n_interior_faces": 0}
+
+    assert _inverted_boundary_points(mesh, patch_ids) == {6, 7}
+    assert _inverted_boundary_points_vectorized(points, faces, patch_ids, None) == {6, 7}
+
+
 @pytest.fixture(params=("cfmesh_volume_first_pass.npz", "cfmesh_volume_second_pass.npz"))
 def native_volume_pass(request):
     path = Path(__file__).parent / "fixtures" / request.param
@@ -241,6 +270,27 @@ def test_volume_geometry_matches_native_addressing(native_volume_pass):
         data["neighbours"],
         len(order),
         cell_face_order=order,
+    )
+    cell_faces, _point_cells = _mesh_addressing(
+        faces,
+        data["owners"],
+        data["neighbours"],
+        len(order),
+        len(data["mesh_points"]),
+        cell_face_order=order,
+    )
+    np.testing.assert_array_equal(
+        _cfmesh_cell_centres(
+            data["mesh_points"],
+            faces,
+            data["owners"],
+            data["neighbours"],
+            len(order),
+            cell_face_order=order,
+            cell_faces=cell_faces,
+            face_geometry=(centres, _areas),
+        ),
+        cell_centres,
     )
     cell_map = data["cell_centre_nodes"]
     np.testing.assert_allclose(

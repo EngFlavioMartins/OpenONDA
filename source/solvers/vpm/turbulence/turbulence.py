@@ -23,6 +23,7 @@ class ParticlesLES:
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
+        filter_width: float | None = None,
     ) -> None:
         """Create a particle LES model and allocate its reduction fields.
 
@@ -41,6 +42,8 @@ class ParticlesLES:
             Dimensionless model coefficient for sub-grid dissipation.
         accumulator_dtype : taichi scalar type, default=ti.f32
             Precision of device reduction fields.
+        filter_width : float or None, default=None
+            Fixed LES filter in metres; None uses particle volume^(1/3).
 
         Raises
         ------
@@ -59,6 +62,7 @@ class ParticlesLES:
             smagorinsky_coefficient=smagorinsky_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
             accumulator_dtype=accumulator_dtype,
+            filter_width=filter_width,
         )
 
         self._min_eddy_viscosity_field = ti.field(dtype=accumulator_dtype, shape=())
@@ -93,6 +97,7 @@ class ParticlesLES:
                 turbulence_config, "subgrid_dissipation_coefficient", 1.048
             ),
             accumulator_dtype=accumulator_dtype,
+            filter_width=getattr(turbulence_config, "filter_width", None),
         )
 
     def initialize(self, particles) -> None:

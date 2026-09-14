@@ -1,0 +1,2707 @@
+{
+  "schema": "openonda-long-wake-prefix-verification-3d/2",
+  "status": "complete",
+  "scope": "fixed accepted prefix",
+  "spatial_dimensions": 3,
+  "run_directory": "studies/coupler_accuracy/results/body-transport-seventy-iterated",
+  "captured_reports": [
+    {
+      "role": "iteration",
+      "original_path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/interface-iteration-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/interface-iteration-3d.json",
+        "sha256": "b69bd6f27783980564032bc928ef500715e28faadfc67c842f52512c84c34523"
+      }
+    },
+    {
+      "role": "trial",
+      "original_path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/trial/cube-coupled-trial.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/trial/cube-coupled-trial.json",
+        "sha256": "b9c0b77a56e39c03d3359aef7b26cd23cc76c34cbac1b8c3395ee614f2a259c7"
+      }
+    },
+    {
+      "role": "history",
+      "original_path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/trial/comparison-history.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/trial/comparison-history.json",
+        "sha256": "02ca110244a76058b4ef2ea284140f2368d24a966f051193cc341ddcf5803db6"
+      }
+    },
+    {
+      "role": "profiles",
+      "original_path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profile-observation-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/profile-observation-3d.json",
+        "sha256": "cdd6b02d05cd3f93108bd39f2b114ec54617b4b055d1dbfaad27389bdb5fee0a"
+      }
+    },
+    {
+      "role": "checkpoints",
+      "original_path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints-3d.json",
+      "captured": {
+        "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/accepted-fvm-checkpoints-3d.json",
+        "sha256": "86d7c3f77c1b02e2ea31f038a512163b3d1eb18a77fdafc1a34415b5a5bd72a5"
+      }
+    }
+  ],
+  "parent_status_at_capture": {
+    "iteration": "running",
+    "trial": "running",
+    "profiles": "running",
+    "checkpoints": "running"
+  },
+  "through_coupling_step": 40,
+  "physical_time_bounds": [
+    0.5,
+    2.5
+  ],
+  "frozen_original_files_verified": 799,
+  "recorded_short_prefix_equal_intervals": 20,
+  "converged_intervals": 40,
+  "replayed_intervals": 40,
+  "independent_scalar_checks": 276,
+  "maximum_scalar_check_difference": 1.1102230246251565e-16,
+  "independently_recomputed_wall_forces": 18,
+  "profile_frames": [
+    {
+      "coupling_step": 0,
+      "fvm_step": 0,
+      "physical_time": 0.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.7028547226505122,
+            1.0473423231762238e-05,
+            -1.4502841133768002e-05
+          ],
+          "viscous_force": [
+            0.09048424852984024,
+            -2.1125846023897653e-06,
+            -4.651829302161172e-07
+          ],
+          "pressure_drag_coefficient": 1.4057094453010244,
+          "viscous_drag_coefficient": 0.1809684970596805,
+          "drag_coefficient": 1.586677942360705,
+          "coefficient_vector": [
+            1.586677942360705,
+            1.6721677258744947e-05,
+            -2.9936048127968237e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.7028547226505122,
+            1.0473423231762238e-05,
+            -1.4502841133768002e-05
+          ],
+          "viscous_force": [
+            0.09048424852984024,
+            -2.1125846023897653e-06,
+            -4.651829302161172e-07
+          ],
+          "pressure_drag_coefficient": 1.4057094453010244,
+          "viscous_drag_coefficient": 0.1809684970596805,
+          "drag_coefficient": 1.586677942360705,
+          "coefficient_vector": [
+            1.586677942360705,
+            1.6721677258744947e-05,
+            -2.9936048127968237e-05
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.012104029906905274,
+          "streamwise_rms_over_Uinf": 0.012101805299094211,
+          "vector_maximum_over_Uinf": 0.10052231993370532
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004440157730750278,
+          "streamwise_rms_over_Uinf": 0.004420584475580475,
+          "vector_maximum_over_Uinf": 0.010511107070486183
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0009489108011433977,
+          "streamwise_rms_over_Uinf": 0.0009486893209616677,
+          "vector_maximum_over_Uinf": 0.001991502969048059
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0013795465606560055,
+          "streamwise_rms_over_Uinf": 0.0013790310798574494,
+          "vector_maximum_over_Uinf": 0.001991502969048059
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006947178971750098,
+          "streamwise_rms_over_Uinf": 0.0006947158096990728,
+          "vector_maximum_over_Uinf": 0.0011972642768240944
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.0021459875171103045,
+          "streamwise_rms_over_Uinf": 0.0021366803969561834,
+          "vector_maximum_over_Uinf": 0.01185557815627885
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0017613009049513265,
+          "streamwise_rms_over_Uinf": 0.001755050991522319,
+          "vector_maximum_over_Uinf": 0.010511107070486183
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0,
+          "streamwise_rms_over_Uinf": 0.0,
+          "vector_maximum_over_Uinf": 0.0
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.00300307996478038,
+          "streamwise_rms_over_Uinf": 0.0029851624437139345,
+          "vector_maximum_over_Uinf": 0.01185557815627885
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.01011995649702401,
+          "streamwise_rms_over_Uinf": 0.007340138505854659,
+          "vector_maximum_over_Uinf": 0.04406756805603429
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003493418881740469,
+          "streamwise_rms_over_Uinf": 0.003333698395542468,
+          "vector_maximum_over_Uinf": 0.0061758014914855795
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0014343819026307436,
+          "streamwise_rms_over_Uinf": 0.0014228102670175644,
+          "vector_maximum_over_Uinf": 0.005335221541738988
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0024135997371957257,
+          "streamwise_rms_over_Uinf": 0.0023918115419772697,
+          "vector_maximum_over_Uinf": 0.005335221541738988
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006981735736400417,
+          "streamwise_rms_over_Uinf": 0.000695868862714188,
+          "vector_maximum_over_Uinf": 0.0012145321191763172
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0017415507639284694,
+          "streamwise_rms_over_Uinf": 0.0016405802675092803,
+          "vector_maximum_over_Uinf": 0.006486522357935597
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0016553650745698564,
+          "streamwise_rms_over_Uinf": 0.001610435453943015,
+          "vector_maximum_over_Uinf": 0.0061758014914855795
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0,
+          "streamwise_rms_over_Uinf": 0.0,
+          "vector_maximum_over_Uinf": 0.0
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011174679509255473,
+          "streamwise_rms_over_Uinf": 0.0006465333605713568,
+          "vector_maximum_over_Uinf": 0.006486522357935597
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.3877787807814457e-16,
+        "panel_kernel_check_maximum_difference": 4.9812313562130894e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 2.909525374482019e-07,
+          "streamwise_rms_over_Uinf": 2.843700463160491e-07,
+          "vector_maximum_over_Uinf": 2.617833735017903e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000000.npz",
+          "sha256": "dd9edf6d7b3f2427b87ea9edf60aaa0e4ffd5b63405ccc0b42b96144fb541730"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000000.npz",
+        "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+      }
+    },
+    {
+      "coupling_step": 5,
+      "fvm_step": 25,
+      "physical_time": 0.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.6422714882921403,
+            1.8428651258994508e-05,
+            6.036379868473599e-06
+          ],
+          "viscous_force": [
+            0.06367366179494409,
+            -9.706564375110344e-07,
+            2.968835680871197e-07
+          ],
+          "pressure_drag_coefficient": 1.2845429765842806,
+          "viscous_drag_coefficient": 0.12734732358988818,
+          "drag_coefficient": 1.4118903001741687,
+          "coefficient_vector": [
+            1.4118903001741687,
+            3.491598964296695e-05,
+            1.2666526873121438e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.6400064797000595,
+            -0.0001382108924877135,
+            -0.00017302845124935557
+          ],
+          "viscous_force": [
+            0.06370366838572947,
+            -9.675303973532499e-06,
+            -8.535402138338283e-06
+          ],
+          "pressure_drag_coefficient": 1.280012959400119,
+          "viscous_drag_coefficient": 0.12740733677145893,
+          "drag_coefficient": 1.407420296171578,
+          "coefficient_vector": [
+            1.407420296171578,
+            -0.000295772392922492,
+            -0.0003631277067753877
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.007991144628699176,
+          "streamwise_rms_over_Uinf": 0.007985411681143834,
+          "vector_maximum_over_Uinf": 0.04840503965375563
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0016771573461369367,
+          "streamwise_rms_over_Uinf": 0.001628906768843313,
+          "vector_maximum_over_Uinf": 0.004586793404516799
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0024645373318176525,
+          "streamwise_rms_over_Uinf": 0.002464339179820795,
+          "vector_maximum_over_Uinf": 0.017030191172875096
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0044427697469820405,
+          "streamwise_rms_over_Uinf": 0.0044423966088076704,
+          "vector_maximum_over_Uinf": 0.017030191172875096
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006168493397361135,
+          "streamwise_rms_over_Uinf": 0.0006168475591443158,
+          "vector_maximum_over_Uinf": 0.0009333278235674309
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.004523871576828739,
+          "streamwise_rms_over_Uinf": 0.004516542162191293,
+          "vector_maximum_over_Uinf": 0.04410340087075146
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0033130101940274078,
+          "streamwise_rms_over_Uinf": 0.003309251139977145,
+          "vector_maximum_over_Uinf": 0.018204748534091004
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006158921463773432,
+          "streamwise_rms_over_Uinf": 0.006156845249586289,
+          "vector_maximum_over_Uinf": 0.018204748534091004
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005324105499083254,
+          "streamwise_rms_over_Uinf": 0.005308865852177803,
+          "vector_maximum_over_Uinf": 0.025907645217920813
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.019577627987408284,
+          "streamwise_rms_over_Uinf": 0.018893510216492108,
+          "vector_maximum_over_Uinf": 0.12600882534977564
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0015528009390288423,
+          "streamwise_rms_over_Uinf": 0.00132713166841268,
+          "vector_maximum_over_Uinf": 0.002472840150715283
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.000931736973847222,
+          "streamwise_rms_over_Uinf": 0.000880349284220943,
+          "vector_maximum_over_Uinf": 0.00495519492454119
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0014190281177480161,
+          "streamwise_rms_over_Uinf": 0.0013040123958857808,
+          "vector_maximum_over_Uinf": 0.00495519492454119
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006251713370868991,
+          "streamwise_rms_over_Uinf": 0.0006240333200747833,
+          "vector_maximum_over_Uinf": 0.0009623776005545171
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0014123108617613677,
+          "streamwise_rms_over_Uinf": 0.001198198865952236,
+          "vector_maximum_over_Uinf": 0.008196602663409918
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0014463005118106182,
+          "streamwise_rms_over_Uinf": 0.0013131191696474944,
+          "vector_maximum_over_Uinf": 0.009793518806367927
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0023090254470889433,
+          "streamwise_rms_over_Uinf": 0.0020834734728531834,
+          "vector_maximum_over_Uinf": 0.009793518806367927
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0013308262003088852,
+          "streamwise_rms_over_Uinf": 0.0007022865161143273,
+          "vector_maximum_over_Uinf": 0.006648884676687646
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000025.npz",
+        "sha256": "1eda9a1fa5bee62316916e2280e885fe967090447d970ff27886c847428f494e"
+      }
+    },
+    {
+      "coupling_step": 10,
+      "fvm_step": 50,
+      "physical_time": 1.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5902543249941322,
+            1.9744654326217103e-05,
+            6.641559332713006e-06
+          ],
+          "viscous_force": [
+            0.04618154966603874,
+            3.021559042876421e-07,
+            7.323052251141186e-07
+          ],
+          "pressure_drag_coefficient": 1.1805086499882644,
+          "viscous_drag_coefficient": 0.09236309933207748,
+          "drag_coefficient": 1.2728717493203419,
+          "coefficient_vector": [
+            1.2728717493203419,
+            4.009362046100949e-05,
+            1.4747729115654248e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5917823640511984,
+            -0.00010734725417585895,
+            -0.00012788137394080816
+          ],
+          "viscous_force": [
+            0.04621216715299305,
+            -8.480010121316196e-06,
+            -8.059885756886634e-06
+          ],
+          "pressure_drag_coefficient": 1.1835647281023969,
+          "viscous_drag_coefficient": 0.0924243343059861,
+          "drag_coefficient": 1.275989062408383,
+          "coefficient_vector": [
+            1.275989062408383,
+            -0.00023165452859435029,
+            -0.0002718825193953896
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.008255191784528758,
+          "streamwise_rms_over_Uinf": 0.008250177129401562,
+          "vector_maximum_over_Uinf": 0.06133878895587966
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0016565907076162986,
+          "streamwise_rms_over_Uinf": 0.001605951394192991,
+          "vector_maximum_over_Uinf": 0.004363232408952505
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004118555081034353,
+          "streamwise_rms_over_Uinf": 0.004117890244034942,
+          "vector_maximum_over_Uinf": 0.02101524060663294
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.007522497414095464,
+          "streamwise_rms_over_Uinf": 0.007521261506869272,
+          "vector_maximum_over_Uinf": 0.02101524060663294
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0006722223415886614,
+          "streamwise_rms_over_Uinf": 0.000672214485800567,
+          "vector_maximum_over_Uinf": 0.0010248726787929793
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.008650003157521234,
+          "streamwise_rms_over_Uinf": 0.008646683979406142,
+          "vector_maximum_over_Uinf": 0.08826552964869068
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006755942747527462,
+          "streamwise_rms_over_Uinf": 0.006753626976337953,
+          "vector_maximum_over_Uinf": 0.057325675883079526
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.014131799144371496,
+          "streamwise_rms_over_Uinf": 0.01413036513468719,
+          "vector_maximum_over_Uinf": 0.057325675883079526
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006239059946131793,
+          "streamwise_rms_over_Uinf": 0.006231729380059912,
+          "vector_maximum_over_Uinf": 0.030941317317166744
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02480898824244238,
+          "streamwise_rms_over_Uinf": 0.02400592264789349,
+          "vector_maximum_over_Uinf": 0.1485800110394651
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0018058619969792819,
+          "streamwise_rms_over_Uinf": 0.0015447198290304406,
+          "vector_maximum_over_Uinf": 0.0027184578430292992
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002207347725918514,
+          "streamwise_rms_over_Uinf": 0.0011835372237226404,
+          "vector_maximum_over_Uinf": 0.014739334372001428
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003932040759397673,
+          "streamwise_rms_over_Uinf": 0.0019134371990152039,
+          "vector_maximum_over_Uinf": 0.014739334372001428
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00067858953260769,
+          "streamwise_rms_over_Uinf": 0.0006774164490950697,
+          "vector_maximum_over_Uinf": 0.0010425085779472727
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.002174851770317499,
+          "streamwise_rms_over_Uinf": 0.0011663875721724826,
+          "vector_maximum_over_Uinf": 0.014739334372001428
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0021919443844632958,
+          "streamwise_rms_over_Uinf": 0.0012028523227517933,
+          "vector_maximum_over_Uinf": 0.014739334372001428
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0023178724217944257,
+          "streamwise_rms_over_Uinf": 0.001055802162462657,
+          "vector_maximum_over_Uinf": 0.009850873733615343
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0012432070362893644,
+          "streamwise_rms_over_Uinf": 0.0008984401733108679,
+          "vector_maximum_over_Uinf": 0.0068179036911155564
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000050.npz",
+        "sha256": "ced6837df4a882baf075c6ae7e94ed6bb639cdbd1e6de46eba5e11af2cfb213e"
+      }
+    },
+    {
+      "coupling_step": 15,
+      "fvm_step": 75,
+      "physical_time": 1.25,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5453500054286482,
+            2.344831604135896e-05,
+            4.8719711402520245e-06
+          ],
+          "viscous_force": [
+            0.03430796168448983,
+            9.852046164102523e-07,
+            6.376243432422682e-07
+          ],
+          "pressure_drag_coefficient": 1.0907000108572964,
+          "viscous_drag_coefficient": 0.06861592336897966,
+          "drag_coefficient": 1.159315934226276,
+          "coefficient_vector": [
+            1.159315934226276,
+            4.8867041315538425e-05,
+            1.1019190966988585e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5482045834090902,
+            -0.00029578169626455557,
+            -0.000361265868715129
+          ],
+          "viscous_force": [
+            0.03439604709656937,
+            -1.0498017248789001e-05,
+            -1.1246434907588853e-05
+          ],
+          "pressure_drag_coefficient": 1.0964091668181803,
+          "viscous_drag_coefficient": 0.06879209419313874,
+          "drag_coefficient": 1.1652012610113192,
+          "coefficient_vector": [
+            1.1652012610113192,
+            -0.0006125594270266891,
+            -0.0007450246072454357
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.009292593043728566,
+          "streamwise_rms_over_Uinf": 0.009283724273021432,
+          "vector_maximum_over_Uinf": 0.06093696463419229
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0017361704503311354,
+          "streamwise_rms_over_Uinf": 0.0016881371443010036,
+          "vector_maximum_over_Uinf": 0.004583912019204654
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004225807081572959,
+          "streamwise_rms_over_Uinf": 0.0042141645751212955,
+          "vector_maximum_over_Uinf": 0.01989811805165582
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00771191957374727,
+          "streamwise_rms_over_Uinf": 0.007690241604311313,
+          "vector_maximum_over_Uinf": 0.01989811805165582
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007192621092536145,
+          "streamwise_rms_over_Uinf": 0.0007192028261740008,
+          "vector_maximum_over_Uinf": 0.0010794134111528062
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.01366625645750858,
+          "streamwise_rms_over_Uinf": 0.013660181759765418,
+          "vector_maximum_over_Uinf": 0.14250276554609534
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.011730286136195688,
+          "streamwise_rms_over_Uinf": 0.011723789741435406,
+          "vector_maximum_over_Uinf": 0.11370975119493963
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.027339400465488262,
+          "streamwise_rms_over_Uinf": 0.027332573828921767,
+          "vector_maximum_over_Uinf": 0.11370975119493963
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005868469295097953,
+          "streamwise_rms_over_Uinf": 0.005860528827826149,
+          "vector_maximum_over_Uinf": 0.028822491833341325
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.027928922244993284,
+          "streamwise_rms_over_Uinf": 0.027058209533165515,
+          "vector_maximum_over_Uinf": 0.1597030426729404
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002146550078802216,
+          "streamwise_rms_over_Uinf": 0.0018787810689921828,
+          "vector_maximum_over_Uinf": 0.003041238171107671
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003475333036624225,
+          "streamwise_rms_over_Uinf": 0.00202965079350648,
+          "vector_maximum_over_Uinf": 0.016210390327078272
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.006309470591228095,
+          "streamwise_rms_over_Uinf": 0.003571407096111301,
+          "vector_maximum_over_Uinf": 0.016210390327078272
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007232956665395561,
+          "streamwise_rms_over_Uinf": 0.000722060512821608,
+          "vector_maximum_over_Uinf": 0.0010854119292474137
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.004393315886454257,
+          "streamwise_rms_over_Uinf": 0.002436423423345612,
+          "vector_maximum_over_Uinf": 0.03351118556793298
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.004271885537323567,
+          "streamwise_rms_over_Uinf": 0.0023012776827139652,
+          "vector_maximum_over_Uinf": 0.03173862056918305
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.00648523945416337,
+          "streamwise_rms_over_Uinf": 0.0030701773773663833,
+          "vector_maximum_over_Uinf": 0.03173862056918305
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011137872339063864,
+          "streamwise_rms_over_Uinf": 0.0007787215388158273,
+          "vector_maximum_over_Uinf": 0.007000530859018679
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000075.npz",
+        "sha256": "9b73e37e35c25fbf81ab4f15dc41108c56d9e4b0624f8243c5173c41631ad103"
+      }
+    },
+    {
+      "coupling_step": 20,
+      "fvm_step": 100,
+      "physical_time": 1.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.5137556645352241,
+            1.6904829042875975e-05,
+            -2.761384358679483e-06
+          ],
+          "viscous_force": [
+            0.026442005454929585,
+            1.5925116378195092e-06,
+            4.5207957832186777e-07
+          ],
+          "pressure_drag_coefficient": 1.0275113290704483,
+          "viscous_drag_coefficient": 0.05288401090985917,
+          "drag_coefficient": 1.0803953399803075,
+          "coefficient_vector": [
+            1.0803953399803075,
+            3.6994681361390966e-05,
+            -4.61860956071523e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.5173459430276908,
+            -0.00019132834858447565,
+            -0.00020572477130762339
+          ],
+          "viscous_force": [
+            0.026578463421395488,
+            -1.1833411751412434e-05,
+            -1.2754413053621902e-05
+          ],
+          "pressure_drag_coefficient": 1.0346918860553815,
+          "viscous_drag_coefficient": 0.053156926842790976,
+          "drag_coefficient": 1.0878488128981725,
+          "coefficient_vector": [
+            1.0878488128981725,
+            -0.0004063235206717762,
+            -0.00043695836872249057
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.010681058400350918,
+          "streamwise_rms_over_Uinf": 0.010660703637720323,
+          "vector_maximum_over_Uinf": 0.052216653603500425
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0019287278835363956,
+          "streamwise_rms_over_Uinf": 0.0018856257737836716,
+          "vector_maximum_over_Uinf": 0.004990485632743654
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.005644843263142264,
+          "streamwise_rms_over_Uinf": 0.005618010086823468,
+          "vector_maximum_over_Uinf": 0.027251533258372623
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.010341841626362626,
+          "streamwise_rms_over_Uinf": 0.010292065384886358,
+          "vector_maximum_over_Uinf": 0.027251533258372623
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007595997733834629,
+          "streamwise_rms_over_Uinf": 0.0007594726938351181,
+          "vector_maximum_over_Uinf": 0.0011262305786888765
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.016277750378516614,
+          "streamwise_rms_over_Uinf": 0.016268469475386696,
+          "vector_maximum_over_Uinf": 0.16920090172514737
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.014329525026515268,
+          "streamwise_rms_over_Uinf": 0.014316411064205786,
+          "vector_maximum_over_Uinf": 0.1403970159635121
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.033072626834717636,
+          "streamwise_rms_over_Uinf": 0.03305983072340664,
+          "vector_maximum_over_Uinf": 0.1403970159635121
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.005935593378777785,
+          "streamwise_rms_over_Uinf": 0.005886848719140457,
+          "vector_maximum_over_Uinf": 0.029047338396365828
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.029626769511849983,
+          "streamwise_rms_over_Uinf": 0.02864109122942131,
+          "vector_maximum_over_Uinf": 0.16613244178870162
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0025420997186131533,
+          "streamwise_rms_over_Uinf": 0.002284833810393415,
+          "vector_maximum_over_Uinf": 0.0034118534828345686
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004183907510157506,
+          "streamwise_rms_over_Uinf": 0.002911870563340818,
+          "vector_maximum_over_Uinf": 0.016108877520261817
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0076244221661006875,
+          "streamwise_rms_over_Uinf": 0.005239171609142337,
+          "vector_maximum_over_Uinf": 0.016108877520261817
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.000759787693797477,
+          "streamwise_rms_over_Uinf": 0.0007581906790647263,
+          "vector_maximum_over_Uinf": 0.0011078241098742751
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.004663259261627837,
+          "streamwise_rms_over_Uinf": 0.0028546872933105935,
+          "vector_maximum_over_Uinf": 0.030171634475498185
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0046122656754044224,
+          "streamwise_rms_over_Uinf": 0.002813086789685779,
+          "vector_maximum_over_Uinf": 0.029719828622011907
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006243805454713688,
+          "streamwise_rms_over_Uinf": 0.0027681819558366435,
+          "vector_maximum_over_Uinf": 0.029719828622011907
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0010563791233517469,
+          "streamwise_rms_over_Uinf": 0.00068177255970138,
+          "vector_maximum_over_Uinf": 0.007155169855160301
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.1102230246251565e-16,
+        "panel_kernel_check_maximum_difference": 4.163336342344337e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 6.354682403302046e-07,
+          "streamwise_rms_over_Uinf": 6.053407039227484e-07,
+          "vector_maximum_over_Uinf": 5.161527347238914e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000020.npz",
+          "sha256": "03ce9aef9c7471db2c55744789a45d508ab2414f07f92542b548b30e954cf2a3"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000100.npz",
+        "sha256": "b187cf82ad23ce7a851d3b5f329ca90d35c045c197e478d77d464b1a0267a676"
+      }
+    },
+    {
+      "coupling_step": 25,
+      "fvm_step": 125,
+      "physical_time": 1.75,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.4910435150783724,
+            -7.17280241051491e-06,
+            -1.540584666528998e-05
+          ],
+          "viscous_force": [
+            0.02120521122312143,
+            2.0937460458210176e-06,
+            2.7505661705885056e-07
+          ],
+          "pressure_drag_coefficient": 0.9820870301567448,
+          "viscous_drag_coefficient": 0.04241042244624286,
+          "drag_coefficient": 1.0244974526029877,
+          "coefficient_vector": [
+            1.0244974526029877,
+            -1.0158112729387785e-05,
+            -3.026158009646226e-05
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4947190430590472,
+            -8.246185495688524e-05,
+            -0.00016607869296071765
+          ],
+          "viscous_force": [
+            0.021410519362713026,
+            -1.1787553531328194e-05,
+            -1.4285021831037376e-05
+          ],
+          "pressure_drag_coefficient": 0.9894380861180944,
+          "viscous_drag_coefficient": 0.04282103872542605,
+          "drag_coefficient": 1.0322591248435204,
+          "coefficient_vector": [
+            1.0322591248435204,
+            -0.00018849881697642688,
+            -0.00036072742958351007
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.012104313864016827,
+          "streamwise_rms_over_Uinf": 0.012071264543929568,
+          "vector_maximum_over_Uinf": 0.04950090470659526
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0022228997883305887,
+          "streamwise_rms_over_Uinf": 0.0021854710010341025,
+          "vector_maximum_over_Uinf": 0.005491482376494256
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.007541824105564448,
+          "streamwise_rms_over_Uinf": 0.007509210510331273,
+          "vector_maximum_over_Uinf": 0.03601102122855479
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.01385148745389045,
+          "streamwise_rms_over_Uinf": 0.013791141110968273,
+          "vector_maximum_over_Uinf": 0.03601102122855479
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007972013987076934,
+          "streamwise_rms_over_Uinf": 0.0007969868563736524,
+          "vector_maximum_over_Uinf": 0.0011700240908252791
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.01792436340712719,
+          "streamwise_rms_over_Uinf": 0.01791035856132432,
+          "vector_maximum_over_Uinf": 0.1830805433718424
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.015921301205789447,
+          "streamwise_rms_over_Uinf": 0.01590427974467162,
+          "vector_maximum_over_Uinf": 0.15297092733046452
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03571393017919205,
+          "streamwise_rms_over_Uinf": 0.035699361926823915,
+          "vector_maximum_over_Uinf": 0.15297092733046452
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006291568029582495,
+          "streamwise_rms_over_Uinf": 0.006134442149318507,
+          "vector_maximum_over_Uinf": 0.030702467466865502
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.030112413009685302,
+          "streamwise_rms_over_Uinf": 0.02903803633033767,
+          "vector_maximum_over_Uinf": 0.16900447141634928
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002970558955508287,
+          "streamwise_rms_over_Uinf": 0.0027294412967071363,
+          "vector_maximum_over_Uinf": 0.0038212948073427793
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004447607249658053,
+          "streamwise_rms_over_Uinf": 0.0032136817700252054,
+          "vector_maximum_over_Uinf": 0.01593642409697546
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008109349690191166,
+          "streamwise_rms_over_Uinf": 0.005799016855117682,
+          "vector_maximum_over_Uinf": 0.01593642409697546
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0007891351919225122,
+          "streamwise_rms_over_Uinf": 0.0007868066467889288,
+          "vector_maximum_over_Uinf": 0.0011227584582188808
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.005050960761322875,
+          "streamwise_rms_over_Uinf": 0.003116967590427878,
+          "vector_maximum_over_Uinf": 0.03307301449323023
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005004290234209712,
+          "streamwise_rms_over_Uinf": 0.0030597099188617075,
+          "vector_maximum_over_Uinf": 0.0325486029978073
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006898601678126311,
+          "streamwise_rms_over_Uinf": 0.002759957538158002,
+          "vector_maximum_over_Uinf": 0.0325486029978073
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.001099796762717152,
+          "streamwise_rms_over_Uinf": 0.0007343081844378804,
+          "vector_maximum_over_Uinf": 0.007284700582962753
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000125.npz",
+        "sha256": "3a9ef1afbe86432beb52e2cfb20dfe70dffff8480fe60846b50b7ce90eea1c6e"
+      }
+    },
+    {
+      "coupling_step": 30,
+      "fvm_step": 150,
+      "physical_time": 2.0,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.47572894564182855,
+            1.9005451983399545e-05,
+            -1.5634277706009765e-06
+          ],
+          "viscous_force": [
+            0.017555671031995717,
+            2.5103396714417035e-06,
+            1.2833481924183343e-07
+          ],
+          "pressure_drag_coefficient": 0.9514578912836571,
+          "viscous_drag_coefficient": 0.035111342063991434,
+          "drag_coefficient": 0.9865692333476486,
+          "coefficient_vector": [
+            0.9865692333476486,
+            4.30315833096825e-05,
+            -2.870185902718286e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.47936364566315476,
+            -0.00014973713012601927,
+            -0.00022980574774436512
+          ],
+          "viscous_force": [
+            0.0178269683102077,
+            -1.2403950700336245e-05,
+            -1.576985491691969e-05
+          ],
+          "pressure_drag_coefficient": 0.9587272913263095,
+          "viscous_drag_coefficient": 0.0356539366204154,
+          "drag_coefficient": 0.9943812279467249,
+          "coefficient_vector": [
+            0.9943812279467249,
+            -0.00032428216165271103,
+            -0.0004911512053225696
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.013122132877847238,
+          "streamwise_rms_over_Uinf": 0.013076373031010675,
+          "vector_maximum_over_Uinf": 0.056467005237978624
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.002596951114553673,
+          "streamwise_rms_over_Uinf": 0.002564876371346686,
+          "vector_maximum_over_Uinf": 0.006066000568700104
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00907209228231221,
+          "streamwise_rms_over_Uinf": 0.009031592890098809,
+          "vector_maximum_over_Uinf": 0.038741426841172
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.01667932165149476,
+          "streamwise_rms_over_Uinf": 0.0166044664681831,
+          "vector_maximum_over_Uinf": 0.038741426841172
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008241024748829994,
+          "streamwise_rms_over_Uinf": 0.0008237545542176817,
+          "vector_maximum_over_Uinf": 0.0012139200052707206
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.018827159944990794,
+          "streamwise_rms_over_Uinf": 0.018803736566580492,
+          "vector_maximum_over_Uinf": 0.18898529595258576
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.016731803206801857,
+          "streamwise_rms_over_Uinf": 0.016711710478473904,
+          "vector_maximum_over_Uinf": 0.15684012516278442
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03639882095451006,
+          "streamwise_rms_over_Uinf": 0.036387945277725334,
+          "vector_maximum_over_Uinf": 0.15684012516278442
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.006750612923942292,
+          "streamwise_rms_over_Uinf": 0.0064956435564759805,
+          "vector_maximum_over_Uinf": 0.03293547494755982
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.02975632601944921,
+          "streamwise_rms_over_Uinf": 0.028654818222050876,
+          "vector_maximum_over_Uinf": 0.17088501325158195
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003411106096055876,
+          "streamwise_rms_over_Uinf": 0.00319106550223097,
+          "vector_maximum_over_Uinf": 0.004279959795332573
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004673198200107327,
+          "streamwise_rms_over_Uinf": 0.0035320358538960383,
+          "vector_maximum_over_Uinf": 0.01593517297606742
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008523441625883059,
+          "streamwise_rms_over_Uinf": 0.006389558951668165,
+          "vector_maximum_over_Uinf": 0.01593517297606742
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008172106189190209,
+          "streamwise_rms_over_Uinf": 0.0008138076994550077,
+          "vector_maximum_over_Uinf": 0.0011265186426356367
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.005144292082443506,
+          "streamwise_rms_over_Uinf": 0.003609071052597169,
+          "vector_maximum_over_Uinf": 0.03132315648431668
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005056396564068758,
+          "streamwise_rms_over_Uinf": 0.00349382037303631,
+          "vector_maximum_over_Uinf": 0.0296592316892109
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006537495948568722,
+          "streamwise_rms_over_Uinf": 0.003528860314649946,
+          "vector_maximum_over_Uinf": 0.0296592316892109
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0011973978541168614,
+          "streamwise_rms_over_Uinf": 0.0008649801263303577,
+          "vector_maximum_over_Uinf": 0.007399076653984027
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000150.npz",
+        "sha256": "4e378b5e6355cb4190ed037af77952b52478fbe32d1c9b302aed8b83c5a92d79"
+      }
+    },
+    {
+      "coupling_step": 35,
+      "fvm_step": 175,
+      "physical_time": 2.25,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.46692162280367444,
+            2.2690833496756167e-05,
+            -1.196633535323669e-06
+          ],
+          "viscous_force": [
+            0.014872126169281505,
+            2.7323538851780804e-06,
+            -3.2112408748068577e-08
+          ],
+          "pressure_drag_coefficient": 0.9338432456073489,
+          "viscous_drag_coefficient": 0.02974425233856301,
+          "drag_coefficient": 0.9635874979459119,
+          "coefficient_vector": [
+            0.9635874979459119,
+            5.084637476386849e-05,
+            -2.457491888143475e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.47149186017224426,
+            5.549813668299632e-06,
+            -8.589558438086244e-05
+          ],
+          "viscous_force": [
+            0.015198080655048326,
+            -1.0051520236226367e-05,
+            -1.3212600269119931e-05
+          ],
+          "pressure_drag_coefficient": 0.9429837203444885,
+          "viscous_drag_coefficient": 0.03039616131009665,
+          "drag_coefficient": 0.9733798816545852,
+          "coefficient_vector": [
+            0.9733798816545852,
+            -9.003413135853471e-06,
+            -0.00019821636929996474
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.013393675408101326,
+          "streamwise_rms_over_Uinf": 0.013334663019310652,
+          "vector_maximum_over_Uinf": 0.06271770058578563
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.003013206413048083,
+          "streamwise_rms_over_Uinf": 0.0029855035762482943,
+          "vector_maximum_over_Uinf": 0.006676823492678873
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.009611626134980927,
+          "streamwise_rms_over_Uinf": 0.009547964117674536,
+          "vector_maximum_over_Uinf": 0.036010308992811595
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.017677447506715332,
+          "streamwise_rms_over_Uinf": 0.01755980831579039,
+          "vector_maximum_over_Uinf": 0.036010308992811595
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008193654319879756,
+          "streamwise_rms_over_Uinf": 0.0008189006367432272,
+          "vector_maximum_over_Uinf": 0.0012317529613326765
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.019387417877696895,
+          "streamwise_rms_over_Uinf": 0.019350721721442886,
+          "vector_maximum_over_Uinf": 0.19349760463955262
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.017170628517304474,
+          "streamwise_rms_over_Uinf": 0.01714113212424104,
+          "vector_maximum_over_Uinf": 0.15931015361902995
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03700735163904108,
+          "streamwise_rms_over_Uinf": 0.03699702906225828,
+          "vector_maximum_over_Uinf": 0.15931015361902995
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0071561810874390995,
+          "streamwise_rms_over_Uinf": 0.0068607693396051635,
+          "vector_maximum_over_Uinf": 0.035006476066994675
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.029043462819209664,
+          "streamwise_rms_over_Uinf": 0.027895306957322702,
+          "vector_maximum_over_Uinf": 0.1749451085644074
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0038423215638860157,
+          "streamwise_rms_over_Uinf": 0.0036478153220744327,
+          "vector_maximum_over_Uinf": 0.004782696289660132
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0046060489048940015,
+          "streamwise_rms_over_Uinf": 0.0035195683653342,
+          "vector_maximum_over_Uinf": 0.015236418237073106
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.00839224461610498,
+          "streamwise_rms_over_Uinf": 0.006358415219774775,
+          "vector_maximum_over_Uinf": 0.015236418237073106
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008425072828549636,
+          "streamwise_rms_over_Uinf": 0.0008385465895983262,
+          "vector_maximum_over_Uinf": 0.0011398188055849402
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0049646150617758105,
+          "streamwise_rms_over_Uinf": 0.00369038400385473,
+          "vector_maximum_over_Uinf": 0.027413448096408912
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.004827897660080359,
+          "streamwise_rms_over_Uinf": 0.00351856346824128,
+          "vector_maximum_over_Uinf": 0.024163825998854613
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.0057708640453027794,
+          "streamwise_rms_over_Uinf": 0.0034506487290404814,
+          "vector_maximum_over_Uinf": 0.024163825998854613
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.0013628036084596628,
+          "streamwise_rms_over_Uinf": 0.0010774652473872547,
+          "vector_maximum_over_Uinf": 0.007503376524100173
+        }
+      },
+      "direct_profile_check": null,
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000175.npz",
+        "sha256": "822ad0cc05b0f1d87558161b1fc99ba9d4368dd3ee5cb522783eb552411129c8"
+      }
+    },
+    {
+      "coupling_step": 40,
+      "fvm_step": 200,
+      "physical_time": 2.5,
+      "forces": {
+        "full": {
+          "pressure_force": [
+            0.46342937233330833,
+            2.6307879331897082e-05,
+            9.556758240230397e-07
+          ],
+          "viscous_force": [
+            0.012679712715328756,
+            2.852811211215595e-06,
+            -1.8583598819499636e-07
+          ],
+          "pressure_drag_coefficient": 0.9268587446666167,
+          "viscous_drag_coefficient": 0.02535942543065751,
+          "drag_coefficient": 0.9522181700972742,
+          "coefficient_vector": [
+            0.9522181700972742,
+            5.8321381086225354e-05,
+            1.5396796716560866e-06
+          ]
+        },
+        "hybrid": {
+          "pressure_force": [
+            0.4680744234469478,
+            6.253604784810568e-05,
+            0.00011670807864093519
+          ],
+          "viscous_force": [
+            0.013063238467510185,
+            -5.609137593601935e-06,
+            -8.93959023352618e-06
+          ],
+          "pressure_drag_coefficient": 0.9361488468938955,
+          "viscous_drag_coefficient": 0.02612647693502037,
+          "drag_coefficient": 0.9622753238289159,
+          "coefficient_vector": [
+            0.9622753238289159,
+            0.0001138538205090075,
+            0.00021553697681481803
+          ]
+        }
+      },
+      "metrics": {
+        "centreline_whole_vpm": {
+          "vector_rms_over_Uinf": 0.013571455739629423,
+          "streamwise_rms_over_Uinf": 0.013478461928187671,
+          "vector_maximum_over_Uinf": 0.06824050449255947
+        },
+        "centreline_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0034437689264003066,
+          "streamwise_rms_over_Uinf": 0.003419136083570031,
+          "vector_maximum_over_Uinf": 0.007292149342800254
+        },
+        "centreline_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.009858678737563182,
+          "streamwise_rms_over_Uinf": 0.009746430303839456,
+          "vector_maximum_over_Uinf": 0.03577031203209229
+        },
+        "centreline_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.018133778711908372,
+          "streamwise_rms_over_Uinf": 0.017926334448334254,
+          "vector_maximum_over_Uinf": 0.03577031203209229
+        },
+        "centreline_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008226298173064892,
+          "streamwise_rms_over_Uinf": 0.000822193640083492,
+          "vector_maximum_over_Uinf": 0.0014846163431955757
+        },
+        "centreline_composite_raw": {
+          "vector_rms_over_Uinf": 0.019894204154644077,
+          "streamwise_rms_over_Uinf": 0.019836457973547543,
+          "vector_maximum_over_Uinf": 0.19772409663808305
+        },
+        "centreline_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.017600606803415252,
+          "streamwise_rms_over_Uinf": 0.017552023758886807,
+          "vector_maximum_over_Uinf": 0.16233358044845805
+        },
+        "centreline_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.03790410173532927,
+          "streamwise_rms_over_Uinf": 0.03789397734389178,
+          "vector_maximum_over_Uinf": 0.16233358044845805
+        },
+        "centreline_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.007367782005190208,
+          "streamwise_rms_over_Uinf": 0.007077362623493858,
+          "vector_maximum_over_Uinf": 0.036128967240406686
+        },
+        "offaxis_y075_whole_vpm": {
+          "vector_rms_over_Uinf": 0.028395236901235542,
+          "streamwise_rms_over_Uinf": 0.027195957044568692,
+          "vector_maximum_over_Uinf": 0.1788880253180213
+        },
+        "offaxis_y075_upstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004248539948730757,
+          "streamwise_rms_over_Uinf": 0.004084649574379229,
+          "vector_maximum_over_Uinf": 0.005311251572447495
+        },
+        "offaxis_y075_downstream_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.004615986641868405,
+          "streamwise_rms_over_Uinf": 0.003656156519585898,
+          "vector_maximum_over_Uinf": 0.01709661801668512
+        },
+        "offaxis_y075_near_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.008408422656644796,
+          "streamwise_rms_over_Uinf": 0.00661200496014775,
+          "vector_maximum_over_Uinf": 0.01709661801668512
+        },
+        "offaxis_y075_far_wake_exterior_vpm": {
+          "vector_rms_over_Uinf": 0.0008522909157353866,
+          "streamwise_rms_over_Uinf": 0.000849221234523416,
+          "vector_maximum_over_Uinf": 0.001191954780167807
+        },
+        "offaxis_y075_composite_raw": {
+          "vector_rms_over_Uinf": 0.0052118876340503766,
+          "streamwise_rms_over_Uinf": 0.0038419379394718837,
+          "vector_maximum_over_Uinf": 0.029152429109792405
+        },
+        "offaxis_y075_composite_matched_sampling": {
+          "vector_rms_over_Uinf": 0.005072427162689431,
+          "streamwise_rms_over_Uinf": 0.003652449252082704,
+          "vector_maximum_over_Uinf": 0.02577826542813959
+        },
+        "offaxis_y075_small_fvm_matched_sampling": {
+          "vector_rms_over_Uinf": 0.006462560425086035,
+          "streamwise_rms_over_Uinf": 0.0034098852058935076,
+          "vector_maximum_over_Uinf": 0.02577826542813959
+        },
+        "offaxis_y075_reference_stencil_difference": {
+          "vector_rms_over_Uinf": 0.001592656436555973,
+          "streamwise_rms_over_Uinf": 0.0013514125107816602,
+          "vector_maximum_over_Uinf": 0.007597979714013183
+        }
+      },
+      "direct_profile_check": {
+        "particle_matrix_check_maximum_difference": 1.1102230246251565e-15,
+        "panel_kernel_check_maximum_difference": 3.469446951953614e-17,
+        "direct_minus_saved_query": {
+          "vector_rms_over_Uinf": 1.1268462836914864e-06,
+          "streamwise_rms_over_Uinf": 1.096261745257719e-06,
+          "vector_maximum_over_Uinf": 8.44394278735162e-06
+        },
+        "fields": {
+          "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000040.npz",
+          "sha256": "6e977a6140be6f05403af062c39e3e76f8bf5de34131dadf064e26ba57b63c93"
+        }
+      },
+      "profile_fields": {
+        "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000200.npz",
+        "sha256": "d0a58140596643c6de80988e2914ed082da7e1da43c4e6505e19c19d85c41fe2"
+      }
+    }
+  ],
+  "comparison_history": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705,
+      "drag_coefficient_difference": 0.0,
+      "particles": 6429
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_flow_time": 0.05,
+      "physical_time": 0.55,
+      "fvm_velocity_rms_over_Uinf": 0.0024131971523165124,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.000725022422079316,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0367760390177974,
+      "full_drag_coefficient": 1.5090799958339747,
+      "hybrid_drag_coefficient": 1.4865796525069046,
+      "drag_coefficient_difference": -0.02250034332707007,
+      "particles": 22038
+    },
+    {
+      "coupling_step": 2,
+      "elapsed_flow_time": 0.1,
+      "physical_time": 0.6,
+      "fvm_velocity_rms_over_Uinf": 0.0026211007994463263,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006953021229192986,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03568643293070215,
+      "full_drag_coefficient": 1.486079170256125,
+      "hybrid_drag_coefficient": 1.4810276202638941,
+      "drag_coefficient_difference": -0.005051549992230786,
+      "particles": 22392
+    },
+    {
+      "coupling_step": 3,
+      "elapsed_flow_time": 0.15,
+      "physical_time": 0.65,
+      "fvm_velocity_rms_over_Uinf": 0.0027285477416582843,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006618998560634094,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0348456747320656,
+      "full_drag_coefficient": 1.4650546185458297,
+      "hybrid_drag_coefficient": 1.4603851866154178,
+      "drag_coefficient_difference": -0.004669431930411916,
+      "particles": 22586
+    },
+    {
+      "coupling_step": 4,
+      "elapsed_flow_time": 0.2,
+      "physical_time": 0.7,
+      "fvm_velocity_rms_over_Uinf": 0.002854689300819506,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006300602333453219,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.034174257176124316,
+      "full_drag_coefficient": 1.4436512495695992,
+      "hybrid_drag_coefficient": 1.4387247974673472,
+      "drag_coefficient_difference": -0.004926452102252066,
+      "particles": 22648
+    },
+    {
+      "coupling_step": 5,
+      "elapsed_flow_time": 0.25,
+      "physical_time": 0.75,
+      "fvm_velocity_rms_over_Uinf": 0.0029708633710832113,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005912841705185466,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03361249307695976,
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.407420296171578,
+      "drag_coefficient_difference": -0.004470004002590677,
+      "particles": 22882
+    },
+    {
+      "coupling_step": 6,
+      "elapsed_flow_time": 0.3,
+      "physical_time": 0.8,
+      "fvm_velocity_rms_over_Uinf": 0.003076775719282569,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005524831799834017,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0331622361846866,
+      "full_drag_coefficient": 1.3814860276095515,
+      "hybrid_drag_coefficient": 1.3781614486364202,
+      "drag_coefficient_difference": -0.0033245789731313202,
+      "particles": 23072
+    },
+    {
+      "coupling_step": 7,
+      "elapsed_flow_time": 0.35,
+      "physical_time": 0.85,
+      "fvm_velocity_rms_over_Uinf": 0.003197139546483211,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005095194352659093,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03280928790647131,
+      "full_drag_coefficient": 1.3528429561245168,
+      "hybrid_drag_coefficient": 1.3506212454035655,
+      "drag_coefficient_difference": -0.002221710720951231,
+      "particles": 23284
+    },
+    {
+      "coupling_step": 8,
+      "elapsed_flow_time": 0.4,
+      "physical_time": 0.9,
+      "fvm_velocity_rms_over_Uinf": 0.003377499145988589,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0004766362626523913,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032520974536981065,
+      "full_drag_coefficient": 1.3251828343240502,
+      "hybrid_drag_coefficient": 1.3244910661403182,
+      "drag_coefficient_difference": -0.0006917681837319556,
+      "particles": 23523
+    },
+    {
+      "coupling_step": 9,
+      "elapsed_flow_time": 0.45,
+      "physical_time": 0.95,
+      "fvm_velocity_rms_over_Uinf": 0.003641794924560724,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.00048219969180542593,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03228996184288157,
+      "full_drag_coefficient": 1.299674528453869,
+      "hybrid_drag_coefficient": 1.300742247625377,
+      "drag_coefficient_difference": 0.0010677191715078305,
+      "particles": 23757
+    },
+    {
+      "coupling_step": 10,
+      "elapsed_flow_time": 0.5,
+      "physical_time": 1.0,
+      "fvm_velocity_rms_over_Uinf": 0.004008586352163559,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005488150103313493,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.032111904046831986,
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.275989062408383,
+      "drag_coefficient_difference": 0.003117313088041085,
+      "particles": 24069
+    },
+    {
+      "coupling_step": 11,
+      "elapsed_flow_time": 0.55,
+      "physical_time": 1.05,
+      "fvm_velocity_rms_over_Uinf": 0.0044910124268169455,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0006657973590233574,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03196488607051235,
+      "full_drag_coefficient": 1.2463331973842469,
+      "hybrid_drag_coefficient": 1.2510138685267638,
+      "drag_coefficient_difference": 0.004680671142516912,
+      "particles": 24445
+    },
+    {
+      "coupling_step": 12,
+      "elapsed_flow_time": 0.6,
+      "physical_time": 1.1,
+      "fvm_velocity_rms_over_Uinf": 0.005053947811029528,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0008037355104450008,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0318333950928851,
+      "full_drag_coefficient": 1.2228278165771698,
+      "hybrid_drag_coefficient": 1.228476995527727,
+      "drag_coefficient_difference": 0.0056491789505572765,
+      "particles": 24818
+    },
+    {
+      "coupling_step": 13,
+      "elapsed_flow_time": 0.65,
+      "physical_time": 1.15,
+      "fvm_velocity_rms_over_Uinf": 0.005613980476114682,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0009405955166390685,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031719850489749034,
+      "full_drag_coefficient": 1.200371041321157,
+      "hybrid_drag_coefficient": 1.2070848590451995,
+      "drag_coefficient_difference": 0.006713817724042448,
+      "particles": 25274
+    },
+    {
+      "coupling_step": 14,
+      "elapsed_flow_time": 0.7,
+      "physical_time": 1.2,
+      "fvm_velocity_rms_over_Uinf": 0.006116043405311855,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0010800881101542116,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03162531655052862,
+      "full_drag_coefficient": 1.1793654420697106,
+      "hybrid_drag_coefficient": 1.1848023199268107,
+      "drag_coefficient_difference": 0.00543687785710012,
+      "particles": 25670
+    },
+    {
+      "coupling_step": 15,
+      "elapsed_flow_time": 0.75,
+      "physical_time": 1.25,
+      "fvm_velocity_rms_over_Uinf": 0.006516050089444026,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0012078629826455282,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0315384425709835,
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1652012610113192,
+      "drag_coefficient_difference": 0.005885326785043166,
+      "particles": 26253
+    },
+    {
+      "coupling_step": 16,
+      "elapsed_flow_time": 0.8,
+      "physical_time": 1.3,
+      "fvm_velocity_rms_over_Uinf": 0.006801843565796562,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0013191447144582406,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031457830697661684,
+      "full_drag_coefficient": 1.1418336834682312,
+      "hybrid_drag_coefficient": 1.1461088741970462,
+      "drag_coefficient_difference": 0.004275190728814993,
+      "particles": 26688
+    },
+    {
+      "coupling_step": 17,
+      "elapsed_flow_time": 0.85,
+      "physical_time": 1.35,
+      "fvm_velocity_rms_over_Uinf": 0.0070014559911048034,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0014322436147031605,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03138670805195602,
+      "full_drag_coefficient": 1.125024781496457,
+      "hybrid_drag_coefficient": 1.1295022260862904,
+      "drag_coefficient_difference": 0.004477444589833457,
+      "particles": 27096
+    },
+    {
+      "coupling_step": 18,
+      "elapsed_flow_time": 0.9,
+      "physical_time": 1.4,
+      "fvm_velocity_rms_over_Uinf": 0.00716380725118928,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0015592374841821156,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0313310787289697,
+      "full_drag_coefficient": 1.1094366266728828,
+      "hybrid_drag_coefficient": 1.1148433024921791,
+      "drag_coefficient_difference": 0.005406675819296325,
+      "particles": 27606
+    },
+    {
+      "coupling_step": 19,
+      "elapsed_flow_time": 0.95,
+      "physical_time": 1.45,
+      "fvm_velocity_rms_over_Uinf": 0.0073120800695491575,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0016909847754533766,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031281171182750166,
+      "full_drag_coefficient": 1.0938074851469775,
+      "hybrid_drag_coefficient": 1.101300765696625,
+      "drag_coefficient_difference": 0.007493280549647485,
+      "particles": 28102
+    },
+    {
+      "coupling_step": 20,
+      "elapsed_flow_time": 1.0,
+      "physical_time": 1.5,
+      "fvm_velocity_rms_over_Uinf": 0.007462459906076393,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0018352666487396346,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03123169496112875,
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0878488128981725,
+      "drag_coefficient_difference": 0.007453472917865023,
+      "particles": 28572
+    },
+    {
+      "coupling_step": 21,
+      "elapsed_flow_time": 1.05,
+      "physical_time": 1.55,
+      "fvm_velocity_rms_over_Uinf": 0.007616041258565348,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.001976662539782451,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031183338822280894,
+      "full_drag_coefficient": 1.0669789917706591,
+      "hybrid_drag_coefficient": 1.074239303086947,
+      "drag_coefficient_difference": 0.007260311316287904,
+      "particles": 29072
+    },
+    {
+      "coupling_step": 22,
+      "elapsed_flow_time": 1.1,
+      "physical_time": 1.6,
+      "fvm_velocity_rms_over_Uinf": 0.007770667621413801,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002116417225697957,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03114046887171556,
+      "full_drag_coefficient": 1.0551362311667554,
+      "hybrid_drag_coefficient": 1.0624470929214522,
+      "drag_coefficient_difference": 0.007310861754696862,
+      "particles": 29576
+    },
+    {
+      "coupling_step": 23,
+      "elapsed_flow_time": 1.15,
+      "physical_time": 1.65,
+      "fvm_velocity_rms_over_Uinf": 0.007925226248420071,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0022568036676548315,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031096381540452835,
+      "full_drag_coefficient": 1.0438994011010552,
+      "hybrid_drag_coefficient": 1.0515575959762105,
+      "drag_coefficient_difference": 0.007658194875155289,
+      "particles": 30112
+    },
+    {
+      "coupling_step": 24,
+      "elapsed_flow_time": 1.2,
+      "physical_time": 1.7,
+      "fvm_velocity_rms_over_Uinf": 0.00806849863914087,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002392264987866602,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.031040839669203034,
+      "full_drag_coefficient": 1.0337961900666681,
+      "hybrid_drag_coefficient": 1.041834736771777,
+      "drag_coefficient_difference": 0.008038546705108951,
+      "particles": 30607
+    },
+    {
+      "coupling_step": 25,
+      "elapsed_flow_time": 1.25,
+      "physical_time": 1.75,
+      "fvm_velocity_rms_over_Uinf": 0.008180157737387683,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002509948792554789,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030990877755103383,
+      "full_drag_coefficient": 1.0244974526029877,
+      "hybrid_drag_coefficient": 1.0322591248435204,
+      "drag_coefficient_difference": 0.007761672240532702,
+      "particles": 31206
+    },
+    {
+      "coupling_step": 26,
+      "elapsed_flow_time": 1.3,
+      "physical_time": 1.8,
+      "fvm_velocity_rms_over_Uinf": 0.008270486328940875,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0026265340044059698,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030943696429732846,
+      "full_drag_coefficient": 1.0156594408402495,
+      "hybrid_drag_coefficient": 1.0246760482725348,
+      "drag_coefficient_difference": 0.009016607432285273,
+      "particles": 31731
+    },
+    {
+      "coupling_step": 27,
+      "elapsed_flow_time": 1.35,
+      "physical_time": 1.85,
+      "fvm_velocity_rms_over_Uinf": 0.008327307786374352,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0027307823674038215,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030897155583284132,
+      "full_drag_coefficient": 1.006991664082099,
+      "hybrid_drag_coefficient": 1.0161911623303803,
+      "drag_coefficient_difference": 0.009199498248281257,
+      "particles": 32292
+    },
+    {
+      "coupling_step": 28,
+      "elapsed_flow_time": 1.4,
+      "physical_time": 1.9,
+      "fvm_velocity_rms_over_Uinf": 0.00837527157768352,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.002831501968299829,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030862140667890083,
+      "full_drag_coefficient": 0.9993689979621401,
+      "hybrid_drag_coefficient": 1.0076987517612994,
+      "drag_coefficient_difference": 0.008329753799159345,
+      "particles": 32761
+    },
+    {
+      "coupling_step": 29,
+      "elapsed_flow_time": 1.45,
+      "physical_time": 1.95,
+      "fvm_velocity_rms_over_Uinf": 0.008410949271472751,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0029292978636296712,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030838622427963577,
+      "full_drag_coefficient": 0.9928261591365428,
+      "hybrid_drag_coefficient": 1.0013920696723506,
+      "drag_coefficient_difference": 0.008565910535807797,
+      "particles": 33273
+    },
+    {
+      "coupling_step": 30,
+      "elapsed_flow_time": 1.5,
+      "physical_time": 2.0,
+      "fvm_velocity_rms_over_Uinf": 0.008444924593679404,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0030285248739974563,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030811637736571758,
+      "full_drag_coefficient": 0.9865692333476486,
+      "hybrid_drag_coefficient": 0.9943812279467249,
+      "drag_coefficient_difference": 0.007811994599076333,
+      "particles": 33821
+    },
+    {
+      "coupling_step": 31,
+      "elapsed_flow_time": 1.55,
+      "physical_time": 2.05,
+      "fvm_velocity_rms_over_Uinf": 0.008450940055344273,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0031093698471566173,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03077439747182842,
+      "full_drag_coefficient": 0.9806583243433719,
+      "hybrid_drag_coefficient": 0.9890543077776821,
+      "drag_coefficient_difference": 0.00839598343431025,
+      "particles": 34348
+    },
+    {
+      "coupling_step": 32,
+      "elapsed_flow_time": 1.6,
+      "physical_time": 2.1,
+      "fvm_velocity_rms_over_Uinf": 0.008452936225806288,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003194657693674843,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03073380153778865,
+      "full_drag_coefficient": 0.9753311401790559,
+      "hybrid_drag_coefficient": 0.9838350940875044,
+      "drag_coefficient_difference": 0.008503953908448492,
+      "particles": 34902
+    },
+    {
+      "coupling_step": 33,
+      "elapsed_flow_time": 1.65,
+      "physical_time": 2.15,
+      "fvm_velocity_rms_over_Uinf": 0.008465053280090803,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0032914971692970018,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030697237012127836,
+      "full_drag_coefficient": 0.9711006629902551,
+      "hybrid_drag_coefficient": 0.9797960249373641,
+      "drag_coefficient_difference": 0.00869536194710896,
+      "particles": 35510
+    },
+    {
+      "coupling_step": 34,
+      "elapsed_flow_time": 1.7,
+      "physical_time": 2.2,
+      "fvm_velocity_rms_over_Uinf": 0.008490039969308737,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003398370604631451,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030663337829077684,
+      "full_drag_coefficient": 0.9676017071521348,
+      "hybrid_drag_coefficient": 0.9762379165751591,
+      "drag_coefficient_difference": 0.008636209423024344,
+      "particles": 36057
+    },
+    {
+      "coupling_step": 35,
+      "elapsed_flow_time": 1.75,
+      "physical_time": 2.25,
+      "fvm_velocity_rms_over_Uinf": 0.008517988785841594,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0035028167547975046,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03062535760811749,
+      "full_drag_coefficient": 0.9635874979459119,
+      "hybrid_drag_coefficient": 0.9733798816545851,
+      "drag_coefficient_difference": 0.009792383708673191,
+      "particles": 36621
+    },
+    {
+      "coupling_step": 36,
+      "elapsed_flow_time": 1.8,
+      "physical_time": 2.3,
+      "fvm_velocity_rms_over_Uinf": 0.008561113977602125,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0036129741486732123,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0305852190031788,
+      "full_drag_coefficient": 0.9605322057020654,
+      "hybrid_drag_coefficient": 0.9699156079892036,
+      "drag_coefficient_difference": 0.009383402287138187,
+      "particles": 37148
+    },
+    {
+      "coupling_step": 37,
+      "elapsed_flow_time": 1.85,
+      "physical_time": 2.35,
+      "fvm_velocity_rms_over_Uinf": 0.008597345991683724,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003716818937507375,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030538566072888546,
+      "full_drag_coefficient": 0.9582734432274024,
+      "hybrid_drag_coefficient": 0.9680962199925716,
+      "drag_coefficient_difference": 0.009822776765169183,
+      "particles": 37762
+    },
+    {
+      "coupling_step": 38,
+      "elapsed_flow_time": 1.9,
+      "physical_time": 2.4,
+      "fvm_velocity_rms_over_Uinf": 0.00864272925060474,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.003830450576045668,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.030488508880901502,
+      "full_drag_coefficient": 0.9554563070943277,
+      "hybrid_drag_coefficient": 0.9659080998644903,
+      "drag_coefficient_difference": 0.010451792770162616,
+      "particles": 38370
+    },
+    {
+      "coupling_step": 39,
+      "elapsed_flow_time": 1.95,
+      "physical_time": 2.45,
+      "fvm_velocity_rms_over_Uinf": 0.008693827307001304,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0039523037536874205,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03043306177102441,
+      "full_drag_coefficient": 0.9537759603206376,
+      "hybrid_drag_coefficient": 0.9638375036839946,
+      "drag_coefficient_difference": 0.010061543363356962,
+      "particles": 38869
+    },
+    {
+      "coupling_step": 40,
+      "elapsed_flow_time": 2.0,
+      "physical_time": 2.5,
+      "fvm_velocity_rms_over_Uinf": 0.008749703799331689,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.004074466148989003,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.0303765721357358,
+      "full_drag_coefficient": 0.9522181700972742,
+      "hybrid_drag_coefficient": 0.9622753238289159,
+      "drag_coefficient_difference": 0.010057153731641733,
+      "particles": 39496
+    }
+  ],
+  "profile_geometry": {
+    "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profile-geometry.npz",
+    "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/interface-iteration-3d.json",
+      "sha256": "b69bd6f27783980564032bc928ef500715e28faadfc67c842f52512c84c34523"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/trial/cube-coupled-trial.json",
+      "sha256": "b9c0b77a56e39c03d3359aef7b26cd23cc76c34cbac1b8c3395ee614f2a259c7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/trial/comparison-history.json",
+      "sha256": "02ca110244a76058b4ef2ea284140f2368d24a966f051193cc341ddcf5803db6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/profile-observation-3d.json",
+      "sha256": "cdd6b02d05cd3f93108bd39f2b114ec54617b4b055d1dbfaad27389bdb5fee0a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/captured-reports/accepted-fvm-checkpoints-3d.json",
+      "sha256": "86d7c3f77c1b02e2ea31f038a512163b3d1eb18a77fdafc1a34415b5a5bd72a5"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "source/solvers/fvm/sampling/fields.py",
+      "sha256": "fcd9a690aed2a29f137fdf611c32453f6d99bcade678d04ab39426c8b74ef6ee"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-twenty-iterated/interface-iteration-3d.json",
+      "sha256": "c5a6f46fd4d2ae741c0ec0e1340992d2271a6f2e377c06018aaf0495260820cc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profile-geometry.npz",
+      "sha256": "8442530acd757f28fdf8cb631b877d4c4dac9f37baedc704d9c513b13bec07f2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/trial/full/solution/mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000001-sweep-01.npz",
+      "sha256": "d5fea8c4f30c2cf104601f6cd1ec6951d3a126403715917274985c8223669fec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000001-sweep-02.npz",
+      "sha256": "061cc9ba7568599d24a6c3d05a95e49ae51914370aa6f0a2c4c43842b0960919"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000001-sweep-03.npz",
+      "sha256": "009b640307480fba4714c3d945681b2fa5924eaa6cb11a7a89c5964aa7554f0f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000002-sweep-01.npz",
+      "sha256": "c25c5e8a14806905ad6902e590e1a689ebb0e374355297a451e61910df26665a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000002-sweep-02.npz",
+      "sha256": "715dd62dfd0df7a8cf13fa8f751e738fb1f57ee9fa649dbc4ca7c524d357e7c4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000002-sweep-03.npz",
+      "sha256": "82ae45f0aa0fc5aa98e79eb5ba5a99ae4f232eb8cece64f98dd33b74fc93a531"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000003-sweep-01.npz",
+      "sha256": "1a1743aea664361673997c7e50e3bc3b67122544e1cdb1a081d92b04b607e3e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000003-sweep-02.npz",
+      "sha256": "dfd0cf3321492e89de3d684707b4094f2f9f01c66400af7254a911ed6cc653f1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000003-sweep-03.npz",
+      "sha256": "2f310c9da1bd8e68c9c9f3cd41e6ad4766fd05cfd403865831eef8ad6884338e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000004-sweep-01.npz",
+      "sha256": "bc1432886a87b60d5666d6a8fc6cd500ef8e73536c1f6dc7c7bdbd9f5bb2c084"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000004-sweep-02.npz",
+      "sha256": "4571a6e8d07c65314a7b2ab352cc36f9039f958bb6d5b247e70b9c4af990c617"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000004-sweep-03.npz",
+      "sha256": "fbe91d10e86c0ae98d5d94d0b78dc24339677a50d5d5c62ebcf766ed72e12967"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000005-sweep-01.npz",
+      "sha256": "c9311bb0fa28f0a9b7380d6c2dbf94d9dfd4e51201d8de517d027f264d928209"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000005-sweep-02.npz",
+      "sha256": "4c9dd482070d4b12bb08ecc4cb73e58314dd79c85ef36d74d6e25812abe5d946"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000005-sweep-03.npz",
+      "sha256": "8c25d9dc9e100e2ae07a0a1db3e8db706c4fabc43bff10eb300b2b67987efbd8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000006-sweep-01.npz",
+      "sha256": "0da9238cfd2c5f28b7d30a39475a8b23263e6730e56e921f7b6a28f8155e0855"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000006-sweep-02.npz",
+      "sha256": "e4bc6279a08998f69fd9b2fb48eaf0e9454b15961b5d5775997302128b845ac3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000006-sweep-03.npz",
+      "sha256": "870be92ea0bc0d927934ad8c372e7a5b13a5f7e99cc0e1d28cf968148af39d74"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000007-sweep-01.npz",
+      "sha256": "fd2af77c6a80e8b8f5d9ade4b3fdc119b7940241bd7350c1ea6e291081c73d33"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000007-sweep-02.npz",
+      "sha256": "a8286cbb6d68595fd2e03117b8f2276ea88e25d8f39a624cc1bbcffdfbdd135b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000007-sweep-03.npz",
+      "sha256": "728a8d978eb727fadda6e8de0f2251d64be94e2b566fc23647e939ef9fa12195"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000008-sweep-01.npz",
+      "sha256": "73b7de201060337813dd80118410dba864f93c22c9b0288e934ba96642a0cf49"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000008-sweep-02.npz",
+      "sha256": "da194e1a05e664c5301f0ddf9fdc89a52a2bfa5052ff445ec7d2d4181069b32e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000008-sweep-03.npz",
+      "sha256": "4eb89973548a6ff73c2ece6d95656f0bb7c0c5ec178076cf85c03815f90f1f31"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000009-sweep-01.npz",
+      "sha256": "bc429f3c49579350515d6a7bacac232da5bcafca2d9d7713cba68ea10242590d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000009-sweep-02.npz",
+      "sha256": "04cb87068984ac1ee17b9e2df6d10865e5d22160f023da6519af59bd5a890d2a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000009-sweep-03.npz",
+      "sha256": "8f0cac5fcfbb0cadd5328558341ff9b6985d4ca9878172f30f26fc037cfaad19"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000010-sweep-01.npz",
+      "sha256": "4b9d0787ac59fc80fcb58920443eb07e4f86d2812d746c32b6700baff8095440"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000010-sweep-02.npz",
+      "sha256": "667b25417b057f8edeab0b2def4c152eccc009afc304808e033b57c2872a90c3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000010-sweep-03.npz",
+      "sha256": "9bba2f47a61b69476370afb1834b79d4aeeddbcdf51697bf6267521cb7b8db87"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000011-sweep-01.npz",
+      "sha256": "e91e944cf81549a27ae1e57aaf5331797ac2211a78d00912ec9e5a9b2936ca40"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000011-sweep-02.npz",
+      "sha256": "f5fb0fc518728e91006eeff8abfbfb9c02a61c7d79066440197e1bcb7c811309"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000011-sweep-03.npz",
+      "sha256": "d23dfa6870b447dc3093eaf0a1f3fde158df470e0dfca174f1530f2239199846"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000012-sweep-01.npz",
+      "sha256": "3681c6223e6f435cd99e79a528e847a29deccc30ce9c4860a50f860d2b1af6dc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000012-sweep-02.npz",
+      "sha256": "68ec39455f8e25666cee33ea5afa26f6a156f88ddfd9cfa9cfc5ae0163b1bd2d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000012-sweep-03.npz",
+      "sha256": "cc693330ef9405de721380cdf4ab624771cbcfdc681f72642bf497f02c2d98ac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000013-sweep-01.npz",
+      "sha256": "2564bd35732ba6264ec28d6e3d3b82e6f64a45650afe27221a1f5bb573929bd3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000013-sweep-02.npz",
+      "sha256": "4786d3584d61157a385ce2783d542405dec81d1e8880032e6c462891c393a58d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000013-sweep-03.npz",
+      "sha256": "4b370f1b6dc826143927997f06c992b26eb9319d6831f38b258c278b1e3c2f48"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000014-sweep-01.npz",
+      "sha256": "409c2b759edce81b90ba97969c4076545abf5a7e6af327e03f679b277be1c9f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000014-sweep-02.npz",
+      "sha256": "9770d46544313ab00a7021576b2023f2aebd620e7c186ad10916e593b13ca08b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000014-sweep-03.npz",
+      "sha256": "3433ce70d0b571eeb163315ed8a0fbaff61f9faa9ae57f7aa6f0600d719f4065"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000015-sweep-01.npz",
+      "sha256": "1a729ce7956728a2fc57b98b127ef3d3c735f076d626125c7a25ef4d2b33e55e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000015-sweep-02.npz",
+      "sha256": "9c4c9f32f8ceed8d7a20bacb9b59396f2d05755bdf3a4c7f63940941d46e8a2e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000015-sweep-03.npz",
+      "sha256": "23bfec8de6c4dc2679913b6a1a6e9ebd668b4433b35493b534fd7f3b2f598161"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000016-sweep-01.npz",
+      "sha256": "b6c3589741e860dbad3b7400a0b4eb81be42a9ef8d63dee97251ced0c8f50ea5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000016-sweep-02.npz",
+      "sha256": "7fc967696582f84e02c344fe2aae33d7974a573d4792c0de9c6c0119b3159a75"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000016-sweep-03.npz",
+      "sha256": "87a4909c54ea71b2748df3c14f2811529aa1efe1b793a23a16bb55e472f3d40f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000017-sweep-01.npz",
+      "sha256": "a4152429bcb2c453469cc87778414a42ba6f52e62130045a98ef76d4f0646b5b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000017-sweep-02.npz",
+      "sha256": "7d51cc6ba0e850b0cb0fbac6289a5d9d4fb6ec59ce3bc549bde9460f21d37718"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000017-sweep-03.npz",
+      "sha256": "fb1a2ae5df74c6d7bf28626aa613983875877e98bbb544bbeff9c936c87c246e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000018-sweep-01.npz",
+      "sha256": "4d38f3399c589dd834b8a4c528e76c518edb55dff62be6ae2abcde1d47f533b5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000018-sweep-02.npz",
+      "sha256": "557ae2b818faff41a9e9c3f703bde96dd41dfe0e8ca0ce99002f44be09a9c257"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000018-sweep-03.npz",
+      "sha256": "b00787a303de941fbccab04f32f94e6962cd74dc24d0b1171579704c0339b9fd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000019-sweep-01.npz",
+      "sha256": "a7ecc36e72609503d44da2361e0c92af2e35d8cb9f4554ede737eeb767847fe9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000019-sweep-02.npz",
+      "sha256": "9e0b41be324a968e4e4b997ccb41f0d8e4aca7500d4c73fd0e4990e770b21629"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000019-sweep-03.npz",
+      "sha256": "86cd17eef87f14854f771767cfe7cffe062a305c981b9e981e45d1952cf231e2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000020-sweep-01.npz",
+      "sha256": "bdaafed84936dc65e0317a208c9191bc6217570819a8a92e4c7dcf5815c976ce"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000020-sweep-02.npz",
+      "sha256": "741517c9a89821fabf8fa4ab697cb51bc918438dc31eac1b1ec57f1a8c02eebd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000020-sweep-03.npz",
+      "sha256": "c12dbb6cc82cab3cc1a7acccb05be21cd24cb0c6288879831d9d9788d6a92dd0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000021-sweep-01.npz",
+      "sha256": "ad125e6cfaac6aa2247151d527529363dafdd44b5e526f5a5aa38a9f6565c7b2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000021-sweep-02.npz",
+      "sha256": "f7faf3c3223c3a393899f5a5202c5e656029850eb759f7b302dd5ebe5174042e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000021-sweep-03.npz",
+      "sha256": "991eff955a5ddc296ced6c5e811ce6edf7a204c3d96f46c8e4ecc94949ab08a7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000022-sweep-01.npz",
+      "sha256": "b3d1b2e0732058b5011c53837bf7794c9914a50cf9d2bbfc1c21c2801fc75747"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000022-sweep-02.npz",
+      "sha256": "909e48bf61631d2365e35194f3d060cb8d0bdcf51d1623ac206cf4cba216d195"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000022-sweep-03.npz",
+      "sha256": "2174e06628657689770adfea87d2a308f064f0a745b371613a7cd49fc28590b9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000023-sweep-01.npz",
+      "sha256": "1b177c810f04c6b9fb57e24cba3b2ff2d44007b6052b7c9a5b41f5e7ea718da2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000023-sweep-02.npz",
+      "sha256": "66b7cf244b038852185ed637b3ef1087691c744fcdd4c476db100c94a6dd0bf7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000023-sweep-03.npz",
+      "sha256": "a701fd2916199249483af935cb54b4d93d3439ee3f62ad68edae2c79a611f5ed"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000024-sweep-01.npz",
+      "sha256": "84702aba081d0f12b30d5437b66839f8b6ef695640f3090815e76e47a4456c3b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000024-sweep-02.npz",
+      "sha256": "04352f376105e2322e17aa1a6ac7fbbbd1efc3cd3b784296fec5cd049edcd20c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000024-sweep-03.npz",
+      "sha256": "f567ffb2bd489fc2972b6e4b255d5f1fc88ea8cac0143ef903004dbdcdb9f854"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000025-sweep-01.npz",
+      "sha256": "1f32ac5f57820422005e2728572defcf9e84df852598e05f5d575dd54c618571"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000025-sweep-02.npz",
+      "sha256": "2d589c73e75ecb795021a97b4483799c6b7244807f1cb340ec412db4c2846989"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000025-sweep-03.npz",
+      "sha256": "33ed3f419a7180ea4135db98a9d2c5f28d9d85f09045ddfed879e98ae256d049"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000026-sweep-01.npz",
+      "sha256": "18552907ec18950f2723301ae41ccfe378acb71b39fa0f8a79ebb4e8d8356836"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000026-sweep-02.npz",
+      "sha256": "9b411a329385c74748b3fd04e80a1921ff0029e15b4ab34f6ea818dbdcd99402"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000026-sweep-03.npz",
+      "sha256": "06c73f1a1235c757b80fe8f5515ec12cf1048ea49477c520318af6b3c1a059e2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000027-sweep-01.npz",
+      "sha256": "51b89146f149f64003e38de66d8da84d66eab40142de17504e53cc99a5c04334"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000027-sweep-02.npz",
+      "sha256": "5fdc2945c6650d7647e8dfcedcb34f1823002d407976f06ac598839cd6df0a2b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000027-sweep-03.npz",
+      "sha256": "401c6659a49571ed6035d12fc278da5b2139bee3870b174828e156ebc1529e51"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000028-sweep-01.npz",
+      "sha256": "d2e1cf63c0b733d467d9f28d44191402aa34306a020fe3432003d03d703e27de"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000028-sweep-02.npz",
+      "sha256": "b727356afc3feb83eb2c6a5025778d0f9fcaed144c72655416567110a4037963"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000028-sweep-03.npz",
+      "sha256": "070c7c083b52745178b840efd3568d1bd24da73503cc3354134cb8baee2bf1f1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000029-sweep-01.npz",
+      "sha256": "990c43cdfe37dd8ea4e9a50a8f16cfe5e08fca35c8f34bae480f3bfba45c9188"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000029-sweep-02.npz",
+      "sha256": "74daac6f35e3532ddaf731e949760c9d54a303e36a28774d9984f10b407d713b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000029-sweep-03.npz",
+      "sha256": "9b26539b78c925f7ef047165afddfddf7f57154837db9e7ea4cc2b29f2108515"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000030-sweep-01.npz",
+      "sha256": "f7252d1b64dbd8b912027c782fa422f2092cfe46e112ac71c540de9c486adf9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000030-sweep-02.npz",
+      "sha256": "7aada380979b9350e43ec3788b5c6e7bc41214c78783a1e6f24d3154d1dc0825"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000030-sweep-03.npz",
+      "sha256": "d50aa1643e269fc3343038a82631d71f90f81f94127f92487c8ad434bddbb539"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000031-sweep-01.npz",
+      "sha256": "3953e555a2b1dcc9771ad2ae4e80a63284fb9113c048b64dd0c6c3d94ca66a1c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000031-sweep-02.npz",
+      "sha256": "50f714d29a649564eead6cbc97927a273b0853ced3216bca8bef9ada9efcd3ef"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000031-sweep-03.npz",
+      "sha256": "b466f43021cd6db7ef8f42088635064b140666d8701b006c3829529891263039"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000032-sweep-01.npz",
+      "sha256": "b4c09ba9cffea1a9a1e3524481f6617c6249431f9becdf8c0ea82b24b5a8e134"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000032-sweep-02.npz",
+      "sha256": "3d7921432ffad10dd24af52fd8712577d6c0b8cd8c6665bd442c07fa280ccb2b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000032-sweep-03.npz",
+      "sha256": "6275a0d7b5e83cd649accae6258b597ff33437915d585d8a8b46ec5f46a8481b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000033-sweep-01.npz",
+      "sha256": "dbd78cbc61348940139c25ec5bbc0454144b6451f1dbe03400598b3717a97a1a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000033-sweep-02.npz",
+      "sha256": "41c4faf41ee52f76e1cc972cad006f4fcb2bc8a7e0ec0e47968a139f9791d4c8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000033-sweep-03.npz",
+      "sha256": "c084093700bdee4653bbc9905d14ddde5e863d1d57812a929f1a0567da52f0cf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000034-sweep-01.npz",
+      "sha256": "8fedcfbaafeb0ed9708d36c944763038ae2dd4088b9fc93e8c1eff1d7348900a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000034-sweep-02.npz",
+      "sha256": "18ed7cc0fc142c61376cfb7a17cadc25b74dca59ed4f4e21db33ec1b66b1575b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000034-sweep-03.npz",
+      "sha256": "0b8c6bb5976584e06f21679315aa678c0b92c10599bbe4a655cdc626abf1f2a3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000035-sweep-01.npz",
+      "sha256": "3dd029b14f1c110aa56e29b6d3c3398af9faccfc2193c06d471b2d345d806710"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000035-sweep-02.npz",
+      "sha256": "ce6431afbd35f5f3155c6eab5e3807210548f1a0cfa140db7307c8ad40cc78d6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000035-sweep-03.npz",
+      "sha256": "763c8429c181ce3d1a8f4e9f17d5ca35bda3a10d7588647563a3c2719ff5f9a4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000036-sweep-01.npz",
+      "sha256": "9d683021499e81b601cb57c099079a76d55153ecf1343c37a7160f6925fd20a5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000036-sweep-02.npz",
+      "sha256": "d5669cafe205c8fc1d6820bd9b02adb5239a21ca5707375aaed49caaf43b2ac0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000036-sweep-03.npz",
+      "sha256": "de8f1e9da821ec458bc34fabadfbd470f756261673dc20615a307ca6d39d2f03"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000037-sweep-01.npz",
+      "sha256": "a3cc59ac6a80fe5989f06e2bbf66cea09a578f21a16d97bd82cfd2b75bb8d571"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000037-sweep-02.npz",
+      "sha256": "fe29c732189e264ace862e9a19478d8282e3f985e05795a87d51670468668715"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000037-sweep-03.npz",
+      "sha256": "43382a647a86424e5cb9b595ec70f0e0788626042f4de845107664f6dbd1645d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000038-sweep-01.npz",
+      "sha256": "01990c5a0af4787536a822fe312aa6ed908abf6a172aab7097b8e53f78cfefc1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000038-sweep-02.npz",
+      "sha256": "9ba04a11b18af0635ca18c3795e95da9ec796d23838046f3f9934e6c8d5f8189"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000038-sweep-03.npz",
+      "sha256": "5c5164042a26d230cfc1de4aefd5fc2137cf370dbc67d9b77939b685adea2ab7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000039-sweep-01.npz",
+      "sha256": "4191bb77f2d04fd41af2d83086c08e081d2c128e8366cad808746f1cf6f3e3cc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000039-sweep-02.npz",
+      "sha256": "d1f3d718c609cf22049ec6488d9d43b0712616c5d22e86e5959744190cf09d0c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000039-sweep-03.npz",
+      "sha256": "2f20037911eaf148e7c97e50f281b34d491e4ef166e9bc8237f376c772cf5ebe"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000040-sweep-01.npz",
+      "sha256": "50be32c40b313c967f48471af8d58edbb82d89f740984720931f90b1df55729b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000040-sweep-02.npz",
+      "sha256": "166f4017d77b41bab9c2aa1583b30a83d63d19c11e4bbdafd562be6d258142c1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/boundary-step-000040-sweep-03.npz",
+      "sha256": "9363213901415e377578a79cbd4a92ff673578fb5202445a2bd8b2ae1cfb78d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000000.npz",
+      "sha256": "46726ed3f3c3522ca2dff16a8400bf87ae04e4fa2312daf45ab98e2d4f6a6e76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000000.npz",
+      "sha256": "3662a1c2c709a8bf575bf79ec28f8be3decdff4b2739623ed85112dccf1fb305"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000000.npz",
+      "sha256": "2d6391e611021a6c4f924e2354aed25ffc72fde58df22d84e6aee3dd92d892fd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000000.npz",
+      "sha256": "dd9edf6d7b3f2427b87ea9edf60aaa0e4ffd5b63405ccc0b42b96144fb541730"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000025.npz",
+      "sha256": "1eda9a1fa5bee62316916e2280e885fe967090447d970ff27886c847428f494e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000025.npz",
+      "sha256": "1041f7a76d849ce4b2c40a3ad850a22ab68ca14ce2235814a353c8b59e75da76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000025.npz",
+      "sha256": "2e4218d9aae6da21737cf50347077d96ad7046a15f39fcf41a93d03266bd6820"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000050.npz",
+      "sha256": "ced6837df4a882baf075c6ae7e94ed6bb639cdbd1e6de46eba5e11af2cfb213e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000050.npz",
+      "sha256": "f362b1dfbd9e6d555d616cae10b772d83bba740ffe3f1a81a43199d59f3691c0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000050.npz",
+      "sha256": "27f8656cdc8bde3b09b48f0e0e390c503b568ee74fdce8568c8041ca0d84b7cd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000075.npz",
+      "sha256": "9b73e37e35c25fbf81ab4f15dc41108c56d9e4b0624f8243c5173c41631ad103"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000075.npz",
+      "sha256": "a658e18efce5d4b938a806aae2173eeff9d68486a98e28b40cd452db68604d2b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000075.npz",
+      "sha256": "54d2d3388ead3eaf87390211385863f57810abdc9aefe8b15a31057612179996"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000100.npz",
+      "sha256": "b187cf82ad23ce7a851d3b5f329ca90d35c045c197e478d77d464b1a0267a676"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000100.npz",
+      "sha256": "cd9cd0262aa7d76e8faaeb8ce8f17a3955052e7fde90f29abfef8898fb90350d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000100.npz",
+      "sha256": "5269f164f18bc2cc6be63e7c42382c68b152aaab57789b62da575c9737dd2a0c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000020.npz",
+      "sha256": "03ce9aef9c7471db2c55744789a45d508ab2414f07f92542b548b30e954cf2a3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000125.npz",
+      "sha256": "3a9ef1afbe86432beb52e2cfb20dfe70dffff8480fe60846b50b7ce90eea1c6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000125.npz",
+      "sha256": "861657370637664646591adfea85e00e2a1b77b9f47b85023ce08ee6be64e446"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000125.npz",
+      "sha256": "bcbd7878e48a15c42e080a7ed0fda985791a987480d13d37b8c6c251d87912a4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000150.npz",
+      "sha256": "4e378b5e6355cb4190ed037af77952b52478fbe32d1c9b302aed8b83c5a92d79"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000150.npz",
+      "sha256": "e65fa177989aa45dd3a35622481dc98884ecefd5870d1fa13e778f4740d20947"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000150.npz",
+      "sha256": "125c223831d4ac2f039c66517a8db3008638c78e73646ce27d25be204056282e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000175.npz",
+      "sha256": "822ad0cc05b0f1d87558161b1fc99ba9d4368dd3ee5cb522783eb552411129c8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000175.npz",
+      "sha256": "fa0b11074dc4329313c22527ee4022a62024ce5e3e56c2ef3d230f3394ceab16"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000175.npz",
+      "sha256": "f93d1b330a7e8cacba1a48d04711361057e206a198835594cf82bff10b3a5e52"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/profiles-fvm-step-000200.npz",
+      "sha256": "d0a58140596643c6de80988e2914ed082da7e1da43c4e6505e19c19d85c41fe2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/full-000200.npz",
+      "sha256": "8c933c66dc7b434e9d862aa93dc449ace80a08083693b7407a26c41acb848baa"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-seventy-iterated/accepted-fvm-checkpoints/hybrid-000200.npz",
+      "sha256": "8f15203f6c173c9e9fbf8efb30f2ac7b035d222fd5821400c76f50523a54a63d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/body-transport-long-prefix-through-two-point-five-qualified/direct-profile-step-000040.npz",
+      "sha256": "6e977a6140be6f05403af062c39e3e76f8bf5de34131dadf064e26ba57b63c93"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_accepted_wake_prefix_3d.py",
+      "sha256": "b0bbb191586a26329dca6a015f86aeeb51917136c468f943458bb0aee5a85bef"
+    },
+    {
+      "path": "source/coupler/renewal_projection.py",
+      "sha256": "7ce1d4dccaa760bdb527c0ec4574bb8569062f41ac30320cc5ad7be7fac49fba"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "source/solvers/fvm/mesh/geometry.py",
+      "sha256": "0265d0fa80b5365c9fad141fd228989b1a0718da40702dde97e6d8500847b919"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_snapshot_induction.py",
+      "sha256": "30c5d9371460b527b3194c0134bcf7d4b4e9168811d107d54070a7b10edd524b"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_face_trials_3d.py",
+      "sha256": "c1f4b4ed1b6cf9ed256179a86c503ce4690c73c550095f94eb627210326c7b89"
+    }
+  ],
+  "drag_relative_rms_percent": 0.7302946534715945,
+  "maximum_absolute_relative_drag_percent": 1.4909973884211174,
+  "force_component_difference_rms_at_profile_times": [
+    0.007400995220588259,
+    0.0003518892771749872,
+    0.0004203630143170163
+  ],
+  "elapsed_seconds": 23.03578895800456,
+  "limitations": [
+    "Complete means this fixed prefix was verified, not that the parent long run completed, the wake is developed, or the requested agreement was achieved.",
+    "Drag is recorded every exchange; all three wall-force components are independently reconstructed only at profile/checkpoint times, every 0.25 flow-time units.",
+    "Short-run prefix agreement compares the recorded 20-interval history. No separate unobserved 70-interval control or bitwise comparison of every intermediate primitive state is claimed.",
+    "The profiles are one-dimensional observations of the actual 3D flow. Upstream, near-wake and far-wake regions are reported separately.",
+    "The composite uses hybrid FVM inside the small box and VPM outside. Raw and matched-sampling comparisons separately expose interpolation-stencil differences.",
+    "Direct profile checks use the same saved rounded particles and body strengths. Their difference from runtime queries includes tree approximation and evaluation arithmetic, not particle representation error.",
+    "Independent direct-kernel cross-checks use eight particle targets and all profile panel targets at each requested direct-check time; the body strengths are not re-solved.",
+    "History RMS statistics exclude the common initial observation; the complete unshifted history is retained."
+  ]
+}

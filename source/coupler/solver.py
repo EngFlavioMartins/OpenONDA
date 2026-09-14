@@ -527,6 +527,10 @@ class FVMVPMCoupler:
         self.n_fvm_substeps = self._derive_n_fvm_substeps(
             self.vpm_time_step_size, self.fvm_time_step_size
         )
+        if cfg.interface_iterations > 1:
+            from .interface_iteration import validate_output_schedules
+
+            validate_output_schedules(self)
         if self._is_master:
             logger.info(
                 format_coupler_log(
@@ -779,15 +783,18 @@ class FVMVPMCoupler:
             velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
                 self, *face_geometry
             )
-            fvm_time = advance_fvm(
-                self, *face_geometry, velocity_boundary_condition_old, next_velocity
-            )
-            # A pressure datum shift changes neither the incompressible
-            # solution nor closed-body pressure forces.  Keep the solver's
-            # native null-space datum in the numerical loop; presentation code
-            # can apply a reported offset to an output copy when needed.
-            transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
-            update_boundary_history_after_replacement(self, *face_geometry)
+            if self.setup.interface_iterations > 1:
+                from .interface_iteration import advance_iterated_interface
+
+                transfer_result, fvm_time, transfer_time = advance_iterated_interface(
+                    self, face_geometry, next_velocity
+                )
+            else:
+                fvm_time = advance_fvm(
+                    self, *face_geometry, velocity_boundary_condition_old, next_velocity
+                )
+                transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
+                update_boundary_history_after_replacement(self, *face_geometry)
             if self._is_master:
                 assert self.vpm_solver is not None
                 self.vpm_solver.execute_scheduled_samplers()

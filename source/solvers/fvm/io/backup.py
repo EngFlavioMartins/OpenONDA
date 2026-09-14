@@ -414,6 +414,32 @@ def publish_restart_payload(solver, payload: RestartPayload) -> None:
         solver._evolution_failure = None
 
 
+def capture_restart_payload(solver) -> RestartPayload:
+    """Copy the canonical accepted state into memory for coupling sweeps.
+
+    This has the same numerical content as a disk restart, without compression,
+    mesh hashing or filesystem traffic. Each MPI rank captures its local state.
+    """
+    if solver._step_phase != "accepted":
+        raise RuntimeError("A coupling snapshot requires an accepted FVM state")
+    names = ("velocity", "kinematic_pressure", "volumetric_face_flux",
+             "volumetric_face_flux_old", "volumetric_face_flux_older",
+             "velocity_old", "velocity_older")
+    return RestartPayload(
+        fields={name: getattr(solver, name).copy() for name in names},
+        eddy_viscosity=(np.empty(0) if solver.eddy_viscosity is None
+                        else solver.eddy_viscosity.copy()),
+        time=solver.time, step=solver.step,
+        n_committed_time_steps=solver._n_committed_time_steps,
+        time_step_size=solver.time_step_size,
+        accepted_time_step_size=solver._accepted_time_step_size,
+        previous_time_step_size=solver._previous_time_step_size,
+        kinematic_viscosity=solver._kinematic_viscosity,
+        max_courant_number=solver.max_courant_number,
+        n_consecutive_accepted_steps=solver._n_consecutive_accepted_steps.copy(),
+    )
+
+
 def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> RestartPayload:
     """Validate and restore one canonical FVM backup."""
     source = Path(path)

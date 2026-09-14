@@ -161,11 +161,36 @@ class CouplerSetup:
     """Width (m) of the resolved-scale VPM-to-FVM consistency band measured
     inward from the outer FVM boundary. Zero disables the band. A positive
     value must fit entirely outside ``transfer_region_bounds``."""
+    interface_iterations: int = 1
+    """Maximum fixed-predictor FVM/renewal sweeps; one keeps explicit exchange.
+    Iteration requires mixed vorticity boundaries, buffered M4 renewal, no
+    consistency band, and FVM output schedules aligned with coupling times."""
+    interface_normal_tolerance: float = 1.0e-6
+    """Area-weighted RMS normal-velocity residual tolerance in m/s."""
+    interface_gradient_tolerance: float = 1.0e-6
+    """Area-weighted RMS tangential-gradient residual tolerance in 1/s."""
     # ---- RUN-LEVEL OPERATIONAL ----
     backup_interval_steps: int = 1
     """Coupling steps between automatic backups; non-negative (0 disables backups)."""
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.interface_iterations, bool)
+            or not isinstance(self.interface_iterations, int)
+            or self.interface_iterations < 1
+        ):
+            raise ValueError("interface_iterations must be a positive integer")
+        for value in (self.interface_normal_tolerance, self.interface_gradient_tolerance):
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError("Interface tolerances must be finite and positive")
+        if self.interface_iterations > 1 and (
+            self.boundary_condition_mode != "vorticity_mixed"
+            or self.transfer_method != "buffered_m4_renewal"
+            or self.fvm_consistency_width != 0.0
+        ):
+            raise ValueError(
+                "Interface iteration requires vorticity_mixed, buffered_m4_renewal, and no consistency band"
+            )
         freestream_velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
         if freestream_velocity.shape != (3,) or not np.all(np.isfinite(freestream_velocity)):
             raise ValueError("freestream_velocity must be a finite three-component vector")
@@ -337,6 +362,9 @@ class CouplerSetup:
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "fvm_consistency_width": self.fvm_consistency_width,
+                "interface_iterations": self.interface_iterations,
+                "interface_normal_tolerance": self.interface_normal_tolerance,
+                "interface_gradient_tolerance": self.interface_gradient_tolerance,
                 "transfer_method": self.transfer_method,
                 "transfer_region_bounds": transfer_region_bounds,
                 "eta_blend_width": self.eta_blend_width,

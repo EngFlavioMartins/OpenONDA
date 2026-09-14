@@ -28,6 +28,7 @@ def _dot(first: np.ndarray, second: np.ndarray) -> np.ndarray:
     return first[..., 0] * second[0] + first[..., 1] * second[1] + first[..., 2] * second[2]
 
 
+@njit(cache=True, fastmath=False)
 def _relax_face_centre(triangles: np.ndarray) -> np.ndarray:
     """One partTriMesh auxiliary-centre refresh in stored triangle order."""
     weighted = np.zeros(3, dtype=np.float64)
@@ -480,7 +481,7 @@ def _inverted_boundary_points(
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     boundary_start = int(mesh_data["n_interior_faces"])
-    if len(faces) - boundary_start > 10_000:
+    if len(faces) - boundary_start >= 128:
         return _inverted_boundary_points_vectorized(
             points,
             faces[boundary_start:],
@@ -580,10 +581,9 @@ def _inverted_boundary_points_vectorized(
 ) -> set[int]:
     """Vectorized equivalent of the partition-point orientation predicate.
 
-    Large reference meshes have tens of thousands of boundary polygons.  The
-    scalar cfMesh transcription is useful for checkpoint parity, but its
-    Python face/corner loop becomes the dominant cost at release scale.  Keep
-    the same two predicates while evaluating all polygon corners in NumPy.
+    Repeated Python face/corner scans become costly with even a few hundred
+    boundary polygons.  Keep the scalar cfMesh transcription for small parity
+    cases and evaluate larger boundary sets in NumPy with the same predicates.
     """
     widths = np.asarray([len(face) for face in faces], dtype=np.int64)
     if not len(widths):
@@ -598,13 +598,29 @@ def _inverted_boundary_points_vectorized(
     current = points[flat_faces]
     following = points[next_ids]
     previous = points[previous_ids]
-    face_centres = np.add.reduceat(current, starts[:-1]) / widths[:, None]
+    arithmetic_centres = np.add.reduceat(current, starts[:-1]) / widths[:, None]
+    arithmetic_centre = arithmetic_centres[face_ids]
+    # cfMesh's face centre is area weighted for polygons, while its area
+    # vector uses the arithmetic centre.  The two coincide only for planar,
+    # symmetric faces; wrapper smoothing produces non-planar quads.
+    twice_areas = np.linalg.norm(
+        np.cross(current - arithmetic_centre, following - arithmetic_centre), axis=1
+    )
+    area_sums = np.add.reduceat(twice_areas, starts[:-1])
+    weighted_centres = np.add.reduceat(
+        twice_areas[:, None] * (current + following + arithmetic_centre), starts[:-1]
+    )
+    face_centres = arithmetic_centres.copy()
+    weighted_faces = (widths > 3) & (area_sums > _VSMALL)
+    face_centres[weighted_faces] = weighted_centres[weighted_faces] / (
+        3.0 * area_sums[weighted_faces, None]
+    )
     centre = face_centres[face_ids]
     face_normals = np.zeros((len(faces), 3), dtype=np.float64)
     np.add.at(
         face_normals,
         face_ids,
-        0.5 * np.cross(following - current, centre - current),
+        0.5 * np.cross(following - current, arithmetic_centre - current),
     )
     normal_lengths = np.linalg.norm(face_normals, axis=1)
     invalid_faces = normal_lengths <= _VSMALL

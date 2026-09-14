@@ -54,6 +54,11 @@ class StabilizationConfig:
         Fractional circulation-magnitude budget in ``(0, 1)`` available to pruning.
     regularization_solenoidal_remesh : bool, default=False
         Project the remeshed lattice toward a divergence-free field.
+    regularization_transfer_only : bool, default=False
+        Apply Gaussian redistribution and moment restoration only. Disable
+        adaptive core broadening, enstrophy adjustment and projection. The
+        energy/enstrophy limits then bound absolute transfer errors, allowing
+        either sign rather than enforcing dissipation.
     regularization_max_particles, regularization_capacity_max_particles : int or None
         Positive standard and capacity-triggered post-remesh population ceilings.
     regularization_max_events : int or None
@@ -122,6 +127,7 @@ class StabilizationConfig:
     regularization_grid_spacing: float | None = None
     regularization_tail_budget: float = 3.0e-3
     regularization_solenoidal_remesh: bool = False
+    regularization_transfer_only: bool = False
     regularization_max_particles: int | None = None
     regularization_capacity_max_particles: int | None = None
     regularization_max_events: int | None = None
@@ -200,6 +206,8 @@ class StabilizationConfig:
 
         if self.regularization_interval_steps < 0:
             raise ValueError("regularization_interval_steps must be non-negative")
+        if self.regularization_transfer_only and self.regularization_solenoidal_remesh:
+            raise ValueError("transfer-only redistribution cannot enable solenoidal projection")
         if self.regularization_start_step < 0:
             raise ValueError("regularization_start_step must be non-negative")
         if self.regularization_interval_steps > 0 and (

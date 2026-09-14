@@ -1,0 +1,870 @@
+{
+  "schema": "openonda-accepted-fvm-checkpoints-3d/1",
+  "status": "running",
+  "spatial_dimensions": 3,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_profile_observer_3d.py",
+      "sha256": "b95f1c66da82ac7037182e5eb44ae261e92943398363a0b02d8834bc5b6cfb95"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    }
+  ],
+  "frames": [
+    {
+      "fvm_step": 0,
+      "coupling_step": 0,
+      "physical_time": 0.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000000.npz",
+          "sha256": "3662a1c2c709a8bf575bf79ec28f8be3decdff4b2739623ed85112dccf1fb305"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000000.npz",
+          "sha256": "2d6391e611021a6c4f924e2354aed25ffc72fde58df22d84e6aee3dd92d892fd"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_kinematic_pressure": "0ba076b81a82f50daa219d729d33d89bfdbb194241a79967278b6c8fe3b7aa40",
+        "full_volumetric_face_flux": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_old": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_volumetric_face_flux_older": "c491ea0a5d1fa50320c1968ee12ecc67f893bc7fee2de1d14abd7427a3a591d0",
+        "full_velocity_old": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_velocity_older": "c2ccf980d763b114c5646b1f8af86d96bf14cb3750e843b663e2f3d68d1cbc2e",
+        "full_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "small_velocity": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_kinematic_pressure": "8b437da3d75eb01414e3c1f056517ff7078718db57e1ad680c73130e0af118e0",
+        "small_volumetric_face_flux": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_old": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_volumetric_face_flux_older": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+        "small_velocity_old": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_velocity_older": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+        "small_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "vpm_position": "4169cec85c685416b5f73b7438b9754505fdeff8e8f11d073d8cdd59fe3e0388",
+        "vpm_velocity": "a26f2b829940490d8da8481b53c9c40a814220138a3d41db50522a7ed22dc482",
+        "vpm_vortex_strength": "7e48d2371b1ae95cbd0c023f901e72f1144c24cc034b731f10b52dbd0cd96e4c",
+        "vpm_core_radius": "645266c1f1d3935e14e95c0811ed8da26e44b3c631e82033d26f3a327a2fdc26",
+        "vpm_particle_volume": "9d94c05211a7998ad622e8be5221bdc87403c169513769de081f5ae7f4217a58",
+        "vpm_kinematic_viscosity": "866bfd0caf1c7eb00214cf764d791439bebfc22ff4783196dba85136a91bfb8f",
+        "vpm_eddy_viscosity": "a9c780506a4e590527f17d2ae51e9d4e37f9819956a9903071988b0943db244a",
+        "vpm_group_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_zone_id": "bfef48f93fa50db728dcac62d986d954133695443d2e11d73fefe00c8399a891",
+        "vpm_velocity_gradient": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_strain_rate": "10165cd4d02fa354bf8b193efe73df512d1e22941d4dd1460cbe93456113352b",
+        "vpm_clock": "57b9c6ee60ee00ed29bb5b5d8e9b1ee41cd46e0d79f859c18093fdeeba943a24",
+        "panel_strength": "4337da3ffdc5114ec81278f6fb40ed1db44c139cadd829855a36e6915b095cb7"
+      },
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705
+    },
+    {
+      "fvm_step": 25,
+      "coupling_step": 5,
+      "physical_time": 0.75,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000025.npz",
+          "sha256": "1041f7a76d849ce4b2c40a3ad850a22ab68ca14ce2235814a353c8b59e75da76"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000025.npz",
+          "sha256": "19e67821f3fb1277ee854b8e078da3725c1fbb0a1c00f00a97e02382200d9352"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_kinematic_pressure": "2a055c227aa5bf4aa758f22d272a4cffcd1946b726d5363fa2c82eadcd664f78",
+        "full_volumetric_face_flux": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_old": "4fa7526ca1624d7d32e1af8cafc2d0fa41d5ce533e8ad3a96725484a58fb2b3a",
+        "full_volumetric_face_flux_older": "4e58eef3b5b10fbc5ce75ef891f4830d34b1220ce80b753b4d58c846b2a75946",
+        "full_velocity_old": "080181590a7f06459089ee64f4f44bc647aa64c1e1894394b54175e689f808ec",
+        "full_velocity_older": "2a37e7f1f785988ce0abd70bf967ca241f572a507aa62b9e342c92e28e13b4d4",
+        "full_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "small_velocity": "debcddabaf8d72e14ccc6c3c7dadc46eb4a21cfdaf54f8aa3729440b36597ce1",
+        "small_kinematic_pressure": "e3ac5a45635d361b5b5fd85faa9015f75d999978c826f680f48a072e3b34d030",
+        "small_volumetric_face_flux": "44c04e52462c6157c440465b925386da3d8c4b1eba6948ae2b6240473e279df6",
+        "small_volumetric_face_flux_old": "44c04e52462c6157c440465b925386da3d8c4b1eba6948ae2b6240473e279df6",
+        "small_volumetric_face_flux_older": "d40d9a1ed0be805c456d2fc702aad1c61c95089eb85058f7b2654a26899a1774",
+        "small_velocity_old": "debcddabaf8d72e14ccc6c3c7dadc46eb4a21cfdaf54f8aa3729440b36597ce1",
+        "small_velocity_older": "4437d4794b1b5057c44b4f896b14926d3df2db1a3f36c1ced68a0c274edd35eb",
+        "small_clock": "5cf44cc8113f163315a4895ab8982c22a0cdd200c0d5c26620fab02e32a5b35d",
+        "vpm_position": "4f8eafed24bf0c1178da8332f85e076b2be7e0fc2e40fe19c4f69a609bb1e416",
+        "vpm_velocity": "7b124388daad90bf9200b1530171bcdb59898567d31908d2bcbb862003d8529f",
+        "vpm_vortex_strength": "3e1a635009db346371ba356ab95f277b6dc1e2046492082c9e232691c6c9fc6a",
+        "vpm_core_radius": "ec063aab3c3863d1b7c7cec49f7f00e219592993d308168e131bb764e3fac175",
+        "vpm_particle_volume": "1ce913b8c6a7395c462d22c1600cbce6ecf714c2206d2243474622a58c7928a6",
+        "vpm_kinematic_viscosity": "30ef6123409812a3a7e8c43f06383c1a625f010f4a10115f6466d745ef3b86c1",
+        "vpm_eddy_viscosity": "1aec48c8807dba8341c6886b8842ec454b0cd3dfe97c6a4e1fd90eea8f9d14ed",
+        "vpm_group_id": "1a8922ab5101c7df47493f9e954b095c18912d332b712930c5eaa818fe55fba2",
+        "vpm_zone_id": "1a8922ab5101c7df47493f9e954b095c18912d332b712930c5eaa818fe55fba2",
+        "vpm_velocity_gradient": "7af38af3c2b8969c01c0530592c0fe13c8bbef2634624c5bd506074b83f998d3",
+        "vpm_strain_rate": "18b6acb903586aad1a1e3fc0c71aa156fe68084e9ef1256dee6884c28ea2819d",
+        "vpm_clock": "6d811476ad1efbfa75e85abed9088c3f915447c25cc4b06dfd5615ae75af5e62",
+        "panel_strength": "dc2cc86624d0644956685b918917de1f219a30e15ad475cb030b218589054323"
+      },
+      "full_drag_coefficient": 1.4118903001741687,
+      "hybrid_drag_coefficient": 1.4076117693355223
+    },
+    {
+      "fvm_step": 50,
+      "coupling_step": 10,
+      "physical_time": 1.0,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000050.npz",
+          "sha256": "f362b1dfbd9e6d555d616cae10b772d83bba740ffe3f1a81a43199d59f3691c0"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000050.npz",
+          "sha256": "859d249d215a97e8f358be05983e52e2a2aa8111903848f81217b7664e2788b0"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_kinematic_pressure": "aa7147a12e86130ba45f683c6ea17073febbe89b6a1d69076724c866e380e27e",
+        "full_volumetric_face_flux": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_old": "07a1352e6201b1f72c35913961b2ab672ff055a119947b795a092febebdfb687",
+        "full_volumetric_face_flux_older": "5b1609b61f50f535c54299c09b255f5aacc5bad738e77ead1204bc2156eca7f3",
+        "full_velocity_old": "7b11ed0721920a1f5b59037052b46d4de944de3e10a3b1d1b281146381b2fc0d",
+        "full_velocity_older": "18752bdd2322a8d3836d28041a3e362706f9ba83b91ffef8ec99a40557682449",
+        "full_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "small_velocity": "5543715062456da99a70e15533c84cde31d8c6c7562d30e1b97c6ff4276579a4",
+        "small_kinematic_pressure": "3b9cb06f49882f8eb6a9143118b64367ab31ac991ca115ed8bb8a7d3a97d1077",
+        "small_volumetric_face_flux": "f4ee4a30d51c70ce21692f82638f3cce5d6977261eaf23c51d2026afb607d948",
+        "small_volumetric_face_flux_old": "f4ee4a30d51c70ce21692f82638f3cce5d6977261eaf23c51d2026afb607d948",
+        "small_volumetric_face_flux_older": "e78e3646b38ab3f15492393201908b73d847dd35bc5b16201159ea7a6ca7b1af",
+        "small_velocity_old": "5543715062456da99a70e15533c84cde31d8c6c7562d30e1b97c6ff4276579a4",
+        "small_velocity_older": "2e443f7bae19ce72b2cb7ddf96c7e93221e87edb9335501dfbc22c82d431383b",
+        "small_clock": "c49d4e72301c9a723ff96bf6920ea3cfada296ec4aff0a8248c687e51ca6ef70",
+        "vpm_position": "dabbb2be028f342251577b69ef1e292c0957de2d3669a5c23c96405063fb2302",
+        "vpm_velocity": "468ffc5998b8c459c14a9dbf553ea72733371995287db1b74d05840f9f8b1c78",
+        "vpm_vortex_strength": "6369c7d760909a16acab342b6e16ce73e0d058286eed82364018ccff8abc827a",
+        "vpm_core_radius": "f591674794529bce352a892c733ecc98322a7df0413ca73bb5795f8c37f5ac67",
+        "vpm_particle_volume": "2257e9fc607a14753fd14e5e566320c4cf5eba99cb1b82e24f4f6d400c831840",
+        "vpm_kinematic_viscosity": "3bd584372cc9fb97dee6da668115fa4f65f60b9538701d495cabc73c71eb7648",
+        "vpm_eddy_viscosity": "f1d83b9c1da864b9c01eddbf1f742a76a1d51f3fc72c42a4c21898877c5124a2",
+        "vpm_group_id": "775f2ba7681381d38ffe5a5cd496aee0fa21c455e440490e67d0973ee73f3f49",
+        "vpm_zone_id": "775f2ba7681381d38ffe5a5cd496aee0fa21c455e440490e67d0973ee73f3f49",
+        "vpm_velocity_gradient": "64fc7370476af1619c47f36ff2107e3ae0c6e794e36c12c4da131f69f38aa62e",
+        "vpm_strain_rate": "567d09a1376e75261b37890b863b51412a537a7dec29e3a74cbb772768c8f810",
+        "vpm_clock": "2ff68f07dbb642904b5de9da75543c9e82071cfbad44aa1e540440c04f41a0dc",
+        "panel_strength": "5d0b09379fe0da7c64ea20258c353b6413fff66f325af1df0f445028b8f10662"
+      },
+      "full_drag_coefficient": 1.2728717493203419,
+      "hybrid_drag_coefficient": 1.2767337275919322
+    },
+    {
+      "fvm_step": 75,
+      "coupling_step": 15,
+      "physical_time": 1.25,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000075.npz",
+          "sha256": "a658e18efce5d4b938a806aae2173eeff9d68486a98e28b40cd452db68604d2b"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000075.npz",
+          "sha256": "2f92ee9fc5735ad1373abcc59980beff979957d20570a1b89c242cb8d6d32507"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_kinematic_pressure": "2046d320e04c4cfa090e146fec24104329b2394d1bd732a98f4d930a1c0bd4fb",
+        "full_volumetric_face_flux": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_old": "dbc64ed35bbee52f58f465f3dbe6f1c0955d36f1e4eadac53e67a4f87b49dfd0",
+        "full_volumetric_face_flux_older": "e108a86e46c0b664d1c4cd7f89525ee83b8c389d1ab98b03ae5d2d8db981508a",
+        "full_velocity_old": "4c188d3c6ccd8c69064a5f272b9ce872c307fbd67fecc8757241d882f8f5f150",
+        "full_velocity_older": "4210905d83be251b30d31ab4aa33f94807ad063b3da11e1ee364954d34c8f131",
+        "full_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "small_velocity": "8e2f8244e4774784730f85d725330cf8f261ac6bcf3ae4c46e109ef95c8ea9f7",
+        "small_kinematic_pressure": "22c47ca9de4ed59760dda2809f0e4edabef0db3e34912e259f4c29de0774da55",
+        "small_volumetric_face_flux": "66b9db431621990c6bf03ac9bf30a4b641f22c67383c6645478ede8f3c036947",
+        "small_volumetric_face_flux_old": "66b9db431621990c6bf03ac9bf30a4b641f22c67383c6645478ede8f3c036947",
+        "small_volumetric_face_flux_older": "9f2926ed464928c926a63e957b96e07bf4e767c10128e5f0bfe66d7f5eae0c03",
+        "small_velocity_old": "8e2f8244e4774784730f85d725330cf8f261ac6bcf3ae4c46e109ef95c8ea9f7",
+        "small_velocity_older": "0f812c4c97593747407a6844f9c9b7e805c453e09b7ebb29485138758291b9d9",
+        "small_clock": "7bc4f7ec2285bfb6c508e2ef9e20aa9073205db229edecf3be5b24a121aa4257",
+        "vpm_position": "ed37ad88a9f312498c767b78df7ce1306bbd831551af05d5bda410468e4178ae",
+        "vpm_velocity": "24193f19617a4785d5fc09a6f7ce350a9152f32039ffa3bfa94510565b7a8749",
+        "vpm_vortex_strength": "39d6cc3b0a468c14fc03f5c564fddeb0f4cf6339437e81a31b0b4b511095fe42",
+        "vpm_core_radius": "7e77b7c20fb4a5589c7b57e606500ffcc1a43eae6bf2a7cf174b20e0d27de6f4",
+        "vpm_particle_volume": "fbcd7f74241bfbe78471838bdf48ec3a22ba325dc86aaee74a55f36aafdc1369",
+        "vpm_kinematic_viscosity": "e700710a3b2d3eb2dfa8c51ba40d246cfecf013f9a73282dcd7fd031543b062c",
+        "vpm_eddy_viscosity": "6686724460d72e44fcc728b4068192411ecec4c87a5ea5d35647f6eed756e729",
+        "vpm_group_id": "0482c8926afa222af87cdda64b5153ced2608b488584b4d6e3a5cc8b02f011a0",
+        "vpm_zone_id": "0482c8926afa222af87cdda64b5153ced2608b488584b4d6e3a5cc8b02f011a0",
+        "vpm_velocity_gradient": "255540711593aba81a9b11c0b9fa716283107943d08d036a7f755a9a4e3ba9a9",
+        "vpm_strain_rate": "09af7f0572b25574bb112a75061e61cacda01a057eb15e1b59d12007e2ea9ce4",
+        "vpm_clock": "8ae79f58ec1b2b119fadc386288ef065f8dab8e2bbfa8f1045af5c0c3618e3f7",
+        "panel_strength": "e32cc276a4412f3efce381cca6a625514db083ab4ac37695c6482166511ee2d9"
+      },
+      "full_drag_coefficient": 1.159315934226276,
+      "hybrid_drag_coefficient": 1.1659260559322868
+    },
+    {
+      "fvm_step": 100,
+      "coupling_step": 20,
+      "physical_time": 1.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000100.npz",
+          "sha256": "cd9cd0262aa7d76e8faaeb8ce8f17a3955052e7fde90f29abfef8898fb90350d"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000100.npz",
+          "sha256": "d7507254c93de5471f6e807acd781c4608b45572764fc6dd894ce2246e1c7b65"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_kinematic_pressure": "4dc5943a6cf6be8f7d384e4e22baecd34ec5c505635b8fd033663d1379f42d82",
+        "full_volumetric_face_flux": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_old": "0835a9a1fcd6873c96d0f9bfbabee0e3a9fc5dfafd0e613879059637191400da",
+        "full_volumetric_face_flux_older": "ecc3bb63b3a81a7989d0ab7380cca6d15cec23e88016f535e9e3d723bd78ccfa",
+        "full_velocity_old": "d64cbe32a64158be5ac1cdf5ed9cea2e0c449c923eb49fdc350f858d4d0740a5",
+        "full_velocity_older": "a7d4cbfa70e967c130ec376f6e23270e43d23a238af12d48bf530af6e86bb6c6",
+        "full_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "small_velocity": "3a0e25c3e2bde1069e6e91be904f2881d9edb5b952b4647c8f40ff0d77e0507a",
+        "small_kinematic_pressure": "5f51bb228c0a4838e27cfbe92499ed6775ac24d423c62ddd12d997d4afd3e4f5",
+        "small_volumetric_face_flux": "cce05f7100731cbbe3eb37573f2b7a358a3d96ff5c3db6ead991b694f668a5c9",
+        "small_volumetric_face_flux_old": "cce05f7100731cbbe3eb37573f2b7a358a3d96ff5c3db6ead991b694f668a5c9",
+        "small_volumetric_face_flux_older": "1c75df049054ce88df19d393f5e573fafd0bb13b073cd884700dcf15d485130e",
+        "small_velocity_old": "3a0e25c3e2bde1069e6e91be904f2881d9edb5b952b4647c8f40ff0d77e0507a",
+        "small_velocity_older": "5ca47cb8e049eff56329b15f96f9718b02b63e36fd925da257b837602a81a089",
+        "small_clock": "1f80f769082c7b316fbbf9987260b7cfdd4c4dba22e21e504936d99449b41613",
+        "vpm_position": "a28e269f4b262939e6d084efba4910a26024c45bbcb8cdec993a03fe797226d1",
+        "vpm_velocity": "5b782e78321453c66efe567366208c4943bee2410359bb87b9c1d0cf1f5b4180",
+        "vpm_vortex_strength": "51fae5da53d812eceb54328103474cd7c6c821fb1cc6199fa9d9c4e493ba1eb7",
+        "vpm_core_radius": "a0e94920f38c4f6c3a8be777f364219163bbd4a89e5412e0ab1e77fe3b2516f3",
+        "vpm_particle_volume": "1da61889be064fb9098bff989a23c6ddfff208cd2fc97578c7a6c0fcc9ac7344",
+        "vpm_kinematic_viscosity": "500f42d2c6fd50ce42ac88b870fa984d9daa4db35ab4abb033cbf1a254ed48c5",
+        "vpm_eddy_viscosity": "f6b42b115a53af2e43a10cad9e8838e8b168dd466fc6a06685da6d3fb92e2523",
+        "vpm_group_id": "721d59e99041ab4aac3bcaab9f3dde7444b12ceda7f4f4a2c69f95f9eb905c60",
+        "vpm_zone_id": "721d59e99041ab4aac3bcaab9f3dde7444b12ceda7f4f4a2c69f95f9eb905c60",
+        "vpm_velocity_gradient": "52e1854372e7807d32c0ac52c6686e647b2cac92cb4405c55836e7e5819d7abf",
+        "vpm_strain_rate": "3768687cf2d744b5c6534d23627ee9a1c3263df32a75ffb1f4d67ebde7955f0a",
+        "vpm_clock": "8e52eb8d39defc5ebaa61cbccbb053665840cbd468aab3507e83b700d6bd52e7",
+        "panel_strength": "ee8badd0ab7d759609d70c6e9dbab018960ef67ad554ef8c30b6edb6c271e952"
+      },
+      "full_drag_coefficient": 1.0803953399803075,
+      "hybrid_drag_coefficient": 1.0885607282705918
+    },
+    {
+      "fvm_step": 125,
+      "coupling_step": 25,
+      "physical_time": 1.75,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000125.npz",
+          "sha256": "861657370637664646591adfea85e00e2a1b77b9f47b85023ce08ee6be64e446"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000125.npz",
+          "sha256": "0747f9b715d278f0749cccdd0d4cf6a0b5e85cc498883934f9b452889f92db96"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "27938bf8e3cb259c7e7c381ff94e42bdd9545be9f66d92ac6660be06fab052e8",
+        "full_kinematic_pressure": "2fcbf1881002b15c492e89c2f159fd9c12d547431650a111e790b39a6086bec6",
+        "full_volumetric_face_flux": "15141f4a7eab0115b5d0a34ba6175aa12c81a0cc6d172d0be818f4c2168c2aac",
+        "full_volumetric_face_flux_old": "15141f4a7eab0115b5d0a34ba6175aa12c81a0cc6d172d0be818f4c2168c2aac",
+        "full_volumetric_face_flux_older": "244501b629521bc2a1f4dc223ecb27513f087d7ce8d13eb1a6ba9f435c16c148",
+        "full_velocity_old": "27938bf8e3cb259c7e7c381ff94e42bdd9545be9f66d92ac6660be06fab052e8",
+        "full_velocity_older": "956c38f7157011f0df10225cea5701ebdd84945369864034a93da088f077fcd7",
+        "full_clock": "925727d0852bb74b68fb76c6050efe3fc1392b3f3166b3f75752409ab812144b",
+        "small_velocity": "762bfdc11d914c691aff7d067c2ca516360df2744f42504020ad557f382a662f",
+        "small_kinematic_pressure": "9823040a55c449512ce2af61b3e50a9499bfdac0465cfb8da11b7f8faa89e9de",
+        "small_volumetric_face_flux": "4b12414db235664e9381416d8c69b744bd00ab19aab7b8fcb32d4b4330c78e07",
+        "small_volumetric_face_flux_old": "4b12414db235664e9381416d8c69b744bd00ab19aab7b8fcb32d4b4330c78e07",
+        "small_volumetric_face_flux_older": "733faa03b69a43edf00f37c87e8f1a384be12af93c8ba12c5fd9981c52f44602",
+        "small_velocity_old": "762bfdc11d914c691aff7d067c2ca516360df2744f42504020ad557f382a662f",
+        "small_velocity_older": "127dcfafed1c172daabf8f6173a67a0eccb2f68959ee1bee8852aab8152cb6d6",
+        "small_clock": "925727d0852bb74b68fb76c6050efe3fc1392b3f3166b3f75752409ab812144b",
+        "vpm_position": "84fa096d1b79eaabd61ffa1f0bf7ea1870f47910c8970189893e2c3a9ce4a096",
+        "vpm_velocity": "2c618f67bc1c4b4bb50b54b1375ef93960848c6044531385c4775749d968c88f",
+        "vpm_vortex_strength": "bfccce135a76d4978586fc25a783fb0c41fc31ca026fbc6654be01fc6841dcbd",
+        "vpm_core_radius": "e2b3943ebab49980692a41fcdc9fd282f5d4f7246c7747a9e425114d28973422",
+        "vpm_particle_volume": "12ca4ea5f6cb0b2d67de02f0e074ef3a9fedd0e4a48a979d11ff4b25d92c1c50",
+        "vpm_kinematic_viscosity": "26aaddac092ad1d1b3da53186c5fe1bd19083f266a9c670e74e66e1132a34f13",
+        "vpm_eddy_viscosity": "8adbf10cb6662cd947e160807d1330a485723b1654299e925d9b7f4ae1666d08",
+        "vpm_group_id": "e93a6ee7014fb4e7858af067590c30e8210119a85ea53ca54f97cfb6459bc7b7",
+        "vpm_zone_id": "e93a6ee7014fb4e7858af067590c30e8210119a85ea53ca54f97cfb6459bc7b7",
+        "vpm_velocity_gradient": "c6364797c909ebd6f0be505f87e099080b6d803ed0567f31de285920fc8b1780",
+        "vpm_strain_rate": "fd756f3edd18b1a1365308f31f5921dd33ffcd96fb4d24e5a6d8c4926fd5c08a",
+        "vpm_clock": "aa751bfd6fd83812fa4fcf40342959a51c293dba67bb5f5384edb0c872e64759",
+        "panel_strength": "9ab82aeda06eeb30a975924c83fa414a54915396ddfe9a290f422928365756a7"
+      },
+      "full_drag_coefficient": 1.0244974526029877,
+      "hybrid_drag_coefficient": 1.0329851141889665
+    },
+    {
+      "fvm_step": 150,
+      "coupling_step": 30,
+      "physical_time": 2.0,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000150.npz",
+          "sha256": "e65fa177989aa45dd3a35622481dc98884ecefd5870d1fa13e778f4740d20947"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000150.npz",
+          "sha256": "ea7cc68c99b027ec0af9e70c9abdd94b61b146e1448333a70b9175aac2cc316d"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "54ce0bee6536dcbface2c954ffa733bcedfe29c805dbd1d38f4a87f4f22f85ca",
+        "full_kinematic_pressure": "756f65cbef324831906cb447db001a81935d88d5d0559bba4fb5c14b17f5c686",
+        "full_volumetric_face_flux": "f24e15fa93c603454e269a0e3c089cc636874c1ca0dc1b951c1209133e4f3b4d",
+        "full_volumetric_face_flux_old": "f24e15fa93c603454e269a0e3c089cc636874c1ca0dc1b951c1209133e4f3b4d",
+        "full_volumetric_face_flux_older": "b96c7c1d53c4610de66553ec5a9b50adc20f2640b6d07564ef968411728667ed",
+        "full_velocity_old": "54ce0bee6536dcbface2c954ffa733bcedfe29c805dbd1d38f4a87f4f22f85ca",
+        "full_velocity_older": "11f734d9f087dcf2a4eeacfd10cf1ff3e69bebfd4ee85288330e86095b155e5f",
+        "full_clock": "07370fa51d2fa3d95c48ca62e398293f2f5dac652dd8ff1594fb723c29d7657a",
+        "small_velocity": "9aa84cd1b1eb3d9f5280f8e45e7a20006261cc64e9eeaa25f73b046db7356d20",
+        "small_kinematic_pressure": "2273e1af7a44d0c2716ab6b052ce328ba8d7557c61d979967caa3a630dab1142",
+        "small_volumetric_face_flux": "04b49fb2216f644add2f2c59688b28dbf89d211a2ebd79c2f98cd8aebc772a3f",
+        "small_volumetric_face_flux_old": "04b49fb2216f644add2f2c59688b28dbf89d211a2ebd79c2f98cd8aebc772a3f",
+        "small_volumetric_face_flux_older": "fa1501198ac9744adfd07b6c4ba56d0c92a95368531809066dd334227c3b4b8d",
+        "small_velocity_old": "9aa84cd1b1eb3d9f5280f8e45e7a20006261cc64e9eeaa25f73b046db7356d20",
+        "small_velocity_older": "7341f284b842ae1a2ebc7f1236442aefd114631c4c7dfb6df65ca5ad740a9e44",
+        "small_clock": "07370fa51d2fa3d95c48ca62e398293f2f5dac652dd8ff1594fb723c29d7657a",
+        "vpm_position": "82a05581da4db187966ac8ac2e353c954d99fa3b1eeab08ca99b04de5ba0e118",
+        "vpm_velocity": "0d787152c97ce17f123c9c64b532976b0f09ade1e3623787901f98c11aa24f87",
+        "vpm_vortex_strength": "721ba3ee2f33ac01d96c757dbdbca71220b2da4a3d5de5431904794b0599fb55",
+        "vpm_core_radius": "b42ccb5e15c06517d632dea5c822ecf6ed75e655a72abd2496b057bd38e03b84",
+        "vpm_particle_volume": "ec1a8f59e7830f7444ad507886fbd4a4454005b9c3751fc3111a2a585bf8e462",
+        "vpm_kinematic_viscosity": "8ec8ad57290588092b107ec6c37e43157ee811bd67be32a3f4c1bbedd8eacbf0",
+        "vpm_eddy_viscosity": "b75a7ee382b3f01835d9adc5fb08893de3461d03b82cf843e58e988d04662050",
+        "vpm_group_id": "5ba61295fe20d46c8a09f2006c562dced52cc7994ee9612c9ce81908a285f0c6",
+        "vpm_zone_id": "5ba61295fe20d46c8a09f2006c562dced52cc7994ee9612c9ce81908a285f0c6",
+        "vpm_velocity_gradient": "18c3f7ea6936d88151dba2ae2edc3ad63033ea42caba89cf01bf6208271061ef",
+        "vpm_strain_rate": "3ca9b4cbc406ad779dcd1a83e302301b18bb4d2d6f71c56c31dcd9ccf5b4f6f8",
+        "vpm_clock": "4813d5e7ad22eff48fa295d92f848979513895be5ce4890a87ae8b85363240e1",
+        "panel_strength": "d2e26eb4bb1dd48cdd73d6ae3ca9a42ecf6519c065cab9350476c9c856515d6d"
+      },
+      "full_drag_coefficient": 0.9865692333476486,
+      "hybrid_drag_coefficient": 0.995265080167036
+    },
+    {
+      "fvm_step": 175,
+      "coupling_step": 35,
+      "physical_time": 2.25,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000175.npz",
+          "sha256": "fa0b11074dc4329313c22527ee4022a62024ce5e3e56c2ef3d230f3394ceab16"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000175.npz",
+          "sha256": "9dce050f09cd766d8f02a0919768e3f54345a6d8422e0f6e77617359dea4ba00"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "84308e912e687c2db6f8238df11848edf9a43bbba1403778a81e897f7a044c9f",
+        "full_kinematic_pressure": "f4ae490de45f7c94bdf54f898434a0ddfea2b2aaf3dce91cbb68ce09a3c4e303",
+        "full_volumetric_face_flux": "5f49d076274758820bb411726db8e205dc9a2a784bd917d2641e0abf33c2e46b",
+        "full_volumetric_face_flux_old": "5f49d076274758820bb411726db8e205dc9a2a784bd917d2641e0abf33c2e46b",
+        "full_volumetric_face_flux_older": "7e211ed714cb53c30d003cd3fca5e98339d67ea2952bd03c8053e2168c29703a",
+        "full_velocity_old": "84308e912e687c2db6f8238df11848edf9a43bbba1403778a81e897f7a044c9f",
+        "full_velocity_older": "2e50178cef8d480e2f220e609216456edd9006897d6150b055720eb1ae5ac1e0",
+        "full_clock": "72bb389dfe0e690443506bb59bc8db99c747ae1c1d37a8a60dee7c4e710e4885",
+        "small_velocity": "981af63aca34ff2e5fbe0931e77f6fad0cfa950e1d21d8bf47270ded20b6c364",
+        "small_kinematic_pressure": "33157d016a469e3be5e2b7be67fed917c4cd0772c7809d8a3d17a171b4c880cc",
+        "small_volumetric_face_flux": "b303bc7c8cab4bce49aeb80c960308609f39ccb48ab26fec2ac8689e565adce7",
+        "small_volumetric_face_flux_old": "b303bc7c8cab4bce49aeb80c960308609f39ccb48ab26fec2ac8689e565adce7",
+        "small_volumetric_face_flux_older": "5ea31b65bba756860cf926e94d96e62daf6664669ef0c2adcfd8971d6a36d30c",
+        "small_velocity_old": "981af63aca34ff2e5fbe0931e77f6fad0cfa950e1d21d8bf47270ded20b6c364",
+        "small_velocity_older": "2e2f7ec9125889218a4edacab3eb394cfb8b6145068c72bddf1a9deff9a0da99",
+        "small_clock": "72bb389dfe0e690443506bb59bc8db99c747ae1c1d37a8a60dee7c4e710e4885",
+        "vpm_position": "6fd564abf5d68a518f37b1f432a243ea4ecb56553a28d602885b389353ccdeed",
+        "vpm_velocity": "2bbac97fe0f79325f880e2f353bd27e997f101e8040dc21e197c7ab753f7bb97",
+        "vpm_vortex_strength": "b1a197450c5fae5f2d2821abbc96c3d663e91c13d8efb6a9d0e61e1468cc47c7",
+        "vpm_core_radius": "be00b17d443806cbe19c3690b56932850bcdb0760dbf633d9928de7400c65e0b",
+        "vpm_particle_volume": "979a71536c217e30267754ff64c73cd6f47bb6f9be4b671a34af6d5a75d56a08",
+        "vpm_kinematic_viscosity": "fbd8a95383d0a26b1b2be6bcdb5d35e26304ed9deaa5f45b386d348dcfe82477",
+        "vpm_eddy_viscosity": "b03f00e3f9d4ce4b15fc34ea4c8e61f9b4b79df6b420bf2bb9c239837ed859fb",
+        "vpm_group_id": "1264893f5f143e09d978bdfb324fb0af9f12b788ca3e278fee33b8340f6a1975",
+        "vpm_zone_id": "1264893f5f143e09d978bdfb324fb0af9f12b788ca3e278fee33b8340f6a1975",
+        "vpm_velocity_gradient": "b5c04369b14acde277c6bb4dabb2e6ae84fc1f0ac60f2c05f9122a3e0d0a868b",
+        "vpm_strain_rate": "00683f23762f7927191c7c1ac43f76a3deaea123a0aaf12f5da02f6d91d3b7f4",
+        "vpm_clock": "77208dce9310a1c9b3e921d2d22d3d29059112e29fb2573961b1a609486e4e1e",
+        "panel_strength": "4fea0017b6278d0841b5909320f39ae30629c7ef2fa2379453ef3af816f4d08c"
+      },
+      "full_drag_coefficient": 0.9635874979459119,
+      "hybrid_drag_coefficient": 0.9743529339540751
+    },
+    {
+      "fvm_step": 200,
+      "coupling_step": 40,
+      "physical_time": 2.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000200.npz",
+          "sha256": "8c933c66dc7b434e9d862aa93dc449ace80a08083693b7407a26c41acb848baa"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000200.npz",
+          "sha256": "a1dc62f92f6352b2dac1e0b74540773c3572258ef146a613e51c1780d2fbd84e"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "2e4b31e8f1ad5d2f8660fd8081610a0308b973d3856c3853b2ac116733f99381",
+        "full_kinematic_pressure": "7631e55c6239fb2e534ebf62a4b699a5010e1509f6b16497d54c28f3f5ac7ec8",
+        "full_volumetric_face_flux": "0ed7e04fe048be112255aa6d9bac8279861618f98569467e99455d38d3fb21c0",
+        "full_volumetric_face_flux_old": "0ed7e04fe048be112255aa6d9bac8279861618f98569467e99455d38d3fb21c0",
+        "full_volumetric_face_flux_older": "beb687a9a8e5fb4a1127f704cc7eab20e57ba0a0a6319da2df83c140647968d0",
+        "full_velocity_old": "2e4b31e8f1ad5d2f8660fd8081610a0308b973d3856c3853b2ac116733f99381",
+        "full_velocity_older": "8987583df07764ac20b41e8b9c31c18e0ef853ed60c3866abf4399741915a69c",
+        "full_clock": "575410bcb7d0e277963ba5ea292cda7d9a227381a04e5aa562e6357989d9077b",
+        "small_velocity": "80dfa26afb0bb72c899a8c912e3a8dc594cb594443d9057146ecdd5899b0a872",
+        "small_kinematic_pressure": "a92f9ae7fcf40f16d37b57ba2e86060d26aae05fe8bdd38e90f0e7f863a27e8c",
+        "small_volumetric_face_flux": "1b1a229f5f506c5ad2379e324450e50cea6eb46921723e8b90462951803730df",
+        "small_volumetric_face_flux_old": "1b1a229f5f506c5ad2379e324450e50cea6eb46921723e8b90462951803730df",
+        "small_volumetric_face_flux_older": "3f4958a753dccd1b4f556ac1b0cb5a3812fa947789d6186c9de548f99f0b3685",
+        "small_velocity_old": "80dfa26afb0bb72c899a8c912e3a8dc594cb594443d9057146ecdd5899b0a872",
+        "small_velocity_older": "a5ffe46f6427aee760170b5da60cb640fb69acba0ec73bf802c9cb97214aa3ac",
+        "small_clock": "575410bcb7d0e277963ba5ea292cda7d9a227381a04e5aa562e6357989d9077b",
+        "vpm_position": "5d4ea001061b73eebb701eb0123dfbfaac3217a8532e92d2cedd70fc293c621a",
+        "vpm_velocity": "b52885ce44945f2d8f903a2796a65ab62e3f71cf8636904f68e07d782460e2a6",
+        "vpm_vortex_strength": "ed283f9929c753025365581ab60288ea9cd27659affccb8dcb6e379c329b2493",
+        "vpm_core_radius": "1f4b7e859062c904896c6bf095e5127a7074cad9575195ccebc855978c12a93a",
+        "vpm_particle_volume": "342456971d8b173f07dd53162878e6dc38e68c474d5fa489205b06f070de1818",
+        "vpm_kinematic_viscosity": "85c7caa49894dc7422c777e0d930f701c055264cc1c15bdafcd6db60c3afc90b",
+        "vpm_eddy_viscosity": "ffef1f69787da91018bba4b28635417c327a394d70457f20874492a372403d4c",
+        "vpm_group_id": "354e8cf344c4aa5f610bcbdb48353cb404225dea3f4ed2623d10f177c3e909dd",
+        "vpm_zone_id": "354e8cf344c4aa5f610bcbdb48353cb404225dea3f4ed2623d10f177c3e909dd",
+        "vpm_velocity_gradient": "2549a4beb160d544bad4e6d005fd84f85a1b755fe479938fbf0e2e24c147feed",
+        "vpm_strain_rate": "26fd32f171c1e4c7a7c9a918e92e9674d9b2b87dd8109da799a2731ab8adbc5c",
+        "vpm_clock": "ef6dd2ceb43edcaf3909e64d84bc481f60b83b44234123c92edba411cdd23ab8",
+        "panel_strength": "aef90766b1b6ee25b4ec4450a03553b1765fe568ad0ad343acb355492aeac3f6"
+      },
+      "full_drag_coefficient": 0.9522181700972742,
+      "hybrid_drag_coefficient": 0.96309602061492
+    },
+    {
+      "fvm_step": 225,
+      "coupling_step": 45,
+      "physical_time": 2.75,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000225.npz",
+          "sha256": "f63aacb40e295560198ccb7f34a07793d6049831671de428b9ff82a36282b938"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000225.npz",
+          "sha256": "5490f9c8b124598e7fa60016ef0e2f0136052b6389cace94e8a0405b2b5af9c3"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "e9343f3d126e32ce47c785add07faf5509ee81ceae43773657d05cfb141639cd",
+        "full_kinematic_pressure": "bd049b88183a90b42c9948a4f14dded29c2fbf73d6f832dcdc9f278e91306dae",
+        "full_volumetric_face_flux": "582a7f573209f7c7f8a7137bba095224c630a3e6330cde5abf0252ec6489822e",
+        "full_volumetric_face_flux_old": "582a7f573209f7c7f8a7137bba095224c630a3e6330cde5abf0252ec6489822e",
+        "full_volumetric_face_flux_older": "c91d55de77387bd2c4d99a0445817e219662bba2b8a52190b953471e85ed450c",
+        "full_velocity_old": "e9343f3d126e32ce47c785add07faf5509ee81ceae43773657d05cfb141639cd",
+        "full_velocity_older": "0bb11ff2c2532a4eb40c2351a9fd638859a5aa6bcd948c6dc9c4ba90603871b3",
+        "full_clock": "29927232e1344c8246e31c52fe4fb93624d396ee6bf8c870f0ef292ad7589f4c",
+        "small_velocity": "7a25dd13f048648b4420bb6488a37c3ebba519759ea39c11bee8dcb41976379f",
+        "small_kinematic_pressure": "9aefa69fd0fd5481701798b91791be173e3735f696eaf553948aae80e4ba8b0f",
+        "small_volumetric_face_flux": "9c683af63b82f5a00a10c10531f722f53f6e393698fb51e4930025002e0fc3ba",
+        "small_volumetric_face_flux_old": "9c683af63b82f5a00a10c10531f722f53f6e393698fb51e4930025002e0fc3ba",
+        "small_volumetric_face_flux_older": "4e81476503c3ea8b080c61313eb1bcd231410cd0777b2c2a642e080e4b50ba6d",
+        "small_velocity_old": "7a25dd13f048648b4420bb6488a37c3ebba519759ea39c11bee8dcb41976379f",
+        "small_velocity_older": "7c5af440cb3115064cc86b548b19033da6391400312913cff64afdb0061bc9c7",
+        "small_clock": "29927232e1344c8246e31c52fe4fb93624d396ee6bf8c870f0ef292ad7589f4c",
+        "vpm_position": "4baa5a41c59b2ff4f87fe2175b144631e63fbf1f858e5c9d72d5705c00fb664d",
+        "vpm_velocity": "c84b2617a8f28c1c7c8360ee89398ab8f75fabe015cc1ccd6c34ca47707529c2",
+        "vpm_vortex_strength": "dc53952054baa5f061d59915c70e28d84be20c8e60938744ac5db38abd0f5385",
+        "vpm_core_radius": "3054192bec1224385883ef1776c49041fb04b4bd980199a23a53d4b6886a1c8c",
+        "vpm_particle_volume": "f216dcf399e2d4dabe90349cca844c0d4730c3940478ba8e895a1ab1380b9b2a",
+        "vpm_kinematic_viscosity": "5c4f4abef8d2e37d50bf0b810ac734ad6dfea0c3ac62dd000a12b714729f5084",
+        "vpm_eddy_viscosity": "c6efb02cab7357cf2dd4707d2a9a4214688cf13bdedb6f298c8e864cf3db4e11",
+        "vpm_group_id": "cd39ad123c13ed75d2790b7b501959ff86639ff55a03b8b8c6998556317d44f5",
+        "vpm_zone_id": "cd39ad123c13ed75d2790b7b501959ff86639ff55a03b8b8c6998556317d44f5",
+        "vpm_velocity_gradient": "70543f859802a3cf67f88274fc81c3e48d7889bb212f957993e38aba492abf39",
+        "vpm_strain_rate": "44067bfd3f5028926b84f2cca5c62ddf60ad3a0b35651ccc5aaf4f078a29de59",
+        "vpm_clock": "ed66a2bb8571a5a873ed2f01625263af36ad12bbbf38733c30eacfc2263068b3",
+        "panel_strength": "ab317f9979c4f9fe031ffb2c635d3222e15aa92a3dbe3d01d0ce132ec9d1daf0"
+      },
+      "full_drag_coefficient": 0.9491931959002148,
+      "hybrid_drag_coefficient": 0.9589388886612101
+    },
+    {
+      "fvm_step": 250,
+      "coupling_step": 50,
+      "physical_time": 3.0,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000250.npz",
+          "sha256": "96fd6c510964459edb12ca6676d1ac8d8d36340f95c67dffe6470ab66220ef2f"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000250.npz",
+          "sha256": "e89b9470d10de31e37007e8ba910067eb0cb9cdbb5341bee34d52f3fa6687326"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "e3236372ca6bddd304d75e1f1466dd48ce7b3d4c3c9c4faa8c45fb5036eb3504",
+        "full_kinematic_pressure": "1d9d8e0b251a412ca0e917f7bc21c262357a6ca0f083e24d08520932ec2913d0",
+        "full_volumetric_face_flux": "f89766e9ce049f0b6c7d9c766904f3e0d33d9d7e7e38703b45130de18681e3cf",
+        "full_volumetric_face_flux_old": "f89766e9ce049f0b6c7d9c766904f3e0d33d9d7e7e38703b45130de18681e3cf",
+        "full_volumetric_face_flux_older": "77da00ced94faabf1b28c1f2632c21a6d7d7593c7c897c35f5e2fb6754383b8f",
+        "full_velocity_old": "e3236372ca6bddd304d75e1f1466dd48ce7b3d4c3c9c4faa8c45fb5036eb3504",
+        "full_velocity_older": "41d60e8c0ed5b8ee8b955adeeae3432930275b8f3da05ee0f85670e65119955d",
+        "full_clock": "22e5639aa82560e1a108ad35ecfaa85563d17250fb1e34ef3cf470e0d925d6c9",
+        "small_velocity": "f2940fb1a0f96f19addc8fac3980f3f78e859d9e3fee41498136e58aaa0df5c2",
+        "small_kinematic_pressure": "54b93d1251eea1438dd879f28f7f26af9c07a30490a040e543fbb1a916771c65",
+        "small_volumetric_face_flux": "9bbdeb3d19ac3e14ce0f44912687a7ae2ad7d49c82c0d2da10b72ea1ca74228f",
+        "small_volumetric_face_flux_old": "9bbdeb3d19ac3e14ce0f44912687a7ae2ad7d49c82c0d2da10b72ea1ca74228f",
+        "small_volumetric_face_flux_older": "d4b35b16f7c5c3a61e76198011dcd6a4de0e40d39ae408ddfcea388d1599d94f",
+        "small_velocity_old": "f2940fb1a0f96f19addc8fac3980f3f78e859d9e3fee41498136e58aaa0df5c2",
+        "small_velocity_older": "7bc75e2e9f454b8bfb5b01206cf786c871d7b8ea056bd92649dab065bba86280",
+        "small_clock": "22e5639aa82560e1a108ad35ecfaa85563d17250fb1e34ef3cf470e0d925d6c9",
+        "vpm_position": "f97506918e12ffa3c50e9240fb9ddad51f5ec6cfeca19d41d2622836ee2b35fb",
+        "vpm_velocity": "0871063877f87841b5d00865d70a27ccd01717171a36469a7898987d00d8990c",
+        "vpm_vortex_strength": "23e0305523e336125082471ec5d364490cfa348a26b076c765dbf8ce1cfa513a",
+        "vpm_core_radius": "524112a748efa5e3bbdfe5dc3715992661a6374d78b53c871430b982130c87cf",
+        "vpm_particle_volume": "457e31954da41f9cf319cf8c9f6c08fae3dc06691e9cfebc12a1a8f4455c30bb",
+        "vpm_kinematic_viscosity": "1d91d53670d75bfab0bb1fc42dfbd9605fb2bdf7f7987454e670e72c500f02d0",
+        "vpm_eddy_viscosity": "b26a51469214fe0ea31ab908c92d4d1f3de2df5c0f9e48f1b642646273222303",
+        "vpm_group_id": "36178cb68c605e60214c00513e7983c5e229cb64f6d368ab3fe0092f318f8f15",
+        "vpm_zone_id": "36178cb68c605e60214c00513e7983c5e229cb64f6d368ab3fe0092f318f8f15",
+        "vpm_velocity_gradient": "0277b5edf31d74778784d87f6f2eeb8ac1d04a08f341527a5816c8c42b4c4d9a",
+        "vpm_strain_rate": "a679e244d1d908b735f632e018c7874016965e1092d37b40afabf4d2e79ec4d8",
+        "vpm_clock": "9c7fe7d87ad472a6c5f7300af5a9a719bbe87b02f2af30378dd50f8b276f9eee",
+        "panel_strength": "91b3c16b6ec944ad4dd32ec4ce6123de24fc636be345ebcbe74c44f98c55a8e0"
+      },
+      "full_drag_coefficient": 0.9530155917960306,
+      "hybrid_drag_coefficient": 0.9615222372465275
+    },
+    {
+      "fvm_step": 275,
+      "coupling_step": 55,
+      "physical_time": 3.25,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000275.npz",
+          "sha256": "ebf3bfcd00e6a2e58d5e2198414fd922896656462d9a9a4674c4bd691dd2c1e1"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000275.npz",
+          "sha256": "fda49392d25f54eb21705f4570649014a3abc4db4e471e9fd37f64284c967509"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "d1d9e4194415b17afccbadd65e9bccc732e2ea51d43a5fc979717578708809c9",
+        "full_kinematic_pressure": "d19ded933d511236b698b2b3420ac47d8df1828c14e0e8a27362d70c9f48ab2d",
+        "full_volumetric_face_flux": "50665bd29a0770217124511e595d2a61b233fb7417cea3d98250104b8f29813e",
+        "full_volumetric_face_flux_old": "50665bd29a0770217124511e595d2a61b233fb7417cea3d98250104b8f29813e",
+        "full_volumetric_face_flux_older": "56e258108027b453f496a5af4cc177ed821369654e82561e844006fc7766da5a",
+        "full_velocity_old": "d1d9e4194415b17afccbadd65e9bccc732e2ea51d43a5fc979717578708809c9",
+        "full_velocity_older": "84350bd7fbd73ffd4d1981946df5defe1cd5cd7df81c049ab2ba4e9ca23658b6",
+        "full_clock": "bb2590124c29aaa19400ed18ce8bf06f4a32dcf96feaf7677fff32df87cd92a8",
+        "small_velocity": "da17afbe9344fe124edf882182b49a2d64d7ce2690251f4154dd15a05212ab62",
+        "small_kinematic_pressure": "08fd1270367ad58c06a787856ea193ff39cec1be904a2d41d7fc7a0aca50a190",
+        "small_volumetric_face_flux": "9309afe734940de6e8a67890adbe49895be292c8d15cf412f71edded1bf423f9",
+        "small_volumetric_face_flux_old": "9309afe734940de6e8a67890adbe49895be292c8d15cf412f71edded1bf423f9",
+        "small_volumetric_face_flux_older": "a05cdc6274c7bb73aa9191982c54c94348d64dec2d1c826558f897c8e42de8a5",
+        "small_velocity_old": "da17afbe9344fe124edf882182b49a2d64d7ce2690251f4154dd15a05212ab62",
+        "small_velocity_older": "14998eba1e5d02ff852b678c5db61ff1b0fa32909a36eadad1fe7b75e8546904",
+        "small_clock": "bb2590124c29aaa19400ed18ce8bf06f4a32dcf96feaf7677fff32df87cd92a8",
+        "vpm_position": "77c9412f2a42804d22f0ea5fd61382e24d67f59c604a82a662a1811a38b4a0b6",
+        "vpm_velocity": "bee7a4841dd94f51c6f12556bb309c1fd71e9a6f4079f796fbb390865de9857f",
+        "vpm_vortex_strength": "8d951db8e003770d3d17261e192a22123d405bb5780548848d46c5aabbafb06a",
+        "vpm_core_radius": "9f5d54a2eb93605508ab2cb4b08f3856bbf95a2890d471a53c3b98e63a162a2c",
+        "vpm_particle_volume": "9da76bf20e42731e7eae762e5ade1615b34cbde351f24217e755364690d04be5",
+        "vpm_kinematic_viscosity": "f67c256f025d7fda0b05f02492a6083b5f7ae3312c495a80be26dd9b3dd2d431",
+        "vpm_eddy_viscosity": "0c3f1798f2d65df93527bd1ef375452c50ccec3646daeeea549f69f3e3b6e57d",
+        "vpm_group_id": "43ad7766852d4c190874adfe6e21b6aea401a71e3b8b9de604b61cb8cdff0ca9",
+        "vpm_zone_id": "43ad7766852d4c190874adfe6e21b6aea401a71e3b8b9de604b61cb8cdff0ca9",
+        "vpm_velocity_gradient": "258b4a1bdb56ef12302994d2cf23455601af94469c590c3c73207332b96e8fd4",
+        "vpm_strain_rate": "a7d0f223a41e90a405e70be7e02f727e6156373cc1cef155b2cc2ff02aa321f6",
+        "vpm_clock": "ee7793b8633d28d46f3f999bb013aa0459d38345b3b6f2b101afa26ab347a82d",
+        "panel_strength": "b517d92e4dd0905c527b803fdd76d147772c206492e6b90fc9fd89a555eb62a3"
+      },
+      "full_drag_coefficient": 0.9592393052032164,
+      "hybrid_drag_coefficient": 0.9663930890715626
+    },
+    {
+      "fvm_step": 300,
+      "coupling_step": 60,
+      "physical_time": 3.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000300.npz",
+          "sha256": "5f4a79614c0142ec0a2d207533761a693b5fa8d2c1c0069db8ec7e9540545255"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000300.npz",
+          "sha256": "b4d795d68e8628ab049c82c7b96d1796bc2af151945d0b36d1311ba63be43fdf"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "d58bd543f0cc5ce1adb4e1eaeeb2f3cf3dcca3e5fb1f0cc6c985aaef1f860bc5",
+        "full_kinematic_pressure": "112248f0b0bd13df47d101b3ce9c4231e40b3fd9732e09a19517cc250072adec",
+        "full_volumetric_face_flux": "f80cd110f06b3ebfd5d0cfe48eca879889fe3ea5c30a3c582989d5cf9bfdb4c4",
+        "full_volumetric_face_flux_old": "f80cd110f06b3ebfd5d0cfe48eca879889fe3ea5c30a3c582989d5cf9bfdb4c4",
+        "full_volumetric_face_flux_older": "423b3339a97898a1342ae8e03404dc87aca63f49f4e70f8de8eb58cb25235c10",
+        "full_velocity_old": "d58bd543f0cc5ce1adb4e1eaeeb2f3cf3dcca3e5fb1f0cc6c985aaef1f860bc5",
+        "full_velocity_older": "82ccdf608f0fcb81dae58a7c2dc0d9be8ec1e4e2b37cc2c57690d973fcd0f27e",
+        "full_clock": "14c3a15cc4d18c8f2cb72e71e87a4b75f49cf85a31cf7a8a31b24a24c4c46572",
+        "small_velocity": "9b9c30077cbc86d219508f661a598784677dc0a3f29ee0893f8c65ec4dacb321",
+        "small_kinematic_pressure": "5407d65099f7f18a019a7a09f3aa97b8636bb5bf68b4407bc86e34799a9d466f",
+        "small_volumetric_face_flux": "94de849e7b590354e4c47eebd7d4e56a7aab26c437733dd2880b3edada061754",
+        "small_volumetric_face_flux_old": "94de849e7b590354e4c47eebd7d4e56a7aab26c437733dd2880b3edada061754",
+        "small_volumetric_face_flux_older": "c9ced332f3cb3a243ec77c09be45bfd7c249413b9a8c4fc8fe317e239dbf93f8",
+        "small_velocity_old": "9b9c30077cbc86d219508f661a598784677dc0a3f29ee0893f8c65ec4dacb321",
+        "small_velocity_older": "46de55d19acafbb71dbf32386ca173f6b99c9db449dc8135de908e53022bc5e1",
+        "small_clock": "14c3a15cc4d18c8f2cb72e71e87a4b75f49cf85a31cf7a8a31b24a24c4c46572",
+        "vpm_position": "951de4dfe60c1d206a2b6eeb579bced7436dce66e6c4a8d0e83b6647e758747f",
+        "vpm_velocity": "cd9701d8512e745707df606dd9db9431534d57c771c75cd1004d6010e8bdffa5",
+        "vpm_vortex_strength": "6392001523c6b73d5bb68178c182dc2940450fb23cf5b65242c9a02bc7f98099",
+        "vpm_core_radius": "8b1124dd60bc132d51e9e18b1eab9007235ec585cd0cdf4c868939f390658ab9",
+        "vpm_particle_volume": "7654416ec95473bf9a648624a227862673db3f6362cf51859988393d9ac8260b",
+        "vpm_kinematic_viscosity": "60f4d5fed620ccbfed203928f77bda8f710381c047184ecc5400ea1be37d5774",
+        "vpm_eddy_viscosity": "e435ed3a043601ffffd8caf3503260b13ecc2ebdb31190a847de7aec00ac5baf",
+        "vpm_group_id": "a65200bd400a54a03315fc728befd43648de9008b7d7402b0f6195f17a646dc3",
+        "vpm_zone_id": "a65200bd400a54a03315fc728befd43648de9008b7d7402b0f6195f17a646dc3",
+        "vpm_velocity_gradient": "657586664db90439802626860c814d6dc36a4e1e65c71c65b7b2e4d5839fdf23",
+        "vpm_strain_rate": "2216da3dc4c6b2a5e34d03726c693658bf0d497708847ebacf3f6bf707dc7c23",
+        "vpm_clock": "d21b92a8345dd8557fdc4de7e664079017f2f219cfe552b9ebf26c4eb511ede1",
+        "panel_strength": "ade093bf5c1c3a6ae340e5459015e2d62c48355161fcfff04e77fdc2cb465536"
+      },
+      "full_drag_coefficient": 0.9684553391208776,
+      "hybrid_drag_coefficient": 0.9730666852574871
+    },
+    {
+      "fvm_step": 325,
+      "coupling_step": 65,
+      "physical_time": 3.75,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000325.npz",
+          "sha256": "8a0ab029535bd81fb3f24301e6606a7b1f4601471537ae47954a10fe53e1c075"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000325.npz",
+          "sha256": "9e65f7544fa8f238f2dc4471f06bd6873c4886c82621b4f3a329a44f7b92b3a8"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "a50556ca367131ef16dce3176e3c4dcca2405f1e59ffb4a4dae8e5dae36f6c9e",
+        "full_kinematic_pressure": "f8ded6d7fde44ce8378cae87760659af6233dd3f06a2917273571a7f2d84f13c",
+        "full_volumetric_face_flux": "ef10b37f5e2704810ad9201148525b34cbd132ec6eba495744c09273b12ba07e",
+        "full_volumetric_face_flux_old": "ef10b37f5e2704810ad9201148525b34cbd132ec6eba495744c09273b12ba07e",
+        "full_volumetric_face_flux_older": "e4090c199f57783bbca65534a2fc05d66273014ad056bb712ab82361f9df3d29",
+        "full_velocity_old": "a50556ca367131ef16dce3176e3c4dcca2405f1e59ffb4a4dae8e5dae36f6c9e",
+        "full_velocity_older": "68bc83130617afa66d1a00cabf4b80a89782fc5f3340b08bd1daa6f956a97181",
+        "full_clock": "84a70abf964e3e811f103c09db42607879c4db84173fb968a75fb87411644e64",
+        "small_velocity": "d3f6adbfac714e26568b7e58396a6570336243c52123c0fcee3dcbdab5bb4cf3",
+        "small_kinematic_pressure": "f412414f1e1120704c32dcffa2c117a20fb4b7efa6fac92c3ee226cb52a0cced",
+        "small_volumetric_face_flux": "d73c21d971c9492f8b958ba3227efc5f226dd7b6123b85874ce962eead694ac1",
+        "small_volumetric_face_flux_old": "d73c21d971c9492f8b958ba3227efc5f226dd7b6123b85874ce962eead694ac1",
+        "small_volumetric_face_flux_older": "ff6b2bd3e83c19266034e7bda0594f5c6c8ba6572414db91d7a94ce20e094804",
+        "small_velocity_old": "d3f6adbfac714e26568b7e58396a6570336243c52123c0fcee3dcbdab5bb4cf3",
+        "small_velocity_older": "d9484a373ad6f800dffade60221d8bb1b5cdf5cad2e9c48a098ae663eb390f7c",
+        "small_clock": "84a70abf964e3e811f103c09db42607879c4db84173fb968a75fb87411644e64",
+        "vpm_position": "39f722747fb3e09a66faf5a1e0b6d62a22b976c6f0fe8b8bcdfef8209ed6d718",
+        "vpm_velocity": "ae9336add886518d1333da097b25902b9d86f4584e66c1beed625ee16043a293",
+        "vpm_vortex_strength": "2871b2fa19be3e23efc5469108e8b938c694c69459b9afccf6249dbd4831d838",
+        "vpm_core_radius": "46584137c2fa128780bd1762c4926a991ff7289f764b0eff925010f0a07b2a91",
+        "vpm_particle_volume": "9004eb9872cd06378977a5335df645b63044c30aa4448cc446b8299047539855",
+        "vpm_kinematic_viscosity": "0b2173c4737b34772f8abb2a929ebecd9d4cee45be1c76f8e5c701e114dfb302",
+        "vpm_eddy_viscosity": "d7d67d37594a176c2fbdf66785d135dcb362b899fe47a92e2e0c1fdd1c7b6200",
+        "vpm_group_id": "0d241a0077dee55b4f4675f53f6edcb58f982732804b69a4aca4981ae7e09e20",
+        "vpm_zone_id": "0d241a0077dee55b4f4675f53f6edcb58f982732804b69a4aca4981ae7e09e20",
+        "vpm_velocity_gradient": "22b9109e00b0e3d929b9f4224966683b8eab387e1ac372968c00bed8abc3c2b4",
+        "vpm_strain_rate": "d9d2a6476b77693115def62b48ca03d7366415b2d2bc2579f6b97b9b9ac18f5f",
+        "vpm_clock": "98608447560f1e1b08df73f81f96a5c58e53909a4cbdc3aa6e0aa4ed4841cbec",
+        "panel_strength": "5c9c2d6be45a94b725b0fab7e8d4852b9272960c83e6daa6d0722acd4f86d098"
+      },
+      "full_drag_coefficient": 0.9775863340738141,
+      "hybrid_drag_coefficient": 0.9795786990293492
+    },
+    {
+      "fvm_step": 350,
+      "coupling_step": 70,
+      "physical_time": 4.0,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000350.npz",
+          "sha256": "2fad389811e9be6c6eae8a849e2d2f8307168c78e6743d1563f0e956f6dcd42c"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000350.npz",
+          "sha256": "f37e033abb7196c3a98a8bee6448247a25001e19f39ca46c761b3c97555245ef"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "71ddc8e683c4d0c12194d315a3023b3c6ddaa13d11de1f8b8aaa8abfc2a5b758",
+        "full_kinematic_pressure": "d5736a53131e3d298e66560e3f2c6713ce744bd9bb91d756388679310c02d6c5",
+        "full_volumetric_face_flux": "fd1b95f0da29cb42be151f56743d1bcdc69cec396f2daaf8ce6e6c366b928d7a",
+        "full_volumetric_face_flux_old": "fd1b95f0da29cb42be151f56743d1bcdc69cec396f2daaf8ce6e6c366b928d7a",
+        "full_volumetric_face_flux_older": "ba7572d1da655b34392e5005bf2edd96afd668c380de8a1242abfeb082b78804",
+        "full_velocity_old": "71ddc8e683c4d0c12194d315a3023b3c6ddaa13d11de1f8b8aaa8abfc2a5b758",
+        "full_velocity_older": "5a4ad4d7f034b23221dd552eab18fecd8d5876342f5f9753cd25dcd489079fbb",
+        "full_clock": "7487d0a3d3c7c290ff3c4e2fe95732ec35e604fd5a819454c23d511c637edf49",
+        "small_velocity": "a6ab277a3b365c526ca87b5353d9c12807c9e35a5b3530c6824e560d71326260",
+        "small_kinematic_pressure": "09d92dfb1140e0a9642a6ecf4a743e6cbb63ba66560f6c445ab17bc5a2e2fd61",
+        "small_volumetric_face_flux": "f8e9c4b51997820f43bec0f6802e251f96a5f2b4240748b4e1186e154326f085",
+        "small_volumetric_face_flux_old": "f8e9c4b51997820f43bec0f6802e251f96a5f2b4240748b4e1186e154326f085",
+        "small_volumetric_face_flux_older": "d51904c3c2729023513bb1bab26879c39ac50b9cb269dbba0518a34e4aeee701",
+        "small_velocity_old": "a6ab277a3b365c526ca87b5353d9c12807c9e35a5b3530c6824e560d71326260",
+        "small_velocity_older": "d20d815c9225baad1bac5ee0d039827bb89e8d2a1f998dd9eddd5be6c188f781",
+        "small_clock": "7487d0a3d3c7c290ff3c4e2fe95732ec35e604fd5a819454c23d511c637edf49",
+        "vpm_position": "7e205bc1fb604d5d6b2720f73923e620c1fd63b58b90107e666452b69e1344e2",
+        "vpm_velocity": "adc1aaf8e4a809fcfce68a692bfa4262cb5be488bf1893c04d75cc8a5fb09e0b",
+        "vpm_vortex_strength": "446587ae0857b50522ac8bf99d99e17162cfccb04535f4b5eb76ec230b4e6238",
+        "vpm_core_radius": "d34da263ac1151f5abb266ff94a6f47fd8b0841036f2b99eb1c6c2e25965ff4e",
+        "vpm_particle_volume": "ababcfedd2fe64c250348588016b07071b8ab1dfcbcdea255c13a03f12a8e6ec",
+        "vpm_kinematic_viscosity": "3d8e487209bf757e05f9a03fbd852dedfa358e2cc740afceb8a28c62c7c95e8b",
+        "vpm_eddy_viscosity": "ff9878b0cac376813a643747ac72ca60341366789b52d7bec7383005fbe04e6e",
+        "vpm_group_id": "28c84c508e2dc35a5b2e6813366d4db547a3851205ba494ac579e5749ab04435",
+        "vpm_zone_id": "28c84c508e2dc35a5b2e6813366d4db547a3851205ba494ac579e5749ab04435",
+        "vpm_velocity_gradient": "160961baa305807defdb866dda10e6b9270a3e6ece005494e10c056ecf5308ad",
+        "vpm_strain_rate": "84221cbbcc14cb9f789ae13b1de563d16b1c816084ed63c22194a9e6620e0592",
+        "vpm_clock": "0d4640a3ce36e94197f2730304f89f259fa8a2b7c1f44b0e3c2680cf157abeeb",
+        "panel_strength": "b4f7a00966949396374b82088d120581753c899b5f85468fb70c389c4e2eb2e2"
+      },
+      "full_drag_coefficient": 0.9889538554759195,
+      "hybrid_drag_coefficient": 0.9883303298183856
+    },
+    {
+      "fvm_step": 375,
+      "coupling_step": 75,
+      "physical_time": 4.25,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000375.npz",
+          "sha256": "b8d2bbe985e37f1b72cc1183dce22c4abf3b489fc05774513302c3677a074a50"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000375.npz",
+          "sha256": "9e51ec981480694d208905da25b04496b4ea1daef4c715f8074e87ae9cca9054"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "12f36cc3ce2e92211450e99b43722fe0d308b37e9fdc9b137bfc8c3cd1e1edb5",
+        "full_kinematic_pressure": "c8f5c84e2178ad4e80ac8b9f4eb36ee5360ebf71302ba94031200a2602b39eeb",
+        "full_volumetric_face_flux": "011274c7e62d30ecb3cddf118a1d49053a525bf996e74fed7955f2225ee1ba1c",
+        "full_volumetric_face_flux_old": "011274c7e62d30ecb3cddf118a1d49053a525bf996e74fed7955f2225ee1ba1c",
+        "full_volumetric_face_flux_older": "2ae753ab21633f948108cba9c696a31127e891451b9d70eb07f9381418036d07",
+        "full_velocity_old": "12f36cc3ce2e92211450e99b43722fe0d308b37e9fdc9b137bfc8c3cd1e1edb5",
+        "full_velocity_older": "84002944aef6c5de8b633dc90b51b761a7c6d7fb9efbb95d3cc2a234a4cfe5c1",
+        "full_clock": "db991e03ef08f269bec1a7dae3009259dfaa8d2555ed07da4eac59a9132813d3",
+        "small_velocity": "8c15c14488e7a2b47e01f18369ae6a1049093761b85ea5da06b5057e5e2fce6c",
+        "small_kinematic_pressure": "6cc4658782ee1b791873a3d9e7e079b0c52fb7377fed011e9fb1401a8ee03bdb",
+        "small_volumetric_face_flux": "6f6d24e6a0bd2a678a71a83bb9a7fa44ddc7015f4eab969685d0cbb9a93f8723",
+        "small_volumetric_face_flux_old": "6f6d24e6a0bd2a678a71a83bb9a7fa44ddc7015f4eab969685d0cbb9a93f8723",
+        "small_volumetric_face_flux_older": "5ec1faeddbebd510e3165c7267b48ca6334e740ca0dd17d6047c7f6d3641ad45",
+        "small_velocity_old": "8c15c14488e7a2b47e01f18369ae6a1049093761b85ea5da06b5057e5e2fce6c",
+        "small_velocity_older": "438506128e58fdead1f4248d5c277d2039fce1867be5760ccd3d90a500f284df",
+        "small_clock": "db991e03ef08f269bec1a7dae3009259dfaa8d2555ed07da4eac59a9132813d3",
+        "vpm_position": "f0d65464d0014314ced6fc0be1d2dbb09b49ae88ef3a340ef0a00b560ea28bfe",
+        "vpm_velocity": "8c71af6be3306c1dce2e8c5fc789dd8cee5347eef7c1049a2728196c5fc83aba",
+        "vpm_vortex_strength": "58240d95e84ee56e76f1fd855dc433ab67a3fe7f6611f8d9d775d516bdac02ff",
+        "vpm_core_radius": "b305b261d5f87f66c56298f6573c8954ed34f4c528fd9a2f8ba8283dc74df346",
+        "vpm_particle_volume": "e1340dd192f11e2ef264f107af263053e07c633265b42f2c07136ee3f707895c",
+        "vpm_kinematic_viscosity": "2e9c4f3c82b6dd1e56ab57d04dc6cbc2be9a72b29f7997eb1114559ed367e4ca",
+        "vpm_eddy_viscosity": "b53de52c06fb3f3216f70a5ec992225610484c236d93632710e9a671b370667f",
+        "vpm_group_id": "940c0ae0411d05ab6e8c856f48ba1e58f13b75fdfb2e11d98f257bde2f97a878",
+        "vpm_zone_id": "940c0ae0411d05ab6e8c856f48ba1e58f13b75fdfb2e11d98f257bde2f97a878",
+        "vpm_velocity_gradient": "4988dd77e896e904b15e402ab0d6cf0964903dbe3308140d4c586e66758e0488",
+        "vpm_strain_rate": "844eba688a2adaa672c807f55de84d80b60fa8a24264f5f1ccb9b6f8f529559e",
+        "vpm_clock": "7216045dd0bbb53c6d690b2877a95f02908ead9e2d0d00a864ef71a1b7643153",
+        "panel_strength": "3128bb8ef84118dac8d74193385f17227350fba19ec357441188d245312e6ea9"
+      },
+      "full_drag_coefficient": 0.9982898663030179,
+      "hybrid_drag_coefficient": 0.9946425600280859
+    },
+    {
+      "fvm_step": 400,
+      "coupling_step": 80,
+      "physical_time": 4.5,
+      "checkpoints": {
+        "full": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/full-000400.npz",
+          "sha256": "ef30b47e76a9c6898e9793dc429a2a1f913da2e462a85c5663c3790ba4bea56f"
+        },
+        "hybrid": {
+          "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/accepted-fvm-checkpoints/hybrid-000400.npz",
+          "sha256": "5acd182d6abfe2a6d12d1db2d5c2b4729c8792021428268615dbd68814d85f4c"
+        }
+      },
+      "state_bitwise_unchanged": true,
+      "state_fingerprints": {
+        "full_velocity": "275a3f1d17b8e3af0aab33ca8a5bb7a1d34adfd1f199f48523c25e2c41bfd5b7",
+        "full_kinematic_pressure": "ded45cff75e223cd018a338ef1068c02715d73337a1519a7dcf60540eafebfd2",
+        "full_volumetric_face_flux": "8731a5986987ae98fdc8576f39ce9f6b2a62413cb072a207a7714a9dece6ea17",
+        "full_volumetric_face_flux_old": "8731a5986987ae98fdc8576f39ce9f6b2a62413cb072a207a7714a9dece6ea17",
+        "full_volumetric_face_flux_older": "c9c61bc741daab9211dfe393c063c56bc78a295085606d6b111bce05568d1d78",
+        "full_velocity_old": "275a3f1d17b8e3af0aab33ca8a5bb7a1d34adfd1f199f48523c25e2c41bfd5b7",
+        "full_velocity_older": "b36d7c9a1b0ab8fa955f31d3853a6b6f945a1a143dec8182e3885f0e144abc6c",
+        "full_clock": "4938503d17b1c1b89c5a1d7208823023bd5a99d943b9f061d0c5a28f61304296",
+        "small_velocity": "b7f5b33dc9db05d47ae39dcc1c35dc2c57768f27f8bb911a22567d25d44dc559",
+        "small_kinematic_pressure": "d287e2bfb125745e02ecbb64bf72c885f521d7062f147ffbc05955f1c450bd85",
+        "small_volumetric_face_flux": "3a460b019b44e0c0ac29e77dc3ec16b2369fc4d202fe822a572bd0eb3b849c7a",
+        "small_volumetric_face_flux_old": "3a460b019b44e0c0ac29e77dc3ec16b2369fc4d202fe822a572bd0eb3b849c7a",
+        "small_volumetric_face_flux_older": "19a173d9b39c6bfc5e384c7e155419faecfbeeacb5d88b4ed6d6cc87d7cf7dca",
+        "small_velocity_old": "b7f5b33dc9db05d47ae39dcc1c35dc2c57768f27f8bb911a22567d25d44dc559",
+        "small_velocity_older": "7c68c2cc41bc9b7c0fddc0b6237b3d71ed66547d1bf97ecab94854fb2b678ff1",
+        "small_clock": "4938503d17b1c1b89c5a1d7208823023bd5a99d943b9f061d0c5a28f61304296",
+        "vpm_position": "9fefdc9db7021793fc6e29eecf771ac47086dc66d8aee8c1864ba9001c91d29f",
+        "vpm_velocity": "607cacc23726cf15f65b80ba0525e35ff830fbf610984b89f735e02cef0caa44",
+        "vpm_vortex_strength": "c9da9f88b2dd1ca6bf6a79ec54b63e24fd2b3a22032a9c90a625139ab53c9e3d",
+        "vpm_core_radius": "a3e9f9511103dbfa4a2018dfd884408b7930c17fb2257d8efa87f26bb671a91a",
+        "vpm_particle_volume": "af76bea8031699a98ad06e53b483a126e8ba67214b95b2ba83add63282c12411",
+        "vpm_kinematic_viscosity": "70387df8e17b0b9326114d5e3ac720f26a3c55de1d722a03e27ed7ed15cfb305",
+        "vpm_eddy_viscosity": "cdbce268b7f8eb24ceb1e0d1c1909fd5790cdf2228705a117314bf63985b16ba",
+        "vpm_group_id": "be2ba82d506345bc86cdbfee6cabb2e897ac4077e6ff27d495c2add2ab074cb6",
+        "vpm_zone_id": "be2ba82d506345bc86cdbfee6cabb2e897ac4077e6ff27d495c2add2ab074cb6",
+        "vpm_velocity_gradient": "09ee53de5e25e0a2b2964fee694916627ffefea5585ae1c61992679909323a8a",
+        "vpm_strain_rate": "f69e0c4cf9984af262e25b6923fe76de1311844c20a8144a529356c6844d2913",
+        "vpm_clock": "82396842be02641b51f517aae147222d5d86d7283d1194fe98164f793e54a9aa",
+        "panel_strength": "1e3b7b116d0fa6581dc519606680d6f4631ebdee95f4fedfc2d6cdf54cc7dfa7"
+      },
+      "full_drag_coefficient": 1.0070795653726976,
+      "hybrid_drag_coefficient": 1.0021046411863626
+    }
+  ],
+  "limitations": [
+    "Checkpoints observe the independent full FVM and hybrid FVM after accepted coupling intervals. Neither checkpoint feeds the hybrid.",
+    "Both canonical FVM states are saved at every profile time, allowing independent force and field reconstruction.",
+    "This does not add a coupled restart schedule or claim that the VPM state is fully restartable at every profile time.",
+    "The underlying fixed-predictor and precision study remains serial, laminar, fully 3D and scoped to the 108-panel cube."
+  ],
+  "meshes": {
+    "full": {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/full/solution/mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    "hybrid": {
+      "path": "studies/coupler_accuracy/results/long-wake-twenty-time-iterated/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    }
+  }
+}

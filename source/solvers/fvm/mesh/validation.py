@@ -542,12 +542,46 @@ def validate_vtk_cell_intersections(dataset, *, maximum_intersections: int = 0) 
     }
 
 
-def extract_cell_subset_mesh(mesh_data, cell_ids) -> dict:
+def cells_incident_to_points(mesh_data, point_ids) -> np.ndarray:
+    """Find every cell whose geometry can change when these points move."""
+    point_ids = np.asarray(point_ids, dtype=np.int64)
+    if not len(point_ids):
+        return np.empty(0, dtype=np.int32)
+    if int(point_ids.min()) < 0 or int(point_ids.max()) >= int(mesh_data["n_points"]):
+        raise ValueError("Point selection contains an id outside the mesh")
+    point_mask = np.zeros(int(mesh_data["n_points"]), dtype=np.bool_)
+    point_mask[point_ids] = True
+    faces = mesh_data["faces"]
+    try:
+        face_nodes = np.asarray(faces, dtype=np.int32)
+    except (TypeError, ValueError):
+        face_nodes = None
+    if face_nodes is not None and face_nodes.ndim == 2:
+        touched_faces = np.any(point_mask[face_nodes], axis=1)
+    else:
+        touched_faces = np.fromiter(
+            (np.any(point_mask[np.asarray(face, dtype=np.int32)]) for face in faces),
+            dtype=np.bool_,
+            count=int(mesh_data["n_faces"]),
+        )
+    owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
+    n_internal = int(mesh_data["n_interior_faces"])
+    return np.unique(
+        np.concatenate((owners[touched_faces], neighbours[touched_faces[:n_internal]]))
+    )
+
+
+def extract_cell_subset_mesh(
+    mesh_data, cell_ids, *, return_point_ids: bool = False
+) -> dict | tuple[dict, np.ndarray]:
     """Return a closed native mesh containing only the selected cells.
 
     Faces against unselected cells become temporary boundary faces.  Only
     points referenced by the selected cells are retained, keeping both VTK
     conversion and the curved-face compaction pass local to the surface band.
+    With ``return_point_ids``, also return the original ids of those points so
+    callers can update the subset's coordinates after moving mesh vertices.
     """
     selected_ids = np.unique(np.asarray(cell_ids, dtype=np.int32))
     n_cells = int(mesh_data["n_cells"])
@@ -628,7 +662,7 @@ def extract_cell_subset_mesh(mesh_data, cell_ids) -> dict:
         result["cell_type_code"] = np.ascontiguousarray(
             np.asarray(mesh_data["cell_type_code"])[selected_ids]
         )
-    return result
+    return (result, used_points) if return_point_ids else result
 
 
 def enforce_quality_thresholds(report, mesh_config) -> None:

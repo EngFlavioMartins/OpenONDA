@@ -12,6 +12,9 @@ physical or numerical cause, the resulting behavior and the checks performed.
 Do not relax reference values, tolerances or physical horizons to make a
 scientific validation pass.
 
+Follow the [code and experiment guidelines](development/code_guidelines.md)
+when adding a solver feature or tutorial.
+
 ## Verification
 
 Run appropriate tests from the [test guide](../tests/README.md), including

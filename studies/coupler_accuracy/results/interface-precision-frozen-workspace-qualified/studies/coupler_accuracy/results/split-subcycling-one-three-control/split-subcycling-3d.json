@@ -1,0 +1,290 @@
+{
+  "schema": "openonda-split-subcycling-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "vpm_substeps": 1,
+  "substep_dt": 0.05,
+  "outer_dt": 0.05,
+  "fvm_dt": 0.01,
+  "requested_exchanges": 3,
+  "gbd_correction_limit": 0.08,
+  "frozen_original_files_verified": 799,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_split_subcycling_3d.py",
+      "sha256": "54a5834c5c9a1758cd1ed08ba35685869d93a024c04c9095f5926fc744442058"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_split_subcycling_3d.py",
+      "sha256": "828f466977098e3f57f8619d1f9c4e3a237174640886e04515db1494e61e37bc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "source/coupler/config/types.py",
+      "sha256": "caf866ea9008ee51e7ee27eeb0faf85e7902d68a9899bf4b023897959e4690f1"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    }
+  ],
+  "outer_advances": [
+    {
+      "start_time": 0.0,
+      "start_step": 0,
+      "outer_dt": 0.05,
+      "vpm_substeps": 1,
+      "substep_dt": 0.05,
+      "particles_at_entry": 21747,
+      "rk_calls": [
+        {
+          "time": 0.0,
+          "dt": 0.05,
+          "count": 21747
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.0,
+          "index": 0,
+          "count": 21747
+        },
+        {
+          "time": 0.05,
+          "index": 1,
+          "count": 21747
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.05,
+          "substep": 0,
+          "accepted_step_before": 0,
+          "particles_before": 21747,
+          "particles_after": 23525,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 41405,
+            "retained_node_count": 23525,
+            "pruned_node_count": 17880,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0005343764751424099,
+            "normalized_vortex_strength_residual": 3.161317592185359e-10,
+            "normalized_linear_impulse_residual": 2.817727069847536e-10,
+            "normalized_angular_impulse_residual": 6.723823736106598e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.05,
+      "accepted_step": 1,
+      "particles_at_exit": 23525,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.05,
+      "start_step": 1,
+      "outer_dt": 0.05,
+      "vpm_substeps": 1,
+      "substep_dt": 0.05,
+      "particles_at_entry": 22030,
+      "rk_calls": [
+        {
+          "time": 0.05,
+          "dt": 0.05,
+          "count": 22030
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.05,
+          "index": 0,
+          "count": 22030
+        },
+        {
+          "time": 0.1,
+          "index": 1,
+          "count": 22030
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.05,
+          "substep": 0,
+          "accepted_step_before": 1,
+          "particles_before": 22030,
+          "particles_after": 23052,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 42836,
+            "retained_node_count": 23052,
+            "pruned_node_count": 19784,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0005357439637051687,
+            "normalized_vortex_strength_residual": 4.080857241179177e-10,
+            "normalized_linear_impulse_residual": 1.509557841799324e-10,
+            "normalized_angular_impulse_residual": 3.935938977592962e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.1,
+      "accepted_step": 2,
+      "particles_at_exit": 23052,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.1,
+      "start_step": 2,
+      "outer_dt": 0.05,
+      "vpm_substeps": 1,
+      "substep_dt": 0.05,
+      "particles_at_entry": 22376,
+      "rk_calls": [
+        {
+          "time": 0.1,
+          "dt": 0.05,
+          "count": 22376
+        }
+      ],
+      "stages": [
+        {
+          "time": 0.1,
+          "index": 0,
+          "count": 22376
+        },
+        {
+          "time": 0.15000000000000002,
+          "index": 1,
+          "count": 22376
+        }
+      ],
+      "diffusion_calls": [
+        {
+          "dt": 0.05,
+          "substep": 0,
+          "accepted_step_before": 2,
+          "particles_before": 22376,
+          "particles_after": 23529,
+          "laplacian_substeps": 1,
+          "moment_recovery": {
+            "applied": true,
+            "nonzero_node_count": 43533,
+            "retained_node_count": 23529,
+            "pruned_node_count": 20004,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0005343824157110548,
+            "normalized_vortex_strength_residual": 3.6131574115040314e-10,
+            "normalized_linear_impulse_residual": 3.645798215636007e-10,
+            "normalized_angular_impulse_residual": 5.618183903337576e-11
+          },
+          "recovery_checked": true
+        }
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "substep_projection_corrections": [
+        0.0
+      ],
+      "interval_projection_maximum": 0.0,
+      "split_preserved_outer_clock": true,
+      "accepted_time": 0.15,
+      "accepted_step": 3,
+      "particles_at_exit": 23529,
+      "schedule_checks_passed": true
+    }
+  ],
+  "limitations": [
+    "Each inner update is the native RK2 advection/stretching followed by GBD diffusion/remapping. Their physical stage times advance while the canonical outer clock commits once.",
+    "FVM dt, exchange/accepted renewal and outer stabilization retain their original schedules. Every inner GBD recovery receives the same unchanged production gate.",
+    "This changes diffusion/remapping frequency and operator splitting together; it does not isolate their individual errors.",
+    "The vpm_boundary_condition panel scope still excludes the body velocity/gradient from particle stages while including them in target queries.",
+    "This is a fully 3D serial laminar cube experiment with fixed-predictor interface replay, not a production option or developed-wake qualification."
+  ],
+  "elapsed_seconds": 95.73347954099881,
+  "child_reports": [
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/accepted-fvm-checkpoints-3d.json",
+      "sha256": "8d565a2c8b03904b9550e8b1e8ec3d93efe9ec093e15b227b77ac850190f2a82"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/profile-observation-3d.json",
+      "sha256": "d670f8372273ed024509f963f82fd9c939f9c9a4e895b2fc41873b367bb0b982"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/interface-cadence-3d.json",
+      "sha256": "103aa875391f0ae4b4a450e6c4f0e1d2cd4daa36327344c886704fa7c7607acf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/interface-iteration-3d.json",
+      "sha256": "775de37e01a8dc26b0c3844b43e9343b915b180802b59760f2f8ac9af4055df0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/panel-target-precision-3d.json",
+      "sha256": "eea141c7374bf6dca9c02492303f3616d6141884050e86c65991db054da8fd93"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/split-subcycling-one-three-control/trial/cube-coupled-trial.json",
+      "sha256": "0c82940d1e39c2c17296e69e016ae90bd38047f26615816837d8d7aef5f28ec0"
+    }
+  ]
+}

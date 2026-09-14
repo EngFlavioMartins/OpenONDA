@@ -1,0 +1,917 @@
+{
+  "schema": "openonda-fmm-separation-trial-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "geometric_separation_factor": 6.0,
+  "native_factor": 3.0,
+  "stage_qualifications": [
+    {
+      "path": "studies/coupler_accuracy/results/particle-stage-separation-six/particle-stage-separation-probe-3d.json",
+      "sha256": "681db98bfdf7ab00a1a045a786b83138566049380319c37e70dc83cc29f14d9e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/particle-stage-separation-three-control/particle-stage-separation-probe-3d.json",
+      "sha256": "4f531648539c4572b25f8000be2e0761275b92b998cad7c0c4e738cffa0e23f7"
+    }
+  ],
+  "execution_environment": {
+    "TI_CPU_MAX_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "TI_OFFLINE_CACHE_FILE_PATH": "/private/tmp/openonda-coupler-fmm-separation-6"
+  },
+  "outer_dt": 0.05,
+  "fvm_dt": 0.01,
+  "requested_exchanges": 20,
+  "frozen_original_files_verified": 799,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_fmm_separation_3d.py",
+      "sha256": "a144711c41131e0ea9fdd49a46c3200b93e5448a637af1beeadc909a1e98a9c1"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_fmm_separation_3d.py",
+      "sha256": "7d87004ebc8a6d393f484dd7a387492d3973a7edb71784f4a74f4cadb75bdce8"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_profile_checkpoint_trial_3d.py",
+      "sha256": "27245b6bdb0c0b7c97f17867103eac2b729379cd00e11d4a31141047f7d184b0"
+    },
+    {
+      "path": "source/solvers/vpm/physics/induction/fmm/device.py",
+      "sha256": "bbd70cd6f8b2a0dc508197b6a3337db0207cbdf68e188ada38821c3deb86aaa6"
+    },
+    {
+      "path": "source/solvers/vpm/kernels/base.py",
+      "sha256": "f1451bc224c93ff743d592a17514ce5205c9c4dcfbe1c89b2d58bd9ee5674e90"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/core/evolution.py",
+      "sha256": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    },
+    {
+      "path": "source/solvers/vpm/physics/stage_rhs.py",
+      "sha256": "1fb9efe6f13041d5ec6ca175b88511a41786f189e486b8e6ee72f9a2b511209a"
+    },
+    {
+      "path": "source/solvers/vpm/stabilization/manager.py",
+      "sha256": "124aab409077872db8d1eb34765e5fd73d1688fa93524f5695f06c63d5812ba8"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    }
+  ],
+  "outer_advances": [
+    {
+      "start_time": 0.0,
+      "start_step": 0,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.0,
+          "index": 0,
+          "count": 21747,
+          "m2l_pairs": 172080,
+          "near_pairs": 502998,
+          "p2p_interactions_excluding_self": 328548658,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.05,
+          "index": 1,
+          "count": 21747,
+          "m2l_pairs": 188373,
+          "near_pairs": 581430,
+          "p2p_interactions_excluding_self": 336782816,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.05,
+      "accepted_step": 1,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.05,
+      "start_step": 1,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.05,
+          "index": 0,
+          "count": 22038,
+          "m2l_pairs": 199468,
+          "near_pairs": 527882,
+          "p2p_interactions_excluding_self": 318418766,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.1,
+          "index": 1,
+          "count": 22038,
+          "m2l_pairs": 185654,
+          "near_pairs": 605076,
+          "p2p_interactions_excluding_self": 350534084,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.1,
+      "accepted_step": 2,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.1,
+      "start_step": 2,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.1,
+          "index": 0,
+          "count": 22376,
+          "m2l_pairs": 244765,
+          "near_pairs": 564965,
+          "p2p_interactions_excluding_self": 312601548,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.15000000000000002,
+          "index": 1,
+          "count": 22376,
+          "m2l_pairs": 221802,
+          "near_pairs": 608788,
+          "p2p_interactions_excluding_self": 343900108,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.15,
+      "accepted_step": 3,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.15,
+      "start_step": 3,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.15,
+          "index": 0,
+          "count": 22578,
+          "m2l_pairs": 205372,
+          "near_pairs": 519715,
+          "p2p_interactions_excluding_self": 327443830,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.2,
+          "index": 1,
+          "count": 22578,
+          "m2l_pairs": 196916,
+          "near_pairs": 599541,
+          "p2p_interactions_excluding_self": 356079264,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.2,
+      "accepted_step": 4,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.2,
+      "start_step": 4,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.2,
+          "index": 0,
+          "count": 22638,
+          "m2l_pairs": 226481,
+          "near_pairs": 558162,
+          "p2p_interactions_excluding_self": 318217026,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.25,
+          "index": 1,
+          "count": 22638,
+          "m2l_pairs": 204182,
+          "near_pairs": 644578,
+          "p2p_interactions_excluding_self": 364289280,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.25,
+      "accepted_step": 5,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.25,
+      "start_step": 5,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.25,
+          "index": 0,
+          "count": 22882,
+          "m2l_pairs": 215545,
+          "near_pairs": 527860,
+          "p2p_interactions_excluding_self": 333427154,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.3,
+          "index": 1,
+          "count": 22882,
+          "m2l_pairs": 201898,
+          "near_pairs": 610687,
+          "p2p_interactions_excluding_self": 364540354,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.3,
+      "accepted_step": 6,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.3,
+      "start_step": 6,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.3,
+          "index": 0,
+          "count": 23070,
+          "m2l_pairs": 255333,
+          "near_pairs": 575619,
+          "p2p_interactions_excluding_self": 310593840,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.35,
+          "index": 1,
+          "count": 23070,
+          "m2l_pairs": 241602,
+          "near_pairs": 664159,
+          "p2p_interactions_excluding_self": 346811402,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.35,
+      "accepted_step": 7,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.35,
+      "start_step": 7,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.35,
+          "index": 0,
+          "count": 23266,
+          "m2l_pairs": 261274,
+          "near_pairs": 582308,
+          "p2p_interactions_excluding_self": 314450020,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.39999999999999997,
+          "index": 1,
+          "count": 23266,
+          "m2l_pairs": 246768,
+          "near_pairs": 667927,
+          "p2p_interactions_excluding_self": 352577418,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.4,
+      "accepted_step": 8,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.4,
+      "start_step": 8,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.4,
+          "index": 0,
+          "count": 23501,
+          "m2l_pairs": 275188,
+          "near_pairs": 610227,
+          "p2p_interactions_excluding_self": 316289748,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.45,
+          "index": 1,
+          "count": 23501,
+          "m2l_pairs": 243100,
+          "near_pairs": 702253,
+          "p2p_interactions_excluding_self": 366594248,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.45,
+      "accepted_step": 9,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.45,
+      "start_step": 9,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.45,
+          "index": 0,
+          "count": 23725,
+          "m2l_pairs": 271960,
+          "near_pairs": 600746,
+          "p2p_interactions_excluding_self": 328298644,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.5,
+          "index": 1,
+          "count": 23725,
+          "m2l_pairs": 248770,
+          "near_pairs": 711856,
+          "p2p_interactions_excluding_self": 376206728,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.5,
+      "accepted_step": 10,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.5,
+      "start_step": 10,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.5,
+          "index": 0,
+          "count": 24027,
+          "m2l_pairs": 275585,
+          "near_pairs": 607356,
+          "p2p_interactions_excluding_self": 335297768,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.55,
+          "index": 1,
+          "count": 24027,
+          "m2l_pairs": 273286,
+          "near_pairs": 726146,
+          "p2p_interactions_excluding_self": 372239882,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.55,
+      "accepted_step": 11,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.55,
+      "start_step": 11,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.55,
+          "index": 0,
+          "count": 24392,
+          "m2l_pairs": 266831,
+          "near_pairs": 605062,
+          "p2p_interactions_excluding_self": 353547980,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.6000000000000001,
+          "index": 1,
+          "count": 24392,
+          "m2l_pairs": 269150,
+          "near_pairs": 693500,
+          "p2p_interactions_excluding_self": 377900114,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.6,
+      "accepted_step": 12,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.6,
+      "start_step": 12,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.6,
+          "index": 0,
+          "count": 24768,
+          "m2l_pairs": 289221,
+          "near_pairs": 642026,
+          "p2p_interactions_excluding_self": 357398284,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.65,
+          "index": 1,
+          "count": 24768,
+          "m2l_pairs": 272840,
+          "near_pairs": 712224,
+          "p2p_interactions_excluding_self": 395381078,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.65,
+      "accepted_step": 13,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.65,
+      "start_step": 13,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.65,
+          "index": 0,
+          "count": 25185,
+          "m2l_pairs": 282457,
+          "near_pairs": 649494,
+          "p2p_interactions_excluding_self": 378116860,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.7000000000000001,
+          "index": 1,
+          "count": 25185,
+          "m2l_pairs": 272172,
+          "near_pairs": 750751,
+          "p2p_interactions_excluding_self": 415921830,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.7,
+      "accepted_step": 14,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.7,
+      "start_step": 14,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.7,
+          "index": 0,
+          "count": 25570,
+          "m2l_pairs": 257926,
+          "near_pairs": 648837,
+          "p2p_interactions_excluding_self": 400348510,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.75,
+          "index": 1,
+          "count": 25570,
+          "m2l_pairs": 262858,
+          "near_pairs": 747909,
+          "p2p_interactions_excluding_self": 428712422,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.75,
+      "accepted_step": 15,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.75,
+      "start_step": 15,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.75,
+          "index": 0,
+          "count": 26132,
+          "m2l_pairs": 274950,
+          "near_pairs": 677390,
+          "p2p_interactions_excluding_self": 412497036,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.8,
+          "index": 1,
+          "count": 26132,
+          "m2l_pairs": 265850,
+          "near_pairs": 752458,
+          "p2p_interactions_excluding_self": 450267994,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.8,
+      "accepted_step": 16,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.8,
+      "start_step": 16,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.8,
+          "index": 0,
+          "count": 26578,
+          "m2l_pairs": 293939,
+          "near_pairs": 686638,
+          "p2p_interactions_excluding_self": 419208388,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.8500000000000001,
+          "index": 1,
+          "count": 26578,
+          "m2l_pairs": 274780,
+          "near_pairs": 773727,
+          "p2p_interactions_excluding_self": 463057238,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.85,
+      "accepted_step": 17,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.85,
+      "start_step": 17,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.85,
+          "index": 0,
+          "count": 26995,
+          "m2l_pairs": 283723,
+          "near_pairs": 665930,
+          "p2p_interactions_excluding_self": 439337890,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.9,
+          "index": 1,
+          "count": 26995,
+          "m2l_pairs": 278904,
+          "near_pairs": 784768,
+          "p2p_interactions_excluding_self": 482249538,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.9,
+      "accepted_step": 18,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.9,
+      "start_step": 18,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.9,
+          "index": 0,
+          "count": 27493,
+          "m2l_pairs": 267599,
+          "near_pairs": 670012,
+          "p2p_interactions_excluding_self": 463001740,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 0.9500000000000001,
+          "index": 1,
+          "count": 27493,
+          "m2l_pairs": 268130,
+          "near_pairs": 777943,
+          "p2p_interactions_excluding_self": 497264586,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 0.95,
+      "accepted_step": 19,
+      "schedule_checks_passed": true
+    },
+    {
+      "start_time": 0.95,
+      "start_step": 19,
+      "outer_dt": 0.05,
+      "geometric_separation_factor": 6.0,
+      "stages": [
+        {
+          "time": 0.95,
+          "index": 0,
+          "count": 27979,
+          "m2l_pairs": 268253,
+          "near_pairs": 698947,
+          "p2p_interactions_excluding_self": 477629280,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        },
+        {
+          "time": 1.0,
+          "index": 1,
+          "count": 27979,
+          "m2l_pairs": 258502,
+          "near_pairs": 776006,
+          "p2p_interactions_excluding_self": 516414032,
+          "native_stage_evaluations": 1,
+          "outer_clocks_unchanged": true
+        }
+      ],
+      "diffusion_calls": [
+        0.05
+      ],
+      "stabilization_phases": [
+        "pre_evolution",
+        "pre_strength",
+        "post_evolution",
+        "post_step"
+      ],
+      "accepted_time": 1.0,
+      "accepted_step": 20,
+      "schedule_checks_passed": true
+    }
+  ],
+  "limitations": [
+    "Only the internal FMM geometric separation factor changes, before compilation in a fresh runtime. The fixed expansion order, kernel-tail criteria and f32 particle precision are unchanged.",
+    "FVM mesh/numerics, physical RK/GBD step, exchange/renewal and outer stabilization retain their original settings. Point queries retain the backend's direct regularized fallback.",
+    "The selected vpm_boundary_condition scope still excludes the body velocity/gradient from RK stages. This experiment isolates induction accuracy from the separate body-transport change.",
+    "The native transposed stretching scheme and all production conservation/recovery limits remain unchanged.",
+    "This is a fully 3D serial laminar cube experiment with fixed-predictor interface replay, not a production option or developed-wake qualification."
+  ],
+  "elapsed_seconds": 1964.8340025839861,
+  "child_reports": [
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/accepted-fvm-checkpoints-3d.json",
+      "sha256": "877a0900469630e707dde9963b28f21c8b083a0fa11bbd84f2e0b35af6566c07"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/profile-observation-3d.json",
+      "sha256": "9d07ec39608422325348ab3c6203ac56cd495f13215bd8b0a72e73b82fbe43a6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/interface-cadence-3d.json",
+      "sha256": "0ae24d6156067204d55d151683d7d825f3e1b117748854e3d3e5f2ab24c4e7e7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/interface-iteration-3d.json",
+      "sha256": "7880bf017e45bad38e951bc2f2922333f6ae2e97dc1f5a2e6959dfd9702c96b2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/panel-target-precision-3d.json",
+      "sha256": "391384c676b9c45a1daf45f3e1fe86dc04f8c73031324bc2a0e41be660b7bc7d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/fmm-separation-six-twenty-iterated/trial/cube-coupled-trial.json",
+      "sha256": "e4ff121db75400fea00f6976e55a0ecf034d1225adf9a460b570e85d688ef895"
+    }
+  ]
+}

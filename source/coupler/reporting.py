@@ -575,6 +575,9 @@ def record_step(
     """Persist diagnostics and synchronize a completed coupling step."""
     t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
     diagnostics = compute_diagnostics(coupler, transfer_result)
+    interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
+    if interface_iteration is not None:
+        diagnostics["interface_iteration"] = interface_iteration
     timing_data = {
         "vpm": float(t_vpm),
         "vpm_boundary_condition": float(t_vpm_boundary_condition),

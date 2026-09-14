@@ -48,18 +48,54 @@ def test_cube_flow_schedules_share_physical_time():
     assert ratio == pytest.approx(round(ratio))
 
 
-@pytest.mark.parametrize("scheme", ["CS", "GBD", "NONE"])
-def test_cube_flow_viscous_config_factory_builds_each_supported_scheme(scheme):
-    setup = _load_setup(CASE_DIR / "setup.py", f"cube_flow_viscous_{scheme.lower()}")
-    viscous = setup.make_vpm_viscous_config(scheme)
+def test_cube_recommended_formulation_preserves_resolution_and_small_domain():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_recommended")
+    assert setup.REFERENCE_FINE_DX == 0.06
+    assert setup.FVM_MESH.max_cell_size == pytest.approx(0.72)
+    assert setup.FVM_MESH.refinements[0].name == "nearBody"
+    assert setup.FVM_MESH.effective_cell_size(0.06, strict=True) == pytest.approx(0.045)
+    assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.06)
+    assert setup.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+    assert setup.FVM_MESH.patch_refinements[0].cell_size == 0.06
+    assert setup.COUPLER_SETUP.interface_iterations == 12
+    assert setup.COUPLER_SETUP.fvm_consistency_width == 0
+    assert setup.COUPLER_SETUP.boundary_condition_mode == "vorticity_mixed"
+    assert setup.VPM_PANEL_SOLVER.coupling_scope == "fvm_vpm"
+    assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
+    assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.TreecodeInduction)
+    assert setup.VPM_CASE.numerics.compute_device == "AUTO"
 
-    assert viscous.scheme == scheme
-    assert viscous.particle_spacing == pytest.approx(setup.VPM_PARTICLE_SPACING)
-    assert viscous.core_radius_ratio == pytest.approx(setup.VPM_CORE_RADIUS_RATIO)
-    if scheme != "NONE":
-        assert viscous.kinematic_viscosity == pytest.approx(setup.KINEMATIC_VISCOSITY)
-    # Construction itself is the sole validation boundary.
-    replace(setup.VPM_CASE.numerics, viscous=viscous)
+
+@pytest.mark.parametrize("is_root", [False, True])
+def test_cube_run_owns_vpm_only_on_root(monkeypatch, is_root):
+    setup = _load_setup(CASE_DIR / "setup.py", f"cube_run_root_{is_root}")
+    closed = []
+    fvm_solver = SimpleNamespace(
+        parallel=SimpleNamespace(is_root=is_root),
+        close=lambda: closed.append("fvm"),
+    )
+    vpm_solver = SimpleNamespace(close=lambda: closed.append("vpm"))
+    coupled = {}
+    monkeypatch.setattr(
+        setup, "RunConfig", lambda **kwargs: SimpleNamespace(ensure_runtime=lambda _: None)
+    )
+    monkeypatch.setattr(setup.msh, "CachedMesh", lambda *args: object())
+    monkeypatch.setattr(setup.fvm, "create_fvm_solver", lambda *args, **kwargs: fvm_solver)
+    monkeypatch.setattr(
+        setup.vpm,
+        "VPMSolver",
+        lambda *args: vpm_solver if is_root else pytest.fail("VPM created on worker"),
+    )
+    def create_coupler(fvm, vpm, config):
+        coupled["vpm"] = vpm
+        return SimpleNamespace(run=lambda: None)
+
+    monkeypatch.setattr(setup.coupling, "create_coupler", create_coupler)
+
+    setup.main()
+
+    assert coupled["vpm"] is (vpm_solver if is_root else None)
+    assert closed == (["fvm", "vpm"] if is_root else ["fvm"])
 
 
 def test_cube_flow_viscous_config_factory_rejects_rwm_for_les():
@@ -82,7 +118,10 @@ def test_cube_flow_viscous_config_factory_rejects_dvh_for_les():
     with pytest.raises(ValueError, match="DVH.*GBD.*LES"):
         replace(
             setup.VPM_CASE.numerics,
-            viscous=setup.make_vpm_viscous_config("DVH"),
+            viscous=setup.vpm.ViscousConfig.dvh(
+                kinematic_viscosity=setup.KINEMATIC_VISCOSITY,
+                particle_spacing=setup.VPM_PARTICLE_SPACING,
+            ),
         )
 
 
@@ -100,24 +139,10 @@ def test_buffered_cube_transfer_explicitly_requires_gbd(scheme):
         VorticityTransfer(coupler)
 
 
-def test_cube_flow_timing_resolver_adjusts_steps_without_shifting_outputs():
-    setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_timing_resolver")
-
-    fvm_step, vpm_step, fvm_backup, vpm_backup, fvm_sample, vpm_sample = setup.resolve_case_timing(
-        0.005, 3, 0.5, 0.05
-    )
-
-    assert vpm_step / fvm_step == pytest.approx(3)
-    assert fvm_backup * fvm_step == pytest.approx(0.5)
-    assert vpm_backup * vpm_step == pytest.approx(0.5)
-    assert fvm_sample * fvm_step == pytest.approx(0.05)
-    assert vpm_sample * vpm_step == pytest.approx(0.05)
-
-
 def test_trial_restart_step_limit_keeps_the_production_horizon(tmp_path, monkeypatch):
     trial = _load_trial(monkeypatch, "cube_flow_restart_step_limit_test")
     captured = {}
-    monkeypatch.setattr(trial.case, "main", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(trial, "_run_case", lambda **kwargs: captured.update(kwargs))
     restart = tmp_path / "seed"
     output = tmp_path / "restart"
     monkeypatch.setattr(
@@ -139,7 +164,6 @@ def test_trial_restart_step_limit_keeps_the_production_horizon(tmp_path, monkeyp
     assert trial.case.FVM_SETUP.time.end_time == pytest.approx(trial.case.END_TIME)
     assert captured["restart_from"] == restart.resolve()
     assert captured["max_coupling_steps"] == 5
-    assert captured["backup_at_stop"] is True
 
 
 def test_cube_acceptance_rejects_an_excessive_renewal_closure(monkeypatch):

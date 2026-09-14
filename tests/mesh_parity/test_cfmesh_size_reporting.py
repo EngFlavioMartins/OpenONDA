@@ -60,17 +60,22 @@ def test_reference_template_matches_reported_sizes(factor, near, wake, wall):
 
 
 @pytest.mark.slow
-def test_completed_reference_mesh_publishes_strict_box_sizes():
-    mesher = _reference_mesher(12.0)
-    mesh = mesher.build()
+@pytest.mark.parametrize("dx", [0.25, 0.17])
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_completed_reference_mesh_publishes_strict_box_sizes(dx):
+    mesher = _reference_mesher(12.0, dx=dx)
+    with np.errstate(over="raise", invalid="raise", divide="raise"):
+        mesh = mesher.build()
     reports = {entry.name: entry for entry in mesher.report.sizes}
-    assert reports["nearBody"].requested == 0.75
-    assert reports["nearBody"].effective == 0.375
+    assert reports["nearBody"].requested == pytest.approx(3.0 * dx)
+    assert reports["nearBody"].effective == pytest.approx(1.5 * dx)
     assert reports["nearBody"].level == 3
-    assert reports["wake"].effective == 0.75
+    assert reports["wake"].effective == pytest.approx(3.0 * dx)
     assert reports["wake"].level == 2
     generation = mesh["mesh_generation"]
-    assert generation["resolved_box_sizes"] == {"nearBody": 0.375, "wake": 0.75}
+    assert generation["resolved_box_sizes"] == pytest.approx(
+        {"nearBody": 1.5 * dx, "wake": 3.0 * dx}
+    )
     assert generation["requested_sizes"] == [entry.as_dict() for entry in mesher.report.sizes]
     assert generation["cartesian_report"]["sizes"] == generation["requested_sizes"]
 

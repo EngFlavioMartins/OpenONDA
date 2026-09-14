@@ -1,0 +1,52 @@
+{
+  "schema": "openonda-interface-cadence-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "fvm_substeps": 1,
+  "fvm_dt": 0.01,
+  "exchange_dt": 0.01,
+  "coupling_steps": 100,
+  "accepted_fvm_steps": 100,
+  "elapsed_flow_time": 1.0,
+  "trial_invocations": 1,
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    }
+  ],
+  "frozen_workspace_manifest": {
+    "path": "frozen-workspace.json",
+    "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+  },
+  "limitations": [
+    "FVM dt and spatial resolution stay fixed. VPM step, exchange interval and renewal frequency change together.",
+    "The qualified fixed-predictor replay and f64 auxiliary panel-query scopes are otherwise unchanged.",
+    "The reference evolves independently and only measures the hybrid at accepted endpoints.",
+    "VPM velocity metrics sample matched FVM cell centres; they are not exterior-wake profile measurements.",
+    "This is a fully 3D serial laminar cube study, not a production option or developed-wake validation."
+  ],
+  "elapsed_seconds": 1342.9489349590003,
+  "artifacts": [
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/interface-iteration-3d.json",
+      "sha256": "c4ff9632eb0bf6b5a95aa7f72b27a3dde6e37cd630ce78b7c67f98d1b3d2ef84"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/panel-target-precision-3d.json",
+      "sha256": "d7ad74b48d70f2fce9991ddf1aee259e9b6bd5a3f88f65946d58e23935ea93e5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/cube-coupled-trial.json",
+      "sha256": "28ba65c8e4463e42257d4108980735bbb516bb861c1fdf68a01e9cf7875a26b9"
+    }
+  ]
+}

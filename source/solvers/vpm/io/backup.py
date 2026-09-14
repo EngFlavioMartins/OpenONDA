@@ -225,12 +225,18 @@ def _configuration_mismatches(
                     # checksum and every physical setting are still checked.
                     continue
             if (
-                child_path == "stabilization.regularization_solenoidal_remesh"
+                child_path in {
+                    "stabilization.regularization_solenoidal_remesh",
+                    "stabilization.regularization_transfer_only",
+                }
                 and key not in found
                 and expected.get(key) is False
             ):
                 # Pre-projection checkpoints had no switch; their behavior is
                 # exactly the new disabled default. Enabling it still differs.
+                continue
+            if child_path == "turbulence.filter_width" and key not in found and expected.get(key) is None:
+                # None preserves the historical volume-derived LES filter.
                 continue
             if key not in expected or key not in found:
                 paths.append(child_path)

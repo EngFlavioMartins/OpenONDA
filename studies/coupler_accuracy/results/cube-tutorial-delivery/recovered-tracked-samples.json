@@ -1,0 +1,42 @@
+[
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/centreline.csv",
+    "bytes": 3213181,
+    "sha256": "d932d12b573cc7bfb6e92ef3b64601d4a5edf30f360e0fa2ca99b4aeedd02d1e"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/forces_history.csv",
+    "bytes": 193495,
+    "sha256": "09ad3b9c70cea255611a3a5f256a8cb3b98d4d0486e2557c807c8431b649aeef"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/grid_run.json",
+    "bytes": 182,
+    "sha256": "50b4e1c70cca0ec053df3dcbb7898dcbcd6c16cc36711fa01caa7f20ccda2dee"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/offaxis_y075.csv",
+    "bytes": 3202869,
+    "sha256": "a2819d916a11e31ccf6b22ec4f44662f48e3882036953bc9b58836dcef032978"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/centreline.csv",
+    "bytes": 1736882,
+    "sha256": "7ae6b60496bf452464815e8ccddb799a9c136e8ddb4ecb64bdf6468a949d6ea5"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/forces_history.csv",
+    "bytes": 158540,
+    "sha256": "210fad282dc6fa976ff26a39b6941ed127fe2bc18a3aa455a927264e829a912a"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/grid_run.json",
+    "bytes": 189,
+    "sha256": "a44bc779ef17bc630011ad8b98873378acd3a462ef6b1c0f399734e45064f2dc"
+  },
+  {
+    "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/offaxis_y075.csv",
+    "bytes": 1722950,
+    "sha256": "019188d93e4bf45fb9f8f9337d2a8b5de2482ed942eb3b8d446907774019944b"
+  }
+]

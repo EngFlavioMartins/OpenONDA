@@ -1,0 +1,42 @@
+{
+  "schema": "openonda-inviscid-subcycling-component-qualification-3d/1",
+  "status": "complete",
+  "passed_tests": [
+    "test_time_dependent_3d_strain_converges_for_position_and_vector_strength",
+    "test_one_substep_is_bitwise_native_in_single_precision"
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/results/inviscid-subcycling-heun-component-tests.xml",
+      "sha256": "da136614a5930904f252d584a4f587c3d61d1803da89559f7f253b2ed45a70f2"
+    },
+    {
+      "path": "tests/coupler/test_inviscid_subcycling_heun_3d.py",
+      "sha256": "4e2de9ef08f58ee726ee35bf66b7dcff324e3e2a3733aa6b99f4a4dc43bc9b8d"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_inviscid_subcycling_3d.py",
+      "sha256": "b6bb9bbfcec5366b06eee33c00b9475c1c731d31738c75dca090cc2b2d5bd7e3"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/runge_kutta.py",
+      "sha256": "c5887c5a23e5e742ca4d05e6af768be9d74e3fa6eec8b59df5722c004b736fd2"
+    },
+    {
+      "path": "source/solvers/vpm/numerics/rk_tableaux.py",
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20"
+    }
+  ],
+  "scope": "Time-dependent 3D strain: position and vector-strength second-order convergence, physical Heun stage times, unchanged core radius, and one-substep f32 bitwise identity. This does not establish coupled accuracy.",
+  "earlier_failed_check": {
+    "test_source": {
+      "path": "tests/coupler/test_inviscid_subcycling_3d.py",
+      "sha256": "62bf5cc486691df29a5217538a32f5dd0ca32e0a939745b2596cdcd5706c8469"
+    },
+    "result": {
+      "path": "studies/coupler_accuracy/results/inviscid-subcycling-component-tests.xml",
+      "sha256": "245bf89dd8e27f7db0ce2fcd2152bd611f4c1b7c8c64bcde0efc24c82719ad20"
+    },
+    "reason": "The first test incorrectly expected midpoint RK stage times. The native RK2 is Heun with c=(0,1); the corrected test preserves the convergence and equality checks. No numerical implementation was changed for this correction."
+  }
+}

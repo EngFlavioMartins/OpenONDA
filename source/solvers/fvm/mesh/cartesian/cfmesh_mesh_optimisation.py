@@ -166,17 +166,22 @@ def _cfmesh_cell_centres(
     n_cells: int,
     *,
     cell_face_order: Sequence[Sequence[int]] | None = None,
+    cell_faces: Sequence[Sequence[int]] | None = None,
+    face_geometry: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Match ``polyMeshGenAddressing::makeCellCentresAndVols``."""
-    face_centres, face_areas = _face_geometry(points, faces)
-    cell_faces, _point_cells = _mesh_addressing(
-        faces,
-        owners,
-        neighbours,
-        n_cells,
-        len(points),
-        cell_face_order=cell_face_order,
+    face_centres, face_areas = (
+        _face_geometry(points, faces) if face_geometry is None else face_geometry
     )
+    if cell_faces is None:
+        cell_faces, _point_cells = _mesh_addressing(
+            faces,
+            owners,
+            neighbours,
+            n_cells,
+            len(points),
+            cell_face_order=cell_face_order,
+        )
     counts = np.fromiter((len(row) for row in cell_faces), dtype=np.int64)
     offsets = np.empty(n_cells + 1, dtype=np.int64)
     offsets[0] = 0
@@ -226,6 +231,7 @@ def _cfmesh_bad_faces(
     *,
     active_faces: np.ndarray | None = None,
     cell_face_order: Sequence[Sequence[int]] | None = None,
+    cell_faces: Sequence[Sequence[int]] | None = None,
 ) -> set[int]:
     """Return cfMesh's default invalid-face set.
 
@@ -242,6 +248,8 @@ def _cfmesh_bad_faces(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        face_geometry=(face_centres, face_areas),
     )
     selected = (
         np.arange(len(faces), dtype=np.int32)
@@ -339,6 +347,7 @@ def _cfmesh_low_quality_faces(
     *,
     active_faces: np.ndarray | None = None,
     cell_face_order: Sequence[Sequence[int]] | None = None,
+    cell_faces: Sequence[Sequence[int]] | None = None,
 ) -> set[int]:
     """Return faces exceeding cfMesh's 65-degree or 2.0 skew gates."""
     face_centres, face_areas = _face_geometry(points, faces)
@@ -349,6 +358,8 @@ def _cfmesh_low_quality_faces(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        face_geometry=(face_centres, face_areas),
     )
     selected = (
         np.arange(len(faces), dtype=np.int32)
@@ -478,15 +489,18 @@ def _build_part_tet_mesh(
     additional_layers: int,
     *,
     cell_face_order: Sequence[Sequence[int]] | None = None,
+    cell_faces: list[list[int]] | None = None,
+    point_cells: list[set[int]] | None = None,
 ) -> _PartTetMesh:
-    cell_faces, point_cells = _mesh_addressing(
-        faces,
-        owners,
-        neighbours,
-        n_cells,
-        len(points),
-        cell_face_order=cell_face_order,
-    )
+    if cell_faces is None or point_cells is None:
+        cell_faces, point_cells = _mesh_addressing(
+            faces,
+            owners,
+            neighbours,
+            n_cells,
+            len(points),
+            cell_face_order=cell_face_order,
+        )
     use_cell = _selected_cells(bad_faces, faces, point_cells, cell_faces, additional_layers)
     used_faces = np.zeros(len(faces), dtype=np.uint8)
     for face_id, owner_value in enumerate(owners):
@@ -508,6 +522,8 @@ def _build_part_tet_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        face_geometry=(face_centres, _face_areas),
     )
     boundary_start = len(neighbours)
 
@@ -1169,6 +1185,7 @@ def _run_cfmesh_untangle(
                 n_cells,
                 active_faces=changed_faces,
                 cell_face_order=cell_face_order,
+                cell_faces=cell_faces,
             )
             n_bad_faces = len(bad_faces)
             internal_trace.append(n_bad_faces)
@@ -1187,6 +1204,8 @@ def _run_cfmesh_untangle(
                 bad_faces,
                 (global_iteration // 2) + 1,
                 cell_face_order=cell_face_order,
+                cell_faces=cell_faces,
+                point_cells=point_cells,
             )
             _optimise_part_knupp(part)
             _optimise_part_untangler(part)
@@ -1212,6 +1231,7 @@ def _run_cfmesh_untangle(
                 n_cells,
                 active_faces=changed_faces,
                 cell_face_order=cell_face_order,
+                cell_faces=cell_faces,
             )
             n_bad_faces = len(bad_faces)
             boundary_trace.append(n_bad_faces)
@@ -1226,6 +1246,8 @@ def _run_cfmesh_untangle(
                 bad_faces,
                 0,
                 cell_face_order=cell_face_order,
+                cell_faces=cell_faces,
+                point_cells=point_cells,
             )
             if global_iteration < 2:
                 _optimise_part_boundary_volume(part, iterations=1)
@@ -1265,6 +1287,7 @@ def _run_cfmesh_low_quality(
             n_cells,
             active_faces=changed_faces,
             cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
         )
         trace.append(len(low_quality_faces))
         if not low_quality_faces:
@@ -1278,6 +1301,8 @@ def _run_cfmesh_low_quality(
             low_quality_faces,
             2,
             cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
+            point_cells=point_cells,
         )
         _optimise_part_volume(part)
         changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
@@ -1338,6 +1363,7 @@ def optimise_cfmesh_mesh(
             neighbours,
             n_cells,
             cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
         )
         updates = np.asarray(
             [
@@ -1357,6 +1383,7 @@ def optimise_cfmesh_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
     )
     first_internal_trace, first_boundary_trace = _run_cfmesh_untangle(
         points,
@@ -1375,6 +1402,7 @@ def optimise_cfmesh_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
     )
 
     low_quality_trace = _run_cfmesh_low_quality(
@@ -1394,6 +1422,7 @@ def optimise_cfmesh_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
     )
 
     final_internal_trace, final_boundary_trace = _run_cfmesh_untangle(
@@ -1413,6 +1442,7 @@ def optimise_cfmesh_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
     )
     final_low_quality_faces = _cfmesh_low_quality_faces(
         points,
@@ -1421,6 +1451,7 @@ def optimise_cfmesh_mesh(
         neighbours,
         n_cells,
         cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
     )
 
     mesh_data.pop("cell_face_indices", None)

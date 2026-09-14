@@ -266,6 +266,11 @@ to `mesher.log`. That file is stored directly in the resolved solution directory
 is flushed after every stage or refinement-pass event, and records failures before
 they are propagated to the caller.
 
+For a slow Cartesian build, compare the `seconds=` values on its `DONE` lines to
+find the expensive stage. The built-in mesher uses NumPy and Numba on the CPU;
+`ComputeConfig`'s Taichi backend applies to solver operators after meshing, not
+to mesh generation. The mesher needs no additional pip or conda package.
+
 ## Parallel execution
 
 `ComputeConfig` separates operator backend (`numpy`, `numba`, or `taichi`), linear

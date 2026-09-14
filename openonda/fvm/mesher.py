@@ -13,6 +13,7 @@ The solver facade intentionally does not re-export these names at
 ``openonda.fvm.BoxRefinement`` or similar flat paths.
 """
 
+from source.solvers.fvm.mesh.cache import CachedMesh
 from source.solvers.fvm.mesher import (
     BoundaryLayers,
     BoxDomain,
@@ -45,6 +46,7 @@ __all__ = [
     "BoxPatches",
     "BoxRefinement",
     "CartesianMesher",
+    "CachedMesh",
     "ExtrudedCartesianMesher",
     "CompositeSizeField",
     "ConeRefinement",

@@ -17,6 +17,10 @@ lets the new field stand:
 The global judgement of whether the event helped is left to
 :class:`~source.solvers.vpm.stabilization.manager.StabilizationManager`.
 
+The explicit transfer-only mode keeps the Gaussian remap and moment correction
+but omits the stabilizing adjustments. Its signed quadratic transfer is audited
+against symmetric error bounds; it never broadens cores or projects the field.
+
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: August 2026
 
@@ -187,6 +191,8 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     vortex_strength_removed_before = ctx.state.vortex_strength_removed.copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     projection_only = max_particles is not None and len(position) > max_particles
+    if cfg.regularization_transfer_only and projection_only:
+        raise ValueError("transfer-only redistribution cannot replace an over-cap remap by projection")
     configured_core_radius = (
         cfg.regularization_capacity_core_radius
         if at_capacity and cfg.regularization_capacity_core_radius is not None
@@ -330,7 +336,11 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         ) = evaluate_moment_corrected_candidate()
 
         # Broaden a fixed regenerated core only when it would inject energy or enstrophy.
-        if configured_core_radius is not None and not projection_only:
+        if (
+            not cfg.regularization_transfer_only
+            and configured_core_radius is not None
+            and not projection_only
+        ):
             for retry in range(1, 9):
                 if candidate_energy_change <= 1.0e-7 and candidate_enstrophy_change <= 1.0e-7:
                     break
@@ -366,7 +376,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 ("core radius, selected", f"{float(new_core_radius.mean()):.3e}", "m"),
             )
 
-        if projection_only or (
+        if cfg.regularization_transfer_only or projection_only or (
             -cfg.regularization_total_kinetic_energy_dissipation_limit
             <= candidate_energy_change
             <= 1.0e-7
@@ -460,7 +470,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             uploaded.astype(np.float64),
             new_core_radius,
         )
-        if (
+        if not cfg.regularization_transfer_only and (
             projection_only
             or preliminary_health["vorticity_divergence_error"]
             > cfg.regularization_projection_trigger
@@ -499,25 +509,33 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     total_enstrophy_change_relative = (
         float(after_integrals["total_enstrophy"]) - float(before_integrals["total_enstrophy"])
     ) / max(abs(float(before_integrals["total_enstrophy"])), np.finfo(float).tiny)
+    energy_upper = (
+        cfg.regularization_total_kinetic_energy_dissipation_limit
+        if cfg.regularization_transfer_only else 1.0e-7
+    )
+    enstrophy_upper = (
+        cfg.regularization_total_enstrophy_dissipation_limit
+        if cfg.regularization_transfer_only else ENSTROPHY_RESTORATION_TOLERANCE
+    )
     if (
         not -cfg.regularization_total_kinetic_energy_dissipation_limit
         <= total_kinetic_energy_change_relative
-        <= 1.0e-7
+        <= energy_upper
     ):
         restore_old_field()
         raise RuntimeError(
             f"regularization changed energy by {total_kinetic_energy_change_relative:.3e}, outside its "
-            "declared dissipative interval"
+            "declared transfer interval"
         )
     if not (
         -cfg.regularization_total_enstrophy_dissipation_limit
         <= total_enstrophy_change_relative
-        <= ENSTROPHY_RESTORATION_TOLERANCE
+        <= enstrophy_upper
     ):
         restore_old_field()
         raise RuntimeError(
             f"regularization changed enstrophy by {total_enstrophy_change_relative:.3e}, outside "
-            "its declared non-injecting interval"
+            "its declared transfer interval"
         )
 
     impulse_scale = max(

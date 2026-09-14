@@ -98,12 +98,18 @@ def build_experiment(args, directory: Path):
             kinematic_viscosity=setup.KINEMATIC_VISCOSITY,
         )
     config = vpm.StabilizationConfig.disabled()
-    if args.method in ("stretching_viscosity", "pedrizzetti", "divergence_relaxation"):
-        config = setup.stabilization(args.method)
-        if args.method == "divergence_relaxation":
-            config = replace(
-                config, divergence_relaxation=replace(config.divergence_relaxation, grid_spacing=h)
+    # Historical diagnostic cases select their own method, independently of
+    # the qualified baseline's conservative representation transfer.
+    if args.method == "stretching_viscosity":
+        config = vpm.StabilizationConfig.stretching_viscosity(coefficient=.5)
+    elif args.method == "pedrizzetti":
+        config = vpm.StabilizationConfig.pedrizzetti_relaxation(factor=.3)
+    elif args.method == "divergence_relaxation":
+        config = vpm.StabilizationConfig(
+            divergence_relaxation=vpm.DivergenceRelaxationConfig.constrained(
+                interval_steps=25, start_step=25, grid_spacing=h,
             )
+        )
     if args.method.startswith("p_"):
         config = replace(
             config,
@@ -163,11 +169,12 @@ def build_experiment(args, directory: Path):
             viscous=viscous,
             domain_bounds=(-2.0, 12.0, -3.0, 3.0, -3.0, 3.0)
             if args.diffusion == "GBD"
-            else base.numerics.domain_bounds,
+            else None,
             stabilization=config,
             turbulence=vpm.TurbulenceConfig.dns()
             if args.smagorinsky == 0
-            else replace(base.numerics.turbulence, smagorinsky_coefficient=args.smagorinsky),
+            else replace(base.numerics.turbulence,
+                         smagorinsky_coefficient=args.smagorinsky, filter_width=None),
             max_n_particles=args.capacity,
             verbose=False,
             diagnostics=replace(base.numerics.diagnostics, detailed_timing=args.timing),
@@ -219,7 +226,8 @@ def parser():
     result.add_argument("--frequency", type=float, default=0.03 / setup.TIME_STEP_SIZE)
     result.add_argument("--smagorinsky", type=float, default=setup.SMAGORINSKY_COEFFICIENT)
     result.add_argument("--diffusion", choices=("CS", "GBD", "RWM", "NONE"), default="CS")
-    result.add_argument("--core-ratio", type=float, default=2.0)
+    result.add_argument("--core-ratio", type=float,
+                        default=setup.PARTICLE_CORE_RADIUS / setup.PARTICLE_SPACING)
     result.add_argument(
         "--initial-tail",
         type=float,

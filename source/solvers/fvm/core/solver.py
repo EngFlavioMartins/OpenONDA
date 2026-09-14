@@ -2105,7 +2105,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 if primary_failure is None:
                     raise
 
-    def advance_time(self) -> None:
+    def advance_time(self, *, defer_output: bool = False) -> None:
         """Commit the solved candidate and advance the accepted FVM clock.
 
         This coupler-facing method rolls the BDF2 velocity/flux history,
@@ -2140,6 +2140,19 @@ class FVMSolver(CouplerInterfaceMixin):
         self._step_phase = "accepted"
         self._timer.log("Field history commit", sink=self.logger)
 
+        if not defer_output:
+            self.write_accepted_step_output()
+
+    def write_accepted_step_output(self) -> None:
+        """Publish diagnostics and due output for the current accepted state.
+
+        Couplers may defer provisional substeps and call this once after the
+        interface converges. Their sampling schedules must align with exchange
+        times; this method does not replay output for earlier substeps.
+        """
+        if self._step_phase != "accepted":
+            raise RuntimeError("Output requires an accepted FVM state")
+        step_time_step_size = self._accepted_time_step_size
         self._timer.start("Diagnostics file")
         diagnostics_error = None
         try:

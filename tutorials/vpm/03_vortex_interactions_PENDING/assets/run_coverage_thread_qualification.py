@@ -21,7 +21,7 @@ from openonda.tutorial_runner import case_package
 
 TUTORIAL = Path(__file__).resolve().parents[1]
 __package__ = case_package(TUTORIAL) + ".assets"
-from .. import setup_les
+from . import legacy_les as setup_les
 
 PARTICLE_COUNT = 27_200
 PARTICLE_SPACING = 0.05

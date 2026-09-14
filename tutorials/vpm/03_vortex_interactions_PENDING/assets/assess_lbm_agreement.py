@@ -35,12 +35,14 @@ from .ring_metrics import _theme, load_metadata, load_study_metadata, metadata_s
 from .plot_core_sections import discover, read_plane
 
 
-def sampled_peaks(x, r, omega):
+def sampled_peaks(x, r, omega, peak_merge_bridge=None):
     """Locate positive core maxima on a recorded SurfaceSampler grid.
 
     Coordinates are grid-resolved (no new field evaluation). A bridge is a
     linear interpolation of these same samples. Edge maxima invalidate tracking
     because the sampling domain may have clipped a core.
+    Optional high-saddle grouping treats secondary lobes of a broad core as
+    one peak. It does not smooth the field or bypass the separate pair cutoff.
     """
     if not np.isfinite(omega).all():
         raise ValueError("Non-finite sampler field")
@@ -59,6 +61,31 @@ def sampled_peaks(x, r, omega):
     indices = np.argwhere((omega == maximum_filter(omega, size=3)) & (omega > 0.1 * maximum))
     indices = sorted(indices, key=lambda ij: -omega[tuple(ij)])
     clipped = any(i in (0, len(x) - 1) or j in (0, len(r) - 1) for i, j in indices)
+    raw_count = len(indices)
+    clusters = [[index] for index in indices]
+    if peak_merge_bridge is not None:
+        if not 0 < peak_merge_bridge < 1:
+            raise ValueError("peak_merge_bridge must be between zero and one")
+        interpolate = RegularGridInterpolator((x, r), omega)
+        parent = list(range(raw_count))
+
+        def root(index):
+            while parent[index] != index:
+                index = parent[index]
+            return index
+
+        for a, left in enumerate(indices):
+            for b in range(a):
+                right = indices[b]
+                line = np.linspace([x[left[0]], r[left[1]]], [x[right[0]], r[right[1]]], 101)
+                saddle = interpolate(line).min() / min(omega[tuple(left)], omega[tuple(right)])
+                if saddle >= peak_merge_bridge:
+                    high, low = sorted((root(a), root(b)))
+                    parent[low] = high
+        representatives = sorted({root(index) for index in range(raw_count)})
+        clusters = [[indices[j] for j in range(raw_count) if root(j) == index]
+                    for index in representatives]
+        indices = [indices[index] for index in representatives]
     bridge = np.nan
     if len(indices) >= 2:
         pair = np.array([[x[i], r[j]] for i, j in indices[:2]])
@@ -70,6 +97,12 @@ def sampled_peaks(x, r, omega):
             radius=float(r[j]),
             vorticity=float(omega[i, j]),
             n_peaks=-1 if clipped else len(indices),
+            raw_n_peaks=raw_count,
+            cluster_n_peaks=len(clusters[rank]),
+            cluster_x_span=[float(min(x[a] for a, _ in clusters[rank])),
+                            float(max(x[a] for a, _ in clusters[rank]))],
+            cluster_radius_span=[float(min(r[b] for _, b in clusters[rank])),
+                                 float(max(r[b] for _, b in clusters[rank]))],
             strongest_peak_pair_bridge_ratio=bridge,
             peak_rank=rank,
         )
@@ -77,7 +110,7 @@ def sampled_peaks(x, r, omega):
     ]
 
 
-def sampler_history(run):
+def sampler_history(run, peak_merge_bridge=None):
     records = discover(setup.TUTORIAL_DIR / "samples", STUDY_DIR, [run])
     rows, sources = [], []
     for record in sorted(records, key=lambda entry: entry["time"]):
@@ -86,7 +119,7 @@ def sampler_history(run):
         step = int(path.stem.rsplit("_", 1)[1])
         rows.extend(
             dict(run=run, time=record["time"], step=step, **peak)
-            for peak in sampled_peaks(x, r, omega)
+            for peak in sampled_peaks(x, r, omega, peak_merge_bridge)
         )
         sources.append(
             dict(
@@ -145,6 +178,10 @@ def radius_score(tracks, reference, xmin, xmax, samples=501):
     errors = []
     for ring in (1, 2):
         track = tracks[tracks.ring == ring].sort_values("time")
+        # Closely spaced outputs can locate a core in the same sampler cell.
+        # Identical consecutive points add no information to R(x); retain
+        # rejection of axial reversals and distinct radii at the same x.
+        track = track.loc[~(track[["x", "radius"]].diff() == 0).all(axis=1)]
         ref = reference[reference.ring == ring].sort_values("x_over_R0")
         tx = track.x.to_numpy()
         rx = ref.x_over_R0.to_numpy() - 2.5
@@ -236,6 +273,8 @@ def temporal_field_comparisons(reports):
     for group in groups.values():
         ordered = sorted(group, key=lambda r: r["settings"]["dt"], reverse=True)
         for coarse, fine in zip(ordered, ordered[1:]):
+            if coarse["settings"]["dt"] <= fine["settings"]["dt"]:
+                continue
             cfields = {round(f["time"], 10): f for f in coarse["sampler_fields"]}
             ffields = {round(f["time"], 10): f for f in fine["sampler_fields"]}
             for time in sorted(cfields.keys() & ffields.keys()):
@@ -355,6 +394,11 @@ def write_report(report, output):
         "Completed and budget-limited runs provide lower bounds on numerical survival. "
         "A failed status needs its native vpm.log to distinguish numerical failure "
         "from output/resource failure; neither is automatically physical breakdown.",
+        f"Optional within-core saddle grouping: {report.get('peak_merge_bridge')}. "
+        "The raw maximum counts and grouped-peak coordinate spans are retained in the peak tables.",
+        "After pair identities are lost, the trajectory figure shows the remaining field maxima "
+        "as unassigned gray crosses, with area proportional to their vorticity relative to "
+        "the strongest peak in that snapshot. They do not extend the identified-ring RMS scores.",
         "",
         "## LBM radius discrepancies",
         "",
@@ -439,10 +483,14 @@ def main():
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--interval", nargs=2, type=float, action="append")
     parser.add_argument("--bridge-limit", type=float, default=0.5)
+    parser.add_argument("--peak-merge-bridge", type=float, default=None,
+                        help="Group lobes joined above this fraction of the weaker peak; default keeps every maximum")
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures/study/les")
     args = parser.parse_args()
     if not 0 < args.bridge_limit < 1:
         parser.error("bridge-limit must be between zero and one")
+    if args.peak_merge_bridge is not None and not args.bridge_limit < args.peak_merge_bridge < 1:
+        parser.error("peak-merge-bridge must exceed bridge-limit and be below one")
     reference_path = Path(__file__).parent / "references/leapfrogging_lbm_trajectory.csv"
     reference = pd.read_csv(reference_path)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -459,9 +507,16 @@ def main():
         if not metadata:
             raise FileNotFoundError(folder / "solution/vpm_metadata.json")
         settings = metadata_settings(metadata)
+        numerics = metadata.get("configuration", {}).get("numerics", {})
+        settings["filter_width"] = numerics.get("turbulence", {}).get("filter_width")
+        # Closure and redistribution contrasts are not timestep refinements.
+        settings["regularization"] = {
+            key: value for key, value in numerics.get("stabilization", {}).items()
+            if key.startswith("regularization_")
+        }
         if settings["scenario"] != "leapfrog":
             raise ValueError("The LBM reference is for leapfrogging only")
-        peaks, sources = sampler_history(run)
+        peaks, sources = sampler_history(run, args.peak_merge_bridge)
         peak_path = args.output / f"{run}_peaks.csv"
         peaks.to_csv(peak_path, index=False)
         tracks, reason = coherent_tracks(peaks, args.bridge_limit)
@@ -532,6 +587,11 @@ def main():
                 label=f"LBM core {ring}",
             )
             ax.plot(track.x, track.radius, ".--", color=color, lw=1, ms=4, label=f"VPM core {ring}")
+        unassigned = peaks[peaks.time > tracks.time.max()]
+        if not unassigned.empty:
+            relative_strength = unassigned.vorticity / unassigned.groupby("time").vorticity.transform("max")
+            ax.scatter(unassigned.x, unassigned.radius, color="0.45", marker="x",
+                       s=24 * relative_strength, alpha=0.65, label="Unassigned peaks")
         sig = settings
         scheme = sig.get("diffusion", "CS")
         if scheme == "GBD":
@@ -551,7 +611,8 @@ def main():
         )
         ax.spines[["top", "right"]].set_visible(False)
         ax.grid(alpha=0.15)
-        ax.legend(frameon=False, fontsize=8, loc="upper right", ncol=2)
+        ax.legend(frameon=False, fontsize=7 if not unassigned.empty else 8,
+                  loc="upper right", ncol=3 if not unassigned.empty else 2)
     fig.text(
         0.15,
         0.015,
@@ -567,6 +628,7 @@ def main():
         analysis_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         reference="Cheng, Lou & Lim (2015), Fig. 5(b), DOI:10.1063/1.4915890",
         reference_sha256=hashlib.sha256(reference_path.read_bytes()).hexdigest(),
+        peak_merge_bridge=args.peak_merge_bridge,
         scoring="Equal-ring, uniform-x RMS radius discrepancy; linear interpolation; no extrapolation or fitting",
         limitation="A kinematic discrepancy, not a matched-boundary or converged benchmark error estimate. Reynolds number and seed differences are recorded per run; mismatched inputs do not validate the seeded breakdown scenario.",
         runs=reports,

@@ -11,7 +11,7 @@ from pathlib import Path
 import openonda.vpm as vpm
 from openonda.tutorial_runner import load_case_module
 
-setup_les = load_case_module(Path(__file__).resolve().parents[1], "setup_les")
+setup_les = load_case_module(Path(__file__).resolve().parents[1], "assets.legacy_les")
 
 CASE_NAME = "cs_breakdown_splitting_fmm_cpu_root_fresh"
 PARTICLE_CAPACITY = 600_000

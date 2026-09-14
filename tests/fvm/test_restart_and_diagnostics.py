@@ -96,6 +96,29 @@ def test_restart_restores_backward_time_history(tmp_path):
     assert resumed.step == reference.step
 
 
+def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
+    from source.solvers.fvm.io.backup import capture_restart_payload, publish_restart_payload
+
+    solver = _solver(tmp_path / "memory")
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.advance()
+        solver.advance()
+        snapshot = capture_restart_payload(solver)
+        solver.save_state(tmp_path / "accepted.npz")
+        solver.advance()
+        publish_restart_payload(solver, snapshot)
+        solver.advance()
+        from_memory = capture_restart_payload(solver)
+        solver.load_state(tmp_path / "accepted.npz")
+        solver.advance()
+        from_disk = capture_restart_payload(solver)
+    for name in from_disk.fields:
+        np.testing.assert_array_equal(from_memory.fields[name], from_disk.fields[name])
+    assert from_memory.time == from_disk.time
+    assert from_memory.step == from_disk.step
+    solver.close()
+
+
 def test_solver_metadata_serializes_sampler_configuration(tmp_path):
     setup = _setup()
     setup.samplers = (

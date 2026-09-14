@@ -1,0 +1,32 @@
+[
+  {
+    "path": ".git/lfs/objects/67/d9/67d984ed0c9d95c44a65433987913c4baaed0082e2e6cc0bb26a1cacabe0d688",
+    "bytes": 745842,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\n0.049999999999999996,10,-5.0,0.75,0.0,0.9996003921486903,0.0007620586226286924,-2.914389237798412e-05,1.8149654594396744e-13,6.418002225443647e-05,0.0016782849428068117,0.02605077600130324\n0.049999999999999996,10,-4.96,"
+  },
+  {
+    "path": ".git/lfs/objects/05/86/05866dd6ed273e96d8ba94c5b66663c3c1e03c5e7e3b50c1eb333a4af9fe8512",
+    "bytes": 29216781,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\n0.05,5,-5.0,0.75,0.0,0.9996314139227198,0.0007310731493269035,-2.165057625542042e-05,3.666751100569368e-12,5.3089127374138844e-05,0.0017927086859006005,0.024483925763959854\n0.05,5,-4.96,0.75,0.0,0.999630573303531,0.0007"
+  },
+  {
+    "path": ".git/lfs/objects/4b/39/4b39b16b9cb1e444495fcb40a0be11908f53646cf4ffd862cc48344d49fa0fe6",
+    "bytes": 29379693,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\n0.05,5,-5.0,0.0,0.0,0.9995011363667254,2.1160490699432626e-05,2.1162791411206295e-05,-1.7579278523732806e-13,-2.8737581932951874e-06,2.867641307752072e-06,0.025536182146409743\n0.05,5,-4.96,0.0,0.0,0.9995022052172853,2.0"
+  },
+  {
+    "path": ".git/lfs/objects/7d/ad/7dad0699b1dd176dfe5e0eaa9e43fc68d2a731a9221ab32c3522532a6d2dac3e",
+    "bytes": 749603,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\r\n0.049999999999999996,10,-5.0,0.75,0.0,0.9996003921486903,0.0007620586226286924,-2.914389237798412e-05,1.8149654594396744e-13,6.418002225443647e-05,0.0016782849428068117,0.02605077600130324\r\n0.049999999999999996,10,-4.9"
+  },
+  {
+    "path": ".git/lfs/objects/a7/d2/a7d295a4cf1661e915515f8335b854ee7c5db5907bcbcdd069f5c96b27cad79c",
+    "bytes": 29530094,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\r\n0.05,5,-5.0,0.0,0.0,0.9995011363667254,2.1160490699432626e-05,2.1162791411206295e-05,-1.7579278523732806e-13,-2.8737581932951874e-06,2.867641307752072e-06,0.025536182146409743\r\n0.05,5,-4.96,0.0,0.0,0.9995022052172853,2"
+  },
+  {
+    "path": ".git/lfs/objects/4f/18/4f185a637aaa14e36d9c9793dc3fecf3dfe9c96d53d788caec18e09c70c612e8",
+    "bytes": 29367182,
+    "head": "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\r\n0.05,5,-5.0,0.75,0.0,0.9996314139227198,0.0007310731493269035,-2.165057625542042e-05,3.666751100569368e-12,5.3089127374138844e-05,0.0017927086859006005,0.024483925763959854\r\n0.05,5,-4.96,0.75,0.0,0.999630573303531,0.00"
+  }
+]

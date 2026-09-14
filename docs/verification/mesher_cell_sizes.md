@@ -151,3 +151,41 @@ python -m pytest tests/fvm/test_restart_and_diagnostics.py \
     tests/fvm/test_cartesian_config.py tests/fvm/test_mesh_contracts.py \
     -k 'not geometry_independence and not repeated_cartesian and not section_extrusion'
 ```
+
+## Follow-up: patch-assignment overflow at `dx=0.17`
+
+The reported `cfmesh_template.py` warning was reproduced by promoting
+`RuntimeWarning` to an exception during the reference mesh's patch assignment.
+Projected face centres can lie exactly on a candidate surface, making their
+squared distance zero. The normal-alignment score used
+`sqrt(max_distance_squared / max(distance_squared, tiny)) * alignment`.
+Dividing by the binary64 `tiny` floor can overflow before the square root,
+even when the final score fits in binary64. A perpendicular normal can then
+produce `inf * 0 = NaN`, interfering with patch selection.
+
+The implementation now takes the two square roots before dividing. This
+preserves the score, distance floor, and candidate-order tie when all
+distances are zero, without the overflowing intermediate ratio. It requires
+no change to the domain bounds or refinement algorithm.
+
+Validation for this follow-up:
+
+- Decimal arithmetic at 100-digit precision verifies the scores for zero,
+  subnormal, ordinary, and maximum finite binary64 squared distances.
+- Complete reference meshes at `dx=0.17` and `dx=0.25` pass with runtime
+  warnings and NumPy overflow/invalid/divide errors treated as failures.
+- Additional full meshes at `dx=0.16` and `dx=0.18` pass under the same policy.
+- The focused run passes 26 tests; the non-slow mesh-parity run passes 56.
+  The union is 58 distinct tests, including the two complete-mesh regressions.
+- The active Conda installation was patched with the same one-file change,
+  preserving its other installed code and backing up the original module.
+  An isolated Python process, using the actual reference `setup.py` and the
+  installed package, builds `dx=0.17` without runtime warnings: 6,404 cells,
+  20,960 faces, all seven named patches, and positive cell volumes. The
+  requested external bounds remain `[-7.5,15] × [-7.5,7.5] × [-7.5,7.5]`.
+
+```bash
+python -m pytest tests/mesh_parity/test_cfmesh_patch_assignment.py \
+    tests/mesh_parity/test_cfmesh_size_reporting.py
+python -m pytest tests/mesh_parity -m 'not slow' -W error::RuntimeWarning
+```

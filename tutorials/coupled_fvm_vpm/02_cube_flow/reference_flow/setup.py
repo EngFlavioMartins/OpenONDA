@@ -17,7 +17,7 @@ import openonda.fvm.mesher as msh
 
 def create_solver(directory_name: str, dx: float):
     case_dir = Path(__file__).resolve().parent
-    domain = (-7.5, 15.0, -7.5, 7.5, -7.5, 7.5)
+    domain = (-6.5, 13.0, -6.5, 6.5, -6.5, 6.5)
     velocity = [1.0, 0.0, 0.0]
     patches = msh.BoxPatches(
         xmin="inlet",
@@ -30,20 +30,18 @@ def create_solver(directory_name: str, dx: float):
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
-        # This lattice resolves the cube target dx to 0.75*dx, and the
-        # strict box targets below to 1.5*dx (nearBody) and 3*dx (wake).
-        max_cell_size=12 * dx,
+        max_cell_size=12*dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.
             msh.BoxRefinement(
                 "nearBody",
-                (-1.5, 2.5, -1.5, 1.5, -1.5, 1.5),
-                3.0 * dx,
+                (-1.5, 3.0, -1.5, 1.5, -1.5, 1.5),
+                dx,
             ),
             msh.BoxRefinement(
                 "wake",
-                (0.0, 8.0, -2.0, 2.0, -2.0, 2.0),
-                6.0 * dx,
+                (-2.0, 8.0, -2.0, 2.0, -2.0, 2.0),
+                2.0 * dx,
             ),
         ),
         patch_refinements=(msh.PatchRefinement("cube", dx),),
@@ -82,7 +80,7 @@ def create_solver(directory_name: str, dx: float):
         ),
         time=fvm.TimeConfig(
             time_step_size=0.01,
-            end_time=20.0,
+            end_time=30.0,
             output_schedule=fvm.RunSchedule(every_time=1.0),
             adjustment=fvm.MaximumCourantTimeStep(
                 maximum=0.9,

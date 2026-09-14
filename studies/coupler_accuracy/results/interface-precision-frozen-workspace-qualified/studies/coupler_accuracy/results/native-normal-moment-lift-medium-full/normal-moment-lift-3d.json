@@ -1,0 +1,191 @@
+{
+  "schema": "openonda-normal-moment-lift-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "snapshot": {
+    "name": "full",
+    "fvm_step": 15,
+    "physical_time": 0.65
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_normal_moment_lift_3d.py",
+      "sha256": "d53e18113dc8817a023425ede8df0e99a5f6b4fdfc60a8b29a7c94aaf6478b45"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-flux-moment-compatibility-medium/flux-moment-compatibility-3d.json",
+      "sha256": "40a4761f34c28b60bc403f0071ea4d98acd05551083863cfe80d9c7b8e1a4b5b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-flux-moment-verification-medium.json",
+      "sha256": "47d3497dd719fdd4a0988e91a115e1891b937abd22b5e4fac39393b105142634"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/native-flux-moment-compatibility-medium/full-step-000015-flux-moments.npz",
+      "sha256": "d4259b828a86d64c08f2d5f90de4bd146ef38c2d097c07c2da26801cd7c92257"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/profile-checkpoints-three-step-control/trial/full/solution/mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_normal_moment_lift_3d.py",
+      "sha256": "c86a25cbb8260ad5c934863521e3765b8969be6a0141f2e6f997e0902b240d64"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_flux_moments_3d.py",
+      "sha256": "94abf0037351e17070ba9cefa3fd844792ec94606f263a366d14f4cd9fd3a3d4"
+    },
+    {
+      "path": "studies/coupler_accuracy/native_volume_induction_3d.py",
+      "sha256": "e684908369c33b409359ed213e230bde448b7b6c02919765f0b533539d34101a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_native_moment_reconstruction_3d.py",
+      "sha256": "9b1f3fde8667181156693251323b1b4cdc4c37c2cd59286a21763efe70272f9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "source/solvers/fvm/io/mesh_storage.py",
+      "sha256": "27a4fbfb01742bcf50c9f43198ee90b67f128b453ca0ca428ac01d679d83a275"
+    },
+    {
+      "path": "tests/coupler/test_native_normal_moment_lift_3d.py",
+      "sha256": "25270ddd9bddb6b577a210c7bbdead7c8de36f3553d9ec571b3bf84dee3a9eea"
+    }
+  ],
+  "records": [
+    {
+      "name": "stored_cell_velocity-2-modes",
+      "retained_modes": 332816,
+      "discarded_eigenvalues": 166408,
+      "stop": 1,
+      "iterations": 752,
+      "residual_norm": 1.101839045533038e-09,
+      "normal_residual_norm": 1.9068515559847488e-11,
+      "condition_estimate": 11.869775455337109,
+      "dual_stop": 1,
+      "dual_iterations": 679,
+      "normal_change_integrated_squared": 94.345585884006,
+      "dual_energy_lower_bound": 94.34558588660991,
+      "relative_primal_dual_energy_gap": -2.7599719992059044e-11,
+      "velocity_constraint_rms": 2.8458849764134763e-11,
+      "velocity_constraint_maximum": 1.6227511594646289e-09,
+      "normal_change_rms_over_all_free_faces": 0.09039259535835277,
+      "normal_change_rms_on_outer_faces": 0.0014529737011579932,
+      "maximum_normal_change": 38.711360239402296,
+      "maximum_outer_normal_change": 0.01814072026733975,
+      "locked_all_boundaries_global_velocity_error_lower_bound": 2.3349778933577432e-05,
+      "independent_quadrature_flux_error_as_velocity": 5.1901669055391024e-14,
+      "independent_quadrature_moment_error_over_area_to_three_halves": 1.974176788412677e-14,
+      "independent_quadrature_cell_velocity_difference": 3.432319704030902e-14,
+      "independent_quadrature_relative_energy_difference": 3.0125107777005407e-16,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/native-normal-moment-lift-medium-full/stored_cell_velocity-2-modes.npz",
+        "sha256": "c29467fc185e85fdf6e22ba3f0d3062c6335afa1f3f2964de31ff854cac6aa71"
+      }
+    },
+    {
+      "name": "stored_volume_momentum-2-modes",
+      "retained_modes": 332816,
+      "discarded_eigenvalues": 166408,
+      "stop": 1,
+      "iterations": 753,
+      "residual_norm": 1.1041148556517402e-09,
+      "normal_residual_norm": 1.912135777355079e-11,
+      "condition_estimate": 11.869397021422804,
+      "dual_stop": 1,
+      "dual_iterations": 680,
+      "normal_change_integrated_squared": 94.34196859116743,
+      "dual_energy_lower_bound": 94.34196859378865,
+      "relative_primal_dual_energy_gap": -2.778424717092289e-11,
+      "velocity_constraint_rms": 2.851763043549929e-11,
+      "velocity_constraint_maximum": 1.6255087762437427e-09,
+      "normal_change_rms_over_all_free_faces": 0.09039086247589202,
+      "normal_change_rms_on_outer_faces": 0.0014747619785415126,
+      "maximum_normal_change": 38.71093243060007,
+      "maximum_outer_normal_change": 0.018164226377533923,
+      "locked_all_boundaries_global_velocity_error_lower_bound": 2.335297034500492e-05,
+      "independent_quadrature_flux_error_as_velocity": 5.308125244301355e-14,
+      "independent_quadrature_moment_error_over_area_to_three_halves": 1.9167575692631143e-14,
+      "independent_quadrature_cell_velocity_difference": 3.687299094307521e-14,
+      "independent_quadrature_relative_energy_difference": 1.5063131422225235e-16,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/native-normal-moment-lift-medium-full/stored_volume_momentum-2-modes.npz",
+        "sha256": "17746429aa2d3f55a00589e8d88803267a0e507f972bc421424285f2906b25d7"
+      }
+    },
+    {
+      "name": "stored_cell_velocity-3-modes",
+      "retained_modes": 430808,
+      "discarded_eigenvalues": 68416,
+      "stop": 1,
+      "iterations": 738,
+      "residual_norm": 7.477248582211623e-10,
+      "normal_residual_norm": 1.3037136760823984e-11,
+      "condition_estimate": 11.265962385956309,
+      "dual_stop": 1,
+      "dual_iterations": 676,
+      "normal_change_integrated_squared": 43.10814582846786,
+      "dual_energy_lower_bound": 43.108145828640566,
+      "relative_primal_dual_energy_gap": -4.0063081822414855e-12,
+      "velocity_constraint_rms": 1.9312611422337522e-11,
+      "velocity_constraint_maximum": 1.2583828358575368e-09,
+      "normal_change_rms_over_all_free_faces": 0.06110148070255056,
+      "normal_change_rms_on_outer_faces": 0.0014569405633429824,
+      "maximum_normal_change": 46.7970920553149,
+      "maximum_outer_normal_change": 0.01829840443571126,
+      "locked_all_boundaries_global_velocity_error_lower_bound": 2.3349778933577432e-05,
+      "independent_quadrature_flux_error_as_velocity": 9.873500904955872e-13,
+      "independent_quadrature_moment_error_over_area_to_three_halves": 2.0104884008010075e-13,
+      "independent_quadrature_cell_velocity_difference": 3.850199546408006e-13,
+      "independent_quadrature_relative_energy_difference": 5.2744944388927645e-15,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/native-normal-moment-lift-medium-full/stored_cell_velocity-3-modes.npz",
+        "sha256": "cf8d7a8db1ad34e4deb887e88458ef87e83572a2fbb9b528d04dedb1f3004927"
+      }
+    },
+    {
+      "name": "stored_volume_momentum-3-modes",
+      "retained_modes": 430808,
+      "discarded_eigenvalues": 68416,
+      "stop": 1,
+      "iterations": 739,
+      "residual_norm": 7.534082977726663e-10,
+      "normal_residual_norm": 1.312853108015055e-11,
+      "condition_estimate": 11.337528107428943,
+      "dual_stop": 1,
+      "dual_iterations": 677,
+      "normal_change_integrated_squared": 43.104627496796205,
+      "dual_energy_lower_bound": 43.10462749697349,
+      "relative_primal_dual_energy_gap": -4.112957895592061e-12,
+      "velocity_constraint_rms": 1.9459406106114826e-11,
+      "velocity_constraint_maximum": 1.2723355669289204e-09,
+      "normal_change_rms_over_all_free_faces": 0.06109898721022827,
+      "normal_change_rms_on_outer_faces": 0.00147840975168022,
+      "maximum_normal_change": 46.79721530822797,
+      "maximum_outer_normal_change": 0.01832186643665312,
+      "locked_all_boundaries_global_velocity_error_lower_bound": 2.335297034500492e-05,
+      "independent_quadrature_flux_error_as_velocity": 9.866974492689908e-13,
+      "independent_quadrature_moment_error_over_area_to_three_halves": 2.005235604075863e-13,
+      "independent_quadrature_cell_velocity_difference": 3.812069474179202e-13,
+      "independent_quadrature_relative_energy_difference": 7.088180414029843e-15,
+      "fields": {
+        "path": "studies/coupler_accuracy/results/native-normal-moment-lift-medium-full/stored_volume_momentum-3-modes.npz",
+        "sha256": "28c3ce2d6911c86c074594467d0554077783d5fc449e1d0c32f5295d71de4de4"
+      }
+    }
+  ],
+  "elapsed_seconds": 24.547471124998992,
+  "limitations": [
+    "An equality fit and its primal/dual energy check qualify only the chosen normal-trace space, not a continuous volume velocity, vorticity transfer or advancing flow.",
+    "Cube-wall traces and every total face flux are locked. Within-face normal variation on other outer faces is allowed; this is a diagnostic freedom, not a proposed boundary condition.",
+    "Two-mode traces use the dominant covariance directions. Three-mode traces retain all eigenvalues above sixteen machine epsilons times the face's largest eigenvalue.",
+    "The energy minimum is a minimum change relative to the specified native affine trace, and is not a velocity error against a continuum oracle.",
+    "A positive global lower bound with all boundary moments locked rules out exact cell-mean preservation for those fixed traces, irrespective of the interior normal corrections.",
+    "Large fitted normal variation must not be hidden by the small moment residual. No production solver or particle field is changed."
+  ]
+}

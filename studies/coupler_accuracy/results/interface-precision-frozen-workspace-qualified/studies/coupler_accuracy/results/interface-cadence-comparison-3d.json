@@ -1,0 +1,2877 @@
+{
+  "schema": "openonda-interface-cadence-comparison-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "common_fvm_step_indices": [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60,
+    65,
+    70,
+    75,
+    80,
+    85,
+    90,
+    95,
+    100
+  ],
+  "initial_state_excluded_from_statistics": true,
+  "reference_force_at_common_times_bitwise_equal": true,
+  "final_reference_velocity_bitwise_equal": true,
+  "fixed_configuration_fields": [
+    "source_seed_time",
+    "fvm_dt",
+    "particle_spacing",
+    "core_radius_ratio",
+    "boundary_mode",
+    "transfer_method",
+    "eta_blend_width",
+    "transfer_region_bounds",
+    "initial_vorticity_cutoff",
+    "transfer_vorticity_cutoff",
+    "transfer_amplification_cap",
+    "frozen_renewals",
+    "experimental_residual_blend",
+    "audit_pressure",
+    "pressure_history",
+    "mixed_boundary_convection",
+    "full_cells",
+    "small_cells",
+    "requested_wall_spacing",
+    "small_actual_bounds",
+    "identical_native_shared_cells",
+    "fvm_numerics",
+    "vpm_numerics"
+  ],
+  "experiments": [
+    {
+      "directory": "studies/coupler_accuracy/results/precision-twenty-step-control",
+      "exchange_dt": 0.05,
+      "fvm_substeps": 5,
+      "maximum_sweeps": 0,
+      "common_endpoint_metrics": {
+        "drag_relative_difference_rms_percent": 2.082311593509599,
+        "drag_relative_difference_maximum_percent": 2.491460167446382,
+        "fvm_velocity_rms_over_Uinf": 0.005184150109112842,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0010924534392206023,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.032711180323589294
+      },
+      "final_comparison": {
+        "coupling_step": 20,
+        "elapsed_flow_time": 1.0,
+        "physical_time": 1.5,
+        "fvm_velocity_rms_over_Uinf": 0.007686300981522006,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0020049769384090817,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.03124528777162645,
+        "full_drag_coefficient": 1.0803953399803075,
+        "hybrid_drag_coefficient": 1.0577668953201707,
+        "drag_coefficient_difference": -0.022628444660136804,
+        "particles": 28461
+      },
+      "final_drag_relative_difference_percent": -2.094459668860591,
+      "converged_intervals": 0,
+      "observed_intervals": 0,
+      "logical_sweeps": 0,
+      "capped_intervals": []
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/precision-twenty-step-twelve",
+      "exchange_dt": 0.05,
+      "fvm_substeps": 5,
+      "maximum_sweeps": 12,
+      "common_endpoint_metrics": {
+        "drag_relative_difference_rms_percent": 0.5550684422237863,
+        "drag_relative_difference_maximum_percent": 1.4813334329944488,
+        "fvm_velocity_rms_over_Uinf": 0.005144440986775758,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.001068521102285889,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.032711582763738645
+      },
+      "final_comparison": {
+        "coupling_step": 20,
+        "elapsed_flow_time": 1.0,
+        "physical_time": 1.5,
+        "fvm_velocity_rms_over_Uinf": 0.007663745315412817,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0019549316740846935,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.03124259950024201,
+        "full_drag_coefficient": 1.0803953399803075,
+        "hybrid_drag_coefficient": 1.0885607282705918,
+        "drag_coefficient_difference": 0.008165388290284348,
+        "particles": 28441
+      },
+      "final_drag_relative_difference_percent": 0.7557778146685804,
+      "converged_intervals": 20,
+      "observed_intervals": 20,
+      "logical_sweeps": 60,
+      "capped_intervals": []
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control",
+      "exchange_dt": 0.01,
+      "fvm_substeps": 1,
+      "maximum_sweeps": 0,
+      "common_endpoint_metrics": {
+        "drag_relative_difference_rms_percent": 1.5923910740413498,
+        "drag_relative_difference_maximum_percent": 3.7573339733036595,
+        "fvm_velocity_rms_over_Uinf": 0.00535018935944969,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0010384282615621481,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.03277979476531921
+      },
+      "final_comparison": {
+        "coupling_step": 100,
+        "elapsed_flow_time": 1.0,
+        "physical_time": 1.5,
+        "fvm_velocity_rms_over_Uinf": 0.008746355750841331,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0021169118940945406,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.03144908504886155,
+        "full_drag_coefficient": 1.0803953399803075,
+        "hybrid_drag_coefficient": 1.088318604349589,
+        "drag_coefficient_difference": 0.00792326436928148,
+        "particles": 25855
+      },
+      "final_drag_relative_difference_percent": 0.7333671366470257,
+      "converged_intervals": 0,
+      "observed_intervals": 0,
+      "logical_sweeps": 0,
+      "capped_intervals": []
+    },
+    {
+      "directory": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve",
+      "exchange_dt": 0.01,
+      "fvm_substeps": 1,
+      "maximum_sweeps": 12,
+      "common_endpoint_metrics": {
+        "drag_relative_difference_rms_percent": 0.48814713062980886,
+        "drag_relative_difference_maximum_percent": 0.7941501959672692,
+        "fvm_velocity_rms_over_Uinf": 0.005352259495222884,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.0010435539211084738,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.032780730675902904
+      },
+      "final_comparison": {
+        "coupling_step": 100,
+        "elapsed_flow_time": 1.0,
+        "physical_time": 1.5,
+        "fvm_velocity_rms_over_Uinf": 0.008697378445176823,
+        "fvm_near_body_velocity_rms_over_Uinf": 0.002064873106187928,
+        "vpm_sampled_velocity_rms_over_Uinf": 0.031438590057185,
+        "full_drag_coefficient": 1.0803953399803075,
+        "hybrid_drag_coefficient": 1.0875520548507687,
+        "drag_coefficient_difference": 0.007156714870461212,
+        "particles": 25899
+      },
+      "final_drag_relative_difference_percent": 0.6624163031461852,
+      "converged_intervals": 100,
+      "observed_intervals": 100,
+      "logical_sweeps": 211,
+      "capped_intervals": []
+    }
+  ],
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-verification.json",
+      "sha256": "9d6988edd4ca593eec634e9ee5aa0bcdd65ea35b8c6fc1c013714eb907f8eab0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/panel-target-precision-3d.json",
+      "sha256": "81c88465436cc8432820513563602ef8b576e88321db5da9a2df05dca3aad51a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/first-auxiliary-query.npz",
+      "sha256": "52d1f1347a42a5db719ffbe85d518db34f0df9d78755ca9faf5eccad105ae524"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/backups/fvm_000001.npz",
+      "sha256": "0ad47e7ae875a1f33bfe523723876ca0db4c700077e3795e7f81db341dd57b94"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/backups/vpm_000001.h5",
+      "sha256": "efa74fa899362ce1ff5e1b07c35ad1152c778355a72b276ccf587dfbee205ef6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/backups/vpm_000001.xdmf",
+      "sha256": "c42af70833958e51b85eb64e043f88f4e3c64cf0fee92783af9d3584ea517973"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/backups/vpm_boundary_condition_000001.npz",
+      "sha256": "bf88ff3b4aa34bcfd261f5e5ac8ba4ed875c6c36fd1ff82341b9621508871531"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/interface-iteration-3d.json",
+      "sha256": "453e9f49448f3f657a1649c0e1a49c217fa6cd7fd49384e2bf5d1248cd1bbfc1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/cube-coupled-trial.json",
+      "sha256": "175de706fa379f453b6bcd98c59a2f4cf64516876861a4e68dc90b70c5bb7cee"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "3078a2f955b01885759932818e2c6dec89a17c68c8075fc58664565db9baf7fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-control/trial/latest-comparison-fields.npz",
+      "sha256": "d8a947a11d599bb0c77c045c76b915c889dd620ea3c85c68204aa0b7e1af40d6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/panel-target-precision-3d.json",
+      "sha256": "5a66709a7710040faeaa94161f55057fe9ce8cd4dd34623373e595fadf442aa0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/first-auxiliary-query.npz",
+      "sha256": "52d1f1347a42a5db719ffbe85d518db34f0df9d78755ca9faf5eccad105ae524"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/boundary-step-000001-sweep-01.npz",
+      "sha256": "1ea6c63f9d485c4b1d0c4b64ea62075339e757c2d55c08a5bd7554d7812790d5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/backups/fvm_000001.npz",
+      "sha256": "0ad47e7ae875a1f33bfe523723876ca0db4c700077e3795e7f81db341dd57b94"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/backups/vpm_000001.h5",
+      "sha256": "26bb72719f703a3c6b4d87e4c3342f2d1b46fc8b2c1b516b5dc281a2a917531d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/backups/vpm_000001.xdmf",
+      "sha256": "c42af70833958e51b85eb64e043f88f4e3c64cf0fee92783af9d3584ea517973"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/backups/vpm_boundary_condition_000001.npz",
+      "sha256": "bf88ff3b4aa34bcfd261f5e5ac8ba4ed875c6c36fd1ff82341b9621508871531"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/interface-iteration-3d.json",
+      "sha256": "ddfd04d188c0a8706d162a5a45bd3e91a9d99349dcf0e1310dbb9af61381834f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/cube-coupled-trial.json",
+      "sha256": "05aa5695ed9c927e60e735c13f525bd6fc7ab3686c520d0fdcd1e5f13596c98f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "b63a27fe584bb795f774e944249e950000b9925ba66e0f701f89fbe8093dd264"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-one-step-replay/trial/latest-comparison-fields.npz",
+      "sha256": "d8a947a11d599bb0c77c045c76b915c889dd620ea3c85c68204aa0b7e1af40d6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/panel-target-precision-3d.json",
+      "sha256": "8146da4061534340099a5254889c82104101848a7c24e251eeaa93b1c67d9d08"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/first-auxiliary-query.npz",
+      "sha256": "52d1f1347a42a5db719ffbe85d518db34f0df9d78755ca9faf5eccad105ae524"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "fa18a324362b841b6879217b0d266c033ba86c590eda8cc2195f417bba43dbf0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/backups/vpm_000020.h5",
+      "sha256": "da4c339b260a140e6f362998223e095077666b5c98d4df90da72647259857056"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/backups/vpm_000020.xdmf",
+      "sha256": "0ff69a17ed120fecd3ac8aa98024505b2b3c359077e4575604de68e71f1a3bee"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/backups/vpm_boundary_condition_000020.npz",
+      "sha256": "555742205674d78caa1cb7fc7acce289effdcac7e5284bdb12301b41fe27aa02"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/interface-iteration-3d.json",
+      "sha256": "08878d6b30984a1a1391612a99ceffb8469dd252fe8d9537e9dad666b3da973f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/cube-coupled-trial.json",
+      "sha256": "0ccc9b4659eec386160a58333e745dcac8424e25667d66b50e75f7dfc9598910"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "9b29d503799be2f0470c9c439675a3438fd247b0e9d79cbe5e05272bae50e367"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-control/trial/latest-comparison-fields.npz",
+      "sha256": "d4bc1a3dbc03d0d99e5b821ea7784844fea39b5e338e19f84a23880c49ffe9c9"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/panel-target-precision-3d.json",
+      "sha256": "7bb48c6ebf03ada611b7e0d0c0b723ed164094717ffce078809544dc4229744d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/first-auxiliary-query.npz",
+      "sha256": "52d1f1347a42a5db719ffbe85d518db34f0df9d78755ca9faf5eccad105ae524"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000001-sweep-01.npz",
+      "sha256": "1ea6c63f9d485c4b1d0c4b64ea62075339e757c2d55c08a5bd7554d7812790d5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000001-sweep-02.npz",
+      "sha256": "ac1ced7566351361df4555886e6ee9ceb68d114d1043bd1847cd0f0b69455d2d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000001-sweep-03.npz",
+      "sha256": "782965c157529c42e0e0ca05c0321e466ee65ec77ddb7e6fec5e7a64b9ad0348"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000002-sweep-01.npz",
+      "sha256": "8d36b87cd130a85957351d65db3a21895ae207107e48cfcc007a8427e06da664"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000002-sweep-02.npz",
+      "sha256": "e63807e9c48a50df07f2cf2c955ab1f1658e4c22b0cd96fa91e75d12ceb13385"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000002-sweep-03.npz",
+      "sha256": "30d0a7abfb4534c9cb99ae0306d3adee6b639fb8c8e112ce23204fcfe32699ec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000003-sweep-01.npz",
+      "sha256": "2f794d39facfcb852ab4e849294177b4d2975e87247f868452b9d6828450fec4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000003-sweep-02.npz",
+      "sha256": "a839c32f21d74a81f1ad68f0d5651ca41617a03274cef0cc9bcc687f45d50244"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000003-sweep-03.npz",
+      "sha256": "8ee986f3ed7e9426d8b7ebbfc054b9ebaee548a8bb87616ae433a91d88169098"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000004-sweep-01.npz",
+      "sha256": "fe85c76d8ce02f209bb58f3b42edf3e81359963e4ae34ab931616c82959318ee"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000004-sweep-02.npz",
+      "sha256": "bda5da1b00ca441537f4b5d9ecf5f363f792e3a112b1538a94501a8864cac89e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000004-sweep-03.npz",
+      "sha256": "4f4f5342a134bc5602a13096e720dc858ddae7099f0c1ee79f1e7c7c93073058"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000005-sweep-01.npz",
+      "sha256": "520337437a354e76e4074bdf1376138fc34ddead9e84b64d68b26172f941043e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000005-sweep-02.npz",
+      "sha256": "4e475cd4824c42dfb47ddd948d763928245d1dfb37f8b8cdcdc081ec90a4b47e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000005-sweep-03.npz",
+      "sha256": "f5eeffe1d3decb871a09951ec51570da184fa71ea3842a0ee7c9c9438c064797"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000006-sweep-01.npz",
+      "sha256": "fbd0f82ab894c1dd3dfa849f9a01d30e5a4ecfe8ea8c0a42a8c43bc56dca1ce6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000006-sweep-02.npz",
+      "sha256": "19765701a05796aa13a4d3954b5f18be808f6f14910f37ea632a006261b5040f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000006-sweep-03.npz",
+      "sha256": "5f2e72bb48381ccee9d9e635e4e2b38162bc98a7b77e4ccacabeba6e9a20237e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000007-sweep-01.npz",
+      "sha256": "693c375dfb5c24b17a5e0dfe8d47eb0d553d8c912d307f0ea4b67a4de0768908"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000007-sweep-02.npz",
+      "sha256": "86ebfbcebb8ec8f77042ef4681a6379483871b8e7e3f9384e4a0fab20b1ff9a9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000007-sweep-03.npz",
+      "sha256": "30ccc13c445d33db4680cbd2b603b3950715b1195ccb49950e45be31b8abe9bf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000008-sweep-01.npz",
+      "sha256": "7fa8f8ee0480f302f98f1a8dcfd703ec91372034846252247fa8aed86fa29386"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000008-sweep-02.npz",
+      "sha256": "5596c16a5b40f482ff1775f2aaee137ca27eb66e65a1b93414ba068dd07371b3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000008-sweep-03.npz",
+      "sha256": "34ef4d35bba34e698e57f3786a500736b90c3ef62a88bc2c62cebcdd2dc77c7d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000009-sweep-01.npz",
+      "sha256": "ecfca10193320de78246ae7e2d3c79b2e7bf39307d1c4f6d6799f5e47367cbb3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000009-sweep-02.npz",
+      "sha256": "37aa82e83b5d60c0b4cc82737634a13d385a5dd5cef92fcbbdc844bbe230471d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000009-sweep-03.npz",
+      "sha256": "287c33f3fc8f09c7b8cbf7828e8c6912e6b9105a8462537e6bf1b1436dbe7c49"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000010-sweep-01.npz",
+      "sha256": "f0074588560a9a1a9c5e3512e0cf9c57cafa1ebce2fa2dd9b5d7a61a9a66ed12"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000010-sweep-02.npz",
+      "sha256": "ea2bbe803cc4f05d5bda00c5d650bd1ca91ccb73e52bb5811ee32430c6fdac2e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000010-sweep-03.npz",
+      "sha256": "0b535517d701223d851efc3376d4536b4ca09b322fd4f78d173dfde46945e01e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000011-sweep-01.npz",
+      "sha256": "9ea471fa0be799c941c3c9f3e71685231cf2b8709b00339c4533fdd06ae5a965"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000011-sweep-02.npz",
+      "sha256": "7684e95f62557f625fd1cc22c7819017cc758248aa6ea81b3afb538bb0952ff2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000011-sweep-03.npz",
+      "sha256": "3a45d6b9b955e95bcab9c67761359723c514f0e7a7cbac04cbe7d15c9d097ec0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000012-sweep-01.npz",
+      "sha256": "e711d70a2e44a156655de4c7cef19088ed18905c4a89da02f3162020ad103bef"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000012-sweep-02.npz",
+      "sha256": "bc9c4761815e47ce143270ffbebed68729365967aa8aa7a18d0da97e5e91c953"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000012-sweep-03.npz",
+      "sha256": "51c3919631853bc5d7cb716e7e43d097c75372c5ef33e8210ce4e93a74f99305"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000013-sweep-01.npz",
+      "sha256": "9ffbd9b0a9346bb7263d1a716288562e225178ffc7b253e8f2802418aaf372d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000013-sweep-02.npz",
+      "sha256": "10edacd4bb14317def70d64bdd6148f82c628ca47a1600eb4ffd3323d39c7c80"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000013-sweep-03.npz",
+      "sha256": "c012df08656e09752c60727530dbd79e6f68ea006ffa26011277355584c16eb1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000014-sweep-01.npz",
+      "sha256": "d577487fa891a68961498393e21262a59a63d618e45d084822a1042661d8251a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000014-sweep-02.npz",
+      "sha256": "a9201e799e9993b405d48d926f0a0b7023ec56ee39080bb307897ad9125dc741"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000014-sweep-03.npz",
+      "sha256": "3aa5ef6fd59343fa8c8c5d434127e04a3cb9254c849f40c2b3e46f9bc3b68aa3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000015-sweep-01.npz",
+      "sha256": "113eef943b155bcfd770e5e26ba9dfefdbe213e7da0cf50a87d56126cf3621e3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000015-sweep-02.npz",
+      "sha256": "1cb0b995aa812bd82f8967b1e5a16585db963901bbbaee2f1452dfcd3682ef76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000015-sweep-03.npz",
+      "sha256": "053108d6bcbfea306d29558ca890aebb785f1957c2e6928bf4b7bd2190520b4f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000016-sweep-01.npz",
+      "sha256": "a76634c0621606dcc1b3dd6e8341be16909459792a2a1593ae61f3a7fcab9d6c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000016-sweep-02.npz",
+      "sha256": "1753ec496b6afd0af941633a4978d4878401f4fd69058b2761fcb730605c4878"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000016-sweep-03.npz",
+      "sha256": "a9a69ad771cac5378a8764adabecfd5f73aa336aa029e9bcc7f4599c5457fccd"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000017-sweep-01.npz",
+      "sha256": "f329ea0e9caace70656ed80d037964fee027f7f46cdd6f1e5d1c8dbcedff2cf4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000017-sweep-02.npz",
+      "sha256": "a2dba3e7db272a2f4023bb02c4bf4450a7ada4ffe0a2c097079c9e1658d9a054"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000017-sweep-03.npz",
+      "sha256": "bda1706380c208e550fcdc38c7ce36f20755259978a0cf17f97d64e65225a1b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000018-sweep-01.npz",
+      "sha256": "15f181dc7c460bc2a9820a9286ca253b01b76683de379bfa95c47c6e9fe656d1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000018-sweep-02.npz",
+      "sha256": "113369f511d9d868fcda55822f854be4fdd1deb9b8048b27f2a8737607682695"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000018-sweep-03.npz",
+      "sha256": "17a50bd301d488eebb20e9f1a8a0c7ec6aa66f8377cd155579de03b39da52f80"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000019-sweep-01.npz",
+      "sha256": "d42fc9cc974855e70ae73cf8fce03848de7d0d278cdb2e1d4a39549a1cfc9394"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000019-sweep-02.npz",
+      "sha256": "4ffc3a0c968dbc97077dcc88f71d163159099481dc9abcf7e413dd4337ab12ac"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000019-sweep-03.npz",
+      "sha256": "65bccc594ff9bccb97746788804562fc89cfb51a4c27a94b3ab401fc6816f122"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000020-sweep-01.npz",
+      "sha256": "c70352391ffd3b465e16ae96ffc0e2c34791061dd6f13af1cb16052d0aa8c8f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000020-sweep-02.npz",
+      "sha256": "16d3bdc2f299c6ae6a3f2b7c481771164181e915b9fb635ee089d2aabcbd63be"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/boundary-step-000020-sweep-03.npz",
+      "sha256": "fd74f5c8dae380d262c3d4330d93d1ccdd0f0c56c6ce21255e45255fd86a3771"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/backups/fvm_000020.npz",
+      "sha256": "d7507254c93de5471f6e807acd781c4608b45572764fc6dd894ce2246e1c7b65"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/backups/vpm_000020.h5",
+      "sha256": "7930e9c9722ac1fa5a2fcdc9e2aed0aab0356346d854d073059999fff091add6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/backups/vpm_000020.xdmf",
+      "sha256": "48d6becba02c4a40dc43ade457e20bbef4b5b8c00705014918898d565fe8c49a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/backups/vpm_boundary_condition_000020.npz",
+      "sha256": "fc8b433a7b6019871de9b0403f56458c631d744b9625651eb7860b48e05daa7b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/interface-iteration-3d.json",
+      "sha256": "7e626336cc1ecca2cb96409f2e55205defb6d8aa22ff9473fbd253f928050d79"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/cube-coupled-trial.json",
+      "sha256": "484fd31df6ac864a939d8561a0d0785ad574ccf869c2524562ed089868960807"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "80d135fca3b6b1d45d8d21b7c417c1cb2c91b10983b841a439368e8f8c68be9f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/precision-twenty-step-twelve/trial/latest-comparison-fields.npz",
+      "sha256": "5f8ee088e496b7f493dabf3ac0dd5d89de4eddffac8c909bb47f9a5338f5559f"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_interface_iteration_3d.py",
+      "sha256": "7370daf8819e0bfaf77e7b4a551e0aee918a3de63c492b234370ba7bdea9881c"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_face_trials_3d.py",
+      "sha256": "c1f4b4ed1b6cf9ed256179a86c503ce4690c73c550095f94eb627210326c7b89"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-verification.json",
+      "sha256": "07f377f47d02f09b3e43ab1ac5bef5840fadf90a52c170d672ea5ca4d9efb4bb"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/interface-iteration-3d.json",
+      "sha256": "3a416fcea7c0924c385cd74e2e1800b2ffcea95a9925f96efe1f511210095671"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/panel-target-precision-3d.json",
+      "sha256": "926f482c81e3d9da03cc5cba08af250b82b612ee9e28dc71b2bff3c441588203"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/cube-coupled-trial.json",
+      "sha256": "f886ed24aee8136d4330d0730988539e3d3ecfdcb4d582fcd62fee194902359f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/interface-cadence-3d.json",
+      "sha256": "faab217ecfbd60cae84e1394dd85220768beac36b5f6eeb7281093c2d7dcc760"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/panel-target-precision-3d.json",
+      "sha256": "926f482c81e3d9da03cc5cba08af250b82b612ee9e28dc71b2bff3c441588203"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/first-auxiliary-query.npz",
+      "sha256": "7880f6c32430a98e16f5ad9060302d09fe2d9c58c5d6150456f1590963f252e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/backups/fvm_000001.npz",
+      "sha256": "46771b04ca44c3bcf89d0414876a49937c9c159b1ed48b14a1f55543900a648d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/backups/vpm_000001.h5",
+      "sha256": "4277e9629340f8fddec948fb14705b02424551b4612f4fd632294e1f378f4d66"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/backups/vpm_000001.xdmf",
+      "sha256": "86141b1f9da8af2f75c9327b9cd094a9064ac8e7d49048449a992c88f9e2dc72"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/backups/vpm_boundary_condition_000001.npz",
+      "sha256": "95c9675f138e9a82f749c373372ffebed7397d5b7592ae099dee1618549c5120"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/interface-iteration-3d.json",
+      "sha256": "3a416fcea7c0924c385cd74e2e1800b2ffcea95a9925f96efe1f511210095671"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/cube-coupled-trial.json",
+      "sha256": "f886ed24aee8136d4330d0730988539e3d3ecfdcb4d582fcd62fee194902359f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "6b3248012c2fb7fac4c74f4bf6f276f940deaed86a73a09d359da205e4c4d45a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-control/trial/latest-comparison-fields.npz",
+      "sha256": "43d590e983298a813e882642f692c5bb08220c60b12a525e60dc13734c60e3b5"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/interface-iteration-3d.json",
+      "sha256": "07d8844f78f964d071b481a36a2bd64ba4053fde662874b6ebeda695a3924eca"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/panel-target-precision-3d.json",
+      "sha256": "c52d034af34a7e6c61939005a18172dba66c71a52327e482bebff8ba3eaed4a7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/cube-coupled-trial.json",
+      "sha256": "d4af893ff10c22b1cd60e75dc4dc2bc562dc348de623a039b59cafc51ac6226e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/interface-cadence-3d.json",
+      "sha256": "e256923e65d82b4d5ffee5d371b1976b81c8930532e3eff68fe5d6c2a8113415"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/panel-target-precision-3d.json",
+      "sha256": "c52d034af34a7e6c61939005a18172dba66c71a52327e482bebff8ba3eaed4a7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/first-auxiliary-query.npz",
+      "sha256": "7880f6c32430a98e16f5ad9060302d09fe2d9c58c5d6150456f1590963f252e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/boundary-step-000001-sweep-01.npz",
+      "sha256": "cb70cfe71d196b91545dcdfd5f9705b1dacee8f266a9175e30e0e80e0168c6cf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/backups/fvm_000001.npz",
+      "sha256": "46771b04ca44c3bcf89d0414876a49937c9c159b1ed48b14a1f55543900a648d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/backups/vpm_000001.h5",
+      "sha256": "f934f18f9039d33ea7df5da269a88d903f5b4eeeffcca1410e9c8f52a251b336"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/backups/vpm_000001.xdmf",
+      "sha256": "86141b1f9da8af2f75c9327b9cd094a9064ac8e7d49048449a992c88f9e2dc72"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/backups/vpm_boundary_condition_000001.npz",
+      "sha256": "95c9675f138e9a82f749c373372ffebed7397d5b7592ae099dee1618549c5120"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/interface-iteration-3d.json",
+      "sha256": "07d8844f78f964d071b481a36a2bd64ba4053fde662874b6ebeda695a3924eca"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/cube-coupled-trial.json",
+      "sha256": "d4af893ff10c22b1cd60e75dc4dc2bc562dc348de623a039b59cafc51ac6226e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "6f52714352a42bbe67c6521c02b7dc997034c1b50b5040149b402daf689a0370"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/trial/latest-comparison-fields.npz",
+      "sha256": "43d590e983298a813e882642f692c5bb08220c60b12a525e60dc13734c60e3b5"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/interface-iteration-3d.json",
+      "sha256": "c4ff9632eb0bf6b5a95aa7f72b27a3dde6e37cd630ce78b7c67f98d1b3d2ef84"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/panel-target-precision-3d.json",
+      "sha256": "d7ad74b48d70f2fce9991ddf1aee259e9b6bd5a3f88f65946d58e23935ea93e5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/cube-coupled-trial.json",
+      "sha256": "28ba65c8e4463e42257d4108980735bbb516bb861c1fdf68a01e9cf7875a26b9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/interface-cadence-3d.json",
+      "sha256": "6528302dad3cdd96f49faff247ee3894efdd0957df0e4d1e749386c84a4be254"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/panel-target-precision-3d.json",
+      "sha256": "d7ad74b48d70f2fce9991ddf1aee259e9b6bd5a3f88f65946d58e23935ea93e5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/first-auxiliary-query.npz",
+      "sha256": "7880f6c32430a98e16f5ad9060302d09fe2d9c58c5d6150456f1590963f252e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/backups/fvm_000100.npz",
+      "sha256": "1632828779bd096ac0aa7e09945f552ecfdda970b3639df663f90867596e4fe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/backups/vpm_000100.h5",
+      "sha256": "1831cbc9e58678f81c5b26b1b89702443f57ed2bea72dd22796801ef91e15a88"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/backups/vpm_000100.xdmf",
+      "sha256": "e74bc4c7f7c9a2e4b41c8364d9d542351ad4a91bd7b60278ec383f0036e0152c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/backups/vpm_boundary_condition_000100.npz",
+      "sha256": "cea57e3040ff0d51b0df68485c432d9858812eb8bb625715c8be481acc12ad27"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/interface-iteration-3d.json",
+      "sha256": "c4ff9632eb0bf6b5a95aa7f72b27a3dde6e37cd630ce78b7c67f98d1b3d2ef84"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/cube-coupled-trial.json",
+      "sha256": "28ba65c8e4463e42257d4108980735bbb516bb861c1fdf68a01e9cf7875a26b9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "3510ad6a2d9badd9c76dde4456ee34d6fb27eaba5f35a5cd5f71e0c54081bb1f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-control/trial/latest-comparison-fields.npz",
+      "sha256": "7b6fcc1b370d1724f65bf3a9c1db972ed0b02faebedb9da350cbcf0f1c7269ce"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_cadence_3d.py",
+      "sha256": "5ef5173a9ccf528fa9cca36ad5dbeae580e6f68d4863a0e72811c718c3f69e6e"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/interface-iteration-3d.json",
+      "sha256": "f50f215669cacd8cc3c6521d07694c2dd4bb0721c12654eee0c279a99d969479"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/panel-target-precision-3d.json",
+      "sha256": "f50bf3578a6c9afe35dad23cee1e9500f6cf424bbc579797b59d5ca72907e8a0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/cube-coupled-trial.json",
+      "sha256": "f1dcc38b7e8722b4e49c54145b02d1e1c5ffc1aea63a1d554b2f2b17ee0d4d03"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/interface-cadence-3d.json",
+      "sha256": "d6921462b56f5badbe8b70ddc6de7d066d66c40f7bd3dcdabc00c582bd48c0e7"
+    },
+    {
+      "path": "frozen-workspace.json",
+      "sha256": "2e0c619ed98572c4cef6d555bcf6ac0200e1540096bdca6d9f1ccf4643d1496b"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_precision_3d.py",
+      "sha256": "213b879a4d9e9ea651be0a4ce025cb36e006b7f5c46d5b139015dd2a49f419fc"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/induced_velocity.py",
+      "sha256": "7b33edccceb807ebc54097da7b23935ec7a7725cef8bd35f6f31056e3461924e"
+    },
+    {
+      "path": "source/solvers/vpm/boundary_elements/panels/kernels/source_velocity.py",
+      "sha256": "39d2353effe0586f0dfd4781a83a5c49adeb9f6dbd4fe73a91457a1c2bb590e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-panel-derivative-precision-coarse-qualified/panel-derivative-precision-3d.json",
+      "sha256": "74f1ad07eac43a1505260c3aa55a9dcab3228bb5f7d345b8e3ab8ad795c392db"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/panel-target-precision-3d.json",
+      "sha256": "f50bf3578a6c9afe35dad23cee1e9500f6cf424bbc579797b59d5ca72907e8a0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/first-auxiliary-query.npz",
+      "sha256": "7880f6c32430a98e16f5ad9060302d09fe2d9c58c5d6150456f1590963f252e0"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/convection.py",
+      "sha256": "229c5c163672f8d3057298b7125780d8c19d33735356cc4481b68c59dea2c723"
+    },
+    {
+      "path": "source/solvers/fvm/assemble/momentum.py",
+      "sha256": "d8ac3d2050fad993589d07b7051a3fadc1f55e46b424658bd21be36ec6c344f0"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/fvm/coupling/coupler_interface.py",
+      "sha256": "9aa3f2a00775993ac2c5e1ed1930d937a0c261e434b8b567510cf8f1cde6e322"
+    },
+    {
+      "path": "source/solvers/fvm/fields/mixed_velocity_boundary.py",
+      "sha256": "3a487f3162da0cc85ca60bdc264416a4b486ab21c1239d6bafd722759e000f25"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    },
+    {
+      "path": "source/solvers/vpm/physics/pressure.py",
+      "sha256": "69179df90d1a93355e25649767f724e718da2e7a8905562573e148db416b3328"
+    },
+    {
+      "path": "source/solvers/vpm/physics/diffusion/grid.py",
+      "sha256": "976d7e74eb58d7573fd6ee5fe1109c15f5a6453e9099c89a44b692a1d70340fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_residual_blend.py",
+      "sha256": "c0d3d25dbaaddb7f2c1c66bc47391ec4c1f19e5d22d351d27394c454b40dabe6"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_mixed_convection.py",
+      "sha256": "dc99cb8650d4a76b7a0082bb9b6a643eb3704692da81c9b0517e089bc253a9e6"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_boundary_oracle.py",
+      "sha256": "a934451af282743fd3709172117cfa3e634b10d4eb37e82978b2e3d90f6c81d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/cube-boundary-oracle.json",
+      "sha256": "688c4f06830976a02dc37368d7888b70a9da318a626ac185943639b07937857f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/initial-cell-fields.npz",
+      "sha256": "5ef6264c6c3ac701c0ab4e7a77fac8ea2f037e112e4e833176ddd98be63e2905"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/full-native-mesh.npz",
+      "sha256": "8b3ac50ef5acd36db5eba2d0d9e1daf0ee5c87eaf8420b2b9ac06bcaff1d8a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cube-3d-medium-laminar-oracle/small-native-mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000001-sweep-01.npz",
+      "sha256": "cb70cfe71d196b91545dcdfd5f9705b1dacee8f266a9175e30e0e80e0168c6cf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000001-sweep-02.npz",
+      "sha256": "d1950800ae36da15874d6db2dd1d0d02fe32a0cda6fcd64f3f92532d947c9511"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000002-sweep-01.npz",
+      "sha256": "6655371370c56911278e0ae1b6a8b21312f6208b7d814750481776b14e5bea1e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000002-sweep-02.npz",
+      "sha256": "4cb7b186fea08de07c12a3ba2cb5a7d25b2cb3fd66078b071a97926d6c2f572f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000003-sweep-01.npz",
+      "sha256": "34c4d97cc5f26130dad564398fa628178d5ccda9098153f7b1a7b88ddc84ae75"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000003-sweep-02.npz",
+      "sha256": "d835465362421a813fdb1557e24cd1a5025e3991a4e2eec8846f16bc9f7eafe3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000004-sweep-01.npz",
+      "sha256": "abfe7d50cd50a1d339865fad74445d2744cbbff94076e669e1dcbc6cafafd695"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000004-sweep-02.npz",
+      "sha256": "2701c590256d72215d902f9a927fb636ee07cc875b40b6ee25e8bb026270a71e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000005-sweep-01.npz",
+      "sha256": "eb224b540b4d2c4f9148ff2a79f43d13ce8dff8f1f672f83135a24d46de6e5e4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000005-sweep-02.npz",
+      "sha256": "9379c81e980e8cc5707ac0268a8e9e4f9e22041a11fc77b856953b5e9e12a2e5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000006-sweep-01.npz",
+      "sha256": "cc85cb6a0f670b531049fe43b5205e98a0ad64ad603408740a5a0e248decb326"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000006-sweep-02.npz",
+      "sha256": "545e06795826b6d8c675029159bbd50b0c335ea6d8a86f90fb80f8ec5ae0e7a7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000007-sweep-01.npz",
+      "sha256": "74c0be0cbe676df4aadd7db7f30042631acca3e41d0cd2aaa0a6dff8f137770f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000007-sweep-02.npz",
+      "sha256": "46bf20e1fcfa9afe27d8007826ecc9fc304e64bf4fbfb43d0acfb2e24c7607e3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000008-sweep-01.npz",
+      "sha256": "606a52da1a2aff1cea4f775306dc7709673ba685604069fa9c7c7b3453d54635"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000008-sweep-02.npz",
+      "sha256": "6dbc91a36cda2bbbae78a53bcff128aeb818914485eff36ade4d2599fdac2f07"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000008-sweep-03.npz",
+      "sha256": "34bad2163cd767758f07d27250a39c796a08a10445119fedaf9553c8b129d7fb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000009-sweep-01.npz",
+      "sha256": "bcb9ea81f9640b9895ba9f2f6a333b8c95a24cd87e46f06b721ccbb32e453224"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000009-sweep-02.npz",
+      "sha256": "0eee132776243a2ac07a52cbfbaa3d5dd7183674e0b1725824862504f86e5c71"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000010-sweep-01.npz",
+      "sha256": "b9dc54f6ea6214fdd8c5358756ea23bb7d1a272043d8d9501c889d7d5d98b06e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000010-sweep-02.npz",
+      "sha256": "a371024c776d46870df445ebff408507086528c5b016cc23ae6e1a8b39659298"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000011-sweep-01.npz",
+      "sha256": "03929489688d1a7044248c813d7afe4d69e51179d33b3c6e20fe81f6a811d71e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000011-sweep-02.npz",
+      "sha256": "4d8fb7f4a6eb7636600fef41dec3e91ca62d663b136de55951b876d170389d30"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000012-sweep-01.npz",
+      "sha256": "d5e4341647a3bad7f9753ff7393b16d1ccf633200d112cd9920e7d2c48b15d32"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000012-sweep-02.npz",
+      "sha256": "1bd6b5e2034e95397be025e6c3c8a5c98cbdea207906535735a9ccc8934aefb6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000013-sweep-01.npz",
+      "sha256": "d3d912b96f13c80069a140410f33f95551bd57d5a34355e6e97a6b0d9fb340d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000013-sweep-02.npz",
+      "sha256": "d9c8902f078cf23831239799534e0560479448eb5ce07ac0965e2864288eff9d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000014-sweep-01.npz",
+      "sha256": "b337876c2f9816acaf72eef3fe19cd11bd8a13199ca038b1c632e6e85c86f894"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000014-sweep-02.npz",
+      "sha256": "56067805c0e668fbc5e5a225961b1baf700690f3a16f86eeb262966ebd6f8e38"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000015-sweep-01.npz",
+      "sha256": "ba6041f3b618640fa5a4566cdd113c643a1e7f6e5092b84a51328c1f4b8e9bc6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000015-sweep-02.npz",
+      "sha256": "e84756b3170772e2b00178b6d91b642e02021be7def7f29ad8e87ade8965295d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000015-sweep-03.npz",
+      "sha256": "7d552e1fae1458e5f2758baa7c171d9c970a203635678939505570ccfbbe38f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000016-sweep-01.npz",
+      "sha256": "fc4301e4abdaaeb686cfbf803630e987cdb13f71fb8b792ca54b6b4688359011"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000016-sweep-02.npz",
+      "sha256": "d6221a1a6675bb37cfe0258875fd8a48afb0ffbff9c1b93732dfcebe92079b7a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000017-sweep-01.npz",
+      "sha256": "587bbfa62e1868c6af51fc8dfedbfb33524c9cc9157ae3b6a75c63131803c464"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000017-sweep-02.npz",
+      "sha256": "66717cdfbca366e0781761ce74887d2e0b4f4590f87ee2415de273775c06ff6c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000018-sweep-01.npz",
+      "sha256": "7442a6bd82f517279010fe3fdab42c2497642a3b2523d1355dd6dd4eed5ee555"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000018-sweep-02.npz",
+      "sha256": "8dfe4c04e5b961f4b5fdae1a2914cbcc8ff73fa0753ba6d000144ad8110b7d6f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000018-sweep-03.npz",
+      "sha256": "f9c9c731af724a49f5ccae2092dfe35a89abf013c3736cb769a0222894bad5b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000019-sweep-01.npz",
+      "sha256": "96872d763d3ff07cd80be31d9c2eb2496f1463124a51bdd187e773f344dd7295"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000019-sweep-02.npz",
+      "sha256": "be9bcec605fba396562c9e617f3c3bff79cc6c0049eec9a3dcfd49713e2d2adb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000019-sweep-03.npz",
+      "sha256": "6430e3718cd574a965db784f4db02a710a98cd53730fe02998cd029c86740a04"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000020-sweep-01.npz",
+      "sha256": "e321286a62b2a904b28bb7183053c4e6c69c61d58dd9578a38828d8c8dead8e9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000020-sweep-02.npz",
+      "sha256": "4084338f90d8a986906f34ac3860215b6795f45380f06c230b3698a6950c8030"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000021-sweep-01.npz",
+      "sha256": "8102b64697e76a9b06d6b5745101952b2d38d69b03a26b65594a3cab59ca253b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000021-sweep-02.npz",
+      "sha256": "76c774fe1bac034e4252a86ab53a5e195cb269816d5f7133afb24edcd0d01977"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000021-sweep-03.npz",
+      "sha256": "d76b62e03085d1819548fb2feda20e641368afd61714399d45e8d3d1fa8a0f1d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000022-sweep-01.npz",
+      "sha256": "0b8ea64d962f583dbc8a1a3c3bed8d74f35640f232cf56daa4e214122d98db39"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000022-sweep-02.npz",
+      "sha256": "dfd4d92793cc83c2acffd3af9739714671c1f808e451d0d1bb036c275789d204"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000023-sweep-01.npz",
+      "sha256": "5cb9efe0cd11b5636f75f18ab097637bafa4c27a93706c079e463eb2542a3eaf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000023-sweep-02.npz",
+      "sha256": "0854c017e3e70bd6dd91b7aef7c787d1acda33c9c19dfe99fbfb2734d7e66cf0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000024-sweep-01.npz",
+      "sha256": "e284366518e5c199dcb1294d9003adecce7fb27845fa6b0d6796c4c99bcf6dd6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000024-sweep-02.npz",
+      "sha256": "99e1c2725f5815682905ce72149fba29413ef8e7f52d020f6e9375e238245829"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000025-sweep-01.npz",
+      "sha256": "47352a3fee16819d711142525363d31f53d2dcc9e3631870a063ecd91ffa7b20"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000025-sweep-02.npz",
+      "sha256": "3ba550cc688b734255848ca6be6c605f15dd212df46534c8ab38e3baee24d483"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000026-sweep-01.npz",
+      "sha256": "3b51c33df73d3986be65bd7a030a0e0fe6c2b2cd010862f7836224025b7dea66"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000026-sweep-02.npz",
+      "sha256": "79a545d63ddb2c3d0b0ee0f124d170f26dabb10497defcb9487e5d9f6d47217f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000027-sweep-01.npz",
+      "sha256": "df974e4b0b154433753540f66a6b4a4f9fa645939d75ef8c79e6083ac7e13f40"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000027-sweep-02.npz",
+      "sha256": "cfe018331c01ccbdacaaa8e3c27ea9082f08e627ec4e986a339932c2138b41da"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000028-sweep-01.npz",
+      "sha256": "d916d18a773ea86b6eb82ae4055f80003bebb0b917afc2064714d60403d445f5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000028-sweep-02.npz",
+      "sha256": "77ec63368ea2f60bc3c38b643899692d01feea1d83b75d2f3f73f9fd3f2b1919"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000029-sweep-01.npz",
+      "sha256": "da4dd9ae44a1bd436c1486965e08fc6241ed1aa1a071dcf2babe48c5eb8db126"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000029-sweep-02.npz",
+      "sha256": "08c549cf9dcc2786c36a0c95b0146546541588f867ce81ac679812dfc97629f4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000029-sweep-03.npz",
+      "sha256": "d3e87c1e0fbd1a593655ec31aa1b2083f5e5df42981d32712c02df22a5c6ce4f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000030-sweep-01.npz",
+      "sha256": "0a19275957a602afb93ee72821f9b8268f7545811e4e6a6e30f4b67b52039b0f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000030-sweep-02.npz",
+      "sha256": "d78a24a9db72691611040212baa0049d1180153f95f7003f2bcff333157205c0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000030-sweep-03.npz",
+      "sha256": "3f27b94f8977cb7d84a219f73e6f4992d3770d1d2143969e4b1485889aa12b40"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000031-sweep-01.npz",
+      "sha256": "d9da8ee02a17a43e4271ae1a2a29e80bc8e8a86ad001bc558d1e549984651625"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000031-sweep-02.npz",
+      "sha256": "602db8dcbd30e4b34f36c76b5221c6f5b32d53ad33e2326b6ee4be3b13ba9d25"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000032-sweep-01.npz",
+      "sha256": "0edae4d09eae2f30b0db59df4e34daab022abedb38d6e3baacc93540f90999b4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000032-sweep-02.npz",
+      "sha256": "dfb2fc19b1fbef2e8eb0fe485b8f4052aea1bab57f80cb18ff80b7a5484de5a3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000033-sweep-01.npz",
+      "sha256": "fbf2598ed4b169ddc6741860b0710c05be16b15785dc18fda21d5aa428940b65"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000033-sweep-02.npz",
+      "sha256": "c9e62bb67b5c318e2fd9af574877b84571f7c4541e07a3bba54b7bb64c505ff9"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000034-sweep-01.npz",
+      "sha256": "ac7dabb3c0774c4a4224ec2b7a694bb5abcc5706f34fdaea085ea0d2e5b359fb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000034-sweep-02.npz",
+      "sha256": "cc122d7d79032606c5b65f71e888358c7c31ee1cb74f72da5682ffbeab8ee74b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000035-sweep-01.npz",
+      "sha256": "eef13aa5013541d2a081aabadfb50c7e4c22ea2a0e5769296e6281d7a8680267"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000035-sweep-02.npz",
+      "sha256": "6cfedd22287cf2bf599e75f27c6b2f49243e1d22ccd31299a8fae7dc10358a2e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000036-sweep-01.npz",
+      "sha256": "9b6d5d11bda8914bf1f65a301906a2ebf5ebcc3274565712e105c803e0c1f830"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000036-sweep-02.npz",
+      "sha256": "b88920cc31dd7718e80d9fedf6fc9c39e5434b9b7d26b5e6d729b1910116e247"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000037-sweep-01.npz",
+      "sha256": "c41241d6e3c9b684dd20bf32d48e5ded4bf2b7a53c3053d08322114330a931b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000037-sweep-02.npz",
+      "sha256": "e3854fe31f56d9ffe36262011581e8bb85f807099f68396c0fec4db36a3dcc1b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000038-sweep-01.npz",
+      "sha256": "1f1f15f7c4678574cec01ecd8fe4fadd3b7dba1c3510e586c3149d20cddee032"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000038-sweep-02.npz",
+      "sha256": "2000a957e50f288658a7affe72b90cb7ce083a710afe290919b85799bb013547"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000039-sweep-01.npz",
+      "sha256": "2a8ce9411c4f8e1314e9c62a6ca1a78df42046f4d7643b9106cf610aab5b253b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000039-sweep-02.npz",
+      "sha256": "c89fbd180fcd14aced82f561d37b5bb3766c03b9070ae55a66d5ae1d71120f09"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000040-sweep-01.npz",
+      "sha256": "ccfb842abedddc598a040ac04e7203947470ad127a34c6462e7728396d6ec115"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000040-sweep-02.npz",
+      "sha256": "b99254421d5d70d1450a02b5286e43200879e20f245cc367bc8fa6118b31e555"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000041-sweep-01.npz",
+      "sha256": "501574c3d2c9f2e4786225e7c26b70da25a73722e7606a72e24f71814ac84767"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000041-sweep-02.npz",
+      "sha256": "235ddcd66d6394d7376f33e524204db3ee076b5efeb483e7b58ec31643be9398"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000042-sweep-01.npz",
+      "sha256": "179837516f93cd857919208822ccd9d66344cd7f0d69d95e5e9b87ed51ec4dad"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000042-sweep-02.npz",
+      "sha256": "3e32367038a122d2a6774c7ecb53d14cfdcb81d1b9e79bf0039d5c9c2bbc7a37"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000043-sweep-01.npz",
+      "sha256": "3fcbeecdb15b8919e9b1172b85d2fd4ccbd87019c1c45aec82f310f62b09a83c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000043-sweep-02.npz",
+      "sha256": "6585992a669724c87f586e2866694cf1649f999787486a3c03e9cc1d929abe78"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000044-sweep-01.npz",
+      "sha256": "fc1d450020073bcc0b65e9aaeeb3038253adcfd869cca7d4ebaa2b55a1311cb0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000044-sweep-02.npz",
+      "sha256": "f18b48d2c90fd36805b028a23cf5b6536c5e03db49ef7f4f86518321c4259a49"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000045-sweep-01.npz",
+      "sha256": "dbcb2caffb19fe97ed484ed4890d8b1a215f22025852a034a1b54e695b6644fb"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000045-sweep-02.npz",
+      "sha256": "da16a4261eb4dbf05731c631370cd97eda599daa4b271332a9a3ac678e2496d0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000046-sweep-01.npz",
+      "sha256": "470973b0263954ed7538ceffcc0dc85c22d192c2b929383719bd6df30b183c48"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000046-sweep-02.npz",
+      "sha256": "3961c564c8429f48ac3e58d88391b36df0e1891b8468bd3fe7ef9f9a3c1bb3f1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000047-sweep-01.npz",
+      "sha256": "9761556705feeadf789235dd3ef8e56245e6df93671bc6a8e218ab5b9077339e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000047-sweep-02.npz",
+      "sha256": "286f2f4ee6a0f9a7c41adb8ff5de07e743e8319b7f2c18d8e762dd6cbab784d3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000048-sweep-01.npz",
+      "sha256": "44a75e45ae2d08f32ef0d7acf9df34d410197e183f3da99d43d4ca9dd395e83a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000048-sweep-02.npz",
+      "sha256": "b809e285efcb19afe7a3beef3379fbb905a499bbe84bac9b2de09add75f1b2fa"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000049-sweep-01.npz",
+      "sha256": "44c2fbacb355bcaec40fef4157a89347078f9caa2b88de355ce914ba7d911285"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000049-sweep-02.npz",
+      "sha256": "3a914ffc3bce34c2d09476f710481fcb090180c905e3a7f6fcee5e857e5f5fec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000050-sweep-01.npz",
+      "sha256": "f426ae2e94b8977b9cc16233303dc887c6743740a0ea610f7aba7dcef381607c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000050-sweep-02.npz",
+      "sha256": "654a78fe991c4f9859362fd4802af2c5210c67233124ca1f25272f46387a8d32"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000051-sweep-01.npz",
+      "sha256": "c38eb746424bf251e1cca61eadb81d8dd3a73b2c90446f18aefb5e215d5a4593"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000051-sweep-02.npz",
+      "sha256": "307b706d9f9087ee7d3b77da72df5eb990bb542a41265482fc26872b242531b2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000052-sweep-01.npz",
+      "sha256": "e5e29b4a997281c7d4ff6cdcdf49d7bf2841151f8923a9280322836da446c881"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000052-sweep-02.npz",
+      "sha256": "1f05a219e4772fc7314c84c130f4119a1b760d19c82ef3ba5382b1b54faa88e1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000053-sweep-01.npz",
+      "sha256": "28e7061d5649148be18b24db8b5011fefa26617ddd5e7565dadfffb80b9d5e62"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000053-sweep-02.npz",
+      "sha256": "d2529fa949dfae3934083fe1f5862891090c9f375bab5da9e8bae55d79b6185f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000054-sweep-01.npz",
+      "sha256": "ce53d2f0619e43fa5b5bd130dde06555f7397acedce3afecf06be6665acd544d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000054-sweep-02.npz",
+      "sha256": "03cb03cd6f6997d6d1f31d432f75f13aa948a47bdb144c0f44f17dac8baaae4b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000055-sweep-01.npz",
+      "sha256": "24009ae1f4918dcb6f51e1b9edb0b9299a13f25571dd5447bae3a91d3f9bc5ca"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000055-sweep-02.npz",
+      "sha256": "3dfd4ad8f99a7892f7a18c28f7a1400ac745813e9b51b078b7192ef5279e6f1d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000056-sweep-01.npz",
+      "sha256": "0274666673727e710b293ed19da5baeb196731cff9c9e15fd25393335460b887"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000056-sweep-02.npz",
+      "sha256": "1aab548222f925566d3a52ee06375aca0c08031b0d2ed1e908103f44c822fff3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000057-sweep-01.npz",
+      "sha256": "bbefc5591db518b6772dbfb606272f17d74c8472fa0a6e233d3080c9fe19c2ae"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000057-sweep-02.npz",
+      "sha256": "30d6ce19ddb91bbce94de4a28844f06494ae166807f39337ab4f3807cbbc1e93"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000058-sweep-01.npz",
+      "sha256": "888230d4cde55b615d3364db1d3716f34f91179fc82c66fcea0110a8c3792303"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000058-sweep-02.npz",
+      "sha256": "f26c42b1f9430b3cf4fd6c4eead2ffb9297ffa6a479cbd431dc263a93f7518bf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000059-sweep-01.npz",
+      "sha256": "cd8f472ed338c46cc4811f7ad193723d7c58fe8ef61d91e9a0e01d620a6557ec"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000059-sweep-02.npz",
+      "sha256": "aabf4da3a3667cda00338552333ea7b4eae6e95dd2f1ee4128e3b304446cacad"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000060-sweep-01.npz",
+      "sha256": "9157c3cde5688109805000944d5d6632f1327f522a05c6ea5b2bc10c34f74fbf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000060-sweep-02.npz",
+      "sha256": "c91935f2af2e85641831a79fdf863a1bdf3a1f815f39ac6da7c0b86dc11c0ff0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000061-sweep-01.npz",
+      "sha256": "284cde0e474f68db76a5a2522fd9e9fb1ed41cefd3c913a6e7ec198870a97e96"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000061-sweep-02.npz",
+      "sha256": "4df1a72749e248227c2ff4e5de1cea5bf3470413320643136aa7203369e7db34"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000062-sweep-01.npz",
+      "sha256": "a391b39f9d4637b34e3cc95cfa2f6abd11519a3d72166d9777459adef6796b97"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000062-sweep-02.npz",
+      "sha256": "abcf396d533c9820ad9b1bdfdb1a48fddb27e2f6a144746b7f485e3d612f26d0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000063-sweep-01.npz",
+      "sha256": "a47f36ba0978885dc1008eb02216360287b71b4ce80fd4c75fba903af1064d17"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000063-sweep-02.npz",
+      "sha256": "b63e10d870d063b69f3b9de23ba455acf25201d0c7c294aed5c6a53c4bf35bb6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000064-sweep-01.npz",
+      "sha256": "6f6413d616df15feac2d7fbb42d2c3944d124ebb6538ae6c696b5170d1526c73"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000064-sweep-02.npz",
+      "sha256": "7fbd8d22cf935a013543e970e95fed6e668139d08d1e3c16f58a08ded1a6322a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000065-sweep-01.npz",
+      "sha256": "b17424314e7df2697cdec99d51917bbd68b20c58a296a6d6413a73c8ac1e380b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000065-sweep-02.npz",
+      "sha256": "13de03025078a244c301e8b7026b0b29cbdcc8473c61ea180913000f8ae573b0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000066-sweep-01.npz",
+      "sha256": "9dff7d9826a80f856e1ac575043e5f3691a4e9d6d806c1e80389657bdf62a81c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000066-sweep-02.npz",
+      "sha256": "d99e9676ba71ebf1be94c4e07b4c0d7fc9befd938dfdef8b52b0ab4fc5251848"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000067-sweep-01.npz",
+      "sha256": "1238343fd36444eaa5cc946eecdc5a81fd2503e75dcd9d0ab4f84c2b2b09b53e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000067-sweep-02.npz",
+      "sha256": "34bf76b3795fc848d852fe3a5dc3e9bf3ed0ca1fca63e9227b509020292ed0f1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000068-sweep-01.npz",
+      "sha256": "1e9faa08ac6021341016ecd892315770d6bcf969f5c14cf37e8f5a6c43a53917"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000068-sweep-02.npz",
+      "sha256": "60c1df7ba6de68e8ead3cd5b9ed4e30f1ab57aec56888d88a25bc9187b378534"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000069-sweep-01.npz",
+      "sha256": "590eb49e5894d2e8b455f0b10576cc047b45420e4ca8379bb393a5c4d2a813c5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000069-sweep-02.npz",
+      "sha256": "81aeb76b9cce11680f0d07f7507eb4b451cab33b4272f462b77313f868ebceae"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000070-sweep-01.npz",
+      "sha256": "892edceedefd8f574b2a1191e0163282e53b691546541a6288148d2faf370212"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000070-sweep-02.npz",
+      "sha256": "02f2f4e29e64e8e083d49418613a8028269d5c49a16ef79d26423ea8318c7a20"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000070-sweep-03.npz",
+      "sha256": "c3343f728f6cf131789454c4430bfa6e8ba2a07b5ad222f4a27d06d20fe4b350"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000071-sweep-01.npz",
+      "sha256": "6381ebf6aed72529ed67a62d2eb22194b75e0fea4a826a9c7a28f7a3963cf36c"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000071-sweep-02.npz",
+      "sha256": "48c1b46f054b2428e682ec46271c29ce826495bf177742770b47e4a4ba5fd59a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000072-sweep-01.npz",
+      "sha256": "2bfe83e71f29849b12c1a7d3d17c8cfc1f5d859143829015acc6fc5bf858cd9e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000072-sweep-02.npz",
+      "sha256": "d7ad74850ffc5f87890ada4cee5afd543a39e428b4c0f9e2546017c83c93ecf1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000073-sweep-01.npz",
+      "sha256": "e3053851a948855328fcd6f447c2ae53481d4cd6e8892f16e932ce5ece5ebde4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000073-sweep-02.npz",
+      "sha256": "8c16aa862c975f17b0997b32ffe683c5b224355a713b130cfe4714e42a5a7ec1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000074-sweep-01.npz",
+      "sha256": "8281c11c44d34bc4966e3b00df71370a9d2ec1c24e234ee3ebd6001313350dee"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000074-sweep-02.npz",
+      "sha256": "f6d57eb595d6b2560acff51cbd490e89ecad7bbed4cbb376b7d36d054bd09b06"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000075-sweep-01.npz",
+      "sha256": "07ee12353b253dccb77aa9e9c67f5084fcdfb415dcf2c6968f0d1f0abb6e2300"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000075-sweep-02.npz",
+      "sha256": "eac78e9ee2cab44d00452677678375dc76b7a569468f41855ff550f18af9009f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000075-sweep-03.npz",
+      "sha256": "50b0c07bb2d02ba74efce03c03fa136ab1c32cfab7370ea98e28caf80d161b9a"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000076-sweep-01.npz",
+      "sha256": "cc7cddcdda3a9a66d6774a61aba19f7d9924f2db6f9bdc2f65b490ae4fd51a1b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000076-sweep-02.npz",
+      "sha256": "9881e45d93d4d49420908df228f6cec6b8da92a14ae42dff0e2f34966e976f7d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000077-sweep-01.npz",
+      "sha256": "f8da4d246bc1400a2c0fcb66ffbc0d93ff52612c545cd21b24682ed920ed44a4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000077-sweep-02.npz",
+      "sha256": "6c4aae97c5cec9803e301ab6a9ab6fa61f7bc7bd98f0a3ce0bb74a8079938f76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000078-sweep-01.npz",
+      "sha256": "9b4a7982f6c276d712b104716f79ef9f325f3d1262117a2d6af623e0f6537a9f"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000078-sweep-02.npz",
+      "sha256": "1151d3c065a0f67b6dd2f4573284f28a67ad0fb34141a544ff73b49f12be3588"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000079-sweep-01.npz",
+      "sha256": "040793b92c89029df0123065ba85131ef7027773244b75f2854d786ee2c16334"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000079-sweep-02.npz",
+      "sha256": "7d297d983dbab97ed4edd080ea0ec51201048822aa793f5d450bbf77b722de8d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000080-sweep-01.npz",
+      "sha256": "ca5b94ed8e5c47a2ad00e041e5bd18a1bd475fddcfd2a6a6f5250a07da4cfea8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000080-sweep-02.npz",
+      "sha256": "cc8771a403693812b239302f6453e8a7e96e22f186635e932b3e173a78166a3e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000081-sweep-01.npz",
+      "sha256": "f05ac85a0d76a44f7dbe3c0d88bd6c025f59bae40bfd712951cbb5a0593ad0df"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000081-sweep-02.npz",
+      "sha256": "44401a7167376168973ed5f3b93c63ab3f415887221b32bef63dc29b7487bca6"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000082-sweep-01.npz",
+      "sha256": "f18afbaac35e814d51cb5ea77365274d7d98197e461d74bb072c362d33bc0c76"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000082-sweep-02.npz",
+      "sha256": "f43042714c553856f9de032308b93bfc4d346bbd8ee1936916ba47e6940cb87d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000083-sweep-01.npz",
+      "sha256": "6f35ca229edc975346232e226a7054e07a942f6fe136be3a28e5790c6a0b02df"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000083-sweep-02.npz",
+      "sha256": "2ca12d7154e20bc6773e088edb715480cab0be1af78106da26a297c9d9be9ce7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000084-sweep-01.npz",
+      "sha256": "92f412d2c7dcb1e579747c36373daa75a9feafb4b42ac743aa8f4ecacd83a453"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000084-sweep-02.npz",
+      "sha256": "d5b968d4ad2153b7febe2088bdc5f2b38f237b0c19ce9a462314269a1b2d9b81"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000085-sweep-01.npz",
+      "sha256": "169b862220053dd9e4b02c37ee1f3df88ff9358efd29a66d2d52ce431fcb09f7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000085-sweep-02.npz",
+      "sha256": "5a31571e955e679bb994704f42d5fcfe05f30225e357eb205eb625e2f03ce6e2"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000086-sweep-01.npz",
+      "sha256": "b6c3fbb6f367bb5b6adadaba348d6719447996dedad46bbadcc8e3be5a7384b5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000086-sweep-02.npz",
+      "sha256": "d13024c26dec05c07279e8ef5a8833faf6529c72a150189646ca2ff7e01e86ae"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000087-sweep-01.npz",
+      "sha256": "e86640629e8359e24d91964d0ee789ae4cbf08bec9a9d5e52f414065b1753c37"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000087-sweep-02.npz",
+      "sha256": "e20f5058449c9e7d1b710b68419de3dd29a05f3e75fab05811c7ee5df7b5269b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000088-sweep-01.npz",
+      "sha256": "988ff4151ec05f462fbce0dc7d9e30a4909838a47c2028d4dcd597e31c2ae446"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000088-sweep-02.npz",
+      "sha256": "adcef55df8bdb6c7ddb9c4990530647a83409cc32ae289644d5a7ad53021ac96"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000089-sweep-01.npz",
+      "sha256": "a55b29c2d2bbb14080917efaced4f099c3d280b493244922d49985c730f64062"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000089-sweep-02.npz",
+      "sha256": "73cd7eca2a1d948a94db9bbd4d0963ac35bbfaf61a6f7946a574697e8d4d2303"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000090-sweep-01.npz",
+      "sha256": "85b0c1022ea76de6001489a2dc5f682c64c0765af59c103d29ec120e5a294e3b"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000090-sweep-02.npz",
+      "sha256": "0cc626d59e585541c5f8981b922d3716085b270c7e583c007aced2e382adaa23"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000090-sweep-03.npz",
+      "sha256": "2fcfd07e80f2e30f36cdf25afd6517e400ab5b7c737cbf19e92058f10d4578b8"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000091-sweep-01.npz",
+      "sha256": "52b1fddafa9d148357009da9b91aa72a3ce1de7bba6cc728ef973d6574c54df7"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000091-sweep-02.npz",
+      "sha256": "44fb3fcf72402d562a21fc13b41cff8702c7b8ff4b21ea27fd8b692cdd88eac1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000092-sweep-01.npz",
+      "sha256": "7b2202a3ba3567c4bac81b1d25b77f1790c171a0e488f60358066ea3e058134d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000092-sweep-02.npz",
+      "sha256": "e470156bba31f76ee6aa07a8fc1340e99fdc610979a948eab1bd41116cd36cb3"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000093-sweep-01.npz",
+      "sha256": "d431412ca89ba20cc6921ecd363330de5adca255901949f3235a36ff0cda4967"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000093-sweep-02.npz",
+      "sha256": "2c21ee7946868c8d21e9a4801cd0fca8ed651317316bbe24cdffa8558054172e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000094-sweep-01.npz",
+      "sha256": "97e55b9f205b746aae20d11b711608aa9b6d72aad6fe140339dc8ff4c737b979"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000094-sweep-02.npz",
+      "sha256": "9cbe365013c11b96c9de4940dbd7397be8d7969bc74cf15721001e2cd4f598a1"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000095-sweep-01.npz",
+      "sha256": "61bfb237a65b2520672a0828a7152ccb10fc4700f5e3475548bfb375f3f9ace0"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000095-sweep-02.npz",
+      "sha256": "b85a4f102985f9e2b196429b4bcb5ab65b03336f535c0e8cece8364f0c84e76d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000096-sweep-01.npz",
+      "sha256": "96f3373dccb1b7898cad9014f08ae3ef7bec42f670aa8d28ad87f8f5b6736507"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000096-sweep-02.npz",
+      "sha256": "4b326d79df95b15b7d95c1cc5a4eb0bf2a992d6982ccada2da9f1f5e44fbb97d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000097-sweep-01.npz",
+      "sha256": "23fbd816f946d31b0813fde0fc5707f0fccf72834c23d07c2b2fd3c69bc06856"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000097-sweep-02.npz",
+      "sha256": "02af1b4fab9f28cc2deeaa862743a745c6a8fe4bc408cc3be21c6b30cd60c5e4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000097-sweep-03.npz",
+      "sha256": "778263f95aea993ae40d417da5ac31a0863d8fa6b3b6e647531583d1de4f5297"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000098-sweep-01.npz",
+      "sha256": "d723216ac11551a6bf17a79955d44c90a32f17e7027800b456956c0076c2bf19"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000098-sweep-02.npz",
+      "sha256": "01996393b5278da9be59d662f51d26af846c0249b3e97d1da93b35bd1b504f50"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000099-sweep-01.npz",
+      "sha256": "924d52138c1c415a4d30082da98776ebee58bfdc347f910097403e6a7b47964d"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000099-sweep-02.npz",
+      "sha256": "5452925ebc48a157237cb7182b48af49e8767b3fc34625c457ec520239ddbc22"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000100-sweep-01.npz",
+      "sha256": "e4534c3760759ef50d704755073e444e60b9dca4747ace47761ebee426cc9840"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/boundary-step-000100-sweep-02.npz",
+      "sha256": "ff71d9ef35019c72a2d3e12aff4cc4c1ac6492d44dec172e5ccf313bcf3910f5"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/backups/fvm_000100.npz",
+      "sha256": "5cdf9a11ca3f8af1836d6bfad0121191ba57a279611bb4c56c05bc2babbc3c68"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/backups/vpm_000100.h5",
+      "sha256": "d5d03fb4baaf6fce4943dba3e7c3447113ee6973567e6a573178cba7e969559e"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/backups/vpm_000100.xdmf",
+      "sha256": "74d9cf18d56e742f06e97b722d0d5a84a00bfbe50f81b4438404c466dc0a8113"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/backups/vpm_boundary_condition_000100.npz",
+      "sha256": "1562b8442da9fae7cdad4de611a14fac9601f179d3da2ac8e58a1c47d62cd5a4"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/interface-iteration-3d.json",
+      "sha256": "f50f215669cacd8cc3c6521d07694c2dd4bb0721c12654eee0c279a99d969479"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/cube-coupled-trial.json",
+      "sha256": "f1dcc38b7e8722b4e49c54145b02d1e1c5ffc1aea63a1d554b2f2b17ee0d4d03"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/mesh.npz",
+      "sha256": "a716dfec4ba85af1278d0dd2b7f7f7b71bad6c32a4f93bacbc47b9dec0d19074"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/hybrid/solution/backups/manifest.json",
+      "sha256": "abbe131f0cc6372db50776eb38773dab4ea473bc4e68c8b23b69dcd4dd448ddf"
+    },
+    {
+      "path": "studies/coupler_accuracy/results/cadence-one-substep-hundred-twelve/trial/latest-comparison-fields.npz",
+      "sha256": "45bd263714aa86f1434a8b55dd22066a0d905a19335aa3d0163a8aab73f29740"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_interface_cadence_3d.py",
+      "sha256": "e9e8a6f419e7d024186a851b7fdd1fd87fb241ee0e13c5e1a93e7db1162422b1"
+    },
+    {
+      "path": "studies/coupler_accuracy/verify_sampled_face_trials_3d.py",
+      "sha256": "c1f4b4ed1b6cf9ed256179a86c503ce4690c73c550095f94eb627210326c7b89"
+    },
+    {
+      "path": "studies/coupler_accuracy/compare_interface_cadence_3d.py",
+      "sha256": "0bb68a88977dc53051e69d06f1de00a43acfddfec28b1cc785cb53469dae487f"
+    }
+  ],
+  "figure": {
+    "path": "studies/coupler_accuracy/results/interface-cadence-comparison-3d.png",
+    "sha256": "504bde5c26d93fe864043fa1830388302ce93c628b240abcb7be951b2a212c3b"
+  },
+  "limitations": [
+    "Common-endpoint statistics use identical FVM time indices, with no phase alignment or reference feedback.",
+    "VPM time integration, exchange interval and renewal frequency change together; this does not separate their effects.",
+    "The FVM dt and matched spatial mesh are fixed. This is not joint spatial/time convergence or developed-wake validation.",
+    "Sampled VPM velocity is evaluated at matched FVM cell centres, not an exterior-wake profile."
+  ]
+}

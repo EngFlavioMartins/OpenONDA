@@ -1,9 +1,0 @@
-<?xml version="1.0"?>
-<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
-  <Collection>
-    <DataSet timestep="0.0" file="cross_section_000000.vts"/>
-    <DataSet timestep="0.3" file="cross_section_000040.vts"/>
-    <DataSet timestep="0.6" file="cross_section_000080.vts"/>
-    <DataSet timestep="0.9" file="cross_section_000120.vts"/>
-  </Collection>
-</VTKFile>

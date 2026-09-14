@@ -1,7 +1,0 @@
-{
-  "error": "DivergenceRelaxationError: divergence-relaxation line search exhausted its physics-admissible amplitudes; last rejection: divergence-relaxation residual ratio 9.671e-01 exceeds the admissible 9.655e-01",
-  "planned_steps": 400,
-  "status": "failed",
-  "step": 24,
-  "time": 0.187166213088
-}

@@ -1,0 +1,191 @@
+{
+  "status": "complete",
+  "schema": "openonda-cube-reference-inventory/1",
+  "observed_at": "2026-09-13T14:33:06.894925+00:00",
+  "cases": [
+    {
+      "case": "very_coarse",
+      "global_native_cells": 5216,
+      "stored_nominal_cell_sizes": [
+        0.15000000596046448,
+        0.30000001192092896,
+        0.6000000238418579,
+        1.2000000476837158,
+        2.4000000953674316
+      ],
+      "lifecycle": {
+        "status": "complete"
+      },
+      "metadata_state": {
+        "step": 2303,
+        "time": 20.0
+      },
+      "force_rows": 401,
+      "force_resets": [],
+      "latest_force_epoch_rows": 401,
+      "latest_force_epoch_time_bounds": [
+        0.0,
+        20.0
+      ],
+      "grid_run": {
+        "schema": "openonda-fvm-grid-run/1",
+        "case": "very_coarse",
+        "cell_size": 0.2,
+        "cell_count": 5216,
+        "end_time": 20.0,
+        "profiles": [
+          "centreline",
+          "offaxis_y075"
+        ]
+      },
+      "completion_supported_by_metadata_and_latest_force_epoch": true,
+      "matches_matched_study_minimum_nominal_spacing": false
+    },
+    {
+      "case": "coarse",
+      "global_native_cells": 6404,
+      "stored_nominal_cell_sizes": [
+        0.1274999976158142,
+        0.2549999952316284,
+        0.5099999904632568,
+        1.0199999809265137,
+        2.0399999618530273
+      ],
+      "lifecycle": {
+        "status": "complete"
+      },
+      "metadata_state": {
+        "step": 2303,
+        "time": 20.0
+      },
+      "force_rows": 802,
+      "force_resets": [
+        401
+      ],
+      "latest_force_epoch_rows": 401,
+      "latest_force_epoch_time_bounds": [
+        0.0,
+        20.0
+      ],
+      "grid_run": {
+        "schema": "openonda-fvm-grid-run/1",
+        "case": "coarse",
+        "cell_size": 0.17,
+        "cell_count": 6404,
+        "end_time": 20.0,
+        "profiles": [
+          "centreline",
+          "offaxis_y075"
+        ]
+      },
+      "completion_supported_by_metadata_and_latest_force_epoch": true,
+      "matches_matched_study_minimum_nominal_spacing": false
+    },
+    {
+      "case": "medium",
+      "global_native_cells": 11804,
+      "stored_nominal_cell_sizes": [
+        0.10499999672174454,
+        0.20999999344348907,
+        0.41999998688697815,
+        0.8399999737739563,
+        1.6799999475479126
+      ],
+      "lifecycle": {
+        "status": "complete"
+      },
+      "metadata_state": {
+        "step": 2303,
+        "time": 20.0
+      },
+      "force_rows": 401,
+      "force_resets": [],
+      "latest_force_epoch_rows": 401,
+      "latest_force_epoch_time_bounds": [
+        0.0,
+        20.0
+      ],
+      "grid_run": {
+        "schema": "openonda-fvm-grid-run/1",
+        "case": "medium",
+        "cell_size": 0.14,
+        "cell_count": 11804,
+        "end_time": 20.0,
+        "profiles": [
+          "centreline",
+          "offaxis_y075"
+        ]
+      },
+      "completion_supported_by_metadata_and_latest_force_epoch": true,
+      "matches_matched_study_minimum_nominal_spacing": false
+    }
+  ],
+  "sources": [
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/very_coarse/fvm_metadata.json",
+      "sha256": "0456a59ab8e4445162f19dac162cfd02ffcec09e48be28899a7e4301d10a1afb",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/very_coarse/fvm_metadata.json"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/very_coarse/mesh.npz",
+      "sha256": "f76a834a9a7889d7c8d54261031adf0fc112b98979c2161994260a552fbea940",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/very_coarse/mesh.npz"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/forces_history.csv",
+      "sha256": "fd0566325913f75eebbf61c5413daa574e4f1655083ca07ae01741c809509297",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/forces_history.csv"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/grid_run.json",
+      "sha256": "6a2eb45f67f15c857c49f89b6286256795d95146681fd884bf20aa085161ab51",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/very_coarse/grid_run.json"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/coarse/fvm_metadata.json",
+      "sha256": "cbb72c65d35e43ea475ce6c73fd934bda8aae2d30317bd83bb2fa9d2efdb2ab5",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/coarse/fvm_metadata.json"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/coarse/mesh.npz",
+      "sha256": "a21623d7a310b7bf629fa757de53566f7675f923ab228e9931c15995503bcd93",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/coarse/mesh.npz"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/forces_history.csv",
+      "sha256": "ac8a1406599faf3215748f686fdf73fd6583d9760ae2579a9cba8dfeccacaf76",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/forces_history.csv"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/grid_run.json",
+      "sha256": "67bd14c49bffb94da900ca4f742ce925d399d1660f82bd38ea6fbae05effae8c",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/coarse/grid_run.json"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/medium/fvm_metadata.json",
+      "sha256": "4dd24b1dc8697d0eeaf60c39f4509b312ccf484f90d75c157b6c0f9fc9ebdb49",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/medium/fvm_metadata.json"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/medium/mesh.npz",
+      "sha256": "5568fa6b2869f5d870a91843e8163dabb12cea01c9f8a30df1cd84e2f8fad60f",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/medium/mesh.npz"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/medium/forces_history.csv",
+      "sha256": "81f34da82b48458feb1f54dd4854e3d046f4e21ced62e9257ed927cd483950c8",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/medium/forces_history.csv"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/medium/grid_run.json",
+      "sha256": "0eeffaed9311574f89272d4b5a48c5324c51217ea79279ebf22878a52ced5ddb",
+      "archive": "studies/coupler_accuracy/results/cube-reference-inventory-20260913/sources/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/medium/grid_run.json"
+    }
+  ],
+  "limitations": [
+    "This inventories files currently present; it does not establish who recovered or regenerated them.",
+    "Nominal stored mesh sizes are not cell-volume lengths or exact surface spacings.",
+    "These meshes differ from the matched h=0.0625 study; no existing reference history is substituted for its independent matched reference.",
+    "Completion flags reflect the current metadata and latest force epoch only; restart compatibility and physical accuracy were not qualified by this inventory."
+  ]
+}

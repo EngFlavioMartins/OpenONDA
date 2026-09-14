@@ -32,7 +32,7 @@ The pre-change short-run physics and performance benchmark is recorded in
 The case uses four partitioned FVM ranks. Its coupled MPI initialization
 includes the body-wall geometry gathers used during transfer setup.
 
-The inputs use the wall-commensurate particle spacing `h=0.03125`, an
+The inputs use particle spacing `h=0.06`, an
 FVM time-step size of `0.010 s`, and the historically validated VPM/coupling
 time-step size of `0.050 s`. The coupler therefore advances five FVM substeps
 per VPM step. All force, line, and surface samplers use the single
@@ -51,13 +51,11 @@ transient time discretization is required for the reference comparison. The
 coupled and reference FVMs use the same pressure corrector counts. This
 production transfer uses GBD.
 
-The Billuart normal-velocity/tangential-gradient boundary condition remains in
-use. A resolved-scale implicit consistency source acts only in the `0.25 m`
-outer numerical buffer, between the transfer box and the FVM boundary. Its C1
-rate is zero in FVM authority and increases toward the numerical boundary. The
-target is evaluated from the complete VPM velocity at both coupling time levels
-and interpolated over the five FVM substeps; the FVM high-pass fluctuation is
-preserved rather than relaxed toward a scale the particle field cannot represent.
+The normal-velocity/tangential-gradient boundary condition remains in use.
+The current setup disables the consistency source and iterates FVM substeps
+and buffered renewal from fixed starting states. The body potential contributes
+to particle RK transport as well as the FVM boundary. See `../README.md` for the
+current configuration, mesh caching, and recovered reference data.
 
 The FVM-to-VPM hand-off is the recovered buffered whole-belt M4' renewal used
 by the historically stable long run. After VPM advection/stretching/GBD and the

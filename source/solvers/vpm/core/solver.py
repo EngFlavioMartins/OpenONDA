@@ -496,6 +496,7 @@ class VPMSolver:
                 particle_kernel=self.particle_kernel,
                 smagorinsky_coefficient=final_setup.turbulence.smagorinsky_coefficient,
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
+                filter_width=final_setup.turbulence.filter_width,
                 accumulator_dtype=self.accumulator_dtype,
             )
         self.field_diagnostics = ParticleFieldEvaluation(
@@ -647,8 +648,8 @@ class VPMSolver:
                 self._body_induced_fn = lambda points, _stage_time: (
                     self.panel_solver.compute_induced_velocity(points)
                 )
-                if scope == "full":
-                    # Only "full" deflects particle trajectories, and it does so
+                if scope in ("full", "fvm_vpm"):
+                    # Transport-enabled scopes deflect particle trajectories
                     # at every RK stage, so give it the device-resident hook.
                     self.physics.body_velocity_field = (
                         self.panel_solver.accumulate_induced_velocity_on_field
@@ -1559,6 +1560,49 @@ class VPMSolver:
             include_body=True,
         )
 
+    def _fvm_vpm_panel_source_gradient(self, points: np.ndarray) -> np.ndarray | None:
+        """Return the analytical source-panel Jacobian when it owns the body field.
+
+        The ``fvm_vpm`` panel scope installs its direct source-panel velocity as
+        the body correction. Its Jacobian is available as a host-side f64
+        operator, so target gradients do not need to differentiate a Metal f32
+        kernel by finite differences.
+        """
+        panel = self.panel_solver
+        if (
+            panel is None
+            or panel.coupling_scope != "fvm_vpm"
+            or self._body_induced_fn is None
+            or self._pressure_body_induced_fn != panel.compute_induced_velocity
+        ):
+            return None
+        gradient = np.asarray(
+            panel.compute_induced_velocity_gradient(points, time=self.time), dtype=np.float64
+        )
+        expected_shape = (len(points), 3, 3)
+        if gradient.shape != expected_shape:
+            raise RuntimeError(
+                "Panel source-gradient evaluation returned an invalid shape: "
+                f"expected {expected_shape}, got {gradient.shape}"
+            )
+        if not np.all(np.isfinite(gradient)):
+            raise RuntimeError("Panel source-gradient evaluation returned non-finite data")
+        return gradient
+
+    def _nonpanel_target_velocity(self, evaluation_position: np.ndarray) -> np.ndarray:
+        """Return nonparticle target velocity with the analytical panel field removed."""
+        points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
+        panel = self.panel_solver
+        if panel is None:
+            raise RuntimeError("Cannot remove a panel field without a panel solver")
+        complete = self._add_target_velocity_corrections(
+            points,
+            np.zeros((len(points), 3), dtype=self.np_dtype),
+            include_body=True,
+        )
+        panel_velocity = panel.compute_induced_velocity(points)
+        return np.asarray(complete, dtype=np.float64) - np.asarray(panel_velocity, dtype=np.float64)
+
     def set_body_induced_velocity(
         self,
         fn: Callable[[np.ndarray, float], np.ndarray] | None,
@@ -1624,6 +1668,7 @@ class VPMSolver:
         if panel is None or getattr(panel, "coupling_scope", "full") not in (
             "full",
             "vpm_boundary_condition",
+            "fvm_vpm",
         ):
             return
         panel.refresh_coupled_solution(
@@ -1716,20 +1761,33 @@ class VPMSolver:
     def _add_nonparticle_target_gradient(
         self, points: np.ndarray, particle_gradient: np.ndarray, *, particle_spacing: float
     ) -> np.ndarray:
-        """Differentiate only the source and body corrections by centred differences."""
+        """Add analytical panel and finite-difference nonparticle target gradients."""
         gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
         has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
-        if (self._body_induced_fn is None and self.n_sources == 0 and not has_vlm) or len(
-            points
-        ) == 0:
+        if len(points) == 0:
+            return gradient
+
+        panel_gradient = self._fvm_vpm_panel_source_gradient(points)
+        if panel_gradient is not None:
+            gradient += panel_gradient
+
+        needs_finite_difference = (
+            self.n_sources > 0
+            or has_vlm
+            or (self._body_induced_fn is not None and panel_gradient is None)
+        )
+        if not needs_finite_difference:
             return gradient
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
+        velocity_at = (
+            self._nonpanel_target_velocity if panel_gradient is not None else self._nonparticle_target_velocity
+        )
         for axis in range(3):
             offset = np.zeros(3, dtype=np.float64)
             offset[axis] = step
-            plus = self._nonparticle_target_velocity(points + offset)
-            minus = self._nonparticle_target_velocity(points - offset)
+            plus = velocity_at(points + offset)
+            minus = velocity_at(points - offset)
             if plus.shape != points.shape or minus.shape != points.shape:
                 raise RuntimeError("VPM body-velocity callback returned an invalid shape")
             gradient[:, :, axis] += (plus - minus) / (2.0 * step)
@@ -1780,9 +1838,11 @@ class VPMSolver:
         """Return velocity and tangential normal-gradient trace at points.
 
         The mixed FVM boundary condition does not consume the full nine-component
-        Jacobian.  Particle induction is still evaluated by the configured fused
-        target operation, while source/body terms use only the two centred samples
-        along each face normal instead of three coordinate-direction pairs.
+        Jacobian. Particle induction is still evaluated by the configured fused
+        target operation. The ``fvm_vpm`` source-panel field contributes its
+        analytical f64 derivative; other source/body terms use only the two
+        centred samples along each face normal instead of three coordinate-direction
+        pairs.
 
         Parameters
         ----------
@@ -1822,10 +1882,25 @@ class VPMSolver:
         normal_velocity_gradient = np.einsum(
             "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
         )
-        if self._body_induced_fn is not None or self.n_sources > 0:
+        panel_gradient = self._fvm_vpm_panel_source_gradient(points)
+        if panel_gradient is not None:
+            normal_velocity_gradient += np.einsum("fij,fj->fi", panel_gradient, unit_normals)
+
+        has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
+        needs_finite_difference = (
+            self.n_sources > 0
+            or has_vlm
+            or (self._body_induced_fn is not None and panel_gradient is None)
+        )
+        if needs_finite_difference:
             step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
-            plus = self._nonparticle_target_velocity(points + step * unit_normals)
-            minus = self._nonparticle_target_velocity(points - step * unit_normals)
+            velocity_at = (
+                self._nonpanel_target_velocity
+                if panel_gradient is not None
+                else self._nonparticle_target_velocity
+            )
+            plus = velocity_at(points + step * unit_normals)
+            minus = velocity_at(points - step * unit_normals)
             if plus.shape != points.shape or minus.shape != points.shape:
                 raise RuntimeError("VPM body-velocity callback returned an invalid shape")
             normal_velocity_gradient += (plus - minus) / (2.0 * step)

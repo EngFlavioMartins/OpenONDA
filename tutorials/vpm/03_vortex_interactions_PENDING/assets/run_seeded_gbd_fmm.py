@@ -14,7 +14,7 @@ import h5py
 import openonda.vpm as vpm
 from openonda.tutorial_runner import load_case_module
 
-setup_les = load_case_module(Path(__file__).resolve().parents[1], "setup_les")
+setup_les = load_case_module(Path(__file__).resolve().parents[1], "assets.legacy_les")
 CASE_NAME = "gbd_breakdown_fmm_cpu_root_200000_qualification"
 PARTICLE_CAPACITY = 200_000
 

@@ -26,7 +26,7 @@ from source.solvers.vpm.config.fingerprint import numerical_configuration
 
 TUTORIAL = Path(__file__).resolve().parents[1]
 __package__ = case_package(TUTORIAL) + ".assets"
-from .. import setup_les
+from . import legacy_les as setup_les
 
 
 THREADS = 6

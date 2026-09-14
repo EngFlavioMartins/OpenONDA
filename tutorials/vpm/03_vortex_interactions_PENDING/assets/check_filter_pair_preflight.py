@@ -27,7 +27,7 @@ if not __package__:
 from source.solvers.vpm.config.fingerprint import numerical_configuration
 from source.solvers.vpm.kernels import gaussian
 
-from .. import setup_les
+from . import legacy_les as setup_les
 from .check_initial_coverage_field import (
     _centreline_probes,
     _evaluate_field,
@@ -141,7 +141,7 @@ def _command(case_name: str, smagorinsky: float) -> str:
         (
             "env TI_CPU_MAX_NUM_THREADS=6",
             "/opt/anaconda3/envs/OpenONDA/bin/python",
-            "setup_les.py",
+            "assets/legacy_les.py",
             "--variant baseline",
             "--scenario seeded_breakdown",
             "--compute-device CPU",

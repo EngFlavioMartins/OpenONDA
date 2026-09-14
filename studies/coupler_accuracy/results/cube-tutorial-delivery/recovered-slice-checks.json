@@ -1,0 +1,82 @@
+[
+  {
+    "file": "slice_z0_000010.vts",
+    "points": 94376,
+    "bounds": [
+      -5.0,
+      10.0,
+      -5.0,
+      5.0,
+      0.0,
+      0.0
+    ],
+    "fields": [
+      "velocity",
+      "velocity_magnitude",
+      "vorticity",
+      "vorticity_magnitude",
+      "kinematic_pressure"
+    ],
+    "velocity_finite": true
+  },
+  {
+    "file": "slice_z0_002000.vts",
+    "points": 94376,
+    "bounds": [
+      -5.0,
+      10.0,
+      -5.0,
+      5.0,
+      0.0,
+      0.0
+    ],
+    "fields": [
+      "velocity",
+      "velocity_magnitude",
+      "vorticity",
+      "vorticity_magnitude",
+      "kinematic_pressure"
+    ],
+    "velocity_finite": true
+  },
+  {
+    "file": "wake_slice_z0_000010.vts",
+    "points": 9576,
+    "bounds": [
+      0.0,
+      5.0,
+      -1.5,
+      1.5,
+      0.0,
+      0.0
+    ],
+    "fields": [
+      "velocity",
+      "velocity_magnitude",
+      "vorticity",
+      "vorticity_magnitude",
+      "kinematic_pressure"
+    ],
+    "velocity_finite": true
+  },
+  {
+    "file": "wake_slice_z0_002000.vts",
+    "points": 9576,
+    "bounds": [
+      0.0,
+      5.0,
+      -1.5,
+      1.5,
+      0.0,
+      0.0
+    ],
+    "fields": [
+      "velocity",
+      "velocity_magnitude",
+      "vorticity",
+      "vorticity_magnitude",
+      "kinematic_pressure"
+    ],
+    "velocity_finite": true
+  }
+]

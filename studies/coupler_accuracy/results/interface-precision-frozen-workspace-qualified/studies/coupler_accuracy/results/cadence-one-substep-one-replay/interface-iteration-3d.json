@@ -1,0 +1,142 @@
+{
+  "schema": "openonda-interface-iteration-3d/1",
+  "status": "complete",
+  "spatial_dimensions": 3,
+  "maximum_sweeps": 1,
+  "relaxation": 1.0,
+  "normal_tolerance": 1e-06,
+  "gradient_tolerance": 1e-06,
+  "execution_environment": {
+    "TI_CPU_MAX_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "sources": [
+    {
+      "path": "studies/coupler_accuracy/cube_interface_iteration_3d.py",
+      "sha256": "538c4cf5fb1f2a7154bafd73410845c3d4a109c07c27e91556de580ae3de7957"
+    },
+    {
+      "path": "studies/coupler_accuracy/experimental_interface_iteration.py",
+      "sha256": "680dd9845e69bd35f312a6a070291be5e888b2207b03a50cc39010c760122bfc"
+    },
+    {
+      "path": "studies/coupler_accuracy/cube_coupled_trial.py",
+      "sha256": "b2cce47a32fc1be5f484e5c104b8b0250fdeace8feebd1799e814306afedc828"
+    },
+    {
+      "path": "source/coupler/solver.py",
+      "sha256": "e0e2eb4a2438fcdfa77d8e84fd1114e504f0ed4abd971a4c890f74783bf3997d"
+    },
+    {
+      "path": "source/coupler/boundary.py",
+      "sha256": "397525094f7eaccf72ce68e8324ed04c18993286afdd52a54b270a7a78ea514b"
+    },
+    {
+      "path": "source/coupler/vorticity_transfer.py",
+      "sha256": "316d6c49f53f198d4e6addbe72385990c1532703c787bbe9a720555adde9aef0"
+    },
+    {
+      "path": "source/coupler/stable_renewal.py",
+      "sha256": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686"
+    },
+    {
+      "path": "source/solvers/fvm/io/backup.py",
+      "sha256": "301816b76f44bf75ec95b1c38ab64ff6047edd11879d3994c7cf1ffdd36c6e49"
+    },
+    {
+      "path": "source/solvers/fvm/core/solver.py",
+      "sha256": "d9fe0c147a7f7502a186abf0277a9d4cabd23e5fd0788d1214e573dffe9a5b05"
+    },
+    {
+      "path": "source/solvers/vpm/core/solver.py",
+      "sha256": "636e0bc61a512395a86e76cc876b6045c529079723896bf563817d7d03a0e378"
+    }
+  ],
+  "sweeps": [
+    {
+      "coupling_step": 1,
+      "elapsed_time": 0.01,
+      "sweep": 1,
+      "normal_residual_rms": 0.0003174203897037494,
+      "gradient_residual_rms": 0.0008032840074337472,
+      "converged": false,
+      "map_evaluations": 2,
+      "map_replay": {
+        "numerical_arrays_and_clocks": 24,
+        "bitwise_equal": true,
+        "sha256": {
+          "fvm_velocity": "6330d632c282a7b467f340bf7dbd7c40634fc1134f8cb8d535d3f32d6d14888f",
+          "fvm_kinematic_pressure": "91bed45a782a5518006060d6e2cad0026a6335fa2da6df8a782b491b422e4764",
+          "fvm_volumetric_face_flux": "1dfd5ddbcc2da3e5e3ee7b58d821dded12eaa3dad28cdbb4a29fca4c70f148fd",
+          "fvm_volumetric_face_flux_old": "1dfd5ddbcc2da3e5e3ee7b58d821dded12eaa3dad28cdbb4a29fca4c70f148fd",
+          "fvm_volumetric_face_flux_older": "64553ae6d8981271c0bc2972d848251e56240bd359d0bc8ebbfefe339fce6679",
+          "fvm_velocity_old": "6330d632c282a7b467f340bf7dbd7c40634fc1134f8cb8d535d3f32d6d14888f",
+          "fvm_velocity_older": "84e43d022d878e8646ecd1ddfa37598a061a976511f061370f8e9e1a17102a1f",
+          "vpm_position": "c7d9bc29f8d5e5943c173954e7a707aa72cad2b38251bc07c7442048dba3540d",
+          "vpm_velocity": "6f3f9dad119f1a5b2cbad3bf3a42401e38aab3c8b4b812f87f0fe026535f36a1",
+          "vpm_vortex_strength": "bfe325ee4101c9dd894a58c133bfdff387e9b04806dc9810b970c2a103d612c7",
+          "vpm_core_radius": "1e40e82626846daa52eba99237b6b5e4c9d6cf64c268867250a1736d4ab83489",
+          "vpm_particle_volume": "c05b0361f25a5eb87c0204651747c33b1bb0487ee50c671467299514e43d86d8",
+          "vpm_kinematic_viscosity": "7637da71241cc587354de38e06cd7cec667022f1df82f91df1863cd5ff4011a3",
+          "vpm_eddy_viscosity": "76d8a0fea968800fffcf84ed28dbf015907ca050b0d3ec256bcd8e35d5d5f0ef",
+          "vpm_group_id": "d1a6234f39b56f85e778f2efba08192e4d98eacf581f2375c1af558009aec602",
+          "vpm_zone_id": "d1a6234f39b56f85e778f2efba08192e4d98eacf581f2375c1af558009aec602",
+          "vpm_velocity_gradient": "53390821bc66878a0b022687e4572b9161d56a9c180b297a6b44f0981dd62fb4",
+          "vpm_strain_rate": "53390821bc66878a0b022687e4572b9161d56a9c180b297a6b44f0981dd62fb4",
+          "post_trace_velocity_boundary_condition": "9dac6aca2c786849cd960a7a540ec763f8bd723415594e8da20c7c9c96b6dc4c",
+          "post_trace_normal_velocity_boundary_condition": "58595fe8947c2f9a5738f302d9222a98f8c56e898e2245024ad9ff0ea11c3c86",
+          "post_trace_tangential_gradient_boundary_condition": "fb0d4605cc04152682a908159ff567cc15efc1c6d93cfb313b74a0405a64e820",
+          "clocks": "ccbebf5e79c569c3585ae2370cf072b336c5b876b183570fa285422c962688ed",
+          "acceptance_counters": "1c9a163be227860f32e871eaa0d7a9bc4562f1160497eb927703f4f54be0674f",
+          "eddy_viscosity": "38e8cefffb0bde4c12f41699d9f6534d0c3d6dc90e07502a9c803e3e38381af3"
+        }
+      },
+      "accepted_fvm_step": 1,
+      "accepted_transfer_step": 2,
+      "runtime_cpu_threads": 1,
+      "hybrid_drag_coefficient": 2.403202442323401,
+      "boundary_fields": {
+        "path": "studies/coupler_accuracy/results/cadence-one-substep-one-replay/boundary-step-000001-sweep-01.npz",
+        "sha256": "cb70cfe71d196b91545dcdfd5f9705b1dacee8f266a9175e30e0e80e0168c6cf"
+      }
+    }
+  ],
+  "limitations": [
+    "Only interface consistency is changed. The FVM start and advected VPM predictor are fixed within every interval; particle renewal never uses a prior sweep as its starting cloud.",
+    "The first endpoint map in each interval is replayed from the saved states and required to match numerical fields and clocks bitwise.",
+    "Zero sweeps selects the original unmodified partitioned algorithm. One sweep tests the wrapper and replay path without a numerical correction.",
+    "The fixed tolerances measure interface residuals; they are not acceptance tolerances for force or velocity agreement with the reference.",
+    "A completed bounded run can contain unconverged intervals; convergence flags are explicit and no production mode is changed.",
+    "Serial buffered-M4 mixed/flux-pressure study without a consistency band; no developed-wake validation is implied."
+  ],
+  "converged_intervals": 0,
+  "observed_intervals": 1,
+  "comparison": [
+    {
+      "coupling_step": 0,
+      "elapsed_flow_time": 0.0,
+      "physical_time": 0.5,
+      "fvm_velocity_rms_over_Uinf": 0.0,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.044693314541673,
+      "full_drag_coefficient": 1.586677942360705,
+      "hybrid_drag_coefficient": 1.586677942360705,
+      "drag_coefficient_difference": 0.0,
+      "particles": 6429
+    },
+    {
+      "coupling_step": 1,
+      "elapsed_flow_time": 0.01,
+      "physical_time": 0.51,
+      "fvm_velocity_rms_over_Uinf": 0.0015137183050707341,
+      "fvm_near_body_velocity_rms_over_Uinf": 0.0005629564890278079,
+      "vpm_sampled_velocity_rms_over_Uinf": 0.03798197659649032,
+      "full_drag_coefficient": 2.2491673107789887,
+      "hybrid_drag_coefficient": 2.403202442323401,
+      "drag_coefficient_difference": 0.15403513154441217,
+      "particles": 22367
+    }
+  ],
+  "elapsed_seconds": 94.52139166599954
+}
