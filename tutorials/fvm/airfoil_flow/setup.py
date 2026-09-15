@@ -81,7 +81,7 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
     pimple = fvm.PimpleControl(
         n_correctors=PISO_CORRECTORS,
         n_outer_correctors=OUTER_CORRECTORS,
-        n_orthogonal_correctors=ORTHOGONAL_CORRECTORS,
+        n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS,
     )
     forces = [
         fvm.ForceSampler(

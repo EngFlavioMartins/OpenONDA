@@ -35,8 +35,9 @@ overlay a fully matched benchmark.
 
 `assets/plot_lbm_comparison.py` compares field-core maxima at equal axial
 positions, weights the two initially distinct cores equally, and refuses
-extrapolation. It stops assigning identities when there are not exactly two
-maxima or their straight-line bridge reaches the explicit diagnostic cutoff
+extrapolation. It follows the two dominant maxima while any third maximum is
+less than half the weaker core. Comparable competing maxima or a straight-line
+bridge reaching the explicit diagnostic cutoff stop identity assignment
 (default 0.5 of the weaker maximum). That cutoff is not a physical merger
 criterion. Sampler cadence, plane spacing and peak detection must still resolve the paths.
 Fig. 4 instead describes core shapes using trajectories of fluid particles;
@@ -46,7 +47,17 @@ vortex-particle `group_id` labels.
 ## Current study scope
 
 The requested VPM comparison keeps DNS, SSPRK3 and transposed stretching
-enabled. Stretching viscosity and Pedrizzetti relaxation are separate numerical
+enabled. Selective eddy viscosity, Pedrizzetti relaxation, and particle splitting are separate numerical
 stabilization comparisons, not LBM model terms. The automatic comparison
 now reads SurfaceSampler VTS/PVD outputs; it does not reconstruct fields from
 particle snapshots. See the [current workflow](../../readme.md).
+
+The local splitting algorithm comes from Winckelmans' 1989 Caltech thesis,
+printed p. 89 (PDF p. 105), using the fixed-core branch and offsets h(t)/4:
+https://thesis.caltech.edu/697/5/winckelmans-gs_1989.pdf.
+
+The added viscosity uses the positive-production form of Winckelmans' 1995
+selective eddy viscosity, Eq. (26), version 2, with particle strength providing
+the direction and h=V^(1/3). The implementation's coefficient C equals 2 C_w².
+The optional feedback controller is an OpenONDA extension and is disabled in
+this tutorial. Source: https://ntrs.nasa.gov/citations/19960022324.

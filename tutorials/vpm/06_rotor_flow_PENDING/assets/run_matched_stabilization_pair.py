@@ -13,7 +13,7 @@ Examples::
     python assets/run_matched_stabilization_pair.py \
         --variant baseline --output-tag matched_baseline_7p5 --endpoint 7.5
     python assets/run_matched_stabilization_pair.py \
-        --variant stretching_viscosity --output-tag matched_stabilized_7p5 \
+        --variant selective_eddy_viscosity --output-tag matched_stabilized_7p5 \
         --endpoint 7.5
     python assets/run_matched_stabilization_pair.py \
         --variant baseline --resume solution/matched_baseline_7p5/vpm_001250.h5 \
@@ -47,7 +47,7 @@ from ..setup import (  # noqa: E402
 
 MAX_ENDPOINT = 10.0
 STRETCHING_VISCOSITY_COEFFICIENT = 0.5
-VARIANTS = ("baseline", "stretching_viscosity")
+VARIANTS = ("baseline", "selective_eddy_viscosity")
 
 
 def _validate_tag(value: str) -> str:
@@ -85,8 +85,8 @@ def _steps_to_endpoint(start_time: float, endpoint: float, time_step_size: float
 def _stabilization(variant: str) -> vpm.StabilizationConfig:
     if variant == "baseline":
         return vpm.StabilizationConfig.disabled()
-    if variant == "stretching_viscosity":
-        return vpm.StabilizationConfig.stretching_viscosity(
+    if variant == "selective_eddy_viscosity":
+        return vpm.StabilizationConfig.selective_eddy_viscosity(
             coefficient=STRETCHING_VISCOSITY_COEFFICIENT
         )
     raise ValueError(f"unknown variant {variant!r}; choose from {VARIANTS}")

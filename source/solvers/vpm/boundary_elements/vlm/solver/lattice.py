@@ -11,6 +11,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
+from source.solvers.vpm.io.logging import Logging
+
 
 @ti.data_oriented
 class VLMLattice:
@@ -51,7 +53,7 @@ class VLMLattice:
         self.dtype = dtype
         self.np_dtype = np.float32 if dtype == ti.f32 else np.float64
         self.n_panels = 0
-        print(f"VLMLattice initialized with max_n_panels={self.max_n_panels}")
+        Logging.record("VLM mesh allocation", ("panel capacity", self.max_n_panels))
 
         # Panel corner points (N x 4 x 3)
         # Order: [P, Q, R, S] where P-Q is LE, R-S is TE

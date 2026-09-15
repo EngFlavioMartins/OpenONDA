@@ -152,7 +152,7 @@ def setup_for(mesh, name, dt, steps, *, turbulence=True, outer_correctors=3):
         pimple=fvm.PimpleControl(
             n_outer_correctors=outer_correctors,
             n_correctors=2,
-            n_orthogonal_correctors=1,
+            n_nonorthogonal_correctors=1,
             velocity_relaxation=1,
             pressure_relaxation=1,
         ),
@@ -186,7 +186,8 @@ def run(args):
     output.mkdir(parents=True, exist_ok=False)
     start = time.perf_counter()
     source_records = [
-        hash_file(path) for path in (
+        hash_file(path)
+        for path in (
             Path(__file__),
             CASE / "reference_flow/setup.py",
             CASE / "reference_flow/assets/cube.stl",
@@ -324,7 +325,9 @@ def run(args):
             for direction in (-1, 1)
         ]
         assert all(normal_counts), "All six outer sides must exchange boundary data"
-        native_trace = NativeFaceTrace(full.mesh_data, full.geo_data, source_faces[rows], signs[rows])
+        native_trace = NativeFaceTrace(
+            full.mesh_data, full.geo_data, source_faces[rows], signs[rows]
+        )
         np.testing.assert_allclose(native_trace.normal, normal, atol=1e-13, rtol=0)
         np.testing.assert_array_equal(native_trace.owner, ids[small_mesh["owners"][rows]])
         for solver in (full, *solvers.values()):
@@ -342,9 +345,9 @@ def run(args):
             ).transpose(0, 2, 1)
             un = full.volumetric_face_flux[source_faces[rows]] * signs[rows] / area
             vector += (un - np.einsum("ij,ij->i", vector, normal))[:, None] * normal
-            gradp = compute_lsq_gradient(full.kinematic_pressure, full.mesh_data, pressure_geometry)[
-                : len(centres), :, 0
-            ]
+            gradp = compute_lsq_gradient(
+                full.kinematic_pressure, full.mesh_data, pressure_geometry
+            )[: len(centres), :, 0]
             tangent = tangential_normal_velocity_gradient(jacobian, normal)
             gradp = trace.sample_cell_field(face, gradp)
             solver_gradp = _resolve_gradient_fn(full.geo_data)(
@@ -361,7 +364,10 @@ def run(args):
             for first, second in (
                 ("native_flux_tangential_gradient", "interpolated_tangential_gradient"),
                 ("native_value_tangential_gradient", "native_flux_tangential_gradient"),
-                ("native_flux_pressure_normal_gradient", "lsq_interpolated_pressure_normal_gradient"),
+                (
+                    "native_flux_pressure_normal_gradient",
+                    "lsq_interpolated_pressure_normal_gradient",
+                ),
                 ("native_value_pressure_normal_gradient", "native_flux_pressure_normal_gradient"),
             ):
                 difference = native[first] - native[second]
@@ -374,8 +380,14 @@ def run(args):
             trace_records.append(audit)
             if not full.step or full.step == args.steps:
                 name = "initial" if not full.step else "final"
-                np.savez_compressed(output / f"{name}-cut-traces.npz", face=face, normal=normal,
-                                    area=area, distance=native_trace.distance, **native)
+                np.savez_compressed(
+                    output / f"{name}-cut-traces.npz",
+                    face=face,
+                    normal=normal,
+                    area=area,
+                    distance=native_trace.distance,
+                    **native,
+                )
             if args.velocity_trace != "interpolated":
                 vector = native["native_face_velocity"].copy()
                 vector += (un - np.sum(vector * normal, axis=1))[:, None] * normal
@@ -484,9 +496,12 @@ def run(args):
             "normal_velocity": "native conservative face flux divided by area",
             "native_flux": "Unit-coefficient full interior operator; momentum and pressure use their own decompositions",
             "native_value": "Native linear face value minus full cropped-owner value, divided by normal distance; a discrete replay control, not a physical normal derivative on skew faces",
-            "max_tangential_owner_to_face_displacement_over_normal_distance": float(np.max(
-                np.linalg.norm(native_trace.tangential_displacement, axis=1) / native_trace.distance
-            )),
+            "max_tangential_owner_to_face_displacement_over_normal_distance": float(
+                np.max(
+                    np.linalg.norm(native_trace.tangential_displacement, axis=1)
+                    / native_trace.distance
+                )
+            ),
         },
         "trace_audit": trace_records,
         "numerics": {
@@ -575,12 +590,24 @@ if __name__ == "__main__":
     parser.add_argument("--outer-correctors", type=int, default=3)
     parser.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
     parser.add_argument("--laminar", action="store_true")
-    parser.add_argument("--velocity-trace", choices=("interpolated", "native_flux", "native_value"),
-                        default="interpolated", help="Diagnostic reference velocity trace")
-    parser.add_argument("--pressure-trace", choices=("lsq", "native_flux", "native_value"),
-                        default="lsq", help="Diagnostic reference pressure trace")
-    parser.add_argument("--mixed-convection", choices=("native", "outflow_linear_upwind"),
-                        default="native", help="Scoped experimental mixed-boundary convection")
+    parser.add_argument(
+        "--velocity-trace",
+        choices=("interpolated", "native_flux", "native_value"),
+        default="interpolated",
+        help="Diagnostic reference velocity trace",
+    )
+    parser.add_argument(
+        "--pressure-trace",
+        choices=("lsq", "native_flux", "native_value"),
+        default="lsq",
+        help="Diagnostic reference pressure trace",
+    )
+    parser.add_argument(
+        "--mixed-convection",
+        choices=("native", "outflow_linear_upwind"),
+        default="native",
+        help="Scoped experimental mixed-boundary convection",
+    )
     args = parser.parse_args()
     if args.steps <= 0 or args.warmup_steps < 0 or args.dt <= 0 or args.dx <= 0:
         parser.error("steps, dt and dx must be positive; warmup steps must be nonnegative")

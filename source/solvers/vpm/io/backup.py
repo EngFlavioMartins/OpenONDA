@@ -1,8 +1,4 @@
-"""Backup/restart I/O for VPM simulations.
-
-Backups use the same canonical names as the live VPM state. Readers reject
-every backup format other than the current canonical layout.
-"""
+"""Native VPM backups with one current numerical schema and canonical names."""
 
 from __future__ import annotations
 
@@ -25,7 +21,7 @@ from .logging import Logging
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "10.0"
+_BACKUP_FORMAT_VERSION = "10.1"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -48,59 +44,8 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "stabilization_vorticity_growth",
     "max_stabilization_vorticity_growth",
     "lagrangian_cfl",
-    "stretching_viscosity_feedback_coefficient",
+    "selective_eddy_viscosity_feedback_coefficient",
 )
-
-
-def _legacy_vlm_output_controls(checkpoint: str | Path) -> tuple[dict[str, Any], Path] | None:
-    """Read explicit output controls from the checkpoint's persisted manifest.
-
-    VLM version-6 groups predate the physics-only identity and do not contain
-    enough information to guess whether a mismatching identity is merely the
-    old standalone logging cadence.  A sibling run manifest is accepted as
-    evidence only when it records the complete VLM output controls; the
-    restart validator still recomputes the full legacy digest, including
-    geometry, callbacks, and every physics control, before allowing migration.
-    """
-    metadata_path = Path(checkpoint).parent / "vpm_metadata.json"
-    if not metadata_path.is_file():
-        return None
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        vlm = metadata["configuration"]["numerics"]["vlm"]
-        logging_interval_steps = vlm["logging_interval_steps"]
-        sample_surface_forces = vlm["sample_surface_forces"]
-        surfaces = vlm["surfaces"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return None
-    if (
-        isinstance(logging_interval_steps, bool)
-        or not isinstance(logging_interval_steps, int)
-        or logging_interval_steps < 1
-        or not isinstance(sample_surface_forces, bool)
-        or not isinstance(surfaces, list)
-    ):
-        return None
-    surface_sample_forces = []
-    for surface in surfaces:
-        if not isinstance(surface, dict):
-            return None
-        # ``None`` is a meaningful persisted dataclass default.  Missing
-        # values are not evidence because older manifests were incomplete.
-        if "sample_forces" not in surface:
-            return None
-        value = surface["sample_forces"]
-        if value is not None and not isinstance(value, bool):
-            return None
-        surface_sample_forces.append(value)
-    return (
-        {
-            "logging_interval_steps": logging_interval_steps,
-            "sample_surface_forces": sample_surface_forces,
-            "surface_sample_forces": surface_sample_forces,
-        },
-        metadata_path,
-    )
 
 
 def _atomic_write_text(path: str | Path, text: str) -> None:
@@ -224,20 +169,6 @@ def _configuration_mismatches(
                     # extra particle storage becomes available. The saved
                     # checksum and every physical setting are still checked.
                     continue
-            if (
-                child_path in {
-                    "stabilization.regularization_solenoidal_remesh",
-                    "stabilization.regularization_transfer_only",
-                }
-                and key not in found
-                and expected.get(key) is False
-            ):
-                # Pre-projection checkpoints had no switch; their behavior is
-                # exactly the new disabled default. Enabling it still differs.
-                continue
-            if child_path == "turbulence.filter_width" and key not in found and expected.get(key) is None:
-                # None preserves the historical volume-derived LES filter.
-                continue
             if key not in expected or key not in found:
                 paths.append(child_path)
             else:
@@ -280,7 +211,6 @@ class _BackupIO:
         )
 
         vlm = getattr(solver, "vlm_solver", None)
-        identity_migration = None
         with h5py.File(path, "r") as file:
             solver_group = file["solver"]
             source_step = int(_read_attribute(solver_group, "step"))
@@ -290,15 +220,7 @@ class _BackupIO:
             if vlm is not None:
                 from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
 
-                legacy_evidence = None
-                if state is not None and int(state.attrs.get("version", -1)) == 6:
-                    legacy_evidence = _legacy_vlm_output_controls(path)
-                legacy_controls = legacy_evidence[0] if legacy_evidence is not None else None
-                identity_migration = validate_vlm_restart(
-                    vlm,
-                    state,
-                    legacy_output_controls=legacy_controls,
-                )
+                validate_vlm_restart(vlm, state)
                 vlm_time = float(state.attrs["time"])
                 clock_tolerance = max(1.0e-10, abs(source_time) * 1.0e-12)
                 if not np.isfinite(source_time) or not np.isfinite(vlm_time):
@@ -308,8 +230,6 @@ class _BackupIO:
                         "VLM restart time does not match solver accepted time: "
                         f"{vlm_time:.17g} != {source_time:.17g}"
                     )
-                if identity_migration is not None:
-                    identity_migration["evidence_path"] = str(legacy_evidence[1])
             elif state is not None:
                 raise ValueError("VLM backup requires a configured VLM solver")
 
@@ -337,7 +257,6 @@ class _BackupIO:
             stabilization.reference_lengths = reference_lengths
 
         _BackupIO._load_numerical_data(solver, path)
-        solver._vlm_identity_migration = identity_migration
         if time_step_size is not None:
             solver.time_step_size = float(time_step_size)
             solver._restart_provenance = {
@@ -405,6 +324,7 @@ class _BackupIO:
                     ("time", f"{time_value:.6e}", "s"),
                     ("particles", f"{solver.particles.n_particles_total:,}"),
                     ("path", str(hdf5_file)),
+                    flush=True,
                 )
         except Exception as exc:
             raise RuntimeError(f"Backup write failed: {exc}") from exc
@@ -1031,16 +951,6 @@ class _BackupIO:
                     invalid(f"numerical configuration is not valid JSON ({exc.msg})")
                 if not isinstance(stored_configuration, dict):
                     invalid("numerical configuration must be a JSON object")
-                # Before stretching was selectable on these two backends,
-                # their checkpoints implicitly used transposed stretching.
-                # Verify the original checksum first, then recover that one
-                # known default without weakening other restart comparisons.
-                stored_induction = stored_configuration.get("induction")
-                if isinstance(stored_induction, dict) and stored_induction.get("type") in {
-                    "source.solvers.vpm.physics.induction.direct.DirectInduction",
-                    "source.solvers.vpm.physics.induction.fmm.device.FMMInduction",
-                }:
-                    stored_induction.setdefault("stretching_scheme", "TRANSPOSED")
                 if expected_configuration is not None:
                     mismatches = _configuration_mismatches(
                         expected_configuration,

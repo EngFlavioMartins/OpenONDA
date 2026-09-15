@@ -66,6 +66,24 @@ def test_cube_recommended_formulation_preserves_resolution_and_small_domain():
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
 
 
+def test_cube_controls_vorticity_alignment_without_weakening_health_limits():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_alignment")
+    numerics = setup.VPM_CASE.numerics
+    policy = numerics.stabilization
+    assert policy.pedrizzetti_relaxation_enabled
+    assert policy.pedrizzetti_relaxation_factor == pytest.approx(
+        setup.VPM_ALIGNMENT_RELAXATION_RATE * numerics.time_step_size
+    )
+    assert policy.pedrizzetti_relaxation_preserve_vortex_strength
+    assert policy.pedrizzetti_relaxation_preserve_moments
+    assert policy.pedrizzetti_relaxation_interval_steps == 1
+    assert policy.pedrizzetti_relaxation_start_step == 0
+    assert policy.pedrizzetti_relaxation_end_step is None
+    assert tuple(policy.remove_particles_by_bounds) == setup.VPM_DOMAIN
+    assert numerics.health_limits.finite_state.enabled
+    assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
+
+
 def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
     setup = _load_setup(CASE_DIR / "setup.py", "cube_run_factory")
     events = []

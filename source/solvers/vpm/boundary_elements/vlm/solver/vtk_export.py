@@ -6,7 +6,7 @@ import numpy as np
 
 from source.vtk_output import write_vtk_dataset
 
-# Optional fields are omitted when visualizing an older numerical checkpoint.
+# Optional fields are exported only when present in the recorded state.
 # In particular, absent unsteady loads must never be presented as measured zeros.
 CELL_FIELDS = (
     "area",
@@ -38,13 +38,11 @@ def write_lattice_vtk(fields, filename, *, reference_speed, time, force_density=
     ``bound_vortex_velocity`` are inertial fluid velocities; the corresponding
     ``relative_velocity`` fields subtract the prescribed body motion. Circulation
     is in [m^2/s], and ``panel_force`` is the force in newtons at the solve
-    density when ``force_density`` is supplied. The legacy
-    ``pressure_jump_coefficient`` cell array is retained solely for reader
-    compatibility: it is a circulation-based lifting-surface proxy, not a
-    pressure reconstruction, and it is not in ``CELL_FIELDS`` or selected as
-    the active scalar. New readers should use the explicit
-    ``circulation_pressure_jump_proxy`` or ``panel_normal_load_coefficient``
-    fields. All fields can be selected with ParaView's Color By control.
+    density when ``force_density`` is supplied. The dimensionless
+    ``circulation_pressure_jump_proxy`` combines the circulation-based
+    lifting-surface estimate and any recorded unsteady contribution. It is
+    distinct from ``panel_normal_load_coefficient``, which normalizes the
+    actual normal panel force. All fields are selectable in ParaView.
     """
     from vtk import vtkCellArray, vtkPoints, vtkPolyData
     from vtk.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
@@ -74,10 +72,8 @@ def write_lattice_vtk(fields, filename, *, reference_speed, time, force_density=
 
     computed_area = None
     if "area" not in fields:
-        # Area is geometry-derived, so a legacy checkpoint can still be
-        # re-exported deterministically.  Keep the validated local array for
-        # dimensional normal-load coefficients instead of only adding it to
-        # VTK cell data below.
+        # Geometry determines area independently of the stored solution.
+        # Reuse this value when normalizing the recorded normal force.
         computed_area = 0.5 * np.linalg.norm(
             np.cross(
                 corners[:, 2] - corners[:, 0],
@@ -117,7 +113,6 @@ def write_lattice_vtk(fields, filename, *, reference_speed, time, force_density=
         )
         if "unsteady_pressure_jump_coefficient" in fields:
             pressure += fields["unsteady_pressure_jump_coefficient"]
-        add(cell_data, "pressure_jump_coefficient", pressure)
         add(cell_data, "circulation_pressure_jump_proxy", pressure)
         cell_data.SetActiveScalars("circulation")
     if "pressure_coefficient" in fields:
@@ -157,15 +152,8 @@ def write_lattice_vtk(fields, filename, *, reference_speed, time, force_density=
             "bound_relative_velocity = bound_vortex_velocity - bound_kinematic_velocity [m/s]"
         ),
         "cell_association": "all VLM fields are cell-centred; panel_id is lattice order",
-        "pressure_jump_coefficient_definition": (
-            "legacy circulation proxy 2*circulation/(reference_speed*panel_chord) "
-            "+ unsteady contribution when present"
-        ),
-        "pressure_jump_coefficient_status": (
-            "compatibility-only cell-data alias; not in CELL_FIELDS and not the default scalar"
-        ),
         "circulation_pressure_jump_proxy_definition": (
-            "same legacy circulation proxy under an explicit non-pressure name"
+            "2*circulation/(reference_speed*panel_chord) + unsteady contribution when present"
         ),
         "speed_pressure_coefficient_definition": (
             "Bernoulli speed coefficient 1-|velocity|^2/reference_speed^2 at collocation points; not a pressure jump"

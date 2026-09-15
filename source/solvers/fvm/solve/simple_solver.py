@@ -2332,9 +2332,12 @@ class SIMPLESolver:
             if logger is not None and (
                 iteration % 10 == 0 or kinematic_pressure_residual < self.params["tolerance"]
             ):
-                logger.message(
-                    f"  Iter {iteration:3d}: kinematic_pressure_residual={kinematic_pressure_residual:.3e}, "
-                    f"Δstate={nonlinear_state_update:.3e}, continuity={continuity:.3e}"
+                logger.record(
+                    "SIMPLE convergence",
+                    ("iteration", iteration),
+                    ("pressure residual", kinematic_pressure_residual),
+                    ("state update", nonlinear_state_update),
+                    ("continuity error", continuity, "1/s"),
                 )
 
             if (
@@ -2344,7 +2347,7 @@ class SIMPLESolver:
             ):
                 if logger is not None:
                     logger.info(
-                        f"component=SIMPLE status=converged iterations={iteration + 1} "
+                        f"SIMPLE converged after {iteration + 1} iterations: "
                         f"kinematic_pressure_residual={kinematic_pressure_residual:.3e} "
                         f"nonlinear_state_update={nonlinear_state_update:.3e} "
                         f"continuity={continuity:.3e}"
@@ -2353,7 +2356,7 @@ class SIMPLESolver:
 
         if logger is not None:
             logger.warning(
-                f"component=SIMPLE status=not_converged "
+                f"SIMPLE did not converge: "
                 f"iterations={self.params['max_iterations']} "
                 f"kinematic_pressure_residual={kinematic_pressure_residual:.3e} "
                 f"nonlinear_state_update={nonlinear_state_update:.3e} continuity={continuity:.3e}"

@@ -11,10 +11,11 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from source.solvers.vpm.io.logging import Logging
 
 from ..geometry.stl_audit import audit_stl_mesh, orient_components_by_signed_volume
 from ..geometry.stl_io import load_stl
@@ -22,8 +23,6 @@ from .lattice import PanelLattice
 
 if TYPE_CHECKING:
     from ..coupling.kinematics import PanelKinematics
-
-logger = logging.getLogger("vpm")
 
 
 def load_and_audit_body_stl(
@@ -118,4 +117,4 @@ def add_body_from_mesh_stl(
         group_id=group_id,
         reference_area=reference_area,
     )
-    logger.debug(f"Added body '{uid}' with {count} panels from '{filepath}'.")
+    Logging.debug(f"Added body '{uid}' with {count} panels from '{filepath}'.")

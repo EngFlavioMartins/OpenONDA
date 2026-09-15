@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from source.solvers.vpm.io.logging import Logging
+
 from ....io.sampling import resolve_samples_dir
 
 
@@ -104,4 +106,4 @@ class PanelLoadingDistribution:
                         f"{panel_force[i][2]:.10e},{int(group_id[i])}\n"
                     )
         except Exception as exc:
-            print(f"(Warning) Failed to record panel loading distribution: {exc}")
+            Logging.warning("Panel loading distribution could not be recorded: %s", exc)

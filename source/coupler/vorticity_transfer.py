@@ -1395,8 +1395,13 @@ def replace_particles_from_lattice_blend(
     )
 
 
-def _transfer_log_record(step: int, result: TransferResult) -> str:
-    """Format one auditable particle-strength transfer for the run log.
+def _transfer_log_record(step: int, result: TransferResult) -> log_style.Event:
+    """Retain the immutable transfer result until an enabled report needs rows."""
+    return log_style.Event("interface transfer", lambda: _transfer_log_rows(step, result))
+
+
+def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row, ...]:
+    """Build host rows for one auditable particle-strength transfer.
 
     Parameters
     ----------
@@ -1407,11 +1412,12 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
 
     Returns
     -------
-    str
-        Multi-line human-readable report. Formatting has no effect on the
-        transferred state or on the stored diagnostic object.
+    tuple[log_style.Row, ...]
+        Labelled scalar measurements, units and short host-vector norms. Row
+        construction leaves the transferred state and stored result unchanged.
     """
     rows: list[log_style.Row] = [
+        ("coupling step", step),
         ("method", result.transfer_method),
         ("blend, eta", "on" if result.eta_blending_enabled else "off"),
         ("particles, before", f"{result.n_particles_before:,}"),
@@ -1499,7 +1505,7 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                 ),
                 (
                     "projection error, normal velocity",
-                    f"{0.0 if velocity_error is None else velocity_error:.3e}",
+                    velocity_error,
                 ),
                 ("projection condition number", f"{result.projection_condition_number:.3e}"),
                 ("gbd guard width", f"{result.renewal_guard_width:.4g}", "m"),
@@ -1569,7 +1575,7 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                 (
                     (
                         "representation residual, before prune",
-                        f"{0.0 if result.representation_residual_before_prune is None else result.representation_residual_before_prune:.3e}",
+                        result.representation_residual_before_prune,
                     ),
                     (
                         "representation residual, after prune",
@@ -1577,7 +1583,7 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                     ),
                 )
             )
-    return format_coupler_log(f"state replacement, step {step:,}", *rows)
+    return tuple(rows)
 
 
 class VorticityTransfer:

@@ -58,7 +58,6 @@ class _FourierParticleCloud:
 def test_fourier_transition_reports_finite_energy_and_rate():
     evaluator = object.__new__(ParticleFieldEvaluation)
     evaluator._fourier_grid = None
-    evaluator._fourier_energy_offset = 0.0
     evaluator._energy_history = [(0.0, 10.0, "unbounded_energy")]
     evaluator._max_history_length = 7
     spectral = SimpleNamespace(
@@ -83,7 +82,6 @@ def test_fourier_transition_reports_finite_energy_and_rate():
 def test_fourier_grid_growth_bridges_the_rate_on_the_old_grid():
     evaluator = object.__new__(ParticleFieldEvaluation)
     evaluator._fourier_grid = None
-    evaluator._fourier_energy_offset = 0.0
     evaluator._energy_history = [(0.0, 10.0, "unbounded_energy")]
     evaluator._max_history_length = 7
     new_grid = SimpleNamespace(

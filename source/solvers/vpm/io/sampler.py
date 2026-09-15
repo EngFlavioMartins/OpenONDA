@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 import csv
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -116,7 +117,7 @@ class _SamplerRuntime:
     """Mutable runtime state separated from immutable sampler configuration."""
 
     pvd_entries: dict[str, list[tuple[float, str]]] = field(default_factory=dict)
-    last_written: dict[int, tuple[int, float]] = field(default_factory=dict)
+    last_written: dict[Hashable, tuple[int, float]] = field(default_factory=dict)
 
 
 class OutputManager:
@@ -175,7 +176,7 @@ class OutputManager:
         if event is OutputEvent.FAILED:
             raise ValueError("manual sampler execution cannot use the failed event")
         for sampler in self.samplers.samples:
-            if skip_current and self._runtime.last_written.get(id(sampler)) == (
+            if skip_current and self._runtime.last_written.get(self._output_identity(sampler)) == (
                 self.solver.step,
                 self.solver.time,
             ):
@@ -221,10 +222,7 @@ class OutputManager:
 
     def _is_final(self, sampler: object) -> bool:
         schedule = self._schedule(sampler)
-        return bool(
-            schedule is not None
-            and getattr(schedule, "is_final_only", getattr(schedule, "at_end", False))
-        )
+        return bool(schedule is not None and schedule.is_final_only)
 
     def _is_due(self, sampler: object, step: int, time: float) -> bool:
         schedule = self._schedule(sampler)
@@ -236,11 +234,16 @@ class OutputManager:
 
     def _execute_one(self, sampler: object, event: OutputEvent) -> None:
         """Write one sampler atomically and update its last-written index."""
+        identity = self._output_identity(sampler)
+        if event is OutputEvent.FINAL and self._runtime.last_written.get(identity) == (
+            self.solver.step,
+            self.solver.time,
+        ):
+            return
         applicable = getattr(sampler, "is_applicable", None)
         if applicable is not None and not applicable(self.solver):
             Logging.info(
-                f"component=sampler name={type(sampler).__name__!r} status=skipped "
-                "reason=prerequisite_not_met"
+                f"Sampler {type(sampler).__name__} skipped because its prerequisite is not met"
             )
             return
         directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
@@ -248,12 +251,24 @@ class OutputManager:
         context = SamplingContext(self.solver, directory, self.solver.step, self.solver.time, event)
         try:
             self._write(sampler, context)
-            self._runtime.last_written[id(sampler)] = (context.step, context.time)
+            self._runtime.last_written[identity] = (context.step, context.time)
         except Exception as exc:
             prefix = self._name(sampler)
             raise RuntimeError(
                 f"Sampler {prefix!r} failed at step {context.step}, time {context.time}: {exc}"
             ) from exc
+
+    @staticmethod
+    def _output_identity(sampler: object) -> Hashable:
+        """Allow equivalent scheduled writers to declare one scientific output.
+
+        An explicit identity must include every option affecting the sampled
+        values and destination, excluding scheduling. Other samplers retain
+        instance identity; a matching filename alone cannot establish equality.
+        This index covers successful writes by this manager, never pre-existing
+        disk data, which remain subject to the writer's resume checks.
+        """
+        return cast(Hashable, getattr(sampler, "output_identity", id(sampler)))
 
     @staticmethod
     def _name(sampler: object) -> str:

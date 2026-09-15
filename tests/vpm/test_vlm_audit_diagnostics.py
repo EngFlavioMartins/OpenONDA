@@ -1,40 +1,13 @@
-"""Independent pair-sum and broad-phase checks for VLM diagnostic acceleration."""
+"""Independent finite-target particle induction checks."""
 
 import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.boundary_elements.vlm.kernels.collision import swept_panel_candidates
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction.base import StageState
 from source.solvers.vpm.physics.stage_rhs import _StageParticleView
-
-
-def test_batched_swept_candidates_match_exhaustive_boxes():
-    rng = np.random.default_rng(91)
-    start = rng.normal(size=(2051, 3))
-    end = start + rng.normal(size=start.shape)
-    radii = rng.uniform(0.01, 0.3, len(start))
-    lower = rng.normal(size=(13, 3))
-    upper = lower + rng.uniform(0.0, 1.0, lower.shape)
-    tolerance = 0.013
-    expected = {}
-    for i in range(len(start)):
-        candidates = []
-        margin = radii[i] + tolerance
-        for j in range(len(lower)):
-            if np.all(np.maximum(start[i], end[i]) + margin >= lower[j] - margin) and np.all(
-                np.minimum(start[i], end[i]) - margin <= upper[j] + margin
-            ):
-                candidates.append(j)
-        if candidates:
-            expected[i] = candidates
-    actual = {
-        i: panels.tolist()
-        for i, panels in swept_panel_candidates(start, end, radii, lower, upper, tolerance)
-    }
-    assert actual == expected
 
 
 @pytest.mark.parametrize(

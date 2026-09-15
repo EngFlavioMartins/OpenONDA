@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -41,6 +42,7 @@ FORCE_COLUMNS = (
     "lift_coefficient",
     "side_force_coefficient",
 )
+OPTIONAL_COLUMNS = ("accepted_time_step_size", "pressure_force_x", "viscous_force_x")
 METRICS = (
     "mean_drag",
     "rms_drag",
@@ -50,6 +52,8 @@ METRICS = (
     "rms_side",
     "strouhal_lift",
     "strouhal_side",
+    "mean_pressure_drag",
+    "mean_viscous_drag",
 )
 PROFILE_NAMES = ("centreline", "offaxis_y075")
 
@@ -154,7 +158,9 @@ def _read_force_history(path: Path) -> ForceHistory:
         fieldnames = tuple(reader.fieldnames or ())
         if "time" not in fieldnames:
             raise ValueError(f"{path} has no 'time' column")
-        available = tuple(name for name in FORCE_COLUMNS if name in fieldnames)
+        available = tuple(
+            name for name in (*FORCE_COLUMNS, *OPTIONAL_COLUMNS) if name in fieldnames
+        )
         if "drag_coefficient" not in available:
             raise ValueError(f"{path} has no 'drag_coefficient' column")
         rows = list(reader)
@@ -269,6 +275,112 @@ def _resolve_statistics_window(
     return start, end
 
 
+def _case_context(case: GridCase, solution_root: Path) -> dict[str, Any]:
+    """Read original run settings and global mesh data, never the current setup."""
+    directory = solution_root / case.samples_dir.name
+    metadata_path = directory / "fvm_metadata.json"
+    result: dict[str, Any] = dict(
+        length=1.0,
+        speed=1.0,
+        force_scale=None,
+        configuration=None,
+        scales_source="cube tutorial defaults D=1, U=1; run metadata absent",
+        domain_bounds=None,
+        realized_wall_cell_size=None,
+        global_cell_count=None,
+        mesh_controls=None,
+        warnings=[],
+    )
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text())
+        if metadata.get("lifecycle", {}).get("status") != "complete":
+            raise ValueError("native FVM metadata does not mark this run complete")
+        if not np.isclose(
+            metadata["state"]["time"], case.declared_end_time, atol=TIME_TOLERANCE, rtol=0
+        ):
+            raise ValueError("native completion time disagrees with grid_run.json")
+        configuration = metadata["configuration"]
+        samplers = [
+            s
+            for s in configuration["samplers"]
+            if s["type"] == "ForceSampler" and s.get("file_name") == "forces_history"
+        ]
+        if len(samplers) != 1:
+            raise ValueError("cannot identify one forces_history normalization in native metadata")
+        sampler = samplers[0]
+        result["length"] = _positive_float(sampler["reference_length"], "reference length")
+        result["speed"] = _positive_float(sampler["reference_velocity"], "reference velocity")
+        result["force_scale"] = (
+            0.5
+            * _positive_float(configuration["transport"]["density"], "density")
+            * result["speed"] ** 2
+            * _positive_float(sampler["reference_area"], "reference area")
+        )
+        result["scales_source"] = str(metadata_path.resolve())
+        keys = (
+            "transport",
+            "turbulence",
+            "boundaries",
+            "schemes",
+            "linear",
+            "pimple",
+            "initial_velocity",
+            "initial_kinematic_pressure",
+        )
+        result["configuration"] = {key: configuration.get(key) for key in keys}
+        result["configuration"]["force_normalization"] = {
+            key: sampler[key]
+            for key in ("reference_length", "reference_velocity", "reference_area", "patch_names")
+        }
+        result["configuration"]["time_integration"] = {
+            key: configuration["time"].get(key) for key in ("time_step_size", "adjustment")
+        }
+    else:
+        result["warnings"].append("native settings unavailable; matching physics is unverified")
+
+    mesh_path = directory / "mesh.npz"
+    if mesh_path.exists():
+        with np.load(mesh_path, allow_pickle=False) as mesh:
+            points = mesh["vertex_position"]
+            result["domain_bounds"] = (
+                np.column_stack((points.min(axis=0), points.max(axis=0))).ravel().tolist()
+            )
+            result["global_cell_count"] = len(mesh["cell_sizes"])
+            generation = json.loads(str(mesh["metadata"]))["mesh_generation"]
+            result["realized_wall_cell_size"] = generation["resolved_surface_patch_sizes"]["cube"]
+            result["mesh_controls"] = {
+                "method": generation["method"],
+                "surface_hashes": generation["cartesian_report"].get("surface_hashes"),
+                "requested_size_ratios": {
+                    entry["name"]: round(entry["requested"] / case.wall_cell_size, 10)
+                    for entry in generation["requested_sizes"]
+                },
+            }
+        if result["global_cell_count"] != case.cell_count:
+            raise ValueError("global mesh cell count disagrees with grid_run.json")
+    else:
+        result["warnings"].append("global mesh unavailable; realized spacing and domain unverified")
+    return result
+
+
+def _comparability(contexts: dict[str, dict], reference: str) -> dict:
+    differences = {}
+    ref = contexts[reference]
+    for name, context in contexts.items():
+        changed = []
+        for key in ("configuration", "domain_bounds", "mesh_controls"):
+            if context[key] is not None and ref[key] is not None and context[key] != ref[key]:
+                changed.append(key)
+        if changed:
+            differences[name] = changed
+    return {
+        "differences_to_reference": differences,
+        "matching_recorded_settings": not differences
+        and all(not context["warnings"] for context in contexts.values()),
+        "limitation": "Checks saved physics, solver controls, domain bounds, surface hashes and size ratios; no independent time-step convergence test.",
+    }
+
+
 def _window_series(
     time: np.ndarray,
     values: np.ndarray,
@@ -295,29 +407,82 @@ def _time_mean(time: np.ndarray, values: np.ndarray) -> float:
     return float(np.trapezoid(values, time) / (time[-1] - time[0]))
 
 
-def _dominant_strouhal(time: np.ndarray, values: np.ndarray) -> float | None:
-    """Estimate the dominant nondimensional frequency from a force signal."""
+def _spectral_peak(time: np.ndarray, values: np.ndarray) -> tuple[float, float]:
+    """Hann-windowed peak and its three-bin share of nonzero-frequency power."""
+    uniform = np.linspace(time[0], time[-1], len(time))
+    signal = np.interp(uniform, time, values)
+    signal -= signal.mean()
+    power = np.abs(np.fft.rfft(signal * np.hanning(len(signal)))) ** 2
+    power[0] = 0.0
+    peak = 1 + int(np.argmax(power[1:]))
+    frequency = np.fft.rfftfreq(len(signal), uniform[1] - uniform[0])
+    share = float(power[max(1, peak - 1) : peak + 2].sum() / max(power.sum(), VALUE_FLOOR**2))
+    return float(frequency[peak]), share
 
-    if len(time) < 16:
-        return None
+
+def _frequency_diagnostic(
+    time: np.ndarray, values: np.ndarray, length: float = 1.0, speed: float = 1.0
+) -> dict[str, Any]:
+    """Screen a candidate frequency; a window-scale drift is not a shedding St.
+
+    Five observed cycles, eight samples per cycle, a three-bin power share of
+    50%, and agreement between half-window peaks are practical screening rules,
+    not confidence limits or proof of a statistically converged spectrum.
+    """
+    duration = float(time[-1] - time[0])
+    result = dict(
+        strouhal=None,
+        reason=None,
+        candidate_frequency_hz=None,
+        observed_cycles=None,
+        strouhal_resolution=length / speed / duration,
+    )
+    if len(time) < 32:
+        result["reason"] = "fewer than 32 samples"
+        return result
     centred = values - _time_mean(time, values)
-    if float(np.max(np.abs(centred))) <= VALUE_FLOOR:
-        return None
-    uniform_time = np.linspace(time[0], time[-1], len(time))
-    signal = np.interp(uniform_time, time, centred)
-    spectrum = np.abs(np.fft.rfft(signal * np.hanning(len(signal))))
-    frequency = np.fft.rfftfreq(len(signal), uniform_time[1] - uniform_time[0])
-    if len(spectrum) < 2 or not np.any(np.isfinite(spectrum[1:])):
-        return None
-    return float(frequency[1 + int(np.argmax(spectrum[1:]))])
+    rms = float(np.sqrt(_time_mean(time, centred**2)))
+    if rms < 1.0e-7:
+        result["reason"] = "force fluctuations below 1e-7 coefficient"
+        return result
+    frequency, share = _spectral_peak(time, centred)
+    cycles = frequency * duration
+    result.update(
+        candidate_frequency_hz=frequency, observed_cycles=cycles, peak_power_fraction=share
+    )
+    if cycles < 5.0:
+        result["reason"] = "fewer than five cycles; peak is not resolved from slow drift"
+        return result
+    if frequency * float(np.max(np.diff(time))) > 0.125:
+        result["reason"] = "fewer than eight samples per candidate cycle"
+        return result
+    slope = float(np.polyfit(time - time[0], values, 1)[0])
+    trend_rms = abs(slope) * duration / np.sqrt(12.0)
+    if trend_rms > 0.5 * rms:
+        result["reason"] = "linear drift exceeds half the fluctuation RMS"
+        return result
+    midpoint = 0.5 * (time[0] + time[-1])
+    half_peaks = [
+        _spectral_peak(*_window_series(time, values, a, b))[0]
+        for a, b in ((time[0], midpoint), (midpoint, time[-1]))
+    ]
+    result["half_window_frequencies_hz"] = half_peaks
+    if any(abs(peak - frequency) > max(2.0 / duration, 0.2 * frequency) for peak in half_peaks):
+        result["reason"] = "half-window frequency estimates disagree"
+    elif share < 0.5:
+        result["reason"] = "no concentrated spectral peak (three-bin power below 50%)"
+    else:
+        result["strouhal"] = frequency * length / speed
+    return result
 
 
 def _force_statistics(
-    history: ForceHistory, start: float, end: float
-) -> dict[str, float | int | None]:
+    history: ForceHistory, start: float, end: float, *, context: dict | None = None
+) -> dict[str, Any]:
     """Compute time-weighted force statistics over a shared physical interval."""
 
-    result: dict[str, float | int | None] = {"samples": None}
+    result: dict[str, Any] = {"samples": None}
+    context = context or {"length": 1.0, "speed": 1.0, "force_scale": None}
     signals: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for name in FORCE_COLUMNS:
         if name not in history.values:
@@ -340,12 +505,51 @@ def _force_statistics(
         mean = _time_mean(time, values)
         result[f"mean_{prefix}"] = mean
         result[f"rms_{prefix}"] = float(np.sqrt(_time_mean(time, (values - mean) ** 2)))
+        if result[f"rms_{prefix}"] <= VALUE_FLOOR:
+            result[f"rms_{prefix}"] = 0.0
+        midpoint = 0.5 * (start + end)
+        halves = [
+            _time_mean(*_window_series(time, values, a, b))
+            for a, b in ((start, midpoint), (midpoint, end))
+        ]
+        result[f"{prefix}_half_means"] = halves
+        result[f"{prefix}_half_mean_change"] = float(halves[1] - halves[0])
+        result[f"{prefix}_range"] = [float(values.min()), float(values.max())]
+        result[f"{prefix}_block_means"] = [
+            _time_mean(*_window_series(time, values, a, b))
+            for a, b in zip(np.linspace(start, end, 5)[:-1], np.linspace(start, end, 5)[1:])
+        ]
+
+    result["drag_drift_relative"] = (
+        abs(result["drag_half_mean_change"]) / abs(result["mean_drag"])
+        if abs(result["mean_drag"]) > VALUE_FLOOR
+        else None
+    )
+    for prefix, column in (("pressure", "pressure_force_x"), ("viscous", "viscous_force_x")):
+        result[f"mean_{prefix}_drag"] = (
+            _time_mean(*_window_series(history.time, history.values[column], start, end))
+            / context["force_scale"]
+            if column in history.values and context.get("force_scale")
+            else None
+        )
+    result["sampled_time_step_range"] = None
+    if "accepted_time_step_size" in history.values:
+        _, step_sizes = _window_series(
+            history.time, history.values["accepted_time_step_size"], start, end
+        )
+        result["sampled_time_step_range"] = [float(step_sizes.min()), float(step_sizes.max())]
 
     for metric, column in (
         ("strouhal_lift", "lift_coefficient"),
         ("strouhal_side", "side_force_coefficient"),
     ):
-        result[metric] = _dominant_strouhal(*signals[column]) if column in signals else None
+        diagnostic = (
+            _frequency_diagnostic(*signals[column], context["length"], context["speed"])
+            if column in signals
+            else {"strouhal": None, "reason": "force column absent"}
+        )
+        result[metric] = diagnostic["strouhal"]
+        result[f"{metric}_diagnostic"] = diagnostic
     return result
 
 
@@ -437,7 +641,7 @@ def _read_profile(path: Path, start: float, end: float) -> MeanProfile:
 
 
 def _profile_difference(
-    candidate: MeanProfile, reference: MeanProfile
+    candidate: MeanProfile, reference: MeanProfile, interval: tuple[float, float] | None = None
 ) -> dict[str, float | list[float] | None]:
     """Measure a candidate mean profile relative to the reference mean profile."""
 
@@ -447,6 +651,8 @@ def _profile_difference(
         )
     lower = max(float(candidate.position[0]), float(reference.position[0]))
     upper = min(float(candidate.position[-1]), float(reference.position[-1]))
+    if interval is not None:
+        lower, upper = max(lower, interval[0]), min(upper, interval[1])
     selected = (reference.position >= lower) & (reference.position <= upper)
     position = reference.position[selected]
     if len(position) < 2 or upper <= lower:
@@ -578,7 +784,7 @@ def _convergence_statistics(
         richardson["reason"] = "the observed order is not positive and finite"
         return result
     extrapolated = fine_value + delta_fine / (ratio_fine**observed_order - 1.0)
-    scale = max(abs(extrapolated), VALUE_FLOOR)
+    scale = max(abs(fine_value), VALUE_FLOOR)
     richardson.update(
         {
             "available": True,
@@ -655,10 +861,17 @@ def _profile_statistics(
             try:
                 candidate = _read_profile(path, start, end)
                 comparison = _profile_difference(candidate, reference)
+                comparison["wake"] = _profile_difference(candidate, reference, (0.5, 8.0))
             except ValueError as error:
                 comparisons[case.name] = {"available": False, "reason": str(error)}
                 continue
-            comparisons[case.name] = {"available": True, **comparison}
+            # Retain the actual mean profiles for inspection, not just their norms.
+            comparisons[case.name] = {
+                "available": True,
+                **comparison,
+                "position": candidate.position.tolist(),
+                "mean_velocity": candidate.velocity.tolist(),
+            }
         profiles[name] = {
             "available": True,
             "axis": reference.axis,
@@ -696,6 +909,14 @@ def _write_csv(report: dict[str, Any], destination: Path) -> None:
         "cell_count",
         "declared_end_time",
         "force_samples",
+        "statistics_start",
+        "statistics_end",
+        "realized_wall_cell_size",
+        "drag_drift_relative",
+        "drag_first_half_mean",
+        "drag_second_half_mean",
+        "strouhal_lift_reason",
+        "strouhal_side_reason",
         *METRICS,
         *difference_columns,
         *profile_columns,
@@ -713,6 +934,14 @@ def _write_csv(report: dict[str, Any], destination: Path) -> None:
                 "cell_count": grid["cell_count"],
                 "declared_end_time": grid["declared_end_time"],
                 "force_samples": statistics["samples"],
+                "statistics_start": report["statistics_window"]["start"],
+                "statistics_end": report["statistics_window"]["end"],
+                "realized_wall_cell_size": grid["context"]["realized_wall_cell_size"],
+                "drag_drift_relative": statistics["drag_drift_relative"],
+                "drag_first_half_mean": statistics["drag_half_means"][0],
+                "drag_second_half_mean": statistics["drag_half_means"][1],
+                "strouhal_lift_reason": statistics["strouhal_lift_diagnostic"]["reason"],
+                "strouhal_side_reason": statistics["strouhal_side_diagnostic"]["reason"],
                 **{metric: statistics.get(metric) for metric in METRICS},
                 **{
                     f"difference_to_reference_{metric}": differences[metric]["relative"]
@@ -739,6 +968,7 @@ def _write_markdown(report: dict[str, Any], destination: Path) -> None:
         f"Reference grid: `{report['reference_case']}` ({report['reference_definition']}).",
         "",
         "Differences are relative to that grid, not exact discretisation errors.",
+        "RMS denotes fluctuations about the time-weighted mean, not uncertainty in that mean.",
         "",
         "| Case | Wall h/D | Cells | Mean Cd | RMS Cd | RMS Cl | RMS Cs |",
         "|---|---:|---:|---:|---:|---:|---:|",
@@ -750,6 +980,66 @@ def _write_markdown(report: dict[str, Any], destination: Path) -> None:
             f"{grid['cell_count']:,} | "
             f"{_display_number(force['mean_drag'])} | {_display_number(force['rms_drag'])} | "
             f"{_display_number(force['rms_lift'])} | {_display_number(force['rms_side'])} |"
+        )
+
+    lines += ["", "## Assessment", "", report["assessment"]["conclusion"], ""]
+    lines += [f"- {reason}" for reason in report["assessment"]["reasons"]]
+    lines += [
+        "",
+        "## Averaging-window sensitivity and drag components",
+        "",
+        "| Case | Cd first half | Cd second half | Change / mean Cd | Pressure Cd | Viscous Cd | St (lift) | St (side) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for grid in report["grids"]:
+        f = grid["force_statistics"]
+        lines.append(
+            f"| {grid['case']} | {_display_number(f['drag_half_means'][0])} | "
+            f"{_display_number(f['drag_half_means'][1])} | {_display_percent(f['drag_drift_relative'])} | "
+            f"{_display_number(f['mean_pressure_drag'])} | {_display_number(f['mean_viscous_drag'])} | "
+            f"{_display_number(f['strouhal_lift'])} | {_display_number(f['strouhal_side'])} |"
+        )
+    lines += [
+        "",
+        "Half-window changes and four-block means (in JSON) expose drift; they are not confidence intervals.",
+        "The automatic final-half window does not establish that transients have ended.",
+        "",
+        "## Frequency qualification",
+        "",
+        "St = f D / U. A Hann-windowed FFT candidate is reported only with at least five cycles,",
+        "at least eight samples per cycle, limited linear drift, consistent half-window peaks,",
+        "and at least 50% of nonzero-frequency power in its three-bin peak neighborhood.",
+        "These are screening rules, not a confidence level. The resolution is D/(U T).",
+        "",
+    ]
+    for grid in report["grids"]:
+        for component in ("lift", "side"):
+            d = grid["force_statistics"][f"strouhal_{component}_diagnostic"]
+            lines.append(
+                f"- {grid['case']}, {component}: {d['reason'] or 'screen passed; spectral estimate only'}; "
+                f"candidate cycles = {_display_number(d.get('observed_cycles'))}."
+            )
+    lines += [
+        "",
+        "## Wake profile changes",
+        "",
+        "Mean vector-velocity differences use the same physical time interval.",
+        "The wake-only norm covers x/D = 0.5–8; whole-line norms also include the upstream flow.",
+        "",
+        "| Case | Centreline wake L2 difference | Off-axis wake L2 difference |",
+        "|---|---:|---:|",
+    ]
+    for grid in report["grids"]:
+        values = [
+            report["profiles"][name]
+            .get("comparisons", {})
+            .get(grid["case"], {})
+            .get("wake", {})
+            .get("relative_l2")
+            for name in PROFILE_NAMES
+        ]
+        lines.append(
+            f"| {grid['case']} | {_display_percent(values[0])} | {_display_percent(values[1])} |"
         )
 
     lines.extend(
@@ -784,206 +1074,242 @@ def _write_markdown(report: dict[str, Any], destination: Path) -> None:
         lines.extend(["", "## Excluded directories", ""])
         for item in report["excluded_cases"]:
             lines.append(f"- `{item['directory']}`: {item['reason']}")
+    lines += [
+        "",
+        "## Provenance and interpretation",
+        "",
+        "Recorded physics, solver settings and domain/mesh controls match: "
+        f"`{report['comparability']['matching_recorded_settings']}`.",
+        "The JSON records differences, actual mesh sizes, input hashes and frequency rejection reasons.",
+        "Cell counts come from the registered global mesh, not the rank-local metadata count.",
+        "Grid refinement also changes the LES filter scale. A dense run alone does not establish statistical or time-step convergence.",
+        "Richardson/GCI values are withheld for incompatible settings, unequal refinement ratios, nonmonotone values, or more than 1% drag half-window drift.",
+        "The 1% drift screen is a diagnostic convention, not proof of stationarity.",
+        "Method reference: [NASA spatial convergence guidance](https://www.grc.nasa.gov/www/wind/valid/tutorial/spatconv.html) "
+        "and [temporal convergence guidance](https://www.grc.nasa.gov/www/wind/valid/tutorial/tempconv.html).",
+    ]
     lines.append("")
     destination.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _spacing_axis(axis, label: str = "Wall cell size, h/D") -> None:
-    from matplotlib.ticker import FuncFormatter
-
-    axis.set_xscale("log", base=2)
-    axis.invert_xaxis()
-    axis.xaxis.set_major_formatter(FuncFormatter(lambda value, _position: f"{value:.5g}"))
-    axis.set_xlabel(label)
-    axis.grid(alpha=0.25)
-
-
-def _plot_metric(axis, grids: list[dict[str, Any]], metric: str, label: str, x: np.ndarray) -> None:
-    values = np.asarray(
-        [
-            np.nan
-            if grid["force_statistics"].get(metric) is None
-            else grid["force_statistics"][metric]
-            for grid in grids
-        ],
-        dtype=np.float64,
-    )
-    if np.any(np.isfinite(values)):
-        axis.plot(x, values, "o-", linewidth=1.4, label=label)
-
-
-def _relative_difference_values(grids: list[dict[str, Any]], metric: str) -> np.ndarray:
-    """Return plot-ready differences, omitting exact/roundoff-level reference points."""
-
-    values = np.asarray(
-        [grid["difference_to_reference"][metric]["relative"] for grid in grids],
-        dtype=np.float64,
-    )
-    return np.where(values > VALUE_FLOOR, values, np.nan)
-
-
-def _plot_by_spacing(report: dict[str, Any], destination: Path) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    grids = report["grids"]
-    spacing = np.asarray([grid["wall_cell_size"] for grid in grids], dtype=np.float64)
-    cells = np.asarray([grid["cell_count"] for grid in grids], dtype=np.float64)
-    figure, axes = plt.subplots(2, 3, figsize=(13.0, 7.6), constrained_layout=True)
-
-    for metric, label in (
-        ("mean_drag", "Mean Cd"),
-        ("mean_lift", "Mean Cl"),
-        ("mean_side", "Mean Cs"),
-    ):
-        _plot_metric(axes[0, 0], grids, metric, label, spacing)
-    axes[0, 0].set_ylabel("Mean force coefficient")
-    axes[0, 0].legend(fontsize=8)
-    _spacing_axis(axes[0, 0])
-
-    for metric, label in (("rms_drag", "RMS Cd"), ("rms_lift", "RMS Cl"), ("rms_side", "RMS Cs")):
-        _plot_metric(axes[0, 1], grids, metric, label, spacing)
-    axes[0, 1].set_ylabel("RMS force coefficient")
-    axes[0, 1].legend(fontsize=8)
-    _spacing_axis(axes[0, 1])
-
-    for metric, label in (("strouhal_lift", "Lift"), ("strouhal_side", "Side")):
-        _plot_metric(axes[0, 2], grids, metric, label, spacing)
-    axes[0, 2].set_ylabel("Dominant St")
-    axes[0, 2].legend(fontsize=8)
-    _spacing_axis(axes[0, 2])
-
-    axes[1, 0].plot(spacing, cells, "o-", linewidth=1.4, color="#6a3d9a")
-    axes[1, 0].set_yscale("log")
-    axes[1, 0].set_ylabel("Fluid cells")
-    _spacing_axis(axes[1, 0])
-
-    positive_differences = []
-    for metric in ("mean_drag", "rms_drag", "rms_lift", "rms_side", "strouhal_lift"):
-        values = _relative_difference_values(grids, metric)
-        positive_differences.extend(value for value in values if np.isfinite(value))
-        axes[1, 1].plot(spacing, values, "o-", linewidth=1.2, label=metric)
-    if positive_differences:
-        axes[1, 1].set_yscale("log")
-    axes[1, 1].set_ylabel("Difference from reference grid")
-    axes[1, 1].legend(fontsize=7)
-    _spacing_axis(axes[1, 1])
-
-    profile_plotted = False
-    for name, profile in report["profiles"].items():
-        if not profile.get("available"):
-            continue
-        values = np.asarray(
-            [
-                profile["comparisons"].get(grid["case"], {}).get("relative_l2", np.nan)
-                for grid in grids
-            ],
-            dtype=np.float64,
-        )
-        axes[1, 2].plot(spacing, values, "o-", linewidth=1.4, label=name)
-        profile_plotted = True
-    if profile_plotted:
-        axes[1, 2].set_ylabel("Profile L2 difference from reference")
-        axes[1, 2].legend(fontsize=8)
-    else:
-        axes[1, 2].text(0.5, 0.5, "No common profile data", ha="center", va="center")
-    _spacing_axis(axes[1, 2])
-
+def print_statistics(report: dict) -> None:
     window = report["statistics_window"]
-    figure.suptitle(
-        f"Cube grid convergence: common statistics window {window['start']:g} ≤ t ≤ {window['end']:g}"
+    print(f"\nCube reference grids: common window t = {window['start']:g} to {window['end']:g} s")
+    print(
+        f"Differences use {report['reference_case']}; fluctuation RMS is not uncertainty in the mean.\n"
     )
-    figure.savefig(destination, dpi=180)
-    plt.close(figure)
-
-
-def _plot_by_cells(report: dict[str, Any], destination: Path) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    grids = sorted(report["grids"], key=lambda grid: grid["cell_count"])
-    cells = np.asarray([grid["cell_count"] for grid in grids], dtype=np.float64)
-    figure, axes = plt.subplots(2, 2, figsize=(9.8, 7.0), constrained_layout=True)
-
-    for metric, label in (
-        ("mean_drag", "Mean Cd"),
-        ("mean_lift", "Mean Cl"),
-        ("mean_side", "Mean Cs"),
-    ):
-        _plot_metric(axes[0, 0], grids, metric, label, cells)
-    axes[0, 0].set_ylabel("Mean force coefficient")
-    axes[0, 0].legend(fontsize=8)
-
-    for metric, label in (("rms_drag", "RMS Cd"), ("rms_lift", "RMS Cl"), ("rms_side", "RMS Cs")):
-        _plot_metric(axes[0, 1], grids, metric, label, cells)
-    axes[0, 1].set_ylabel("RMS force coefficient")
-    axes[0, 1].legend(fontsize=8)
-
-    for metric, label in (("strouhal_lift", "Lift"), ("strouhal_side", "Side")):
-        _plot_metric(axes[1, 0], grids, metric, label, cells)
-    axes[1, 0].set_ylabel("Dominant St")
-    axes[1, 0].legend(fontsize=8)
-
-    positive_differences = []
-    for metric in ("mean_drag", "rms_drag", "rms_lift", "rms_side", "strouhal_lift"):
-        values = _relative_difference_values(grids, metric)
-        positive_differences.extend(value for value in values if np.isfinite(value))
-        axes[1, 1].plot(cells, values, "o-", linewidth=1.2, label=metric)
-    if positive_differences:
-        axes[1, 1].set_yscale("log")
-    axes[1, 1].set_ylabel("Difference from reference grid")
-    axes[1, 1].legend(fontsize=7)
-
-    for axis in axes.flat:
-        axis.set_xscale("log")
-        axis.set_xlabel("Fluid cells")
-        axis.grid(alpha=0.25)
-    figure.suptitle("Cube grid convergence by fluid-cell count")
-    figure.savefig(destination, dpi=180)
-    plt.close(figure)
-
-
-def _plot_profiles(report: dict[str, Any], destination: Path) -> bool:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    available = [
-        (name, profile) for name, profile in report["profiles"].items() if profile.get("available")
-    ]
-    if not available:
-        figure, axis = plt.subplots(figsize=(5.0, 3.6), constrained_layout=True)
-        axis.text(0.5, 0.5, "No common profile data", ha="center", va="center")
-        axis.set_axis_off()
-        figure.savefig(destination, dpi=180)
-        plt.close(figure)
-        return False
-    grids = report["grids"]
-    spacing = np.asarray([grid["wall_cell_size"] for grid in grids], dtype=np.float64)
-    figure, axes = plt.subplots(
-        1, len(available), figsize=(5.0 * len(available), 3.6), squeeze=False
+    print(
+        f"{'Grid':<14} {'Cells':>9} {'h target':>9} {'Mean Cd':>10} {'RMS Cd':>10} {'RMS Cl':>10} {'RMS Cs':>10} {'dCd/ref':>10} {'Cd drift':>10}"
     )
-    for axis, (name, profile) in zip(axes.flat, available, strict=True):
-        values = np.asarray(
-            [
-                profile["comparisons"].get(grid["case"], {}).get("relative_l2", np.nan)
-                for grid in grids
-            ],
-            dtype=np.float64,
+    for grid in report["grids"]:
+        f = grid["force_statistics"]
+        numbers = " ".join(
+            f"{_display_number(f[key]):>10}"
+            for key in ("mean_drag", "rms_drag", "rms_lift", "rms_side")
         )
-        axis.plot(spacing, values, "o-", color="#1b9e77", linewidth=1.4)
-        axis.set_title(name)
-        axis.set_ylabel("Relative L2 difference")
-        _spacing_axis(axis)
-    figure.suptitle("Time-mean velocity-profile differences from the reference grid")
-    figure.savefig(destination, dpi=180)
+        print(
+            f"{grid['case']:<14} {grid['cell_count']:>9,} {grid['wall_cell_size']:>9.4g} {numbers} "
+            f"{_display_percent(grid['difference_to_reference']['mean_drag']['relative']):>10} "
+            f"{_display_percent(f['drag_drift_relative']):>10}"
+        )
+    print("\nCd drift = absolute difference between half-window means / full-window mean.")
+    print(f"\n{'Grid':<14} {'Pressure Cd':>12} {'Viscous Cd':>12} {'St lift':>12} {'St side':>12}")
+    for grid in report["grids"]:
+        f = grid["force_statistics"]
+        print(
+            f"{grid['case']:<14} "
+            + " ".join(
+                f"{_display_number(f[k]):>12}"
+                for k in (
+                    "mean_pressure_drag",
+                    "mean_viscous_drag",
+                    "strouhal_lift",
+                    "strouhal_side",
+                )
+            )
+        )
+        for component in ("lift", "side"):
+            reason = f[f"strouhal_{component}_diagnostic"]["reason"]
+            if reason:
+                print(f"  St {component}: {reason}")
+    print(f"\n{report['assessment']['conclusion']}")
+    for reason in report["assessment"]["reasons"]:
+        print(f"  {reason}")
+    print("\nWake profile L2 differences from the reference (x/D = 0.5 to 8):")
+    for grid in report["grids"]:
+        values = [
+            report["profiles"][name]
+            .get("comparisons", {})
+            .get(grid["case"], {})
+            .get("wake", {})
+            .get("relative_l2")
+            for name in PROFILE_NAMES
+        ]
+        print(
+            f"  {grid['case']}: centreline {_display_percent(values[0])}, off-axis {_display_percent(values[1])}"
+        )
+
+
+def _plotting():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from openonda import plotting as theme
+
+    theme.set_thesis_style()
+    return plt, theme
+
+
+def _grid_styles(grids: list[dict]) -> dict[str, dict]:
+    _, theme = _plotting()
+    names = ("RefGray", "FVMorange", "VPMpurple", "TUDdark", "TUDcyan", "AccentGreen")
+    markers = ("v", "s", "D", "o", "^", "P")
+    return {
+        grid["case"]: dict(
+            color=theme.COLORS[names[i % len(names)]],
+            marker=markers[i % len(markers)],
+            label=grid["case"].replace("_", " ").capitalize(),
+        )
+        for i, grid in enumerate(grids)
+    }
+
+
+def _save_plot(figure, destination: Path, formats: tuple[str, ...]) -> None:
+    plt, theme = _plotting()
+    theme.fit_thesis_y_label_margins(figure, figure.axes)
+    theme.validate_thesis_figure(figure, figure.axes)
+    for fmt in formats:
+        figure.savefig(
+            destination.with_suffix(f".{fmt}"),
+            dpi=theme.DEFAULT_DPI,
+            format=fmt,
+            bbox_inches=None,
+            facecolor="white",
+        )
     plt.close(figure)
-    return True
+
+
+def _plot_force_metrics(
+    report: dict, destination: Path, *, by_cells=False, formats=("png",)
+) -> None:
+    plt, theme = _plotting()
+    from matplotlib.ticker import FuncFormatter, MaxNLocator
+
+    grids = report["grids"]
+    x = np.asarray(
+        [
+            g["cell_count"] / 1000 if by_cells else g["wall_cell_size"] / g["context"]["length"]
+            for g in grids
+        ]
+    )
+    fig, axes = plt.subplots(3, 1, figsize=(12.5 / 2.54, 12.0 / 2.54), sharex=True)
+    fig.subplots_adjust(left=0.2, right=0.8, bottom=0.13, top=0.97, hspace=0.32)
+    for axis, metrics, label in zip(
+        axes,
+        (("mean_drag",), ("rms_drag",), ("rms_lift", "rms_side")),
+        (r"$\overline{C_D}$", r"$\sigma(C_D)$", r"$\sigma(C_\perp)$"),
+        strict=True,
+    ):
+        for i, metric in enumerate(metrics):
+            values = [g["force_statistics"].get(metric, np.nan) for g in grids]
+            axis.plot(
+                x,
+                values,
+                marker=("o", "s")[i],
+                linestyle=("-", "--")[i],
+                color=theme.COLORS[("TUDdark", "VPMpurple")[i]],
+                label=(r"$C_L$", r"$C_S$")[i],
+            )
+        axis.set_ylabel(label)
+        axis.yaxis.set_major_locator(MaxNLocator(3))
+        axis.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.4g}"))
+        if len(metrics) == 2:
+            axis.legend(loc="best", frameon=False, ncol=2, handlelength=1.3, columnspacing=1.0)
+    if by_cells:
+        axes[-1].set_xlabel(r"Fluid cells [$10^3$]")
+        axes[-1].xaxis.set_major_locator(MaxNLocator(4))
+    else:
+        axes[-1].set_xlabel(r"Target $h/D$")
+        if x.max() / x.min() > 3:
+            axes[-1].set_xscale("log", base=2)
+        axes[-1].set_xticks(x)
+        axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.3g}"))
+        axes[-1].invert_xaxis()
+    _save_plot(fig, destination, formats)
+
+
+def _plot_profiles(report: dict, destination: Path, formats=("png",)) -> None:
+    plt, theme = _plotting()
+    from matplotlib.ticker import MaxNLocator
+
+    fig, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 10.5 / 2.54), sharex=True)
+    legend_rows = int(np.ceil(len(report["grids"]) / 2))
+    fig.subplots_adjust(
+        left=0.2, right=0.8, bottom=0.15, top=0.93 - 0.05 * legend_rows, hspace=0.38
+    )
+    styles = _grid_styles(report["grids"])
+    for axis, name in zip(axes, PROFILE_NAMES, strict=True):
+        profile = report["profiles"][name]
+        for grid in report["grids"]:
+            values = profile.get("comparisons", {}).get(grid["case"], {})
+            if not values.get("available"):
+                continue
+            x = np.asarray(values["position"]) / grid["context"]["length"]
+            ux = np.asarray(values["mean_velocity"])[:, 0] / grid["context"]["speed"]
+            selected = (x >= 0.5) & (x <= 8)
+            axis.plot(x[selected], ux[selected], **styles[grid["case"]], markevery=12, markersize=3)
+        axis.set_ylabel(r"$\overline{u_x}/U_\infty$")
+        axis.set_title(r"$y/D=0$" if name == "centreline" else r"$y/D=0.75$")
+        axis.set_xlim(0.5, 8.0)
+        axis.yaxis.set_major_locator(MaxNLocator(3))
+        if not axis.lines:
+            axis.text(0.5, 0.5, "No common profile data", transform=axis.transAxes, ha="center")
+    axes[-1].set_xlabel(r"$x/D$")
+    handles, labels = axes[0].get_legend_handles_labels()
+    if handles:
+        legend = fig.legend(
+            handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=2, frameon=False
+        )
+        fig.canvas.draw()
+        legend_bottom = legend.get_window_extent(fig.canvas.get_renderer()).y0 / fig.bbox.height
+        fig.subplots_adjust(top=legend_bottom - 0.08)
+    _save_plot(fig, destination, formats)
+
+
+def _plot_histories(report: dict, histories: dict, destination: Path, formats=("png",)) -> None:
+    plt, theme = _plotting()
+    from matplotlib.ticker import MaxNLocator
+
+    fig, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 10.5 / 2.54), sharex=True)
+    legend_rows = int(np.ceil(len(report["grids"]) / 2))
+    fig.subplots_adjust(
+        left=0.2, right=0.8, bottom=0.15, top=0.92 - 0.05 * legend_rows, hspace=0.35
+    )
+    styles = _grid_styles(report["grids"])
+    start, end = (report["statistics_window"][k] for k in ("start", "end"))
+    for grid in report["grids"]:
+        history = histories[grid["case"]]
+        for axis, column in zip(axes, ("drag_coefficient", "lift_coefficient"), strict=True):
+            if column not in history.values:
+                continue
+            t, v = _window_series(history.time, history.values[column], start, end)
+            axis.plot(t, v, **styles[grid["case"]], markevery=max(1, len(t) // 10), markersize=3)
+    for axis, label in zip(axes, (r"$C_D$", r"$C_L$"), strict=True):
+        axis.set_ylabel(label)
+        axis.yaxis.set_major_locator(MaxNLocator(4))
+    axes[-1].set_xlabel(r"$t$ [s]")
+    legend = fig.legend(
+        *axes[0].get_legend_handles_labels(),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=2,
+        frameon=False,
+    )
+    fig.canvas.draw()
+    legend_bottom = legend.get_window_extent(fig.canvas.get_renderer()).y0 / fig.bbox.height
+    fig.subplots_adjust(top=legend_bottom - 0.04)
+    _save_plot(fig, destination, formats)
 
 
 def analyse_grid_convergence(
@@ -994,6 +1320,8 @@ def analyse_grid_convergence(
     statistics_end: float | None = None,
     reference_case: str | None = None,
     tolerance: float | None = None,
+    solution_root: str | Path | None = None,
+    formats: tuple[str, ...] = ("png",),
 ) -> dict[str, Any]:
     """Analyse every completed cube grid and write derived convergence artifacts.
 
@@ -1004,15 +1332,27 @@ def analyse_grid_convergence(
 
     samples_root = Path(samples_root)
     output_dir = Path(output_dir)
+    solution_root = (
+        Path(solution_root) if solution_root is not None else samples_root.parent / "solution"
+    )
+    if not formats or any(fmt not in ("png", "pdf") for fmt in formats):
+        raise ValueError("formats must contain png and/or pdf")
     if tolerance is not None:
         tolerance = _positive_float(tolerance, "convergence tolerance")
     cases, excluded = _discover_cases(samples_root)
     histories: dict[str, ForceHistory] = {}
+    contexts: dict[str, dict] = {}
     usable_cases: list[GridCase] = []
     for case in cases:
         try:
-            histories[case.name] = _read_force_history(case.samples_dir / "forces_history.csv")
-        except ValueError as error:
+            history = _read_force_history(case.samples_dir / "forces_history.csv")
+            if not np.isclose(
+                history.time[-1], case.declared_end_time, atol=TIME_TOLERANCE, rtol=0
+            ):
+                raise ValueError("force history does not reach the registered completion time")
+            contexts[case.name] = _case_context(case, solution_root)
+            histories[case.name] = history
+        except (ValueError, KeyError) as error:
             excluded.append({"directory": case.samples_dir.name, "reason": str(error)})
             continue
         usable_cases.append(case)
@@ -1033,7 +1373,9 @@ def analyse_grid_convergence(
     start, end = _resolve_statistics_window(histories, statistics_start, statistics_end)
     grids: list[dict[str, Any]] = []
     for case in cases:
-        statistics = _force_statistics(histories[case.name], start, end)
+        statistics = _force_statistics(
+            histories[case.name], start, end, context=contexts[case.name]
+        )
         grids.append(
             {
                 "case": case.name,
@@ -1041,6 +1383,7 @@ def analyse_grid_convergence(
                 "cell_count": case.cell_count,
                 "declared_end_time": case.declared_end_time,
                 "force_statistics": statistics,
+                "context": contexts[case.name],
             }
         )
     grids.sort(key=lambda grid: (-grid["wall_cell_size"], grid["cell_count"], grid["case"]))
@@ -1057,6 +1400,56 @@ def analyse_grid_convergence(
 
     convergence = {metric: _convergence_statistics(grids, metric, tolerance) for metric in METRICS}
     profiles = _profile_statistics(cases, grids, reference.name, start, end)
+    comparability = _comparability(contexts, reference.name)
+    drifting = [
+        g["case"] for g in grids if (g["force_statistics"]["drag_drift_relative"] or 0) > 0.01
+    ]
+    gci_reasons = []
+    if comparability["differences_to_reference"]:
+        gci_reasons.append("saved physical/numerical settings or mesh controls differ")
+    if drifting:
+        gci_reasons.append("drag half-window drift exceeds the 1% screening threshold")
+    if gci_reasons:
+        for entry in convergence.values():
+            entry["richardson"].update(
+                available=False,
+                reason="; ".join(gci_reasons),
+                observed_order=None,
+                extrapolated=None,
+                fine_grid_gci=None,
+            )
+    reasons = []
+    pair = convergence["mean_drag"]["finest_pair"]
+    if pair:
+        reasons.append(
+            f"Mean Cd changes {_display_percent(pair['relative_change'])} from "
+            f"{pair['coarser_case']} to {pair['finer_case']}."
+        )
+        fine = next(g for g in grids if g["case"] == pair["finer_case"])
+        drift = fine["force_statistics"]["drag_drift_relative"]
+        reasons.append(
+            f"{fine['case']} Cd half-window drift is {_display_percent(drift)}; "
+            "the averaging-window choice must be checked before interpreting a grid plateau."
+        )
+    for metric in ("rms_drag", "rms_lift", "rms_side"):
+        pair = convergence[metric]["finest_pair"]
+        if pair:
+            reasons.append(
+                f"Finest-pair {metric} change: {_display_percent(pair['relative_change'])}."
+            )
+    if all(
+        g["force_statistics"]["strouhal_lift"] is None
+        and g["force_statistics"]["strouhal_side"] is None
+        for g in grids
+    ):
+        reasons.append("No resolved shedding Strouhal number in the selected window.")
+    if not comparability["matching_recorded_settings"]:
+        reasons.append(
+            "Matching run settings are unverified or differ; inspect comparability and context in JSON."
+        )
+    reasons.append(
+        "A dense grid can test spatial sensitivity, but longer stationary records and a separate time-step check are still needed."
+    )
     pair_changes = [
         (metric, details["finest_pair"]["relative_change"])
         for metric, details in convergence.items()
@@ -1074,7 +1467,7 @@ def analyse_grid_convergence(
         else "user-selected completed grid"
     )
     report: dict[str, Any] = {
-        "schema": "openonda-cube-grid-convergence/1",
+        "schema": "openonda-cube-grid-convergence/2",
         "statistics_window": {"start": start, "end": end},
         "reference_case": reference.name,
         "reference_definition": reference_definition,
@@ -1084,7 +1477,26 @@ def analyse_grid_convergence(
         "cell_cost": _cell_cost_statistics(grids),
         "profiles": profiles,
         "excluded_cases": excluded,
+        "comparability": comparability,
+        "provenance": {
+            "postprocessor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "input_sha256": {
+                str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest()
+                for case in cases
+                for path in (
+                    case.samples_dir / "grid_run.json",
+                    case.samples_dir / "forces_history.csv",
+                    *(case.samples_dir / f"{name}.csv" for name in PROFILE_NAMES),
+                    solution_root / case.samples_dir.name / "fvm_metadata.json",
+                )
+                if path.is_file()
+            },
+        },
         "assessment": {
+            "conclusion": "Grid independence: NOT ESTABLISHED by these statistics alone.",
+            "reasons": reasons,
+            "drag_drift_screen": 0.01,
+            "grids_exceeding_drag_drift_screen": drifting,
             "difference_interpretation": (
                 "Differences use the selected reference grid and are not exact discretisation errors."
             ),
@@ -1100,9 +1512,14 @@ def analyse_grid_convergence(
     )
     _write_csv(report, output_dir / "grid_convergence.csv")
     _write_markdown(report, output_dir / "grid_convergence.md")
-    _plot_by_spacing(report, output_dir / "grid_convergence.png")
-    _plot_by_cells(report, output_dir / "grid_convergence_by_cells.png")
-    _plot_profiles(report, output_dir / "grid_convergence_profiles.png")
+    _plot_force_metrics(report, output_dir / "grid_convergence.png", formats=formats)
+    _plot_force_metrics(
+        report, output_dir / "grid_convergence_by_cells.png", by_cells=True, formats=formats
+    )
+    _plot_profiles(report, output_dir / "grid_convergence_profiles.png", formats=formats)
+    _plot_histories(
+        report, histories, output_dir / "grid_convergence_histories.png", formats=formats
+    )
     return report
 
 
@@ -1110,6 +1527,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples-root", type=Path, default=CASE_DIR / "samples")
     parser.add_argument("--output-dir", type=Path, default=CASE_DIR / "solution")
+    parser.add_argument(
+        "--solution-root", type=Path, help="Native solution root; defaults beside samples-root"
+    )
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     parser.add_argument("--statistics-start", type=float)
     parser.add_argument("--statistics-end", type=float)
     parser.add_argument("--reference-case")
@@ -1126,7 +1547,10 @@ def main() -> None:
         statistics_end=arguments.statistics_end,
         reference_case=arguments.reference_case,
         tolerance=arguments.tolerance,
+        solution_root=arguments.solution_root,
+        formats=("png", "pdf") if arguments.format == "both" else (arguments.format,),
     )
+    print_statistics(report)
     print(
         f"Wrote convergence report for {len(report['grids'])} completed grids to {arguments.output_dir}"
     )

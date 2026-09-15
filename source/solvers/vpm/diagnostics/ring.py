@@ -39,8 +39,11 @@ RING_DIAGNOSTIC_COLUMNS = (
 class RingDiagnosticsSampler:
     """Write one compact diagnostic row per particle group and sample time.
 
-    Particle groups are interpreted as individual rings. The sampler owns its
-    schedule and canonical output name.
+    These are strength-weighted group centroids and radii, not vorticity maxima.
+    A group remains an ancestry contribution after rings merge; its centroid
+    does not establish a separate physical core. Remeshing must preserve group
+    contributions for this interpretation (nearest-source relabelling does not).
+    The sampler owns its schedule and canonical output name.
     """
 
     def __init__(
@@ -79,6 +82,15 @@ class RingDiagnosticsSampler:
         if initial is not None:
             self.initial = initial
 
+    @property
+    def output_identity(self) -> tuple[type, str]:
+        """Periodic and final schedules share the same grouped CSV event.
+
+        Ring diagnostics have no sampling options beyond their destination;
+        the sampler type distinguishes alternative implementations.
+        """
+        return type(self), self.file_name
+
     def save_csv(
         self,
         solver: VPMSolver,
@@ -114,7 +126,9 @@ class RingDiagnosticsSampler:
                 existing = [row for row in reader if row]
             if existing and float(existing[-1][0]) >= context.time:
                 raise ValueError(
-                    "ring-diagnostics CSV event is duplicate or nonmonotonic during resume"
+                    "ring-diagnostics CSV event is duplicate or nonmonotonic during resume: "
+                    f"path={path}, existing step={existing[-1][1]}, time={existing[-1][0]}; "
+                    f"requested step={context.step}, time={context.time}"
                 )
         position = np.asarray(context.solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(context.solver.particle_vortex_strength, dtype=np.float64)

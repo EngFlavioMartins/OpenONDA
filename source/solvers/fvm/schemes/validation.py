@@ -104,7 +104,7 @@ def validate_solver_params(solver, time=None) -> None:
         ("n_correctors", 1),
         ("n_outer_correctors", 1),
         ("min_outer_correctors", 1),
-        ("n_orthogonal_correctors", 0),
+        ("n_nonorthogonal_correctors", 0),
     ):
         value = getattr(solver, name, minimum)
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:

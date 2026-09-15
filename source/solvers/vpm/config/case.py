@@ -394,7 +394,7 @@ class VPMCase:
     def _validate_coupled_vlm_output_contract(self) -> None:
         """Keep attached VLM output under the owning VPM lifecycle.
 
-        Standalone ``VLMSolver`` callers retain their own legacy force-table
+        Standalone ``VLMSolver`` callers retain their own force
         logging and ``VLMSampler`` API. Once VLM is attached to a VPM case,
         accepted-step force/loading records are mandatory in the VPM-owned
         sample directory, while surface backup companions are emitted only by

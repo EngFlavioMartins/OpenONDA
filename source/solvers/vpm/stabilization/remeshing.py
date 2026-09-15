@@ -53,6 +53,7 @@ def gaussian_core_remesh(
     core_bins: int = 16,
     max_grid_nodes: int = 8_000_000,
     solenoidal: bool = False,
+    preserve_groups: bool = False,
 ) -> dict[str, np.ndarray]:
     """Return a bounded Gaussian remap, supporting LES-dependent source cores.
 
@@ -60,7 +61,58 @@ def gaussian_core_remesh(
     A particle cap never silently overrides that accuracy budget. Labels and
     material properties use nearest-source inheritance; labels cease to be
     material tracers once different rings occupy the same remeshing cell.
+    With ``preserve_groups``, each (group_id, zone_id) contribution is remapped
+    separately, including coincident particles where contributions overlap.
+    The tail budget applies to each contribution and the cap to their total.
+    Material properties then use nearest-source inheritance within that label.
     """
+    if preserve_groups:
+        from types import SimpleNamespace
+
+        names = (
+            "position",
+            "vortex_strength",
+            "core_radius",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+        )
+        arrays = {name: getattr(particles, name + "_cpu")() for name in names}
+        labels = np.column_stack((arrays["group_id"], arrays["zone_id"]))
+        proposals = []
+        count = 0
+        for label in np.unique(labels, axis=0):
+            selected = np.all(labels == label, axis=1)
+            if not np.any(arrays["vortex_strength"][selected]):
+                continue
+            subset = SimpleNamespace(
+                **{
+                    name + "_cpu": lambda values=values[selected]: values
+                    for name, values in arrays.items()
+                }
+            )
+            proposal = gaussian_core_remesh(
+                subset,
+                spacing=spacing,
+                core_radius=core_radius,
+                tail_budget=tail_budget,
+                max_particles=max_particles,
+                core_bins=core_bins,
+                max_grid_nodes=max_grid_nodes,
+                solenoidal=solenoidal,
+            )
+            count += len(proposal["position"])
+            if max_particles is not None and count > max_particles:
+                raise ValueError(
+                    f"Group-preserving Gaussian remeshing requires at least {count} particles "
+                    f"for tail budget {tail_budget:g}; capacity is {max_particles}"
+                )
+            proposals.append(proposal)
+        if not proposals:
+            raise ValueError("Gaussian remeshing produced an empty field")
+        return {name: np.concatenate([item[name] for item in proposals]) for name in proposals[0]}
+
     position = particles.position_cpu().astype(np.float64)
     strength = particles.vortex_strength_cpu().astype(np.float64)
     stored_sigma = particles.core_radius_cpu()

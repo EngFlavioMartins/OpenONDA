@@ -400,6 +400,37 @@ def test_budget_terminal_sampling_keeps_due_rows_and_adds_missing_current_rows(t
     assert len(path.read_text().splitlines()) == 3
 
 
+@pytest.mark.parametrize("terminal_step", [1540, 1547])
+def test_ring_periodic_and_final_schedules_write_one_terminal_event(tmp_path, terminal_step):
+    periodic = vpm.RingDiagnosticsSampler(schedule=EverySteps(10))
+    final = vpm.RingDiagnosticsSampler(schedule=FinalOnly())
+    solver = _solver(tmp_path, Samplers(samples=(periodic, final)))
+    solver.particle_position = np.array(
+        [[0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0]]
+    )
+    solver.particle_vortex_strength = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]] * 2)
+    solver.particle_group_id = np.array([0, 0, 1, 1])
+    solver.time_step_size = 0.00375
+    solver.step, solver.time = 1540, 1540 * solver.time_step_size
+    manager = OutputManager(solver)
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    solver.step, solver.time = terminal_step, terminal_step * solver.time_step_size
+    # Both ordinary completion and an off-cadence health/wall-time stop.
+    if terminal_step == 1540:
+        manager.dispatch(OutputEvent.FINAL)
+    else:
+        manager.write_all(OutputEvent.FINAL, skip_current=True)
+    path = tmp_path / "samples/ring_diagnostics.csv"
+    contents = path.read_bytes()
+    assert len(contents.splitlines()) == (3 if terminal_step == 1540 else 5)
+    manager.write_all(OutputEvent.FINAL, skip_current=True)
+    assert path.read_bytes() == contents
+    # A fresh manager has no proof that existing rows belong to this state;
+    # the CSV resume guard must still reject a repeated or earlier clock.
+    with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
+        OutputManager(solver).dispatch(OutputEvent.FINAL)
+
+
 class _ExecutionSample:
     file_name = "probe"
 

@@ -5,8 +5,24 @@ from __future__ import annotations
 from io import StringIO
 import sys
 
+import pytest
+
 from source.solvers.fvm.io import logging as fvm_logging
 from source.solvers.fvm.mesh.progress import mesh_stage, mesher_log_session
+
+
+def test_nested_phase_timing_is_independent_between_solver_owners(monkeypatch) -> None:
+    clock = iter((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+    monkeypatch.setattr(fvm_logging.time, "perf_counter", lambda: next(clock))
+    first = fvm_logging.Timer()
+    second = fvm_logging.Timer()
+    first.start("pressure")
+    second.start("pressure")
+    first.start("pressure")
+    assert first.stop("pressure") == pytest.approx(1.0)
+    assert second.stop("pressure") == pytest.approx(3.0)
+    assert first.stop("pressure") == pytest.approx(5.0)
+    assert first.stop("pressure") == 0.0
 
 
 def test_console_sink_does_not_follow_later_stdout_redirection(tmp_path, monkeypatch) -> None:
@@ -29,11 +45,11 @@ def test_mesher_stage_is_visible_before_stage_completion(tmp_path) -> None:
 
     with mesher_log_session(path), mesh_stage("expensive refinement") as stage:
         live = path.read_text(encoding="utf-8")
-        assert "START    meshing session" in live
-        assert "START    expensive refinement" in live
+        assert "MESH" in live and "meshing session" in live
+        assert "expensive refinement" in live and "start" in live
         stage.details(cells=123)
 
     complete = path.read_text(encoding="utf-8")
-    assert "DONE     expensive refinement" in complete
-    assert "cells=123" in complete
-    assert "COMPLETE meshing session" in complete
+    assert "expensive refinement" in complete and "done" in complete
+    assert "Cells" in complete and "123" in complete
+    assert "complete" in complete

@@ -11,10 +11,10 @@ import os
 from pathlib import Path
 import shutil
 from typing import Protocol
-import warnings
 
 import numpy as np
 
+from source import log_style
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.vpm.config.case import Numerics
 from source.solvers.vpm.config.fingerprint import numerical_configuration
@@ -272,9 +272,13 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
             artifact.unlink()
 
     logging.getLogger("coupler").info(
-        "coupled backup saved | manifest=%s | vpm=%s",
-        target / "manifest.json",
-        target / manifest["artifacts"]["vpm"],
+        log_style.Event(
+            "coupled backup",
+            (
+                ("manifest", str(target / "manifest.json")),
+                ("VPM checkpoint", str(target / manifest["artifacts"]["vpm"])),
+            ),
+        ),
     )
     return target
 
@@ -306,9 +310,9 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
         finally:
             temporary.unlink(missing_ok=True)
     logging.getLogger("coupler").info(
-        "vpm particle snapshot published | h5=%s | xdmf=%s",
-        destinations[0],
-        destinations[1],
+        log_style.Event(
+            "VPM snapshot", (("HDF5", str(destinations[0])), ("XDMF", str(destinations[1])))
+        ),
     )
     return destinations
 
@@ -435,8 +439,8 @@ def load_coupled_backup(
                     current_config = _backup_config(coupler)
                     if manifest.get("config_sha256") != config_mapping_digest(current_config):
                         changed_paths = config_difference_paths(stored_config, current_config)
-                        unexpected = changed_paths - set(allowed_config_differences)
                         changes = config_diff(stored_config, current_config)
+                        unexpected = changed_paths - set(allowed_config_differences)
                         detail = "\n  ".join(changes) if changes else "(no structured diff)"
                         if unexpected:
                             error = (
@@ -446,12 +450,10 @@ def load_coupled_backup(
                                 + "\n  disallowed paths: "
                                 + ", ".join(sorted(unexpected))
                             )
-                        else:
-                            warnings.warn(
+                        elif changed_paths:
+                            logging.getLogger("coupler").warning(
                                 "Loading a coupled backup with explicitly allowed "
-                                f"configuration differences: {', '.join(sorted(changed_paths))}",
-                                RuntimeWarning,
-                                stacklevel=2,
+                                f"configuration differences: {', '.join(sorted(changed_paths))}"
                             )
     if comm is not None and comm.Get_size() > 1:
         error, manifest = comm.bcast(

@@ -11,14 +11,13 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import abc
 from dataclasses import dataclass
-import logging
 
 import numpy as np
 import taichi as ti
 
-from ....config.constants import PANEL_EPSILON
+from source.solvers.vpm.io.logging import Logging
 
-logger = logging.getLogger("vpm")
+from ....config.constants import PANEL_EPSILON
 
 # Relative-residual acceptance limit for a panel solve. A direct dense solve
 # of a well-conditioned influence matrix lands many orders below this; the
@@ -341,7 +340,7 @@ class PanelScipySolver(PanelLinearSolver):
             :attr:`residual_tolerance`.  Singular direct solves use the
             module's regularized/least-squares fallback.
         """
-        logger.debug(f"Solving {n}x{n} system on CPU using Scipy.")
+        Logging.debug(f"Solving {n}x{n} system on CPU using Scipy.")
         # GPU -> CPU
         A_np = aerodynamic_influence_coefficient.to_numpy()[:n, :n]
         b_np = right_hand_side.to_numpy()[:n]
@@ -352,7 +351,7 @@ class PanelScipySolver(PanelLinearSolver):
             # Try direct solve first
             sol = la.solve(A_np, b_np)
         except Exception as e:
-            logger.warning(
+            Logging.warning(
                 f"Scipy solve failed: {e}. Retrying with regularization + least-squares fallback."
             )
             from scipy.linalg import lstsq
@@ -630,7 +629,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
         self.last_residual = final_gradient_norm / max(initial_gradient_norm, 1.0)
         self.last_iterations = iterations
         if broke_down:
-            logger.warning(
+            Logging.warning(
                 "Projected GPU CGLS broke down after %d iterations at relative "
                 "projected-gradient residual %.3e.",
                 iterations,
@@ -638,7 +637,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
             )
             return False
         if not converged:
-            logger.warning(
+            Logging.warning(
                 "Projected GPU CGLS reached relative projected-gradient residual %.3e "
                 "after %d iterations.",
                 self.last_residual,
@@ -837,7 +836,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
             within :attr:`residual_tolerance`; false on non-convergence or
             numerical breakdown.  The final iterate remains in ``x``.
         """
-        logger.debug(f"Solving {n}x{n} system on GPU using BiCGSTAB.")
+        Logging.debug(f"Solving {n}x{n} system on GPU using BiCGSTAB.")
         if n == 0:
             self.last_residual = 0.0
             self.last_iterations = 0
@@ -880,14 +879,14 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
         self.last_iterations = iterations
 
         if broke_down:
-            logger.warning(
+            Logging.warning(
                 f"GPU BiCGSTAB broke down after {iterations} iterations "
                 f"at relative residual {self.last_residual:.3e}."
             )
             return False
         if self.last_residual <= self.residual_tolerance:
             return True
-        logger.warning(
+        Logging.warning(
             f"GPU BiCGSTAB reached relative residual {self.last_residual:.3e} after "
             f"{iterations} iterations, above the {self.residual_tolerance:.3e} tolerance."
         )

@@ -192,7 +192,9 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     projection_only = max_particles is not None and len(position) > max_particles
     if cfg.regularization_transfer_only and projection_only:
-        raise ValueError("transfer-only redistribution cannot replace an over-cap remap by projection")
+        raise ValueError(
+            "transfer-only redistribution cannot replace an over-cap remap by projection"
+        )
     configured_core_radius = (
         cfg.regularization_capacity_core_radius
         if at_capacity and cfg.regularization_capacity_core_radius is not None
@@ -213,6 +215,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             tail_budget=cfg.regularization_tail_budget,
             max_particles=max_particles,
             solenoidal=cfg.regularization_solenoidal_remesh,
+            preserve_groups=cfg.regularization_preserve_groups,
         )
     if proposal is None:
         raise RuntimeError("conservative regularization produced no particle field")
@@ -298,6 +301,25 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         corrected = proposed_vortex_strength + candidate_nullspace.correction_for_moment_change(
             moment_change
         )
+        if cfg.regularization_preserve_groups:
+            corrected = proposed_vortex_strength.copy()
+            old_labels = np.column_stack((old_state["group_id"], old_state["zone_id"]))
+            new_labels = np.column_stack((new_group_id, new_zone_id))
+            for label in np.unique(new_labels, axis=0):
+                old = np.all(old_labels == label, axis=1)
+                new = np.all(new_labels == label, axis=1)
+                target = gaussian_particle_moments(
+                    position[old], vortex_strength[old], core_radius[old]
+                )
+                actual = gaussian_particle_moments(
+                    new_position[new], proposed_vortex_strength[new], candidate_core_radius[new]
+                )
+                group_nullspace = _MomentNullspace(
+                    gaussian_invariant_rows(new_position[new], candidate_core_radius[new]),
+                    new_particle_volume[new],
+                )
+                change = np.concatenate([target[index] - actual[index] for index in (0, 2, 3)])
+                corrected[new] += group_nullspace.correction_for_moment_change(change)
         candidate, integrals = upload_and_integrate(corrected)
         total_kinetic_energy_change_relative = (
             float(integrals["total_kinetic_energy"])
@@ -376,13 +398,17 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 ("core radius, selected", f"{float(new_core_radius.mean()):.3e}", "m"),
             )
 
-        if cfg.regularization_transfer_only or projection_only or (
-            -cfg.regularization_total_kinetic_energy_dissipation_limit
-            <= candidate_energy_change
-            <= 1.0e-7
-            and -cfg.regularization_total_enstrophy_dissipation_limit
-            <= candidate_enstrophy_change
-            <= 1.0e-7
+        if (
+            cfg.regularization_transfer_only
+            or projection_only
+            or (
+                -cfg.regularization_total_kinetic_energy_dissipation_limit
+                <= candidate_energy_change
+                <= 1.0e-7
+                and -cfg.regularization_total_enstrophy_dissipation_limit
+                <= candidate_enstrophy_change
+                <= 1.0e-7
+            )
         ):
             uploaded = candidate
             after_integrals = candidate_integrals
@@ -511,11 +537,13 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     ) / max(abs(float(before_integrals["total_enstrophy"])), np.finfo(float).tiny)
     energy_upper = (
         cfg.regularization_total_kinetic_energy_dissipation_limit
-        if cfg.regularization_transfer_only else 1.0e-7
+        if cfg.regularization_transfer_only
+        else 1.0e-7
     )
     enstrophy_upper = (
         cfg.regularization_total_enstrophy_dissipation_limit
-        if cfg.regularization_transfer_only else ENSTROPHY_RESTORATION_TOLERANCE
+        if cfg.regularization_transfer_only
+        else ENSTROPHY_RESTORATION_TOLERANCE
     )
     if (
         not -cfg.regularization_total_kinetic_energy_dissipation_limit

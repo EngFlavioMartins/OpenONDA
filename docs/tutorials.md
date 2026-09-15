@@ -80,18 +80,21 @@ python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
 
 # In the vortex-interactions case:
 python setup.py baseline
-python setup.py stretching_viscosity
-python setup.py p_moments
+python setup.py selective_eddy_viscosity
+python setup.py pedrizzetti_relaxation
+python setup.py particle_splitting
 ```
 
-The vortex-interactions comparison has one LES baseline and two stabilization
-methods. Historical individual research trials remain in `assets/`.
+The vortex-interactions comparison has one molecular-viscosity DNS baseline and
+three stabilization methods.
 
 Validators are explicit, for example `python assets/postprocess.py --available`
 in the ring case. They and the plotters read the solvers' `vpm_metadata.json`
 or `fvm_metadata.json`, rather than a second tutorial metadata file.
 
-See the [tutorial style guide](development/tutorial_style.md) when adding a case.
+Follow the [repository guidelines](../AGENTS.md#9-tutorials-and-user-facing-scripts)
+when adding a case; the same document defines the
+[figure requirements](../AGENTS.md#10-figures-mandatory-defaults-and-visual-verification).
 
 ## VPM induction and stretching
 
@@ -129,7 +132,7 @@ campaign converges. Full physical qualification can require long runs.
 | Family | Cases | Runtime notes |
 | --- | --- | --- |
 | FVM | `cartesian_mesher`, `airfoil_flow`, `boundary_layer`, `cube_flow`, `cylinder_ibm`, `step_profile`, `taylor_green` | Native meshers and solver. Taylor–Green is the short first example. |
-| VPM/VLM | `delta_wing`, `flat_plate`, `lamb_oseen_vortex`, `quadcopter`, `rotor_flow`, `surface_interaction`, `vortex_interactions`, `vortex_ring` | CPU or supported GPU backends; geometry inputs are included. OpenVSP is optional for regenerating rotor inputs. The surface-interaction case is a real VPM vortex-ring/tandem-VLM run with owner-emitted loads, leakage, events, and restart/refinement study tables; its scope remains inviscid attached-flow self-consistency. |
+| VPM/VLM | `delta_wing`, `flat_plate`, `lamb_oseen_vortex`, `quadcopter`, `rotor_flow`, `surface_interaction`, `vortex_interactions`, `vortex_ring` | CPU or supported GPU backends; geometry inputs are included. OpenVSP is optional for regenerating rotor inputs. The surface-interaction case is a real VPM vortex-ring/tandem-VLM run with owner-emitted loads and restart/refinement study tables; its scope remains inviscid attached-flow self-consistency. |
 | Hybrid | `cube_flow`, `cylinder_shedding_flow`, `naca4412_flow` | Small-to-medium CPU interoperability examples. Body-flow campaigns have separate accuracy and resolution requirements. |
 | Hybrid references | `cube_flow/reference_flow`, `cylinder_shedding_flow/reference_flow` | Standalone FVM reference studies; each owns its geometry input. |
 
@@ -141,5 +144,5 @@ repository `docs/` directory.
 Core installation does not include external OpenFOAM/cfMesh executables,
 OpenVSP, or ParaView. See [optional tool requirements](installation.md).
 The [FVM qualification report](validation/fvm_qualification.md) records the
-current executable contract and verification limits. The broader documentation
-scope and terminology are summarized in [the documentation audit](documentation_audit.md).
+current executable contract and verification limits. Follow the
+[repository guidelines](../AGENTS.md) for development conventions and terminology.

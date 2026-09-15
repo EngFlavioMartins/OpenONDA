@@ -64,7 +64,7 @@ class SolverIO:
                 raise
             self._diagnostics_write_disabled = True
             self.solver.logger.warning(
-                f"component=diagnostics_output status=disabled reason=no_space path={path!r}"
+                f"Diagnostic output stopped because the disk is full: {path}"
             )
 
     def rewind_histories(self, time: float) -> None:

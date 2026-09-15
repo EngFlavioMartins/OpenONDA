@@ -27,7 +27,7 @@ class BoundSurfaceFieldContract:
         operator. It is not a physical core radius.
     bound_source_radius : float
         Radius used for point/probe and boundary-trace evaluation of the
-        bound source. It may equal ``numerical_epsilon`` for the legacy
+        bound source. It may equal ``numerical_epsilon`` for the
         point-trace model, but is named separately so a resolved study can
         change it deliberately.
     particle_target_policy : str

@@ -7,6 +7,8 @@ delivery and restart reconciliation are responsibilities of ``OutputManager``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+from numbers import Real
 from typing import Protocol
 
 
@@ -39,7 +41,7 @@ class EverySteps:
     first_step : int or None
         Optional first eligible accepted step.
     start_time : float or None
-        Optional physical-time floor in seconds.
+        Optional finite, non-negative physical-time floor in seconds.
     """
 
     interval: int
@@ -59,17 +61,16 @@ class EverySteps:
             or self.first_step < 1
         ):
             raise ValueError("EverySteps.first_step must be a positive integer")
-        if self.start_time is not None and self.start_time < 0.0:
-            raise ValueError("EverySteps.start_time must be non-negative")
+        if self.start_time is not None:
+            if isinstance(self.start_time, bool) or not isinstance(self.start_time, Real):
+                raise TypeError("EverySteps.start_time must be a real number or None")
+            if not math.isfinite(self.start_time) or self.start_time < 0.0:
+                raise ValueError("EverySteps.start_time must be finite and non-negative")
+            object.__setattr__(self, "start_time", float(self.start_time))
 
     @property
     def is_final_only(self) -> bool:
         """Return ``False`` because this schedule is driven by accepted steps."""
-        return False
-
-    @property
-    def at_end(self) -> bool:
-        """Compatibility spelling for legacy samplers."""
         return False
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
@@ -94,28 +95,29 @@ class EveryTime:
     Parameters
     ----------
     interval : float
-        Positive physical-time cadence in seconds.
+        Finite positive physical-time cadence in seconds.
     start_time : float, default=0.0
-        First cadence origin in seconds.
+        Finite non-negative cadence origin in seconds.
     """
 
     interval: float
     start_time: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.interval <= 0.0:
-            raise ValueError("EveryTime.interval must be positive")
-        if self.start_time < 0.0:
-            raise ValueError("EveryTime.start_time must be non-negative")
+        for name in ("interval", "start_time"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Real):
+                raise TypeError(f"EveryTime.{name} must be a real number")
+            if not math.isfinite(value) or value < 0.0 or (name == "interval" and value == 0.0):
+                raise ValueError(
+                    f"EveryTime.{name} must be finite and "
+                    + ("positive" if name == "interval" else "non-negative")
+                )
+            object.__setattr__(self, name, float(value))
 
     @property
     def is_final_only(self) -> bool:
         """Return ``False`` because this schedule is driven by physical time."""
-        return False
-
-    @property
-    def at_end(self) -> bool:
-        """Compatibility alias indicating that no forced final sample is requested."""
         return False
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
@@ -145,11 +147,6 @@ class FinalOnly:
     @property
     def is_final_only(self) -> bool:
         """Return ``True`` so the output manager dispatches only at finalization."""
-        return True
-
-    @property
-    def at_end(self) -> bool:
-        """Compatibility alias returning ``True`` for legacy sampler code."""
         return True
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:

@@ -37,10 +37,10 @@ from source.coupler.consistency import FVMConsistencyBand
 from source.coupler.parallel import collective_phase
 from source.coupler.reporting import (
     OutputRedirector,
+    begin_coupling_step,
     configure_logging,
     flush_log,
     format_coupler_log,
-    format_coupler_step,
     record_step,
     write_run_metadata,
 )
@@ -834,6 +834,7 @@ class FVMVPMCoupler:
             self._last_transfer_result = initial_result
         initialize_vpm_boundary_history(self, *face_geometry)
         assert self.vpm_time_step_size is not None
+        self._log_stop_step = stop_step
         for step in range(1 + start_step, stop_step + 1):
             time_end = step * self.vpm_time_step_size
             vpm_time = self._advance_vpm(step, time_end)
@@ -927,7 +928,7 @@ class FVMVPMCoupler:
                 assert self.vpm_solver is not None
                 with self.vpm_redirector:
                     self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
-                logger.info(format_coupler_step(step, self._n_steps, time_end))
+                begin_coupling_step(logger, step, self._n_steps, time_end)
 
                 with self.vpm_redirector:
                     self.vpm_solver.advance(defer_output=True)

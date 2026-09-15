@@ -9,33 +9,20 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from datetime import datetime
-
-# Expose a standard-library logger for external modules that import `logger` from
-# this module (e.g., `from ..io.logging import logger`). Use a NullHandler by
-# default so libraries don't configure global logging handlers when imported.
-import logging as _stdio_logging
 import os
 import platform
-from typing import Any
+from typing import Any, TextIO
 
-import numpy as np
 import taichi as ti
 
 from source import log_style
 from source.version import __version__
 
-from ..config import constants as constants_module
-from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR
-
-logger = _stdio_logging.getLogger("vpm")
-logger.addHandler(_stdio_logging.NullHandler())
-# =========================================================
-
 
 class _LineBufferedLogStream:
     """Minimal stream adapter so print() writes are flushed to a log file in real time."""
 
-    def __init__(self, file_obj: "_stdio_logging.IO[str]") -> None:
+    def __init__(self, file_obj: TextIO) -> None:
         self._file_obj = file_obj
 
     def write(self, data: str) -> int:
@@ -90,13 +77,27 @@ class _TeeLogStream(_LineBufferedLogStream):
 
 
 def print_openonda_header(precision="f32"):
-    """Print a small, searchable run identity instead of a decorative banner."""
-    backend = getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")
-    print(
-        f"OpenONDA {__version__} | VPM | {backend}/{precision} | "
-        f"{datetime.now():%Y-%m-%d %H:%M:%S}\n"
-        f"  {platform.system()} {platform.machine()} | "
-        f"Python {platform.python_version()} | Taichi {ti.__version__}",
+    """Report run identity through the shared initialization layout."""
+    from ..config import constants as constants_module
+
+    Logging.message(
+        log_style.block_report(
+            "OpenONDA VPM",
+            [
+                (
+                    "run",
+                    [
+                        ("version", __version__),
+                        ("backend", getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")),
+                        ("precision", precision),
+                        ("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}"),
+                        ("platform", f"{platform.system()} {platform.machine()}"),
+                        ("Python", platform.python_version()),
+                        ("Taichi", str(ti.__version__)),
+                    ],
+                )
+            ],
+        ),
         flush=True,
     )
 
@@ -165,84 +166,99 @@ class Logging:
     """
 
     _routine_messages_enabled = True
+    _debug_enabled = False
     _active_step: int | None = None
-    _last_block_section: str | None = None
+    _reported_step: int | None = None
     _last_progress_wall: float | None = None
     _progress_interval_seconds = 30.0
-    _record_name_width = 11
-    _detail_name_width = 13
-    _event_detail_name_width = 26
+    _pending_sections: dict[str, tuple[log_style.Row, ...]] = {}
 
     @staticmethod
     def set_routine_messages_enabled(enabled: bool) -> None:
-        """Enable or suppress routine records while retaining warnings and errors."""
+        """Suppress routine output without affecting warnings or numerical work."""
         Logging._routine_messages_enabled = bool(enabled)
 
     @staticmethod
     def message(text: str = "", *, flush: bool = False) -> None:
-        """
-        Emit a raw message to the solver console.
-
-        Single choke-point for all free-form solver output so that the
-        backing sink (stdout today, the stdlib ``logging`` module later)
-        can be swapped in one place.
-
-        Args:
-            text: The message to print.
-            flush: Force a flush of the underlying stream.
-        """
+        """Write one complete shared report, or wrap plain text as an event."""
         if not Logging._routine_messages_enabled:
             return
+        if not isinstance(text, log_style.FormattedText):
+            text = log_style.block_section("events", [(text, "")])
         print(text, flush=flush)
 
     @staticmethod
-    def info(text: str, *, flush: bool = False) -> None:
-        """Emit an informational event in the current solver block."""
-        Logging.message(f"{'Event':<{Logging._record_name_width}} | {text}", flush=flush)
+    def info(text: str, *args, flush: bool = False) -> None:
+        """Record a module event; interpolate only when routine output is enabled."""
+        if Logging._routine_messages_enabled:
+            Logging.record(text % args if args else text, flush=flush)
 
     @staticmethod
-    def warning(text: str, *, flush: bool = False) -> None:
-        """Emit a VPM warning even when routine output is suppressed."""
-        context = "" if Logging._active_step is None else f" | step {Logging._active_step}"
-        print(f"{'Warning':<{Logging._record_name_width}}{context} | {text}", flush=True)
+    def debug(text: str, *args) -> None:
+        """Emit optional module details only in the configured debug mode."""
+        if Logging._debug_enabled:
+            Logging.info(text, *args)
 
     @staticmethod
-    def _status_line(
-        name: str,
-        step: int,
-        flow_time: float,
-        *,
-        total_steps: int | None,
-        n_particles: int | None,
-        wall_time: float | None = None,
-    ) -> str:
-        """Format progress and diagnostics headers with stable columns."""
-        step_text = f"{step:,}" if total_steps is None else f"{step:,}/{total_steps:,}"
-        elapsed = ""
-        if wall_time is not None:
-            elapsed = f" | elapsed={log_style.elapsed_time(wall_time)}"
-        particle_text = "-" if n_particles is None else f"{n_particles:,}"
-        return (
-            f"{name:<{Logging._record_name_width}} | step={step_text:>11} | "
-            f"t={flow_time:>10.4f} s{elapsed} | N={particle_text:>9}"
-        )
+    def warning(text: str, *args, flush: bool = True) -> None:
+        """Immediately report a warning, including the attempted step if active."""
+        rows = [(text % args if args else text, "")]
+        if Logging._active_step is not None:
+            rows.insert(0, ("VPM step", Logging._active_step))
+        print(log_style.block_section("warnings", rows), flush=True)
 
     @staticmethod
-    def _compact_record(name: str, topic: str, rows: tuple[log_style.Row, ...]) -> str:
-        """Format an event or warning as a short aligned record."""
-        lines = [f"{name:<{Logging._record_name_width}} | {topic}"]
-        for row in rows:
-            label, value = str(row[0]), str(row[1])
-            unit = f" {row[2]}" if len(row) > 2 and row[2] else ""
-            lines.append(f"  {label:<{Logging._event_detail_name_width}} | {value:>12}{unit}")
-        return "\n".join(lines)
+    def error(text: str, *args) -> None:
+        """Immediately report a module error through the same sink and layout."""
+        print(log_style.block_section("errors", [(text % args if args else text, "")]), flush=True)
 
     @staticmethod
     def begin_step(step: int) -> None:
-        """Set event context without printing an unaccepted physical state."""
+        """Open a bounded buffer for a trial step; never announce acceptance here.
+
+        Routine measurements from an unreported preceding step are discarded.
+        Native scientific records keep their own sampling and persistence policy.
+        One latest report per component is retained, independent of particle count.
+        """
         Logging.set_routine_messages_enabled(True)
         Logging._active_step = int(step)
-        Logging._last_block_section = None
+        Logging._pending_sections.clear()
+
+    @staticmethod
+    def progress_due(step: int, wall_time: float, total_steps: int | None = None) -> bool:
+        """Check the report cadence without formatting or touching solver fields."""
+        previous = Logging._last_progress_wall
+        return Logging._routine_messages_enabled and (
+            previous is None
+            or wall_time - previous >= Logging._progress_interval_seconds
+            or (total_steps is not None and step == total_steps)
+        )
+
+    @staticmethod
+    def _report_step(
+        step: int,
+        flow_time: float,
+        wall_time: float,
+        total_steps: int | None,
+        rows: list[log_style.Row],
+    ) -> None:
+        """Publish an accepted header and all queued sections in one sink write."""
+        parts = []
+        if Logging._reported_step != step:
+            parts.append(log_style.step_header(step, flow_time, wall_time, total_steps=total_steps))
+        if rows:
+            parts.append(log_style.block_section("particles", rows))
+        parts.extend(
+            log_style.block_section(title, values)
+            for title, values in sorted(
+                Logging._pending_sections.items(),
+                key=lambda item: log_style.step_section_order(item[0]),
+            )
+        )
+        Logging._pending_sections.clear()
+        Logging.message(log_style.FormattedText("\n".join(parts)), flush=True)
+        Logging._reported_step = step
+        Logging._last_progress_wall = float(wall_time)
 
     @staticmethod
     def time_step(
@@ -254,183 +270,131 @@ class Logging:
         n_particles: int | None = None,
     ) -> None:
         """Report accepted progress at most every 30 wall seconds, plus endpoints."""
-        previous = Logging._last_progress_wall
-        final = total_steps is not None and step == total_steps
-        if (
-            previous is not None
-            and wall_time - previous < Logging._progress_interval_seconds
-            and not final
-        ):
+        if not Logging.progress_due(step, wall_time, total_steps):
             return
-        Logging._last_progress_wall = float(wall_time)
-        Logging.message(
-            Logging._status_line(
-                "Progress",
-                step,
-                flow_time,
-                total_steps=total_steps,
-                n_particles=n_particles,
-                wall_time=wall_time,
-            ),
-            flush=True,
-        )
-
-    @staticmethod
-    def _block_rows(
-        title: str,
-        rows: list[log_style.Row],
-        *,
-        flush: bool = False,
-        force: bool = False,
-    ) -> None:
-        """Append rows to a block, showing an uppercase section title once."""
-        if not force and not Logging._routine_messages_enabled:
-            return
-        normalized_title = title.upper()
-        show_title = Logging._last_block_section != normalized_title
-        print(
-            log_style.block_section(normalized_title, rows, show_title=show_title),
-            flush=flush,
-        )
-        Logging._last_block_section = normalized_title
+        rows = [] if n_particles is None else [("active particles", n_particles)]
+        Logging._report_step(step, flow_time, wall_time, total_steps, rows)
 
     @staticmethod
     def section(title: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Append one explicitly named section to the current solver block."""
-        Logging._block_rows(title, list(rows), flush=flush)
-
-    @staticmethod
-    def _event_rows(topic: str, rows: tuple[log_style.Row, ...]) -> list[log_style.Row]:
-        nested: list[log_style.Row] = [(topic, "")]
-        for row in rows:
-            label = f"  {row[0]}"
-            if len(row) > 2:
-                nested.append((label, row[1], row[2]))
-            else:
-                nested.append((label, row[1]))
-        return nested
+        """Queue host measurements until reporting, or explicitly flush an event."""
+        if not Logging._routine_messages_enabled:
+            return
+        if Logging._active_step is None or flush:
+            Logging.message(log_style.block_section(title, rows), flush=flush)
+        else:
+            Logging._pending_sections[title] = rows
 
     @staticmethod
     def record(topic: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Emit one time-dependent event without repeating static model details."""
-        Logging.message(Logging._compact_record("Event", topic, rows), flush=flush)
+        """Submit one component's latest measurements without formatting them."""
+        Logging.section(topic if rows else "events", *(rows or ((topic, ""),)), flush=flush)
+
+    @staticmethod
+    def boundary_forces(component: str, totals: dict, surfaces: dict) -> None:
+        """Report computed boundary loads through the shared record formatter.
+
+        ``totals`` and each surface record supply lift/drag in N and their
+        dimensionless coefficients. Optional moment coefficients and reference
+        position (m) are reported only when the owning force model supplies them.
+        This formatter never computes or substitutes physical measurements.
+        """
+        if len(surfaces) > 1:
+            for name, forces in surfaces.items():
+                Logging.record(
+                    f"{component} surface {name} forces",
+                    ("surface", name),
+                    ("lift", forces["lift"], "N"),
+                    ("drag", forces["drag"], "N"),
+                    ("lift coefficient", forces["lift_coefficient"]),
+                    ("drag coefficient", forces["drag_coefficient"]),
+                    ("panels", forces["panel_count"]),
+                )
+        rows = [
+            ("lift", totals["lift"], "N"),
+            ("drag", totals["drag"], "N"),
+            ("lift coefficient", totals["lift_coefficient"]),
+            ("drag coefficient", totals["drag_coefficient"]),
+        ]
+        for name in (
+            "side_force_coefficient",
+            "rolling_moment_coefficient",
+            "pitching_moment_coefficient",
+            "pitching_moment_coefficient_quarter_chord",
+            "yawing_moment_coefficient",
+        ):
+            if name in totals:
+                rows.append((name.replace("_", " "), totals[name]))
+        if "reference_point" in totals:
+            rows.append(("reference point", totals["reference_point"], "m"))
+        Logging.record(f"{component} forces", *rows, flush=True)
 
     @staticmethod
     def warning_record(topic: str, *rows: log_style.Row, flush: bool = True) -> None:
-        """Emit a VPM warning record that survives routine-message suppression."""
-        del flush
-        print(Logging._compact_record("Warning", topic, rows), flush=True)
+        """Immediately publish a structured warning without routine suppression."""
+        details = [(topic, ""), *rows]
+        if Logging._active_step is not None:
+            details.insert(0, ("VPM step", Logging._active_step))
+        print(log_style.block_section("warnings", details), flush=True)
 
     @staticmethod
     def flow_diagnostics(system):
-        """Print already-computed diagnostics only when their sampler is due."""
-
-        def quantity(value):
-            return f"{value: .4e}" if np.isfinite(value) else " unavailable"
-
-        def vector(values):
-            return "[" + ", ".join(f"{value: .3e}" for value in values) + "]"
-
-        step = int(getattr(system, "step", 0))
-        flow_time = float(getattr(system, "time", 0.0))
-        count = int(system.particles.n_particles_total)
-        rate_source = getattr(system, "kinetic_energy_rate_source", "unknown")
-        rate_label = "viscous estimate" if rate_source.endswith("viscous_rate") else "d(E/rho)/dt"
-        lines = [
-            Logging._status_line(
-                "Diagnostics",
-                step,
-                flow_time,
-                total_steps=getattr(system, "_run_final_step", None),
-                n_particles=count,
-                wall_time=getattr(system, "elapsed_wall_time", getattr(system, "wall_time", None)),
-            ),
-            f"  {'Energy':<{Logging._detail_name_width}} | "
-            f"E/rho={quantity(system.total_kinetic_energy)} m^5/s^2   "
-            f"{rate_label}={quantity(system.kinetic_energy_rate)} m^5/s^3   "
-            f"viscous={quantity(system.viscous_kinetic_energy_rate)} m^5/s^3",
-            f"  {'Strength':<{Logging._detail_name_width}} | "
-            f"sum|Gamma|={quantity(system.vortex_strength_magnitude_sum)}   "
-            f"net={vector(system.net_vortex_strength)} m^3/s",
-            f"  {'Impulse':<{Logging._detail_name_width}} | "
-            f"linear ={vector(system.total_linear_impulse)} m^4/s",
-            f"  {'':<{Logging._detail_name_width}} | "
-            f"angular={vector(system.total_angular_impulse)} m^5/s",
-            f"  {'Field norms':<{Logging._detail_name_width}} | "
-            f"enstrophy={quantity(system.total_enstrophy)} m^3/s^2   "
-            f"helicity={quantity(system.total_helicity)} m^4/s^2",
+        """Report the sampler's existing host integrals; perform no field reductions."""
+        if not Logging._routine_messages_enabled:
+            return
+        values = system._flow_integrals
+        source = values["kinetic_energy_rate_source"]
+        rate_label = (
+            "viscous estimate / density"
+            if source.endswith("viscous_rate")
+            else "energy rate / density"
+        )
+        Logging._pending_sections["energy"] = (
+            ("kinetic energy / density", values["total_kinetic_energy"], "m^5/s^2"),
+            (rate_label, values["kinetic_energy_rate"], "m^5/s^3"),
+            ("viscous contribution", values["viscous_kinetic_energy_rate"], "m^5/s^3"),
+        )
+        rows = [
+            ("strength, magnitude sum", values["vortex_strength_magnitude_sum"], "m^3/s"),
+            ("strength, net", tuple(values["net_vortex_strength"]), "m^3/s"),
+            ("linear impulse / density", tuple(values["linear_impulse"]), "m^4/s"),
+            ("angular impulse / density", tuple(values["angular_impulse"]), "m^5/s"),
+            ("enstrophy", values["total_enstrophy"], "m^3/s^2"),
+            ("helicity", values["total_helicity"], "m^4/s^2"),
         ]
-        centroid = getattr(system, "vortex_centroid", None)
-        if centroid is not None:
-            lines.append(f"  {'Centroid':<{Logging._detail_name_width}} | {vector(centroid)} m")
-        groups = getattr(system, "vortex_centroids_by_group", {})
-        if len(groups) > 1:
-            for group, centroid in groups.items():
-                lines.append(
-                    f"  {f'Group {group}':<{Logging._detail_name_width}} | {vector(centroid)} m"
-                )
-        Logging.message("\n".join(lines), flush=True)
-        # Scheduled diagnostics are themselves a heartbeat. No extra progress
-        # line is needed immediately afterward, including in fast simulations.
-        wall_time = getattr(system, "elapsed_wall_time", getattr(system, "wall_time", None))
-        if wall_time is not None:
-            Logging._last_progress_wall = float(wall_time)
+        history = system._diagnostics_history
+        if history["time"] and history["time"][-1] == system.time and history["vortex_centroid"]:
+            rows.append(("centroid", tuple(history["vortex_centroid"][-1]), "m"))
+        for group, centroid in values.get("vortex_centroids_by_group", {}).items():
+            rows.append((f"group {group}, centroid", tuple(centroid), "m"))
+        Logging._pending_sections["flow integrals"] = tuple(rows)
+        wall_time = getattr(system, "elapsed_wall_time", getattr(system, "wall_time", 0.0))
+        Logging._report_step(
+            system.step, system.time, wall_time, getattr(system, "_run_final_step", None), []
+        )
         if getattr(system, "vlm_solver", None) is not None:
             Logging.vlm_forces(system)
 
     @staticmethod
     def startup(system) -> None:
-        """Show the run essentials; retain full configuration in the owned log."""
-        Logging.message(
-            f"{'Solver':<{Logging._record_name_width}} | {system.viscous_scheme} | "
-            f"{type(system.induction).__name__.removesuffix('Induction')} | "
-            f"{system.integrator.name} | {system.compute_device}/{system.precision}\n"
-            f"  {'Time step':<{Logging._detail_name_width}} | "
-            f"dt={system.time_step_size:.6g} s | steps={system.case.run.steps:,}\n"
-            f"  {'Particles':<{Logging._detail_name_width}} | "
-            f"capacity={system.setup.max_n_particles:,} | kernel={system.particle_kernel}\n"
-            f"  {'Log':<{Logging._detail_name_width}} | {system._log_path / 'vpm.log'}",
-            flush=True,
-        )
-        schedules = []
-        for sampler in system.case.samplers.samples:
-            schedule = getattr(sampler, "schedule", None)
-            interval = getattr(schedule, "interval", None)
-            if interval is not None:
-                unit = "s" if type(schedule).__name__ == "EveryTime" else "steps"
-                cadence = f"every {interval} {unit}"
-            elif getattr(schedule, "is_final_only", False):
-                cadence = "final only"
-            else:
-                cadence = "configured schedule"
-            schedules.append(f"{type(sampler).__name__.removesuffix('Sampler')}: {cadence}")
-        if schedules:
-            Logging.message(
-                f"  {'Output':<{Logging._detail_name_width}} | " + "; ".join(schedules),
-                flush=True,
-            )
-        if _ACTIVE_OUTPUT_REDIRECTION is not None:
-            _ACTIVE_OUTPUT_REDIRECTION.file_handle.write(Logging.solver_info(system) + "\n")
-            _ACTIVE_OUTPUT_REDIRECTION.file_handle.flush()
+        """Publish the resolved configuration once through the common layout."""
+        Logging.message(Logging.solver_info(system), flush=True)
 
     @staticmethod
     def run_finished(system, status: str, failure=None) -> None:
-        """Keep terminal status visible, even after suppressed routine output."""
-        particles = getattr(system, "particles", None)
-        label = "Stopped" if status == "resolution_lost" else status.capitalize()
-        print(
-            Logging._status_line(
-                label,
-                system.step,
-                system.time,
-                total_steps=getattr(system, "_run_final_step", None),
-                n_particles=getattr(particles, "n_particles_total", None),
-                wall_time=getattr(system, "elapsed_wall_time", getattr(system, "wall_time", 0.0)),
-            ),
-            flush=True,
-        )
-        if failure is not None and status != "resolution_lost":
-            print(f"  {type(failure).__name__}: {failure}", flush=True)
+        """Report terminal state even when routine messages are suppressed."""
+        label = "Stopped (resolution limit)" if status == "resolution_lost" else status.capitalize()
+        rows = [
+            ("status", label),
+            ("accepted step", system.step),
+            ("physical time", system.time, "s"),
+            ("elapsed", log_style.elapsed_time(system.elapsed_wall_time)),
+        ]
+        if failure is not None:
+            rows.append((type(failure).__name__, str(failure)))
+        print(log_style.block_report("VPM run finished", [("run", rows)]), flush=True)
+        Logging._pending_sections.clear()
+        Logging._active_step = None
 
     @staticmethod
     def _format_solver_config(system) -> list:
@@ -483,75 +447,29 @@ class Logging:
 
     @staticmethod
     def _format_viscous_time_step_size_limits(system) -> list:
-        """Return lines showing Δt, stability/accuracy limit, and a warning if exceeded.
+        """Report configured diffusion intervals in seconds from resolved settings.
 
-        Works whether or not particles are loaded — reads limits directly from
-        the ViscousConfig methods (rwm_accuracy_dt, gbd_max_dt,
-        dvh_required_dt) which require only ``particle_spacing`` and
-        ``kinematic_viscosity`` to be set on the config.  Skips silently when those fields
-        are absent.
+        RWM has an accuracy bound, GBD substeps its explicit molecular stage,
+        and DVH uses a required diffusion interval. A GBD macro-step exceeding
+        the molecular stage limit therefore does not itself indicate instability.
         """
-        lines: list[log_style.Row] = []
-        try:
-            visc_cfg = getattr(getattr(system, "setup", None), "viscous", None)
-            if visc_cfg is None:
-                return lines
-
-            time_step_size = getattr(system, "time_step_size", None)
-            if time_step_size is None:
-                return lines
-
-            scheme = getattr(system, "viscous_scheme", None) or getattr(visc_cfg, "scheme", None)
-            particle_spacing = getattr(visc_cfg, "particle_spacing", None)
-            kinematic_viscosity = getattr(visc_cfg, "kinematic_viscosity", None)
-
-            # Derive limit and label from the ViscousConfig stability methods.
-            limit: float | None = None
-            limit_label: str = ""
-
-            if (
-                scheme == "RWM"
-                and particle_spacing
-                and particle_spacing > 0
-                and kinematic_viscosity
-                and kinematic_viscosity > 0
-            ):
-                limit = visc_cfg.rwm_accuracy_time_step_size()
-                limit_label = "particle_spacing²/(4nu)"
-            elif scheme == "GBD" and kinematic_viscosity and kinematic_viscosity > 0:
-                try:
-                    limit = visc_cfg.gbd_max_time_step_size()
-                    limit_label = "particle_spacing²/(6nu)"
-                except Exception:
-                    pass
-            elif scheme == "DVH" and kinematic_viscosity and kinematic_viscosity > 0:
-                try:
-                    limit = visc_cfg.dvh_required_time_step_size()
-                    limit_label = "β·R_d²/(4nu)"
-                except Exception:
-                    pass
-
-            if limit is not None and limit > 0:
-                if scheme == "DVH":
-                    lines.append(("required diffusion interval", f"{limit:.3e}", "s, pinned"))
-                    lines.append(("  from", limit_label))
-                    return lines
-                exceeded = time_step_size > limit * (1.0 + 1e-6)
-                lines.append(("stability limit", f"{limit:.3e}", "s"))
-                lines.append(("  from", limit_label))
-                lines.append(("  status", "EXCEEDS LIMIT" if exceeded else "ok"))
-                if exceeded:
-                    ratio = time_step_size / limit
-                    lines.append(
-                        (
-                            "  warning",
-                            f"time step is {ratio:.2f}x the {scheme} stability limit,"
-                            " solution may be unstable",
-                        )
-                    )
-        except Exception:
-            pass
-        return lines
+        config = system.setup.viscous
+        if config.kinematic_viscosity is None or config.kinematic_viscosity <= 0.0:
+            return []
+        if config.scheme == "RWM" and config.particle_spacing is not None:
+            return [
+                ("accuracy limit", config.rwm_accuracy_time_step_size(), "s"),
+                ("criterion", "particle spacing squared / (4 * kinematic viscosity)"),
+            ]
+        if config.scheme == "GBD" and config.gbd_grid_spacing is not None:
+            return [
+                ("molecular explicit stage limit", config.gbd_max_time_step_size(), "s"),
+                ("criterion", "GBD grid spacing squared / (6 * kinematic viscosity)"),
+                ("molecular diffusion", "substepped within each macro-step when needed"),
+            ]
+        if config.scheme == "DVH" and config.dvh_grid_spacing is not None:
+            return [("required diffusion interval", config.dvh_required_time_step_size(), "s")]
+        return []
 
     @staticmethod
     def _format_viscous_model(system) -> list:
@@ -562,31 +480,6 @@ class Logging:
         # particle_spacing + kinematic_viscosity are set on the config.
         rows.extend(Logging._format_viscous_time_step_size_limits(system))
 
-        if hasattr(system, "particles") and len(system.particles) > 0:
-            kinematic_viscosity = system.particles.kinematic_viscosity_cpu()
-            viscosities_t = system.particles.eddy_viscosity_cpu()
-            viscosities_eff = system.particles.effective_viscosity_cpu()
-
-            rows.append(("molecular viscosity", f"{kinematic_viscosity[0]:.3e}", "m^2/s"))
-
-            if np.max(viscosities_t) > 1e-12:
-                rows.extend(
-                    (
-                        ("turbulent viscosity, min", f"{np.min(viscosities_t):.3e}", "m^2/s"),
-                        ("turbulent viscosity, mean", f"{np.mean(viscosities_t):.3e}", "m^2/s"),
-                        ("turbulent viscosity, max", f"{np.max(viscosities_t):.3e}", "m^2/s"),
-                        ("effective viscosity, min", f"{np.min(viscosities_eff):.3e}", "m^2/s"),
-                        ("effective viscosity, mean", f"{np.mean(viscosities_eff):.3e}", "m^2/s"),
-                        ("effective viscosity, max", f"{np.max(viscosities_eff):.3e}", "m^2/s"),
-                    )
-                )
-        else:
-            visc_cfg = getattr(getattr(system, "setup", None), "viscous", None)
-            kinematic_viscosity = getattr(visc_cfg, "kinematic_viscosity", None)
-            if kinematic_viscosity is not None and kinematic_viscosity > 0:
-                rows.append(("molecular viscosity", f"{kinematic_viscosity:.3e}", "m^2/s"))
-            else:
-                rows.append(("molecular viscosity", "not configured"))
         return rows
 
     @staticmethod
@@ -681,12 +574,12 @@ class Logging:
         else:
             rows.append(("solution stability check", "enabled"))
             rows.append(("  maximum strain increment, infinity norm", f"{stability_limit:.3f}"))
-        coefficient = getattr(cfg, "stretching_viscosity_coefficient", 0.0)
+        coefficient = getattr(cfg, "selective_eddy_viscosity_coefficient", 0.0)
         if coefficient > 0.0:
-            rows.append(("stretching viscosity", "enabled"))
+            rows.append(("selective eddy viscosity", "enabled"))
             rows.append(("  c_stab", f"{coefficient:.3f}"))
         else:
-            rows.append(("stretching viscosity", "disabled"))
+            rows.append(("selective eddy viscosity", "disabled"))
         regularization_interval_steps = getattr(cfg, "regularization_interval_steps", 0)
         if regularization_interval_steps > 0:
             rows.append(("conservative filter", "enabled"))
@@ -753,6 +646,8 @@ class Logging:
     @staticmethod
     def solver_summary(system) -> str:
         """Return the shorter VPM initialization summary."""
+        from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR
+
         rows: list[log_style.Row] = [
             ("flow model", getattr(system, "flow_model_description", system.flow_model)),
             ("integrator", getattr(getattr(system, "integrator", None), "name", "unknown")),
@@ -813,29 +708,18 @@ class Logging:
         Args:
             system: Solver instance containing `LES` turbulence model object
         """
-        # Only log if LES model is active
-        if system.turbulence_model is None:
+        if not Logging._routine_messages_enabled or system.turbulence_model is None:
             return
 
         les = system.turbulence_model
-        try:
-            title = (
-                "INITIAL TURBULENCE QUANTITIES"
-                if int(getattr(system, "step", 0)) == 0
-                else "TURBULENCE QUANTITIES"
-            )
-            Logging.section(
-                title,
-                ("Eddy viscosity", ""),
-                ("  Minimum", f"{les.min_eddy_viscosity:.4e}", "m^2/s"),
-                ("  Maximum", f"{les.max_eddy_viscosity:.4e}", "m^2/s"),
-                ("Eddy-to-molecular viscosity ratio", ""),
-                ("  Minimum", f"{les.min_eddy_viscosity_ratio:.4e}"),
-                ("  Maximum", f"{les.max_eddy_viscosity_ratio:.4e}"),
-                flush=True,
-            )
-        except Exception as error:
-            Logging.warning(f"LES diagnostics failed: {error}", flush=True)
+        Logging.section(
+            "turbulence",
+            ("eddy viscosity, minimum", les.min_eddy_viscosity, "m^2/s"),
+            ("eddy viscosity, maximum", les.max_eddy_viscosity, "m^2/s"),
+            ("eddy / molecular viscosity, minimum", les.min_eddy_viscosity_ratio),
+            ("eddy / molecular viscosity, maximum", les.max_eddy_viscosity_ratio),
+            flush=True,
+        )
 
     @staticmethod
     def vlm_forces(system):
@@ -878,34 +762,34 @@ class Logging:
             particles_removed: Number of particles removed
             particles_after: Number of particles after cleanup
         """
+        if not Logging._routine_messages_enabled:
+            return
         removal_fraction = particles_removed / particles_before if particles_before else 0.0
         Logging.record(
             "weak particle pruning",
-            ("threshold", f"{percent:.6g}", "%"),
-            ("particles, before", f"{int(particles_before):,}"),
-            ("particles, removed", f"{int(particles_removed):,}"),
-            ("particles, after", f"{int(particles_after):,}"),
-            ("fraction removed", f"{removal_fraction:.6f}"),
+            ("threshold", percent, "%"),
+            ("particles, before", particles_before),
+            ("particles, removed", particles_removed),
+            ("particles, after", particles_after),
+            ("fraction removed", removal_fraction),
         )
 
     @staticmethod
-    def step_timing(step_elapsed, total_elapsed, detailed_timing=None):
+    def step_timing(step_elapsed, detailed_timing=None):
         """
         Log timing information for a completed simulation step.
 
         Args:
             step_elapsed: Time taken for the current step [s]
-            total_elapsed: Cumulative simulation time [s]
             detailed_timing: Optional dictionary with per-operation durations
         """
-        if not detailed_timing:
-            return
-        rows: list[log_style.Row] = [("Wall time, total", f"{total_elapsed:.6f}", "s")]
+        rows: list[log_style.Row] = [("Step wall time", step_elapsed, "s")]
+        detailed_timing = detailed_timing or {}
         for operation, duration in detailed_timing.items():
             fraction = duration / step_elapsed if step_elapsed > 0 else 0.0
             rows.append((operation, f"{duration:.6f}", "s"))
             rows.append(("  Share of step", f"{100.0 * fraction:.1f}", "%"))
-        Logging.section("DETAILED WALL-CLOCK TIMING", *rows, flush=True)
+        Logging.section("TIMING", *rows)
 
     @staticmethod
     def stretching_time_step_size_warning(
@@ -974,7 +858,7 @@ class Logging:
         else:
             rows.append(("issues", "none detected"))
 
-        print(log_style.record("vpm", "time step sizing validation", *rows, stamped=True) + "\n")
+        Logging.message(log_style.record("vpm", "time step sizing validation", *rows), flush=True)
 
     @staticmethod
     def setup_output_redirection(solver: Any) -> None:
@@ -997,7 +881,9 @@ class Logging:
         # step's suppression state.
         Logging.set_routine_messages_enabled(True)
         Logging._active_step = None
-        Logging._last_block_section = None
+        Logging._pending_sections.clear()
+        Logging._reported_step = None
+        Logging._debug_enabled = bool(solver.setup.debug_mode)
         Logging._last_progress_wall = None
 
         if _ACTIVE_OUTPUT_REDIRECTION is not None:

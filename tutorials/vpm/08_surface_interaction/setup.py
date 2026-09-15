@@ -14,8 +14,8 @@ Typical usage from this directory::
     python setup.py
     python setup.py --steps 4 --precision f32
 
-The first command writes the accepted force, leakage, surface-event, loading,
-particle, metadata, and restart records below ``samples/`` and ``solution/``.
+The first command writes accepted forces, loading, particle, metadata, and
+restart records below ``samples/`` and ``solution/``.
 The companion study script consumes the same declarative builder for the
 refinement and backend/restart evidence tables.
 """
@@ -38,8 +38,7 @@ SAMPLE_DIRECTORY = "tandem"
 SURFACE_FILE = TUTORIAL_DIR / "assets" / "tandem_delta_surface.json"
 
 # Physical and numerical scales.  These values intentionally leave the
-# incoming ring close to the outboard edge, so the finite-surface observer can
-# distinguish an edge bypass/core overlap from an actual face-interior hit.
+# incoming ring close to the outboard edge to exercise wake/surface coupling.
 WING_SEPARATION = 0.60
 FREESTREAM_VELOCITY = (4.0, 0.0, 0.0)
 TIME_STEP_SIZE = 0.01
@@ -166,7 +165,6 @@ def build_case(
     n_chordwise_panels: int = 3,
     n_spanwise_panels: int = 4,
     boundary_response: str = "responsive",
-    surface_event_policy: str = "warn",
     ring_centre: tuple[float, float, float] = RING_CENTRE,
     include_ring: bool = True,
     tandem_surfaces: bool = True,
@@ -206,7 +204,6 @@ def build_case(
         sample_surface_forces=True,
         wake_core_overlap=2.5,
         boundary_response=boundary_response,
-        surface_event_policy=surface_event_policy,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )
     return vpm.VPMCase(
@@ -265,24 +262,15 @@ def _write_run_summary(
     """Summarize actual owner-emitted tables without inventing observations."""
     sample_root = _sample_root(case_directory, sample_directory)
     force_path = sample_root / "vlm_surface_forces.csv"
-    leakage_path = sample_root / "vlm_leakage.csv"
-    events_path = sample_root / "vlm_surface_events.csv"
-    if not events_path.is_file():
-        events_path = case_directory / "samples" / "vlm_surface_events.csv"
     if not force_path.is_file():
         raise FileNotFoundError(f"coupled VLM force table was not written: {force_path}")
     forces = pd.read_csv(force_path)
-    leakage = pd.read_csv(leakage_path) if leakage_path.is_file() else pd.DataFrame()
-    events = pd.read_csv(events_path) if events_path.is_file() else pd.DataFrame()
     rows: list[dict[str, object]] = []
     for surface, group in forces.groupby("surface", sort=True):
         group = group.sort_values("time")
         time = group["time"].to_numpy(dtype=float)
         lift = group.get("lift", pd.Series(0.0, index=group.index)).to_numpy(dtype=float)
         drag = group.get("drag", pd.Series(0.0, index=group.index)).to_numpy(dtype=float)
-        mask = events.get("surface", pd.Series(dtype=object)).eq(surface)
-        event_surface = events.loc[mask] if len(events) else events
-        event_type = event_surface.get("event_type", pd.Series(dtype=int))
         rows.append(
             {
                 "case": case_name,
@@ -295,17 +283,6 @@ def _write_run_summary(
                 "peak_abs_lift": float(np.max(np.abs(lift))),
                 "integrated_lift": float(np.trapezoid(lift, time)) if len(time) > 1 else 0.0,
                 "final_drag": float(drag[-1]),
-                "intersection_events": int((event_type == 1).sum()),
-                "side_bypass_events": int((event_type == 2).sum()),
-                "core_overlap_events": int((event_type == 3).sum()),
-                "final_leakage_R1": (
-                    float(leakage["R1"].iloc[-1]) if len(leakage) and "R1" in leakage else np.nan
-                ),
-                "final_transport_R1": (
-                    float(leakage["transport_R1"].iloc[-1])
-                    if len(leakage) and "transport_R1" in leakage
-                    else np.nan
-                ),
             }
         )
     summary_path = sample_root / "qualification_summary.csv"
@@ -319,15 +296,8 @@ def _write_run_summary(
         "time_step_size": float(time_step_size),
         "accepted_steps_requested": n_steps,
         "force_table": str(force_path.relative_to(case_directory)),
-        "leakage_table": str(leakage_path.relative_to(case_directory))
-        if leakage_path.exists()
-        else None,
-        "surface_events": str(events_path.relative_to(case_directory))
-        if events_path.exists()
-        else None,
         "summary": str(summary_path.relative_to(case_directory)),
         "n_force_rows": int(len(forces)),
-        "n_event_rows": int(len(events)),
     }
     (sample_root / "qualification_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
@@ -348,7 +318,6 @@ def run(
     n_chordwise_panels: int = 3,
     n_spanwise_panels: int = 4,
     boundary_response: str = "responsive",
-    surface_event_policy: str = "warn",
     ring_centre: tuple[float, float, float] = RING_CENTRE,
     include_ring: bool = True,
     tandem_surfaces: bool = True,
@@ -367,7 +336,6 @@ def run(
         n_chordwise_panels=n_chordwise_panels,
         n_spanwise_panels=n_spanwise_panels,
         boundary_response=boundary_response,
-        surface_event_policy=surface_event_policy,
         ring_centre=ring_centre,
         include_ring=include_ring,
         tandem_surfaces=tandem_surfaces,

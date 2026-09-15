@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import logging
 
 import numpy as np
 
-from .stl_io import _unique_face_vertex_ids_from_triangles
+from source.solvers.vpm.io.logging import Logging
 
-logger = logging.getLogger("vpm")
+from .stl_io import _unique_face_vertex_ids_from_triangles
 
 
 class StlAuditError(ValueError):
@@ -349,4 +348,4 @@ def write_audit_report_json(report: dict, path: str) -> None:
     """Write an ``audit_stl_mesh`` report to ``path`` as machine-readable JSON."""
     with open(path, "w") as handle:
         json.dump(report, handle, indent=2)
-    logger.debug(f"Wrote STL audit report '{path}'.")
+    Logging.debug(f"Wrote STL audit report '{path}'.")

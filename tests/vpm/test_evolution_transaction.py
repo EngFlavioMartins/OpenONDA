@@ -45,7 +45,7 @@ class _Stabilization:
     def run_phase(self, _phase: str, **_kwargs) -> None:
         return None
 
-    def update_residual_viscosity(self) -> None:
+    def update_selective_eddy_viscosity(self) -> None:
         return None
 
 
@@ -64,7 +64,7 @@ def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
         flow_model="POTENTIAL",
         n_sources=0,
         stabilization_config=SimpleNamespace(
-            stretching_viscosity_coefficient=0.0,
+            selective_eddy_viscosity_coefficient=0.0,
             pedrizzetti_relaxation_enabled=False,
         ),
         kinetic_energy_rate=0.0,

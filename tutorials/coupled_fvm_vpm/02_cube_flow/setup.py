@@ -47,6 +47,10 @@ VPM_CORE_RADIUS_RATIO = 1.1
 GBD_VORTICITY_FLOOR = 0.02
 VPM_PARTICLE_SPACING = REFERENCE_FINE_DX
 ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
+# Correct strength/curl misalignment before stretching amplifies the divergent
+# part of the discrete wake. Express the relaxation as a physical rate so a
+# timestep refinement also refines the per-step correction.
+VPM_ALIGNMENT_RELAXATION_RATE = 10.0  # 1/s
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -62,8 +66,8 @@ END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
 FVM_TIME_STEP_SIZE = 0.01
-# The previous 0.05 s VPM step exceeded the strain limit at t=15.5 s.
-# Match the FVM step and keep samples/backups on exact common times.
+# Match the FVM step and keep samples/backups on exact common times. Reducing
+# dt alone did not cure the wake's vorticity-consistency instability.
 VPM_TIME_STEP_MULTIPLIER = 1
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
@@ -186,7 +190,7 @@ FVM_SETUP = fvm.FVMSetup(
     pimple=fvm.PimpleControl(
         n_correctors=PIMPLE_CORRECTORS,
         n_outer_correctors=2,
-        n_orthogonal_correctors=1,
+        n_nonorthogonal_correctors=1,
         velocity_relaxation=0.7,
         pressure_relaxation=0.3,
     ),
@@ -284,7 +288,11 @@ VPM_CASE = vpm.VPMCase(
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(),
         induction=vpm.TreecodeInduction(),
-        stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
+        stabilization=vpm.StabilizationConfig(
+            remove_particles_by_bounds=list(VPM_DOMAIN),
+            pedrizzetti_relaxation_factor=VPM_ALIGNMENT_RELAXATION_RATE * VPM_TIME_STEP_SIZE,
+            pedrizzetti_relaxation_preserve_moments=True,
+        ),
         particle_kernel="GAUSSIAN",
         precision="f32",
         compute_device="AUTO",

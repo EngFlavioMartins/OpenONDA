@@ -175,45 +175,55 @@ MARK_EVERY = {
     "trajectory": 5,
 }
 
+# Match Thesis/thesis.tex (the rendered document is authoritative where the
+# older thesis_visuals/styles/colors.py differs). Keep legacy palette names
+# for compatibility: "orange" is the thesis's FVMorange aubergine.
 PALETTE = {
     "dark": "#0C2340",
     "teal": "#0E8A85",
     "purple": "#5C3D9B",
-    "orange": "#C76D24",
+    "orange": "#772953",
     "green": "#2B7A4E",
     "red": "#9C2F50",
-    "gray": "#5A6972",
+    "gray": "#6E8898",
+    "text": "#2E3D46",
     "light_gray": "#C0C0C0",
     "strong_gray": "#8B8B8B",
     "white": "#ffffff",
     "black": "#000000",
 }
 COLOR_CYCLE = (
-    PALETTE["dark"],
+    PALETTE["teal"],
     PALETTE["purple"],
     PALETTE["orange"],
-    PALETTE["teal"],
     PALETTE["green"],
+    PALETTE["red"],
     PALETTE["gray"],
+    PALETTE["dark"],
 )
 BACKGROUND_LIGHT = PALETTE["light_gray"]
 BACKGROUND_STRONG = PALETTE["strong_gray"]
 REFERENCE_GRAY = PALETTE["gray"]
 
 COLORS = {
-    # Semantic aliases over the 10-color PALETTE above.
+    # Named thesis colours and compatibility aliases.
     "TUDdark": PALETTE["dark"],
     "TUDcyan": PALETTE["teal"],
-    "TUDred": PALETTE["orange"],
+    "TUDred": PALETTE["red"],
     "VPMpurple": PALETTE["purple"],
     "FVMorange": PALETTE["orange"],
     "AccentGreen": PALETTE["green"],
-    "AccentRed": PALETTE["teal"],
+    "AccentRed": PALETTE["red"],
     "BackgroundLight": BACKGROUND_LIGHT,
     "BackgroundGray": BACKGROUND_STRONG,
     "ReferenceGray": REFERENCE_GRAY,
     "RefGray": REFERENCE_GRAY,
-    "DarkText": PALETTE["dark"],
+    "DarkText": PALETTE["text"],
+    "LightBG": "#EDF3F5",
+    "LightCyan": "#CBE8E7",
+    "LightPurple": "#E5E0F5",
+    "LightOrange": "#F5E8D3",
+    "LightGreen": "#D6EDE2",
     "LightText": PALETTE["white"],
     "AxisBlack": PALETTE["black"],
     "MaskGray": PALETTE["light_gray"],
@@ -231,8 +241,8 @@ COLORS = {
     "reference_fill": BACKGROUND_LIGHT,
     # Semantic aliases used by existing tutorials.
     "vpm": PALETTE["purple"],
-    "hybrid": PALETTE["teal"],
-    "fvm": PALETTE["orange"],
+    "hybrid": PALETTE["orange"],
+    "fvm": PALETTE["text"],
     "of": PALETTE["green"],
     "ref": REFERENCE_GRAY,
     "literature": REFERENCE_GRAY,
@@ -383,6 +393,43 @@ def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
     with plt.rc_context({"figure.constrained_layout.use": False, "figure.autolayout": False}):
         fig.set_layout_engine(None)
     fig.subplots_adjust(left=outer, right=1.0 - outer, **kwargs)
+
+
+def thesis_y_label_margin(fig, axes: Iterable[Axes] | Axes) -> float:
+    """Measure a symmetric plot margin with outer y text just inside the canvas.
+
+    Measure rendered labels at their final font size. The returned fraction
+    is used for both left and right margins, not for asymmetric tight cropping.
+    """
+    axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    left = min(axis.get_position().x0 for axis in axes)
+    text_left = float("inf")
+    for axis in axes:
+        if abs(axis.get_position().x0 - left) > 1e-6:
+            continue
+        labels = [axis.yaxis.label, axis.yaxis.get_offset_text()]
+        lower, upper = sorted(axis.get_ylim())
+        labels += [
+            tick.label1 for tick in axis.yaxis.get_major_ticks() if lower <= tick.get_loc() <= upper
+        ]
+        for label in labels:
+            if label.get_visible() and label.get_text().strip():
+                text_left = min(text_left, label.get_window_extent(renderer).x0)
+    if not np.isfinite(text_left):
+        return left
+    # A half-point reserve absorbs small raster/PDF text metric differences.
+    padding = (MIN_TEXT_CANVAS_PADDING_PT + 0.5) * fig.dpi / 72.0
+    return left + (fig.bbox.x0 + padding - text_left) / fig.bbox.width
+
+
+def fit_thesis_y_label_margins(fig, axes: Iterable[Axes] | Axes) -> None:
+    """Place y labels near the edge, retaining an x-centred subplot grid."""
+    axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
+    for _ in range(3):
+        outer = thesis_y_label_margin(fig, axes)
+        centered_subplots_adjust(fig, outer=outer)
 
 
 def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
@@ -577,7 +624,9 @@ def save_fig(
             fig.tight_layout(rect=tight_rect)
     fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=bbox_inches)
     plt.close(fig)
-    print(f"  Saved: {out}")
+    from source import log_style
+
+    print(log_style.block_section("figure output", [("saved", str(out))]))
 
 
 def set_thesis_style():

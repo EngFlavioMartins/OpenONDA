@@ -58,6 +58,7 @@ class ParticleFieldEvaluation:
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
         self.accumulator_dtype = accumulator_dtype
+        self._numpy_accumulator_dtype = np.float64 if accumulator_dtype == ti.f64 else np.float32
         self._event_observer = event_observer or NullPhysicsEventObserver()
 
         # Initialize GPU fields for storing results
@@ -74,11 +75,6 @@ class ParticleFieldEvaluation:
         # a tight grid at every output makes the same particle field acquire a
         # different energy solely because the FFT box moved or changed shape.
         self._fourier_grid = None
-        # Kept as a compatibility attribute for callers that inspected the
-        # former transition calibrator. Fourier diagnostics are raw spectral
-        # measurements; no persistent direct-energy offset is applied.
-        self._fourier_energy_offset = 0.0
-
         # Define Taichi kernels
         self._define_taichi_kernels()
 
@@ -91,12 +87,14 @@ class ParticleFieldEvaluation:
 
     def _download_scalar_field(self, src, n: int) -> np.ndarray:
         if n == 0:
-            return np.empty((0,), dtype=np.float32)
+            return np.empty((0,), dtype=self._numpy_accumulator_dtype)
         key = id(src)
         if key not in self._host_scalar_chunks:
-            self._host_scalar_chunks[key] = np.empty((_HOST_TRANSFER_CHUNK_SIZE,), dtype=np.float32)
+            self._host_scalar_chunks[key] = np.empty(
+                (_HOST_TRANSFER_CHUNK_SIZE,), dtype=self._numpy_accumulator_dtype
+            )
         buf = self._host_scalar_chunks[key]
-        out = np.empty((n,), dtype=np.float32)
+        out = np.empty((n,), dtype=self._numpy_accumulator_dtype)
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_scalar_field_prefix(src, buf, lo, count)
@@ -129,9 +127,11 @@ class ParticleFieldEvaluation:
         self.total_quantities_results = FlowIntegralsStruct.field(shape=())
 
         # Separate fields for per-particle diagnostics
-        self.particle_kinetic_energy = ti.field(dtype=ti.f32, shape=self.max_n_particles)
-        self.particle_helicity = ti.field(dtype=ti.f32, shape=self.max_n_particles)
-        self.particle_enstrophy = ti.field(dtype=ti.f32, shape=self.max_n_particles)
+        self.particle_kinetic_energy = ti.field(
+            dtype=self.accumulator_dtype, shape=self.max_n_particles
+        )
+        self.particle_helicity = ti.field(dtype=self.accumulator_dtype, shape=self.max_n_particles)
+        self.particle_enstrophy = ti.field(dtype=self.accumulator_dtype, shape=self.max_n_particles)
 
         # Cached vortex_centroid result fields (to avoid memory leak from repeated allocations)
         # CRITICAL: Taichi fields cannot be garbage collected, so we cache and reuse
@@ -567,15 +567,15 @@ class ParticleFieldEvaluation:
             vortex_strength: ti.template(),
             core_radius: ti.template(),
             particle_kinetic_energy: ti.template(),
+            count: ti.i32,
         ):  # type: ignore
             """Compute kinetic energy for each particle."""
-            N = position.shape[0]
-            for i in range(N):
-                energy_sum = ti.cast(0.0, ti.f32)
+            for i in range(count):
+                energy_sum = ti.cast(0.0, self.accumulator_dtype)
                 str_i = vortex_strength[i]
                 pos_i = position[i]
 
-                for j in range(N):
+                for j in range(count):
                     pos_j = position[j]
                     str_j = vortex_strength[j]
                     radii_j = core_radius[j]
@@ -688,17 +688,17 @@ class ParticleFieldEvaluation:
             vortex_strength: ti.template(),
             core_radius: ti.template(),
             particle_helicity: ti.template(),
+            count: ti.i32,
         ):  # type: ignore
             """Compute helicity for each particle."""
-            N = position.shape[0]
-            for i in range(N):
-                hel = ti.cast(0.0, ti.f32)
+            for i in range(count):
+                hel = ti.cast(0.0, self.accumulator_dtype)
                 str_i = vortex_strength[i]
                 pos_i = position[i]
                 radii_i = core_radius[i]
                 cutoff_radius = DEFAULT_CUTOFF_RADIUS_FACTOR * radii_i
 
-                for j in range(N):
+                for j in range(count):
                     pos_j = position[j]
                     str_j = vortex_strength[j]
 
@@ -724,16 +724,16 @@ class ParticleFieldEvaluation:
             vortex_strength: ti.template(),
             core_radius: ti.template(),
             particle_enstrophy: ti.template(),
+            count: ti.i32,
         ):  # type: ignore
             """Compute enstrophy for each particle."""
-            N = position.shape[0]
-            for i in range(N):
-                enstrophy_local = ti.cast(0.0, ti.f32)
+            for i in range(count):
+                enstrophy_local = ti.cast(0.0, self.accumulator_dtype)
                 str_i = vortex_strength[i]
                 pos_i = position[i]
                 radii_i = core_radius[i]
 
-                for j in range(N):
+                for j in range(count):
                     r_ij = pos_i - position[j]
                     r_mag = ti.sqrt(r_ij.dot(r_ij))
                     sigma = 0.5 * (radii_i + core_radius[j])
@@ -906,8 +906,7 @@ class ParticleFieldEvaluation:
             diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
         except Exception as exc:
             (event_observer or NullPhysicsEventObserver()).warning(
-                f"component=flow_diagnostics quantity=vortex_strength_centroid "
-                f"status=evaluation_failed error={exc!r}"
+                f"Vortex-strength centroid could not be evaluated: {exc}"
             )
 
     def compute_vortex_centroid(self, particles) -> np.ndarray:
@@ -1272,18 +1271,31 @@ class ParticleFieldEvaluation:
         return new_spectral, False, old_spectral
 
     def compute_particles_kinetic_energy(self, particles) -> np.ndarray:
-        """
-        Compute kinetic energy for each particle.
+        """Compute active-particle kinetic-energy contributions per constant fluid density.
 
-        Args:
-            particles: Particles object
+        Parameters
+        ----------
+        particles : Particles
+            Source cloud with positions/core radii in m and vector strengths in
+            m³/s. Only the active prefix contributes; unused capacity is ignored.
 
-        Returns:
-            np.ndarray: Array of kinetic energy values [J] for each particle
+        Returns
+        -------
+        numpy.ndarray, shape (N,)
+            Independent kinetic energy contributions in m⁵/s², using
+            the configured accumulation precision. Empty clouds return an empty
+            array of the same dtype.
+
+        Notes
+        -----
+        Each value includes half of its symmetric pair sum. No density factor is applied.
+        Pair interactions use the configured kernel and diagnostic cutoff.
+        Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
+        particle state is unchanged.
         """
         N = len(particles)
         if N == 0:
-            return np.array([])
+            return np.empty(0, dtype=self._numpy_accumulator_dtype)
 
         self._resize_fields(N)
 
@@ -1295,23 +1307,37 @@ class ParticleFieldEvaluation:
             particles.vortex_strength,
             particles.core_radius,
             self.particle_kinetic_energy,
+            N,
         )
 
         return self._download_scalar_field(self.particle_kinetic_energy, N)
 
     def compute_particles_helicity(self, particles) -> np.ndarray:
-        """
-        Compute helicity for each particle.
+        """Compute active-particle helicity contributions.
 
-        Args:
-            particles: Particles object
+        Parameters
+        ----------
+        particles : Particles
+            Source cloud with positions/core radii in m and vector strengths in
+            m³/s. Only the active prefix contributes; unused capacity is ignored.
 
-        Returns:
-            np.ndarray: Array of helicity values [m/s²] for each particle
+        Returns
+        -------
+        numpy.ndarray, shape (N,)
+            Independent helicity contributions in m⁴/s², using
+            the configured accumulation precision. Empty clouds return an empty
+            array of the same dtype.
+
+        Notes
+        -----
+        Each value is a vortex-strength pair contribution, not pointwise helicity density.
+        Pair interactions use the configured kernel and diagnostic cutoff.
+        Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
+        particle state is unchanged.
         """
         N = len(particles)
         if N == 0:
-            return np.array([])
+            return np.empty(0, dtype=self._numpy_accumulator_dtype)
 
         self._resize_fields(N)
 
@@ -1323,23 +1349,37 @@ class ParticleFieldEvaluation:
             particles.vortex_strength,
             particles.core_radius,
             self.particle_helicity,
+            N,
         )
 
         return self._download_scalar_field(self.particle_helicity, N)
 
     def compute_particles_enstrophy(self, particles) -> np.ndarray:
-        """
-        Compute enstrophy for each particle.
+        """Compute active-particle enstrophy contributions.
 
-        Args:
-            particles: Particles object
+        Parameters
+        ----------
+        particles : Particles
+            Source cloud with positions/core radii in m and vector strengths in
+            m³/s. Only the active prefix contributes; unused capacity is ignored.
 
-        Returns:
-            np.ndarray: Array of enstrophy values [1/s²] for each particle
+        Returns
+        -------
+        numpy.ndarray, shape (N,)
+            Independent enstrophy contributions in m³/s², using
+            the configured accumulation precision. Empty clouds return an empty
+            array of the same dtype.
+
+        Notes
+        -----
+        The pair sum uses the full squared-vorticity convention, without a factor of one half.
+        Pair interactions use the configured kernel and diagnostic cutoff.
+        Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
+        particle state is unchanged.
         """
         N = len(particles)
         if N == 0:
-            return np.array([])
+            return np.empty(0, dtype=self._numpy_accumulator_dtype)
 
         self._resize_fields(N)
 
@@ -1351,6 +1391,7 @@ class ParticleFieldEvaluation:
             particles.vortex_strength,
             particles.core_radius,
             self.particle_enstrophy,
+            N,
         )
 
         return self._download_scalar_field(self.particle_enstrophy, N)

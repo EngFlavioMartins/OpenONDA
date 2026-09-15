@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import numpy as np
 
+from ..setup import CASES
+
 CASE_DIR = Path(__file__).resolve().parents[1]
-CASES = ("baseline", "stretching_viscosity", "p_moments")
 
 
 def _theme():
@@ -19,17 +21,56 @@ def _theme():
 
 def case_style(name):
     label, palette, marker = {
-        "baseline": ("Baseline", "black", "o"),
-        "stretching_viscosity": ("Stretching viscosity", "purple", "s"),
-        "p_moments": ("Moment-preserving relaxation", "yellow", "D"),
+        "baseline": ("Baseline", "TUDdark", "o"),
+        "selective_eddy_viscosity": ("Selective eddy viscosity", "VPMpurple", "s"),
+        "pedrizzetti_relaxation": ("Pedrizzetti relaxation", "TUDcyan", "D"),
+        "particle_splitting": ("Particle splitting", "AccentGreen", "^"),
     }[name]
-    colors = {"black": "#000000", "purple": "#5C3D9B", "yellow": "#B08A00"}
-    return {"label": label, "color": colors[palette], "marker": marker}
+    return {"label": label, "color": _theme().COLORS[palette], "marker": marker}
 
 
-def save_figure(fig, stem, axes, formats=("pdf", "png")):
+def figure_size(height_cm):
+    """Keep thesis-width exports compact without scaling their text."""
+    theme = _theme()
+    return theme.MAX_FIGURE_WIDTH_CM * theme.CM, height_cm * theme.CM
+
+
+def plot_style_metadata():
+    theme = _theme()
+    return {
+        "palette_source": "Thesis/thesis.tex",
+        "width_cm": theme.MAX_FIGURE_WIDTH_CM,
+        "font_size_pt": theme.THESIS_FONT_SIZE_PT,
+        "outer_y_text_padding_pt": theme.MIN_TEXT_CANVAS_PADDING_PT + 0.5,
+        "plotting_sha256": hashlib.sha256(Path(theme.__file__).read_bytes()).hexdigest(),
+        "postprocess_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "cases": {name: case_style(name) for name in CASES},
+    }
+
+
+def comparison_legend(fig, handles, labels=None):
+    """Two compact rows accommodate all four methods at thesis text size."""
+    return fig.legend(
+        handles=handles,
+        labels=labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
+        ncol=2,
+        frameon=False,
+        borderaxespad=0,
+        handlelength=1.6,
+        handletextpad=0.5,
+        columnspacing=1.0,
+        labelspacing=0.25,
+    )
+
+
+def save_figure(fig, stem, axes, formats=("png",), *, fit_margins=True):
     """Export at the fixed thesis size after checking its text and margins."""
     theme = _theme()
+    axes = (axes,) if hasattr(axes, "get_position") else tuple(axes)
+    if fit_margins:
+        theme.fit_thesis_y_label_margins(fig, axes)
     theme.validate_thesis_figure(fig, axes)
     stem = Path(stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
@@ -80,4 +121,7 @@ def metadata_settings(metadata):
         ),
         "frequency": relaxation / dt if dt > 0 else np.nan,
         "capacity": int(numerics.get("max_n_particles", 0)),
+        "initial_conditions": rings,
+        "induction": numerics.get("induction", {}),
+        "stabilization": stabilization,
     }

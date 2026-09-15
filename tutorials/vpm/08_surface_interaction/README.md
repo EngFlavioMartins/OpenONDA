@@ -8,20 +8,15 @@ stage-consistent global surface solve.  Only the accepted solve emits wake
 particles and load history.
 
 This is an inviscid attached-flow qualification case, not a no-slip or
-separation model.  `surface_event_policy="warn"` retains finite-surface
-intersections, edge bypasses, and core overlaps as unresolved observer records;
-it does not delete, reflect, clip, or transfer particles.
+separation model. The coupled VLM solve affects wake motion and loads, but
+does not enforce a particle/wall collision law.
 
 The real run writes inspectable owner outputs under `samples/tandem/`:
 
 - `vlm_surface_forces.csv` and `vlm_forces.csv` for accepted per-surface and
   aggregate loads, including peak and integrated-load inputs;
-- `vlm_leakage.csv` and `vlm_surface_leakage.vtp`, with independent on-surface
-  probes, two-sided traces, and the finite-target transport operator label;
-- `vlm_surface_events.csv` and `.vtp`, with provenance, process, panel,
-  accepted interval, crossing position, and core scale;
 - `qualification_summary.csv` and `qualification_manifest.json`, generated
-  from those actual tables; and
+  from the accepted force table; and
 - `solution/tandem/` VPM backups and metadata for continuation checks.
 
 Use `assets/run_qualification_studies.py` to produce separate time-step,

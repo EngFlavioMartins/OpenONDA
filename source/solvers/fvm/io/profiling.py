@@ -430,8 +430,7 @@ class PerformanceProfiler:
                     raise
                 self._output_disabled = True
                 self.logger.warning(
-                    f"component=performance_output status=disabled reason=no_space "
-                    f"path={str(self.output_path)!r}"
+                    f"Performance output stopped because the disk is full: {self.output_path}"
                 )
         self.logger.profile_report(record)
         return record

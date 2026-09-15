@@ -117,9 +117,6 @@ def build_case(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
-        surface_diagnostics_interval_steps=max(
-            1, round(FIELD_SAMPLE_INTERVAL_TIME / time_step_size)
-        ),
         sample_surface_forces=True,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )

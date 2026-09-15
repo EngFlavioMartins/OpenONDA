@@ -32,7 +32,16 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 from .. import setup
-from .postprocess import _theme, case_style, load_metadata, metadata_settings, save_figure
+from .postprocess import (
+    _theme,
+    case_style,
+    comparison_legend,
+    figure_size,
+    load_metadata,
+    metadata_settings,
+    plot_style_metadata,
+    save_figure,
+)
 from .plot_core_sections import discover, read_plane
 
 
@@ -155,19 +164,31 @@ def sample_directory(run):
     return setup.TUTORIAL_DIR / "samples" / run
 
 
-def coherent_tracks(peaks, bridge_limit=0.5):
+def coherent_tracks(peaks, bridge_limit=0.5, secondary_peak_limit=0.5):
     """Conservatively terminate identities when two distinct cores are lost.
 
     The bridge threshold is an explicit diagnostic cutoff, not a physical
-    merger criterion. The caller must provide snapshots in a resolved cadence.
+    merger criterion. Weak secondary maxima may coexist with a dominant pair:
+    the third maximum must be below ``secondary_peak_limit`` times the second.
+    All maxima remain in the peaks table. Comparable competing cores, clipped
+    fields and strong bridges still terminate identity. The caller must provide
+    snapshots in a resolved cadence.
     """
     previous = None
     rows = []
     reason = "all supplied samples contain a separated pair"
     for step, group in peaks.sort_values("time").groupby("step", sort=False):
-        if len(group) != 2 or not (group.n_peaks == 2).all():
-            reason = f"step {step}: not exactly two resolved peaks"
+        if len(group) < 2 or (group.n_peaks < 2).any():
+            reason = f"step {step}: fewer than two resolved peaks or clipped field"
             break
+        if len(group) > 2:
+            group = group.sort_values("vorticity", ascending=False)
+            if group.iloc[2].vorticity >= secondary_peak_limit * group.iloc[1].vorticity:
+                reason = (
+                    f"step {step}: competing peak exceeds {secondary_peak_limit:g} of second core"
+                )
+                break
+            group = group.iloc[:2]
         if group.strongest_peak_pair_bridge_ratio.max() >= bridge_limit:
             reason = f"step {step}: bridge ratio reached {bridge_limit:g}"
             break
@@ -256,7 +277,7 @@ def leapfrog_events(tracks):
     )
 
 
-def plot_leapfrog_history(reports, output, formats=("pdf", "png")):
+def plot_leapfrog_history(reports, output, formats=("png",)):
     """Show core positions and separation using the existing tracks."""
     if all(
         pd.read_csv(output / f"{report['run']}_tracks.csv").time.nunique() < 2 for report in reports
@@ -265,7 +286,7 @@ def plot_leapfrog_history(reports, output, formats=("pdf", "png")):
             (output / f"leapfrogging_history.{fmt}").unlink(missing_ok=True)
         return
     theme = _theme()
-    fig, axes = plt.subplots(3, 1, figsize=theme.figure_size("stacked"), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=figure_size(10.5), sharex=True)
     for report in reports:
         tracks = pd.read_csv(output / f"{report['run']}_tracks.csv")
         style = case_style(report["run"])
@@ -297,14 +318,78 @@ def plot_leapfrog_history(reports, output, formats=("pdf", "png")):
         zip(axes, (r"$x/R_0$", r"$r/R_0$", r"$\Delta x/R_0$"), strict=True)
     ):
         ax.set_ylabel(label)
-        ax.set_title(f"({chr(97 + index)})", pad=6)
+        ax.set_title(f"({chr(97 + index)})", pad=2)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=min(2, len(labels)), frameon=False)
+    comparison_legend(fig, handles, labels)
     axes[2].set_xlabel(r"$t\Gamma_0/R_0^2$")
     theme.centered_subplots_adjust(
-        fig, outer=0.19, bottom=0.11, top=0.90 if len(labels) <= 2 else 0.82, hspace=0.29
+        fig, outer=0.19, bottom=0.135, top=0.86 if len(labels) <= 2 else 0.80, hspace=0.24
     )
     save_figure(fig, output / "leapfrogging_history", axes, formats)
+    plt.close(fig)
+
+
+def core_speeds(tracks):
+    """Differentiate core positions with a centred five-frame quadratic fit.
+
+    Fits use actual output times and omit two endpoint frames. A 0.02 R0
+    sampler grid gives a coordinate quantization bound of 0.01 R0; propagating
+    it through the fit bounds this part of the speed error only.
+    """
+    rows = []
+    for ring, track in tracks.groupby("ring"):
+        track = track.sort_values("time")
+        for index in range(2, len(track) - 2):
+            window = track.iloc[index - 2 : index + 3]
+            time = float(track.iloc[index].time)
+            offset = window.time.to_numpy() - time
+            matrix = np.column_stack((np.ones(5), offset, offset**2))
+            derivative = np.linalg.pinv(matrix)[1]
+            speed = float(derivative @ window.x.to_numpy())
+            rows.append(
+                dict(
+                    ring=int(ring),
+                    time=time,
+                    radius=float(track.iloc[index].radius),
+                    axial_speed_R0_per_second=speed,
+                    speed_grid_bound_R0_per_second=float(0.01 * np.abs(derivative).sum()),
+                )
+            )
+    return pd.DataFrame(rows)
+
+
+def plot_core_speeds(reports, output, formats=("png",)):
+    """Show the contraction/acceleration part of leapfrogging explicitly."""
+    theme = _theme()
+    fig, ax = plt.subplots(figsize=figure_size(7.0))
+    for report in reports:
+        speed = core_speeds(pd.read_csv(output / f"{report['run']}_tracks.csv"))
+        if speed.empty:
+            continue
+        speed.to_csv(output / f"{report['run']}_core_speeds.csv", index=False)
+        style = case_style(report["run"])
+        for ring, linestyle in ((1, "-"), (2, "--")):
+            values = speed[speed.ring == ring]
+            ax.plot(
+                values.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2,
+                values.axial_speed_R0_per_second * setup.RING_RADIUS**2 / setup.RING_CIRCULATION,
+                color=style["color"],
+                marker=style["marker"],
+                ms=3,
+                markevery=max(1, len(values) // 12),
+                lw=1,
+                linestyle=linestyle,
+                label=style["label"] if ring == 1 else None,
+            )
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        comparison_legend(fig, handles, labels)
+        ax.set(xlabel=r"$t\Gamma_0/R_0^2$", ylabel=r"$U_c R_0/\Gamma_0$")
+        theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.21, top=0.77)
+        save_figure(fig, output / "core_speeds", ax, formats)
+    else:
+        for fmt in ("pdf", "png"):
+            (output / f"core_speeds.{fmt}").unlink(missing_ok=True)
     plt.close(fig)
 
 
@@ -312,7 +397,7 @@ def temporal_field_comparisons(reports):
     """Compare identical sampled points at equal times for paired dt runs."""
     groups = {}
     for report in reports:
-        configuration = {k: v for k, v in report["settings"].items() if k != "dt"}
+        configuration = {k: v for k, v in report["settings"].items() if k not in ("dt", "method")}
         groups.setdefault(json.dumps(configuration, sort_keys=True), []).append(report)
     comparisons = []
     for group in groups.values():
@@ -343,6 +428,75 @@ def temporal_field_comparisons(reports):
     return comparisons
 
 
+def plot_group_history(reports, output, formats=("png",)):
+    """Plot native ancestry diagnostics independently of Eulerian peak identity."""
+    sources = []
+    valid = []
+    for report in reports:
+        run = report["run"]
+        path = sample_directory(run) / "ring_diagnostics.csv"
+        preserved = report["settings"]["regularization"].get(
+            "regularization_preserve_groups", False
+        )
+        if not path.is_file() or not preserved:
+            sources.append(
+                dict(
+                    run=run,
+                    available=False,
+                    reason="Native group history absent or remeshing used nearest-source labels",
+                )
+            )
+            continue
+        frame = pd.read_csv(path)
+        sources.append(
+            dict(
+                run=run,
+                available=True,
+                file=str(path),
+                sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                end_time=float(frame.time.max()),
+            )
+        )
+        valid.append((run, frame))
+    if not valid:
+        for fmt in ("pdf", "png"):
+            (output / f"group_history.{fmt}").unlink(missing_ok=True)
+        return sources
+    theme = _theme()
+    fig, axes = plt.subplots(2, 1, figsize=figure_size(8.3), sharex=True)
+    for run, frame in valid:
+        style = case_style(run)
+        for group, linestyle in ((1, "-"), (0, "--")):
+            track = frame[frame.group_id == group].sort_values("time")
+            time = track.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2
+            line = dict(
+                color=style["color"],
+                marker=style["marker"],
+                ms=3,
+                markevery=max(1, len(track) // 12),
+                linestyle=linestyle,
+                lw=1,
+            )
+            axes[0].plot(
+                time,
+                track.vortex_centroid_x / setup.RING_RADIUS,
+                label=style["label"] if group == 1 else None,
+                **line,
+            )
+            axes[1].plot(time, track.major_radius / setup.RING_RADIUS, **line)
+    axes[0].set_ylabel(r"$\bar{x}_g/R_0$")
+    axes[1].set_ylabel(r"$R_g/R_0$")
+    axes[1].set_xlabel(r"$t\Gamma_0/R_0^2$")
+    handles, labels = axes[0].get_legend_handles_labels()
+    comparison_legend(fig, handles, labels)
+    theme.centered_subplots_adjust(
+        fig, outer=0.19, bottom=0.17, top=0.89 if len(labels) <= 2 else 0.82, hspace=0.14
+    )
+    save_figure(fig, output / "group_history", axes, formats)
+    plt.close(fig)
+    return sources
+
+
 def reported_self_diagnostics(run):
     """Summarize the solver's recorded diagnostics without reevaluating fields."""
     path = sample_directory(run) / "flow_integrals.csv"
@@ -356,7 +510,7 @@ def reported_self_diagnostics(run):
         "max_effective_viscosity",
         "n_stabilization_events",
         "n_regularization_events",
-        "stretching_viscosity_feedback_coefficient",
+        "selective_eddy_viscosity_feedback_coefficient",
     )
     return dict(
         file=str(path),
@@ -375,10 +529,10 @@ def reported_self_diagnostics(run):
     )
 
 
-def plot_diagnostics(reports, output, formats=("pdf", "png")):
+def plot_diagnostics(reports, output, formats=("png",)):
     """Plot saved native histories; do not reconstruct solver diagnostics."""
     theme = _theme()
-    fig, axes = plt.subplots(3, 2, figsize=(12.5 * theme.CM, 17.0 * theme.CM), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=figure_size(12.0), sharex=True)
     quantities = (
         ("total_kinetic_energy", r"$E/E_0$", True),
         ("total_enstrophy", r"$Z/Z_0$", True),
@@ -406,13 +560,12 @@ def plot_diagnostics(reports, output, formats=("pdf", "png")):
                 lw=1,
             )
             ax.set_ylabel(title)
-            ax.set_title(f"({chr(97 + index)})", pad=6)
+            ax.set_title(f"({chr(97 + index)})", pad=2)
     for ax in axes[-1]:
         ax.set_xlabel(r"$t\Gamma_0/R_0^2$")
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=1, frameon=False)
-    # Leave the three-row legend clear of the top panel titles.
-    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.09, top=0.84, hspace=0.33, wspace=0.70)
+    comparison_legend(fig, handles, labels)
+    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.12, top=0.83, hspace=0.24, wspace=0.70)
     save_figure(fig, output / "diagnostic_histories", axes.flat, formats)
     plt.close(fig)
 
@@ -466,6 +619,8 @@ def write_report(report, output):
         "from output/resource failure; neither is automatically physical breakdown.",
         f"Optional within-core saddle grouping: {report.get('peak_merge_bridge')}. "
         "The raw maximum counts and grouped-peak coordinate spans are retained in the peak tables.",
+        "A third maximum below half the second core's amplitude does not invalidate the "
+        "dominant pair. Comparable competing peaks and strong bridges still stop tracking.",
         "The trajectory figure ends each run when two coherent field tracks can no longer be followed. "
         "Track numbers come from initial axial order, not particle group_id ancestry. "
         "Later field maxima remain in the peak tables but do not extend the two-core scores.",
@@ -507,8 +662,8 @@ def write_report(report, output):
         "events. The LBM CSV has no timestamps, so LBM periods and temporal phase "
         "errors are unavailable.",
         "",
-        "| Run | Passage times [s] | Two-passage cycle periods [s] |",
-        "|---|---|---|",
+        "| Run | Passage times [s] | Successive intervals [s] | Two-passage cycle periods [s] |",
+        "|---|---|---|---|",
     ]
     for result in report["runs"]:
         events = result["leapfrogging"]
@@ -522,7 +677,9 @@ def write_report(report, output):
         periods = (
             ", ".join(f"{period:.4f}" for period in events["full_cycle_periods"]) or "unavailable"
         )
-        lines.append(f"| {result['run']} | {passages} | {periods} |")
+        intervals = events["successive_passage_intervals"]
+        interval_text = ", ".join(f"{value:.4f}" for value in intervals) or "unavailable"
+        lines.append(f"| {result['run']} | {passages} | {interval_text} | {periods} |")
     lines += [
         "",
         "## Whole-solver timestep sensitivity",
@@ -545,6 +702,19 @@ def write_report(report, output):
         lines += ["", "No comparable noninitial sampler times are available."]
     lines += [
         "",
+        "## Tagged group histories",
+        "",
+        "The separate group_history figure uses native strength-weighted centroids and radii. "
+        "These remain defined after merger when group contributions are preserved, but they "
+        "are not maxima of the total vorticity field. Old nearest-source labels cannot recover "
+        "ancestry retrospectively. Figure 4's material marker trajectories are a third, distinct observable.",
+        "",
+        *[
+            f"- {row['run']}: "
+            + (f"recorded through t={row['end_time']:.4g} s" if row["available"] else row["reason"])
+            for row in report.get("group_diagnostics", [])
+        ],
+        "",
         "The accompanying lbm_agreement.json records solver settings, field hashes, "
         "health diagnostics, cadence sensitivity and the reference hash. Longer survival "
         "alone is not evidence of better physics.",
@@ -556,7 +726,13 @@ def write_report(report, output):
 def write_figure_manifest(output, reports, formats):
     """Keep the thesis-ready exports linked to their analysis and input runs."""
     analysis = output / "lbm_agreement.json"
-    names = ("core_trajectories", "leapfrogging_history", "diagnostic_histories")
+    names = (
+        "core_trajectories",
+        "leapfrogging_history",
+        "core_speeds",
+        "diagnostic_histories",
+        "group_history",
+    )
     exports = []
     for name in names:
         for fmt in formats:
@@ -566,6 +742,7 @@ def write_figure_manifest(output, reports, formats):
                     {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                 )
     manifest = {
+        "style": plot_style_metadata(),
         "generator": "assets/plot_lbm_comparison.py",
         "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "analysis": "lbm_agreement.json",
@@ -574,7 +751,7 @@ def write_figure_manifest(output, reports, formats):
             {
                 "name": report["run"],
                 "status": report["status"],
-                "metadata": f"solution/{report['run']}/vpm_metadata.json",
+                "metadata": f"solution/{report['recorded_run']}/vpm_metadata.json",
                 "metadata_sha256": report["metadata_sha256"],
                 "color": case_style(report["run"])["color"],
             }
@@ -624,19 +801,19 @@ def main():
     reports = []
     theme = _theme()
     theme.set_thesis_style()
-    fig, ax = plt.subplots(figsize=theme.figure_size("single_tall"))
+    fig, ax = plt.subplots(figsize=figure_size(7.0))
     for ring in (1, 2):
         ref = reference[reference.ring == ring]
         ax.plot(
             ref.x_over_R0 - 2.5,
             ref.R_over_R0,
-            color="black",
-            alpha=0.45,
+            color=theme.COLORS["RefGray"],
             lw=1.0,
             linestyle="-" if ring == 1 else "--",
         )
     for run in runs:
-        metadata_path = setup.TUTORIAL_DIR / "solution" / run / "vpm_metadata.json"
+        recorded_run = run
+        metadata_path = setup.TUTORIAL_DIR / "solution" / recorded_run / "vpm_metadata.json"
         metadata_bytes = metadata_path.read_bytes()
         metadata = json.loads(metadata_bytes)
         settings = metadata_settings(metadata)
@@ -645,7 +822,7 @@ def main():
         # Closure and redistribution contrasts are not timestep refinements.
         settings["regularization"] = {
             key: value
-            for key, value in numerics.get("stabilization", {}).items()
+            for key, value in settings["stabilization"].items()
             if key.startswith("regularization_")
         }
         if settings["scenario"] != "leapfrog":
@@ -692,6 +869,7 @@ def main():
         reports.append(
             dict(
                 run=run,
+                recorded_run=recorded_run,
                 metadata_sha256=hashlib.sha256(metadata_bytes).hexdigest(),
                 status=metadata.get("lifecycle", {}).get("status", "unknown"),
                 identity_start_step=initial_step,
@@ -751,9 +929,11 @@ def main():
         )
         for run in runs
     ]
-    handles.append(Line2D([0], [0], color="black", alpha=0.45, lw=1.0, label="LBM"))
-    fig.legend(handles=handles, frameon=False, loc="upper center", ncol=2)
-    theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.18, top=0.80)
+    handles.append(Line2D([0], [0], color=theme.COLORS["RefGray"], lw=1.0, label="LBM"))
+    comparison_legend(fig, handles)
+    theme.centered_subplots_adjust(
+        fig, outer=0.18, bottom=0.19, top=0.75 if len(handles) <= 4 else 0.68
+    )
     save_figure(fig, args.output / "core_trajectories", ax, formats)
     plt.close(fig)
     report = dict(
@@ -772,10 +952,12 @@ def main():
         runs=reports,
         temporal_field_comparisons=temporal_field_comparisons(reports),
     )
+    report["group_diagnostics"] = plot_group_history(reports, args.output, formats)
     (args.output / "lbm_agreement.json").write_text(json.dumps(report, indent=2) + "\n")
     write_report(report, args.output)
     plot_diagnostics(reports, args.output, formats)
     plot_leapfrog_history(reports, args.output, formats)
+    plot_core_speeds(reports, args.output, formats)
     write_figure_manifest(args.output, reports, formats)
     print(f"Saved LBM comparison for {len(reports)} run(s) to {args.output}", flush=True)
 

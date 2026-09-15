@@ -468,6 +468,24 @@ def test_dense_solver_reuses_only_identical_matrices_and_rejects_singular_system
         solver.solve(np.zeros((2, 2)), rhs, out, 2)
 
 
+def test_dense_solver_failed_factorization_cannot_poison_retry_or_output():
+    solver = ScipySolver()
+    rhs = np.array([1.0, 2.0])
+    out = np.zeros(2)
+    solver.solve(np.eye(2), rhs, out, 2)
+    previous = out.copy()
+    singular = np.ones((2, 2))
+    for _ in range(2):
+        with pytest.raises(np.linalg.LinAlgError):
+            solver.solve(singular, rhs, out, 2)
+        np.testing.assert_array_equal(out, previous)
+    matrix = np.array([[3.0, 1.0], [-1.0, 2.0]])
+    solver.solve(matrix, rhs, out, 2)
+    np.testing.assert_allclose(matrix @ out, rhs, rtol=1e-14)
+    solver.solve(np.eye(2), 2.0 * rhs, out, 2)
+    np.testing.assert_allclose(out, 2.0 * rhs, rtol=1e-14)
+
+
 @pytest.mark.parametrize("scale", [1.0, 1e-12])
 def test_bicgstab_checks_relative_residual_even_for_small_rhs(scale):
     matrix = ti.field(ti.f64, shape=(3, 3))
@@ -510,7 +528,7 @@ def test_vlm_sampler_uses_owner_samples_path_and_resumable_polydata_index(tmp_pa
 
     vtk = pv.read(folder / "vlm_000002.vtp")
     expected = 2 * vtk["circulation"] / (10 * vtk["panel_chord"])
-    np.testing.assert_allclose(vtk["pressure_jump_coefficient"], expected)
+    np.testing.assert_allclose(vtk["circulation_pressure_jump_proxy"], expected)
     assert vtk.field_data["time"][0] == 0.2
 
 
@@ -628,79 +646,19 @@ def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
             validate_vlm_restart(restored, file["vlm"])
 
 
-def test_v6_restart_output_migration_requires_matching_persisted_controls(tmp_path):
-    """Legacy logging changes may migrate only after the full old digest matches."""
+def test_restart_rejects_unsupported_schema_before_restoring_fields(tmp_path):
     import h5py
 
-    plate = create_flat_plate(
-        chord=1.0,
-        span=4.0,
-        angle_of_attack_degrees=5.0,
-        n_chordwise_panels=2,
-        n_spanwise_panels=3,
-    )
-
-    def make(*, logging_interval_steps=1, density=1.0):
-        solver = VLMSolver(
-            VLMSetup(
-                surfaces=(VLMSurfaceSetup(plate),),
-                dtype="f64",
-                freestream_velocity=(10.0, 0.0, 0.0),
-                density=density,
-                logging_interval_steps=logging_interval_steps,
-                sample_surface_forces=True,
-            )
-        )
-        solver.generate_mesh()
-        _solve_steady(solver, [10.0, 0.0, 0.0])
-        return solver
-
-    legacy = make(logging_interval_steps=4)
-    current = make(logging_interval_steps=1)
-    changed_physics = make(logging_interval_steps=1, density=1.2)
-    path = tmp_path / "legacy_vlm.h5"
-    with h5py.File(path, "w") as file:
-        write_vlm_restart(legacy, file.create_group("vlm"))
-    (tmp_path / "vpm_metadata.json").write_text(
-        '{"configuration": {"numerics": {"vlm": {'
-        '"logging_interval_steps": 4, "sample_surface_forces": true, '
-        '"surfaces": [{"sample_forces": null}]}}}}',
-        encoding="utf-8",
-    )
-    from source.solvers.vpm.io.backup import _legacy_vlm_output_controls
-
-    persisted_controls, evidence_path = _legacy_vlm_output_controls(path)
-    assert persisted_controls == {
-        "logging_interval_steps": 4,
-        "sample_surface_forces": True,
-        "surface_sample_forces": [None],
-    }
-    assert evidence_path == tmp_path / "vpm_metadata.json"
-    with h5py.File(path, "a") as file:
-        group = file["vlm"]
-        group.attrs["version"] = 6
-        del group.attrs["physics_identity"]
-        del group.attrs["force_density"]
-        for name in ("area", "relative_velocity", "bound_relative_velocity"):
-            del group[name]
-        controls = persisted_controls
-        migration = validate_vlm_restart(
-            current,
-            group,
-            legacy_output_controls=controls,
-        )
-        assert migration["kind"] == "output_only"
-        with pytest.raises(ValueError, match="configuration"):
-            validate_vlm_restart(
-                changed_physics,
-                group,
-                legacy_output_controls=controls,
-            )
-        current._force_density = 99.0
-        current.lattice.force_density = 99.0
-        restore_vlm_restart(current, group)
-        assert not hasattr(current, "_force_density")
-        assert current.lattice.force_density is None
+    solver = _plate(nc=1, ns=2)
+    path = tmp_path / "vlm.h5"
+    with h5py.File(path, "w") as archive:
+        group = archive.create_group("vlm")
+        write_vlm_restart(solver, group)
+        before = solver.lattice.panel_corner_position.to_numpy().copy()
+        group.attrs["version"] = -1
+        with pytest.raises(ValueError, match="Incompatible VLM restart version"):
+            validate_vlm_restart(solver, group)
+        np.testing.assert_array_equal(solver.lattice.panel_corner_position.to_numpy(), before)
 
 
 def test_multisurface_loading_uses_wing_local_segment_ids_and_reports_output_failures(

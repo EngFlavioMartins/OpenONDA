@@ -82,7 +82,8 @@ class FlowIntegralsSampler:
         """
         del time, step
         Logging.flow_diagnostics(solver)
-        if solver.turbulence_model is not None:
+        if solver.turbulence_model is not None and Logging._routine_messages_enabled:
+            solver.turbulence_model.update_turbulence_statistics(solver.particles)
             Logging.les_diagnostics(solver)
         solver.io.export_flow_integrals_csv(solver, path)
 

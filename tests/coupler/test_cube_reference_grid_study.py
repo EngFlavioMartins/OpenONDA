@@ -20,6 +20,11 @@ class Serial:
         return None
 
 
+def collective_io_failure(failure, operation):
+    if failure is not None:
+        raise RuntimeError(operation) from failure
+
+
 def write_samples(directory: Path, spacing: float) -> None:
     directory.mkdir(parents=True)
     time = np.linspace(0.0, 10.0, 201)
@@ -63,6 +68,7 @@ def test_three_completed_runs_create_numbers_and_plot(tmp_path):
         write_samples(samples, spacing)
         solver = SimpleNamespace(
             flush_output=lambda: None,
+            _collective_io_failure=collective_io_failure,
             parallel=Serial(),
             mesh_data={"n_cells": index * 1000},
             samples_dir=str(samples),

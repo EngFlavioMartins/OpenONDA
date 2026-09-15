@@ -10,10 +10,9 @@ Output CSVs:
   <case_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
 
 The exported section/panel force components are dimensional newtons and each
-row records ``force_density``. ``pressure_jump_coefficient`` is retained as a
-compatibility column for the circulation-based lifting-surface proxy and is
-labeled accordingly; new consumers should use the explicit proxy field name
-where available.
+row records ``force_density``. ``circulation_pressure_jump_proxy`` is the
+dimensionless circulation-based lifting-surface estimate, including the
+recorded unsteady contribution; it is not reconstructed pressure.
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
@@ -28,9 +27,10 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 from __future__ import annotations
 
 from typing import Any
-import warnings
 
 import numpy as np
+
+from source.solvers.vpm.io.logging import Logging
 
 from ....io.sampling import resolve_samples_dir
 
@@ -142,11 +142,10 @@ class VLMLoadingDistribution:
                     expected_segment_id = local_segment_id
                     observed = panel_segment_id[original_flat_indices]
                     if not np.all(observed == expected_segment_id):
-                        warnings.warn(
+                        Logging.warning(
                             f"[VLMLoadingDistribution] segment_id mismatch for "
                             f"wing '{wing_uid}' segment '{segment_uid}' (expected {expected_segment_id}, "
-                            f"got unique {np.unique(observed)}). Using index arithmetic.",
-                            stacklevel=2,
+                            f"got unique {np.unique(observed)}). Using index arithmetic."
                         )
 
                     surface_blocks.append(
@@ -416,12 +415,12 @@ class VLMLoadingDistribution:
                         chord_fraction = np.zeros(n_chordwise_panels)
 
                     pressure_coefficient_denominator = freestream_speed * station_panel_chord
-                    pressure_jump_coefficient = np.where(
+                    circulation_pressure_jump_proxy = np.where(
                         pressure_coefficient_denominator > 1e-15,
                         2.0 * station_circulation / pressure_coefficient_denominator,
                         0.0,
                     )
-                    pressure_jump_coefficient += unsteady_cp[station_panel_indices]
+                    circulation_pressure_jump_proxy += unsteady_cp[station_panel_indices]
 
                     for i in range(n_chordwise_panels):
                         full_chord.append(
@@ -439,8 +438,9 @@ class VLMLoadingDistribution:
                                 "chord_fraction": float(chord_fraction[i]),
                                 "panel_chord": float(station_panel_chord[i]),
                                 "panel_circulation": float(station_circulation[i]),
-                                "pressure_jump_coefficient": float(pressure_jump_coefficient[i]),
-                                "pressure_jump_coefficient_type": "circulation_proxy",
+                                "circulation_pressure_jump_proxy": float(
+                                    circulation_pressure_jump_proxy[i]
+                                ),
                                 "panel_force_x": float(station_panel_force[i, 0]),
                                 "panel_force_y": float(station_panel_force[i, 1]),
                                 "panel_force_z": float(station_panel_force[i, 2]),

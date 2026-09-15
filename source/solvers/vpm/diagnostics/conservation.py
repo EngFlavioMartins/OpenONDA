@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from source.solvers.vpm.io.logging import Logging
+
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
 
@@ -156,7 +158,7 @@ class ConservationTracker:
     ) -> Path | None:
         """Export history to ``<case_dir>/samples/<file_name>``."""
         if len(self.history) == 0:
-            print("[WARNING] No conservation data to export")
+            Logging.warning("No conservation data to export")
             return None
 
         filename = Path(case_dir) / "samples" / file_name
@@ -211,40 +213,32 @@ class ConservationTracker:
                     ]
                 )
 
-        print(f"[INFO] Conservation diagnostics exported to: {filename}")
+        Logging.record("conservation output", ("path", str(filename)), flush=True)
         return filename
 
     def print_summary(self) -> None:
         """Print a short conservation-quality summary."""
         if len(self.history) == 0:
-            print("[WARNING] No conservation data recorded")
+            Logging.warning("No conservation data recorded")
             return
 
         final = self.history[-1]
         initial = self.history[0]
 
-        print("\n" + "=" * 70)
-        print("CONSERVATION DIAGNOSTICS SUMMARY")
-        print("=" * 70)
-        print(f"\nSimulation time: {final.time:.4f} s")
-        print(f"Time steps recorded: {len(self.history)}")
-
-        print("\n--- Bound/Wake Vortex-Strength Closure ---")
-        print(f"Initial total strength: {np.linalg.norm(initial.net_vortex_strength):.6e} m^3/s")
-        print(f"Final total strength:   {np.linalg.norm(final.net_vortex_strength):.6e} m^3/s")
-        print(f"Closure error:          {final.vortex_strength_closure_error_percent:.3f}%")
-
-        print("\n--- Surface Force ---")
-        print(
-            f"Kutta-Joukowski force:     [{final.kutta_joukowski_force[0]:+.4e}, "
-            f"{final.kutta_joukowski_force[1]:+.4e}, {final.kutta_joukowski_force[2]:+.4e}] N"
+        Logging.section(
+            "conservation diagnostics",
+            ("physical time", final.time, "s"),
+            ("recorded steps", len(self.history)),
+            (
+                "initial net strength norm",
+                float(np.linalg.norm(initial.net_vortex_strength)),
+                "m^3/s",
+            ),
+            ("final net strength norm", float(np.linalg.norm(final.net_vortex_strength)), "m^3/s"),
+            ("strength closure error", final.vortex_strength_closure_error_percent, "%"),
+            ("Kutta-Joukowski force", tuple(final.kutta_joukowski_force), "N"),
+            ("kinetic energy", final.total_kinetic_energy, "J"),
+            ("viscous energy rate", final.viscous_kinetic_energy_rate, "W"),
+            ("particles", final.n_particles_total),
+            flush=True,
         )
-
-        print("\n--- Energy Budget ---")
-        print(f"Kinetic energy:            {final.total_kinetic_energy:.6e} J")
-        print(f"Dissipation rate:          {final.viscous_kinetic_energy_rate:.6e} W")
-
-        print("\n--- Particle Statistics ---")
-        print(f"Total particles:           {final.n_particles_total}")
-
-        print("=" * 70 + "\n")

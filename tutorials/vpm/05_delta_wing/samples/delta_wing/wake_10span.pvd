@@ -19,30 +19,5 @@
     <DataSet timestep="0.4" file="wake_10span_000160.vts"/>
     <DataSet timestep="0.425" file="wake_10span_000170.vts"/>
     <DataSet timestep="0.45" file="wake_10span_000180.vts"/>
-    <DataSet timestep="0.475" file="wake_10span_000190.vts"/>
-    <DataSet timestep="0.5" file="wake_10span_000200.vts"/>
-    <DataSet timestep="0.525" file="wake_10span_000210.vts"/>
-    <DataSet timestep="0.55" file="wake_10span_000220.vts"/>
-    <DataSet timestep="0.575" file="wake_10span_000230.vts"/>
-    <DataSet timestep="0.6" file="wake_10span_000240.vts"/>
-    <DataSet timestep="0.625" file="wake_10span_000250.vts"/>
-    <DataSet timestep="0.65" file="wake_10span_000260.vts"/>
-    <DataSet timestep="0.675" file="wake_10span_000270.vts"/>
-    <DataSet timestep="0.7" file="wake_10span_000280.vts"/>
-    <DataSet timestep="0.725" file="wake_10span_000290.vts"/>
-    <DataSet timestep="0.75" file="wake_10span_000300.vts"/>
-    <DataSet timestep="0.775" file="wake_10span_000310.vts"/>
-    <DataSet timestep="0.8" file="wake_10span_000320.vts"/>
-    <DataSet timestep="0.825" file="wake_10span_000330.vts"/>
-    <DataSet timestep="0.85" file="wake_10span_000340.vts"/>
-    <DataSet timestep="0.875" file="wake_10span_000350.vts"/>
-    <DataSet timestep="0.9" file="wake_10span_000360.vts"/>
-    <DataSet timestep="0.925" file="wake_10span_000370.vts"/>
-    <DataSet timestep="0.95" file="wake_10span_000380.vts"/>
-    <DataSet timestep="0.975" file="wake_10span_000390.vts"/>
-    <DataSet timestep="1.0" file="wake_10span_000400.vts"/>
-    <DataSet timestep="1.025" file="wake_10span_000410.vts"/>
-    <DataSet timestep="1.05" file="wake_10span_000420.vts"/>
-    <DataSet timestep="1.075" file="wake_10span_000430.vts"/>
   </Collection>
 </VTKFile>

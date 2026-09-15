@@ -89,73 +89,23 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
         solver.close()
 
 
-def test_public_load_backup_v6_migration_requires_manifest_evidence_before_mutation(tmp_path):
-    """The public coupled loader rejects absent/wrong v6 evidence transactionally."""
-    from source.solvers.vpm.boundary_elements.vlm.solver.restart import restart_identity
-
+def test_public_load_backup_rejects_unsupported_vlm_schema_before_mutation(tmp_path):
     source = vpm.VPMSolver(_moving_coupled_case(tmp_path / "source"))
     target = vpm.VPMSolver(_moving_coupled_case(tmp_path / "target"))
     try:
-        # Capture the legacy output-only identity before the moving surface advances.
-        legacy_controls = {
-            "logging_interval_steps": 4,
-            "sample_surface_forces": True,
-            "surface_sample_forces": [None],
-        }
-        legacy_identity = restart_identity(source.vlm_solver, output_controls=legacy_controls)
         source.advance(defer_output=True)
         source.save_backup()
-        checkpoint = tmp_path / "source" / "solution" / "vpm_000001.h5"
-
+        checkpoint = tmp_path / "source/solution/vpm_000001.h5"
         with h5py.File(checkpoint, "a") as archive:
-            group = archive["solver/vlm"]
-            group.attrs["version"] = 6
-            group.attrs["identity"] = legacy_identity
-            del group.attrs["physics_identity"]
-            if "force_density" in group.attrs:
-                del group.attrs["force_density"]
-            for name in ("area", "relative_velocity", "bound_relative_velocity"):
-                del group[name]
-
-        target_step = target.step
-        target_time = target.time
-        target_geometry = target.vlm_solver.lattice.panel_corner_position.to_numpy().copy()
-
-        # No sibling manifest means the output-only identity cannot be interpreted.
-        (tmp_path / "source" / "solution" / "vpm_metadata.json").unlink()
-        with pytest.raises(ValueError, match="geometry or configuration"):
+            archive["solver/vlm"].attrs["version"] = -1
+        clock = target.step, target.time
+        geometry = target.vlm_solver.lattice.panel_corner_position.to_numpy().copy()
+        with pytest.raises(ValueError, match="Incompatible VLM restart version"):
             target.load_backup(checkpoint)
-        assert (target.step, target.time) == (target_step, target_time)
+        assert (target.step, target.time) == clock
         np.testing.assert_array_equal(
-            target.vlm_solver.lattice.panel_corner_position.to_numpy(), target_geometry
+            target.vlm_solver.lattice.panel_corner_position.to_numpy(), geometry
         )
-
-        # Wrong persisted controls also reject before particles or VLM state mutate.
-        (tmp_path / "source" / "solution" / "vpm_metadata.json").write_text(
-            '{"configuration": {"numerics": {"vlm": {'
-            '"logging_interval_steps": 3, "sample_surface_forces": true, '
-            '"surfaces": [{"sample_forces": null}]}}}}',
-            encoding="utf-8",
-        )
-        with pytest.raises(ValueError, match="geometry or configuration"):
-            target.load_backup(checkpoint)
-        assert (target.step, target.time) == (target_step, target_time)
-        np.testing.assert_array_equal(
-            target.vlm_solver.lattice.panel_corner_position.to_numpy(), target_geometry
-        )
-
-        # The complete legacy evidence accepts the migration through VPMSolver.load_backup.
-        (tmp_path / "source" / "solution" / "vpm_metadata.json").write_text(
-            '{"configuration": {"numerics": {"vlm": {'
-            '"logging_interval_steps": 4, "sample_surface_forces": true, '
-            '"surfaces": [{"sample_forces": null}]}}}}',
-            encoding="utf-8",
-        )
-        target.load_backup(checkpoint)
-        assert target.step == 1
-        assert target.time == pytest.approx(0.01)
-        assert target._vlm_identity_migration["kind"] == "output_only"
-        assert target.vlm_solver.kinematics.current_position[0] == pytest.approx(-0.1)
     finally:
         source.close()
         target.close()

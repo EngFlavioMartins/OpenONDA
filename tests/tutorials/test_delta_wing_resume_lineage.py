@@ -84,7 +84,7 @@ def _write_backup(path: Path, step: int, time: float) -> None:
     with h5py.File(path, "w") as archive:
         solver = archive.create_group("solver")
         numerical_configuration = FIXTURE_NATIVE_CONFIG
-        solver.attrs["backup_format_version"] = "10.0"
+        solver.attrs["backup_format_version"] = "10.1"
         solver.attrs["numerical_configuration"] = numerical_configuration
         solver.attrs["numerical_configuration_sha256"] = hashlib.sha256(
             numerical_configuration.encode("utf-8")
@@ -664,5 +664,17 @@ def test_public_finalizer_ties_boundaries_to_selected_owner_namespace(tmp_path):
     before = manifest.read_bytes()
 
     with pytest.raises(RuntimeError, match="not its selected owner H5"):
+        finalize_lineage(case)
+    assert manifest.read_bytes() == before
+
+
+def test_restart_completion_uses_the_declared_campaign_horizon(tmp_path):
+    case, manifest = _write_complete_resume_fixture(tmp_path)
+    metadata_path = case / "solution/vpm_metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    metadata["configuration"]["run"]["steps"] = 8000
+    metadata_path.write_text(json.dumps(metadata))
+    before = manifest.read_bytes()
+    with pytest.raises(RuntimeError, match="declared step-8000 / t=20 s"):
         finalize_lineage(case)
     assert manifest.read_bytes() == before

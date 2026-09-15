@@ -27,11 +27,6 @@ from .schedule import OutputSchedule
 if TYPE_CHECKING:
     from ...core.solver import VPMSolver
 
-try:
-    from scipy.spatial import cKDTree
-except Exception:
-    cKDTree = None  # noqa: N816
-
 # Canonical CSV column order for SurfaceSampler / LineSampler output.  Single
 # source of truth: the header row and every data row are built from this list,
 # so the written header always matches the data (no magic column indices on the
@@ -106,29 +101,6 @@ def _sample_velocity_vorticity_gradient(solver, points, spacing):
         )
     )
     return np.asarray(velocity).reshape(-1, 3), vorticity, gradient
-
-
-def _extract_stl_config_from_solver(solver) -> tuple[list[str], Path | None]:
-    """Extract all declared body STL paths and the case directory."""
-    try:
-        body_stls: list[str] = []
-        case_dir = None
-        if hasattr(solver.setup, "fvm_solver") and hasattr(solver.setup.fvm_solver, "surface"):
-            fvm_body_stl = solver.setup.fvm_solver.surface.body_stl
-            if fvm_body_stl:
-                body_stls.append(fvm_body_stl)
-            if hasattr(solver.setup.fvm_solver, "case_dir"):
-                case_dir = Path(solver.setup.fvm_solver.case_dir)
-        if hasattr(solver.setup, "vpm_solver"):
-            body_stls.extend(body.stl for body in getattr(solver.setup.vpm_solver, "bodies", ()))
-        if hasattr(solver.setup, "bodies"):
-            body_stls.extend(body.stl for body in getattr(solver.setup, "bodies", ()))
-        if case_dir is None and hasattr(solver, "case_dir"):
-            case_dir = Path(solver.case_dir)
-    except Exception:
-        body_stls = []
-        case_dir = None
-    return list(dict.fromkeys(body_stls)), case_dir
 
 
 def resolve_samples_dir(case_directory, sample_directory: str | None = None) -> Path:
@@ -220,12 +192,6 @@ class SurfaceSampler:
         if initial is not None:
             self.initial = initial
 
-        # Body geometry cache for masking / wall projection
-        self._body_mesh = None
-        self._body_tree = None
-        self._body_normal = None
-        self._body_loaded = False
-
         if self.point.shape != (3,):
             raise ValueError(f"point must be 3D, got shape {self.point.shape}")
         if self.normal.shape != (3,):
@@ -276,117 +242,6 @@ class SurfaceSampler:
 
         self._grid_shape = C1.shape
         self._n_points = n_points
-
-    def _resolve_body_stl_path(self, solver) -> list[Path]:
-        """Resolve all body STLs from coupler config."""
-        if not hasattr(solver, "setup"):
-            return []
-        body_stls, case_dir = _extract_stl_config_from_solver(solver)
-        paths = []
-        for body_stl in body_stls:
-            body_stl_path = Path(body_stl)
-            if not body_stl_path.is_absolute() and case_dir is not None:
-                body_stl_path = case_dir / body_stl_path
-            if body_stl_path.exists():
-                paths.append(body_stl_path)
-        return paths
-
-    def _ensure_body_geometry(self, solver) -> None:
-        """Load/caches STL and surface KDTree once."""
-        if self._body_loaded:
-            return
-        self._body_loaded = True
-
-        try:
-            import pyvista as pv
-        except Exception:
-            return
-
-        try:
-            panel_solver = getattr(solver, "panel_solver", None)
-            lattice = getattr(panel_solver, "lattice", None)
-            if lattice is not None and lattice.n_panels > 0:
-                n_panels = lattice.n_panels
-                vertices = lattice.vertex_position.to_numpy()[:n_panels].reshape(-1, 3)
-                faces = np.column_stack(
-                    (
-                        np.full(n_panels, 3, dtype=np.int64),
-                        np.arange(n_panels * 3).reshape(n_panels, 3),
-                    )
-                ).ravel()
-                self._body_mesh = pv.PolyData(vertices, faces)
-            else:
-                stl_paths = self._resolve_body_stl_path(solver)
-                if not stl_paths:
-                    return
-                self._body_mesh = pv.read(str(stl_paths[0]))
-                for stl_path in stl_paths[1:]:
-                    self._body_mesh = self._body_mesh.merge(pv.read(str(stl_path)))
-            if cKDTree is not None:
-                surf = self._body_mesh.extract_surface().compute_normals(
-                    point_normals=True, cell_normals=False
-                )
-                pts = np.asarray(surf.points)
-                nrm = np.asarray(surf["Normals"])
-                nn = np.linalg.norm(nrm, axis=1)
-                nn[nn < 1e-16] = 1.0
-                nrm = nrm / nn[:, None]
-                self._body_tree = cKDTree(pts)
-                self._body_normal = nrm
-        except Exception:
-            self._body_mesh = None
-            self._body_tree = None
-            self._body_normal = None
-
-    def _get_exterior_mask(self, solver):
-        """
-        Determine which grid points are outside the body geometry.
-
-        Returns boolean mask: True for exterior points, False for interior.
-        Uses MeshHandler's body_tree if available (fast), otherwise assumes all exterior.
-        """
-        self._ensure_body_geometry(solver)
-        if self._body_mesh is None:
-            return np.ones(len(self.grid_points), dtype=bool)
-
-        try:
-            import pyvista as pv
-
-            grid_pv = pv.PolyData(self.grid_points)
-            selection = grid_pv.select_enclosed_points(
-                self._body_mesh, tolerance=0.0, check_surface=True
-            )
-            inside_mask = selection["SelectedPoints"].astype(bool)
-            return ~inside_mask
-        except Exception:
-            pass
-
-        # Default: assume all points are exterior (no body geometry available)
-        return np.ones(len(self.grid_points), dtype=bool)
-
-    def _project_near_wall_tangent(
-        self, solver, points: np.ndarray, velocity: np.ndarray, exterior_mask: np.ndarray
-    ) -> None:
-        """Project near-wall velocity tangentially so its normal component is zero."""
-        self._ensure_body_geometry(solver)
-        if self._body_tree is None or self._body_normal is None:
-            return
-
-        ext_idx = np.where(exterior_mask)[0]
-        if len(ext_idx) == 0:
-            return
-
-        pts_ext = points[ext_idx]
-        d_wall, idx_wall = self._body_tree.query(pts_ext)
-        near = d_wall <= (0.5 * self.spacing)
-        if not np.any(near):
-            return
-
-        global_index = ext_idx[near]
-        wall_normal = self._body_normal[idx_wall[near]]
-        wall_velocity = velocity[global_index]
-        normal_velocity = np.einsum("ij,ij->i", wall_velocity, wall_normal)[:, None]
-        velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """Evaluate the solver field at every generated grid point.
@@ -701,12 +556,6 @@ class LineSampler:
         self.include_derivatives = bool(include_derivatives)
         self.schedule = schedule
 
-        # Body geometry cache for masking / wall projection
-        self._body_mesh = None
-        self._body_tree = None
-        self._body_normal = None
-        self._body_loaded = False
-
         if self.start.shape != (3,):
             raise ValueError(f"start must be 3D, got shape {self.start.shape}")
         if self.end.shape != (3,):
@@ -732,105 +581,6 @@ class LineSampler:
             self.line_points[:, i] = self.start[i] + t * direction[i]
 
         self.t_param = t  # Parametric coordinate [0, 1]
-
-    def _resolve_body_stl_path(self, solver) -> list[Path]:
-        """Resolve all body STLs from coupler config."""
-        if not hasattr(solver, "setup"):
-            return []
-        body_stls, case_dir = _extract_stl_config_from_solver(solver)
-        paths = []
-        for body_stl in body_stls:
-            body_stl_path = Path(body_stl)
-            if not body_stl_path.is_absolute() and case_dir is not None:
-                body_stl_path = case_dir / body_stl_path
-            if body_stl_path.exists():
-                paths.append(body_stl_path)
-        return paths
-
-    def _ensure_body_geometry(self, solver) -> None:
-        """Load optional panel/STL geometry and cache its nearest-point data."""
-        if self._body_loaded:
-            return
-        self._body_loaded = True
-
-        try:
-            import pyvista as pv
-        except Exception:
-            return
-
-        try:
-            panel_solver = getattr(solver, "panel_solver", None)
-            lattice = getattr(panel_solver, "lattice", None)
-            if lattice is not None and lattice.n_panels > 0:
-                n_panels = lattice.n_panels
-                vertices = lattice.vertex_position.to_numpy()[:n_panels].reshape(-1, 3)
-                faces = np.column_stack(
-                    (
-                        np.full(n_panels, 3, dtype=np.int64),
-                        np.arange(n_panels * 3).reshape(n_panels, 3),
-                    )
-                ).ravel()
-                self._body_mesh = pv.PolyData(vertices, faces)
-            else:
-                stl_paths = self._resolve_body_stl_path(solver)
-                if not stl_paths:
-                    return
-                self._body_mesh = pv.read(str(stl_paths[0]))
-                for stl_path in stl_paths[1:]:
-                    self._body_mesh = self._body_mesh.merge(pv.read(str(stl_path)))
-            if cKDTree is not None:
-                surf = self._body_mesh.extract_surface().compute_normals(
-                    point_normals=True, cell_normals=False
-                )
-                pts = np.asarray(surf.points)
-                nrm = np.asarray(surf["Normals"])
-                nn = np.linalg.norm(nrm, axis=1)
-                nn[nn < 1e-16] = 1.0
-                nrm = nrm / nn[:, None]
-                self._body_tree = cKDTree(pts)
-                self._body_normal = nrm
-        except Exception:
-            self._body_mesh = None
-            self._body_tree = None
-            self._body_normal = None
-
-    def _get_exterior_mask(self, solver) -> np.ndarray:
-        self._ensure_body_geometry(solver)
-        if self._body_mesh is None:
-            return np.ones(self.n_points, dtype=bool)
-
-        try:
-            import pyvista as pv
-
-            pts = pv.PolyData(self.line_points)
-            sel = pts.select_enclosed_points(self._body_mesh, tolerance=0.0, check_surface=True)
-            inside = sel["SelectedPoints"].astype(bool)
-            return ~inside
-        except Exception:
-            return np.ones(self.n_points, dtype=bool)
-
-    def _project_near_wall_tangent(
-        self, solver, velocity: np.ndarray, exterior_mask: np.ndarray
-    ) -> None:
-        self._ensure_body_geometry(solver)
-        if self._body_tree is None or self._body_normal is None:
-            return
-
-        ext_idx = np.where(exterior_mask)[0]
-        if len(ext_idx) == 0:
-            return
-
-        pts_ext = self.line_points[ext_idx]
-        d_wall, idx_wall = self._body_tree.query(pts_ext)
-        near = d_wall <= (0.5 * self.spacing)
-        if not np.any(near):
-            return
-
-        global_index = ext_idx[near]
-        wall_normal = self._body_normal[idx_wall[near]]
-        wall_velocity = velocity[global_index]
-        normal_velocity = np.einsum("ij,ij->i", wall_velocity, wall_normal)[:, None]
-        velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """Evaluate the solver field at every generated line point.

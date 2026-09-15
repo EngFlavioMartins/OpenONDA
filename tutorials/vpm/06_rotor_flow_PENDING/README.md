@@ -157,7 +157,7 @@ viscosity to the baseline checkpoint. Use the public fresh-pair runner instead:
 python assets/run_matched_stabilization_pair.py \
   --variant baseline --output-tag matched_baseline_7p5 --endpoint 7.5
 python assets/run_matched_stabilization_pair.py \
-  --variant stretching_viscosity --output-tag matched_stabilized_7p5 \
+  --variant selective_eddy_viscosity --output-tag matched_stabilized_7p5 \
   --endpoint 7.5
 ```
 

@@ -1,91 +1,152 @@
-"""One writing style for every OpenONDA log.
+"""Shared, bounded-width reports for OpenONDA console and file sinks.
 
-A log is a sequence of records. A record opens with a header line naming the
-scope that produced it and the topic it reports, and continues with indented
-detail rows that carry one quantity each: label on the left, value in a fixed
-column, unit last. Startup material uses the same detail rows under a ruled
-section title, and a coupling step opens with a banner.
-
-Values are right-aligned so that short ones end on a common column and long
-ones run rightwards from a common column; no call site pads by hand.
+Numerical owners pass already computed scalar values and short vectors. Rendering
+never reads a solver, downloads a field, or performs a numerical reduction.
 """
 
 from __future__ import annotations
 
-import time
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+import logging
+from numbers import Integral, Real
+import textwrap
 from typing import SupportsFloat, SupportsInt
 
-WIDTH = 78
-BLOCK_WIDTH = 88
-
-_SCOPE_WIDTH = 7
-_VALUE_WIDTH = 12
-_VALUE_END = 56
-
-_RECORD_INDENT = 14
-_RECORD_LABEL_WIDTH = _VALUE_END - _VALUE_WIDTH - _RECORD_INDENT
-
-_SECTION_INDENT = 2
-_SECTION_LABEL_WIDTH = _VALUE_END - _VALUE_WIDTH - _SECTION_INDENT
-
+WIDTH = 88
+BLOCK_WIDTH = WIDTH
+_VALUE_END = 63
+_VALUE_START = 39
 Row = tuple[str, object] | tuple[str, object, str]
 
 
-def stamp() -> str:
-    """Return the wall-clock prefix used by logs that write without a handler."""
-    return time.strftime("%H:%M:%S")
+_STEP_SECTION_ORDER = {
+    name: index
+    for index, name in enumerate(
+        (
+            "events",
+            "time control",
+            "particles",
+            "fvm",
+            "vpm",
+            "convergence",
+            "conservation",
+            "energy",
+            "flow integrals",
+            "turbulence",
+            "aerodynamic loads",
+            "vlm wing/wake proximity",
+            "stabilization",
+            "interface transfer",
+            "timing",
+        )
+    )
+}
 
 
-def _detail(indent: int, label_width: int, entry: Row) -> str:
-    label, value = entry[0], entry[1]
-    unit = entry[2] if len(entry) > 2 else ""
-    line = f"{' ' * indent}{label:<{label_width}}{str(value):>{_VALUE_WIDTH}}"
-    if unit:
-        line = f"{line}  {unit}"
-    return line.rstrip()
+def step_section_order(title: str) -> int:
+    """Keep common step sections in a fixed order, with timing last."""
+    return _STEP_SECTION_ORDER.get(title.lower(), _STEP_SECTION_ORDER["timing"] - 1)
 
 
-def _block_detail(entry: Row) -> str:
-    """Format one detail row for a human-facing configuration or step block."""
-    label = str(entry[0])
-    if label:
-        label = label[0].upper() + label[1:]
-    normalized: Row = (label, entry[1], entry[2]) if len(entry) > 2 else (label, entry[1])
-    return _detail(_SECTION_INDENT, _SECTION_LABEL_WIDTH, normalized)
+class FormattedText(str):
+    """A complete shared-format report; sinks must not decorate it again."""
 
 
-def header(scope: str, topic: str, *, stamped: bool = False) -> str:
-    """Return a record header naming the scope and what it reports."""
-    line = f"{scope:<{_SCOPE_WIDTH}}  {topic}".rstrip()
-    return f"{stamp()}  {line}" if stamped else line
+@dataclass(frozen=True, slots=True)
+class Event:
+    """An unformatted module report containing host-side measurements only.
+
+    ``rows`` contains (label, value[, unit]) tuples. Values must be scalars,
+    strings or short host vectors, never device fields or complete solutions.
+    A callable may build rows from an immutable diagnostic result on demand.
+    Conversion to text is delayed until an enabled sink actually emits it.
+    """
+
+    topic: str
+    rows: tuple[Row, ...] | Callable[[], tuple[Row, ...]] = ()
+
+    def __str__(self) -> str:
+        return block_section(self.topic, self.rows() if callable(self.rows) else self.rows)
 
 
-def record(scope: str, topic: str, *rows: Row, stamped: bool = False) -> str:
-    """Return one record: a scope and topic header over indented detail rows."""
-    lines = [header(scope, topic, stamped=stamped)]
-    lines.extend(_detail(_RECORD_INDENT, _RECORD_LABEL_WIDTH, row) for row in rows)
-    return "\n".join(lines)
+class Formatter(logging.Formatter):
+    """Apply the shared layout to standard-library module logging as well."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        title = "errors" if record.levelno >= logging.ERROR else "warnings"
+        if isinstance(record.msg, FormattedText | Event):
+            result = str(record.msg)
+            if record.levelno >= logging.WARNING:
+                result = block_section(title, []) + result
+        else:
+            result = block_section(
+                title if record.levelno >= logging.WARNING else "events",
+                [(record.getMessage(), "")],
+            )
+        if record.exc_info:
+            result += block_section("exception", [(self.formatException(record.exc_info), "")])
+        return result
 
 
-def section(title: str, rows: list[Row]) -> str:
-    """Return a ruled startup section over the same detail rows."""
-    rule = "-" * WIDTH
-    lines = ["", rule, f" {title}", rule]
-    lines.extend(_detail(_SECTION_INDENT, _SECTION_LABEL_WIDTH, row) for row in rows)
-    return "\n".join(lines)
+def value_text(value: object) -> str:
+    """Render one host scalar or short vector without allocating field copies."""
+    if value is None:
+        return "unavailable"
+    if isinstance(value, bool):
+        return "enabled" if value else "disabled"
+    if isinstance(value, Integral):
+        return f"{value:,}"
+    if isinstance(value, Real):
+        return f"{value:.4e}"
+    if isinstance(value, tuple | list):
+        return "[" + ", ".join(value_text(item) for item in value) + "]"
+    return str(value)
 
 
-def banner(left: str, right: str = "") -> str:
-    """Return a heavy-ruled banner opening a step or a major phase."""
-    rule = "=" * WIDTH
-    title = f" {left}"
-    if right:
-        title = f"{title}{right:>{max(1, WIDTH - len(title))}}"
-    return "\n".join(("", rule, title, rule))
+def _detail(entry: Row) -> str:
+    """Wrap long labels/paths instead of allowing them to break the columns."""
+    label = str(entry[0]).strip()
+    label = label[:1].upper() + label[1:]
+    value = value_text(entry[1])
+    unit = str(entry[2]) if len(entry) > 2 else ""
+    if value == "":
+        return textwrap.fill(label, WIDTH, initial_indent="  ", subsequent_indent="    ")
+    suffix = f"  {unit}" if unit else ""
+    if len(label) < _VALUE_START - 3 and len(value) + len(suffix) <= WIDTH - _VALUE_START:
+        padding = max(_VALUE_START, _VALUE_END - len(value))
+        return f"  {label:<{padding - 2}}{value}{suffix}"
+    lines = textwrap.wrap(label, WIDTH - 2) or [""]
+    result = ["  " + line for line in lines]
+    result.append(
+        textwrap.fill(value + suffix, WIDTH, initial_indent="    ", subsequent_indent="    ")
+    )
+    return "\n".join(result)
+
+
+def block_section(title: str, rows: Iterable[Row], *, show_title: bool = True) -> FormattedText:
+    """Render one populated section with a single gap before its heading."""
+    lines = (
+        ["", textwrap.fill(str(title).upper(), WIDTH, initial_indent=" ", subsequent_indent=" ")]
+        if show_title
+        else []
+    )
+    lines.extend(_detail(row) for row in rows)
+    return FormattedText("\n".join(lines))
+
+
+def section(title: str, rows: list[Row]) -> FormattedText:
+    """Render an initialization section with the same layout as step sections."""
+    return block_section(title, rows)
+
+
+def record(scope: str, topic: str, *rows: Row) -> FormattedText:
+    """Render a scoped module event through the common section formatter."""
+    return block_section(f"{scope} {topic}", rows)
 
 
 def elapsed_time(seconds: SupportsFloat) -> str:
-    """Return an elapsed duration as ``HH:MM:SS.s`` without losing long runs."""
+    """Return elapsed seconds as HH:MM:SS.s, including runs over 24 hours."""
     total = max(0.0, float(seconds))
     hours = int(total // 3600.0)
     minutes = int((total - 3600.0 * hours) // 60.0)
@@ -99,64 +160,40 @@ def step_header(
     wall_time: SupportsFloat,
     *,
     scope: str = "VPM",
-) -> str:
-    """Open a solver time-step block with its physical and elapsed times."""
-    title = (
-        f" {scope.upper()} TIME STEP {int(step):,}"
-        f"     FLOW TIME {float(flow_time):.6e} s"
-        f"     WALL TIME {elapsed_time(wall_time)}"
-    )
-    width = max(BLOCK_WIDTH, len(title))
-    return "\n".join(("", "=" * width, title, "-" * width))
+    total_steps: int | None = None,
+) -> FormattedText:
+    """Open a report for an accepted physical step and its elapsed wall time."""
+    title = f" {scope.upper()} TIME STEP {int(step):,}"
+    if total_steps is not None:
+        title += f" / {total_steps:,}"
+    clock = f" FLOW TIME {float(flow_time):.6e} s"
+    elapsed = f"ELAPSED {elapsed_time(wall_time)}"
+    clock += elapsed.rjust(max(1, WIDTH - len(clock)))
+    return FormattedText("\n".join(("", "=" * WIDTH, title, clock, "-" * WIDTH)))
 
 
-def block_section(title: str, rows: list[Row], *, show_title: bool = True) -> str:
-    """Format one uppercase block section with no gap below its heading."""
-    lines: list[str] = []
-    if show_title:
-        lines.extend(("", f" {title.upper()}"))
-    lines.extend(_block_detail(row) for row in rows)
-    return "\n".join(lines)
-
-
-def block_report(title: str, sections: list[tuple[str, list[Row]]]) -> str:
-    """Format a one-time report with gaps only between uppercase sections."""
-    width = max(BLOCK_WIDTH, len(title) + 2)
-    lines = ["", "=" * width, f" {title.upper()}", "-" * width]
-    for section_title, rows in sections:
-        lines.append(block_section(section_title, rows))
-    lines.extend(("", "=" * width))
-    return "\n".join(lines)
+def block_report(title: str, sections: Iterable[tuple[str, Iterable[Row]]]) -> FormattedText:
+    """Render one complete startup, completion or diagnostic report."""
+    lines = [
+        "",
+        "=" * WIDTH,
+        textwrap.fill(title.upper(), WIDTH, initial_indent=" ", subsequent_indent=" "),
+        "-" * WIDTH,
+    ]
+    lines.extend(block_section(name, rows) for name, rows in sections if rows)
+    return FormattedText("\n".join(lines))
 
 
 def count(value: SupportsInt) -> str:
-    """Return an integer count with thousands separators."""
+    """Format an integer count with thousands separators."""
     return f"{int(value):,}"
 
 
 def quantity(value: SupportsFloat, digits: int = 3) -> str:
-    """Return a scientific-notation value with a fixed number of digits."""
+    """Format a scientific quantity with the requested decimal precision."""
     return f"{float(value):.{digits}e}"
 
 
 def ratio(value: SupportsFloat, digits: int = 3) -> str:
-    """Return a dimensionless ratio in fixed-point notation."""
+    """Format a dimensionless ratio in fixed-point notation."""
     return f"{float(value):.{digits}f}"
-
-
-__all__ = [
-    "BLOCK_WIDTH",
-    "WIDTH",
-    "banner",
-    "block_report",
-    "block_section",
-    "count",
-    "elapsed_time",
-    "header",
-    "quantity",
-    "ratio",
-    "record",
-    "section",
-    "stamp",
-    "step_header",
-]

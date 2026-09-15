@@ -9,11 +9,10 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass
-import logging
 
 import numpy as np
 
-logger = logging.getLogger("vpm")
+from source.solvers.vpm.io.logging import Logging
 
 
 @dataclass
@@ -166,7 +165,7 @@ def filter_particles_outside_body(
     n_inside = np.sum(inside)
     n_outside = np.sum(outside)
 
-    logger.debug(
+    Logging.debug(
         f"Filtering particles: {n_inside} inside body (removed), {n_outside} outside (kept)"
     )
 

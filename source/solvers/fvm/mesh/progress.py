@@ -10,11 +10,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, TextIO
 
-
-def _clean(value: Any) -> str:
-    """Render one compact field value without allowing multiline log records."""
-    rendered = str(value).replace("\r", " ").replace("\n", " ")
-    return rendered if rendered else "-"
+from source import log_style
 
 
 class MesherLog:
@@ -50,16 +46,15 @@ class MesherLog:
         if self._closed:
             return
         elapsed = perf_counter() - self._started
-        suffix = "".join(
-            f" | {key}={_clean(value)}" for key, value in details.items() if value is not None
+        rows = [("stage", activity), ("status", status.lower()), ("elapsed", elapsed, "s")]
+        rows.extend(
+            (key.replace("_", " "), value) for key, value in details.items() if value is not None
         )
-        self._stream.write(f"{elapsed:10.3f}s  {status:<8} {activity}{suffix}\n")
+        report = log_style.block_section("mesh", rows)
+        self._stream.write(report + "\n")
         self._stream.flush()
-        if self._reporter is not None and activity != "meshing session":
-            if status == "START":
-                self._reporter(f"  Mesher: {activity}...")
-            elif status == "DONE":
-                self._reporter(f"  Mesher: {activity} completed in {details.get('seconds', '?')}s")
+        if self._reporter is not None:
+            self._reporter(report)
 
     def close(self, *, failure: BaseException | None = None) -> None:
         """Finish the session with a durable success or failure record."""
@@ -157,7 +152,9 @@ def mesher_log_session(
 
     logger = MesherLog(path, reporter=reporter)
     if announce:
-        print(f"Mesher log: {logger.path}", flush=True)
+        from ..io.logging import emit_standalone_report
+
+        emit_standalone_report("mesh", ("log", str(logger.path)))
     token = _ACTIVE_MESHER_LOG.set(logger)
     try:
         yield logger

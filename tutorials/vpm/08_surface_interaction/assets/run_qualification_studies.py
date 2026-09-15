@@ -160,9 +160,6 @@ def _cloud_summary(checkpoint: Path) -> dict[str, float | int]:
 def _case_metrics(spec: RunSpec, case_directory: Path, runtime: float, steps: int) -> list[dict]:
     sample_directory = case_directory / "samples" / "tandem"
     summary = pd.read_csv(sample_directory / "qualification_summary.csv")
-    leakage = pd.read_csv(sample_directory / "vlm_leakage.csv")
-    events_path = sample_directory / "vlm_surface_events.csv"
-    events = pd.read_csv(events_path) if events_path.is_file() else pd.DataFrame()
     cloud = _cloud_summary(_latest_backup(case_directory))
     common = {
         "case": spec.name,
@@ -175,18 +172,6 @@ def _case_metrics(spec: RunSpec, case_directory: Path, runtime: float, steps: in
         "boundary_response": spec.boundary_response,
         "accepted_steps": steps,
         "runtime_seconds": runtime,
-        "final_leakage_R1": float(leakage["R1"].iloc[-1]),
-        "final_leakage_Rinf": float(leakage["Rinf"].iloc[-1]),
-        "final_transport_R1": float(leakage["transport_R1"].iloc[-1]),
-        "final_transport_Rinf": float(leakage["transport_Rinf"].iloc[-1]),
-        "final_stage_boundary_residual": float(leakage.get("stage_boundary_residual", pd.Series([np.nan])).iloc[-1]),
-        "final_stage_near_wake_elapsed": float(
-            leakage.get("stage_near_wake_elapsed", pd.Series([np.nan])).iloc[-1]
-        ),
-        "final_stage_near_wake_matrix_norm": float(
-            leakage.get("stage_near_wake_matrix_norm", pd.Series([np.nan])).iloc[-1]
-        ),
-        "event_rows": int(len(events)),
         **cloud,
     }
     rows = []
@@ -200,9 +185,6 @@ def _case_metrics(spec: RunSpec, case_directory: Path, runtime: float, steps: in
                 "peak_abs_lift": float(row["peak_abs_lift"]),
                 "integrated_lift": float(row["integrated_lift"]),
                 "final_drag": float(row["final_drag"]),
-                "intersection_events": int(row["intersection_events"]),
-                "side_bypass_events": int(row["side_bypass_events"]),
-                "core_overlap_events": int(row["core_overlap_events"]),
             }
         )
     return rows
@@ -302,9 +284,7 @@ def _restart_equivalence(steps: int) -> dict[str, object]:
         "max_strength_abs_error": strength_error,
         "max_vlm_circulation_abs_error": circulation_error,
         "pass": bool(
-            position_error <= 1e-11
-            and strength_error <= 1e-11
-            and circulation_error <= 1e-11
+            position_error <= 1e-11 and strength_error <= 1e-11 and circulation_error <= 1e-11
         ),
     }
 
@@ -344,21 +324,6 @@ def run_campaign(*, steps: int, smoke: bool) -> None:
         ]
     ]
     loads.to_csv(STUDY_DIR / "load_runtime_table.csv", index=False)
-    leakage = metrics[
-        [
-            "case",
-            "surface",
-            "final_leakage_R1",
-            "final_leakage_Rinf",
-            "final_transport_R1",
-            "final_transport_Rinf",
-            "final_stage_boundary_residual",
-            "final_stage_near_wake_elapsed",
-            "final_stage_near_wake_matrix_norm",
-            "event_rows",
-        ]
-    ]
-    leakage.to_csv(STUDY_DIR / "leakage_table.csv", index=False)
     restart = _restart_equivalence(steps)
     (STUDY_DIR / "restart_equivalence.json").write_text(
         json.dumps(restart, indent=2), encoding="utf-8"
@@ -374,12 +339,10 @@ def run_campaign(*, steps: int, smoke: bool) -> None:
                     "qualification_metrics.csv",
                     "refinement_table.csv",
                     "load_runtime_table.csv",
-                    "leakage_table.csv",
                     "restart_equivalence.json",
                 ],
                 "qualification_limits": {
                     "restart_max_abs_error": 1e-11,
-                    "event_policy": "warn; events remain validity evidence",
                 },
             },
             indent=2,
@@ -392,7 +355,9 @@ def run_campaign(*, steps: int, smoke: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--smoke", action="store_true", help="run only baseline and dt-refinement cases")
+    mode.add_argument(
+        "--smoke", action="store_true", help="run only baseline and dt-refinement cases"
+    )
     mode.add_argument("--full", action="store_true", help="run all comparison cases")
     parser.add_argument("--steps", type=int, default=None)
     args = parser.parse_args()

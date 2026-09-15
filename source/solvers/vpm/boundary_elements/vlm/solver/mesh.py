@@ -11,6 +11,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
+from source.solvers.vpm.io.logging import Logging
+
 from ....config.constants import VLM_SMALL_VELOCITY
 from ..geometry.aircraft import Aircraft, WingSegment
 
@@ -235,7 +237,7 @@ def generate_vlm_mesh(
     # Mark LE panels (static topology; must run after neighbor_indices is uploaded)
     lattice.mark_le_panels()
 
-    print(f"Generated VLM mesh: {lattice.n_panels} panels from {wing_id} wings", flush=True)
+    Logging.record("VLM mesh", ("panels", lattice.n_panels), ("wings", wing_id))
 
 
 def _fill_panel_geometry(

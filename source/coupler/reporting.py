@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+import time
 
 import numpy as np
 
@@ -99,15 +100,19 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.Fil
             logger.removeHandler(handler)
             handler.close()
 
+    for policy in list(logger.filters):
+        if isinstance(policy, _CouplingProgress):
+            logger.removeFilter(policy)
+    logger.addFilter(_CouplingProgress())
     has_external_handlers = bool(logger.handlers)
     logger.setLevel(logging.INFO)
     logger.propagate = False
     file_handler = _CaseFileHandler(log_path, mode="w")
-    file_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
+    file_handler.setFormatter(log_style.Formatter())
     logger.addHandler(file_handler)
     if not has_external_handlers:
         console_handler = logging.StreamHandler(_REAL_STDOUT)
-        console_handler.setFormatter(logging.Formatter("%(message)s"))
+        console_handler.setFormatter(log_style.Formatter())
         logger.addHandler(console_handler)
     return file_handler
 
@@ -125,17 +130,83 @@ def flush_log(logger: logging.Logger) -> None:
         handler.flush()
 
 
-def format_coupler_log(topic: str, *rows: log_style.Row) -> str:
-    """Return one coupler record: a topic header over indented detail rows."""
-    return log_style.record("coupler", topic, *rows)
+class _CouplingProgress(logging.Filter):
+    """Keep only this coupling interval's latest module records until acceptance.
+
+    Capturing host rows is independent of particle/mesh size. No formatting,
+    numerical work or growing cross-step history occurs on skipped reports.
+    Warnings bypass the buffer immediately; scientific JSONL is independent.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = time.perf_counter()
+        self.last_report: float | None = None
+        self.context: tuple[int, int, float] | None = None
+        self.records: dict[str, log_style.Event] = {}
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if (
+            self.context is not None
+            and record.levelno < logging.WARNING
+            and isinstance(record.msg, log_style.Event)
+        ):
+            self.records[record.msg.topic] = record.msg
+            return False
+        return True
+
+    def begin(self, step: int, total_steps: int, flow_time: float) -> None:
+        """Start a tentative interval without publishing a completed-step banner."""
+        self.context = (step, total_steps, flow_time)
+        self.records.clear()
+
+    def finish(self, logger: logging.Logger, *, final: bool = False) -> None:
+        """Publish one accepted block when due, retaining immediate warnings."""
+        context, self.context = self.context, None
+        if context is None:
+            return
+        now = time.perf_counter()
+        step, total_steps, flow_time = context
+        if (
+            self.last_report is None
+            or now - self.last_report >= 30.0
+            or final
+            or step == total_steps
+        ):
+            report: list[str] = [
+                log_style.step_header(
+                    step, flow_time, now - self.started, scope="COUPLER", total_steps=total_steps
+                )
+            ]
+            report.extend(
+                str(event)
+                for event in sorted(
+                    self.records.values(),
+                    key=lambda event: log_style.step_section_order(event.topic),
+                )
+            )
+            logger.info(log_style.FormattedText("\n".join(report)))
+            self.last_report = now
+        self.records.clear()
 
 
-def format_coupler_step(step: int, n_steps: int, time_end: float) -> str:
-    """Return the banner that opens a coupling step."""
-    return log_style.banner(
-        f"coupling step {step:,} of {n_steps:,}",
-        f"physical time {time_end:.6f} s",
-    )
+def begin_coupling_step(logger: logging.Logger, step: int, n_steps: int, time_end: float) -> None:
+    """Collect the next coupling interval without claiming its acceptance."""
+    for policy in logger.filters:
+        if isinstance(policy, _CouplingProgress):
+            policy.begin(step, n_steps, time_end)
+
+
+def finish_coupling_step(logger: logging.Logger, *, final: bool = False) -> None:
+    """Close accepted console reporting independently of native diagnostic output."""
+    for policy in logger.filters:
+        if isinstance(policy, _CouplingProgress):
+            policy.finish(logger, final=final)
+
+
+def format_coupler_log(topic: str, *rows: log_style.Row) -> log_style.Event:
+    """Collect already-computed host rows; formatting is deferred until emission."""
+    return log_style.Event(topic, rows)
 
 
 def _domain_dict(box: np.ndarray) -> dict[str, float]:
@@ -599,10 +670,19 @@ def record_step(
             ) as stream:
                 stream.write(json.dumps(diagnostics, separators=(",", ":")) + "\n")
 
+            logger.info(
+                format_coupler_log(
+                    "FVM",
+                    ("accepted substep", coupler.fvm_solver.step),
+                    ("physical time", coupler.fvm_solver.time, "s"),
+                    ("substeps per coupling step", coupler.n_fvm_substeps),
+                    ("Courant, max", coupler.fvm_solver.max_courant_number),
+                )
+            )
             stats = coupler._step_transfer_stats or {}
             logger.info(
                 format_coupler_log(
-                    "vpm state",
+                    "VPM",
                     ("particles, before", log_style.count(stats.get("n_before", 0))),
                     ("particles, after", log_style.count(stats.get("n_after", 0))),
                     (
@@ -619,7 +699,7 @@ def record_step(
             )
             logger.info(
                 format_coupler_log(
-                    f"step {step:,} complete",
+                    "timing",
                     ("wall time", f"{timing_data['total']:.3f}", "s"),
                     ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
                     ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
@@ -627,6 +707,7 @@ def record_step(
                     ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
                 )
             )
+            finish_coupling_step(logger, final=step == coupler._log_stop_step)
             flush_log(logger)
 
     backup_due = (
@@ -642,7 +723,8 @@ __all__ = [
     "configure_logging",
     "flush_log",
     "format_coupler_log",
-    "format_coupler_step",
+    "begin_coupling_step",
+    "finish_coupling_step",
     "record_step",
     "write_run_metadata",
 ]

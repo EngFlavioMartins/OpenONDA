@@ -417,6 +417,17 @@ def initialize_vpm_boundary_history(
     needs_boundary_history = coupler._velocity_boundary_condition_old is None
     band = getattr(coupler, "fvm_consistency_band", None)
     needs_consistency_history = band is not None and not band.is_initialized
+    # Only the VPM owner restores the global boundary trace from a coupled
+    # checkpoint. Nonowners intentionally retain empty history placeholders.
+    # All ranks must nevertheless enter the same collective evaluations: a
+    # local decision here shifts the MPI collectives after restart and hangs
+    # the first boundary scatter in advance_fvm.
+    comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
+    if comm is not None and comm.Get_size() > 1:
+        needs_boundary_history, needs_consistency_history = comm.bcast(
+            (needs_boundary_history, needs_consistency_history) if coupler._is_master else None,
+            root=0,
+        )
     if not needs_boundary_history and not needs_consistency_history:
         return
     if needs_boundary_history:

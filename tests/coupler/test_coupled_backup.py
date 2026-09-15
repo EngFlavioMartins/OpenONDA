@@ -381,6 +381,43 @@ def test_config_difference_paths_are_recursive_and_distinguish_missing_from_none
     }
 
 
+def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path, monkeypatch):
+    import json
+
+    from source.coupler.backup import config_mapping_digest
+
+    writer = _make_coupler()
+    policy = {"selective_eddy_viscosity_coefficient": 0.5, "regularization_preserve_groups": False}
+    writer.vpm_solver.setup.mapping["stabilization"] = dict(policy)
+    save_coupled_backup(writer, tmp_path, coupling_step=1)
+    reader = _make_coupler()
+    reader.vpm_solver.setup.mapping["stabilization"] = policy
+    assert load_coupled_backup(reader, tmp_path) == 1
+    policy["regularization_preserve_groups"] = True
+    with pytest.raises(ValueError, match="regularization_preserve_groups"):
+        load_coupled_backup(reader, tmp_path)
+    policy["regularization_preserve_groups"] = False
+    policy["selective_eddy_viscosity_coefficient"] = 0.75
+    with pytest.raises(ValueError, match="vpm.stabilization.selective_eddy_viscosity_coefficient"):
+        load_coupled_backup(reader, tmp_path)
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    policy["selective_eddy_viscosity_coefficient"] = 0.5
+    manifest["config"]["vpm"]["stabilization"]["selective_eddy_viscosity_coefficient"] = 0.75
+    # A valid checksum does not authorize a changed numerical configuration.
+    manifest["config_sha256"] = config_mapping_digest(manifest["config"])
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        reader.fvm_solver, "load_state", lambda *args: pytest.fail("premature state load")
+    )
+    monkeypatch.setattr(
+        reader.vpm_solver, "_load_backup_from", lambda *args: pytest.fail("premature state load")
+    )
+    with pytest.raises(ValueError, match="vpm.stabilization.selective_eddy_viscosity_coefficient"):
+        load_coupled_backup(reader, tmp_path)
+
+
 @pytest.mark.parametrize(
     ("path", "changed"),
     [
@@ -389,7 +426,7 @@ def test_config_difference_paths_are_recursive_and_distinguish_missing_from_none
         ("coupler.transfer_method", {"transfer_method": "buffered_m4_renewal"}),
     ],
 )
-def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path, changed):
+def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path, changed, caplog):
     backup = tmp_path / "backup"
     save_coupled_backup(_make_coupler(), backup, coupling_step=1)
 
@@ -398,12 +435,9 @@ def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path,
         load_coupled_backup(strict, backup)
 
     allowed = _make_coupler(**changed)
-    with pytest.warns(RuntimeWarning, match=re.escape(path)):
-        restored_step = load_coupled_backup(
-            allowed,
-            backup,
-            allowed_config_differences={path},
-        )
+    with caplog.at_level("WARNING", logger="coupler"):
+        restored_step = load_coupled_backup(allowed, backup, allowed_config_differences={path})
+    assert path in caplog.text
     assert restored_step == 1
     assert allowed.vorticity_transfer.step == 2
 

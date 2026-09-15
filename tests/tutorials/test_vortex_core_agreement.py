@@ -60,6 +60,34 @@ def test_core_tracking_uses_the_first_saved_field_when_step_zero_is_missing():
     np.testing.assert_allclose(tracks[tracks.ring == 1].x, [3.0, 3.2])
 
 
+def test_weak_third_peak_does_not_end_two_dominant_core_tracks():
+    rows = []
+    for step in range(3):
+        points = [(0.5 + step * 0.1, 1.0, 0.4), (-0.5 + step * 0.1, 1.0, 0.3)]
+        if step == 1:
+            points.append((0.1, 1.2, 0.041))
+        rows.extend(
+            {
+                "step": step,
+                "time": step,
+                "x": x,
+                "radius": r,
+                "vorticity": w,
+                "n_peaks": len(points),
+                "strongest_peak_pair_bridge_ratio": 0.1,
+            }
+            for x, r, w in points
+        )
+    peaks = pd.DataFrame(rows)
+    tracks, _ = coherent_tracks(peaks)
+    assert len(tracks) == 6
+    assert tracks.time.max() == 2
+    peaks.loc[(peaks.step == 1) & (peaks.vorticity == 0.041), "vorticity"] = 0.2
+    tracks, reason = coherent_tracks(peaks)
+    assert tracks.time.max() == 0
+    assert "competing peak" in reason
+
+
 def test_uniform_distance_score_weights_rings_equally_and_keeps_radius_error():
     tracks = pd.DataFrame(
         [
@@ -131,6 +159,7 @@ def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_p
                 "run": run,
                 "settings": {
                     "dt": dt,
+                    "method": run,
                     "diffusion": "CS",
                     "smagorinsky": 0.2,
                 },
@@ -216,3 +245,18 @@ def test_axial_contact_requires_order_reversal_and_zero_plateaus_are_counted_onc
     events = _assessment.leapfrog_events(tracks)["passages"]
     assert len(events) == 1
     assert events[0]["time_bracket"] == [2, 5]
+
+
+def test_core_speed_uses_actual_times_and_resolves_quadratic_acceleration():
+    times = np.array([0, 0.1, 0.3, 0.45, 0.7, 0.8, 1.0])
+    tracks = pd.DataFrame(
+        [
+            {"time": t, "ring": ring, "x": ring + 2 * t + 0.5 * t * t, "radius": 1}
+            for ring in (1, 2)
+            for t in times
+        ]
+    )
+    speed = _assessment.core_speeds(tracks)
+    np.testing.assert_allclose(speed.axial_speed_R0_per_second, 2 + speed.time)
+    assert len(speed) == 6
+    assert (speed.speed_grid_bound_R0_per_second > 0).all()

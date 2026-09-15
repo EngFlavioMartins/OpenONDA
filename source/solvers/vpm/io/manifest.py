@@ -23,7 +23,7 @@ def _schedule_identity(schedule: object | None) -> dict[str, Any] | None:
     result: dict[str, Any] = {
         "type": type(schedule).__name__,
     }
-    for name in ("interval", "first_step", "start_time", "initial", "is_final_only", "at_end"):
+    for name in ("interval", "first_step", "start_time", "initial", "is_final_only"):
         if hasattr(schedule, name):
             value = getattr(schedule, name)
             if isinstance(value, np.generic):
@@ -139,10 +139,8 @@ def _case_configuration(solver: Any) -> dict[str, Any]:
             restart_physics_identity,
         )
 
-        # Persist both identities so a future owner-clock migration can prove
-        # that a legacy mismatch was limited to output controls.  The full
-        # identity remains strict for exact continuation; the physics identity
-        # is the auditable invariant across output-schema changes.
+        # Keep the full continuation identity and the numerical identity
+        # explicit; output controls participate only in the former.
         numerics["vlm"]["restart_identity"] = getattr(
             vlm, "_restart_identity", restart_identity(vlm)
         )
@@ -236,13 +234,8 @@ def build_manifest(solver: Any, *, status: str | None = None) -> dict[str, Any]:
     if status is not None:
         manifest["lifecycle"] = {"status": str(status)}
     restart_provenance = getattr(solver, "_restart_provenance", None)
-    identity_migration = getattr(solver, "_vlm_identity_migration", None)
-    if restart_provenance is not None or identity_migration is not None:
-        manifest["restart"] = {}
-        if restart_provenance is not None:
-            manifest["restart"].update(_manifest_value(restart_provenance))
-        if identity_migration is not None:
-            manifest["restart"]["vlm_identity_migration"] = _manifest_value(identity_migration)
+    if restart_provenance is not None:
+        manifest["restart"] = _manifest_value(restart_provenance)
     runtime_override = getattr(solver, "_runtime_compute_device_override", None)
     if runtime_override is not None:
         manifest["runtime"] = {

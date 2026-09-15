@@ -14,6 +14,9 @@ kernel-corrected angular impulse algebraically.  It also leaves molecular
 diffusion in the core radius untouched.  Unlike a strength limiter, refinement
 does not remove stretched vorticity; it adds the Lagrangian degrees of freedom
 needed to represent it.
+
+This is the local bisection of Winckelmans (1989), Caltech thesis, p. 89,
+using the fixed-core branch. It is distinct from the 1995 A2 grid remeshing.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ class FilamentRefinementResult:
     linear_impulse_error: float
     angular_impulse_error: float
     isolated_kinetic_energy_change: float
+    deferred_particles: int = 0
 
 
 @dataclass(frozen=True)
@@ -351,9 +355,10 @@ def split_stretched_filaments(
     by the default ``offset_fraction=0.25``.  Each child then receives its own
     current strength and half-line length as the next reference state.
 
-    A single call performs one bisection per selected parent.  Repeated calls
-    can therefore resolve arbitrarily large stretching without placing a
-    single pair over an arbitrarily long line segment.
+    A call performs one bisection per selected parent. Delayed checks can leave
+    long under-resolved segments; splitting is not a substitute for a resolved
+    time step. Capacity prioritizes the most stretched parents and explicitly
+    reports the eligible parents left unsplit.
     """
 
     position = np.asarray(position, dtype=np.float64)
@@ -370,7 +375,7 @@ def split_stretched_filaments(
         len(position),
     ):
         raise ValueError("reference_vortex_strength and reference_length must both have shape (N,)")
-    if max_stretch_factor <= 1.0:
+    if np.isnan(max_stretch_factor) or max_stretch_factor <= 1.0:
         raise ValueError("max_stretch_factor must be greater than one")
     if max_absolute_vortex_strength is not None and (
         not np.isfinite(max_absolute_vortex_strength) or max_absolute_vortex_strength <= 0.0
@@ -403,7 +408,7 @@ def split_stretched_filaments(
     risk = stretch_ratio / max_stretch_factor
     if max_absolute_vortex_strength is not None:
         risk = np.maximum(risk, magnitude / max_absolute_vortex_strength)
-    eligible = np.flatnonzero(risk > 1.0)
+    eligible = np.flatnonzero(risk >= 1.0)
     selected = eligible
     if max_n_particles is not None:
         available = max(0, max_n_particles - len(position))
@@ -430,6 +435,7 @@ def split_stretched_filaments(
             linear_impulse_error=0.0,
             angular_impulse_error=0.0,
             isolated_kinetic_energy_change=0.0,
+            deferred_particles=len(eligible),
         )
 
     retained_mask = np.ones(len(position), dtype=bool)
@@ -507,6 +513,7 @@ def split_stretched_filaments(
             core_radius[selected],
             displacement_magnitude,
         ),
+        deferred_particles=len(eligible) - refined_count,
     )
 
 

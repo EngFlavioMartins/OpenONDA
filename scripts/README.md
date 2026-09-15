@@ -1,5 +1,7 @@
 # Project tooling
 
+Follow [AGENTS.md](../AGENTS.md) when changing tooling or runtime behavior.
+
 `python install.py` at the repository root installs with pip and verifies the
 result outside the checkout; `--dev` selects an editable installation.
 These optional Conda files help
@@ -12,6 +14,5 @@ They do not repair Python imports or modify shell startup files.
 | `environment/environment.yml` | Base Python/numerical Conda environment; package metadata selects the compatible Taichi wheel. |
 | `environment/environment-parallel.yml` | The base environment plus a coherent OpenMPI/PETSc stack. |
 
-Use `bash scripts/install/install_conda.sh --help` for options. External
-OpenVSP and ParaView installers have been replaced by
-[upstream installation guidance](../docs/installation.md#optional-external-software).
+Use `bash scripts/install/install_conda.sh --help` for options. For OpenVSP and
+ParaView, see [upstream installation guidance](../docs/installation.md#optional-external-software).

@@ -213,8 +213,8 @@ def test_run_owns_the_complete_event_lifecycle() -> None:
         "advance",
         "advance",
         "diagnostics",
-        OutputEvent.FINAL,
         "backup",
+        OutputEvent.FINAL,
         ("completed", None),
         "close",
     ]
@@ -270,14 +270,14 @@ def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None
         "advance",
         "advance",
         "diagnostics",
-        ("write_all", OutputEvent.FINAL),
         "backup",
+        ("write_all", OutputEvent.FINAL),
         ("resolution_lost", solver.run_failure),
         "close",
     ]
     terminal_output = capsys.readouterr().out
     assert "Stopped" in terminal_output
-    assert "declared resolution limit" not in terminal_output
+    assert "declared resolution limit" in terminal_output
 
 
 def test_run_plan_can_persist_and_return_from_a_resource_limit() -> None:
@@ -326,11 +326,54 @@ def test_run_plan_can_persist_and_return_from_a_resource_limit() -> None:
     assert solver.run_status == "resource_limit"
     assert isinstance(solver.run_failure, vpm.ResourceLimitError)
     assert events[-4:] == [
-        ("write_all", OutputEvent.FINAL),
         "backup",
+        ("write_all", OutputEvent.FINAL),
         ("resource_limit", solver.run_failure),
         "close",
     ]
+
+
+def test_terminal_sampler_failure_retains_backup_and_underlying_health_reason() -> None:
+    events = []
+    output_error = RuntimeError("terminal sampler failed")
+
+    class Manager:
+        def dispatch(self, event):
+            events.append(event)
+
+        def write_all(self, event, *, skip_current=False):
+            assert "backup" in events
+            raise output_error
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        run=vpm.RunPlan(steps=2, initial_samples=False, health_limit_action="STOP"),
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver._run_finished = False
+    solver.restart_state = vpm.RestartState()
+    solver.time, solver.step = 0.0, 0
+    solver.particles = SimpleNamespace(n_particles_total=0)
+    solver._build_initial_conditions = lambda: None
+    solver._refresh_diagnostics_for_output = lambda: None
+
+    def advance():
+        solver.step, solver.time = 1, 0.1
+        raise HealthError("vorticity divergence exceeds declared maximum")
+
+    solver.advance = advance
+    solver.save_backup = lambda: events.append("backup")
+    solver._write_run_manifest = lambda status, failure: events.append(status)
+    solver.close = lambda: events.append("close")
+    with pytest.raises(RuntimeError, match="terminal sampler failed") as error:
+        solver.run()
+    assert error.value is output_error
+    assert "vorticity divergence" in " ".join(output_error.__notes__)
+    assert solver.run_status == "failed"
+    assert events.count("backup") == 1
+    assert events[-1] == "close"
 
 
 def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> None:
@@ -483,8 +526,8 @@ def test_wall_time_stop_persists_accepted_state_without_reporting_physics_failur
     assert events == [
         ("running", None),
         OutputEvent.INITIAL,
-        "terminal_samples",
         "backup",
+        "terminal_samples",
         ("wall_time_limit", None),
         "close",
     ]
@@ -530,6 +573,7 @@ def test_run_elapsed_time_includes_output_and_backups(monkeypatch, capsys):
     solver.run()
     assert solver.wall_time == 4.0
     assert solver.elapsed_wall_time == 28.0
-    assert "elapsed=00:00:28.0" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Elapsed" in output and "00:00:28.0" in output
     clock[0] += 100.0
     assert solver.elapsed_wall_time == 28.0

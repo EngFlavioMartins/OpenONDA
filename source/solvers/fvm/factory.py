@@ -386,7 +386,7 @@ def create_fvm_solver(
             if is_root and mesh_data is not None:
                 _save_generated_mesh(mesh_data, resolved_solution_dir, runtime_setup.output)
         if startup_logger is not None:
-            startup_logger.info("component=fvm_startup status=mesh_materialized", flush=True)
+            startup_logger.info("FVM mesh is ready", flush=True)
     except BaseException as error:
         mesh_error = error
     try:
@@ -425,7 +425,7 @@ def create_fvm_solver(
     except BaseException as error:
         if startup_logger is not None:
             try:
-                startup_logger.warning("component=fvm_startup status=failed", flush=True)
+                startup_logger.warning("FVM initialization failed", flush=True)
                 startup_logger.close(status="failed", failure=error)
             except BaseException:
                 pass

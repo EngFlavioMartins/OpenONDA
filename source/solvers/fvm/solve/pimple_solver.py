@@ -46,7 +46,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
         pimple_defaults = {
             "n_correctors": 2,
-            "n_orthogonal_correctors": 0,
+            "n_nonorthogonal_correctors": 0,
             "velocity_relaxation": 1.0,
             "pressure_relaxation": 1.0,
             "max_iterations": 20,
@@ -338,12 +338,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             pressure_geometry = None
 
             for _corr in range(n_corr):
-                n_non_ortho = int(
-                    self.params.get(
-                        "n_nonorthogonal_correctors",
-                        self.params.get("n_orthogonal_correctors", 0),
-                    )
-                )
+                n_non_ortho = int(self.params["n_nonorthogonal_correctors"])
                 pressure_before_nonorthogonal_sweeps = kinematic_pressure[:n_elem].copy()
                 frozen_velocity_h_over_a = None
                 for non_ortho in range(n_non_ortho + 1):

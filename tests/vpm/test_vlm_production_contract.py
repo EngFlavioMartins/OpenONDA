@@ -1,13 +1,14 @@
 """Physical backup fields and cross-surface wake response on real VPM states."""
 
+from types import SimpleNamespace
+
 from _flat_plate_geometry import create_flat_plate
 import h5py
 import numpy as np
-import pytest
 import pyvista as pv
 
 import openonda.vpm as vpm
-from source.solvers.vpm.config.health import HealthError
+from source.solvers.vpm.coupling.stepper import CouplingStepper
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.induction.base import StageState
 from source.solvers.vpm.physics.stage_rhs import _StageParticleView
@@ -48,7 +49,6 @@ def _case(directory, *, responsive=False):
                 dtype="f64",
                 kinematic_viscosity=0.0,
                 wake_core_overlap=2.5,
-                surface_event_policy="ignore",
                 boundary_response="responsive" if responsive else "lagged",
                 force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
             ),
@@ -222,26 +222,44 @@ def test_other_surface_wake_changes_receiving_circulation_without_group_filter(t
         solver.close()
 
 
-def test_surface_event_output_is_published_only_after_acceptance(tmp_path, monkeypatch):
-    """Strict failed trials must not acquire accepted event timestamps/files."""
-    solver = vpm.VPMSolver(_case(tmp_path))
-    writes = []
-    try:
-        vlm = solver.vlm_solver
+def test_coupling_stepper_runs_coupling_when_wake_release_is_disabled():
+    calls = []
 
-        def record(records, *, step, time, **kwargs):
-            assert step == solver.step
-            assert time == solver.time
-            writes.append(step)
+    def fake_advance_coupled(particles, physics, config, time_step_size, step, time, release_wake):
+        calls.append((time_step_size, release_wake))
+        if not release_wake:
+            return None
+        return {
+            "_gpu_transfer_ready": True,
+            "vertex_position": np.zeros((0, 3)),
+            "velocity": np.zeros((0, 3)),
+            "vortex_strength": np.zeros((0, 3)),
+            "core_radius": np.zeros(0),
+            "particle_volume": np.zeros(0),
+        }
 
-        monkeypatch.setattr(vlm, "write_surface_event_outputs", record)
-        solver.advance(defer_output=True)
-        assert writes == [1]
-        vlm._unresolved_penetration_policy = "strict"
-        monkeypatch.setattr(vlm, "_resolve_surface_warning", lambda *args: "test rejection")
-        with pytest.raises(HealthError, match="test rejection"):
-            solver.advance(defer_output=True)
-        assert solver.step == 1
-        assert writes == [1]
-    finally:
-        solver.close()
+    added = []
+
+    solver = SimpleNamespace(
+        vlm_solver=SimpleNamespace(advance_coupled=fake_advance_coupled),
+        particles=SimpleNamespace(),
+        physics=SimpleNamespace(),
+        setup=SimpleNamespace(),
+        stepper=SimpleNamespace(time=0.25, step=3),
+        _release_wake_particles=False,
+        _release_interval=0.4,
+        time_step_size=0.5,
+        add_vortex_particles=lambda **kwargs: added.append(kwargs),
+    )
+
+    stepper = CouplingStepper(solver)
+    stepper.advance_vlm(0.2)
+
+    assert calls == [(0.4, False)]
+    assert added == []
+
+    solver._release_wake_particles = True
+    stepper.advance_vlm(0.2)
+
+    assert calls[-1] == (0.4, True)
+    assert len(added) == 1

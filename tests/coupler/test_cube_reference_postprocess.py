@@ -168,11 +168,95 @@ def test_cube_grid_runner_matches_the_declarative_cylinder_style():
     assert "postprocess_grid_study.py" not in script
     assert "run_case" not in script
     for name, spacing in (
-        ("very_coarse", "0.22"),
-        ("coarse", "0.20"),
-        ("medium", "0.18"),
-        ("fine", "0.16"),
-        ("very_fine", "0.14"),
+        ("very_coarse", "0.12"),
+        ("coarse", "0.10"),
+        ("medium", "0.08"),
+        ("fine", "0.06"),
     ):
         assert f"python setup.py --name {name}" in script
         assert f"--dx {spacing}" in script
+
+
+def test_frequency_screen_rejects_window_drift_and_short_periodic_record():
+    module = _load_postprocessor()
+    time = np.linspace(15, 30, 301)
+    for signal in (time * 0.001, np.exp((time - 30) / 5), np.sin(2 * np.pi * 0.2 * time)):
+        result = module._frequency_diagnostic(time, signal)
+        assert result["strouhal"] is None
+        assert "fewer than five cycles" in result["reason"]
+    assert module._frequency_diagnostic(time, np.ones_like(time))["strouhal"] is None
+
+
+def test_resolved_frequency_uses_recorded_physical_scales():
+    module = _load_postprocessor()
+    time = np.linspace(0, 100, 2001)
+    signal = 0.02 + 0.1 * np.sin(2 * np.pi * 0.2 * time)
+    result = module._frequency_diagnostic(time, signal, length=2, speed=4)
+    assert result["reason"] is None
+    assert result["strouhal"] == pytest.approx(0.1, rel=0.005)
+    assert result["strouhal_resolution"] == pytest.approx(0.005)
+
+
+def test_statistics_expose_drift_and_preserve_pressure_viscous_drag_closure():
+    module = _load_postprocessor()
+    time = np.array([0.0, 0.1, 0.7, 1.5, 2.0])
+    pressure = 1.0 + time
+    viscous = -0.05 * np.ones_like(time)
+    history = module.ForceHistory(
+        time,
+        {
+            "drag_coefficient": (pressure + viscous) / 2,
+            "pressure_force_x": pressure,
+            "viscous_force_x": viscous,
+        },
+    )
+    result = module._force_statistics(
+        history, 0, 2, context={"length": 1, "speed": 1, "force_scale": 2}
+    )
+    assert result["mean_drag"] == pytest.approx(0.975)
+    assert result["drag_half_means"] == pytest.approx([0.725, 1.225])
+    assert result["drag_drift_relative"] == pytest.approx(0.5 / 0.975)
+    assert result["mean_pressure_drag"] + result["mean_viscous_drag"] == pytest.approx(
+        result["mean_drag"]
+    )
+    assert result["strouhal_lift"] is None
+
+
+def test_report_withholds_gci_during_drift_and_prints_statistics(tmp_path, monkeypatch, capsys):
+    module = _load_postprocessor()
+    for function in ("_plot_force_metrics", "_plot_profiles", "_plot_histories"):
+        monkeypatch.setattr(module, function, lambda *args, **kwargs: None)
+    samples = tmp_path / "samples"
+    for name, spacing, cells in (("coarse", 0.2, 100), ("medium", 0.1, 200), ("fine", 0.05, 400)):
+        _write_grid(samples, name, spacing, cells)
+        path = samples / name / "forces_history.csv"
+        rows = list(csv.DictReader(path.open()))
+        for row in rows:
+            row["drag_coefficient"] = str(
+                float(row["drag_coefficient"]) - 0.01 * float(row["time"])
+            )
+        with path.open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    report = module.analyse_grid_convergence(samples, tmp_path / "output")
+    assert not report["convergence"]["mean_drag"]["richardson"]["available"]
+    assert "drift" in report["convergence"]["mean_drag"]["richardson"]["reason"]
+    module.print_statistics(report)
+    printed = capsys.readouterr().out
+    assert "Mean Cd" in printed and "Cd drift" in printed and "St lift" in printed
+    assert "NOT ESTABLISHED" in printed
+
+
+def test_recorded_setting_changes_are_detected():
+    module = _load_postprocessor()
+    baseline = {
+        "configuration": {"schemes": "backward"},
+        "domain_bounds": [-1, 1],
+        "mesh_controls": {"method": "same"},
+        "warnings": [],
+    }
+    changed = {**baseline, "domain_bounds": [-2, 2]}
+    report = module._comparability({"medium": changed, "fine": baseline}, "fine")
+    assert not report["matching_recorded_settings"]
+    assert report["differences_to_reference"] == {"medium": ["domain_bounds"]}

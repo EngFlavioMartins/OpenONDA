@@ -1,6 +1,5 @@
 """
-Upgraded PanelSolver orchestration.
-==================
+Boundary-element panel solver.
 Main solver class managing PanelLattice, linear solvers, and force computation.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
@@ -11,7 +10,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from dataclasses import dataclass
 import json
-import logging
 import os
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal
@@ -19,8 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import taichi as ti
 
-from source import log_style
-
+from ....io.logging import Logging
 from ..coupling import kinematics as kin_module
 from ..coupling.kinematics import BodyPose
 from ..kernels.far_field import (
@@ -55,8 +52,6 @@ from .linear_solvers import (
 )
 from .mesh import load_and_audit_body_stl, upload_body_to_lattice
 from .vtk_export import panel_mesh_to_vtp
-
-logger = logging.getLogger("vpm")
 
 if TYPE_CHECKING:
     from source.solvers.vpm.config.case import Numerics
@@ -202,7 +197,9 @@ class PanelSolver:
         density: float = 1.225,
         freestream_velocity: np.ndarray | None = None,
         logging_interval_steps: int = 1,
-        coupling_scope: Literal["full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"] = "full",
+        coupling_scope: Literal[
+            "full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"
+        ] = "full",
         raise_on_non_convergence: bool = True,
         memory_budget_bytes: int = 4 * 1024**3,
         diagnostic_interval_steps: int = 0,
@@ -305,7 +302,13 @@ class PanelSolver:
             None if freestream_velocity is None else np.array(freestream_velocity, dtype=np.float64)
         )
         self.logging_interval_steps = max(1, int(logging_interval_steps))
-        if coupling_scope not in ("full", "vpm_boundary_condition", "fvm_vpm", "normal", "pressure"):
+        if coupling_scope not in (
+            "full",
+            "vpm_boundary_condition",
+            "fvm_vpm",
+            "normal",
+            "pressure",
+        ):
             raise ValueError(
                 "coupling_scope must be 'full', 'vpm_boundary_condition', 'fvm_vpm', 'normal', or 'pressure'"
             )
@@ -436,15 +439,11 @@ class PanelSolver:
                 self.max_n_panels, ti_dtype, residual_tolerance=tolerance
             )
 
-        print(
-            log_style.record(
-                "vpm",
-                "panel solver initialized",
-                ("panels, max", f"{self.max_n_panels:,}"),
-                ("precision", str(self.float_dtype)),
-                ("linear solver", str(self.linear_solver_name)),
-                stamped=True,
-            )
+        Logging.record(
+            "panel solver initialized",
+            ("panel capacity", self.max_n_panels),
+            ("precision", self.float_dtype),
+            ("linear solver", self.linear_solver_name),
         )
 
     def add_surface(
@@ -599,9 +598,8 @@ class PanelSolver:
             kin_type = kin_data.get("type")
             try:
                 kin_cls = getattr(kin_module, kin_type)
-            except AttributeError:
-                print(f"Warning: Unknown kinematics type '{kin_type}', defaulting to StaticPanel")
-                kin_cls = kin_module.StaticPanel
+            except AttributeError as error:
+                raise ValueError(f"Unknown panel kinematics type {kin_type!r}") from error
 
             kin_kwargs = {k: v for k, v in kin_data.items() if k != "type"}
             for k, v in kin_kwargs.items():
@@ -1076,7 +1074,7 @@ class PanelSolver:
                 )
             if self.raise_on_non_convergence:
                 raise RuntimeError(message)
-            logger.error(message)
+            Logging.error(message)
         self._solved = success
         no_penetration_residual = float("nan")
         max_no_penetration_residual = float("nan")
@@ -1181,7 +1179,7 @@ class PanelSolver:
             }
         )
         if self.step % self.logging_interval_steps == 0:
-            logger.info(
+            Logging.info(
                 "[Panel] panels=%d precision=%s equation_residual=%.3e "
                 "convergence/tolerance=%.3e iterations=%s no_penetration=%.3e "
                 "net_source_flux=%s constraint=%.3e projected_optimality=%.3e "
@@ -1410,7 +1408,7 @@ class PanelSolver:
         self.results["force_history"].append(total_forces)
 
         for gid, f in total_forces.items():
-            logger.info(f"Step {self.step}: Group {gid} Force = {f}")
+            Logging.info(f"Step {self.step}: Group {gid} Force = {f}")
         return total_forces
 
     def compute_loads(
@@ -1538,9 +1536,14 @@ class PanelSolver:
         self._ensure_initialized()
         points = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
         count = self.lattice.n_panels
-        arrays = [np.ascontiguousarray(field.to_numpy()[:count], dtype=np.float64)
-                  for field in (self.lattice.vertex_position, self.lattice.normal,
-                                self.lattice.source_strength)]
+        arrays = [
+            np.ascontiguousarray(field.to_numpy()[:count], dtype=np.float64)
+            for field in (
+                self.lattice.vertex_position,
+                self.lattice.normal,
+                self.lattice.source_strength,
+            )
+        ]
         velocity = np.zeros_like(points)
         compute_source_induced_velocity_kernel(*arrays, points, velocity)
         return velocity
@@ -1573,7 +1576,8 @@ class PanelSolver:
 
             count = self.lattice.n_panels
             return source_panel_gradient(
-                points, self.lattice.vertex_position.to_numpy()[:count],
+                points,
+                self.lattice.vertex_position.to_numpy()[:count],
                 self.lattice.source_strength.to_numpy()[:count],
             )
 
@@ -1690,12 +1694,9 @@ class PanelSolver:
             self.compute_loads(freestream_velocity, wake_velocity, time_step_size, self.density)
             log_freq = self.logging_interval_steps
             if log_freq > 0 and self.step % log_freq == 0:
-                try:
-                    self.log_forces_table(self.density, freestream_velocity)
-                except Exception as e:
-                    print(f"   (Warning) Could not compute panel forces: {e}")
+                self.log_forces_table(self.density, freestream_velocity)
         elif self.coupling_scope != "vpm_boundary_condition":
-            logger.info(
+            Logging.info(
                 "[Panel] Steady Bernoulli force post-processing skipped for moving body motion; "
                 "unsteady forces are unsupported."
             )
@@ -2043,7 +2044,7 @@ class PanelSolver:
         particles.n_particles_total = n_keep
         particles.sync_device_counter()
 
-        print(f"   (Panel) Absorbed {n_removed} particles impinging on surface.")
+        Logging.record("panel particle absorption", ("removed", n_removed))
         return n_removed
 
     def compute_postprocess(
@@ -2246,80 +2247,28 @@ class PanelSolver:
 
     def log_forces_table(
         self, density: float, reference_velocity: np.ndarray | None = None
-    ) -> dict[str, float]:
+    ) -> dict[str, float | np.ndarray]:
+        """Compute boundary loads and report them through the owning Logging.
+
+        Parameters
+        ----------
+        density : float
+            Fluid density in kg/m³.
+        reference_velocity : numpy.ndarray or None
+            Wind-axis reference vector, shape (3,), in m/s. None uses the
+            owning force model's reference velocity.
+
+        Returns
+        -------
+        dict[str, float or numpy.ndarray]
+            Native scalar coefficients and force/reference vectors. Loads are
+            in N, moments in N m, and reference positions in m. Coefficients
+            are dimensionless.
         """
-        Log panel forces in a formatted table matching VLM diagnostics style.
-
-        Prints per-surface forces and total forces with descriptions.
-
-        Args:
-            density: Fluid density (kg/m^3)
-            reference_velocity: Reference velocity vector
-
-        Returns:
-            Dictionary of force coefficients
-        """
-        print("\n" + "-" * 60)
-        print("PANEL AERODYNAMIC FORCES")
-        print("-" * 60)
-        method_name = self.force_config.method
-        print(f"  Force computation method: {method_name}")
-        print("    lift = force perpendicular to freestream")
-        print("    drag = force parallel to freestream")
-        print("    lift_coefficient, drag_coefficient = normalized force coefficients")
-        print()
-
-        # Get total forces
-        total_forces = self.compute_forces_coefficients(density, reference_velocity)
-        surface_forces = self.compute_per_surface_forces(density, reference_velocity)
-
-        if len(surface_forces) > 1:
-            print(
-                f"  {'Body':<15} {'lift [N]':>12} {'drag [N]':>12} "
-                f"{'lift_coefficient':>18} {'drag_coefficient':>18} {'Panels':>8}"
-            )
-            print(f"  {'-' * 15} {'-' * 12} {'-' * 12} {'-' * 18} {'-' * 18} {'-' * 8}")
-            for uid, forces in surface_forces.items():
-                print(
-                    f"  {uid:<15} {forces['lift']:>12.3f} {forces['drag']:>12.3f} "
-                    f"{forces['lift_coefficient']:>18.3f} {forces['drag_coefficient']:>18.3f} "
-                    f"{forces['panel_count']:>8}"
-                )
-            print(f"  {'-' * 15} {'-' * 12} {'-' * 12} {'-' * 18} {'-' * 18} {'-' * 8}")
-
-        # Print totals
-        L = total_forces.get("lift", 0.0)
-        D = total_forces.get("drag", 0.0)
-        lift_coefficient = total_forces.get("lift_coefficient", 0.0)
-        drag_coefficient = total_forces.get("drag_coefficient", 0.0)
-        side_force_coefficient = total_forces.get("side_force_coefficient", 0.0)
-        L_D = L / D if abs(D) > 1e-10 else float("inf")
-
-        print(
-            f"  {'TOTAL':<15} {L:>12.3f} {D:>12.3f} {lift_coefficient:>10.3f} {drag_coefficient:>10.3f}"
-        )
-        print()
-        print(f"  Lift/Drag Ratio (L/D)    : {L_D:.2f}")
-        print(f"  Side-force coefficient   : {side_force_coefficient:.3f}")
-
-        # Moments
-        rolling_moment_coefficient = total_forces.get("rolling_moment_coefficient", 0.0)
-        pitching_moment_coefficient = total_forces.get("pitching_moment_coefficient", 0.0)
-        yawing_moment_coefficient = total_forces.get("yawing_moment_coefficient", 0.0)
-
-        print()
-        print("  Moment Coefficients:")
-        print(f"    rolling_moment_coefficient : {rolling_moment_coefficient:>12.3f}")
-        print(f"    pitching_moment_coefficient: {pitching_moment_coefficient:>12.3f}")
-        print(f"    yawing_moment_coefficient  : {yawing_moment_coefficient:>12.3f}")
-
-        if "reference_point" in total_forces:
-            r = total_forces["reference_point"]
-            print(f"    Ref Center   : [{r[0]:.3f}, {r[1]:.3f}, {r[2]:.3f}]")
-
-        print("-" * 60, flush=True)
-
-        return total_forces
+        totals = self.compute_forces_coefficients(density, reference_velocity)
+        surfaces = self.compute_per_surface_forces(density, reference_velocity)
+        Logging.boundary_forces("Panel", totals, surfaces)
+        return totals
 
     def compute_per_surface_forces(
         self,

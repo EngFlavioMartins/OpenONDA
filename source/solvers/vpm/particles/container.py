@@ -1093,26 +1093,28 @@ class Particles:
 
     def _log_population(self, change: log_style.Row) -> None:
         """Report the population left behind by an operation that changed it."""
+        if not Logging._routine_messages_enabled:
+            return
         total = int(self.n_particles_total)
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
         Logging.record(
             "particles",
             change,
-            ("count", f"{total:,}"),
-            ("capacity", f"{capacity:,}"),
-            ("utilization", f"{fraction:.1f}", "%"),
+            ("count", total),
+            ("capacity", capacity),
+            ("utilization", fraction, "%"),
         )
 
     def _log_particles_added(self, count: int) -> None:
         """Report initial population and capacity warnings; progress reports later growth."""
         self._warn_near_capacity()
         if self.n_particles_total == count:
-            self._log_population(("added", f"{int(count):,}"))
+            self._log_population(("added", count))
 
     def _log_particles_replaced(self, previous: int) -> None:
         """Report the population after the whole cloud was replaced."""
-        self._log_population(("count, previous", f"{int(previous):,}"))
+        self._log_population(("count, previous", previous))
 
     def add_vortex_particle(
         self,
@@ -1757,9 +1759,9 @@ class Particles:
         export is skipped with a warning.
         """
         if not HAS_PYVISTA:
-            Logging.warning(
-                f"[Output] status=skipped format=vtk reason=pyvista_unavailable "
-                f"path={particle_file_name}"
+            Logging.warning_record(
+                "VTK export skipped: PyVista is unavailable",
+                ("output path", particle_file_name),
             )
             return
 
@@ -1889,7 +1891,7 @@ class Particles:
 
         max_strength_global = np.max(vortex_strength_magnitudes)
         if max_strength_global == 0:
-            Logging.warning("component=particle_pruning status=skipped reason=zero_strength_field")
+            Logging.warning("Particle pruning skipped because the vortex-strength field is zero")
             return np.empty(0, dtype=np.int64)
         else:
             cutoff = (percent / 100.0) * max_strength_global
@@ -1900,9 +1902,9 @@ class Particles:
         if len(indices_to_remove) > 0:
             # Safety cap: never remove ALL particles via weak-removal (keep at least 1)
             if len(indices_to_remove) >= N:
-                Logging.warning(
-                    "component=particle_pruning status=skipped "
-                    f"reason=all_particles_selected count={N}"
+                Logging.warning_record(
+                    "Particle pruning skipped: all particles were selected for removal",
+                    ("particles retained", N),
                 )
                 return np.empty(0, dtype=np.int64)
 

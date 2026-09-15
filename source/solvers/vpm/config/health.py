@@ -86,6 +86,8 @@ class DivergenceLimit:
     maximum : float or None, optional
         Non-negative dimensionless threshold for the weighted divergence metric
         reported by :func:`discretization_health`; ``None`` disables the gate.
+        The solver confirms sampled crossings using all distinct blobs before
+        enforcing this threshold.
     """
 
     maximum: float | None = None
@@ -103,6 +105,7 @@ class MisalignmentLimit:
     maximum_degrees : float or None, optional
         Mean angular threshold in degrees, in ``[0, 180]``. ``None`` disables
         the gate. This metric compares particle ``Gamma`` to sampled ``omega``.
+        A sampled crossing is confirmed over all distinct blobs before stopping.
     """
 
     maximum_degrees: float | None = None
@@ -200,11 +203,6 @@ class HealthSnapshot:
     maximum_vorticity: float
     strain_increment_infinity_particle: int = -1
     strain_increment_spectral_particle: int = -1
-
-    @property
-    def lagrangian_cfl(self) -> float:
-        """Compatibility alias for the legacy health-limit storage field."""
-        return self.strain_increment_infinity
 
 
 def strain_increments(
@@ -385,10 +383,19 @@ def accepted_step_health(
         limits.lagrangian_cfl.maximum is not None
         and strain_increment_infinity > limits.lagrangian_cfl.maximum
     ):
+        maximum = limits.lagrangian_cfl.maximum
+        strain_rate = strain_increment_infinity / float(time_step_size)
+        limiting_position = arrays["position"][infinity_particle]
+        position_text = ", ".join(f"{coordinate:.9g}" for coordinate in limiting_position)
         raise HealthError(
             f"VPM accepted state at step {step}: Lagrangian CFL number "
-            f"{strain_increment_infinity:.3g} (strain increment infinity norm) exceeds "
-            f"maximum={limits.lagrangian_cfl.maximum:.3g}; reduce time_step_size."
+            f"{strain_increment_infinity:.9g} (strain increment infinity norm) exceeds "
+            f"maximum={maximum:.9g}; particle={infinity_particle}, "
+            f"position=({position_text}) m, strain_rate={strain_rate:.9g} 1/s, "
+            f"time_step_size={time_step_size:.9g} s. "
+            f"The frozen-state time-step ceiling is {maximum / strain_rate:.9g} s. "
+            "Reduce time_step_size with a safety margin; if strain keeps growing, "
+            "check spatial resolution and vorticity divergence/alignment as well."
         )
     if (
         limits.maximum_particle_strength.maximum is not None

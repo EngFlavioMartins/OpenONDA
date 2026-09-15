@@ -1,15 +1,10 @@
 """Scheduled diagnostics retain their physical filter and do not alter output clocks."""
 
-from dataclasses import replace
-
-from _flat_plate_geometry import create_flat_plate
 import numpy as np
 import pytest
 import taichi as ti
 
 from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.vpm.boundary_elements.vlm.solver.restart import restart_identity
-from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction.direct import DirectInduction
 from source.solvers.vpm.physics.induction.treecode.evaluator import TreecodeInduction
@@ -73,24 +68,6 @@ def test_uniform_transport_filter_backend_matches_direct_and_retains_sources(bac
     assert "uniform_target_core" in physics.transport_target_operator_label(
         use_induction_backend=True
     )
-
-
-def test_sampling_cadence_is_explicit_and_strict_policy_cannot_skip_intervals():
-    """Change observation cadence without changing restart numerical identity."""
-    plate = create_flat_plate(chord=1, span=1, n_chordwise_panels=1, n_spanwise_panels=1)
-    setup = VLMSetup(surfaces=(VLMSurfaceSetup(plate),))
-    every = VLMSolver(setup)
-    sampled = VLMSolver(replace(setup, surface_diagnostics_interval_steps=10))
-    every.generate_mesh()
-    sampled.generate_mesh()
-    assert restart_identity(every) == restart_identity(sampled)
-    assert [i for i in range(1, 22) if sampled.surface_diagnostics_due(i)] == [1, 10, 20]
-    assert sampled.logging_interval_steps == every.logging_interval_steps == 1
-    with pytest.raises(ValueError, match="strict"):
-        replace(setup, surface_diagnostics_interval_steps=10, surface_event_policy="strict")
-    for value in (0, -1, True, 1.5):
-        with pytest.raises(ValueError, match="positive integer"):
-            replace(setup, surface_diagnostics_interval_steps=value)
 
 
 @pytest.mark.parametrize("backend", [DirectInduction, TreecodeInduction])

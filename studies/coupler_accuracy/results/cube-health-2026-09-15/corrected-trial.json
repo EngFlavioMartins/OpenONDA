@@ -1,0 +1,13 @@
+{
+  "checkpoint": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/backups",
+  "checkpoint_manifest_sha256": "e94894f1165433564ee76026b9bea65e27da1f8af6a0df1a7399f81617725f15",
+  "relaxation_rate_per_second": 10.0,
+  "relaxation_factor_per_step": 0.1,
+  "preserve_moments": true,
+  "maximum_steps": 60,
+  "status": "stopped_at_user_request",
+  "last_accepted_step": 1577,
+  "last_accepted_time": 15.77,
+  "full_run_validated": false,
+  "diagnostic_note": "Recorded strain increments in this trial use float32 arithmetic; the solver health guard uses float64. No health failure occurred through the last accepted step."
+}

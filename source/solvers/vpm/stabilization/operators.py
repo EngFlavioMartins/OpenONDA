@@ -6,8 +6,8 @@ and no linear solve.  They are the cheapest entries in the stabilization
 hierarchy; the moment-constrained mechanisms (filament refinement, Winckelmans
 projection, conservative regularization) live beside them in this package.
 
-``apply_stretching_viscosity``
-    Adds a stretching-aware residual viscosity to ``effective_viscosity``, so the energy it
+``apply_selective_eddy_viscosity``
+    Adds selective eddy viscosity to ``effective_viscosity``, so the energy it
     removes leaves through the configured viscous operator and is auditable as
     viscous dissipation rather than as an unreported clip.
 
@@ -68,7 +68,7 @@ class StabilizationOperators:
         self._pedrizzetti_relaxed_count = ti.field(dtype=ti.i32, shape=())
 
     @ti.kernel
-    def _apply_stretching_viscosity_kernel(
+    def _apply_selective_eddy_viscosity_kernel(
         self,
         vortex_strength_field: ti.template(),
         strain_rate: ti.template(),
@@ -102,8 +102,14 @@ class StabilizationOperators:
             if stabilization_kinematic_viscosity > 0.0:
                 ti.atomic_add(self._stabilization_kinematic_viscosity_active[None], 1)
 
-    def apply_stretching_viscosity(self, particles, coefficient: float) -> dict[str, float]:
-        """Add positive-production residual viscosity to ``effective_viscosity``.
+    def apply_selective_eddy_viscosity(self, particles, coefficient: float) -> dict[str, float]:
+        """Add positive-production selective eddy viscosity to ``effective_viscosity``.
+
+        Winckelmans (1995), CTR annual brief, Eq. (26), version 2:
+        nu_t = 2 (C_w h)^2 max(omega.S.omega / |omega|^2, 0).
+        Here h=V**(1/3), the particle strength supplies the direction, and
+        ``coefficient = 2*C_w**2``. This is a particle approximation to that
+        model, not a calibrated DNS correction.
 
         ``particles.strain_rate`` must describe the same state as the current
         particle vortex_strength.  The returned statistics are used only for audit
@@ -119,7 +125,7 @@ class StabilizationOperators:
                 "max_stabilization_kinematic_viscosity": 0.0,
                 "stabilization_kinematic_viscosity_active_fraction": 0.0,
             }
-        self._apply_stretching_viscosity_kernel(
+        self._apply_selective_eddy_viscosity_kernel(
             particles.vortex_strength,
             particles.strain_rate,
             particles.particle_volume,

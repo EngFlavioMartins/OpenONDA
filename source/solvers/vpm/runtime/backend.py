@@ -13,24 +13,21 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import contextlib
 import gc
 import glob
-import logging
+from io import StringIO
 import os
 import platform
 import re
 import shutil
 import subprocess
-import sys
 import threading
 import weakref
 
 import taichi as ti
 
 from openonda.runtime import worker_thread_count
-from source import log_style
+from source.solvers.vpm.io.logging import Logging
 
 from ..config import constants as constants_module
-
-_logger = logging.getLogger(__name__)
 
 # Taichi owns one process-global runtime.  VPM solvers may share that runtime
 # only when they use the same effective backend/precision.  A weak owner set
@@ -137,9 +134,9 @@ def _clear_stale_taichi_cache() -> None:
             try:
                 shutil.rmtree(cache_dir)
                 os.makedirs(cache_dir, exist_ok=True)
-                _logger.debug("Cleared stale Taichi cache at %s", cache_dir)
+                Logging.debug("Cleared stale Taichi cache at %s", cache_dir)
             except OSError as exc:
-                _logger.debug("Could not clear Taichi cache at %s: %s", cache_dir, exc)
+                Logging.debug("Could not clear Taichi cache at %s: %s", cache_dir, exc)
 
     # Keep an explicitly selected cache path active.  It has just been
     # cleared above, and callers use this override when the default user cache
@@ -243,15 +240,10 @@ def _safe_device_memory_for_init(
         if _is_apple_silicon():
             # Apple Silicon: GPU shares system RAM (unified memory).
             # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
-            print(
-                log_style.record(
-                    "vpm",
-                    "backend METAL",
-                    ("memory pool", "runtime managed"),
-                    ("memory architecture", "unified"),
-                    stamped=True,
-                ),
-                file=sys.stderr,
+            Logging.record(
+                "backend METAL",
+                ("memory pool", "runtime managed"),
+                ("memory architecture", "unified"),
             )
             return {}
         # Intel Mac with discrete GPU: Metal still manages memory itself.
@@ -285,16 +277,11 @@ def _safe_device_memory_for_init(
         pool_gb = pool / (1 << 30)
         budget_mb = budget_info[1] / (1 << 20) if budget_info else -1
 
-        print(
-            log_style.record(
-                "vpm",
-                f"backend {backend}",
-                ("memory pool", f"{pool_mb:.0f}", "MiB"),
-                ("device budget", f"{budget_mb:.0f}", "MiB"),
-                ("gpu type", "integrated"),
-                stamped=True,
-            ),
-            file=sys.stderr,
+        Logging.record(
+            f"backend {backend}",
+            ("memory pool", f"{pool_mb:.0f}", "MiB"),
+            ("device budget", f"{budget_mb:.0f}", "MiB"),
+            ("gpu type", "integrated"),
         )
         return {"device_memory_GB": pool_gb}
 
@@ -546,16 +533,11 @@ def initialize_taichi_backend(
     # Clamp to a safe range.
     clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
     if clamped_fraction != device_memory_fraction:
-        print(
-            log_style.record(
-                "vpm",
-                "warning  backend memory fraction clamped",
-                ("requested", f"{device_memory_fraction:.3g}"),
-                ("applied", f"{clamped_fraction:.3g}"),
-                ("allowed range", "[0.1, 0.7]"),
-                stamped=True,
-            ),
-            file=sys.stderr,
+        Logging.record(
+            "warning  backend memory fraction clamped",
+            ("requested", f"{device_memory_fraction:.3g}"),
+            ("applied", f"{clamped_fraction:.3g}"),
+            ("allowed range", "[0.1, 0.7]"),
         )
     device_memory_fraction = clamped_fraction
 
@@ -592,7 +574,14 @@ def initialize_taichi_backend(
         constants_module.TAICHI_POOL_BYTES = _pool_bytes_from_kwargs(memory_kwargs, name)
 
         try:
-            ti.init(**init_kwargs)
+            startup_output = StringIO()
+            try:
+                with contextlib.redirect_stdout(startup_output):
+                    ti.init(**init_kwargs)
+            finally:
+                for line in startup_output.getvalue().splitlines():
+                    if not line.startswith("[Taichi] Starting on arch="):
+                        Logging.info("Taichi runtime: %s", line)
             active_arch = ti.lang.impl.current_cfg().arch
             if active_arch != arch:
                 raise RuntimeError(
@@ -602,11 +591,11 @@ def initialize_taichi_backend(
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
             _BACKEND_CONFIGURATION = (name, str(precision).lower())
-            _logger.info("backend %s initialized at precision %s", name, precision)
+            Logging.info("backend %s initialized at precision %s", name, precision)
             return name
         except Exception as exc:
             last_exc = exc
-            _logger.debug("Backend '%s' init failed: %s", name, exc)
+            Logging.debug("Backend '%s' init failed: %s", name, exc)
             # Reset any partial runtime state before trying the next candidate.
             with contextlib.suppress(Exception):
                 ti.reset()
@@ -615,5 +604,5 @@ def initialize_taichi_backend(
         raise RuntimeError(
             f"Requested Taichi backend {preferred_backend} failed to initialise"
         ) from last_exc
-    _logger.error("All Taichi backends failed to initialise (last error: %s)", last_exc)
+    Logging.error("All Taichi backends failed to initialise (last error: %s)", last_exc)
     return getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")

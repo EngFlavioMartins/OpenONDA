@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import os
 import struct
 
 import numpy as np
 
-logger = logging.getLogger("vpm")
+from source.solvers.vpm.io.logging import Logging
 
 
 def _compute_unit_normals(vertex_position: np.ndarray) -> np.ndarray:
@@ -73,10 +72,12 @@ def _try_load_stl_with_library(filepath: str) -> tuple[np.ndarray, np.ndarray] |
         if np.any(zero_normals):
             normal = normal.copy()
             normal[zero_normals] = _compute_unit_normals(vertex_position[zero_normals])
-        logger.debug(f"Loaded STL '{filepath}' using numpy-stl: {vertex_position.shape[0]} panels.")
+        Logging.debug(
+            f"Loaded STL '{filepath}' using numpy-stl: {vertex_position.shape[0]} panels."
+        )
         return vertex_position, normal
     except ImportError:
-        logger.debug("numpy-stl is unavailable; using manual STL parser.")
+        Logging.debug("numpy-stl is unavailable; using manual STL parser.")
         return None
 
 
@@ -94,7 +95,7 @@ def _detect_and_load_binary_stl(filepath: str) -> tuple[np.ndarray, np.ndarray] 
         return None
     starts_with_solid = header[:5].lower() == b"solid"
     if starts_with_solid:
-        logger.debug("Detected binary STL with 'solid' header.")
+        Logging.debug("Detected binary STL with 'solid' header.")
     return _load_stl_binary(filepath)
 
 
@@ -112,7 +113,7 @@ def _load_stl_ascii(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     if np.any(degenerate):
         normal[degenerate] = _compute_unit_normals(vertex_position[degenerate])
 
-    logger.debug(f"Loaded ASCII STL '{filepath}': {vertex_position.shape[0]} panels.")
+    Logging.debug(f"Loaded ASCII STL '{filepath}': {vertex_position.shape[0]} panels.")
     return vertex_position, normal
 
 
@@ -190,7 +191,7 @@ def _load_stl_binary(filepath: str) -> tuple[np.ndarray, np.ndarray]:
     if np.any(degenerate):
         normal[degenerate] = _compute_unit_normals(vertex_position[degenerate])
 
-    logger.debug(f"Loaded binary STL '{filepath}': {tri_count} panels.")
+    Logging.debug(f"Loaded binary STL '{filepath}': {tri_count} panels.")
     return vertex_position, normal
 
 
@@ -240,10 +241,10 @@ def save_stl(filepath: str, vertex_position: np.ndarray, normal: np.ndarray | No
         mesh.vectors = triangles.astype(np.float32)
         mesh.normals = normals_arr.astype(np.float32)
         mesh.save(filepath)
-        logger.debug(f"Saved STL '{filepath}' using numpy-stl: {panel_count} panels.")
+        Logging.debug(f"Saved STL '{filepath}' using numpy-stl: {panel_count} panels.")
         return
     except ImportError:
-        logger.debug("numpy-stl is unavailable; using manual binary STL writer.")
+        Logging.debug("numpy-stl is unavailable; using manual binary STL writer.")
 
     _save_stl_binary(filepath, triangles, normals_arr)
 
@@ -287,7 +288,7 @@ def _save_stl_binary(filepath: str, vertex_position: np.ndarray, normal: np.ndar
             )
             handle.write(packed)
 
-    logger.debug(f"Saved binary STL '{filepath}': {panel_count} panels.")
+    Logging.debug(f"Saved binary STL '{filepath}': {panel_count} panels.")
 
 
 def _unique_face_vertex_ids_from_triangles(triangles: np.ndarray, decimals: int = 12) -> np.ndarray:
@@ -314,7 +315,7 @@ def _add_neighbor(neighbors: np.ndarray, panel: int, candidate: int, max_neighbo
         if row[slot] == -1:
             row[slot] = candidate
             return
-    logger.warning(
+    Logging.warning(
         f"Panel {panel} exceeded max_neighbors={max_neighbors}; neighbor {candidate} was dropped."
     )
 
@@ -385,7 +386,7 @@ def _populate_neighbors_from_edges(
             is_te_panel[panel_refs[0]] = 1
             continue
         if len(panel_refs) > 2:
-            logger.warning(f"Non-manifold edge shared by {len(panel_refs)} panels.")
+            Logging.warning(f"Non-manifold edge shared by {len(panel_refs)} panels.")
         for panel in panel_refs:
             for nbr in panel_refs:
                 if panel != nbr:

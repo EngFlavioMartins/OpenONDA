@@ -12,7 +12,9 @@ class ParticlesLES:
 
     The current implementation wraps :class:`SmagorinskyModel` and writes
     eddy viscosity into the particle container.  Reported viscosity values are
-    in m²/s; ratios to molecular kinematic viscosity are dimensionless.
+    in m²/s; ratios to molecular kinematic viscosity are dimensionless. Host
+    statistics describe the last explicit ``update_turbulence_statistics`` call;
+    ``compute`` updates physical viscosity without synchronizing for logging.
     """
 
     def __init__(
@@ -126,12 +128,18 @@ class ParticlesLES:
             self.max_eddy_viscosity_ratio = 0.0
             return
         self.model.compute(particles, time_step_size)
-        self.update_turbulence_statistics(particles)
 
     def update_turbulence_statistics(self, particles) -> None:
-        """Reduce active eddy-viscosity extrema and molecular-viscosity ratios."""
+        """Sample active viscosity extrema and ratios on the diagnostic cadence.
+
+        Updates host measurements only; particle viscosity is unchanged. The
+        physical ``compute`` path does not call this reduction or synchronize
+        merely for console output. The sampler requests it when needed.
+        """
         n_particles_total = len(particles)
         if n_particles_total == 0:
+            self.min_eddy_viscosity = self.max_eddy_viscosity = 0.0
+            self.min_eddy_viscosity_ratio = self.max_eddy_viscosity_ratio = 0.0
             return
 
         self._seed_statistics(

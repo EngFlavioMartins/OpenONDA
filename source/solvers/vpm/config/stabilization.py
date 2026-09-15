@@ -14,17 +14,19 @@ class StabilizationConfig:
 
     Parameters
     ----------
-    stretching_viscosity_coefficient : float, default=0
-        Non-negative dimensionless residual-viscosity coefficient.
-    stretching_viscosity_start_step : int, default=0
-        First accepted step on which residual viscosity may act.
-    stretching_viscosity_feedback_gain : float, default=0
+    selective_eddy_viscosity_coefficient : float, default=0
+        Selective eddy-viscosity coefficient C=2*C_w**2 (Winckelmans 1995,
+        Eq. 26, positive-production version, with h=V**(1/3)). Persisted old
+        configuration keys are translated by the backup reader.
+    selective_eddy_viscosity_start_step : int, default=0
+        First accepted step on which selective eddy viscosity may act.
+    selective_eddy_viscosity_feedback_gain : float, default=0
         Non-negative feedback gain driven by measured vorticity growth.
-    stretching_viscosity_feedback_interval_steps : int, default=5
+    selective_eddy_viscosity_feedback_interval_steps : int, default=5
         Positive feedback-update cadence.
-    stretching_viscosity_feedback_growth_limit : float, default=0.25
+    selective_eddy_viscosity_feedback_growth_limit : float, default=0.25
         Target fractional growth in ``(0, 1]``.
-    stretching_viscosity_max_coefficient : float or None, optional
+    selective_eddy_viscosity_max_coefficient : float or None, optional
         Optional coefficient ceiling, no smaller than the initial coefficient.
     pedrizzetti_relaxation_factor : float, default=0
         Blend fraction in ``[0, 1]``; zero disables relaxation.
@@ -99,12 +101,12 @@ class StabilizationConfig:
     pre-event state and do not advance time.
     """
 
-    stretching_viscosity_coefficient: float = 0.0
-    stretching_viscosity_start_step: int = 0
-    stretching_viscosity_feedback_gain: float = 0.0
-    stretching_viscosity_feedback_interval_steps: int = 5
-    stretching_viscosity_feedback_growth_limit: float = 0.25
-    stretching_viscosity_max_coefficient: float | None = None
+    selective_eddy_viscosity_coefficient: float = 0.0
+    selective_eddy_viscosity_start_step: int = 0
+    selective_eddy_viscosity_feedback_gain: float = 0.0
+    selective_eddy_viscosity_feedback_interval_steps: int = 5
+    selective_eddy_viscosity_feedback_growth_limit: float = 0.25
+    selective_eddy_viscosity_max_coefficient: float | None = None
 
     pedrizzetti_relaxation_factor: float = 0.0
     pedrizzetti_relaxation_interval_steps: int = 1
@@ -128,6 +130,12 @@ class StabilizationConfig:
     regularization_tail_budget: float = 3.0e-3
     regularization_solenoidal_remesh: bool = False
     regularization_transfer_only: bool = False
+    regularization_preserve_groups: bool = False
+    """Remap each group/zone contribution and restore its moments separately.
+
+    Requires transfer-only redistribution; overlapping groups cost additional
+    particles. Labels identify vorticity contributions, not post-merger cores.
+    """
     regularization_max_particles: int | None = None
     regularization_capacity_max_particles: int | None = None
     regularization_max_events: int | None = None
@@ -152,31 +160,36 @@ class StabilizationConfig:
 
     def __post_init__(self) -> None:
         if (
-            not np.isfinite(self.stretching_viscosity_coefficient)
-            or self.stretching_viscosity_coefficient < 0.0
+            not np.isfinite(self.selective_eddy_viscosity_coefficient)
+            or self.selective_eddy_viscosity_coefficient < 0.0
         ):
-            raise ValueError("stretching_viscosity_coefficient must be finite and non-negative")
-        if self.stretching_viscosity_start_step < 0:
-            raise ValueError("stretching_viscosity_start_step must be non-negative")
+            raise ValueError("selective_eddy_viscosity_coefficient must be finite and non-negative")
+        if self.selective_eddy_viscosity_start_step < 0:
+            raise ValueError("selective_eddy_viscosity_start_step must be non-negative")
         if (
-            not np.isfinite(self.stretching_viscosity_feedback_gain)
-            or self.stretching_viscosity_feedback_gain < 0.0
-        ):
-            raise ValueError("stretching_viscosity_feedback_gain must be finite and non-negative")
-        if self.stretching_viscosity_feedback_interval_steps < 1:
-            raise ValueError("stretching_viscosity_feedback_interval_steps must be at least one")
-        if (
-            not np.isfinite(self.stretching_viscosity_feedback_growth_limit)
-            or not 0.0 < self.stretching_viscosity_feedback_growth_limit <= 1.0
-        ):
-            raise ValueError("stretching_viscosity_feedback_growth_limit must lie in (0, 1]")
-        if self.stretching_viscosity_max_coefficient is not None and (
-            not np.isfinite(self.stretching_viscosity_max_coefficient)
-            or self.stretching_viscosity_max_coefficient < self.stretching_viscosity_coefficient
+            not np.isfinite(self.selective_eddy_viscosity_feedback_gain)
+            or self.selective_eddy_viscosity_feedback_gain < 0.0
         ):
             raise ValueError(
-                "stretching_viscosity_max_coefficient must be finite and no smaller "
-                "than stretching_viscosity_coefficient"
+                "selective_eddy_viscosity_feedback_gain must be finite and non-negative"
+            )
+        if self.selective_eddy_viscosity_feedback_interval_steps < 1:
+            raise ValueError(
+                "selective_eddy_viscosity_feedback_interval_steps must be at least one"
+            )
+        if (
+            not np.isfinite(self.selective_eddy_viscosity_feedback_growth_limit)
+            or not 0.0 < self.selective_eddy_viscosity_feedback_growth_limit <= 1.0
+        ):
+            raise ValueError("selective_eddy_viscosity_feedback_growth_limit must lie in (0, 1]")
+        if self.selective_eddy_viscosity_max_coefficient is not None and (
+            not np.isfinite(self.selective_eddy_viscosity_max_coefficient)
+            or self.selective_eddy_viscosity_max_coefficient
+            < self.selective_eddy_viscosity_coefficient
+        ):
+            raise ValueError(
+                "selective_eddy_viscosity_max_coefficient must be finite and no smaller "
+                "than selective_eddy_viscosity_coefficient"
             )
         if (
             not np.isfinite(self.pedrizzetti_relaxation_factor)
@@ -208,6 +221,8 @@ class StabilizationConfig:
             raise ValueError("regularization_interval_steps must be non-negative")
         if self.regularization_transfer_only and self.regularization_solenoidal_remesh:
             raise ValueError("transfer-only redistribution cannot enable solenoidal projection")
+        if self.regularization_preserve_groups and not self.regularization_transfer_only:
+            raise ValueError("group-preserving redistribution requires transfer-only mode")
         if self.regularization_start_step < 0:
             raise ValueError("regularization_start_step must be non-negative")
         if self.regularization_interval_steps > 0 and (
@@ -313,14 +328,14 @@ class StabilizationConfig:
         return StabilizationConfig(remove_particles_by_bounds=tuple(bounds))
 
     @staticmethod
-    def stretching_viscosity(
+    def selective_eddy_viscosity(
         coefficient: float = 0.5,
         start_step: int = 0,
     ) -> "StabilizationConfig":
-        """Enable stretching-aware residual viscosity."""
+        """Enable selective eddy viscosity."""
         return StabilizationConfig(
-            stretching_viscosity_coefficient=coefficient,
-            stretching_viscosity_start_step=start_step,
+            selective_eddy_viscosity_coefficient=coefficient,
+            selective_eddy_viscosity_start_step=start_step,
         )
 
     @staticmethod
@@ -371,7 +386,7 @@ class StabilizationConfig:
     ) -> "StabilizationConfig":
         """Enable residual viscosity plus conservative redistribution."""
         return StabilizationConfig(
-            stretching_viscosity_coefficient=coefficient,
+            selective_eddy_viscosity_coefficient=coefficient,
             regularization_interval_steps=interval_steps,
             regularization_start_step=start_step,
             regularization_grid_spacing=grid_spacing,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cheng et al. Fig. 5 rings: a DNS baseline and two stabilization methods."""
+"""Cheng et al. Fig. 5 rings: a DNS baseline and three stabilization methods."""
 
 import argparse
 from dataclasses import replace
@@ -26,7 +26,12 @@ N_STEPS = 2400
 MAX_N_PARTICLES = 600_000
 TUTORIAL_DIR = Path(__file__).parent
 
-CASES = ("baseline", "stretching_viscosity", "p_moments")
+CASES = (
+    "baseline",
+    "selective_eddy_viscosity",
+    "pedrizzetti_relaxation",
+    "particle_splitting",
+)
 
 
 def create_ring(x, group):
@@ -88,6 +93,7 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
         regularization_tail_budget=0.003,
         regularization_max_particles=MAX_N_PARTICLES,
         regularization_transfer_only=True,
+        regularization_preserve_groups=True,
         regularization_divergence_trigger=None,
         regularization_misalignment_trigger=None,
         regularization_total_kinetic_energy_dissipation_limit=0.01,
@@ -131,6 +137,8 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             directory=name,
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10), initial=True),
+                vpm.RingDiagnosticsSampler(schedule=vpm.EverySteps(10), initial=True),
+                vpm.RingDiagnosticsSampler(schedule=vpm.FinalOnly()),
                 *core_section_samplers(),
             ),
         ),
@@ -148,9 +156,19 @@ def build_case(method, *, n_steps=N_STEPS, compute_device="AUTO"):
     base = case.numerics.stabilization
     if method == "baseline":
         return case
-    if method == "stretching_viscosity":
-        added = replace(base, stretching_viscosity_coefficient=0.5)
-    else:  # p_moments
+    if method == "selective_eddy_viscosity":
+        added = replace(base, selective_eddy_viscosity_coefficient=0.5)
+    elif method == "particle_splitting":
+        added = replace(
+            base,
+            filament_refinement=vpm.FilamentRefinementConfig.adaptive(
+                interval_steps=5,
+                max_vortex_strength_factor=2.0,
+                offset_fraction=0.25,
+                max_n_particles=MAX_N_PARTICLES,
+            ),
+        )
+    else:  # pedrizzetti_relaxation
         added = replace(
             base,
             pedrizzetti_relaxation_factor=0.385 * TIME_STEP_SIZE,

@@ -11,26 +11,19 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 from contextlib import contextmanager
 import copy
 import time
-import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike
 import taichi as ti
 
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
+from ....io.logging import Logging
 from ....io.manifest import _manifest_value
 from ....kernels import make_vortex_kernel
 from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
-from ..kernels.collision import (
-    SURFACE_COLLISION_EVENT_CORE_OVERLAP,
-    SURFACE_COLLISION_EVENT_INTERSECTION,
-    SURFACE_COLLISION_EVENT_NONE,
-    SURFACE_COLLISION_EVENT_SIDE_BYPASS,
-)
-from ..kernels.observer import observe_moving_surfaces
 from ..kernels.virtual_wake import make_virtual_wake_kernel
 from .field import BoundSurfaceFieldContract
 from .influence import (
@@ -58,18 +51,6 @@ from .mesh import (
 from .unsteady import add_unsteady_pressure_loads
 
 EPSILON = VLM_SMALL_VELOCITY
-
-_SURFACE_EVENT_NAMES = {
-    SURFACE_COLLISION_EVENT_NONE: "none",
-    SURFACE_COLLISION_EVENT_INTERSECTION: "intersection",
-    SURFACE_COLLISION_EVENT_SIDE_BYPASS: "side_bypass",
-    SURFACE_COLLISION_EVENT_CORE_OVERLAP: "core_overlap",
-}
-
-
-def _surface_event_name(event: int) -> str:
-    """Return a stable lowercase name for a surface-collision event code."""
-    return _SURFACE_EVENT_NAMES.get(event, "unknown")
 
 
 class VLMSolver:
@@ -126,7 +107,6 @@ class VLMSolver:
         # deliberately without changing the transport rule.
         self.bound_source_radius = float(VLM_EPSILON)
         self.boundary_response = setup.boundary_response
-        self._unresolved_penetration_policy = setup.surface_event_policy
         self.field_contract = BoundSurfaceFieldContract(
             numerical_epsilon=float(VLM_EPSILON),
             bound_source_radius=self.bound_source_radius,
@@ -188,9 +168,11 @@ class VLMSolver:
         if self.linear_solver is None:
             self.linear_solver = "SCIPY" if n_panels < 1000 else "BICGSTAB_GPU"
 
-        print(
-            f"   [VLM Solver] Initialized (max_n_panels={self.max_n_panels}, "
-            f"dtype={self.dtype}, solver={self.linear_solver})"
+        Logging.record(
+            "VLM initialized",
+            ("panel capacity", self.max_n_panels),
+            ("precision", self.dtype),
+            ("linear solver", self.linear_solver),
         )
 
     def _ensure_lattice_initialized(self) -> None:
@@ -217,15 +199,12 @@ class VLMSolver:
             runtime_fp = ti.lang.impl.get_runtime().default_fp
             vlm_fp = ti.f32 if self.dtype == "f32" else ti.f64
             if runtime_fp != vlm_fp:
-                import warnings
-
                 runtime_name = "f32" if runtime_fp == ti.f32 else "f64"
-                warnings.warn(
+                Logging.warning(
                     f"VLMSolver dtype='{self.dtype}' does not match the Taichi "
                     f"runtime precision '{runtime_name}' set by the VPM Solver.  "
                     f"Overriding VLM dtype to '{runtime_name}' to keep VPM as the "
-                    f"precision master and avoid f32/f64 conversion errors.",
-                    stacklevel=3,
+                    f"precision master and avoid f32/f64 conversion errors."
                 )
                 vlm_fp = runtime_fp
                 self.dtype = runtime_name
@@ -244,7 +223,6 @@ class VLMSolver:
         if self._mesh_generated:
             return
 
-        print("   [VLM Solver] Generating mesh...")
         t0 = time.time()
 
         generate_vlm_mesh(
@@ -280,15 +258,15 @@ class VLMSolver:
         self._aerodynamic_influence_coefficient_computed = False
         self._solved = False
 
-        t_elapsed = time.time() - t0
-        print(
-            f"   [VLM Solver] Mesh generation complete ({self.lattice.n_panels} panels in {t_elapsed:.3f}s)"
-        )
-
-        # Print summary
-        n_wings = len(self.aircraft.wings)
+        elapsed = time.time() - t0
         total_area = float(self.lattice.area.to_numpy()[: self.lattice.n_panels].sum())
-        print(f"   [VLM Solver] Wings: {n_wings}, Total area: {total_area:.4g} m²")
+        Logging.record(
+            "VLM mesh generated",
+            ("panels", self.lattice.n_panels),
+            ("wings", len(self.aircraft.wings)),
+            ("area", total_area, "m²"),
+            ("elapsed", elapsed, "s"),
+        )
 
     def _build_wing_panel_ranges(self) -> dict[str, tuple[int, int]]:
         """Build mapping from wing UID to panel range indices."""
@@ -527,9 +505,11 @@ class VLMSolver:
         }
 
         self._update_combined_aircraft()
-        print(
-            f"   [VLM Solver] Declared surface '{surface_name}' "
-            f"({aircraft.total_n_panels()} panels, group_id={setup.group_id})"
+        Logging.record(
+            "VLM surface",
+            ("name", surface_name),
+            ("panels", aircraft.total_n_panels()),
+            ("group", setup.group_id),
         )
         return surface_name
 
@@ -811,7 +791,6 @@ class VLMSolver:
         if not self._mesh_generated:
             self.generate_mesh()
 
-        # print("\nComputing aerodynamic_influence_coefficient matrix...")
         compute_aerodynamic_influence_coefficient_matrix(
             self.lattice.collocation_point,
             self.lattice.vortex_point_position,
@@ -899,12 +878,10 @@ class VLMSolver:
             "min_panel_chord": min_panel_chord,
         }
         if not stable:
-            warnings.warn(
+            Logging.warning(
                 "VLM-VPM wake convection is under-resolved: "
                 f"wake_courant_number={courant:.3g} > 1. Reduce time_step_size to "
-                f"<= {max_time_step_size:.3g} s.",
-                RuntimeWarning,
-                stacklevel=2,
+                f"<= {max_time_step_size:.3g} s."
             )
         return result
 
@@ -1017,31 +994,19 @@ class VLMSolver:
         linear_solve_end_time = time.time()
         total_time = linear_solve_end_time - solve_start_time
         if total_time > 1.0:
-            print("-" * 60)
-            print("VLM STEP PERFORMANCE")
-            print("-" * 60)
-            print(
-                "  Velocity upload          : "
-                f"{(velocity_upload_end_time - solve_start_time):.3e} s"
+            Logging.record(
+                "VLM solve timing",
+                ("velocity upload", velocity_upload_end_time - solve_start_time, "s"),
+                (
+                    "trailing directions",
+                    trailing_direction_end_time - velocity_upload_end_time,
+                    "s",
+                ),
+                ("influence matrix", influence_matrix_end_time - trailing_direction_end_time, "s"),
+                ("right-hand side", right_hand_side_end_time - influence_matrix_end_time, "s"),
+                ("linear solve", linear_solve_end_time - right_hand_side_end_time, "s"),
+                ("total", total_time, "s"),
             )
-            print(
-                "  Trailing directions      : "
-                f"{(trailing_direction_end_time - velocity_upload_end_time):.3e} s"
-            )
-            print(
-                "  Influence matrix         : "
-                f"{(influence_matrix_end_time - trailing_direction_end_time):.3e} s"
-            )
-            print(
-                "  Right-hand side          : "
-                f"{(right_hand_side_end_time - influence_matrix_end_time):.3e} s"
-            )
-            print(
-                "  Linear solver            : "
-                f"{(linear_solve_end_time - right_hand_side_end_time):.3e} s"
-            )
-            print(f"  Total                    : {total_time:.3e} s")
-            print("-" * 60)
         self._solved = True
         return circulation_np
 
@@ -1051,8 +1016,8 @@ class VLMSolver:
         The arrays are copies of the last accepted geometry.  Rigid motion is
         integrated only for the requested stage interval; no accepted lattice
         coordinate, motion history, or clock is changed.  The same helper is
-        used by stage boundary solves and the finite-surface observer so both
-        paths test the same moving geometry.
+        used by stage boundary solves and returns the same moving geometry for
+        every stage query.
         """
         reference_time = self._current_time if self._current_time is not None else 0.0
         duration = float(stage_time) - float(reference_time)
@@ -1157,8 +1122,8 @@ class VLMSolver:
         self._stage_response_active = False
         self._stage_wake_sources = []
         # Production RK stages carry an explicit identity.  Field-only
-        # diagnostic/health refreshes intentionally construct a legacy
-        # ``StageState`` with ``stage_index=None``; those queries still solve
+        # diagnostic/health refreshes construct a ``StageState`` with
+        # ``stage_index=None``; those queries still solve
         # the temporary boundary system but must not erase the telemetry from
         # the accepted step's last real RK stage.
         record_stage_telemetry = getattr(stage_state, "stage_index", None) is not None
@@ -1881,646 +1846,6 @@ class VLMSolver:
 
         return net_vortex_strength
 
-    def _last_reference_velocity_norm(self) -> float:
-        """Return a documented nonzero reference speed for residual normalisation."""
-        reference_velocity = getattr(self, "_last_reference_velocity", None)
-        if reference_velocity is not None:
-            speed = float(np.linalg.norm(reference_velocity))
-            if speed > 1.0e-10:
-                return speed
-        freestream_velocity = getattr(self, "freestream_velocity", None)
-        if freestream_velocity is None:
-            freestream_velocity = np.zeros(3)
-        speed = float(np.linalg.norm(freestream_velocity))
-        if speed > 1.0e-10:
-            return speed
-        kinematic_velocity = self.lattice.get_kinematic_velocity()
-        speed = (
-            float(np.max(np.linalg.norm(kinematic_velocity, axis=1)))
-            if kinematic_velocity.shape[0]
-            else 0.0
-        )
-        return speed if speed > 1.0e-10 else 1.0
-
-    # ------------------------------------------------------------------
-    # Surface-probe boundary leakage diagnostics (PR-1 observer)
-    # ------------------------------------------------------------------
-
-    def compute_surface_leakage(self, particles, physics):
-        """Observer-only boundary leakage at denser-than-solve surface probes.
-
-        Computes ``r_k = (u_total - u_surface).n_k`` at on-surface and
-        ±δ offset probes, then reports ``R1``, ``Rinf`` with edge/tip
-        and interior decomposition per surface.  No solver state is mutated.
-
-        Parameters
-        ----------
-        particles : Particles container
-            Current VPM particles (for particle-induced velocity).
-        physics : Induction provider
-            Must implement ``compute_target_velocity`` (freestream included).
-
-        Returns
-        -------
-        dict with keys:
-            ``reference_speed``   : documented normalisation U_ref [m/s]
-            ``R1``               : area-weighted mean |r|/U_ref (all probes)
-            ``Rinf``             : max|r|/U_ref (all probes)
-            ``edge_R1``          : R1 restricted to edge/tip probes
-            ``edge_Rinf``        : Rinf restricted to edge/tip probes
-            ``interior_R1``      : R1 restricted to interior probes
-            ``interior_Rinf``    : Rinf restricted to interior probes
-            ``collocation_R1/Rinf`` : on-surface solve-point residuals
-            ``off_grid_R1/Rinf`` : two-sided off-grid trace residuals
-            ``transport_R1/Rinf`` : finite-particle-target residuals
-            ``transport_filter_radius`` : target radius used for that field
-            ``per_surface``      : {name: {R1, Rinf, n_probes}}
-            ``panel_area``       : (n_panels,) panel areas [m^2]
-            ``edge_mask``        : (n_panels,) bool — True for edge/tip panels
-            ``n_probes``         : total number of probes
-            ``r_k``              : (n_probes,) signed normal residuals r_k [m/s]
-            ``probe_position``   : (n_probes, 3) probe positions [m]
-            ``probe_panel``      : (n_probes,) originating panel index
-            ``probe_type``       : (n_probes,) int: 0=on-surface, 1=above, -1=below
-        """
-        if not self._solved or self.lattice is None:
-            return {
-                "R1": 0.0,
-                "Rinf": 0.0,
-                "n_probes": 0,
-                "reference_speed": 0.0,
-                "panel_area": np.array([]),
-                "edge_mask": np.array([], dtype=bool),
-            }
-
-        lattice = self.lattice
-        n_panels = lattice.n_panels
-        cp = lattice.collocation_point.to_numpy()[:n_panels].astype(np.float64)
-        normal = lattice.normal.to_numpy()[:n_panels].astype(np.float64)
-        corners = lattice.panel_corner_position.to_numpy()[:n_panels].astype(np.float64)
-        te_idx = lattice.trailing_edge_index
-        vortex_pts = lattice.vortex_point_position
-        panel_corner_field = lattice.panel_corner_position
-        circulation_field = lattice.circulation
-
-        # ---- reference speed --------------------------------------------------
-        freestream_velocity = getattr(self, "freestream_velocity", None)
-        if freestream_velocity is None:
-            freestream_velocity = np.zeros(3)
-        freestream_speed = float(np.linalg.norm(freestream_velocity))
-        kinematic_velocity = lattice.get_kinematic_velocity().astype(np.float64)
-        kinematic_speed = (
-            float(np.max(np.linalg.norm(kinematic_velocity, axis=1))) if n_panels else 0.0
-        )
-        U_ref = max(freestream_speed, kinematic_speed, 1.0)
-
-        # ---- panel areas and edge-band classification -------------------------
-        cross1 = corners[:, 2] - corners[:, 0]
-        cross2 = corners[:, 3] - corners[:, 1]
-        panel_area = 0.5 * np.linalg.norm(np.cross(cross1, cross2), axis=1)
-
-        if n_panels > 0:
-            neighbour = lattice.neighbor_indices.to_numpy()[:n_panels]
-            edge_mask = np.any(neighbour < 0, axis=1)
-        else:
-            edge_mask = np.array([], dtype=bool)
-
-        # ---- dense, frame-independent probe positions ------------------------
-        # The collocation point remains a separate solve-point diagnostic.  The
-        # independent trace set is a 3x3 tensor-product quadrature in each
-        # panel's bilinear coordinates, sampled on both sides.  The offset is
-        # based on the full Euclidean panel diagonal, never an xy projection.
-        sample_uv = tuple((u, v) for u in (0.2, 0.5, 0.8) for v in (0.2, 0.5, 0.8))
-        offset_fraction = 0.08
-        probe_positions_list: list[np.ndarray] = []
-        probe_panel_list: list[int] = []
-        probe_type_list: list[int] = []
-        probe_weight_list: list[float] = []
-        probe_scale_list: list[float] = []
-        for panel in range(n_panels):
-            a, b, c, d = corners[panel]
-            diagonal = max(float(np.linalg.norm(c - a)), float(np.linalg.norm(d - b)))
-            diagonal = max(diagonal, np.finfo(float).eps)
-            offset = offset_fraction * diagonal
-            panel_weight = panel_area[panel]
-            probe_positions_list.append(cp[panel])
-            probe_panel_list.append(panel)
-            probe_type_list.append(0)
-            probe_weight_list.append(panel_weight)
-            probe_scale_list.append(offset)
-            for u, v in sample_uv:
-                point = (
-                    (1.0 - u) * (1.0 - v) * a + u * (1.0 - v) * b + u * v * c + (1.0 - u) * v * d
-                )
-                independent_weight = panel_weight / len(sample_uv)
-                for probe_type, sign in ((2, 0.0), (1, 1.0), (-1, -1.0)):
-                    probe_positions_list.append(point + sign * offset * normal[panel])
-                    probe_panel_list.append(panel)
-                    probe_type_list.append(probe_type)
-                    probe_weight_list.append(independent_weight / (1.0 if sign == 0.0 else 2.0))
-                    probe_scale_list.append(offset)
-
-        probe_positions = np.asarray(probe_positions_list, dtype=np.float64)
-        probe_panel = np.asarray(probe_panel_list, dtype=np.int32)
-        probe_type = np.asarray(probe_type_list, dtype=np.int32)
-        probe_weight = np.asarray(probe_weight_list, dtype=np.float64)
-        probe_scale = np.asarray(probe_scale_list, dtype=np.float64)
-        n_probes = len(probe_positions)
-        probe_normal = normal[probe_panel]
-
-        # ---- surface velocity at probes (rigid-body motion) -------------------
-        wing_ranges = self._build_wing_panel_ranges()
-        time = getattr(self, "_current_time", 0.0)
-        panel_motion: list[object | None] = [None] * n_panels
-        for name, (_aircraft_obj, kinematics) in self.surfaces.items():
-            panel_range = self._find_surface_panel_range(name, wing_ranges, n_panels)
-            if panel_range is not None:
-                panel_motion[slice(*panel_range)] = [kinematics] * (panel_range[1] - panel_range[0])
-        v_surface_probe = np.zeros((n_probes, 3), dtype=np.float64)
-        for probe, panel in enumerate(probe_panel):
-            motion = panel_motion[panel]
-            if motion is None or isinstance(motion, StaticVLM):
-                continue
-            angular = np.asarray(motion.get_angular_velocity(time), dtype=np.float64)
-            translation = np.asarray(motion.get_velocity(time), dtype=np.float64)
-            centre = np.asarray(getattr(motion, "rotation_centre", np.zeros(3)), dtype=np.float64)
-            v_surface_probe[probe] = translation + np.cross(
-                angular, probe_positions[probe] - centre
-            )
-
-        # ---- particle-induced velocity at probes (includes freestream) ---------
-        particle_vel = physics.compute_target_velocity(
-            particles, probe_positions, include_freestream=True
-        )
-        if particle_vel is None:
-            particle_vel = np.zeros_like(probe_positions)
-
-        # ---- bound-induced velocity at probes (Rosenhead, point-probe) --------
-        # Geometry moves, but panel/probe count is fixed after mesh generation.
-        # Reuse fields: allocating SNodes every accepted step leaks runtime
-        # storage and triggers repeated kernel specialization/compilation.
-        if getattr(self, "_leakage_workspace_size", None) != n_probes:
-            self._leakage_workspace_size = n_probes
-            self._leakage_workspace = (
-                ti.Vector.field(3, dtype=lattice.dtype, shape=n_probes),
-                ti.Vector.field(3, dtype=lattice.dtype, shape=n_probes),
-                ti.field(dtype=lattice.dtype, shape=n_probes),
-                ti.Matrix.field(3, 3, dtype=lattice.dtype, shape=n_probes),
-                ti.Vector.field(3, dtype=lattice.dtype, shape=n_probes),
-            )
-        (
-            probe_field,
-            bound_vel_field,
-            transport_radius_field,
-            transport_gradient_field,
-            transport_bound_field,
-        ) = self._leakage_workspace
-        bound_vel_field.fill(0.0)
-        probe_field.from_numpy(probe_positions.astype(lattice.np_dtype))
-
-        coupled_i32 = 1 if self._coupled_mode else 0
-        add_induced_velocity_at_targets(
-            probe_field,
-            bound_vel_field,
-            vortex_pts,
-            panel_corner_field,
-            te_idx,
-            circulation_field,
-            n_probes,
-            n_panels,
-            coupled_i32,
-        )
-        bound_vel = bound_vel_field.to_numpy()[:n_probes].astype(np.float64)
-
-        # ---- complete-field point/trace residual ------------------------------
-        u_total = particle_vel + bound_vel
-        r_k = np.sum((u_total - v_surface_probe) * probe_normal, axis=1)
-
-        # The particle RK stage uses a symmetric target/source pair radius.
-        # Compare the complete field under that same operator at representative
-        # lower/median/upper particle radii, rather than reusing the source-only
-        # arbitrary-target result above.
-        particle_core = particles.core_radius_cpu(use_cache=False).astype(np.float64)
-        if particle_core.size:
-            transport_radii = np.unique(
-                np.maximum(
-                    np.quantile(particle_core, [0.25, 0.5, 0.75]),
-                    self.field_contract.numerical_epsilon,
-                )
-            )
-        else:
-            transport_radii = np.array([self.field_contract.particle_target_radius(0.0)])
-
-        def _transport_free_wake(radius: float) -> tuple[np.ndarray, str]:
-            """Evaluate the free wake with a finite target core and report its operator."""
-            if hasattr(physics, "compute_transport_target_velocity"):
-                operator = (
-                    physics.transport_target_operator_label(use_induction_backend=True)
-                    if hasattr(physics, "transport_target_operator_label")
-                    else "symmetric_pair_radius:host_reference"
-                )
-                return (
-                    physics.compute_transport_target_velocity(
-                        particles,
-                        probe_positions,
-                        radius,
-                        include_freestream=True,
-                        use_induction_backend=True,
-                    ),
-                    operator,
-                )
-            return np.asarray(
-                particle_vel, dtype=np.float64
-            ), "fallback:source_radius_arbitrary_target"
-
-        transport_results: dict[str, dict[str, object]] = {}
-        transport_operator = ""
-        for radius in transport_radii:
-            transport_radius_field.from_numpy(
-                np.full(max(n_probes, 1), float(radius), dtype=lattice.np_dtype)
-            )
-            transport_bound_field.fill(0.0)
-            add_induced_velocity_and_gradient_at_targets(
-                probe_field,
-                transport_bound_field,
-                transport_gradient_field,
-                transport_radius_field,
-                vortex_pts,
-                panel_corner_field,
-                te_idx,
-                circulation_field,
-                n_probes,
-                n_panels,
-                coupled_i32,
-            )
-            transport_bound = transport_bound_field.to_numpy()[:n_probes].astype(np.float64)
-            transport_free, transport_operator = _transport_free_wake(float(radius))
-            transport_residual = np.sum(
-                (transport_free + transport_bound - v_surface_probe) * probe_normal,
-                axis=1,
-            )
-            transport_results[f"{float(radius):.16g}"] = {
-                "radius": float(radius),
-                "r_k": transport_residual,
-                "R1": float(
-                    np.sum(probe_weight * np.abs(transport_residual)) / (U_ref * probe_weight.sum())
-                ),
-                "Rinf": float(np.max(np.abs(transport_residual)) / U_ref),
-            }
-
-        median_index = int(np.argmin(np.abs(transport_radii - np.median(transport_radii))))
-        transport_radius = float(transport_radii[median_index])
-        transport_entry = transport_results[f"{transport_radius:.16g}"]
-        transport_r_k = np.asarray(transport_entry["r_k"], dtype=np.float64)
-        transport_R1 = float(transport_entry["R1"])
-        transport_Rinf = float(transport_entry["Rinf"])
-
-        # ---- metrics ----------------------------------------------------------
-        w = probe_weight
-        w_sum = w.sum()
-        R1 = float(np.sum(w * np.abs(r_k)) / (U_ref * w_sum)) if w_sum > 0.0 else 0.0
-        Rinf = float(np.max(np.abs(r_k)) / U_ref) if n_probes else 0.0
-
-        edge_probe = edge_mask[probe_panel]
-        interior_probe = ~edge_probe
-
-        def _r1_rinf(values, mask):
-            """Compute weighted mean and maximum normalized residual on a probe subset."""
-            wsub = w[mask]
-            wsub_sum = wsub.sum()
-            rsub = np.abs(values[mask])
-            r1 = (
-                float(np.sum(wsub * rsub) / (U_ref * wsub_sum))
-                if wsub_sum > 0.0 and mask.any()
-                else 0.0
-            )
-            rin = float(np.max(rsub) / U_ref) if mask.any() else 0.0
-            return r1, rin
-
-        edge_R1, edge_Rinf = _r1_rinf(r_k, edge_probe)
-        interior_R1, interior_Rinf = _r1_rinf(r_k, interior_probe)
-        collocation_R1, collocation_Rinf = _r1_rinf(r_k, probe_type == 0)
-        off_grid_R1, off_grid_Rinf = _r1_rinf(r_k, probe_type != 0)
-        independent_R1, independent_Rinf = _r1_rinf(r_k, probe_type == 2)
-        trace_R1, trace_Rinf = _r1_rinf(r_k, np.isin(probe_type, (1, -1)))
-
-        # Per-surface breakdown
-        per_surface = {}
-        for name in self.surfaces:
-            pr = self._find_surface_panel_range(name, wing_ranges, n_panels)
-            if pr is None:
-                continue
-            start, end = pr
-            s_mask = (probe_panel >= start) & (probe_panel < end)
-            if not s_mask.any():
-                per_surface[name] = {"R1": 0.0, "Rinf": 0.0, "n_probes": 0}
-                continue
-            s1, sinf = _r1_rinf(r_k, s_mask)
-            per_surface[name] = {
-                "R1": s1,
-                "Rinf": sinf,
-                "n_probes": int(s_mask.sum()),
-            }
-
-        return {
-            "reference_speed": U_ref,
-            "R1": R1,
-            "Rinf": Rinf,
-            "edge_R1": edge_R1,
-            "edge_Rinf": edge_Rinf,
-            "interior_R1": interior_R1,
-            "interior_Rinf": interior_Rinf,
-            "collocation_R1": collocation_R1,
-            "collocation_Rinf": collocation_Rinf,
-            "off_grid_R1": off_grid_R1,
-            "off_grid_Rinf": off_grid_Rinf,
-            "independent_surface_R1": independent_R1,
-            "independent_surface_Rinf": independent_Rinf,
-            "two_sided_trace_R1": trace_R1,
-            "two_sided_trace_Rinf": trace_Rinf,
-            "transport_R1": transport_R1,
-            "transport_Rinf": transport_Rinf,
-            "transport_filter_radius": transport_radius,
-            "transport_filter_radii": transport_radii,
-            "transport_operator": transport_operator,
-            "transport_by_radius": {
-                key: {metric: value for metric, value in entry.items() if metric != "r_k"}
-                for key, entry in transport_results.items()
-            },
-            "boundary_filter_radius": self.field_contract.bound_source_radius,
-            "per_surface": per_surface,
-            "panel_area": panel_area,
-            "edge_mask": edge_mask,
-            "n_probes": n_probes,
-            "r_k": r_k,
-            "transport_r_k": transport_r_k,
-            "probe_position": probe_positions,
-            "probe_panel": probe_panel,
-            "probe_type": probe_type,
-            "probe_weight": probe_weight,
-            "probe_scale": probe_scale,
-        }
-
-    def _snapshot_pre_transport_positions(
-        self, particles, *, time: float | None = None, time_step_size: float | None = None
-    ) -> None:
-        """Record particle positions at the start of the accepted interval.
-
-        The snapshot is host-side and observer-only; it does not touch any
-        device field or accepted history.  It defines the temporal segment
-        ``[pre_transport, post_transport]`` over which finite-surface events
-        are swept.
-        """
-        self._pre_transport_position = particles.position_cpu(use_cache=False).copy()
-        self._pre_transport_strength = particles.vortex_strength_cpu(use_cache=False).copy()
-        self._pre_transport_count = int(particles.n_particles_total)
-        self._pre_transport_time = float(
-            self._current_time if time is None and self._current_time is not None else (time or 0.0)
-        )
-        self._pre_transport_time_step = float(time_step_size or 0.0)
-
-    def surface_diagnostics_due(self, step: int) -> bool:
-        """Return whether this accepted interval is selected for observation."""
-        return step <= 1 or step % self.setup.surface_diagnostics_interval_steps == 0
-
-    def observe_surface_interaction(self, particles) -> dict:
-        """Sweep accepted-interval particle segments for finite-surface events.
-
-        Pure observer: never mutates particles, circulation, histories,
-        exchange ledgers or the accepted clock.  Returns a normalized record
-        dict (all Python/NumPy values) suitable for CSV/VTK export and
-        warning reporting.
-
-        Returned keys::
-            time, step, n_particles, n_events, events (list of dicts),
-            reference_speed
-        """
-        start_pos = getattr(self, "_pre_transport_position", None)
-        if start_pos is None or start_pos.shape[0] == 0:
-            self._last_surface_events = []
-            return {"n_particles": 0, "n_events": 0, "events": []}
-
-        n_particles = int(particles.n_particles_total)
-        if n_particles == 0:
-            self._pre_transport_position = None
-            self._last_surface_events = []
-            return {"n_particles": 0, "n_events": 0, "events": []}
-
-        lattice = self.lattice
-        n_panels = lattice.n_panels
-        if n_panels == 0:
-            self._pre_transport_position = None
-            self._last_surface_events = []
-            return {"n_particles": 0, "n_events": 0, "events": []}
-
-        group_ids = particles.group_id_cpu(use_cache=False).astype(np.int32)[:n_particles]
-        pre_strength = getattr(self, "_pre_transport_strength", None)
-        if pre_strength is not None and pre_strength.shape[0] >= n_particles:
-            pre_gamma = np.linalg.norm(pre_strength[:n_particles], axis=1)
-        else:
-            pre_gamma = np.zeros(n_particles)
-
-        end_pos = particles.position_cpu(use_cache=False).astype(np.float64)[:n_particles]
-        start_pos = np.asarray(start_pos[:n_particles], dtype=np.float64)
-        radii = particles.core_radius_cpu(use_cache=False).astype(np.float64)[:n_particles]
-        start_time = float(getattr(self, "_pre_transport_time", self._current_time or 0.0))
-        time_step_size = float(getattr(self, "_pre_transport_time_step", 0.0))
-        end_time = start_time + max(time_step_size, 0.0)
-        start_geometry = self._stage_geometry_arrays(start_time)
-        end_geometry = self._stage_geometry_arrays(end_time)
-        start_corners = start_geometry[1][:n_panels].astype(np.float64)
-        end_corners = end_geometry[1][:n_panels].astype(np.float64)
-        start_normals = start_geometry[3][:n_panels].astype(np.float64)
-        end_normals = end_geometry[3][:n_panels].astype(np.float64)
-        panel_scale = np.linalg.norm(start_corners[:, 2] - start_corners[:, 0], axis=1)
-        mean_chord = float(np.mean(panel_scale)) if n_panels else 1.0
-        tolerance = 0.01 * max(mean_chord, np.finfo(float).eps)
-        body_displacement = float(np.max(np.linalg.norm(end_corners - start_corners, axis=2)))
-        particle_displacement = (
-            float(np.max(np.linalg.norm(end_pos - start_pos, axis=1))) if n_particles else 0.0
-        )
-        n_substeps = int(
-            np.clip(
-                np.ceil(max(body_displacement, particle_displacement) / max(tolerance, 1.0e-15)),
-                1,
-                32,
-            )
-        )
-        core_overlap_scale = 1.0
-        panel_surface = np.full(n_panels, "", dtype=object)
-        ranges = self._build_wing_panel_ranges()
-        for name in self.surfaces:
-            panel_range = self._find_surface_panel_range(name, ranges, n_panels)
-            if panel_range is not None:
-                panel_surface[slice(*panel_range)] = name
-
-        event_records = []
-        for i, panel, substep, event, distance, position in observe_moving_surfaces(
-            start_pos,
-            end_pos,
-            radii,
-            start_corners,
-            end_corners,
-            start_normals,
-            end_normals,
-            panel_surface,
-            n_substeps,
-            tolerance,
-        ):
-            event_records.append(
-                {
-                    "particle": i,
-                    "particle_index": i,
-                    "provenance": "active_particle_index",
-                    "event": event,
-                    "event_name": _surface_event_name(event),
-                    "surface": str(panel_surface[panel]),
-                    "panel": panel,
-                    "group_id": int(group_ids[i]),
-                    "strength_magnitude": float(pre_gamma[i]),
-                    "start_position": start_pos[i].tolist(),
-                    "end_position": end_pos[i].tolist(),
-                    "crossing_position": position.tolist(),
-                    "interval_start": start_time + substep / n_substeps * time_step_size,
-                    "interval_end": start_time + (substep + 1) / n_substeps * time_step_size,
-                    "core_radius": float(radii[i]),
-                    "closest_distance": distance,
-                    "surface_tolerance": tolerance,
-                    "process": "advective_transport",
-                }
-            )
-
-        self._last_surface_events = event_records
-        self._pre_transport_position = None
-        result = {
-            "n_particles": n_particles,
-            "n_events": len(event_records),
-            "events": event_records,
-            "tolerance": tolerance,
-            "core_overlap_scale": core_overlap_scale,
-            "n_substeps": n_substeps,
-            "observation_pairs_tested": int(n_particles * n_substeps * n_panels),
-            "reference_speed": self._last_reference_velocity_norm(),
-        }
-        return result
-
-    def write_surface_event_outputs(
-        self,
-        records: dict,
-        step: int,
-        time: float,
-        case_dir: str,
-        sample_directory: str | None = None,
-    ) -> None:
-        """Append ``vlm_surface_events.csv`` and write a VTK cloud of events."""
-        import pandas as pd
-
-        from ....io.sampling import resolve_samples_dir
-
-        events = records.get("events", [])
-        samples_dir = resolve_samples_dir(case_dir, sample_directory)
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = samples_dir / "vlm_surface_events.csv"
-
-        if events:
-            rows = [
-                {
-                    "time": time,
-                    "step": step,
-                    "particle": ev["particle"],
-                    "particle_index": ev.get("particle_index", ev["particle"]),
-                    "provenance": ev.get("provenance", "active_particle_index"),
-                    "event_type": ev["event"],
-                    "event_name": ev["event_name"],
-                    "process": ev.get("process", "advective_transport"),
-                    "surface": ev.get("surface", ""),
-                    "panel": ev["panel"],
-                    "interval_start": ev.get("interval_start", time),
-                    "interval_end": ev.get("interval_end", time),
-                    "start_x": ev["start_position"][0],
-                    "start_y": ev["start_position"][1],
-                    "start_z": ev["start_position"][2],
-                    "end_x": ev["end_position"][0],
-                    "end_y": ev["end_position"][1],
-                    "end_z": ev["end_position"][2],
-                    "crossing_x": ev.get("crossing_position", ev["end_position"])[0],
-                    "crossing_y": ev.get("crossing_position", ev["end_position"])[1],
-                    "crossing_z": ev.get("crossing_position", ev["end_position"])[2],
-                    "core_radius": ev["core_radius"],
-                    "closest_distance": ev.get("closest_distance", np.nan),
-                    "surface_tolerance": ev.get("surface_tolerance", np.nan),
-                }
-                for ev in events
-            ]
-            df = pd.DataFrame(rows)
-            if not csv_path.exists():
-                df.to_csv(csv_path, index=False)
-            else:
-                df.to_csv(csv_path, mode="a", header=False, index=False)
-
-            import pyvista as pv
-
-            points = np.array(
-                [ev.get("crossing_position", ev["end_position"]) for ev in events],
-                dtype=np.float64,
-            )
-            cloud = pv.PolyData(points)
-            cloud["event_type"] = np.array([ev["event"] for ev in events], dtype=np.int32)
-            cloud["event_name"] = np.array([ev["event_name"] for ev in events])
-            cloud["panel"] = np.array([ev["panel"] for ev in events], dtype=np.int32)
-            cloud["core_radius [m]"] = np.array([ev["core_radius"] for ev in events])
-            cloud.save(str(samples_dir / "vlm_surface_events.vtp"))
-        else:
-            df = pd.DataFrame(
-                columns=[
-                    "time",
-                    "step",
-                    "particle",
-                    "particle_index",
-                    "provenance",
-                    "event_type",
-                    "event_name",
-                    "process",
-                    "surface",
-                    "panel",
-                    "interval_start",
-                    "interval_end",
-                    "start_x",
-                    "start_y",
-                    "start_z",
-                    "end_x",
-                    "end_y",
-                    "end_z",
-                    "crossing_x",
-                    "crossing_y",
-                    "crossing_z",
-                    "core_radius",
-                    "closest_distance",
-                    "surface_tolerance",
-                ]
-            )
-            if not csv_path.exists():
-                df.to_csv(csv_path, index=False)
-
-    def _resolve_surface_warning(self, records: dict, step: int) -> str | None:
-        """Return a health warning string for unresolved penetration, else None."""
-        if self._unresolved_penetration_policy == "ignore":
-            return None
-        events = records.get("events", [])
-        intersections = [ev for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_INTERSECTION]
-        overlap = [ev for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_CORE_OVERLAP]
-        n_bypass = sum(1 for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_SIDE_BYPASS)
-        if not intersections and not overlap:
-            return None
-        parts = [f"step={step}"]
-        if intersections:
-            parts.append(f"intersections={len(intersections)}")
-        if overlap:
-            parts.append(f"core_overlaps={len(overlap)}")
-        if n_bypass:
-            parts.append(f"side_bypasses={n_bypass}")
-        return "component=vlm_surface_interaction status=unresolved_penetration " + " ".join(parts)
-
     def compute_bound_linear_impulse(self) -> np.ndarray:
         """Integrate half of ``x cross omega`` over the finite bound field [m⁴/s].
 
@@ -2661,92 +1986,28 @@ class VLMSolver:
 
     def log_forces_table(
         self, density: float, reference_velocity: np.ndarray | None = None
-    ) -> dict[str, float]:
+    ) -> dict[str, float | np.ndarray]:
+        """Compute boundary loads and report them through the owning logger.
+
+        Parameters
+        ----------
+        density : float
+            Fluid density in kg/m³.
+        reference_velocity : numpy.ndarray or None
+            Wind-axis reference vector, shape (3,), in m/s. None uses the
+            owning force model's reference velocity.
+
+        Returns
+        -------
+        dict[str, float or numpy.ndarray]
+            Native scalar coefficients and force/reference vectors. Loads are
+            in N, moments in N m, and reference positions in m. Coefficients
+            are dimensionless.
         """
-        Log VLM forces in a formatted table matching VPM diagnostics style.
-
-        Prints per-surface forces and total forces with descriptions.
-
-        Args:
-            density: Fluid density (kg/m^3)
-            reference_velocity: Reference velocity vector
-        """
-        print("\n" + "-" * 60)
-        print("VLM AERODYNAMIC FORCES")
-        print("-" * 60)
-        print("  Surface forces computed using Kutta-Joukowski method:")
-        print("    lift = force perpendicular to freestream")
-        print("    drag = force parallel to freestream")
-        print("    lift_coefficient, drag_coefficient = normalized force coefficients")
-        print()
-
-        # Get total forces
-        total_forces = self.compute_forces(density, reference_velocity)
-
-        # Get per-surface forces
-        surface_forces = self.compute_per_surface_forces(density, reference_velocity)
-
-        if len(surface_forces) > 1:
-            # Print table header for per-surface
-            print(
-                f"  {'Surface':<15} {'lift [N]':>12} {'drag [N]':>12} "
-                f"{'lift_coefficient':>18} {'drag_coefficient':>18} {'Panels':>8}"
-            )
-            print(f"  {'-' * 15} {'-' * 12} {'-' * 12} {'-' * 10} {'-' * 10} {'-' * 8}")
-
-            for surf_name, forces in surface_forces.items():
-                print(
-                    f"  {surf_name:<15} {forces['lift']:>12.3f} {forces['drag']:>12.3f} "
-                    f"{forces['lift_coefficient']:>10.3f} {forces['drag_coefficient']:>10.3f} "
-                    f"{forces['panel_count']:>8}"
-                )
-
-            print(f"  {'-' * 15} {'-' * 12} {'-' * 12} {'-' * 10} {'-' * 10} {'-' * 8}")
-
-        # Print totals
-        lift = total_forces.get("lift", 0.0)
-        drag = total_forces.get("drag", 0.0)
-        lift_coefficient = total_forces.get("lift_coefficient", 0.0)
-        drag_coefficient = total_forces.get("drag_coefficient", 0.0)
-        side_force_coefficient = total_forces.get("side_force_coefficient", 0.0)
-        lift_to_drag_ratio = lift / drag if abs(drag) > 1e-10 else float("inf")
-
-        print(
-            f"  {'TOTAL':<15} {lift:>12.3f} {drag:>12.3f} {lift_coefficient:>10.3f} {drag_coefficient:>10.3f}"
-        )
-        print()
-        print(f"  Lift/Drag Ratio          : {lift_to_drag_ratio:.2f}")
-        print(f"  Side-force coefficient   : {side_force_coefficient:.3f}")
-
-        # Moments
-        rolling_moment_coefficient = total_forces.get("rolling_moment_coefficient", 0.0)
-        pitching_moment_coefficient = total_forces.get("pitching_moment_coefficient", 0.0)
-        yawing_moment_coefficient = total_forces.get("yawing_moment_coefficient", 0.0)
-        pitching_moment_coefficient_quarter_chord = total_forces.get(
-            "pitching_moment_coefficient_quarter_chord", 0.0
-        )
-
-        print()
-        print("  Moment Coefficients:")
-        print(f"    rolling_moment_coefficient : {rolling_moment_coefficient:>12.3f}")
-        print(f"    pitching_moment_coefficient: {pitching_moment_coefficient:>12.3f}")
-        print(
-            "    pitching_moment_coefficient_quarter_chord: "
-            f"{pitching_moment_coefficient_quarter_chord:>12.3f}"
-        )
-        print(f"    yawing_moment_coefficient  : {yawing_moment_coefficient:>12.3f}")
-
-        if "reference_point" in total_forces:
-            reference_point = total_forces["reference_point"]
-            print(
-                "    Reference point: "
-                f"[{reference_point[0]:.3f}, {reference_point[1]:.3f}, "
-                f"{reference_point[2]:.3f}]"
-            )
-
-        print("-" * 60, flush=True)
-
-        return total_forces
+        totals = self.compute_forces(density, reference_velocity)
+        surfaces = self.compute_per_surface_forces(density, reference_velocity)
+        Logging.boundary_forces("VLM", totals, surfaces)
+        return totals
 
     def save_results(self, filename: str, time: float = 0.0) -> None:
         """
@@ -2757,7 +2018,7 @@ class VLMSolver:
             time: Physical simulation time stored in the output field.
         """
         if not self._solved:
-            print("Warning: System not solved, saving mesh only")
+            Logging.warning("VLM is unsolved; saving geometry without solved loads")
 
         self.lattice.save_vtk(filename, time=time)
 
@@ -2824,10 +2085,7 @@ class VLMSolver:
             else int(logging_interval_steps)
         )
         if log_freq > 0 and step % log_freq == 0:
-            try:
-                self.log_forces_table(density, reference_velocity)
-            except Exception as e:
-                print(f"   (Warning) Could not compute VLM forces: {e}")
+            self.log_forces_table(density, reference_velocity)
 
         return self._compute_wake_particles()
 

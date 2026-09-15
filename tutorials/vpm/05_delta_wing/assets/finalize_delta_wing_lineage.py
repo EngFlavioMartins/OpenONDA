@@ -47,8 +47,6 @@ LOADING_FILES = {
     "vlm_spanwise_rear_wing.csv": "rear_wing",
 }
 MAX_NATIVE_GAP = 1.0 / 30.0
-CAMPAIGN_END_STEP = 4000
-CAMPAIGN_END_TIME = 10.0
 REQUIRED_CSV_COLUMNS = {
     "flow_integrals.csv": {
         "total_kinetic_energy",
@@ -164,7 +162,7 @@ def _native_identity(path: Path) -> dict[str, object]:
             panel_count = len(vlm["panel_corner_position"])
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError(f"{path.name}: missing native identity attributes") from error
-    if backup_format != "10.0":
+    if backup_format not in {"10.0", "10.1"}:
         raise RuntimeError(f"{path.name}: unsupported native backup format {backup_format!r}")
     if hashlib.sha256(numerical_configuration.encode("utf-8")).hexdigest() != numerical_hash:
         raise RuntimeError(f"{path.name}: numerical configuration hash is invalid")
@@ -947,13 +945,9 @@ def _check_declared_resume_lineage(manifest_path: Path) -> tuple[dict, list[dict
         campaign_steps = int(root_metadata["configuration"]["run"]["steps"])
     except (KeyError, TypeError, ValueError) as error:
         raise RuntimeError("fresh prefix metadata is missing the campaign endpoint") from error
-    if campaign_steps != CAMPAIGN_END_STEP or not np.isclose(
-        initial_time + campaign_steps * dt,
-        CAMPAIGN_END_TIME,
-        rtol=0.0,
-        atol=CLOCK_ATOL,
-    ):
-        raise RuntimeError("restart lineage does not declare the step-4000 / t=10 s campaign")
+    campaign_end_time = initial_time + campaign_steps * dt
+    if campaign_steps <= prefix["accepted_interval"]["last_step"] or campaign_steps % root_interval:
+        raise RuntimeError("restart campaign endpoint must follow the prefix on the backup cadence")
     continuation_interval = continuation["accepted_interval"]
     if continuation_interval["last_step"] is None:
         try:
@@ -976,10 +970,13 @@ def _check_declared_resume_lineage(manifest_path: Path) -> tuple[dict, list[dict
         endpoint_time = continuation_interval["last_time"]
     if endpoint_step <= prefix["accepted_interval"]["last_step"]:
         raise RuntimeError("restart continuation endpoint does not advance the prefix")
-    if endpoint_step != CAMPAIGN_END_STEP or not np.isclose(
-        endpoint_time, CAMPAIGN_END_TIME, rtol=0.0, atol=CLOCK_ATOL
+    if endpoint_step != campaign_steps or not np.isclose(
+        endpoint_time, campaign_end_time, rtol=0.0, atol=CLOCK_ATOL
     ):
-        raise RuntimeError("continuation does not reach the declared step-4000 / t=10 s endpoint")
+        raise RuntimeError(
+            f"continuation does not reach the declared step-{campaign_steps} / "
+            f"t={campaign_end_time:g} s endpoint"
+        )
     effective_segments = [prefix, effective_continuation]
     continuation_metadata, _, _, _, _, continuation_interval_steps = _segment_metadata(
         effective_continuation,

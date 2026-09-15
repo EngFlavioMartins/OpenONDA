@@ -2,15 +2,12 @@
 
 from dataclasses import dataclass, field
 from itertools import count
-import logging
 
 import numpy as np
 from scipy.sparse import csr_matrix
 
 from source._numba import cacheable_njit as njit
 
-# Module logger
-logger = logging.getLogger(__name__)
 _WORKSPACE_IDS = count()
 
 

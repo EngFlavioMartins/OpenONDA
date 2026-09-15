@@ -424,9 +424,11 @@ establish machine-precision trajectory agreement.
 
 ## Reproduction and regression evidence
 
-The final combined run passed **192 tests** covering all coupler tests, mixed
-FVM boundaries, matrix workspace boundary layout, VLM collision behavior, and
-the reference-comparison tests. These include the new mode's unsteady field
+The archived combined run passed **192 tests** covering all coupler tests, mixed
+FVM boundaries, matrix workspace boundary layout, the now-retired VLM observer,
+and the reference-comparison tests. The maintained regression command below
+uses the physical VLM production-contract tests instead. The archived run
+included the new mode's unsteady field
 convergence, combined history/restart/subcycling, worker initialization, and
 rejection of incomplete pressure data before changing FVM boundary state.
 
@@ -434,7 +436,7 @@ rejection of incomplete pressure data before changing FVM boundary state.
 python -m pytest tests/coupler \
   tests/fvm/test_mixed_velocity_boundary.py \
   tests/fvm/test_matrix_workspace_boundary_layout.py \
-  tests/vpm/test_vlm_collision_observer.py \
+  tests/vpm/test_vlm_production_contract.py \
   tests/tutorials/test_cylinder_reference_comparison.py -m 'not gpu'
 
 PYTHONPATH=. mpiexec -n 2 python studies/coupler_accuracy/mpi_wall_geometry.py

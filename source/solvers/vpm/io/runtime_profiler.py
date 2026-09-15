@@ -190,70 +190,48 @@ class RuntimeProfiler:
         unchanged. The optional breakdown is controlled by ``detailed``.
         """
         detailed = self._last if self.detailed else None
-        Logging.step_timing(self.step_time, self.wall_time, detailed)
+        Logging.step_timing(self.step_time, detailed)
 
     def format_report(self) -> list[str]:
-        """Return the cumulative timing report as a list of text lines.
+        """Render cumulative host timers in the common quantity/unit layout."""
+        from source import log_style
 
-        Columns: section label, number of calls, cumulative seconds, average
-        milliseconds per call, and percent of total wall time.  A footer adds the
-        measured / unprofiled split and the per-step average.
-        """
-        title = f" VPM RUNTIME PROFILE  ({self.n_steps} steps, {self.wall_time:.3f} s wall)"
-        particle_line = (
-            f"  Number of particles     : {self.particle_count:d}"
-            if self.particle_count is not None
-            else None
-        )
-        if not self._cumulative:
-            bar = "=" * 80
-            lines = ["", bar, title, bar]
-            if particle_line is not None:
-                lines.append(particle_line)
-            lines.extend(["  (no sections recorded)", bar])
-            return lines
-
-        label_w = max(len("Section"), *(len(k) for k in self._cumulative))
-        header = (
-            f"  {'Section':<{label_w}}  {'calls':>6}  {'total[s]':>9}  {'avg[ms]':>9}  {'%wall':>6}"
-        )
-        bar = "=" * len(header)
-        sep = "-" * len(header)
-        lines = ["", bar, title]
-        if particle_line is not None:
-            lines.append(particle_line)
-        lines.extend([sep, header, sep])
-
-        measured = 0.0
-        for name, total in sorted(self._cumulative.items(), key=lambda kv: kv[1], reverse=True):
-            calls = self._calls[name]
-            measured += total
-            avg_ms = 1.0e3 * total / calls if calls else 0.0
-            pct = 100.0 * total / self.wall_time if self.wall_time > 0 else 0.0
-            lines.append(
-                f"  {name:<{label_w}}  {calls:>6d}  {total:>9.3f}  {avg_ms:>9.2f}  {pct:>5.1f}%"
+        rows = [("steps", self.n_steps), ("step time, total", self.wall_time, "s")]
+        if self.n_steps:
+            rows.append(("step time, mean", self.wall_time / self.n_steps, "s"))
+        if self.particle_count is not None:
+            rows.append(("active particles", self.particle_count))
+        if self._cumulative:
+            measured = sum(self._cumulative.values())
+            rows.extend(
+                [
+                    ("profiled section time", measured, "s"),
+                    ("unprofiled time", self.wall_time - measured, "s"),
+                ]
             )
-
-        lines.append(sep)
-        other = self.wall_time - measured
-        meas_pct = 100.0 * measured / self.wall_time if self.wall_time > 0 else 0.0
-        other_pct = 100.0 * other / self.wall_time if self.wall_time > 0 else 0.0
-        avg_step_ms = 1.0e3 * self.wall_time / self.n_steps if self.n_steps else 0.0
-        blank = " " * 9
-        lines.append(
-            f"  {'Measured':<{label_w}}  {blank[:6]}  {measured:>9.3f}  {blank:>9}  {meas_pct:>5.1f}%"
-        )
-        lines.append(
-            f"  {'Unprofiled':<{label_w}}  {blank[:6]}  {other:>9.3f}  {blank:>9}  {other_pct:>5.1f}%"
-        )
-        lines.append(
-            f"  {'Step total':<{label_w}}  {self.n_steps:>6d}  {self.wall_time:>9.3f}  "
-            f"{avg_step_ms:>9.2f}  {100.0:>5.1f}%"
-        )
-        lines.append(bar)
-        return lines
+        sections = [("timing", rows)]
+        for name, total in sorted(self._cumulative.items(), key=lambda item: item[1], reverse=True):
+            calls = self._calls[name]
+            sections.append(
+                (
+                    name,
+                    [
+                        ("calls", calls),
+                        ("total", total, "s"),
+                        ("mean", total / calls if calls else 0.0, "s"),
+                        (
+                            "share of step time",
+                            100.0 * total / self.wall_time if self.wall_time else 0.0,
+                            "%",
+                        ),
+                    ],
+                )
+            )
+        return log_style.block_report("VPM runtime profile", sections).splitlines()
 
     def report(self) -> None:
-        """Emit the cumulative timing report through the :class:`Logging` sink."""
-        for line in self.format_report():
-            Logging.message(line)
+        """Publish the full profile with one write to the owning logger."""
+        from source import log_style
+
+        if Logging._routine_messages_enabled:
+            Logging.message(log_style.FormattedText("\n".join(self.format_report())), flush=True)

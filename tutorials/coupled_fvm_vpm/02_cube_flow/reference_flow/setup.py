@@ -102,7 +102,7 @@ def create_solver(directory_name: str, dx: float):
         ),
         pimple=fvm.PimpleControl(
             n_outer_correctors=2,
-            n_orthogonal_correctors=1,
+            n_nonorthogonal_correctors=1,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),

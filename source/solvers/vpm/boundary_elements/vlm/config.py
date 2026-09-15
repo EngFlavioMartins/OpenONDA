@@ -170,14 +170,6 @@ class VLMSetup:
         closing vector and contributes transport/stretching, but uses the
         first-order row-convection rule also used by accepted emission.
         A small stage-system residual does not establish physical accuracy.
-    surface_event_policy : {'ignore', 'warn', 'strict'}, default='warn'
-        Policy for observer-only finite-surface centre intersections and core
-        overlaps. No policy deletes, reflects, clips, or transfers particles.
-    surface_diagnostics_interval_steps : int, default=1
-        Accepted-step cadence for crossing and surface-probe diagnostics.
-        Step one is always observed. Unobserved intervals are not reported as
-        event-free. Strict event policy requires cadence one. Force histories
-        and backups retain their VPM-owned clocks.
     freestream_velocity : tuple[float, float, float] or None, optional
         Uniform background velocity in m/s; ``None`` inherits the VPM value.
     logging_interval_steps : int, default=1
@@ -206,8 +198,6 @@ class VLMSetup:
     sample_surface_forces: bool = True
     wake_core_overlap: float | None = None
     boundary_response: Literal["lagged", "responsive"] = "lagged"
-    surface_event_policy: Literal["ignore", "warn", "strict"] = "warn"
-    surface_diagnostics_interval_steps: int = 1
 
     def __post_init__(self) -> None:
         """Validate declared settings and normalize immutable configuration values."""
@@ -238,15 +228,6 @@ class VLMSetup:
             raise ValueError("VLM wake_core_overlap must be finite and positive")
         if self.boundary_response not in {"lagged", "responsive"}:
             raise ValueError("boundary_response must be 'lagged' or 'responsive'")
-        if self.surface_event_policy not in {"ignore", "warn", "strict"}:
-            raise ValueError("surface_event_policy must be 'ignore', 'warn', or 'strict'")
-        cadence = self.surface_diagnostics_interval_steps
-        if isinstance(cadence, bool) or not isinstance(cadence, int) or cadence < 1:
-            raise ValueError("surface_diagnostics_interval_steps must be a positive integer")
-        if self.surface_event_policy == "strict" and cadence != 1:
-            raise ValueError(
-                "strict surface_event_policy requires surface_diagnostics_interval_steps=1"
-            )
         if (
             isinstance(self.logging_interval_steps, bool)
             or not isinstance(self.logging_interval_steps, int)

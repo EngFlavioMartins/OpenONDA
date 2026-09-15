@@ -174,7 +174,7 @@ class StabilizationManager:
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
         self.lagrangian_cfl = 0.0
-        self.residual_viscosity_coefficient = self.config.stretching_viscosity_coefficient
+        self.selective_eddy_viscosity_coefficient = self.config.selective_eddy_viscosity_coefficient
         self._last_residual_feedback_step = -1
         # Lineage and reference state the workers need across events.  It is
         # part of the restart state, so the backup reads and writes it.
@@ -280,7 +280,9 @@ class StabilizationManager:
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "max_stabilization_vorticity_growth": self.max_vorticity_growth,
             "lagrangian_cfl": self.lagrangian_cfl,
-            "stretching_viscosity_feedback_coefficient": (self.residual_viscosity_coefficient),
+            "selective_eddy_viscosity_feedback_coefficient": (
+                self.selective_eddy_viscosity_coefficient
+            ),
         }
 
     def restore_diagnostics(self, values: dict) -> None:
@@ -299,10 +301,10 @@ class StabilizationManager:
             values.get("n_regularization_events", self.regularization_events)
         )
         self.last_mechanism = str(values.get("last_stabilization_mechanism", self.last_mechanism))
-        self.residual_viscosity_coefficient = float(
+        self.selective_eddy_viscosity_coefficient = float(
             values.get(
-                "stretching_viscosity_feedback_coefficient",
-                self.residual_viscosity_coefficient,
+                "selective_eddy_viscosity_feedback_coefficient",
+                self.selective_eddy_viscosity_coefficient,
             )
         )
         for key, attribute in (
@@ -342,8 +344,8 @@ class StabilizationManager:
         """Names of the mechanisms this configuration switches on."""
         cfg = self.config
         active = []
-        if cfg.stretching_viscosity_coefficient > 0.0:
-            active.append("residual stretching viscosity")
+        if cfg.selective_eddy_viscosity_coefficient > 0.0:
+            active.append("selective eddy viscosity")
         if cfg.pedrizzetti_relaxation_enabled:
             active.append("Pedrizzetti relaxation")
         if cfg.filament_refinement.enabled:
@@ -439,18 +441,18 @@ class StabilizationManager:
             np.asarray(moments[index], dtype=np.float64).copy() for index in (0, 2, 3)
         )
 
-    def update_residual_viscosity(self) -> None:
-        """Add the configured stretching-aware residual viscosity to ``effective_viscosity``."""
+    def update_selective_eddy_viscosity(self) -> None:
+        """Add the configured selective eddy viscosity to ``effective_viscosity``."""
         cfg = self.config
         step = self.ctx.state.step
-        if step < cfg.stretching_viscosity_start_step:
+        if step < cfg.selective_eddy_viscosity_start_step:
             return
         if (
-            cfg.stretching_viscosity_feedback_gain > 0.0
+            cfg.selective_eddy_viscosity_feedback_gain > 0.0
             and step != self._last_residual_feedback_step
             and self._due(
-                cfg.stretching_viscosity_feedback_interval_steps,
-                cfg.stretching_viscosity_start_step,
+                cfg.selective_eddy_viscosity_feedback_interval_steps,
+                cfg.selective_eddy_viscosity_start_step,
             )
         ):
             energy_rate = float(self.ctx.metrics.kinetic_energy_rate)
@@ -458,23 +460,23 @@ class StabilizationManager:
             if np.isfinite(energy_rate) and np.isfinite(viscous_rate):
                 scale = max(abs(viscous_rate), np.finfo(float).eps)
                 adjustment = np.clip(
-                    1.0 + cfg.stretching_viscosity_feedback_gain * energy_rate / scale,
+                    1.0 + cfg.selective_eddy_viscosity_feedback_gain * energy_rate / scale,
                     0.80,
-                    1.0 + cfg.stretching_viscosity_feedback_growth_limit,
+                    1.0 + cfg.selective_eddy_viscosity_feedback_growth_limit,
                 )
                 upper = (
-                    cfg.stretching_viscosity_max_coefficient
-                    if cfg.stretching_viscosity_max_coefficient is not None
+                    cfg.selective_eddy_viscosity_max_coefficient
+                    if cfg.selective_eddy_viscosity_max_coefficient is not None
                     else np.inf
                 )
-                self.residual_viscosity_coefficient = float(
-                    np.clip(self.residual_viscosity_coefficient * adjustment, 0.0, upper)
+                self.selective_eddy_viscosity_coefficient = float(
+                    np.clip(self.selective_eddy_viscosity_coefficient * adjustment, 0.0, upper)
                 )
             self._last_residual_feedback_step = step
-        coefficient = self.residual_viscosity_coefficient
+        coefficient = self.selective_eddy_viscosity_coefficient
         if coefficient <= 0.0:
             return
-        self.operators.apply_stretching_viscosity(self.ctx.particles, coefficient)
+        self.operators.apply_selective_eddy_viscosity(self.ctx.particles, coefficient)
 
     def apply_relaxation(self) -> None:
         """Rotate the scheduled fraction of the vortex_strength-omega misalignment away.
@@ -609,29 +611,61 @@ class StabilizationManager:
             max_absolute_vortex_strength=cfg.max_absolute_vortex_strength,
         )
         if result.refined_particles == 0:
+            if result.deferred_particles:
+                Logging.record(
+                    "particle splitting capacity",
+                    ("eligible parents left unsplit", f"{result.deferred_particles:,}"),
+                )
             return
 
         source = result.source_index
-        ctx.mutations.replace(
-            position=result.position.astype(ctx.np_dtype),
-            velocity=particles.velocity_cpu()[source],
-            vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
-            core_radius=result.core_radius.astype(ctx.np_dtype),
-            particle_volume=result.particle_volume.astype(ctx.np_dtype),
-            kinematic_viscosity=particles.kinematic_viscosity_cpu()[source],
-            eddy_viscosity=particles.eddy_viscosity_cpu()[source],
-            group_id=particles.group_id_cpu()[source],
-            zone_id=particles.zone_id_cpu()[source],
-            report_removal=False,
+        names = (
+            "position",
+            "velocity",
+            "vortex_strength",
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+            "velocity_gradient",
+            "strain_rate",
         )
-        # Refinement replaces particles without representing physical removal.
-        self.reference_vortex_strength = result.reference_vortex_strength
-        self.reference_lengths = result.reference_length
-        self.accept(
-            "filament refinement",
-            before,
-            detail=f"split={result.refined_particles}, stretch={result.max_stretch_ratio:.2f}",
-        )
+        old = {name: getattr(particles, name + "_cpu")().copy() for name in names}
+        old_effective_viscosity = particles.effective_viscosity_cpu().copy()
+        old_vorticity = particles.vorticity_cpu().copy()
+        old_references = (self.reference_vortex_strength.copy(), self.reference_lengths.copy())
+        try:
+            ctx.mutations.replace(
+                position=result.position.astype(ctx.np_dtype),
+                velocity=old["velocity"][source],
+                vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
+                core_radius=result.core_radius.astype(ctx.np_dtype),
+                particle_volume=result.particle_volume.astype(ctx.np_dtype),
+                kinematic_viscosity=old["kinematic_viscosity"][source],
+                eddy_viscosity=old["eddy_viscosity"][source],
+                group_id=old["group_id"][source],
+                zone_id=old["zone_id"][source],
+                report_removal=False,
+            )
+            # The next stage recomputes gradients and model viscosity at the
+            # displaced children. Neither is a material inheritance property.
+            self.reference_vortex_strength = result.reference_vortex_strength
+            self.reference_lengths = result.reference_length
+            self.accept(
+                "filament refinement",
+                before,
+                detail=f"split={result.refined_particles}, deferred={result.deferred_particles}, "
+                f"stretch={result.max_stretch_ratio:.2f}",
+            )
+        except Exception:
+            ctx.mutations.replace(**old, report_removal=False)
+            ctx.mutations.set_properties(
+                effective_viscosity=old_effective_viscosity, vorticity=old_vorticity
+            )
+            self.reference_vortex_strength, self.reference_lengths = old_references
+            raise
 
     def apply_divergence_relaxation(self) -> None:
         """Reassign vortex_strength onto the solenoidal subspace of the blob field."""

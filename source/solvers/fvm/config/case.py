@@ -244,7 +244,7 @@ class FVMCase:
         Immutable case-owned policies. Boundary values are m/s, m²/s², m³/s,
         or m²/s according to their field; see their class docstrings.
     cores : int, default=1
-        Requested execution size for legacy/coupled setup materialization.
+        Requested execution size for solver construction, including coupled runs.
 
     Notes
     -----
@@ -296,8 +296,8 @@ class FVMCase:
         Returns
         -------
         FVMSetup
-            A new configuration object containing copied case policy values,
-            legacy field names, and the time/output controls consumed by the
+            A new configuration object containing copied case policy values
+            and the time/output controls consumed by the
             solver factory. It performs no mesh I/O and does not mutate this
             immutable case.
         """

@@ -23,7 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.collections import PolyCollection
 
 if not __package__:
@@ -33,6 +33,7 @@ if not __package__:
 
 from ._delta_wing_plots import (
     LINEAGE_MANIFEST,
+    _theme,
     _finite_time,
     _integer_step,
     _validate_selected_clock,
@@ -423,52 +424,63 @@ def render(
 
     vertices = np.concatenate(
         [oblique_projection(corners) for _, _, _, corners, _ in native_frames]
-    )
+    ).reshape(-1, 2)
     circulation = np.concatenate([values for _, _, _, _, values in native_frames])
     horizontal_limits = (vertices[:, 0].min() - 0.15, vertices[:, 0].max() + 0.15)
     vertical_limits = (vertices[:, 1].min() - 0.15, vertices[:, 1].max() + 0.15)
     scale = max(float(np.max(np.abs(circulation))), 1e-12)
     norm = Normalize(-scale, scale)
+    _theme.set_thesis_style()
+    cmap = LinearSegmentedColormap.from_list(
+        "thesis_signed", [_theme.COLORS["TUDcyan"], "white", _theme.COLORS["VPMpurple"]]
+    )
     frames = []
     for target_time, (source_time, _, source_segment), (_, path, segment, corners, values) in zip(
         target_times, selected, native_frames, strict=True
     ):
-        fig, ax = plt.subplots(figsize=(8, 4.5), dpi=100)
+        fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.5 * _theme.CM), dpi=160)
         polygons = oblique_projection(corners)
         ax.add_collection(
             PolyCollection(
                 polygons,
                 array=values,
-                cmap="coolwarm",
+                cmap=cmap,
                 norm=norm,
-                edgecolors="0.35",
+                edgecolors=_theme.COLORS["DarkText"],
                 linewidths=0.15,
             )
         )
         ax.set(
             xlim=horizontal_limits,
             ylim=vertical_limits,
-            xlabel="oblique horizontal coordinate [m]",
-            ylabel="oblique vertical coordinate [m]",
-            aspect="equal",
+            xlabel="$s$ [m]",
+            ylabel="$h$ [m]",
+            title=f"$t = {source_time:.3f}$ s",
         )
-        ax.grid(True, color="0.85", linewidth=0.5)
-        ax.set_title("Delta-wing coupled VPM+VLM circulation")
-        ax.text(
-            0.02,
-            0.94,
-            f"target t={target_time:.3f} s\nbackup t={source_time:.3f} s\nsource={source_segment}",
-            transform=ax.transAxes,
-            va="top",
-            bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"},
-        )
+        ax.grid(True, color=_theme.COLORS["LightBG"], linewidth=0.5)
+        ax.locator_params(axis="y", nbins=3)
+        _theme.centered_subplots_adjust(fig, outer=0.15, bottom=0.30, top=0.87)
+        _theme.fit_thesis_y_label_margins(fig, (ax,))
+        outer = ax.get_position().x0
+        height_cm = (1 - 2 * outer) * 12.5 * np.ptp(vertical_limits) / np.ptp(
+            horizontal_limits
+        ) + 3.8
+        fig.set_size_inches(12.5 * _theme.CM, height_cm * _theme.CM, forward=False)
+        fig.subplots_adjust(bottom=2.8 / height_cm, top=1 - 1.0 / height_cm)
+        ax.set_aspect("equal")
+        cax = fig.add_axes([outer, 1.3 / height_cm, 1 - 2 * outer, 0.22 / height_cm])
         fig.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap="coolwarm"), ax=ax, label="Circulation [m²/s]"
+            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=cax,
+            orientation="horizontal",
+            ticks=[-scale, 0, scale],
+            format="%.2f",
+            label=r"$\Gamma$ [m$^2$/s]",
         )
-        fig.tight_layout()
+        _theme.validate_thesis_figure(fig, (ax, cax))
         fig.canvas.draw()
         pixels = np.asarray(fig.canvas.buffer_rgba())[..., :3]
-        frames.append(Image.fromarray(pixels, mode="RGB"))
+        frames.append(Image.fromarray(pixels))
         plt.close(fig)
 
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,5 @@
 """
-Linear-solver strategies for the VLM circulation system: SciPy dense, Taichi CG,
-and Taichi BiCGSTAB backends.
+Linear solvers for the VLM circulation system: SciPy dense LU and Taichi BiCGSTAB.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -24,12 +23,6 @@ from ....config.constants import (
     NP_FLOAT,
     TI_FLOAT,
 )
-
-
-def _lazy_import_taichi():
-    """Return the Taichi module (imported at module load; kept as a single hook)."""
-    return ti
-
 
 # =========================================================
 # Linear Solver Base Class
@@ -84,17 +77,11 @@ class VLMLinearSolver(ABC):
 
 
 class ScipySolver(VLMLinearSolver):
-    """
-    CPU-based direct solver using scipy.linalg.solve.
+    """Solve dense circulation systems with cached SciPy LU factors.
 
-    Pros:
-    - Very robust for all matrix types
-    - Efficient for small systems (< 500 panels)
-    - Handles near-singular matrices gracefully
-
-    Cons:
-    - Requires GPU→CPU→GPU data transfer (slow for large systems)
-    - O(N³) direct solve can be expensive for large N
+    Factorization costs O(N³); repeated right-hand sides reuse identical matrix
+    factors. Device inputs are downloaded and the solution is uploaded. Singular
+    factors raise before either the cache or output circulation is changed.
     """
 
     def __init__(self):
@@ -183,10 +170,14 @@ class ScipySolver(VLMLinearSolver):
         # freestream): raise rather than silently regularize, which would produce
         # physically meaningless γ and could mask upstream bugs.
         if self._matrix is None or not np.array_equal(AIC_np, self._matrix):
-            self._matrix = AIC_np.copy()
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", scipy.linalg.LinAlgWarning)
-                self._factorization = scipy.linalg.lu_factor(AIC_np)
+            matrix = AIC_np.copy()
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", scipy.linalg.LinAlgWarning)
+                    factorization = scipy.linalg.lu_factor(matrix)
+            except scipy.linalg.LinAlgWarning as error:
+                raise np.linalg.LinAlgError("VLM influence matrix is singular") from error
+            self._matrix, self._factorization = matrix, factorization
         circulation_np = scipy.linalg.lu_solve(self._factorization, rhs_np)
         if not np.all(np.isfinite(circulation_np)):
             raise np.linalg.LinAlgError("VLM circulation solve produced non-finite values")
@@ -208,31 +199,17 @@ class ScipySolver(VLMLinearSolver):
 
 
 class TaichiBiCGSTABSolver(VLMLinearSolver):
-    """
-    GPU-based BiCGSTAB (Bi-Conjugate Gradient Stabilized) solver using Taichi.
+    """Solve nonsymmetric VLM systems with right-preconditioned BiCGSTAB.
 
-    BiCGSTAB is designed for NON-SYMMETRIC matrices like the VLM aerodynamic_influence_coefficient matrix.
-    Unlike standard CG, it converges for general square matrices.
+    Iteration uses Taichi fields on the configured device, with optional Jacobi
+    preconditioning. The final matrix, right-hand side and solution are downloaded
+    for an independent relative-residual check. Breakdown or failure to converge
+    raises; this method does not guarantee convergence for every matrix.
 
-    Features:
-    - Works with non-symmetric VLM aerodynamic_influence_coefficient matrices
-    - Optional Jacobi (diagonal) preconditioning for faster convergence
-    - All operations on GPU (zero data transfer overhead)
-    - Checks convergence during iteration and verifies the true final residual
-
-    Algorithm (Right-Preconditioned BiCGSTAB):
-        Solves A @ x = b by transforming to A @ M^-1 @ y = b, then x = M^-1 @ y.
-        This is more stable than left-preconditioning for non-symmetric matrices.
-
-        Key insight: Instead of computing A @ p directly, we compute:
-        1. p_hat = M^-1 @ p  (apply preconditioner to search direction)
-        2. v = A @ p_hat     (matvec with preconditioned direction)
-
-        This ensures the residual r = b - A @ x is computed correctly.
-
-    References:
-        van der Vorst, H. A. (1992). "Bi-CGSTAB: A Fast and Smoothly Converging
-        Variant of Bi-CG for the Solution of Nonsymmetric Linear Systems"
+    References
+    ----------
+    van der Vorst, H. A. (1992), "Bi-CGSTAB: A Fast and Smoothly Converging
+    Variant of Bi-CG for the Solution of Nonsymmetric Linear Systems".
     """
 
     def __init__(self, max_n_panels: int = 10000, use_preconditioner: bool = True):
@@ -267,8 +244,6 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
                 self._workspace_initialized = False
             else:
                 return
-
-        ti = _lazy_import_taichi()
 
         self.r = ti.field(dtype=dtype, shape=(self.max_n_panels,))
         self.r0 = ti.field(dtype=dtype, shape=(self.max_n_panels,))
@@ -405,7 +380,6 @@ def _matvec_kernel(A: ti.template(), x: ti.template(), y: ti.template(), n: ti.i
 
 def _matvec(A, x, y, n: int):
     """Compute y = A @ x (matrix-vector product on GPU)."""
-    _lazy_import_taichi()
     _matvec_kernel(A, x, y, n)
 
 
@@ -454,7 +428,6 @@ def _dot_product(a, b, n: int, dtype=TI_FLOAT) -> float:
     # GPU atomic path (kept for very large systems where PCIe transfer
     # would dominate)
     global _dot_result, _dot_runtime
-    ti = _lazy_import_taichi()
 
     runtime = ti.lang.impl.get_runtime().prog
     if _dot_result is None or _dot_result.dtype != dtype or _dot_runtime is not runtime:
@@ -479,7 +452,6 @@ def _build_jacobi_precond_kernel(A: ti.template(), M_inv: ti.template(), n: ti.i
 
 def _build_jacobi_precond(A, M_inv, n: int):
     """Build Jacobi preconditioner: M_inv[i] = 1/A[i,i]."""
-    _lazy_import_taichi()
     _build_jacobi_precond_kernel(A, M_inv, n)
 
 
@@ -492,7 +464,6 @@ def _apply_precond_kernel(x: ti.template(), y: ti.template(), M_inv: ti.template
 
 def _apply_precond(x, y, M_inv, n: int):
     """Apply preconditioner: y = M^-1 @ x (element-wise for Jacobi)."""
-    _lazy_import_taichi()
     _apply_precond_kernel(x, y, M_inv, n)
 
 
@@ -515,7 +486,6 @@ def _bicgstab_init_kernel(
 
 def _bicgstab_init(x, b, r, r0, p, n: int):
     """Initialize BiCGSTAB: x=0, r=b, r0=r, p=r."""
-    _lazy_import_taichi()
     _bicgstab_init_kernel(x, b, r, r0, p, n)
 
 
@@ -530,7 +500,6 @@ def _bicgstab_update_s_kernel(
 
 def _bicgstab_update_s(s, r, v, alpha: float, n: int):
     """Compute s = r - alpha * v."""
-    _lazy_import_taichi()
     _bicgstab_update_s_kernel(s, r, v, alpha, n)
 
 
@@ -543,7 +512,6 @@ def _axpy_kernel(y: ti.template(), x: ti.template(), alpha: ti.template(), n: ti
 
 def _axpy(y, x, alpha: float, n: int):
     """Compute y = y + alpha * x."""
-    _lazy_import_taichi()
     _axpy_kernel(y, x, alpha, n)
 
 
@@ -563,7 +531,6 @@ def _bicgstab_update_x_kernel(
 
 def _bicgstab_update_x(x, p, s, alpha: float, omega: float, n: int):
     """Compute x = x + alpha * p + omega * s."""
-    _lazy_import_taichi()
     _bicgstab_update_x_kernel(x, p, s, alpha, omega, n)
 
 
@@ -578,7 +545,6 @@ def _bicgstab_update_r_kernel(
 
 def _bicgstab_update_r(r, s, t, omega: float, n: int):
     """Compute r = s - omega * t."""
-    _lazy_import_taichi()
     _bicgstab_update_r_kernel(r, s, t, omega, n)
 
 
@@ -598,7 +564,6 @@ def _bicgstab_update_p_kernel(
 
 def _bicgstab_update_p(p, r, v, beta: float, omega: float, n: int):
     """Compute p = r + beta * (p - omega * v)."""
-    _lazy_import_taichi()
     _bicgstab_update_p_kernel(p, r, v, beta, omega, n)
 
 

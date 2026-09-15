@@ -77,9 +77,7 @@ def test_all_cases_share_the_transposed_dns_rk3_baseline():
         assert numerics.viscous.kinematic_viscosity == pytest.approx(np.pi / 3000)
         assert numerics.max_n_particles == setup.MAX_N_PARTICLES
         assert case.run.resource_limits.max_particles == setup.MAX_N_PARTICLES
-        assert not any(
-            isinstance(s, setup.vpm.RingDiagnosticsSampler) for s in case.samplers.samples
-        )
+        assert any(isinstance(s, setup.vpm.RingDiagnosticsSampler) for s in case.samplers.samples)
         assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
         assert numerics.health_limits.divergence.maximum == 0.12
         assert numerics.health_limits.misalignment.maximum_degrees == 25.0
@@ -89,16 +87,17 @@ def test_each_case_enables_only_its_named_stabilization_method():
     setup = _load_setup()
     expected = {
         "baseline": ("conservative regularization",),
-        "stretching_viscosity": ("residual stretching viscosity", "conservative regularization"),
-        "p_moments": ("Pedrizzetti relaxation", "conservative regularization"),
+        "selective_eddy_viscosity": ("selective eddy viscosity", "conservative regularization"),
+        "pedrizzetti_relaxation": ("Pedrizzetti relaxation", "conservative regularization"),
+        "particle_splitting": ("filament refinement", "conservative regularization"),
     }
     assert tuple(expected) == setup.CASES
 
     for case_name, mechanisms in expected.items():
         config = setup.build_case(case_name).numerics.stabilization
         active = []
-        if config.stretching_viscosity_coefficient > 0.0:
-            active.append("residual stretching viscosity")
+        if config.selective_eddy_viscosity_coefficient > 0.0:
+            active.append("selective eddy viscosity")
         if config.pedrizzetti_relaxation_enabled:
             active.append("Pedrizzetti relaxation")
         if config.filament_refinement.enabled:
@@ -109,6 +108,7 @@ def test_each_case_enables_only_its_named_stabilization_method():
             active.append("conservative regularization")
         assert tuple(active) == mechanisms
         assert config.regularization_transfer_only
+        assert config.regularization_preserve_groups
 
 
 def test_frozen_representation_controls_are_retained():
@@ -153,7 +153,7 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     stub.write_text(
         f"#!{sys.executable}\nimport json,os,sys\n"
         "with open(os.environ['COMMAND_LOG'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
-        "sys.exit(1 if sys.argv[1:3] == ['setup.py', 'baseline'] else 0)\n"
+        "sys.exit(1 if sys.argv[1:3] == ['setup.py', os.environ.get('FAIL_VARIANT')] else 0)\n"
     )
     stub.chmod(0o755)
     for script in ("allrun.sh", "allplot.sh"):
@@ -162,8 +162,8 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     clean.write_text("#!/bin/bash\nexit 0\n")
     clean.chmod(0o755)
     env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ['PATH']}", COMMAND_LOG=str(log))
-    subprocess.run(["bash", "allrun.sh"], cwd=tmp_path, env=env, check=True)
-    subprocess.run(["bash", "allplot.sh"], cwd=tmp_path, env=env, check=True)
+    subprocess.run([str(tmp_path / "allrun.sh")], cwd=tmp_path, env=env, check=True)
+    subprocess.run([str(tmp_path / "allplot.sh")], cwd=tmp_path, env=env, check=True)
     commands = [json.loads(line) for line in log.read_text().splitlines()]
     assert [c[1] for c in commands[: len(setup.CASES)]] == list(setup.CASES)
     assert all(len(c) == 2 for c in commands[: len(setup.CASES)])
@@ -171,3 +171,16 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     expected = list(setup.CASES)
     assert sections[sections.index("--runs") + 1 : sections.index("--times")] == expected
     assert assessment[1 : assessment.index("--peak-merge-bridge")] == expected
+    log.write_text("")
+    result = subprocess.run(
+        [str(tmp_path / "allrun.sh")], cwd=tmp_path, env=dict(env, FAIL_VARIANT="baseline")
+    )
+    assert result.returncode == 1
+    assert [json.loads(line) for line in log.read_text().splitlines()] == [["setup.py", "baseline"]]
+    run_lines = (tmp_path / "allrun.sh").read_text().splitlines()
+    assert run_lines == [
+        "#!/bin/bash -e",
+        'cd -- "$(dirname -- "$0")"',
+        "./allclean.sh",
+        *[f"python setup.py {name}" for name in expected],
+    ]

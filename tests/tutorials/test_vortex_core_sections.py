@@ -67,3 +67,21 @@ def test_setup_records_initial_periodic_and_final_planes():
     assert planes[1].schedule.is_final_only
     np.testing.assert_allclose(planes[0].normal, [0, 0, 1])
     assert planes[0].spacing == pytest.approx(0.02)
+
+
+def test_discovery_uses_only_the_requested_current_run(tmp_path):
+    for name in ("baseline", "selective_eddy_viscosity"):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "core_section_000000.vts").touch()
+        (directory / "core_section.pvd").write_text(
+            '<VTKFile><Collection><DataSet timestep="0" file="core_section_000000.vts"/>'
+            "</Collection></VTKFile>"
+        )
+    records = discover(tmp_path, ["selective_eddy_viscosity"])
+    assert len(records) == 1
+    assert records[0]["run"] == "selective_eddy_viscosity"
+    assert records[0]["recorded_run"] == "selective_eddy_viscosity"
+    assert records[0]["path"].parent == tmp_path / "selective_eddy_viscosity"
+    (tmp_path / "selective_eddy_viscosity" / "core_section_000000.vts").unlink()
+    assert discover(tmp_path, ["selective_eddy_viscosity"]) == []

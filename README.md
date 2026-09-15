@@ -78,13 +78,13 @@ See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)
 - [Installation and optional tools](docs/installation.md)
-- [Documentation audit and terminology](docs/documentation_audit.md)
+- [Contributor and AI-agent guidelines](AGENTS.md)
 - Command-line help: `openonda --help` and `openonda api fvm.FVMCase`
 
 ## Development and contributing
 
 Install with `python -m pip install -e ".[dev]"`, then follow the
-[contributing guide](docs/contributing.md) and [test guide](tests/README.md).
+[repository guidelines](AGENTS.md) and [test index](tests/README.md).
 Report problems through [GitHub issues](https://github.com/EngFlavioMartins/OpenONDA/issues).
 
 OpenONDA is licensed under [GPL-3.0-or-later](license).

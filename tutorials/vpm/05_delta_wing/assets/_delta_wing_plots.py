@@ -589,55 +589,83 @@ def last_cycles(data, period, count=3):
         yield cycle, (rows.time.to_numpy() - cycle * period) / period, rows
 
 
-def plot_forces(samples_dir=None, figures_dir=FIGURES_DIR, figure_format="png"):
+def _save_figure(fig, axes, path, figure_format, *, fit=True):
+    """Export the fixed thesis canvas without automatic cropping or relayout."""
+    if fit:
+        _theme.fit_thesis_y_label_margins(fig, axes)
+    _theme.validate_thesis_figure(fig, axes)
+    path = Path(path).with_suffix(f".{figure_format}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=_theme.DEFAULT_DPI, bbox_inches=None)
+    plt.close(fig)
+    print(f"wrote {path}")
+
+
+def _available_period(data):
+    front = data[data.surface == "front_wing"].sort_values("time")
+    peaks, _ = find_peaks(front.translation_velocity_z)
+    return motion_period(data) if len(peaks) >= 2 else None
+
+
+def plot_forces(samples_dir=None, figures_dir=FIGURES_DIR, figure_format="png", *, partial=False):
     _theme.set_thesis_style()
     data = force_history(samples_dir)
-    source_label = (
-        _lineage_source_label(load_accepted_lineage())
-        if samples_dir is None
-        else _source_label(samples_dir)
-    )
-    period = motion_period(data)
-    fig, rows = plt.subplots(
-        4, 1, figsize=(12.5 * _theme.CM, 22 * _theme.CM), constrained_layout=True
-    )
-    axes = rows.reshape(2, 2)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.5 * _theme.CM, 10.5 * _theme.CM))
+    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.13, top=0.89, hspace=0.20)
     for surface, color, label in (
         ("front_wing", _COLORS["TUDcyan"], "Front"),
         ("rear_wing", _COLORS["VPMpurple"], "Rear"),
     ):
         rows = data[data.surface == surface]
-        axes[0, 0].plot(rows.time, rows.force_z, color=color, label=label)
-        axes[1, 0].plot(rows.time, rows.centroid_z, color=color)
-        for i, (cycle, phase, tail) in enumerate(last_cycles(rows, period)):
-            axes[0, 1].plot(
+        for ax, values in zip(axes, (rows.force_z, rows.centroid_z, -rows.power), strict=True):
+            ax.plot(rows.time, values, color=color, label=label)
+    for ax, label in zip(axes, (r"$F_z$ [N]", r"$z_c$ [m]", r"$P_{\mathrm{in}}$ [W]"), strict=True):
+        ax.set_ylabel(label)
+        ax.axhline(0, color=_COLORS["RefGray"], lw=0.4)
+        ax.locator_params(axis="y", nbins=3)
+    axes[-1].set_xlabel("Time [s]")
+    fig.legend(
+        *axes[0].get_legend_handles_labels(),
+        loc="upper center",
+        ncol=2,
+        bbox_to_anchor=(0.5, 1.0 if not partial else 0.96),
+    )
+    if partial:
+        fig.suptitle("Partial run", y=0.98)
+        # Leave a separate line for the shared legend.
+        fig.subplots_adjust(top=0.83)
+    _save_figure(fig, axes, figures_dir / "delta_wing_forces.png", figure_format)
+    period = _available_period(data)
+    if period is None:
+        print("Cycle comparison skipped: fewer than two sampled heave-velocity peaks.")
+        return
+    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12.5 * _theme.CM, 8.3 * _theme.CM))
+    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.16, top=0.80, hspace=0.27)
+    for ax, surface, color, label in zip(
+        axes,
+        ("front_wing", "rear_wing"),
+        (_COLORS["TUDcyan"], _COLORS["VPMpurple"]),
+        ("Front", "Rear"),
+        strict=True,
+    ):
+        for index, (cycle, phase, tail) in enumerate(
+            last_cycles(data[data.surface == surface], period)
+        ):
+            ax.plot(
                 phase,
                 tail.force_z,
                 color=color,
-                ls=(":", "--", "-")[i],
-                label=f"{label}, cycle {cycle + 1}",
+                ls=(":", "--", "-")[index],
+                label=f"Cycle {cycle + 1}",
             )
-        axes[1, 1].plot(rows.time, -rows.power, color=color)
-    axes[0, 0].set(
-        xlabel="Time [s]",
-        ylabel="Vertical force [N]",
-        title=f"Native accepted-step history ({source_label})",
-    )
-    axes[1, 0].set(xlabel="Time [s]", ylabel="Sampled centroid z [m]")
-    cycle_count = min(3, int(np.floor((data.time.max() + 1e-9) / period)))
-    axes[0, 1].set(
-        xlabel="Cycle phase",
-        ylabel="Vertical force [N]",
-        title=f"Complete cycles shown: {cycle_count}",
-    )
-    axes[1, 1].set(xlabel="Time [s]", ylabel="Motion input power [W]")
-    axes[0, 0].legend()
-    axes[0, 1].legend(ncol=2)
-    for ax in axes.flat:
-        ax.axhline(0, color="0.6", lw=0.4)
-    _theme.save_fig(
-        fig, figures_dir / "delta_wing_forces.png", figure_format=figure_format, bbox_inches=None
-    )
+        ax.set_ylabel(r"$F_z$ [N]")
+        ax.set_title(label, loc="left", pad=2)
+        ax.locator_params(axis="y", nbins=3)
+    fig.legend(*axes[0].get_legend_handles_labels(), loc="upper center", ncol=3)
+    axes[-1].set_xlabel("Cycle phase")
+    if partial:
+        axes[0].set_title("Front (partial run)", loc="left", pad=2)
+    _save_figure(fig, axes, figures_dir / "delta_wing_force_cycles.png", figure_format)
 
 
 def _solution_directories_for_samples(samples_dirs, solution_dirs=None) -> list[Path]:
@@ -649,27 +677,20 @@ def _solution_directories_for_samples(samples_dirs, solution_dirs=None) -> list[
     return [CASE_DIR / "solution"]
 
 
-def plot_circulation(samples_dir=None, figures_dir=FIGURES_DIR, figure_format="png"):
+def plot_circulation(
+    samples_dir=None, figures_dir=FIGURES_DIR, figure_format="png", *, partial=False
+):
     _theme.set_thesis_style()
     data = flow_integrals(samples_dir)
-    source_label = (
-        _lineage_source_label(load_accepted_lineage())
-        if samples_dir is None
-        else _source_label(samples_dir)
-    )
-    fig, ax = plt.subplots(figsize=_theme.figure_size("single_tall"), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.0 * _theme.CM))
+    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.20, top=0.88)
     ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_COLORS["VPMpurple"])
     ax.set(
         xlabel="Time [s]",
-        ylabel=r"$\sum_p |\boldsymbol{\alpha}_p|$ [m$^3$/s]",
-        title=f"Wake vector-strength magnitude (not conserved; {source_label})",
+        ylabel=r"$\sum_p |\boldsymbol{\Gamma}_p|$ [m$^3$/s]",
+        title="Partial run" if partial else "",
     )
-    _theme.save_fig(
-        fig,
-        figures_dir / "delta_wing_circulation_history.png",
-        figure_format=figure_format,
-        bbox_inches=None,
-    )
+    _save_figure(fig, (ax,), figures_dir / "delta_wing_circulation_history.png", figure_format)
 
 
 def _wake_frame_step(path: Path) -> int:
@@ -785,12 +806,46 @@ def _read_freestream_velocity(solution_dirs) -> np.ndarray:
     return velocities[0]
 
 
+def _wake_average(collections, end, period):
+    """Integrate exactly one sampled period, including its boundary values."""
+    start = end - period
+    records = []
+    for frames in collections:
+        times = np.asarray([time for time, _, _ in frames])
+        if times[0] > start + CSV_CLOCK_ATOL or times[-1] < end - CSV_CLOCK_ATOL:
+            raise ValueError("wake samples do not cover a full measured heave period")
+        first = max(0, np.searchsorted(times, start, side="right") - 1)
+        last = np.searchsorted(times, end, side="left")
+        selected = frames[first : last + 1]
+        grids = [pv.read(path) for _, path, _ in selected]
+        points = grids[0].points
+        if any(not np.array_equal(grid.points, points) for grid in grids[1:]):
+            raise ValueError("wake sampling grid changed during the averaging interval")
+        fields = np.asarray([grid["velocity"] for grid in grids])
+        selected_times = times[first : last + 1].copy()
+        # Interpolate only the integration endpoints between adjacent native samples.
+        # No extrapolation or synthetic solver states are used.
+        for index, boundary, neighbour in ((0, start, 1), (-1, end, -2)):
+            fraction = (boundary - selected_times[index]) / (
+                selected_times[neighbour] - selected_times[index]
+            )
+            fields[index] = fields[index] + fraction * (fields[neighbour] - fields[index])
+            selected_times[index] = boundary
+        mean = np.trapezoid(fields, selected_times, axis=0) / period
+        records.append((points, mean))
+    return records
+
+
 def plot_wake(
     samples_dir=None,
     figures_dir=FIGURES_DIR,
     figure_format="png",
     solution_dirs=None,
+    *,
+    partial=False,
 ):
+    from matplotlib.colors import LinearSegmentedColormap
+
     _theme.set_thesis_style()
     lineage_segments = None
     if samples_dir is None:
@@ -807,92 +862,84 @@ def plot_wake(
     velocity = _read_freestream_velocity(solution_dirs)
     speed = np.linalg.norm(velocity)
     direction = velocity / speed
-    period = motion_period(force_history(None if lineage_segments is not None else samples_dirs))
-    source_label = (
-        _lineage_source_label(lineage_segments)
-        if lineage_segments is not None
-        else _source_label(samples_dirs)
-    )
+    data = force_history(None if lineage_segments is not None else samples_dirs)
+    period = _available_period(data)
     plane_names = sorted(
         {path.name for directory in samples_dirs for path in directory.glob("wake_*span.pvd")}
     )
     if len(plane_names) != 3:
-        raise ValueError(
-            f"expected three wake planes across the supplied segments, found {plane_names}"
-        )
-    fig, axes = plt.subplots(
-        len(plane_names),
-        2,
-        figsize=(12.5 * _theme.CM, 18 * _theme.CM),
-        constrained_layout=True,
-        sharex=True,
-        sharey=True,
-        squeeze=False,
-    )
-    axes = axes.T
-    records = []
+        raise ValueError(f"expected three wake planes, found {plane_names}")
     collections = [_wake_frames(samples_dirs, name, lineage_segments) for name in plane_names]
-    end = min(max(time for time, _, _ in frames) for frames in collections)
-    starts = []
-    for frames in collections:
-        selected = [frame for frame in frames if end - period < frame[0] <= end]
-        if not selected:
-            raise ValueError(f"no wake frames cover the final complete period for {frames}")
-        starts.append(selected[0][0])
-        grids = [pv.read(path) for _, path, _ in selected]
-        fields = np.asarray([np.asarray(grid["velocity"]) / speed for grid in grids])
-        times = np.asarray([time for time, _, _ in selected])
-        if len(times) == 1:
-            weights = np.ones(1)
-        else:
-            # Trapezoidal weights preserve the physical contribution of each
-            # sampled interval when sparse and dense segments are combined.
-            weights = np.empty(len(times))
-            weights[0] = (times[1] - times[0]) / 2.0
-            weights[-1] = (times[-1] - times[-2]) / 2.0
-            weights[1:-1] = (times[2:] - times[:-2]) / 2.0
-        if np.any(weights <= 0.0) or not np.isfinite(weights).all():
-            raise ValueError("wake sample times must increase for time-weighted averaging")
-        mean = np.tensordot(weights, fields, axes=(0, 0)) / weights.sum()
-        records.append((grids[-1].points, mean))
+    end = min(frames[-1][0] for frames in collections)
+    if partial:
+        records = []
+        for frames in collections:
+            matching = [path for time, path, _ in frames if abs(time - end) <= CSV_CLOCK_ATOL]
+            if len(matching) != 1:
+                raise ValueError("no common native wake timestamp across all three planes")
+            grid = pv.read(matching[0])
+            records.append((grid.points, np.asarray(grid["velocity"])))
+        title = f"Partial run: $t = {end:g}$ s"
+    else:
+        if period is None:
+            raise ValueError("two sampled heave-velocity peaks are required for a mean wake")
+        records = _wake_average(collections, end, period)
+        title = f"Mean: $t = {end - period:g}$--${end:g}$ s"
     records.sort(key=lambda row: row[0][0] @ direction)
-    axial = [mean @ direction for _, mean in records]
-    vertical = [mean[:, 2] for _, mean in records]
-    vertical_limit = max(np.max(np.abs(values)) for values in vertical)
-    for row, values, limits, cmap, label in (
-        (
-            0,
-            axial,
-            (min(v.min() for v in axial), max(v.max() for v in axial)),
-            "viridis",
-            r"Mean $u_{\parallel}/U_\infty$",
-        ),
-        (1, vertical, (-vertical_limit, vertical_limit), "RdBu_r", r"Mean $u_z/U_\infty$"),
+    axial = [field @ direction / speed for _, field in records]
+    vertical = [field[:, 2] / speed for _, field in records]
+    sequential = LinearSegmentedColormap.from_list("thesis_teal", ["white", _COLORS["TUDcyan"]])
+    diverging = LinearSegmentedColormap.from_list(
+        "thesis_signed", [_COLORS["TUDcyan"], "white", _COLORS["VPMpurple"]]
+    )
+    for values, cmap, field_name, label in (
+        (axial, sequential, "streamwise", r"$u_{\parallel}/U_\infty$"),
+        (vertical, diverging, "vertical", r"$u_z/U_\infty$"),
     ):
-        for column, ((points, _), field) in enumerate(zip(records, values, strict=True)):
-            artist = axes[row, column].tricontourf(
-                points[:, 1],
-                points[:, 2],
-                field,
-                levels=np.linspace(*limits, 25),
-                cmap=cmap,
+        limits = (min(v.min() for v in values), max(v.max() for v in values))
+        if field_name == "vertical":
+            limit = max(abs(limits[0]), abs(limits[1]), 1e-8)
+            limits = (-limit, limit)
+        elif limits[1] - limits[0] < 1e-8:
+            limits = (limits[0] - 1e-8, limits[1] + 1e-8)
+        fig, axes = plt.subplots(
+            1, 3, sharex=True, sharey=True, figsize=(12.5 * _theme.CM, 7.6 * _theme.CM)
+        )
+        _theme.centered_subplots_adjust(fig, outer=0.15, bottom=0.40, top=0.83, wspace=0.13)
+        for ax, (points, _), field in zip(axes, records, values, strict=True):
+            artist = ax.tricontourf(
+                points[:, 1], points[:, 2], field, levels=np.linspace(*limits, 25), cmap=cmap
             )
-            axes[row, column].set_aspect("equal")
+            ax.set(xlabel="$y$ [m]", title=f"$x={points[0, 0]:g}$ m")
+            ax.set_xticks([-0.5, 0, 0.5])
+            ax.set_yticks([-1, 0])
+        axes[0].set_ylabel("$z$ [m]")
+        # Measure the y labels first; preserve equal physical aspect by choosing
+        # the height from the resulting panel width, then place the colorbar.
+        _theme.fit_thesis_y_label_margins(fig, axes)
+        outer = axes[0].get_position().x0
+        panel_width_cm = axes[0].get_position().width * 12.5
+        aspect = np.ptp(records[0][0][:, 2]) / np.ptp(records[0][0][:, 1])
+        panel_height_cm = panel_width_cm * aspect
+        height_cm = panel_height_cm + 4.1
+        fig.set_size_inches(12.5 * _theme.CM, height_cm * _theme.CM, forward=False)
+        fig.subplots_adjust(bottom=2.8 / height_cm, top=1 - 1.3 / height_cm)
+        for ax in axes:
+            ax.set_aspect("equal")
+        cax = fig.add_axes([outer, 1.3 / height_cm, 1 - 2 * outer, 0.22 / height_cm])
         fig.colorbar(
             artist,
-            ax=axes[row],
-            label=label,
+            cax=cax,
+            orientation="horizontal",
+            ticks=np.linspace(*limits, 3),
             format="%.2f",
-            ticks=np.linspace(*limits, 5),
+            label=label,
         )
-    for column, (points, _) in enumerate(records):
-        axes[0, column].set_title(f"x = {points[0, 0]:g} m")
-        axes[0, column].set_ylabel("z [m]")
-    for ax in axes[:, -1]:
-        ax.set_xlabel("y [m]")
-    fig.suptitle(
-        f"Time-weighted mean wake velocity\nt = {max(starts):.2f}–{end:.2f} s\nsegments: {source_label}"
-    )
-    _theme.save_fig(
-        fig, figures_dir / "delta_wing_wake.png", figure_format=figure_format, bbox_inches=None
-    )
+        fig.suptitle(title, y=1 - 0.22 / height_cm)
+        _save_figure(
+            fig,
+            (*axes, cax),
+            figures_dir / f"delta_wing_wake_{field_name}.png",
+            figure_format,
+            fit=False,
+        )

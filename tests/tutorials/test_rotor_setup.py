@@ -157,7 +157,7 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
         steps=setup.N_STEPS,
     )
     stabilized = matched_pair.build_trial_case(
-        "stretching_viscosity",
+        "selective_eddy_viscosity",
         output_tag="matched_stabilized_test",
         steps=setup.N_STEPS,
     )
@@ -167,7 +167,7 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
     assert baseline.numerics.time_step_size == stabilized.numerics.time_step_size
     assert baseline.numerics.stabilization == setup.vpm.StabilizationConfig.disabled()
     assert (
-        stabilized.numerics.stabilization.stretching_viscosity_coefficient
+        stabilized.numerics.stabilization.selective_eddy_viscosity_coefficient
         == matched_pair.STRETCHING_VISCOSITY_COEFFICIENT
     )
     assert baseline.numerics.stabilization != stabilized.numerics.stabilization

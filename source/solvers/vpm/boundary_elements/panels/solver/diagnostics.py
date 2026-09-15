@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from source.solvers.vpm.io.logging import Logging
+
 
 class PanelDiagnostics:
     """Record panel force history and append a compact CSV time series.
@@ -105,7 +107,7 @@ class PanelDiagnostics:
             if step % freq == 0:
                 PanelDiagnostics.export_forces_csv(panel_solver, last_forces, time, step, case_dir)
         except Exception as exc:
-            print(f"(Warning) Failed to record panel diagnostics: {exc}")
+            Logging.warning("Panel diagnostics could not be recorded: %s", exc)
 
     @staticmethod
     def export_forces_csv(

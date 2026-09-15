@@ -95,11 +95,6 @@ class RunSchedule:
         """Whether this schedule is selected only by a terminal event."""
         return self.final_only
 
-    @property
-    def at_end(self) -> bool:
-        """Compatibility spelling used by the VPM output protocol."""
-        return self.final_only
-
     def is_due(self, step: int, time: float, time_step_size: float | None = None) -> bool:
         """Return whether the accepted state triggers this schedule."""
         if self.final_only:

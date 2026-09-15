@@ -154,7 +154,7 @@ FVM_SETUP = fvm.FVMSetup(
     pimple=fvm.PimpleControl(
         n_correctors=2,
         n_outer_correctors=2,
-        n_orthogonal_correctors=1,
+        n_nonorthogonal_correctors=1,
         velocity_relaxation=0.7,
         pressure_relaxation=0.3,
     ),

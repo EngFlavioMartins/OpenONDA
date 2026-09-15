@@ -274,7 +274,7 @@ def test_output_deadline_does_not_generate_a_pressure_impulse(tmp_path) -> None:
         pimple=fvm.PimpleControl(
             n_outer_correctors=2,
             n_correctors=2,
-            n_orthogonal_correctors=1,
+            n_nonorthogonal_correctors=1,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),

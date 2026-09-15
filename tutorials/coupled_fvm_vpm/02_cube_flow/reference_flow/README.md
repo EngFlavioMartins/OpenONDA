@@ -10,8 +10,8 @@ Run the four-grid study with:
 ./allrun.sh
 ```
 
-The script runs `coarse`, `medium`, `fine`, and `dense` in
-sequence at target `h/D = 0.10, 0.08, 0.06, 0.04`. Fields and meshes
+The script runs `very_coarse`, `coarse`, `medium`, and `fine` in
+sequence at target `h/D = 0.12, 0.10, 0.08, 0.06`. Fields and meshes
 are written below `solution/<name>/`; samples are written below
 `samples/<name>/`. It never invokes `allclean.sh`, never deletes outputs, and
 does not run postprocessing automatically. To run one case directly, use for
@@ -20,6 +20,16 @@ example:
 ```bash
 python -u setup.py --name fine --dx 0.06
 ```
+
+To add the optional denser level without rerunning the other grids:
+
+```bash
+python -u setup.py --name dense --dx 0.04
+```
+
+The new case will be discovered automatically by the postprocessor after it
+completes. Its configured end time is 30 s, as for the other grids; adding cells
+alone does not extend the averaging record.
 
 The launcher uses the active OpenONDA installation. When working on source,
 install the checkout once with `python -m pip install -e .` from the repository
@@ -48,19 +58,42 @@ the **Cell Data** association. Existing time-step files are unchanged; open
 their separate `mesh.vtu` for the sizes/volumes already saved, or apply
 ParaView's **Cell Size** filter to compute geometric volumes.
 
-The previously saved `very_coarse` and `coarse` cases used different domains
-and background sizes. Their names alone do not establish a consistent grid
-study. See the [cell-size investigation](../../../../docs/verification/mesher_cell_sizes.md)
-for the recorded settings and diagnosis.
+An older campaign used different domains and background sizes. The four runs
+currently saved through 30 s have matching domain bounds, recorded physical
+and solver settings, and proportional mesh-size controls. The postprocessor
+checks these original records instead of inferring compatibility from case
+names or the current setup. See the [cell-size investigation](../../../../docs/verification/mesher_cell_sizes.md)
+for the earlier diagnosis.
 
 Each completed case updates the generic `grid_study.json`, `grid_study.csv`,
 `grid_study.md`, and `grid_study.png` under `solution/`. After the campaign
-finishes, run `postprocess_grid_study.py`. It discovers every completed grid
-case with `samples/<name>/grid_run.json`, compares their force statistics over
-one common final-half time window, and writes the more detailed
-`grid_convergence.{json,csv,md,png}`, `grid_convergence_by_cells.png`, and
-`grid_convergence_profiles.png` under `solution/`. The profile figure states
-when no common line data are available.
+finishes, run `postprocess_grid_study.py`. Use its `grid_convergence.*` reports
+for the qualified frequency and drift checks; the automatic `grid_study.*`
+files are only the generic quick summary. It discovers every completed grid
+case with `samples/<name>/grid_run.json` and compares their force statistics over
+one common final-half time window. It prints the grid table and assessment in
+the terminal, and writes `grid_convergence.{json,csv,md}` under `solution/`.
+The command defaults to PNG and PDF exports of:
+
+- `grid_convergence`: mean drag and drag/lift/side-force fluctuation RMS versus target spacing.
+- `grid_convergence_by_cells`: the same statistics versus global fluid-cell count.
+- `grid_convergence_histories`: drag and lift during the chosen averaging window, exposing remaining drift.
+- `grid_convergence_profiles`: mean streamwise velocity on the centreline and off-axis wake line.
+
+Figures use the shared thesis theme, boxed axes without a background grid,
+12.5 cm width, and symmetric margins. The report includes pressure/viscous drag
+components, changes between half-window means, four-block means, whole-line
+and wake-only profile differences, and the recorded sample-time-step range.
+Fluctuation RMS measures variation about the mean; it is not a confidence
+interval for that mean. The sampled time-step range does not cover steps at
+which forces were not written.
+
+Strouhal numbers use `St = f D/U` with the saved force-sampler scales. The
+postprocessor withholds a frequency unless the record contains at least five
+candidate cycles, eight samples per cycle, limited drift, a concentrated
+spectral peak, and consistent frequencies in both window halves. Every
+rejection has a reason. These are practical screens, not proof of spectral
+convergence. A default final-half window does not establish stationarity.
 
 Only completed cases with both `grid_run.json` and `forces_history.csv` are
 put on the convergence axes. The plots use the requested cube-patch `h/D` and
@@ -72,13 +105,32 @@ Run the postprocessor again after adding a case or choose a different common
 statistics window without changing simulation outputs:
 
 ```bash
-python -u postprocess_grid_study.py --statistics-start 10
+python -u postprocess_grid_study.py
+python -u postprocess_grid_study.py --statistics-start 20 --statistics-end 30 --output-dir solution/window_20_30
 ```
+
+Use `--format png` or `--format pdf` to export only one format. `--output-dir`
+changes only derived report placement; native metadata is read from the
+`solution/` directory beside the selected `--samples-root`, or from an explicit
+`--solution-root`. No simulation outputs are modified. Input hashes in the
+JSON identify the histories, metadata and postprocessor used.
 
 Differences are reported relative to the finest available grid; they are not
 claimed to be exact discretization errors. Richardson/GCI estimates are only
 reported when the three finest distinct levels are monotone and use matching
-refinement ratios.
+refinement ratios. Incompatible saved settings and drag half-window drift
+above the documented 1% diagnostic screen also suppress those estimates.
+An optional `--tolerance 0.01` records which finest-pair changes fall below 1%;
+it does not certify the run as grid-independent.
+
+For the present 15–30 s window, mean Cd is 1.00498, 0.999316, 0.971000 and
+0.965156 from very coarse to fine. Although medium/fine mean Cd differs by
+only 0.606%, fine-grid half-window drag drift is 11.9%, drag fluctuation RMS
+changes by 33.4%, and wake-profile differences are approximately 6% and 10%.
+All force-derived Strouhal estimates are unresolved. These records therefore
+do not yet establish fine-grid independence. A dense run is a useful spatial
+comparison, but longer stationary records and a separate time-step check are
+needed before making that claim.
 
 `allclean.sh` removes generated solutions, samples, and grid-study outputs, so
 invoke it only when you intentionally want to discard a campaign.

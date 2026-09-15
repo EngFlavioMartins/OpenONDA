@@ -238,7 +238,6 @@ class EvolutionStepper:
         # solver clock is committed only after all physical phases succeeded.
         self._staged_step = target_step
         self._staged_time = target_time
-        self._pending_surface_event_records = None
         self.stabilization.stage_clock(step=self._staged_step, time=self._staged_time)
 
         self.particles.step = self.step
@@ -251,7 +250,7 @@ class EvolutionStepper:
 
             _gradients_required = (
                 self.flow_model == "LES"
-                or self.stabilization_config.stretching_viscosity_coefficient > 0.0
+                or self.stabilization_config.selective_eddy_viscosity_coefficient > 0.0
                 or (
                     self.stabilization_config.pedrizzetti_relaxation_enabled
                     and self.flow_model != "POTENTIAL"
@@ -267,7 +266,7 @@ class EvolutionStepper:
                     kinetic_energy_rate=self.solver.kinetic_energy_rate,
                     viscous_kinetic_energy_rate=self.solver.viscous_kinetic_energy_rate,
                 )
-                self.stabilization.update_residual_viscosity()
+                self.stabilization.update_selective_eddy_viscosity()
 
             # Relax against the same t_n gradient used by the strength update.
             self.stabilization.run_phase("pre_strength", profiler=self.profiler)
@@ -275,15 +274,6 @@ class EvolutionStepper:
             # The inviscid particle state always advances through one coupled
             # position/strength RK call.  Diffusion remains a split operator.
             with self.profiler.section("Coupled particle evolution"):
-                if self.vlm_solver is not None:
-                    # Observer-only: record the accepted segment's start so the
-                    # surface-interaction sweep below has a well-defined
-                    # [pre_transport, post_transport] pair on the device.
-                    self.vlm_solver._snapshot_pre_transport_positions(
-                        self.particles,
-                        time=self.solver.time,
-                        time_step_size=self.time_step_size,
-                    )
                 self._apply_coupled_update(
                     self.time_step_size,
                 )
@@ -310,16 +300,6 @@ class EvolutionStepper:
         # post-step boundary/panel queries cannot reuse the previous tree.
         self.particles.touch_state()
         self._commit_accepted_step()
-        records = self._pending_surface_event_records
-        if records is not None:
-            self.vlm_solver.write_surface_event_outputs(
-                records,
-                step=self.solver.step,
-                time=self.solver.time,
-                case_dir=self.solver.case_dir,
-                sample_directory=self.solver.case.samplers.directory,
-            )
-            self._pending_surface_event_records = None
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
         Logging.time_step(
@@ -353,11 +333,17 @@ class EvolutionStepper:
         invalid_volumes = ~np.isfinite(particle_volume) | (particle_volume <= 0.0)
         n_bad_radii = int(np.count_nonzero(invalid_radii))
         n_bad_volumes = int(np.count_nonzero(invalid_volumes))
-        Logging.message(
-            f"[Integrity:{stage}] N={n} core_radius=[{np.nanmin(core_radius):.6e}, "
-            f"{np.nanmax(core_radius):.6e}] bad={n_bad_radii}; "
-            f"particle_volume=[{np.nanmin(particle_volume):.6e}, {np.nanmax(particle_volume):.6e}] "
-            f"bad={n_bad_volumes}"
+        Logging.record(
+            "particle geometry validation",
+            ("stage", stage),
+            ("particles", n),
+            ("core radius, minimum", np.nanmin(core_radius), "m"),
+            ("core radius, maximum", np.nanmax(core_radius), "m"),
+            ("invalid core radii", n_bad_radii),
+            ("particle volume, minimum", np.nanmin(particle_volume), "m^3"),
+            ("particle volume, maximum", np.nanmax(particle_volume), "m^3"),
+            ("invalid particle volumes", n_bad_volumes),
+            flush=True,
         )
         if n_bad_radii or n_bad_volumes:
             bad_radius_index = int(np.flatnonzero(invalid_radii)[0]) if n_bad_radii else -1
@@ -515,43 +501,11 @@ class EvolutionStepper:
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
         self._advance_particles(time_step_size)
-        # Observe the same particle identities before random walk or grid
-        # diffusion changes their trajectories/population. Publish only after
-        # all physical phases and the accepted clock commit succeed.
-        if self.vlm_solver is not None:
-            with self.profiler.section("VLM surface interaction observation"):
-                self._observe_vlm_surface_interaction()
-
         if self.viscous_scheme == "CS":
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
-
-    def _observe_vlm_surface_interaction(self) -> None:
-        """Sweep the accepted transport segment for finite-surface events.
-
-        Buffer the observer record without writing output before acceptance.
-        Strict policy can reject this trial; no accepted event file is then
-        published. Physical particle/surface fields are never modified here.
-        """
-        vlm_solver = self.vlm_solver
-        if vlm_solver is None:
-            return
-        if not vlm_solver.surface_diagnostics_due(self._staged_step):
-            vlm_solver._pre_transport_position = None
-            return
-        records = vlm_solver.observe_surface_interaction(self.particles)
-        self._pending_surface_event_records = records
-        warning = vlm_solver._resolve_surface_warning(records, self._staged_step)
-        if warning:
-            log_method = getattr(vlm_solver, "_unresolved_penetration_policy", "warn")
-            if log_method == "strict":
-                from ..config.health import HealthError
-
-                raise HealthError(warning)
-            message = f"WARNING: {warning}" if log_method == "warn" else f"INFO: {warning}"
-            Logging.warning(message)
 
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
         """Advance the split Gaussian core-spreading operator."""

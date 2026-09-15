@@ -244,10 +244,17 @@ def main(arguments: list[str] | None = None) -> int:
     for checkpoint in checkpoints:
         evidence = audit_checkpoint(checkpoint)
         series = cast(dict[str, object], evidence["vtp_series"])
-        print(
-            f"{checkpoint.name}: step {evidence['step']}, time {evidence['time']}, "
-            f"{series['frame_count']} frames through {series['last_frame']} "
-            f"(vlm identity {evidence['vlm_identity']})"
+        from .logging import Logging
+
+        Logging.section(
+            "checkpoint audit",
+            ("checkpoint", checkpoint.name),
+            ("accepted step", evidence["step"]),
+            ("physical time", evidence["time"], "s"),
+            ("frames", series["frame_count"]),
+            ("last frame", series["last_frame"]),
+            ("VLM identity", evidence["vlm_identity"]),
+            flush=True,
         )
     return 0
 

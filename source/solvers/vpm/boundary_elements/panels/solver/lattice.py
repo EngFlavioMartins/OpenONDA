@@ -10,18 +10,17 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass
-import logging
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import taichi as ti
 
+from source.solvers.vpm.io.logging import Logging
+
 from ....config.constants import PANEL_EPSILON
 
 if TYPE_CHECKING:
     from ..coupling.kinematics import BodyPose, PanelKinematics
-
-logger = logging.getLogger("vpm")
 
 
 @dataclass
@@ -466,5 +465,5 @@ class PanelLattice:
         self.group_id.from_numpy(group_id_np)
 
         self.n_panels += num_new
-        logger.info(f"Added PanelBody '{uid}' with {num_new} panels at index {start_idx}.")
+        Logging.info(f"Added PanelBody '{uid}' with {num_new} panels at index {start_idx}.")
         return num_new

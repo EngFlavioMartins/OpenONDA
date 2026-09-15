@@ -644,9 +644,8 @@ class PimpleControl:
         Positive pressure-correction solves per outer pass.
     n_outer_correctors : int, default=1
         Positive nonlinear outer passes. PISO normally uses one.
-    n_orthogonal_correctors, n_nonorthogonal_correctors : int
-        Non-negative extra pressure passes for non-orthogonal correction. The
-        latter is a compatibility alias and both values must agree.
+    n_nonorthogonal_correctors : int, default=0
+        Non-negative extra pressure passes for non-orthogonal correction.
     min_outer_correctors : int, default=1
         Minimum passes before residual-based early termination.
     outer_residual_tolerance : float or None
@@ -654,7 +653,7 @@ class PimpleControl:
     outer_continuity_tolerance : float or None
         Optional positive maximum cell-divergence gate in 1/s.
     max_iterations, tolerance : int, float
-        Positive legacy SIMPLE iteration cap and convergence tolerance.
+        Positive SIMPLE iteration cap and convergence tolerance.
     velocity_relaxation, pressure_relaxation : float
         Under-relaxation factors in ``(0, 1]``.
     ddt_corr : bool
@@ -666,7 +665,7 @@ class PimpleControl:
 
     ``n_correctors`` is the pressure-correction count per outer pass;
     ``n_outer_correctors`` is the PIMPLE nonlinear-pass count;
-    ``n_orthogonal_correctors`` handles non-orthogonal pressure terms. Residual
+    ``n_nonorthogonal_correctors`` handles non-orthogonal pressure terms. Residual
     and continuity limits govern early exit/acceptance, while relaxation factors
     lie in ``(0, 1]``. IBM loop fields apply only when immersed forcing is active.
 
@@ -675,15 +674,14 @@ class PimpleControl:
     TypeError
         If integer/Boolean controls have invalid types.
     ValueError
-        If counts, tolerances, relaxation factors, aliases, or algorithm are
+        If counts, tolerances, relaxation factors or algorithm are
         inconsistent.
     """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
     n_correctors: int = 2
     n_outer_correctors: int = 1
-    n_orthogonal_correctors: int = 0
-    n_nonorthogonal_correctors: int | None = None
+    n_nonorthogonal_correctors: int = 0
     min_outer_correctors: int = 1
     outer_residual_tolerance: float | None = None
     outer_continuity_tolerance: float | None = None
@@ -700,24 +698,11 @@ class PimpleControl:
         if algorithm not in {"SIMPLE", "PIMPLE", "PISO"}:
             raise ValueError(f"Unsupported PimpleControl.algorithm={self.algorithm!r}")
         self.algorithm = algorithm
-        old_value = _strict_int(
-            "PimpleControl.n_orthogonal_correctors",
-            self.n_orthogonal_correctors,
+        self.n_nonorthogonal_correctors = _strict_int(
+            "PimpleControl.n_nonorthogonal_correctors",
+            self.n_nonorthogonal_correctors,
             minimum=0,
         )
-        if self.n_nonorthogonal_correctors is not None:
-            new_value = _strict_int(
-                "PimpleControl.n_nonorthogonal_correctors",
-                self.n_nonorthogonal_correctors,
-                minimum=0,
-            )
-            if old_value != 0 and old_value != new_value:
-                raise ValueError(
-                    "PimpleControl.n_orthogonal_correctors and n_nonorthogonal_correctors disagree"
-                )
-            old_value = new_value
-        self.n_orthogonal_correctors = old_value
-        self.n_nonorthogonal_correctors = old_value
         for name in (
             "n_correctors",
             "n_outer_correctors",
@@ -813,79 +798,6 @@ class TransportConfig:
         return TransportConfig(
             density=1000.0,
             kinematic_viscosity=1.0e-6,
-        )
-
-
-@dataclass
-class MeshMotionConfig:
-    """Static or declarative rigid-motion mesh policy.
-
-    Parameters
-    ----------
-    method : {'static', 'rigidMotion'}, default='static'
-        Declarative mesh-motion mode.
-    velocity : list[float], shape (3,)
-        Cartesian translation velocity in m/s.
-    angular_speed : float, default=0.0
-        Non-negative rotation rate in rad/s.
-    axis : list[float], shape (3,)
-        Global rotation axis; it must be non-zero for rigid motion.
-    origin : list[float], shape (3,)
-        Rotation origin in m.
-
-    ``velocity`` is translational mesh velocity in m/s, ``angular_speed`` is
-    rad/s, ``axis`` is the rotation axis, and ``origin`` is in m. The current
-    solver rejects dynamic/ALE motion because conservative mesh-flux terms are
-    not implemented; retaining this object documents the legacy configuration
-    boundary and gives a precise failure instead of a silent approximation.
-
-    Raises
-    ------
-    ValueError
-        If method/vectors/rate are invalid.
-    """
-
-    method: Literal["static", "rigidMotion"] = "static"
-    velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-    angular_speed: float = 0.0
-    axis: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
-    origin: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-
-    def __post_init__(self) -> None:
-        method = str(self.method)
-        if method not in {"static", "rigidMotion"}:
-            raise ValueError("MeshMotionConfig.method must be 'static' or 'rigidMotion'")
-        self.method = method
-        _validate_vector("MeshMotionConfig.velocity", self.velocity, allow_per_face=False)
-        _validate_vector("MeshMotionConfig.axis", self.axis, allow_per_face=False)
-        _validate_vector("MeshMotionConfig.origin", self.origin, allow_per_face=False)
-        self.angular_speed = _finite_real(
-            "MeshMotionConfig.angular_speed", self.angular_speed, minimum=0.0
-        )
-        import numpy as np
-
-        if method == "rigidMotion" and np.linalg.norm(np.asarray(self.axis, dtype=float)) == 0.0:
-            raise ValueError("MeshMotionConfig.axis must be non-zero for rigidMotion")
-
-    @staticmethod
-    def static() -> MeshMotionConfig:
-        """Return static mesh motion."""
-        return MeshMotionConfig(method="static")
-
-    @staticmethod
-    def rigid(
-        velocity: list[float] | None = None,
-        angular_speed: float = 0.0,
-        axis: list[float] | None = None,
-        origin: list[float] | None = None,
-    ) -> MeshMotionConfig:
-        """Return rigid translation/rotation mesh motion."""
-        return MeshMotionConfig(
-            method="rigidMotion",
-            velocity=[0.0, 0.0, 0.0] if velocity is None else velocity,
-            angular_speed=angular_speed,
-            axis=[0.0, 0.0, 1.0] if axis is None else axis,
-            origin=[0.0, 0.0, 0.0] if origin is None else origin,
         )
 
 
@@ -1341,7 +1253,7 @@ class BackupConfig:
 
 @dataclass
 class FVMSetup:
-    """Legacy low-level setup consumed by FVM kernels and factories.
+    """Validated construction controls consumed by FVM kernels and factories.
 
     Parameters
     ----------
@@ -1350,7 +1262,7 @@ class FVMSetup:
     cores : int, default=1
         Positive requested execution size.
     mesh, execution, output, acceptance, logging, backup, time, schemes,
-    linear, pimple, transport, dynamic_mesh : corresponding configuration objects
+    linear, pimple, transport : corresponding configuration objects
         Low-level policies consumed when the solver is materialized.
     boundaries : list[BoundaryConfig]
         Patch conditions keyed by unique mesh-patch name.
@@ -1365,8 +1277,8 @@ class FVMSetup:
         Uniform initial ``p/rho`` in m²/s².
 
     Prefer :class:`source.solvers.fvm.config.case.FVMCase` for new standalone
-    applications. This mutable object remains the compatibility boundary for
-    tutorials, coupled drivers, and direct factory callers. Its fields group
+    applications. This mutable object supplies materialized controls to
+    coupled drivers and direct factory callers. Its fields group
     mesh-quality, execution, output, acceptance/logging, backup/time,
     discretization/linear/coupling, transport, boundaries, samplers, turbulence,
     and initial-field settings. Initial velocity is m/s and initial kinematic
@@ -1374,8 +1286,8 @@ class FVMSetup:
 
     Notes
     -----
-    This mutable compatibility object is referenced by legacy tutorial/coupler
-    paths. New standalone applications should prefer immutable :class:`FVMCase`.
+    Factories validate and snapshot these controls before constructing solver
+    state. Standalone applications declare an immutable :class:`FVMCase`.
     """
 
     case_name: str
@@ -1392,7 +1304,6 @@ class FVMSetup:
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
     pimple: PimpleControl = field(default_factory=PimpleControl)
     transport: TransportConfig = field(default_factory=TransportConfig)
-    dynamic_mesh: MeshMotionConfig = field(default_factory=MeshMotionConfig.static)
 
     boundaries: list[BoundaryConfig] = field(default_factory=list)
     samplers: tuple = ()
@@ -1418,7 +1329,6 @@ class FVMSetup:
             "linear": LinearSolverConfig,
             "pimple": PimpleControl,
             "transport": TransportConfig,
-            "dynamic_mesh": MeshMotionConfig,
         }
         for name, expected in nested_types.items():
             if not isinstance(getattr(self, name), expected):
@@ -1463,10 +1373,6 @@ class FVMSetup:
             self.pimple,
         ):
             merged.update(vars(group))
-        # ``n_nonorthogonal_correctors`` is the canonical public spelling;
-        # retain the older key in the low-level dictionary for existing
-        # algorithm callers during the migration.
-        merged["n_nonorthogonal_correctors"] = self.pimple.n_nonorthogonal_correctors
         return merged
 
     def save(self, filepath: str) -> None:
@@ -1553,12 +1459,6 @@ class FVMSetup:
             pimple=PimpleControl(**pimple_data),
             samplers=tuple(samplers),
             transport=TransportConfig(**transport_data),
-            dynamic_mesh=MeshMotionConfig(
-                **data.get(
-                    "dynamic_mesh",
-                    {"method": "static"},
-                )
-            ),
             boundaries=boundaries,
             turbulence=turbulence,
             initial_velocity=data.get(
@@ -1575,8 +1475,8 @@ class FVMSetup:
 def validate_fvm_setup(setup: FVMSetup) -> None:
     """Revalidate a setup at the solver admission boundary.
 
-    The low-level configuration objects remain mutable for compatibility with
-    existing callers.  A caller can therefore mutate a nested object after its
+    Construction controls are mutable until admission. A caller can therefore
+    mutate a nested object after its
     dataclass constructor has run.  Re-running the small, side-effect-free
     validators here prevents such a mutation from reaching mesh allocation,
     backend initialization, or output creation.
@@ -1595,7 +1495,6 @@ def validate_fvm_setup(setup: FVMSetup) -> None:
         "linear": LinearSolverConfig,
         "pimple": PimpleControl,
         "transport": TransportConfig,
-        "dynamic_mesh": MeshMotionConfig,
     }
     for name, expected in nested_types.items():
         value = getattr(setup, name)

@@ -254,16 +254,9 @@ def get_all_constants():
 
 def print_constants():
     """Print all constants with their values in a formatted way."""
-    constants = get_all_constants()
+    from ..io.logging import Logging
 
-    print("=" * 60)
-    print("VPM Module Constants")
-    print("=" * 60)
-
-    for name, value in sorted(constants.items()):
-        print(f"{name:<30} = {value}")
-
-    print("=" * 60)
+    Logging.section("VPM constants", *sorted(get_all_constants().items()), flush=True)
 
 
 # =========================================================

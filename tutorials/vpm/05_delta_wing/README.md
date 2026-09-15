@@ -1,73 +1,90 @@
 # Two heaving delta wings
 
-Run `python setup.py` (or `./allrun.sh`), then `./allplot.sh`; use `./allplot.sh pdf` for vector figures. The installed OpenONDA package supplies the solver and plotting dependencies.
-
-Two wings heave out of phase and pitch with the changing incident flow. The downstream wing crosses the upstream wake. Initial geometry pivots are specified before translation; prescribed-motion pivots are in the world frame. This distinction prevents the front wing from being translated twice.
-
-Native force, motion, power and velocity samples are under `samples/delta_wing/`. Native coupled VPM+VLM backups and their VLM companion surface files are under `solution/`; the CSVs and wake-plane samples remain under `samples/delta_wing/`. The force figure compares both wings, their actual sampled centroids, motion input power and the last three complete cycles. The wake figure shows streamwise velocity and downwash averaged over the final heave period at three downstream planes. The sampled vertical window extends to z = −1.5 m to include the descending wake. The vector-strength magnitude has units m³/s and is not a conserved scalar circulation; its plot is a wake diagnostic.
-
-Open `vlm.pvd` for the surface time series and the matching `vpm_*.xdmf`
-files for the particles in the same solution directory. Their saved steps and
-physical times match. `TimeValue` is VTK's reserved time-metadata name, used
-when reading VTP files as a sequence; OpenONDA's own time field is `time`.
-
-The authored run spans 10 heave cycles with 4000 accepted steps. Attached VLM
-force and loading tables are recorded on every accepted step. The VPM-owned
-backup clock is every 10 accepted steps (0.025 s, 40 coupled frames per cycle),
-so each animation frame is a full coupled VPM+VLM restart state rather than a
-separate VLM-only sample. `python assets/render_delta_wing_gif.py --fps 30`
-selects the nearest coupled HDF5 backup for each physical 1/30 s target and
-writes the source timestamp manifest beside the 30 fps GIF; it does not
-synthesize intermediate solver states. The renderer uses one fixed oblique
-x/y/z projection and one circulation color scale for the full sequence so the
-span, chord and heave remain visible. Its `--fps` value is intentionally
-constrained to 30 to match the centisecond duration pattern encoded in the GIF.
-Plotters use native solver metadata and sampled data; no duplicate metadata or
-checkpoint extraction is needed. By default, the plotters and native GIF
-renderer read the accepted dense lineage (one fresh run or an ordered
-fresh-prefix/continuation pair) in
-`assets/delta_wing_accepted_lineage.json`. The lineage is finalized only after
-the clean run reaches step 4000 / 10 s; before that point, plotting and GIF
-generation must not present superseded sparse or interrupted output as current.
-Pass `--samples`/`--solution` only for an explicit forensic source inspection.
-Run `python assets/validate_results.py --pre-plot` to compare phase-resolved
-loads between the final cycles and check the configured completion horizon.
-Persistent cycle drift requires a longer run or an explicitly statistical
-analysis. If a run resumes from a complete checkpoint, the manifest may
-declare the fresh prefix and a separate continuation namespace; the same
-finalizer validates both and the plotters/GIF renderer read their accepted
-intervals in order.
-
-The clean run has one logical fresh origin at step 0 / time 0, followed by full
-coupled H5/XDMF/VTP states every 10 accepted steps (0.025 s) through step 4000.
-The completion helper called by `allplot.sh` promotes the active lineage only
-after the final native owner set, attached force/loading tables and endpoint
-state pass their checks. `validate_results.py` checks completion, finite
-samples and cycle behavior; the independent checkpoint audit covers exact
-native owner membership and cadence. The wake-period plot uses trapezoidal time
-weights across the one dense cadence:
+Run from this directory using the installed OpenONDA environment:
 
 ```bash
-python assets/validate_results.py --pre-plot
-python assets/plot_delta_wing_forces.py
-python assets/plot_delta_wing_circulation_history.py
-python assets/plot_delta_wing_wake.py
-python assets/render_delta_wing_gif.py --fps 30
+./allrun.sh
+./allplot.sh
+./allplot.sh pdf
 ```
 
-The final GIF sidecar records the accepted source namespace(s), exact native
-backup timestamps and encoded 30 fps timing. No interpolation or repeated
-sparse-frame hold is permitted.
+`allrun.sh` cleans generated output and starts a fresh simulation. The authored
+case spans **20 s / 8000 steps**, with a 0.0025 s time step and 1 Hz prescribed
+heave. Completion checks read the horizon from native solver metadata, including
+for a declared checkpoint continuation.
 
-VLM supplies attached-flow circulation and Kutta–Joukowski loading, coupled to the trailing particle wake. This tutorial does not provide a separated leading-edge-vortex or viscous-stall model, and its 15 degree incidence should not be interpreted as experimental validation of those effects.
+Two wings heave out of phase and pitch with the changing incident flow. The
+downstream wing crosses the upstream wake. Initial geometry pivots precede
+translation; prescribed-motion pivots use the world frame. The case uses
+CPU/FMM induction, Gaussian particles, wake-core overlap 2.5 and no Pedrizzetti
+relaxation. These inputs remain in `setup.py` and native metadata.
 
-The fresh qualification run uses the CPU/FMM backend, Gaussian particles and
-common wake-core overlap 2.5, with no Pedrizzetti relaxation. `setup.py` records
-these same inputs. The current native output is assessed by the validator below;
-a completed solver run is not automatically a converged solution.
+The VLM boundary solve, wake induction, forces and plotted field samples remain
+active. The model has no particle/wall collision law; assessing boundary
+resolution requires a separate convergence study.
 
-The final dense native animation will be generated at
-`assets/delta_wing_30fps.gif` only after the canonical run reaches step 4000
-and the lineage manifest is finalized. Its sidecar will be
-`assets/delta_wing_30fps.json`; no pre-completion animation is retained or
-linked here.
+## Figures and incomplete runs
+
+`allplot.sh` reads `solution/vpm_metadata.json`. A failed or interrupted run can
+produce **clearly labelled partial diagnostics** in `figures/partial/`, without
+promoting its lineage to accepted or producing a final animation. It plots the
+available force, centroid, power and vortex-strength histories and the latest
+common native timestamp of the three wake planes. Fewer than two sampled
+heave-velocity peaks cannot establish a period; cycle comparisons are then
+skipped. Partial output is not evidence of a completed or converged experiment.
+
+For completed runs, the native output and source lineage are validated before
+full-run figures and the GIF are generated. The figure set contains:
+
+- `delta_wing_forces`: vertical force, sampled centroid height and motion input
+  power, with a shared time axis.
+- `delta_wing_force_cycles`: the last three complete measured heave cycles,
+  separated by wing.
+- `delta_wing_circulation_history`: the sum of particle vector-strength
+  magnitudes, in m³/s. This is not a conserved scalar circulation.
+- `delta_wing_wake_streamwise` and `delta_wing_wake_vertical`: separate,
+  compact three-plane figures. Completed-run fields are integrated over one
+  full measured period using trapezoidal weights, with linear interpolation
+  only at the integration endpoints. Insufficient temporal coverage is rejected.
+
+Figures retain **12.5 cm width and 10.95 pt NewPX/Palatino text**. Colours come
+from the shared thesis palette: teal/purple distinguish the wings; the wake
+uses white-to-teal and teal-white-purple scales. The measured outer y-axis text
+has 5.5 pt left clearance, and the plotting area's right margin equals its
+left margin. Heights are 10.5 cm for histories, 8.3 cm for cycle comparisons,
+7 cm for strength and approximately 8.15 cm for each wake field. Exports are
+not cropped or scaled down to fit.
+
+## Native data and validation
+
+Force, loading and motion tables are sampled every accepted step under
+`samples/delta_wing/`. Flow integrals and wake planes are sampled every 10 steps.
+`solution/` contains coupled H5/XDMF/VTP backups every 10 steps (0.025 s).
+Open `solution/vlm.pvd` for the VLM surface series and matching `vpm_*.xdmf`
+files for the particles. Saved owner steps and times match.
+
+For explicit validation after completion:
+
+```bash
+python assets/finalize_delta_wing_lineage.py
+python assets/validate_results.py --pre-plot
+```
+
+The accepted lineage in `assets/delta_wing_accepted_lineage.json` supports one
+fresh run or a declared fresh prefix and a separate continuation namespace.
+Individual plotters accept explicit `--samples` paths for forensic inspection;
+the wake plot also accepts matching `--solution` paths. The default individual
+plotters retain accepted-lineage checks.
+
+The completed-run animation is `assets/delta_wing_30fps.gif`. Its JSON sidecar
+records exact native backups, source namespaces and presentation timestamps.
+The renderer selects distinct nearest native states at 30 fps; it does not
+interpolate geometry or loads. A fixed oblique projection uses
+`s = x + 0.28y` and `h = 0.72y + z`, with one shared thesis circulation colour
+scale. The same 12.5 cm width and thesis text size apply.
+
+VLM provides attached-flow circulation and Kutta–Joukowski loading. It does
+not model a separated leading-edge vortex or viscous stall; 15° incidence is
+not experimental validation of those effects. Solver completion alone does
+not establish cycle convergence. Persistent cycle drift requires a longer run
+or an explicitly statistical analysis.

@@ -95,7 +95,7 @@ class SolverIO:
 
         fld = diagnostics_history
         if len(fld.get("time", [])) == 0:
-            Logging.info("component=diagnostics_export status=skipped reason=no_records")
+            Logging.info("No diagnostic records are available to export")
             return
         with open(filename, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
@@ -145,7 +145,7 @@ class SolverIO:
                         vortex_centroid[2],
                     ]
                 )
-        Logging.info(f"component=diagnostics_export status=written path={filename!r}")
+        Logging.info(f"Diagnostics written: {filename}")
 
     def export_flow_integrals_csv(self, solver: "VPMSolver", csv_path) -> None:
         """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
@@ -242,12 +242,19 @@ class SolverIO:
             previous = pd.read_csv(csv_path)
             if not previous.empty and float(previous.iloc[-1]["time"]) >= float(row["time"]):
                 raise ValueError(
-                    "flow-integrals CSV event is duplicate or nonmonotonic during resume"
+                    "flow-integrals CSV event is duplicate or nonmonotonic: "
+                    f"path={str(csv_path)!r}, "
+                    f"previous step={previous.iloc[-1].get('step', 'unknown')}, "
+                    f"time={float(previous.iloc[-1]['time']):.17g}; "
+                    f"incoming step={row['step']}, time={float(row['time']):.17g}. "
+                    "Use a separate output directory for a replay or concurrent run; "
+                    "resume after the last written event."
                 )
             if "energy_measurement" not in previous:
-                # Older samples did not persist the energy definition. Do not
-                # infer it from today's estimator or a derivative-source label.
-                previous["energy_measurement"] = "unknown"
+                raise ValueError(
+                    f"flow-integrals CSV {str(csv_path)!r} is missing energy_measurement; "
+                    "generate current samples in a separate output directory."
+                )
             df = pd.concat((previous, df), ignore_index=True)
         temporary = csv_path.with_name(f".{csv_path.name}.tmp")
         df.to_csv(temporary, index=False)
@@ -258,7 +265,7 @@ class SolverIO:
     ) -> None:
         """Load particle field from file."""
         self.solver.particles.load_vortex_particles(str(filename), remove_current_particles)
-        Logging.info(f"component=particle_field status=loaded path={filename!r}")
+        Logging.info(f"Particle field loaded: {filename}")
 
     def export_state(
         self,

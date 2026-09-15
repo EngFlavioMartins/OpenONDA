@@ -101,7 +101,7 @@ def test_nonorthogonal_pressure_sweep_remains_bounded_on_a_sheared_mesh(tmp_path
         pimple=fvm.PimpleControl(
             n_correctors=2,
             n_outer_correctors=2,
-            n_orthogonal_correctors=1,
+            n_nonorthogonal_correctors=1,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),

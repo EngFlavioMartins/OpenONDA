@@ -44,7 +44,7 @@ PITCH_PIVOT = ROOT_CHORD / 3.0
 ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 
 # Resolution
-END_TIME = 10.0  # [s]
+END_TIME = 20.0  # [s]
 TIME_STEP_SIZE = 0.0025  # [s]
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 SAMPLE_INTERVAL_TIME = 0.025  # 40 coupled VPM/VLM backups per heave cycle; >=30 fps

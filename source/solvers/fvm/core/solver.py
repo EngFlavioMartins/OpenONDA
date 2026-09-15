@@ -604,12 +604,6 @@ class FVMSolver(CouplerInterfaceMixin):
             or resolved_setup.transport.kinematic_viscosity <= 0.0
         ):
             raise ValueError("Kinematic viscosity must be finite and positive")
-        if resolved_setup.dynamic_mesh.method != "static":
-            raise NotImplementedError(
-                "Dynamic meshes are not supported by the incompressible solver yet: "
-                "the ALE mesh-flux terms required for conservative motion are not implemented."
-            )
-
         # 0. UI Header
         self.logger.header("f64")
         self._timer.start("Total Initialization")
@@ -1337,15 +1331,17 @@ class FVMSolver(CouplerInterfaceMixin):
         if not any(isinstance(s, IBMForceSampler) for s in self._samplers):
             self._default_ibm_sampler = IBMForceSampler()
         diag = self.ibm.diagnostics()
-        self.logger.info(
-            f"component=immersed_boundary n_markers_total={diag['n_markers_total']} "
-            f"grid_spacing_m={diag['grid_spacing']:.4g} "
-            "marker_spacing_ratio_by_body={"
-            f"{','.join(f'{key}:{value:.3f}' for key, value in diag['marker_spacing_ratio_by_body'].items())}"
-            "} "
-            f"min_kernel_row_sum={diag['min_kernel_row_sum']:.3f} "
-            f"max_kernel_row_sum={diag['max_kernel_row_sum']:.3f} "
-            f"max_quadrature_residual={diag['max_quadrature_residual']:.2e}"
+        self.logger.record(
+            "immersed boundary",
+            ("markers", diag["n_markers_total"]),
+            ("grid spacing", diag["grid_spacing"], "m"),
+            *(
+                (f"{name}, marker-spacing ratio", ratio)
+                for name, ratio in diag["marker_spacing_ratio_by_body"].items()
+            ),
+            ("kernel row sum, min", diag["min_kernel_row_sum"]),
+            ("kernel row sum, max", diag["max_kernel_row_sum"]),
+            ("quadrature residual, max", diag["max_quadrature_residual"]),
         )
         return self.ibm
 
@@ -1408,9 +1404,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.run_failure = self._evolution_failure
         # Reporting must never replace the numerical failure.
         with suppress(Exception):
-            self.logger.warning(
-                f"component=fvm_step status=failed error={type(error).__name__}: {error}"
-            )
+            self.logger.warning(f"FVM step failed: {type(error).__name__}: {error}")
 
     def _collective_io_failure(self, error: BaseException | None, operation: str) -> None:
         """Propagate a root/local output error before any rank continues.
@@ -2115,7 +2109,7 @@ class FVMSolver(CouplerInterfaceMixin):
         finally:
             elapsed = self._timer.stop(timer_name)
             try:
-                self.logger.step_end(elapsed)
+                self.logger.step_end(elapsed, accepted=primary_failure is None)
             except BaseException:
                 if primary_failure is None:
                     raise
@@ -2193,21 +2187,18 @@ class FVMSolver(CouplerInterfaceMixin):
         self._timer.log("Samplers", sink=self.logger)
 
         self._timer.start("Turbulence statistics")
-        if self.turbulence and self.eddy_viscosity is not None:
+        if (
+            self.turbulence
+            and self.eddy_viscosity is not None
+            and self.logger.should_report(self.step, self.time, step_time_step_size)
+        ):
             n_owned = (
                 self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
             )
             owned_eddy_viscosity = self.eddy_viscosity[:n_owned]
-            min_eddy_viscosity = float(
-                self.parallel.global_min(
-                    float(np.min(owned_eddy_viscosity)) if n_owned else float("inf")
-                )
-            )
-            max_eddy_viscosity = float(
-                self.parallel.global_max(
-                    float(np.max(owned_eddy_viscosity)) if n_owned else float("-inf")
-                )
-            )
+            assert self.last_diagnostics is not None
+            min_eddy_viscosity = self.last_diagnostics.min_eddy_viscosity
+            max_eddy_viscosity = self.last_diagnostics.max_eddy_viscosity
             sum_eddy_viscosity = float(
                 self.parallel.global_sum(float(np.sum(owned_eddy_viscosity)))
             )

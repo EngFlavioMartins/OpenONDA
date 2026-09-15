@@ -48,11 +48,9 @@ def _portable_code(code):
     return code.replace(co_filename="<motion>", co_firstlineno=0, co_consts=constants)
 
 
-def _identity_controls(vlm, *, output_controls=None, include_output_controls=True):
+def _identity_controls(vlm, *, include_output_controls=True):
     """Return the deterministic VLM controls used by restart identities."""
     controls = _manifest_value(vlm.setup)
-    # Sampling does not change evolution, including for legacy checkpoints.
-    controls.pop("surface_diagnostics_interval_steps", None)
     # The setup describes user choices; this explicit runtime contract also
     # fingerprints the geometric source/trace/transport operators so a
     # checkpoint cannot silently continue under a different field model.
@@ -71,15 +69,6 @@ def _identity_controls(vlm, *, output_controls=None, include_output_controls=Tru
     if not include_output_controls:
         for name in _OUTPUT_IDENTITY_FIELDS:
             controls.pop(name, None)
-    elif output_controls is not None:
-        controls["logging_interval_steps"] = output_controls["logging_interval_steps"]
-        controls["sample_surface_forces"] = output_controls["sample_surface_forces"]
-        for surface, sample_forces in zip(
-            controls["surfaces"],
-            output_controls.get("surface_sample_forces", ()),
-            strict=True,
-        ):
-            surface["sample_forces"] = sample_forces
     return controls
 
 
@@ -107,18 +96,16 @@ def _identity_digest(vlm, controls):
     return digest.hexdigest()
 
 
-def restart_identity(vlm, *, output_controls=None):
+def restart_identity(vlm):
     """Hash declared physics and output controls plus generated initial geometry."""
-    return _identity_digest(vlm, _identity_controls(vlm, output_controls=output_controls))
+    return _identity_digest(vlm, _identity_controls(vlm))
 
 
 def restart_physics_identity(vlm):
     """Hash only VLM controls that can change solved or emitted physics.
 
-    The coupled VPM owner now requires every accepted step for scientific
-    output.  Legacy standalone logging and per-surface sampling controls are
-    therefore output-only compatibility fields and are deliberately omitted
-    from this persisted physics identity.
+    Logging cadence and per-surface sampling do not change evolution and are
+    omitted from the physics identity. The full identity separately records them.
     """
     return _identity_digest(vlm, _identity_controls(vlm, include_output_controls=False))
 
@@ -154,11 +141,13 @@ def write_vlm_restart(vlm, group):
                 surface.create_dataset(name, data=getattr(kinematics, name))
 
 
-def validate_vlm_restart(vlm, group, *, legacy_output_controls=None):
-    """Validate VLM state before mutation, with explicit legacy output migration."""
+def validate_vlm_restart(vlm, group):
+    """Validate the current VLM backup schema and numerical identity before mutation."""
     if group is None:
         raise ValueError("VPM backup is missing VLM continuation state")
     version = int(group.attrs.get("version", -1))
+    if version != 7:
+        raise ValueError("Incompatible VLM restart version; start a new run with this solver")
     expected_attributes = {
         "version",
         "identity",
@@ -167,9 +156,8 @@ def validate_vlm_restart(vlm, group, *, legacy_output_controls=None):
         "time",
         "reference_speed",
         "reference_velocity",
+        "physics_identity",
     }
-    if version >= 7:
-        expected_attributes = expected_attributes | {"physics_identity"}
     allowed_attributes = (expected_attributes, expected_attributes | {"force_density"})
     if set(group.attrs) not in allowed_attributes:
         raise ValueError("VLM restart attributes are incomplete or unknown")
@@ -178,57 +166,14 @@ def validate_vlm_restart(vlm, group, *, legacy_output_controls=None):
             raise ValueError(f"Invalid VLM restart flag {name}")
     if np.shape(group.attrs["reference_velocity"]) != (3,):
         raise ValueError("Invalid VLM restart reference velocity")
-    if version not in (6, 7):
-        raise ValueError(
-            "VLM restart uses an incompatible wake/force-state version; "
-            "start a new run with this solver"
-        )
-    identity_migration = None
     expected_physics_identity = getattr(vlm, "_restart_physics_identity", None)
     if expected_physics_identity is None:
         expected_physics_identity = restart_physics_identity(vlm)
-    if version >= 7 and group.attrs.get("physics_identity") != expected_physics_identity:
+    if group.attrs.get("physics_identity") != expected_physics_identity:
         raise ValueError("VLM restart physics configuration does not match this solver")
     if group.attrs.get("identity") != vlm._restart_identity:
-        if version != 6 or legacy_output_controls is None:
-            raise ValueError("VLM restart geometry or configuration does not match this solver")
-        candidate = restart_identity(vlm, output_controls=legacy_output_controls)
-        migration_kind = "output_only"
-        if candidate != group.attrs.get("identity"):
-            # Version 6 predates explicit field/observer declarations. Only
-            # the unchanged default lagged operator can reproduce that schema;
-            # all geometry, motion and original physics controls remain hashed.
-            from ....config.constants import VLM_EPSILON
-            from .field import BoundSurfaceFieldContract
-
-            legacy_contract = BoundSurfaceFieldContract(
-                numerical_epsilon=float(VLM_EPSILON), bound_source_radius=float(VLM_EPSILON)
-            )
-            if vlm.boundary_response != "lagged" or vlm.field_contract != legacy_contract:
-                raise ValueError("VLM restart geometry or configuration does not match this solver")
-            controls = _identity_controls(vlm, output_controls=legacy_output_controls)
-            for name in ("field_contract", "boundary_response", "surface_event_policy"):
-                controls.pop(name, None)
-            if _identity_digest(vlm, controls) != group.attrs.get("identity"):
-                raise ValueError("VLM restart geometry or configuration does not match this solver")
-            migration_kind = "legacy_lagged_field_declaration"
-        identity_migration = {
-            "kind": migration_kind,
-            "source_identity": str(group.attrs["identity"]),
-            "controls": {
-                "logging_interval_steps": int(legacy_output_controls["logging_interval_steps"]),
-                "sample_surface_forces": bool(legacy_output_controls["sample_surface_forces"]),
-                "surface_sample_forces": list(
-                    legacy_output_controls.get("surface_sample_forces", ())
-                ),
-            },
-        }
-    legacy_fields = set(_FIELDS) - {
-        "area",
-        "relative_velocity",
-        "bound_relative_velocity",
-    }
-    expected_fields = set(_FIELDS) if version >= 7 else legacy_fields
+        raise ValueError("VLM restart geometry or configuration does not match this solver")
+    expected_fields = set(_FIELDS)
     if set(group) != {*expected_fields, "motion"}:
         raise ValueError("VLM restart fields are incomplete or unknown")
     for name in expected_fields:
@@ -259,29 +204,15 @@ def validate_vlm_restart(vlm, group, *, legacy_output_controls=None):
         not np.isfinite(group.attrs["force_density"]) or group.attrs["force_density"] <= 0.0
     ):
         raise ValueError("Invalid VLM restart force density")
-    return identity_migration
 
 
 def restore_vlm_restart(vlm, group):
     """Restore previously validated continuation data, invalidating derived solver caches."""
-    present_fields = set(group)
     for name in _FIELDS:
-        if name not in present_fields:
-            continue
         field = getattr(vlm.lattice, name)
         values = field.to_numpy()
         values[: vlm.lattice.n_panels] = group[name][:]
         field.from_numpy(values)
-    if "relative_velocity" not in present_fields:
-        velocity = vlm.lattice.velocity.to_numpy()
-        kinematic = vlm.lattice.kinematic_velocity.to_numpy()
-        velocity[: vlm.lattice.n_panels] -= kinematic[: vlm.lattice.n_panels]
-        vlm.lattice.relative_velocity.from_numpy(velocity)
-    if "bound_relative_velocity" not in present_fields:
-        bound = vlm.lattice.bound_vortex_velocity.to_numpy()
-        kinematic = vlm.lattice.bound_kinematic_velocity.to_numpy()
-        bound[: vlm.lattice.n_panels] -= kinematic[: vlm.lattice.n_panels]
-        vlm.lattice.bound_relative_velocity.from_numpy(bound)
     for index, (_, kinematics) in enumerate(vlm.surfaces.values()):
         for name, value in group["motion"][str(index)].items():
             setattr(kinematics, name, np.asarray(value))
@@ -293,10 +224,7 @@ def restore_vlm_restart(vlm, group):
         vlm._force_density = float(group.attrs["force_density"])
         vlm.lattice.force_density = vlm._force_density
     else:
-        # A legacy checkpoint did not persist the density used for its
-        # dimensional loads.  Never let a prior live solve leak that unknown
-        # provenance into the restored state; compute_forces falls back to the
-        # configured VLM density when this attribute is absent.
+        # An unsolved state has no dimensional force evaluation to restore.
         if hasattr(vlm, "_force_density"):
             del vlm._force_density
         vlm.lattice.force_density = None

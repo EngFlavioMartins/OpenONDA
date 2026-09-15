@@ -14,7 +14,7 @@ class FilamentRefinementConfig:
     interval_steps : int, default=0
         Accepted-step cadence; zero disables refinement.
     max_vortex_strength_factor : float, default=2.0
-        Split when ``|Gamma|`` exceeds this factor times its stored lineage
+        Split when ``|Gamma|`` reaches this factor times its stored lineage
         reference; must exceed one.
     offset_fraction : float, default=0.25
         Symmetric child offset divided by estimated material-line length, in
@@ -33,8 +33,12 @@ class FilamentRefinementConfig:
 
     Notes
     -----
-    Splitting mutates particle position, volume, core radius, and strength while
-    conserving parent vector circulation across the children.
+    Winckelmans (1989), thesis p. 89: bisect along the strength direction at
+    x +/- h(t)/4, halve strength and volume, and reset the child references.
+    This implements the fixed-core branch (threshold 2); children retain the
+    parent's Gaussian radius, group and zone. Array indices are not persistent
+    particle identifiers. Splitting preserves moments but changes the resolved
+    field; it does not replace viscous core redistribution.
     """
 
     interval_steps: int = 0
@@ -67,7 +71,7 @@ class FilamentRefinementConfig:
     def __post_init__(self) -> None:
         if self.interval_steps < 0:
             raise ValueError("filament-refinement interval_steps must be non-negative")
-        if self.max_vortex_strength_factor <= 1.0:
+        if np.isnan(self.max_vortex_strength_factor) or self.max_vortex_strength_factor <= 1.0:
             raise ValueError("max_vortex_strength_factor must be greater than one")
         if not 0.0 <= self.offset_fraction <= 0.5:
             raise ValueError("offset_fraction must be in [0, 0.5]")

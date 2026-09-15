@@ -9,15 +9,12 @@ and PETSc can stop on slightly different internal norms; the reported
 """
 
 from dataclasses import dataclass, replace
-import logging
 import time
 from typing import Protocol, runtime_checkable
 
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, spsolve
 
-logger = logging.getLogger(__name__)
-logger.propagate = False
 _ILU_CACHE = {}
 _AMG_CACHE = {}
 _MAX_TRANSIENT_CACHE_ENTRIES = 16
@@ -31,7 +28,9 @@ def _emit_warning(log_sink, message, *args) -> None:
     """Route a user-facing warning through the active FVM logger."""
     text = message % args if args else message
     if log_sink is None:
-        logger.warning(text)
+        from ..io.logging import emit_standalone_report
+
+        emit_standalone_report("warnings", (text, ""), warning=True)
     else:
         log_sink.warning(text)
 
@@ -39,7 +38,7 @@ def _emit_warning(log_sink, message, *args) -> None:
 def _emit_debug(log_sink, message, *args) -> None:
     """Route a debug-mode note through the active FVM logger."""
     if log_sink is not None:
-        log_sink.debug_message(message % args if args else message)
+        log_sink.debug_message(message, *args)
 
 
 class LinearSolveError(RuntimeError):
@@ -637,8 +636,7 @@ def _solve_pressure(
             raise LinearSolveError("AMG pressure solve requires pyamg") from error
         _emit_warning(
             log_sink,
-            "component=linear_solver method=pyamg status=fallback "
-            "reason=unavailable fallback=direct",
+            "AMG is unavailable because pyamg is not installed; using the direct solver",
         )
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -714,8 +712,7 @@ def _solve_pressure(
             raise LinearSolveError("AMG pressure solve failed") from error
         _emit_warning(
             log_sink,
-            "component=linear_solver method=amg status=fallback "
-            "reason=solve_failed fallback=direct error=%r",
+            "AMG solve failed; using the direct solver. Error: %r",
             error,
         )
         fallback_start = time.perf_counter()
@@ -817,7 +814,7 @@ def _iterative_solve_with_M(
         if _FALLBACK_WARN_COUNT <= 3 or _FALLBACK_WARN_COUNT % 50 == 0:
             _emit_warning(
                 log_sink,
-                "component=linear_solver method=%s status=not_converged info=%s occurrence=%d",
+                "%s did not converge (solver code %s, occurrence %d)",
                 method,
                 info,
                 _FALLBACK_WARN_COUNT,
@@ -828,8 +825,7 @@ def _iterative_solve_with_M(
             )
         _emit_warning(
             log_sink,
-            "component=linear_solver method=%s status=fallback "
-            "reason=not_converged fallback=direct",
+            "%s did not converge; using the direct solver",
             method,
         )
         return spsolve(A, b), max(iterations, int(info) if info > 0 else 0), True, msg
@@ -921,8 +917,7 @@ def _solve_with_ilu(
             raise LinearSolveError(f"{method} ILU setup or solve failed") from e
         _emit_warning(
             log_sink,
-            "component=linear_solver preconditioner=ILU status=fallback "
-            "reason=setup_failed fallback=direct error=%r",
+            "ILU setup or solve failed; using the direct solver. Error: %r",
             e,
         )
         setup_seconds = time.perf_counter() - setup_start
@@ -1132,7 +1127,7 @@ def solve_linear_system(
     if info != 0:
         _emit_warning(
             log_sink,
-            "component=linear_solver method=%s status=not_converged info=%s",
+            "%s did not converge (solver code %s)",
             method,
             info,
         )

@@ -13,7 +13,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass
-import logging
 import math
 
 import numpy as np
@@ -23,8 +22,6 @@ from source._numba import cacheable_njit as njit
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
 from ..events import NullPhysicsEventObserver
-
-_logger = logging.getLogger("vpm")
 
 _GRID_TRANSFER_CHUNK = 65536
 # M4' performs 64 atomic grid deposits per particle.  One all-particle Vulkan
@@ -546,7 +543,7 @@ class _GridDiffusionMixin:
         if not finite_mask.all():
             n_bad = int((~finite_mask).sum())
             self._event_observer.warning(
-                f"component=diffusion_grid filtered_nonfinite_positions={n_bad}"
+                f"Diffusion grid excluded {n_bad} non-finite particle positions"
             )
             pos = pos[finite_mask]
             if len(pos) == 0:
@@ -567,10 +564,8 @@ class _GridDiffusionMixin:
                 lo[d] = centre - 0.5 * max_extent
                 hi[d] = centre + 0.5 * max_extent
                 self._event_observer.warning(
-                    f"component=diffusion_grid axis={d} requested_extent_m={span:.1f} "
-                    f"extent_limit_m={max_extent:.1f} "
-                    f"cell_limit={self._max_cells_per_dimension} "
-                    "status=clamped"
+                    f"Diffusion grid axis {d} was limited from {span:.1f} m to "
+                    f"{max_extent:.1f} m ({self._max_cells_per_dimension} cells)"
                 )
 
         nx = max(5, int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1)
@@ -645,10 +640,8 @@ class _GridDiffusionMixin:
         if not pool or total_bytes <= pool * self._GRID_POOL_SHARE:
             return
         self._event_observer.warning(
-            f"component=diffusion_grid shape={nx}x{ny}x{nz} "
-            f"memory_mib={total_bytes / (1 << 20):.0f} "
-            f"device_pool_pct={100.0 * total_bytes / pool:.0f} "
-            f"device_pool_mib={pool / (1 << 20):.0f}"
+            f"Diffusion grid {nx} x {ny} x {nz} needs {total_bytes / (1 << 20):.0f} MiB, "
+            f"or {100.0 * total_bytes / pool:.0f}% of the {pool / (1 << 20):.0f} MiB device pool"
         )
 
     def _ensure_grid_capacity(self, nx: int, ny: int, nz: int) -> tuple[int, int, int]:
@@ -692,9 +685,9 @@ class _GridDiffusionMixin:
             if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
                 clamped = (min(nx, alloc[0]), min(ny, alloc[1]), min(nz, alloc[2]))
                 self._event_observer.warning(
-                    f"component=diffusion_grid reallocations={self._grid_realloc_count} "
-                    f"limit={self._MAX_GRID_REALLOCS} status=clamped shape={clamped} "
-                    f"requested_shape={(nx, ny, nz)}"
+                    f"Diffusion grid reached its {self._MAX_GRID_REALLOCS} reallocation limit "
+                    f"after {self._grid_realloc_count} reallocations; requested shape {(nx, ny, nz)} "
+                    f"was limited to {clamped}"
                 )
                 return clamped
 
@@ -708,9 +701,8 @@ class _GridDiffusionMixin:
                 alloc_ny = int(ny * rh) if ny > alloc[1] else alloc[1]
                 alloc_nz = int(nz * rh) if nz > alloc[2] else alloc[2]
             self._event_observer.warning(
-                f"component=diffusion_grid reallocation={self._grid_realloc_count} "
-                f"limit={self._MAX_GRID_REALLOCS} old_shape={alloc} "
-                f"new_shape={(alloc_nx, alloc_ny, alloc_nz)} retained_device_fields=true"
+                f"Diffusion grid reallocation {self._grid_realloc_count} of {self._MAX_GRID_REALLOCS}: "
+                f"{alloc} to {(alloc_nx, alloc_ny, alloc_nz)}; previous device allocations remain retained"
             )
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
@@ -726,16 +718,11 @@ class _GridDiffusionMixin:
         alloc_ny = int(ny * self._ALLOC_HEADROOM)
         alloc_nz = int(nz * self._ALLOC_HEADROOM)
 
-        _logger.debug(
-            "diffusion grid allocating: requested shape %dx%dx%d, "
-            "allocated shape %dx%dx%d, headroom %.1f",
-            nx,
-            ny,
-            nz,
-            alloc_nx,
-            alloc_ny,
-            alloc_nz,
-            self._ALLOC_HEADROOM,
+        self._event_observer.record(
+            "diffusion grid allocation",
+            ("requested shape", (nx, ny, nz)),
+            ("allocated shape", (alloc_nx, alloc_ny, alloc_nz)),
+            ("headroom", self._ALLOC_HEADROOM),
         )
 
         self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
@@ -858,17 +845,6 @@ class _GridDiffusionMixin:
         origin = np.asarray(self._fixed_grid_min, dtype=np.float64)
         origin = a + np.floor((origin - a) / particle_spacing) * particle_spacing
         self._fixed_grid_min = origin.astype(np.float32)
-
-    def configure_body_mask(self, body_stl: str | None) -> None:
-        """Configure optional body masking for DVH diffusion (not yet implemented).
-
-        Parameters
-        ----------
-        body_stl : Optional[str]
-            STL path to a closed body surface (reserved for future use).
-        """
-        if self._body_box_bounds is None:
-            self._body_mask_active = False
 
     def configure_body_box(self, bounds) -> None:
         """Configure an exact axis-aligned solid mask for grid diffusion.
@@ -2263,7 +2239,7 @@ class _GridDiffusionMixin:
 
         if max_vortex_strength_magnitude < 1e-30:
             self._event_observer.warning(
-                "component=GBD status=skipped reason=empty_scattered_grid particles_unchanged=true"
+                "GBD skipped: the scattered grid is empty; particle state is unchanged"
             )
             self._ping = True
             return None
@@ -2279,8 +2255,8 @@ class _GridDiffusionMixin:
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
             self._event_observer.warning(
-                f"component=GBD status=skipped reason=no_nodes_above_threshold "
-                f"threshold={threshold:.2e} particles_unchanged=true"
+                f"GBD skipped: no grid nodes reach the strength threshold "
+                f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
             self._ping = True
             return None
@@ -2477,7 +2453,6 @@ class _GridDiffusionMixin:
         nz: int,
         rd_ratio: float = 4.0,
         effective_viscosity_np: np.ndarray | None = None,
-        q_max: float = 4.0,
     ) -> None:
         """DVH heat-kernel scatter (Durante et al. 2024, Section 2.3, Eqs. 17-19).
 
@@ -2512,8 +2487,6 @@ class _GridDiffusionMixin:
                                       validation. DVH currently accepts only a
                                       spatially uniform field (e.g. molecular
                                       viscosity without a varying LES contribution).
-        q_max : float                 Deprecated compatibility argument.  The
-                                      physical width is no longer capped.
         """
         N = len(pos_np)
 
@@ -2563,7 +2536,6 @@ class _GridDiffusionMixin:
         if N == 0:
             return
 
-        del q_max  # retained for compatibility with old callers
         widths = 4.0 * np.maximum(viscosity_per_particle, 0.0) * float(time_step_size)
         widths[~np.isfinite(widths)] = 0.0
 
@@ -2775,7 +2747,7 @@ class _GridDiffusionMixin:
 
         if max_vortex_strength_magnitude < 1e-30:
             self._event_observer.warning(
-                "component=DVH status=skipped reason=empty_scattered_grid particles_unchanged=true"
+                "DVH skipped: the scattered grid is empty; particle state is unchanged"
             )
             return None
 
@@ -2790,8 +2762,8 @@ class _GridDiffusionMixin:
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
             self._event_observer.warning(
-                f"component=DVH status=skipped reason=no_nodes_above_threshold "
-                f"threshold={threshold:.2e} particles_unchanged=true"
+                f"DVH skipped: no grid nodes reach the strength threshold "
+                f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
             return None
         group_winner_grid = self._scatter_id_field(

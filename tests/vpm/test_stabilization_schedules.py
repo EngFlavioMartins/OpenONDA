@@ -28,11 +28,11 @@ def test_combined_stabilization_schedule_is_representable():
         end_step=800,
     )
     config = StabilizationConfig(
-        stretching_viscosity_coefficient=1.6,
-        stretching_viscosity_start_step=550,
-        stretching_viscosity_feedback_gain=1.0,
-        stretching_viscosity_feedback_growth_limit=0.5,
-        stretching_viscosity_max_coefficient=8.0,
+        selective_eddy_viscosity_coefficient=1.6,
+        selective_eddy_viscosity_start_step=550,
+        selective_eddy_viscosity_feedback_gain=1.0,
+        selective_eddy_viscosity_feedback_growth_limit=0.5,
+        selective_eddy_viscosity_max_coefficient=8.0,
         pedrizzetti_relaxation_factor=0.005,
         pedrizzetti_relaxation_end_step=650,
         filament_refinement=refinement,
@@ -51,8 +51,8 @@ def test_combined_stabilization_schedule_is_representable():
     assert config.filament_refinement.late_absolute_only
     assert config.regularization_max_events == 2
     assert config.regularization_capacity_energy_rate_trigger == pytest.approx(4.0)
-    assert config.stretching_viscosity_feedback_growth_limit == pytest.approx(0.5)
-    assert config.stretching_viscosity_max_coefficient == pytest.approx(8.0)
+    assert config.selective_eddy_viscosity_feedback_growth_limit == pytest.approx(0.5)
+    assert config.selective_eddy_viscosity_max_coefficient == pytest.approx(8.0)
     assert config.pedrizzetti_relaxation_end_step == 650
 
 
@@ -246,8 +246,48 @@ def test_filament_refinement_prioritizes_strongest_particles_at_capacity():
 
     assert result.refined_parent_index.tolist() == [1, 2]
     assert result.refined_particles == 2
+    assert result.deferred_particles == 1
     assert len(result.position) == 6
     assert 0 in result.source_index
+
+
+def test_winckelmans_fixed_core_bisection_and_reset_at_exact_threshold():
+    from source.solvers.vpm.stabilization.filament_refinement import gaussian_particle_moments
+
+    position = np.array([[0.2, -0.3, 0.4]])
+    strength = np.array([[0.0, 0.0, 2.0]])
+    core, volume = np.array([0.1]), np.array([0.008])
+    result = split_stretched_filaments(
+        position,
+        strength,
+        core,
+        volume,
+        reference_vortex_strength=np.ones(1),
+        reference_length=np.array([0.2]),
+        max_stretch_factor=2,
+    )
+    np.testing.assert_allclose(result.position, position + [[0, 0, 0.1], [0, 0, -0.1]])
+    np.testing.assert_array_equal(result.vortex_strength, [[0, 0, 1], [0, 0, 1]])
+    np.testing.assert_array_equal(result.core_radius, [0.1, 0.1])
+    np.testing.assert_array_equal(result.particle_volume, [0.004, 0.004])
+    np.testing.assert_array_equal(result.source_index, [0, 0])
+    np.testing.assert_allclose(result.reference_length, [0.2, 0.2])
+    repeated = split_stretched_filaments(
+        result.position,
+        result.vortex_strength,
+        result.core_radius,
+        result.particle_volume,
+        reference_vortex_strength=result.reference_vortex_strength,
+        reference_length=result.reference_length,
+        max_stretch_factor=2,
+    )
+    assert repeated.refined_particles == 0
+    before = gaussian_particle_moments(position, strength, core)
+    after = gaussian_particle_moments(result.position, result.vortex_strength, result.core_radius)
+    for index in range(4):
+        np.testing.assert_allclose(after[index], before[index], atol=1e-14)
+    # The field is changed despite exact moments; do not claim energy conservation.
+    assert result.isolated_kinetic_energy_change < 0
 
 
 def test_filament_refinement_catches_absolute_strength_after_reference_reset():
@@ -310,16 +350,16 @@ def test_late_absolute_only_requires_an_absolute_threshold():
         )
 
 
-def test_residual_viscosity_feedback_is_bounded_per_update():
+def test_selective_eddy_viscosity_feedback_is_bounded_per_update():
     state = SimpleNamespace(step=550)
     metrics = SimpleNamespace(kinetic_energy_rate=4.0, viscous_kinetic_energy_rate=-2.0)
     config = StabilizationConfig(
-        stretching_viscosity_coefficient=1.6,
-        stretching_viscosity_start_step=550,
-        stretching_viscosity_feedback_gain=1.0,
-        stretching_viscosity_feedback_interval_steps=5,
-        stretching_viscosity_feedback_growth_limit=0.5,
-        stretching_viscosity_max_coefficient=8.0,
+        selective_eddy_viscosity_coefficient=1.6,
+        selective_eddy_viscosity_start_step=550,
+        selective_eddy_viscosity_feedback_gain=1.0,
+        selective_eddy_viscosity_feedback_interval_steps=5,
+        selective_eddy_viscosity_feedback_growth_limit=0.5,
+        selective_eddy_viscosity_max_coefficient=8.0,
     )
     applied = []
     manager = object.__new__(StabilizationManager)
@@ -330,16 +370,16 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
         particles=object(),
     )
     manager.operators = SimpleNamespace(
-        apply_stretching_viscosity=lambda particles, coefficient: applied.append(coefficient)
+        apply_selective_eddy_viscosity=lambda particles, coefficient: applied.append(coefficient)
     )
-    manager.residual_viscosity_coefficient = 1.6
+    manager.selective_eddy_viscosity_coefficient = 1.6
     manager._last_residual_feedback_step = -1
 
-    manager.update_residual_viscosity()
-    manager.update_residual_viscosity()
+    manager.update_selective_eddy_viscosity()
+    manager.update_selective_eddy_viscosity()
     state.step = 555
     metrics.kinetic_energy_rate = -1.0
-    manager.update_residual_viscosity()
+    manager.update_selective_eddy_viscosity()
 
     assert applied == pytest.approx([2.4, 2.4, 1.92])
 
@@ -347,9 +387,9 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
 @pytest.mark.parametrize(
     ("keyword", "value"),
     [
-        ("stretching_viscosity_feedback_gain", -1.0),
-        ("stretching_viscosity_feedback_growth_limit", 1.1),
-        ("stretching_viscosity_max_coefficient", 0.5),
+        ("selective_eddy_viscosity_feedback_gain", -1.0),
+        ("selective_eddy_viscosity_feedback_growth_limit", 1.1),
+        ("selective_eddy_viscosity_max_coefficient", 0.5),
         ("pedrizzetti_relaxation_end_step", -1),
         ("regularization_capacity_max_particles", 0),
         ("regularization_capacity_energy_rate_trigger", -1.0),
@@ -358,8 +398,8 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
 )
 def test_stabilization_schedule_rejects_invalid_limits(keyword, value):
     arguments = {keyword: value}
-    if keyword == "stretching_viscosity_max_coefficient":
-        arguments["stretching_viscosity_coefficient"] = 1.0
+    if keyword == "selective_eddy_viscosity_max_coefficient":
+        arguments["selective_eddy_viscosity_coefficient"] = 1.0
     with pytest.raises(ValueError):
         StabilizationConfig(**arguments)
 

@@ -138,7 +138,7 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
         assert "velocity_gradient" not in particles
         assert "strain_rate" not in particles
         assert "backup_store_velocity_gradient" not in archive["solver"].attrs
-        assert archive["solver"].attrs["backup_format_version"] == "10.0"
+        assert archive["solver"].attrs["backup_format_version"] == "10.1"
 
     xdmf = Path(f"{backup}.xdmf").read_text(encoding="utf-8")
     assert 'Name="velocity_gradient"' not in xdmf
@@ -245,6 +245,112 @@ def test_restart_preserves_unbounded_filament_refinement(tmp_path):
         incompatible.close()
 
 
+@pytest.mark.parametrize("reject", [False, True])
+def test_splitting_inherits_labels_properties_and_rolls_back_a_rejected_event(
+    tmp_path, monkeypatch, reject
+):
+    from source.solvers.vpm.stabilization.manager import StabilizationError
+
+    solver = _solver(
+        tmp_path / "split",
+        stabilization=StabilizationConfig(
+            filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1)
+        ),
+    )
+    try:
+        solver.add_vortex_particles(
+            position=np.array([[0, 0, 0], [0.5, 0, 0]]),
+            velocity=np.array([[1, 2, 3], [4, 5, 6]]),
+            vortex_strength=np.array([[0, 0, 2], [0, 1, 0]]),
+            core_radius=np.array([0.1, 0.2]),
+            particle_volume=np.array([0.008, 0.027]),
+            kinematic_viscosity=np.array([0.01, 0.02]),
+            group_id=np.array([7, 11]),
+            zone_id=np.array([3, 5]),
+        )
+        solver.set_particles_properties(eddy_viscosity=np.array([0.003, 0.006]))
+        manager = solver.stabilization
+        manager.capture_reference_state()
+        manager.reference_vortex_strength[:] = 1.0
+        names = (
+            "position",
+            "velocity",
+            "vortex_strength",
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+        )
+        old = {name: getattr(solver.particles, name + "_cpu")().copy() for name in names}
+        reference = manager.reference_vortex_strength.copy()
+        if reject:
+
+            def fail(*args, **kwargs):
+                raise StabilizationError("injected rejection")
+
+            monkeypatch.setattr(manager, "accept", fail)
+            with pytest.raises(StabilizationError, match="injected"):
+                manager.apply_filament_refinement()
+            for name in names:
+                np.testing.assert_array_equal(getattr(solver.particles, name + "_cpu")(), old[name])
+            np.testing.assert_array_equal(manager.reference_vortex_strength, reference)
+        else:
+            manager.apply_filament_refinement()
+            source = [1, 0, 0]
+            for name in (
+                "velocity",
+                "core_radius",
+                "kinematic_viscosity",
+                "eddy_viscosity",
+                "group_id",
+                "zone_id",
+            ):
+                np.testing.assert_array_equal(
+                    getattr(solver.particles, name + "_cpu")(), old[name][source]
+                )
+            np.testing.assert_allclose(
+                solver.particles.vorticity_cpu(),
+                old["vortex_strength"][source] / old["particle_volume"][source, None],
+            )
+            assert solver._particles_removed_this_step == 0
+            solver.save_backup()
+            references = manager.reference_vortex_strength.copy()
+            solver.load_backup(tmp_path / "split/solution/vpm_000000.h5")
+            np.testing.assert_array_equal(solver.particle_group_id, [11, 7, 7])
+            np.testing.assert_array_equal(manager.reference_vortex_strength, references)
+    finally:
+        solver.close()
+
+
+def test_selective_eddy_viscosity_uses_positive_production_and_advances_diffusion(tmp_path):
+    solver = _solver(tmp_path / "selective")
+    try:
+        solver.add_vortex_particles(
+            position=np.array([[-0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]]),
+            velocity=np.zeros((3, 3)),
+            vortex_strength=np.tile([1, 0, 0], (3, 1)),
+            core_radius=np.full(3, 0.2),
+            particle_volume=np.full(3, 0.008),
+            kinematic_viscosity=np.full(3, 0.01),
+        )
+        strain = np.zeros((3, 3, 3))
+        strain[0] = np.diag([2, -1, -1])
+        strain[1] = np.diag([-2, 1, 1])
+        solver.set_particles_properties(strain_rate=strain)
+        stats = solver.stabilization.operators.apply_selective_eddy_viscosity(solver.particles, 0.5)
+        expected = np.array([0.05, 0.01, 0.01])
+        np.testing.assert_allclose(solver.particles.effective_viscosity_cpu(), expected, rtol=1e-6)
+        assert stats["stabilization_kinematic_viscosity_active_fraction"] == pytest.approx(1 / 3)
+        solver.stepper._apply_core_spreading_diffusion(0.01)
+        np.testing.assert_allclose(
+            solver.particles.core_radius_cpu() ** 2, 0.2**2 + 4 * expected * 0.01, rtol=1e-6
+        )
+    finally:
+        solver.close()
+
+
 def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     solver = _solver(tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -253,8 +359,29 @@ def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     with h5py.File(backup, "r+") as archive:
         archive["solver"].attrs["backup_format_version"] = "9.0"
 
-    with pytest.raises(ValueError, match=r"9.0.*10.0"):
+    with pytest.raises(ValueError, match=r"9.0.*10.1"):
         solver.load_backup(str(backup))
+
+
+def test_selective_viscosity_feedback_survives_current_backup_roundtrip(tmp_path):
+    config = StabilizationConfig(selective_eddy_viscosity_coefficient=0.5)
+    writer = _solver(tmp_path / "writer", stabilization=config)
+    try:
+        _add_counter_rotating_pair(writer)
+        writer.stabilization.selective_eddy_viscosity_coefficient = 0.875
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm_000000.h5"
+    reader = _solver(tmp_path / "reader", stabilization=config)
+    try:
+        reader.load_backup(backup)
+        assert reader.stabilization.selective_eddy_viscosity_coefficient == 0.875
+        reader.save_backup()
+        with h5py.File(tmp_path / "reader/solution/vpm_000000.h5") as archive:
+            assert archive["solver"].attrs["selective_eddy_viscosity_feedback_coefficient"] == 0.875
+    finally:
+        reader.close()
 
 
 def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
@@ -734,16 +861,13 @@ def test_backup_rejects_a_different_random_seed(tmp_path):
 
 
 @pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
-def test_restart_matches_stretching_and_recovers_only_known_implicit_defaults(
-    tmp_path, induction_type
-):
+def test_restart_requires_explicit_matching_stretching(tmp_path, induction_type):
     solver = _solver(tmp_path / "writer", induction=induction_type())
     solver.save_backup()
     backup = tmp_path / "writer" / "solution" / "vpm_000000"
     solver.close()
-    forms = ("explicit", "implicit") if induction_type is not TreecodeInduction else ("explicit",)
-    for form in forms:
-        if form == "implicit":
+    for form in ("explicit", "missing"):
+        if form == "missing":
             with h5py.File(f"{backup}.h5", "r+") as archive:
                 attrs = archive["solver"].attrs
                 configuration = json.loads(attrs["numerical_configuration"])
@@ -759,7 +883,7 @@ def test_restart_matches_stretching_and_recovers_only_known_implicit_defaults(
                 induction=induction_type(stretching_scheme=scheme),
             )
             try:
-                if scheme == "TRANSPOSED":
+                if form == "explicit" and scheme == "TRANSPOSED":
                     reader.load_backup(str(backup))
                     assert reader.induction.stretching_scheme == scheme
                 else:
@@ -769,7 +893,7 @@ def test_restart_matches_stretching_and_recovers_only_known_implicit_defaults(
                 reader.close()
 
 
-def test_flow_integral_csv_preserves_energy_definitions_and_unknown_legacy_rows(tmp_path):
+def test_flow_integral_csv_preserves_explicit_energy_definitions(tmp_path):
     import pandas as pd
 
     solver = _solver(tmp_path / "energy_measurement")
@@ -784,19 +908,25 @@ def test_flow_integral_csv_preserves_energy_definitions_and_unknown_legacy_rows(
         original = pd.read_csv(csv)
         assert original.loc[0, "energy_measurement"] == "unbounded_energy"
 
-        # An older CSV has real numeric values but no saved energy definition.
-        original.drop(columns="energy_measurement").to_csv(csv, index=False)
         solver.step = 1
         solver.time = 0.01
         solver._flow_integrals["energy_measurement"] = "periodic_fourier_energy"
         solver._flow_integrals["kinetic_energy_rate_source"] = "fourier_transition_viscous_rate"
         solver.io.export_flow_integrals_csv(solver, csv)
         result = pd.read_csv(csv)
-        assert result.energy_measurement.tolist() == ["unknown", "periodic_fourier_energy"]
+        assert result.energy_measurement.tolist() == ["unbounded_energy", "periodic_fourier_energy"]
         pd.testing.assert_series_equal(
             result.total_kinetic_energy.iloc[:1], original.total_kinetic_energy
         )
         assert result.loc[1, "kinetic_energy_rate_source"] == "fourier_transition_viscous_rate"
+
+        result.drop(columns="energy_measurement").to_csv(csv, index=False)
+        incomplete = csv.read_bytes()
+        solver.step = 2
+        solver.time = 0.02
+        with pytest.raises(ValueError, match="missing energy_measurement"):
+            solver.io.export_flow_integrals_csv(solver, csv)
+        assert csv.read_bytes() == incomplete
     finally:
         solver.close()
 
@@ -845,3 +975,32 @@ def test_relaxation_transfer_is_native_sampled_and_restartable(tmp_path):
     with contextlib.redirect_stdout(io.StringIO()):
         restored.load_backup(backup)
     assert np.isnan(restored.stabilization.pedrizzetti_moment_transfer).all()
+
+
+def test_flow_integrals_append_past_step_100_and_reject_real_clock_conflicts(tmp_path):
+    """The delta failure must not be bypassed by discarding prior CSV events."""
+    import pandas as pd
+
+    from source.solvers.vpm import EverySteps, Samplers
+    from source.solvers.vpm.diagnostics.flow_integrals import FlowIntegralsSampler
+    from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
+
+    solver = _solver(tmp_path / "flow_clock")
+    manager = OutputManager(solver, Samplers((FlowIntegralsSampler(schedule=EverySteps(10)),)))
+    csv = solver.case_dir / "samples/flow_integrals.csv"
+    try:
+        for step in range(10, 111, 10):
+            solver.step, solver.time = step, step * 0.0025
+            manager.dispatch(OutputEvent.ACCEPTED_STEP)
+        result = pd.read_csv(csv)
+        assert result.step.tolist() == list(range(10, 111, 10))
+        np.testing.assert_allclose(result.time, np.arange(10, 111, 10) * 0.0025)
+        original = csv.read_bytes()
+        for step in (110, 100):
+            solver.step, solver.time = step, step * 0.0025
+            with pytest.raises(RuntimeError, match="previous step=.*incoming step=") as failure:
+                manager.dispatch(OutputEvent.ACCEPTED_STEP)
+            assert str(csv) in str(failure.value)
+            assert csv.read_bytes() == original
+    finally:
+        solver.close()

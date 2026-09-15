@@ -24,10 +24,10 @@ def test_projected_renewal_log_reports_field_gates_and_runtime_gbd_guard() -> No
         renewal_diffusion_substeps=1,
     )
 
-    record = _transfer_log_record(3, result)
+    record = str(_transfer_log_record(3, result)).lower()
 
     assert "projection error, omega" in record and "4.000e-04" in record
-    assert "projection error, normal velocity" in record and "7.000e-05" in record
+    assert "projection error, normal velocity" in record and "7.0000e-05" in record
     assert "gbd guard width" in record and "0.09375" in record
     assert "gbd diffusion substeps" in record
     assert "selective support births" in record
@@ -54,7 +54,7 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
         renewal_linear_impulse_tolerance=6.0e-8,
         renewal_applied_particle_strength_fraction=0.047,
     )
-    record = _transfer_log_record(3, result)
+    record = str(_transfer_log_record(3, result)).lower()
     assert "renewal closure, raw strength mismatch" in record
     assert "renewal closure, particle-strength correction" in record
     assert "fvm map, net error" not in record

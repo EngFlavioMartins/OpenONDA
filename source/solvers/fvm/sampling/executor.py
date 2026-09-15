@@ -68,7 +68,7 @@ class FVMSamplerExecutor:
             schedule = captured_schedules.get(id(sampler))
             if event == "final":
                 due = bool(
-                    getattr(schedule, "is_final_only", getattr(schedule, "at_end", False))
+                    schedule.is_final_only
                     if schedule is not None
                     else getattr(getattr(sampler, "schedule", None), "is_final_only", False)
                 )
@@ -131,4 +131,4 @@ class FVMSamplerExecutor:
         name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
         if strict:
             raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc
-        solver.logger.warning(f"component=sampler name={name!r} status=failed error={exc!r}")
+        solver.logger.warning(f"Sampler {name!r} failed: {exc}")

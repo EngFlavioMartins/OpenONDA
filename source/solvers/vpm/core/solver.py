@@ -293,9 +293,11 @@ class VPMSolver:
         ):
             rwm_max_time_step_size = vc.rwm_accuracy_time_step_size()
             if self.time_step_size > rwm_max_time_step_size * (1.0 + 1e-6):
-                Logging.warning(
-                    f"component=RWM time_step_size_s={self.time_step_size:.4e} "
-                    f"accuracy_limit_s={rwm_max_time_step_size:.4e} criterion=h2_over_4nu"
+                Logging.warning_record(
+                    "RWM time step exceeds the accuracy limit",
+                    ("time step", self.time_step_size, "s"),
+                    ("accuracy limit", rwm_max_time_step_size, "s"),
+                    ("criterion", "particle spacing squared / (4 * kinematic viscosity)"),
                 )
             self._rwm_time_step_size_info = (
                 f"RWM accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s "
@@ -440,14 +442,6 @@ class VPMSolver:
         _visc_cfg = getattr(final_setup, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
             self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
-        if hasattr(self.physics, "configure_body_mask"):
-            try:
-                bodies = getattr(final_setup, "bodies", ())
-                first_body_stl = bodies[0].stl if bodies else None
-                self.physics.configure_body_mask(first_body_stl)
-            except Exception as exc:
-                Logging.warning(f"component=body_mask status=configuration_failed error={exc!r}")
-
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
         vpm_bounds = final_setup.domain_bounds
         vc = getattr(final_setup, "viscous", None)
@@ -537,31 +531,6 @@ class VPMSolver:
             "vlm_wake_vortex_strength_y": [],
             "vlm_max_leading_edge_suction_parameter": [],
             "vlm_n_particles_total": [],
-            "vlm_leakage_R1": [],
-            "vlm_leakage_Rinf": [],
-            "vlm_leakage_R1_edge": [],
-            "vlm_leakage_Rinf_edge": [],
-            "vlm_leakage_R1_interior": [],
-            "vlm_leakage_Rinf_interior": [],
-            "vlm_leakage_reference_speed": [],
-            "vlm_leakage_transport_R1": [],
-            "vlm_leakage_transport_Rinf": [],
-            "vlm_leakage_collocation_R1": [],
-            "vlm_leakage_collocation_Rinf": [],
-            "vlm_leakage_off_grid_R1": [],
-            "vlm_leakage_off_grid_Rinf": [],
-            "vlm_leakage_independent_surface_R1": [],
-            "vlm_leakage_independent_surface_Rinf": [],
-            "vlm_leakage_two_sided_trace_R1": [],
-            "vlm_leakage_two_sided_trace_Rinf": [],
-            "vlm_leakage_transport_filter_radius": [],
-            "vlm_leakage_boundary_filter_radius": [],
-            "vlm_stage_boundary_residual": [],
-            "vlm_stage_near_wake_elapsed": [],
-            "vlm_stage_near_wake_matrix_norm": [],
-            "vlm_surface_intersections": [],
-            "vlm_surface_side_bypasses": [],
-            "vlm_surface_core_overlaps": [],
         }
         stabilization_state = StabilizationStepState(
             step=self.step,
@@ -922,17 +891,28 @@ class VPMSolver:
                             health_limit_failure = exc
                         break
                 self._refresh_diagnostics_for_output()
-                if budget_exhausted:
-                    self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-                elif health_limit_failure is None and resource_limit_failure is None:
-                    self.output_manager.dispatch(OutputEvent.FINAL)
-                else:
-                    # A health limit describes the last usable accepted state.
-                    # Persist every sampler once even when its regular cadence
-                    # is not due at this step.
-                    self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                # Preserve the accepted numerical state before fallible
+                # scientific output, including an off-cadence health stop.
                 if self.case.run.final_backup:
                     self._save_final_backup()
+                try:
+                    if budget_exhausted:
+                        self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                    elif health_limit_failure is None and resource_limit_failure is None:
+                        self.output_manager.dispatch(OutputEvent.FINAL)
+                    else:
+                        # A health limit describes the last usable accepted state.
+                        # Persist every sampler once even when its regular cadence
+                        # is not due at this step.
+                        self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                except Exception as output_failure:
+                    stopping_failure = health_limit_failure or resource_limit_failure
+                    if stopping_failure is not None:
+                        output_failure.add_note(
+                            f"Final output was triggered by {type(stopping_failure).__name__}: "
+                            f"{stopping_failure}"
+                        )
+                    raise
                 if budget_exhausted:
                     status = "wall_time_limit"
                 elif health_limit_failure is None and resource_limit_failure is None:
@@ -1226,7 +1206,13 @@ class VPMSolver:
         self._flow_integrals_step = self.step
 
     def _update_discretization_health(self) -> None:
-        """Refresh particle-resolution and field-quality diagnostics."""
+        """Refresh field quality, confirming sampled limit crossings at all blobs.
+
+        A bounded spatial sample is sufficient for routine monitoring, but its
+        composition can change as particles move. Before a sampled divergence
+        or alignment value can stop the run, evaluate the same metric over every
+        distinct blob, retaining the configured threshold and physical state.
+        """
         if self.particles.n_particles_total == 0:
             self._discretization_health = {}
             return
@@ -1242,12 +1228,34 @@ class VPMSolver:
                 gradient[:, 1, 0] - gradient[:, 0, 1],
             )
         )
-        self._discretization_health = discretization_health(
-            self.particle_position,
-            self.particle_vortex_strength,
-            self.particle_core_radius,
+        position = self.particle_position
+        strength = self.particle_vortex_strength
+        core_radius = self.particle_core_radius
+        metrics = discretization_health(
+            position,
+            strength,
+            core_radius,
             vorticity=vorticity,
         )
+        limits = (
+            ("vorticity_divergence_error", self.health_limits.divergence.maximum),
+            (
+                "vortex_strength_misalignment_degrees",
+                self.health_limits.misalignment.maximum_degrees,
+            ),
+        )
+        if any(
+            maximum is not None and (not np.isfinite(metrics[name]) or metrics[name] > maximum)
+            for name, maximum in limits
+        ):
+            metrics = discretization_health(
+                position,
+                strength,
+                core_radius,
+                vorticity=vorticity,
+                sample_all=True,
+            )
+        self._discretization_health = metrics
 
     def _record_vortex_centroid_history(self) -> None:
         """Record the vortex-strength-magnitude-weighted particle centroid."""
@@ -1277,17 +1285,6 @@ class VPMSolver:
             self.case_dir,
             sample_directory,
         )
-        if self.vlm_solver.surface_diagnostics_due(self.step):
-            VLMDiagnostics.record_vlm_leakage_diagnostics(
-                self.vlm_solver,
-                self.particles,
-                self.physics,
-                self._diagnostics_history,
-                self.step,
-                self.time,
-                self.case_dir,
-                sample_directory,
-            )
         VLMLoadingDistribution.record_loading_distributions(
             self.vlm_solver,
             self._diagnostics_history,
@@ -1701,7 +1698,7 @@ class VPMSolver:
         self.n_sources = len(position)
         if self.n_sources > MAX_SOURCES:
             Logging.warning(
-                f"component=sources requested={self.n_sources} limit={MAX_SOURCES} status=clipped"
+                f"Requested {self.n_sources} sources exceeds capacity {MAX_SOURCES}; limiting to capacity"
             )
             self.n_sources = MAX_SOURCES
 

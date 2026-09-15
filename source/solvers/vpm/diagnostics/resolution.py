@@ -101,6 +101,8 @@ def discretization_health(
     vortex_strength: np.ndarray,
     core_radius: np.ndarray,
     vorticity: np.ndarray | None = None,
+    *,
+    sample_all: bool = False,
 ) -> dict[str, float]:
     """Return the resolution/consistency metrics for one particle field.
 
@@ -111,9 +113,16 @@ def discretization_health(
         vorticity: optional (N, 3) w(x_p) already evaluated by the solver.
             When omitted, the same compact Gaussian-neighbour sum used for the
             divergence diagnostic supplies vorticity at the probe particles.
+        sample_all: evaluate every distinct blob location instead of a bounded
+            spatial sample. Use this to confirm a sampled health-limit crossing;
+            moving particles can change the sampled subset between steps.
 
     Returns:
         dict of scalar metrics; every value is NaN when it cannot be formed.
+
+    Coincident equal-core contributions are summed for diagnostics only. Group
+    labels may split one blob into several contributions without improving its
+    spatial resolution or changing the physical field.
     """
     nan = float("nan")
     empty = {
@@ -137,16 +146,43 @@ def discretization_health(
     ):
         return empty
 
+    unique, first, inverse = np.unique(
+        np.column_stack((position, core_radius)),
+        axis=0,
+        return_index=True,
+        return_inverse=True,
+    )
+    spatial_order = first
+    if len(unique) != n:
+        combined = np.zeros((len(unique), 3))
+        np.add.at(combined, inverse, vortex_strength)
+        position, core_radius = unique[:, :3], unique[:, 3]
+        vortex_strength = combined
+        if vorticity is not None:
+            # Supplied values are the total field at each point, not each
+            # label's contribution; coincident samples must not be added.
+            vorticity = np.asarray(vorticity)[first]
+        n = len(position)
+        spatial_order = np.arange(n, dtype=np.intp)
+        if n < _NEIGHBOURS + 1:
+            return empty
+
     # compact_nodes=False: the default (balanced + compact) build recurses and
     # writes out of bounds for regular-lattice clouds, corrupting the heap
     # (observed only after Taichi shifts the heap layout).  Queries are exact
     # regardless of the compaction flag; only the tree structure differs.
     tree = cKDTree(position, compact_nodes=False)
-    if n <= _MAX_PROBES:
+    if sample_all or n <= _MAX_PROBES:
         probes = np.arange(n, dtype=np.intp)
     else:
-        probes = np.linspace(0, n - 1, _MAX_PROBES, dtype=np.intp)
-    distances, _ = tree.query(position[probes], k=_NEIGHBOURS + 1, workers=-1)
+        probes = spatial_order[np.linspace(0, n - 1, _MAX_PROBES, dtype=np.intp)]
+    distinct_position = np.unique(position, axis=0)
+    if len(distinct_position) < _NEIGHBOURS + 1:
+        return empty
+    spacing_tree = (
+        tree if len(distinct_position) == n else cKDTree(distinct_position, compact_nodes=False)
+    )
+    distances, _ = spacing_tree.query(position[probes], k=_NEIGHBOURS + 1, workers=-1)
     spacing = distances[:, 1:].mean(axis=1)
     overlap = spacing / np.maximum(core_radius[probes], np.finfo(float).tiny)
 

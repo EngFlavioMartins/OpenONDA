@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-import getpass
 import os
 from pathlib import Path
 import platform
-import socket
 import sys
-import threading
 import time
 from typing import Any, TextIO
 
@@ -63,68 +60,39 @@ def resolve_mode(default: str = "simple") -> str:
     return mode
 
 
-def format_openonda_header(precision: str | None = "f64") -> str:
-    """Return the OpenONDA FVM startup banner."""
-    now = datetime.now()
-    try:
-        hostname = socket.gethostname()
-    except Exception:
-        hostname = "unknown"
-    try:
-        username = getpass.getuser()
-    except Exception:
-        username = "unknown"
-
-    system_info = (
-        f"{platform.system()}; python={platform.python_version()}; arch={platform.machine()}"
+def format_openonda_header(precision: str | None = "f64") -> log_style.FormattedText:
+    """Return the shared run-identity report for the FVM owner."""
+    return log_style.block_report(
+        "OpenONDA FVM",
+        [
+            (
+                "run",
+                [
+                    ("version", __version__),
+                    ("precision", precision),
+                    ("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}"),
+                    ("platform", f"{platform.system()} {platform.machine()}"),
+                    ("Python", platform.python_version()),
+                ],
+            )
+        ],
     )
-    width = 91
-    lines = [
-        "",
-        "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
-        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
-        "   ░██████                                      ░██████   ░███    ░██ ░███████      ░███    ",
-        "  ░██   ░██                                    ░██   ░██  ░████   ░██ ░██   ░██    ░██░██   ",
-        " ░██     ░██ ░████████   ░███████  ░████████  ░██     ░██ ░██░██  ░██ ░██    ░██  ░██  ░██  ",
-        " ░██     ░██ ░██    ░██ ░██    ░██ ░██    ░██ ░██     ░██ ░██ ░██ ░██ ░██    ░██ ░█████████ ",
-        " ░██     ░██ ░██    ░██ ░█████████ ░██    ░██ ░██     ░██ ░██  ░██░██ ░██    ░██ ░██    ░██ ",
-        "  ░██   ░██  ░███   ░██ ░██        ░██    ░██  ░██   ░██  ░██   ░████ ░██   ░██  ░██    ░██ ",
-        "   ░██████   ░██░█████   ░███████  ░██    ░██   ░██████   ░██    ░███ ░███████   ░██    ░██ ",
-        "             ░██                                                                            ",
-        "             ░██                                                                            ",
-        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
-        "| O pen       | " + "".ljust(width - 16) + "|",
-        "| O perator   | "
-        + "OpenONDA: Operator for Numerical Design & Aerodynamics.".ljust(width - 16)
-        + "|",
-        "| N umer.     | " + f"Version: {__version__}".ljust(width - 16) + "|",
-        "| D esign     | " + "Website: https://github.com/EngFlavioMartins".ljust(width - 16) + "|",
-        "| A erodyn.   | " + "FVM Solver: Finite Volume Method".ljust(width - 16) + "|",
-        "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
-        "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
-    ]
-    rows: list[log_style.Row] = [
-        ("build", f"OpenONDA {__version__}"),
-        ("platform", system_info),
-    ]
-    if precision is not None:
-        rows.append(("precision", precision))
-    rows.extend(
-        (
-            ("executable", "FVM solver"),
-            ("started", f"{now:%Y-%m-%d %H:%M:%S}"),
-            ("host", hostname),
-            ("user", username),
-            ("process", str(os.getpid())),
-        )
-    )
-    lines.append(log_style.section("run", rows))
-    return "\n".join(lines)
 
 
 def print_openonda_header(precision: str | None = "f64") -> None:
     """Print the FVM banner to the current console."""
     print(format_openonda_header(precision), flush=True)
+
+
+def emit_standalone_report(topic: str, *rows: log_style.Row, warning: bool = False) -> None:
+    """Report a standalone mesh/linear operation before a solver sink exists.
+
+    Normal solver calls use their instance logger. This entry point provides the
+    same layout for standalone library operations, without opening a case file.
+    """
+    print(
+        log_style.block_section(topic, rows), file=sys.stderr if warning else sys.stdout, flush=True
+    )
 
 
 @dataclass
@@ -343,6 +311,7 @@ class Logging:
         self._closed = False
         self._step: _StepRecord | None = None
         self._step_reported = True
+        self._collect_routine = True
         self._step_wall_time = 0.0
         self._steps = 0
         self._count_label = "steps"
@@ -364,7 +333,10 @@ class Logging:
             self._file = self.log_file_path.open("a", buffering=1, encoding="utf-8")
             if had_previous_log:
                 self._file.write(
-                    f"\n--- FVM log session started {datetime.now():%Y-%m-%d %H:%M:%S} ---\n"
+                    log_style.block_section(
+                        "FVM log session", [("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}")]
+                    )
+                    + "\n"
                 )
                 self._file.flush()
 
@@ -382,39 +354,43 @@ class Logging:
             print(text, file=self._file, flush=True)
 
     def message(self, text: str = "", *, flush: bool = False) -> None:
-        """Emit one complete message to every configured sink."""
-        if self._step is not None:
-            self._step.events.append((text, ()))
+        """Emit a shared report, or submit plain text as a module event."""
+        if not self.enabled:
             return
-        self._emit(text, flush=flush)
+        if isinstance(text, log_style.FormattedText):
+            self._emit(text, flush=flush)
+        else:
+            self.info(text, flush=flush)
 
     def info(self, text: str, *, flush: bool = False) -> None:
-        """Record an informational event in the current block."""
-        if self._step is not None:
-            self._step.events.append((text, ()))
-            return
-        self._emit(log_style.block_section("EVENTS", [(text, "")]), flush=flush)
+        """Submit an event without formatting it on unreported steps."""
+        self.record(text, flush=flush)
 
     def warning(self, text: str, *, flush: bool = True) -> None:
-        """Record a warning that remains visible regardless of step cadence."""
-        if self._step is not None:
-            self._step.warnings = (*self._step.warnings, text)
+        """Emit immediately, including during a long step or suppressed interval."""
+        if not self.enabled:
             return
-        self._emit(log_style.block_section("WARNINGS", [(text, "")]), flush=flush)
+        rows: list[log_style.Row] = [(text, "")]
+        if self._step is not None:
+            rows.insert(0, ("FVM step", self._step.step))
+        self._emit(log_style.block_section("warnings", rows), flush=True)
 
     def record(self, topic: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Record one event with optional detail rows in the current block."""
-        if self._step is not None:
-            self._step.events.append((topic, tuple(rows)))
+        """Collect host values for a report, or flush an explicit output event."""
+        if not self.enabled:
             return
-        event = _StepRecord(step=0, time=0.0, time_step_size=0.0)
-        event.events.append((topic, tuple(rows)))
-        self._emit(log_style.block_section("EVENTS", _event_rows(event)), flush=flush)
+        if self._step is not None and not flush:
+            if self._collect_routine:
+                self._step.events.append((topic, rows))
+            return
+        self._emit(
+            log_style.block_section(topic if rows else "events", rows or [(topic, "")]), flush=flush
+        )
 
-    def debug_message(self, text: str, *, flush: bool = False) -> None:
-        """Emit a message only in debug mode."""
-        if self.debug:
-            self.info(text, flush=flush)
+    def debug_message(self, text: str, *args, flush: bool = False) -> None:
+        """Interpolate optional details only when this owner will report them."""
+        if self.enabled and self.debug and self._collect_routine:
+            self.info(text % args if args else text, flush=flush)
 
     def header(self, precision: str | None = "f64") -> None:
         """Emit the OpenONDA FVM startup banner."""
@@ -432,16 +408,20 @@ class Logging:
         flush: bool = False,
     ) -> None:
         """Record or emit one consistently formatted information section."""
+        if not self.enabled:
+            return
         if self._step is not None:
-            self._step.sections.append((title, list(items)))
+            if self._collect_routine:
+                self._step.sections.append((title, items))
             return
         self._emit(log_style.block_section(title, items), flush=flush)
 
     # -- Per-step diagnostics --------------------------------------------------
 
     def step_begin(self, step: int, time: float, time_step_size: float) -> None:
-        """Open a new per-step record, flushing any left open by an abort."""
-        self._flush_step()
+        """Open a trial record; discard an interrupted predecessor without publishing it."""
+        self._step = None
+        self._collect_routine = self.should_report(step, time, time_step_size)
         self._step = _StepRecord(
             step=int(step),
             time=float(time),
@@ -449,7 +429,17 @@ class Logging:
             wall_time_at_start=self._step_wall_time,
         )
 
+    def should_report(self, step: int, flow_time: float, time_step_size: float) -> bool:
+        """Return the rank-independent sampling decision for routine log metrics.
+
+        Every MPI rank must use this same schedule before optional collective
+        reductions. The disabled worker sink is deliberately not consulted here.
+        """
+        return self.schedule.is_due(step, flow_time, time_step_size)
+
     def _record(self, **values: Any) -> None:
+        if not self.enabled or not self._collect_routine:
+            return
         if self._step is not None:
             for name, value in values.items():
                 setattr(self._step, name, value)
@@ -464,7 +454,7 @@ class Logging:
 
     def convergence_info(self, residuals: dict[str, float] | None) -> None:
         """Record the nonlinear and linear convergence state."""
-        if residuals:
+        if self.enabled and self._collect_routine and residuals:
             self._record(residuals={key: float(value) for key, value in residuals.items()})
 
     def continuity_info(self, maximum: float, total: float) -> None:
@@ -482,17 +472,17 @@ class Logging:
 
     def yplus_info(self, yplus_stats: dict[str, dict[str, float]] | None) -> None:
         """Record wall-resolution diagnostics."""
-        if yplus_stats:
+        if self.enabled and self._collect_routine and yplus_stats:
             self._record(y_plus=dict(yplus_stats))
 
     def force_info(self, forces: dict[str, Any]) -> None:
         """Record force coefficients for every configured patch."""
-        if forces:
+        if self.enabled and self._collect_routine and forces:
             self._record(forces=dict(forces))
 
     def ibm_force_info(self, forces: dict[str, tuple[float, float]], slip: float) -> None:
         """Record immersed-body force coefficients and marker slip."""
-        if forces:
+        if self.enabled and self._collect_routine and forces:
             self._record(ibm_forces=dict(forces), ibm_slip=float(slip))
 
     def turbulence_info(
@@ -503,6 +493,8 @@ class Logging:
         statistics: tuple[float, float, float] | None = None,
     ) -> None:
         """Record turbulent-viscosity diagnostics."""
+        if not self.enabled or not self._collect_routine:
+            return
         if statistics is None:
             if eddy_viscosity is None:
                 return
@@ -521,12 +513,15 @@ class Logging:
 
     def warnings_info(self, warnings: tuple[str, ...]) -> None:
         """Record acceptance-policy warnings raised by the step."""
-        if warnings:
-            self._record(warnings=tuple(warnings))
+        for warning in warnings:
+            self.warning(warning)
 
-    def step_end(self, elapsed: float) -> None:
-        """Close the open step and report it if the interval allows."""
+    def step_end(self, elapsed: float, *, accepted: bool = True) -> None:
+        """Close a trial and publish only accepted state, including its wall duration."""
         self._step_wall_time += float(elapsed)
+        if not accepted:
+            self._step = None
+            return
         self._steps += 1
         if self._step is not None:
             self._step.elapsed = float(elapsed)
@@ -546,7 +541,7 @@ class Logging:
 
     def _flush_step(self) -> None:
         record, self._step = self._step, None
-        if record is None:
+        if record is None or not self.enabled:
             return
         self._step_reported = self._reportable(record)
         if not self._step_reported:
@@ -601,7 +596,7 @@ class Logging:
                 sections.append(
                     (
                         "conservation",
-                        [("continuity error, max", f"{record.max_continuity_error:.2e}")],
+                        [("continuity error, max", f"{record.max_continuity_error:.2e}", "1/s")],
                     )
                 )
 
@@ -617,7 +612,20 @@ class Logging:
                 )
             )
 
-        timing_rows: list[log_style.Row] = [("wall time", f"{record.elapsed:.2f}", "s")]
+        if not detailed and record.turbulence is not None:
+            minimum, maximum, mean = record.turbulence
+            sections.append(
+                (
+                    "turbulence",
+                    [
+                        ("eddy viscosity, min", minimum, "m^2/s"),
+                        ("eddy viscosity, mean", mean, "m^2/s"),
+                        ("eddy viscosity, max", maximum, "m^2/s"),
+                    ],
+                )
+            )
+
+        timing_rows: list[log_style.Row] = [("step wall time", f"{record.elapsed:.2f}", "s")]
         if detailed:
             timing_rows.append(
                 (
@@ -627,15 +635,20 @@ class Logging:
                 )
             )
         sections.append(("timing", timing_rows))
-        return [log_style.block_section(title, items) for title, items in sections]
+        return [
+            log_style.block_section(title, items)
+            for title, items in sorted(
+                sections, key=lambda item: log_style.step_section_order(item[0])
+            )
+        ]
 
     def _render_step_block(self, record: _StepRecord, *, detailed: bool) -> str:
         """Render one complete FVM step in the shared block layout."""
-        parts = [
+        parts: list[str] = [
             log_style.step_header(
                 record.step,
                 record.time,
-                record.wall_time_at_start,
+                record.wall_time_at_start + record.elapsed,
                 scope="FVM",
             )
         ]
@@ -651,7 +664,7 @@ class Logging:
     @staticmethod
     def solver_info(solver: Any, initialization_time: float) -> str:
         """Return a comprehensive FVM initialization report."""
-        config = getattr(solver, "_resolved_setup", solver.setup)
+        config = solver._resolved_setup
         mesh = solver.mesh_data
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
@@ -777,13 +790,13 @@ class Logging:
         self.section(
             "fvm solver  state",
             [
-                ("case", str(getattr(solver, "_resolved_setup", solver.setup).case_name)),
+                ("case", str(solver._resolved_setup.case_name)),
                 ("time", f"{solver.time:.5f}", "s"),
                 ("step", f"{solver.step:,}"),
                 ("cells, local", f"{solver.mesh_data['n_cells']:,}"),
                 (
                     "algorithm",
-                    str(getattr(solver, "_resolved_setup", solver.setup).pimple.algorithm),
+                    str(solver._resolved_setup.pimple.algorithm),
                 ),
             ],
         )
@@ -873,7 +886,7 @@ class Logging:
         mean = self._step_wall_time / self._steps if self._steps else 0.0
         self._emit("")
         title = "RUN COMPLETE" if status == "complete" else "RUN " + str(status).upper()
-        rows = [
+        rows: list[log_style.Row] = [
             ("status", str(status)),
             (self._count_label, f"{self._steps:,}"),
             ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
@@ -896,7 +909,7 @@ class Logging:
         """Flush and close the file sink. This method is idempotent."""
         if self._closed:
             return
-        self._flush_step()
+        self._step = None
         # Terminal status is a lifecycle record, not a debug-only detail.
         # Keep it visible in both simple and debug modes so failed runs never
         # look like successful early exits.
@@ -908,70 +921,33 @@ class Logging:
 
 
 class Timer:
-    """Named wall-clock timers with per-instance and thread-local storage.
+    """Per-owner wall-clock phases, in seconds, with a stack for nested phases.
 
-    Existing solver call sites use the historical ``Timer.start("phase")``
-    form, which is retained as a thread-local compatibility store.  New code
-    can create ``Timer()`` and use ``timer.start("phase")`` so two solver
-    instances (or two worker threads) cannot overwrite one another's phase
-    timestamps.  A stack per phase also makes nested measurements safe.
+    Create one timer per solver. Starting/stopping a phase never changes another
+    owner's state. A missing phase returns zero elapsed seconds.
     """
 
-    _legacy = threading.local()
-
     def __init__(self) -> None:
-        """Create an independent named phase-timer store.
-
-        The instance starts empty and has no wall-clock side effects until a
-        phase is started. The class-level legacy form remains available for
-        older call sites that use ``Timer.start("phase")``.
-        """
+        """Create an empty phase store without starting measurements."""
         self._timers: dict[str, list[float]] = {}
 
-    @classmethod
-    def _legacy_storage(cls) -> dict[str, list[float]]:
-        storage = getattr(cls._legacy, "timers", None)
-        if storage is None:
-            storage = {}
-            cls._legacy.timers = storage
-        return storage
+    def start(self, name: str) -> None:
+        """Start a named phase on this owner, retaining nested starts."""
+        self._timers.setdefault(name, []).append(time.perf_counter())
 
-    @staticmethod
-    def _target(timer_or_name, name):
-        if isinstance(timer_or_name, Timer):
-            if name is None:
-                raise TypeError("Timer phase name is required")
-            return timer_or_name._timers, str(name)
-        if name is not None:
-            raise TypeError("Timer.start/stop/log accepts one phase name")
-        return Timer._legacy_storage(), str(timer_or_name)
-
-    def start(self, name: str | None = None) -> None:
-        """Start a named phase on this instance or the legacy thread store."""
-        timers, timer_name = Timer._target(self, name)
-        timers.setdefault(timer_name, []).append(time.perf_counter())
-
-    def stop(self, name: str | None = None) -> float:
-        """Stop a named phase and return its elapsed seconds."""
-        timers, timer_name = Timer._target(self, name)
-        started = timers.get(timer_name)
+    def stop(self, name: str) -> float:
+        """Return elapsed seconds from the most recent matching start."""
+        started = self._timers.get(name)
         if not started:
             return 0.0
         value = started.pop()
         if not started:
-            del timers[timer_name]
+            del self._timers[name]
         return time.perf_counter() - value
 
-    def log(self, name: str | None = None, *, sink: Any | None = None) -> float:
-        """Stop a phase and record it with the configured sink."""
-        timers, timer_name = Timer._target(self, name)
-        started = timers.get(timer_name)
-        if not started:
-            return 0.0
-        value = started.pop()
-        if not started:
-            del timers[timer_name]
-        elapsed = time.perf_counter() - value
+    def log(self, name: str, *, sink: Any | None = None) -> float:
+        """Stop a phase and report its elapsed seconds through the owning sink."""
+        elapsed = self.stop(name)
         if sink is not None and elapsed > 0.0:
-            sink.timing(timer_name.strip(" -"), elapsed)
+            sink.timing(name.strip(" -"), elapsed)
         return elapsed

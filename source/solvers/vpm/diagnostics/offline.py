@@ -24,7 +24,7 @@ import taichi as ti
 from ..config.constants import EPSILON
 
 # Use VPM logger
-from ..io.logging import logger
+from ..io.logging import Logging
 from ..physics.evaluation import ParticleFieldEvaluation
 
 # =========================================================
@@ -139,9 +139,7 @@ class OfflineFlowDiagnostics:
 
         self._parse_xdmf()
 
-        logger.info(
-            f"[OfflineFlowDiagnostics] Loaded {len(self.h5_files)} timesteps from {xdmf_path}"
-        )
+        Logging.info(f"Offline diagnostics: Loaded {len(self.h5_files)} timesteps from {xdmf_path}")
 
     def _parse_xdmf(self) -> None:
         """Parse the temporal XDMF file to extract HDF5 file references."""
@@ -175,7 +173,7 @@ class OfflineFlowDiagnostics:
             if path.exists():
                 h5_paths.append(path)
             else:
-                logger.warning(f"  Warning: HDF5 file not found: {path}")
+                Logging.warning(f"HDF5 file not found: {path}")
 
         # Sort by timestep number extracted from filename
         return sorted(h5_paths, key=self._extract_time_step_from_path)
@@ -299,20 +297,20 @@ class OfflineFlowDiagnostics:
         n_files = len(self.h5_files)
 
         if verbose:
-            logger.info(
-                f"[OfflineFlowDiagnostics] Computing flow integrals for {n_files} timesteps..."
+            Logging.info(
+                f"Offline diagnostics: Computing flow integrals for {n_files} timesteps..."
             )
 
         for i, h5_path in enumerate(self.h5_files):
             if verbose and (i % max(1, n_files // 10) == 0 or i == n_files - 1):
-                logger.info(f"  Processing {i + 1}/{n_files} ({100 * (i + 1) / n_files:.0f}%)")
+                Logging.info(f"  Processing {i + 1}/{n_files} ({100 * (i + 1) / n_files:.0f}%)")
 
             integrals = self._compute_single_time_step(h5_path)
             self.results.append(integrals)
 
         if verbose:
-            logger.info(
-                f"[OfflineFlowDiagnostics] Completed. {len(self.results)} timesteps processed."
+            Logging.info(
+                f"Offline diagnostics: Completed. {len(self.results)} timesteps processed."
             )
 
     def _estimate_max_particles(self) -> int:
@@ -386,35 +384,36 @@ class OfflineFlowDiagnostics:
                     f"{r.linear_impulse[1]:14.6e} {r.linear_impulse[2]:14.6e}\n"
                 )
 
-        logger.info(f"[OfflineFlowDiagnostics] Saved to {output_path}")
+        Logging.info(f"Offline diagnostics: Saved to {output_path}")
         return output_path
 
     def print_summary(self) -> None:
         """Print a summary of the computed diagnostics."""
         if not self.results:
-            print("No results computed. Call compute_all() first.")
+            Logging.warning("No results computed. Call compute_all() first.")
             return
 
         first = self.results[0]
         last = self.results[-1]
 
-        print("\n" + "=" * 70)
-        print("OFFLINE FLOW DIAGNOSTICS SUMMARY")
-        print("=" * 70)
-        print(f"  Source:      {self.xdmf_path}")
-        print(f"  Timesteps:   {len(self.results)}")
-        print(f"  Time range:  {first.time:.4f} - {last.time:.4f} s")
-        print("-" * 70)
-        print(f"  Initial particles:   {first.n_particles_total:,}")
-        print(f"  Final particles:     {last.n_particles_total:,}")
-        print(f"  Initial energy:      {first.total_kinetic_energy:.6e}")
-        print(f"  Final energy:        {last.total_kinetic_energy:.6e}")
-        print(
-            f"  Energy ratio:        {last.total_kinetic_energy / first.total_kinetic_energy:.4f}"
-            if first.total_kinetic_energy > EPSILON
-            else "  Energy ratio:        N/A"
+        Logging.section(
+            "offline flow diagnostics",
+            ("source", str(self.xdmf_path)),
+            ("recorded states", len(self.results)),
+            ("initial time", first.time, "s"),
+            ("final time", last.time, "s"),
+            ("initial particles", first.n_particles_total),
+            ("final particles", last.n_particles_total),
+            ("initial energy / density", first.total_kinetic_energy, "m^5/s^2"),
+            ("final energy / density", last.total_kinetic_energy, "m^5/s^2"),
+            (
+                "energy ratio",
+                last.total_kinetic_energy / first.total_kinetic_energy
+                if first.total_kinetic_energy > EPSILON
+                else None,
+            ),
+            flush=True,
         )
-        print("=" * 70 + "\n")
 
 
 def compute_offline_diagnostics(

@@ -106,9 +106,10 @@ for having fewer than five revolutions of final force samples.
 
 ## Reproduction and evidence
 
-Run the scripts in `studies/vlm_production_audit/` from the repository root:
+Run the maintained scripts in `studies/vlm_production_audit/` from the repository root.
+The observer profilers were retired with the surface-event observer; their
+recorded measurements remain historical evidence in this dated report.
 
-- `profile_observer_compiled.py`: warm observer replay against the retained baseline.
 - `profile_mature_induction.py`: fixed-source Metal timing and saved fields;
   `--sort --block 32` selects the measured rotor schedule. Existing result tags
   cannot be overwritten.

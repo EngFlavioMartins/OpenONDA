@@ -12,6 +12,74 @@ import pytest
 
 
 @pytest.mark.integration
+def test_partitioned_coupled_restart_keeps_boundary_collectives_in_order(tmp_path):
+    if find_spec("mpi4py") is None or find_spec("petsc4py") is None:
+        pytest.skip("MPI and PETSc are required")
+    if not (Path(sys.executable).with_name("mpiexec").is_file() or shutil.which("mpiexec")):
+        pytest.skip("mpiexec is required")
+    script = tmp_path / "restart.py"
+    script.write_text("""
+from pathlib import Path
+import json
+import sys
+import numpy as np
+from openonda import coupler, fvm, vpm
+from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
+
+directory = Path(sys.argv[1])
+flow = fvm.FVMSetup(
+    case_name="restart", cores=2,
+    time=fvm.TimeConfig(time_step_size=.01, end_time=.02),
+    transport=fvm.TransportConfig(kinematic_viscosity=.01),
+    boundaries=[fvm.BoundaryConfig(name="numericalBoundary",
+        velocity_type="fixedValue", velocity_value=[1., 0., 0.],
+        pressure_type="fixedFluxPressure")],
+    initial_velocity=[1., 0., 0.],
+)
+particles = vpm.VPMCase(
+    directory=directory,
+    numerics=vpm.Numerics(
+        time_step_size=.01, compute_device="CPU", max_n_particles=1000,
+        domain_bounds=(-1.,1.,-1.,1.,-1.,1.),
+        freestream_velocity=[1.,0.,0.],
+        viscous=vpm.ViscousConfig.cs(kinematic_viscosity=.01, particle_spacing=.25),
+    ),
+    backup=vpm.Backup(interval_steps=0),
+)
+policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0,
+    boundary_condition_mode="vorticity_mixed")
+mesh = lambda: coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5),.25)
+with coupler.create_coupler(flow, particles, policy, mesh=mesh,
+        case_dir=directory / "first") as first:
+    assert first.run(max_coupling_steps=1, backup_at_stop=True) == 1
+with coupler.create_coupler(flow, particles, policy, mesh=mesh,
+        case_dir=directory / "resumed") as resumed:
+    assert resumed.run(restart_from=directory / "first/solution/backups") == 2
+    assert resumed.fvm_solver.time == .02
+    assert np.allclose(resumed.fvm_solver.get_velocity_field(), [1.,0.,0.], atol=1e-8)
+    rank = resumed.fvm_solver.parallel.rank
+    (directory / f"rank-{rank}.json").write_text(json.dumps({"step": 2, "time": .02}))
+""")
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    environment["TI_OFFLINE_CACHE_FILE_PATH"] = str(tmp_path / "taichi-cache")
+    result = subprocess.run(
+        [sys.executable, str(script), str(tmp_path / "outputs")],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    for rank in range(2):
+        assert json.loads((tmp_path / f"outputs/rank-{rank}.json").read_text()) == {
+            "step": 2,
+            "time": 0.02,
+        }
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "mode", ["run", "construction_failure", "health_failure", "application_failure"]
 )
@@ -119,7 +187,7 @@ if driver is not None:
     assert result.returncode == 0, result.stdout[-6000:] + result.stderr[-6000:]
     assert "[Taichi] version" not in result.stdout
     if mode != "construction_failure":
-        assert result.stdout.count(" | VPM | ") == 1
+        assert result.stdout.count(" OPENONDA VPM\n") == 1
         assert result.stdout.count("INSTRUMENTED_ONCE") == 1
     expected = "completed" if mode == "run" else "expected_failure"
     for rank in range(2):
