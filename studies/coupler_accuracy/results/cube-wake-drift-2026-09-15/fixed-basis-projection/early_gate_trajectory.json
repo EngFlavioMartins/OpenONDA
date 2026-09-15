@@ -1,0 +1,352 @@
+{
+  "scope": "Audit when an outer-only Gaussian fit becomes eligible in the cube wake.\n\nThe original accepted particle checkpoints and physical renewal bounds are\nunchanged. This study applies the fixed-basis operator independently at each\nsaved time and compares its correction with the current production physics\ngates. It does not advance either solver or apply a correction to a run.\n",
+  "source_sha256": "e475d32d924faf4e8881afc18595b6fb1018656e7d879b3a52bd56124d7193f3",
+  "fit_source_sha256": "7b60f124a33f1c320f579f5ec0bd2e0e9b0926115b6f0c197c43c61ae6c79253",
+  "renewal_bounds_m": [
+    -1.385,
+    1.385,
+    -1.385,
+    1.385,
+    -1.385,
+    1.385
+  ],
+  "single_sweep_gate_limits": {
+    "correction_norm": 0.02,
+    "kinetic_energy": 1e-06,
+    "raw_enstrophy": 0.0001,
+    "helicity": 0.0001,
+    "total_variation": 0.001,
+    "residual_ratio": 0.9
+  },
+  "records": [
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000100.h5",
+      "checkpoint_sha256": "fc38e86fb00890ac2c76486ef7500b1d8a28344f1bd53d8ba1fe38b7d2a2e98f",
+      "time_s": 1.0,
+      "particles": 14387,
+      "vpm_owned_outer_particles": 0,
+      "status": "no_outer_particles"
+    },
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000200.h5",
+      "checkpoint_sha256": "9ac452261ea79a99b35c9c309a45ba2d42f0a23a93f9b3c5f7bc58b2e03fac8d",
+      "time_s": 2.0,
+      "particles": 18117,
+      "vpm_owned_outer_particles": 224,
+      "status": "fitted_without_mutation",
+      "fit": {
+        "particles": 18117,
+        "frozen_particles": 17893,
+        "mutable_particles": 224,
+        "grid_shape": [
+          58,
+          49,
+          49
+        ],
+        "cg_iterations": 13,
+        "fit_wall_seconds": 0.2954322919999868,
+        "correction_strength_relative": 0.0150895407919675,
+        "initial_residual_norm": 12.903214277045688,
+        "final_residual_ratio": 0.9113285027270173,
+        "grid_divergence_before": 0.049606468407158384,
+        "grid_divergence_after": 0.046654752485035894,
+        "net_correction_inside_belt_m3_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "net_correction_outside_belt_m3_s": [
+          -6.268043809681823e-20,
+          -6.013933925505532e-20,
+          4.2012834183813297e-19
+        ]
+      },
+      "gaussian_fourier_energy_before_after": [
+        1.4397435100093339,
+        1.4395936822828284
+      ],
+      "gaussian_fourier_raw_enstrophy_before_after": [
+        83.2610785974549,
+        83.24047146231425
+      ],
+      "gaussian_fourier_helicity_before_after": [
+        0.003110489840037654,
+        0.0031164393442314896
+      ],
+      "energy_relative_change": -0.00010406556825148832,
+      "raw_enstrophy_relative_change": -0.0002475002184427698,
+      "helicity_change_normalized": 5.433969468314908e-07,
+      "total_variation_relative_change": 0.00047203826217972637,
+      "raw_moment_errors": [
+        2.0174610751442444e-18,
+        1.1056736068366554e-18,
+        2.779028226719266e-18
+      ],
+      "unrestored_fit_within_gate_numbers": {
+        "correction_norm": true,
+        "kinetic_energy": false,
+        "raw_enstrophy": false,
+        "helicity": true,
+        "total_variation": true,
+        "residual_ratio": false
+      }
+    },
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000300.h5",
+      "checkpoint_sha256": "c7ea785d04fdc91a2f3579592d622922098c83e4537341117bca52b8eaeee22f",
+      "time_s": 3.0,
+      "particles": 23625,
+      "vpm_owned_outer_particles": 3925,
+      "status": "fitted_without_mutation",
+      "fit": {
+        "particles": 23625,
+        "frozen_particles": 19700,
+        "mutable_particles": 3925,
+        "grid_shape": [
+          73,
+          49,
+          49
+        ],
+        "cg_iterations": 17,
+        "fit_wall_seconds": 0.5060565830001451,
+        "correction_strength_relative": 0.021200435161738657,
+        "initial_residual_norm": 13.91789317695381,
+        "final_residual_ratio": 0.7319083814105452,
+        "grid_divergence_before": 0.047887426105648556,
+        "grid_divergence_after": 0.04017988849458483,
+        "net_correction_inside_belt_m3_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "net_correction_outside_belt_m3_s": [
+          -4.741690438729573e-18,
+          -3.8241419986163525e-18,
+          3.748120791600279e-19
+        ]
+      },
+      "gaussian_fourier_energy_before_after": [
+        1.5982910111784283,
+        1.598221403235778
+      ],
+      "gaussian_fourier_raw_enstrophy_before_after": [
+        86.8863016177529,
+        86.86606273667482
+      ],
+      "gaussian_fourier_helicity_before_after": [
+        0.0049872478662203205,
+        0.005199353287583698
+      ],
+      "energy_relative_change": -4.3551482279185145e-05,
+      "raw_enstrophy_relative_change": -0.00023293523491337955,
+      "helicity_change_normalized": 1.7998992038517854e-05,
+      "total_variation_relative_change": -0.00010866906877383011,
+      "raw_moment_errors": [
+        5.1671760650124074e-17,
+        6.217353152331137e-15,
+        6.185846110918627e-17
+      ],
+      "unrestored_fit_within_gate_numbers": {
+        "correction_norm": false,
+        "kinetic_energy": false,
+        "raw_enstrophy": false,
+        "helicity": true,
+        "total_variation": true,
+        "residual_ratio": true
+      }
+    },
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000400.h5",
+      "checkpoint_sha256": "d9f10e764b1fee7e15601df732945b94ddef0d7bf448cb0821b94fa80b748b65",
+      "time_s": 4.0,
+      "particles": 29694,
+      "vpm_owned_outer_particles": 8491,
+      "status": "fitted_without_mutation",
+      "fit": {
+        "particles": 29694,
+        "frozen_particles": 21203,
+        "mutable_particles": 8491,
+        "grid_shape": [
+          89,
+          49,
+          49
+        ],
+        "cg_iterations": 17,
+        "fit_wall_seconds": 0.6482079170000361,
+        "correction_strength_relative": 0.03057448281947069,
+        "initial_residual_norm": 18.11452288473783,
+        "final_residual_ratio": 0.5830756409906069,
+        "grid_divergence_before": 0.06124059234390898,
+        "grid_divergence_after": 0.046580506148428326,
+        "net_correction_inside_belt_m3_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "net_correction_outside_belt_m3_s": [
+          1.1841520602615119e-17,
+          -2.9256517998163534e-18,
+          7.301424005332069e-19
+        ]
+      },
+      "gaussian_fourier_energy_before_after": [
+        1.7767584774800491,
+        1.7765981254498426
+      ],
+      "gaussian_fourier_raw_enstrophy_before_after": [
+        87.38893337963309,
+        87.34406817140135
+      ],
+      "gaussian_fourier_helicity_before_after": [
+        -0.008120307330407105,
+        0.010672729327125164
+      ],
+      "energy_relative_change": -9.0249762271518e-05,
+      "raw_enstrophy_relative_change": -0.0005133969084716762,
+      "helicity_change_normalized": 0.0015081847442071743,
+      "total_variation_relative_change": -0.0008288643654899169,
+      "raw_moment_errors": [
+        7.076975519872505e-17,
+        4.527129761097896e-16,
+        6.290325730325412e-17
+      ],
+      "unrestored_fit_within_gate_numbers": {
+        "correction_norm": false,
+        "kinetic_energy": false,
+        "raw_enstrophy": false,
+        "helicity": false,
+        "total_variation": true,
+        "residual_ratio": true
+      }
+    },
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000500.h5",
+      "checkpoint_sha256": "74a54bbd15523a59ed3c98a2ad8ce24f115021ff185c3ccd15983efaf8dcdc94",
+      "time_s": 5.0,
+      "particles": 36559,
+      "vpm_owned_outer_particles": 14699,
+      "status": "fitted_without_mutation",
+      "fit": {
+        "particles": 36559,
+        "frozen_particles": 21860,
+        "mutable_particles": 14699,
+        "grid_shape": [
+          105,
+          51,
+          51
+        ],
+        "cg_iterations": 18,
+        "fit_wall_seconds": 0.8678360829999292,
+        "correction_strength_relative": 0.04659705154313472,
+        "initial_residual_norm": 26.55920193029314,
+        "final_residual_ratio": 0.5374066653618731,
+        "grid_divergence_before": 0.08707043133366268,
+        "grid_divergence_after": 0.06176620102973581,
+        "net_correction_inside_belt_m3_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "net_correction_outside_belt_m3_s": [
+          -9.242527058907386e-17,
+          -1.4772042841878184e-17,
+          1.7143946852427039e-18
+        ]
+      },
+      "gaussian_fourier_energy_before_after": [
+        2.008736599832937,
+        2.0087052702215478
+      ],
+      "gaussian_fourier_raw_enstrophy_before_after": [
+        92.01071230245427,
+        91.87826668596611
+      ],
+      "gaussian_fourier_helicity_before_after": [
+        0.013276364367982164,
+        0.021373869729184387
+      ],
+      "energy_relative_change": -1.5596674741621928e-05,
+      "raw_enstrophy_relative_change": -0.001439458658387351,
+      "helicity_change_normalized": 0.0005956217544321749,
+      "total_variation_relative_change": -0.002454440352570636,
+      "raw_moment_errors": [
+        1.4958171215750156e-16,
+        2.6754115518690828e-15,
+        1.8805761129176913e-16
+      ],
+      "unrestored_fit_within_gate_numbers": {
+        "correction_norm": false,
+        "kinetic_energy": false,
+        "raw_enstrophy": false,
+        "helicity": false,
+        "total_variation": false,
+        "residual_ratio": true
+      }
+    },
+    {
+      "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000600.h5",
+      "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+      "time_s": 6.0,
+      "particles": 43479,
+      "vpm_owned_outer_particles": 20159,
+      "status": "fitted_without_mutation",
+      "fit": {
+        "particles": 43479,
+        "frozen_particles": 23320,
+        "mutable_particles": 20159,
+        "grid_shape": [
+          121,
+          51,
+          51
+        ],
+        "cg_iterations": 17,
+        "fit_wall_seconds": 0.9920971250001003,
+        "correction_strength_relative": 0.05401982326647243,
+        "initial_residual_norm": 33.68085652215928,
+        "final_residual_ratio": 0.48414018342871323,
+        "grid_divergence_before": 0.0907782538131135,
+        "grid_divergence_after": 0.057436402133054,
+        "net_correction_inside_belt_m3_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "net_correction_outside_belt_m3_s": [
+          2.643674531675397e-16,
+          1.041469360296525e-17,
+          -2.4377608221978764e-18
+        ]
+      },
+      "gaussian_fourier_energy_before_after": [
+        2.2588302125456856,
+        2.258214466612723
+      ],
+      "gaussian_fourier_raw_enstrophy_before_after": [
+        99.96980796065036,
+        99.73883100198739
+      ],
+      "gaussian_fourier_helicity_before_after": [
+        0.17668543280663077,
+        0.10571498293563572
+      ],
+      "energy_relative_change": -0.0002725950492174541,
+      "raw_enstrophy_relative_change": -0.0023104671637848924,
+      "helicity_change_normalized": -0.004722819364680436,
+      "total_variation_relative_change": -0.0024936372274832488,
+      "raw_moment_errors": [
+        5.861318479733124e-16,
+        4.0856652974303334e-14,
+        3.9448180163712646e-16
+      ],
+      "unrestored_fit_within_gate_numbers": {
+        "correction_norm": false,
+        "kinetic_energy": false,
+        "raw_enstrophy": false,
+        "helicity": false,
+        "total_variation": false,
+        "residual_ratio": true
+      }
+    }
+  ],
+  "limit": "Independent frozen float64 fits, not a clean-start correction history or a production gate decision; the current solver also restores quadratic invariants and searches correction amplitudes."
+}

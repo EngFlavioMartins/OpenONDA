@@ -78,6 +78,17 @@ The fit also changes total Fourier helicity `0.17669 -> 0.10571 m^4/s²`
 and total Fourier kinetic energy `2.25883 -> 2.25821 m^5/s²`.
 These are substantial against the current solver gates. The study has not
 relaxed or bypassed them in production.
+Frozen screens at six earlier accepted checkpoints show when the VPM-owned
+outer population develops: zero particles at t=1, 224 at t=2, 3,925 at t=3,
+8,491 at t=4, 14,699 at t=5, and 20,159 at t=6. The independent outer-fit
+strength change rises from 1.51% at t=2 to 2.12%, 3.06%, 4.66% and 5.40%
+at t=3–6. Its un-restored raw-enstrophy change already exceeds the current
+`1e-4` gate at t=2; the correction norm exceeds the current 2% gate from
+t=3 onward. These are one-time corrections to uncorrected historical states.
+They do not establish that smaller periodic corrections from a clean start
+would fail, because the production method performs additional quadratic
+restoration and line searches.
+[Early-state gate trajectory](results/cube-wake-drift-2026-09-15/fixed-basis-projection/early_gate_trajectory.json).
 In this symmetric cube state, the fine FVM local mean `u dot omega` is nearly
 zero at the sampled authority and seam regions. The fixed-basis fit moves the
 VPM means toward that reference; seam local helicity-error RMS falls from
