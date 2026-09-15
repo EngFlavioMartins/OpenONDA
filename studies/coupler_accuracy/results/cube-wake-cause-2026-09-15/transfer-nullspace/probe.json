@@ -1,0 +1,58 @@
+[
+  {
+    "quadrature_spacing": 0.06,
+    "core_radius": 0.066,
+    "particle_count": 24389,
+    "initial_velocity_rms": 7.144453228636278e-08,
+    "fvm_velocity": [
+      0,
+      0,
+      0
+    ],
+    "fvm_physical_vorticity": [
+      0,
+      0,
+      0
+    ],
+    "variants": {
+      "cube_authority": {
+        "velocity_after_rms": 0.0063756225027620204,
+        "velocity_change_rms": 0.006375623472067691,
+        "velocity_after_max": 0.016955515856289193
+      },
+      "constant_authority_control": {
+        "velocity_after_rms": 3.572226614318139e-08,
+        "velocity_change_rms": 3.572226614318139e-08,
+        "velocity_after_max": 1.52144715568838e-07
+      }
+    }
+  },
+  {
+    "quadrature_spacing": 0.03,
+    "core_radius": 0.066,
+    "particle_count": 185193,
+    "initial_velocity_rms": 4.438953635874658e-15,
+    "fvm_velocity": [
+      0,
+      0,
+      0
+    ],
+    "fvm_physical_vorticity": [
+      0,
+      0,
+      0
+    ],
+    "variants": {
+      "cube_authority": {
+        "velocity_after_rms": 0.006376269981591354,
+        "velocity_change_rms": 0.006376269981591356,
+        "velocity_after_max": 0.01695593917041954
+      },
+      "constant_authority_control": {
+        "velocity_after_rms": 2.219476817937329e-15,
+        "velocity_change_rms": 2.219476817937329e-15,
+        "velocity_after_max": 5.036398463122368e-15
+      }
+    }
+  }
+]

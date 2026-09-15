@@ -1,0 +1,51 @@
+[
+  {
+    "stage": "accepted",
+    "seam_vorticity_minus_curl_rms": 0.542564544772052,
+    "seam_vorticity_rms": 3.542490568834145,
+    "seam_divergence_rms": 9.417356695844886,
+    "seam_reflection_rms": 0.1172294839358303
+  },
+  {
+    "stage": "after_m4_scatter",
+    "seam_vorticity_minus_curl_rms": 0.5425645008120811,
+    "seam_vorticity_rms": 3.5424900053372004,
+    "seam_divergence_rms": 9.417358487693194,
+    "seam_reflection_rms": 0.11722948446913471
+  },
+  {
+    "stage": "after_fluid_mask",
+    "seam_vorticity_minus_curl_rms": 0.5425645008120811,
+    "seam_vorticity_rms": 3.5424900053372004,
+    "seam_divergence_rms": 9.417358487693194,
+    "seam_reflection_rms": 0.11722948446913471
+  },
+  {
+    "stage": "after_coefficient_blend",
+    "seam_vorticity_minus_curl_rms": 0.5399558230095143,
+    "seam_vorticity_rms": 3.539842762975328,
+    "seam_divergence_rms": 9.452958920046173,
+    "seam_reflection_rms": 0.11709096627211318
+  },
+  {
+    "stage": "after_representation_correction",
+    "seam_vorticity_minus_curl_rms": 0.5434159093434373,
+    "seam_vorticity_rms": 3.5419386703465565,
+    "seam_divergence_rms": 9.494300864969956,
+    "seam_reflection_rms": 0.11704710416474691
+  },
+  {
+    "stage": "after_output_fluid_mask",
+    "seam_vorticity_minus_curl_rms": 0.5434129169415788,
+    "seam_vorticity_rms": 3.5419386703465565,
+    "seam_divergence_rms": 9.494300864969956,
+    "seam_reflection_rms": 0.11704695495114509
+  },
+  {
+    "stage": "after_pruning_and_invariants",
+    "seam_vorticity_minus_curl_rms": 0.543318632804347,
+    "seam_vorticity_rms": 3.5415780076829653,
+    "seam_divergence_rms": 9.493017393413231,
+    "seam_reflection_rms": 0.11702861784414413
+  }
+]

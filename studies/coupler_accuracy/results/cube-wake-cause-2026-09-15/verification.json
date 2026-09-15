@@ -1,0 +1,70 @@
+{
+  "source_baseline": "fda69c0f",
+  "production_source_changed": false,
+  "full_coupled_simulation_run": false,
+  "corrected_reference_driven_steps": 100,
+  "original_health_gates": "passed for all100 accepted steps",
+  "rk_source_calls": 200,
+  "rk_weights": [
+    0.5,
+    0.5
+  ],
+  "max_rk_net_strength_closure": 1.1767167974705278e-08,
+  "current_executed_source_checks": [
+    {
+      "path": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_wake_oracle_replay.py",
+      "sha256": "6e268f1917da447143378995387ccc1d521b32df992030b8e48aac50808bd3a7"
+    },
+    {
+      "path": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_covector_stage_source.py",
+      "sha256": "fe5905a7659e981e48235cba4221cb995d3b0a99e4e5c35cd2cae3a12ff41173"
+    },
+    {
+      "path": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_wake_measured_longitudinal.py",
+      "sha256": "de723abe73503f798b61876db6cf14a04ddff3db623e89741bc9579aab6b9c2f"
+    }
+  ],
+  "conservative_operator_manufactured_checks": {
+    "net_conservation": true,
+    "nonzero_impulse_target": true,
+    "spatial_consistency": true,
+    "fixed_core_velocity_consistency": true,
+    "reference_quadrature_resolved": true
+  },
+  "frozen_flux_refactor_bitwise_identical": true,
+  "local_report_links_verified": 23,
+  "production_readiness": "Not qualified: nodal source has occupied-support defect; conservative flux is frozen-lattice only and does not correct all longitudinal content. No force or full coupled qualification.",
+  "data_files_sha256": {
+    "active-support-geometry.json": "47364756cfe8946d5df071e86bdbd467bd5a8818ef7a7d6f54b045734887758c",
+    "covector-control-ledger/replay.json": "8412ea66309e5cce180f6014b836b5dd187e57a11dd37dce285bef2a62fe47d4",
+    "covector-control-ledger/runtime/solution/vpm_metadata.json": "a148450c9d6a63f88a2e7a5dc7bc3a4ab0cd349debec8a885b587279de19f881",
+    "covector-control-t6/replay.json": "0a1e4f2917b9f6bac0bb83e6dcffc6cdee2a20324d99c636d92fe3eae4dd68f3",
+    "covector-control-t6/runtime/solution/vpm_metadata.json": "a7b76e44efd74a5a28720c7ae7ebaf26f9d2b18f9a0c4246c18a6238c1b15876",
+    "covector-flux-checked/control.json": "71ccb4e8be811abbb92a5f7b6cec756c2c079f51646e936a2f8d500ba5fb31a9",
+    "covector-flux-control/control.json": "2149276dbe73a6350e22dd991a39d016f72052baffd83f1123644844813a1a48",
+    "covector-flux-qualification/qualification.json": "6a6c7afe942820fa8448aa7a556e879210939b0cdb5cfea6d5891e17251afb22",
+    "covector-support-budget/support.json": "6aa78672d142ad97558c040325c5d22928edf6f0acc99e070f1c9ee7990d677a",
+    "curl-replay/replay.json": "e01980bb229085f39e9b1b94d60989cb02618b1a5d8d5c3762be996283d936e4",
+    "curl-replay/runtime/solution/vpm_metadata.json": "a99ebc543dd97ab232fb822afa926a8068c7563be33d3cee6ceb915c7a2fa25e",
+    "curl-residual-api-checks.json": "a415eeaadc2ca4601584f2da47aedce0ff33158ef9eb3e72597f7825d6a4d841",
+    "curl-residual-convergence-qualification.json": "4b66754b55ebce8aaac0315269c4c6431cd0ec81610b059eb5e9fa8e9c660bc6",
+    "curl-residual-fixed-core-qualification.json": "bbc44bb8695b99694e4801a7af26cd4454bf8fa1dd3a4d15622ef8aaa7d512c3",
+    "curl-residual-qualification.json": "be97f7809b958a0bd5d1fc8488f7dee1ecb7bc626a654236ad19a140fb14272e",
+    "curl-residual-refined-qualification.json": "79f0c33c5fde6bcdb3ac12b6f00fe82060145b8e0e4fe2207cc986e3575f70d7",
+    "density-allocation-check.json": "0619dd7ca5b84631b43532dea1110a73fb62b9f2609c6bbf99aca0725d27be5e",
+    "longitudinal-transport-identities.json": "4eae9684d4de3a29b19841b4df0b38015a4ccca4651cdc04f2e6ba85c482f768",
+    "measured-longitudinal-f64/audit.json": "afb63e586400bb9751fbcb5492de96cfc9fbfa2f7805a021700d4591d077daa5",
+    "native-control-t6/replay.json": "f5f9906ae262543dd658683424aa73d0ed658b7abf35fb48c4698147b10fe1df",
+    "native-control-t6/runtime/solution/vpm_metadata.json": "a14bb04fe799bc1660130ac914daa150705152e5464e4717000ea91c6b645b1b",
+    "reference-velocities.json": "2cbdcd505af8c21e8d07b7b04b6b40db8a8f13ebd82fc77ac7dbba5eec96958e",
+    "represented-evolution-budget/budget.json": "cbbde570ecc0c5113a05ea2752980d9e0db133431e9910e09340de90ee459951",
+    "ten-step-particle-invariants.json": "24ed2cb5f4d1f4a9d184f6883b462e52a52541b9b3891cc5364a8e52191d12a1",
+    "transfer-nullspace/probe.json": "55cac7826fde12a7dee33f960eab053e5543143b6396c995aee080fbaef94a7d",
+    "transfer-stages/asymmetry.json": "7fbcc2099797a67c62ce8c2c51256781fd69f1b943bb9b6d47d917798712c9c7",
+    "transfer-stages/audit.json": "c40c057afc3791e01026cc2fc5fbc00a1b3a3ac8b035e0f7dfe38b5678f6b95d",
+    "transfer-stages/stages.json": "b065689c71432c7f1a94d1b76366c358cde55fbf4999b7161ce02ddd9a6a880c",
+    "velocity-matched/runtime/solution/vpm_metadata.json": "9cd75d300b7864eb0aafd7952f1b2114796cfb4dba94376e939cf83341cffaf6",
+    "velocity-matched-spacing/audit.json": "75a753b18fa5f89ef0be082222990ca1b041f6c704f65e26eeecfa82e34c8bed",
+    "velocity-matched-spacing/runtime/solution/vpm_metadata.json": "9cd75d300b7864eb0aafd7952f1b2114796cfb4dba94376e939cf83341cffaf6"
+  }
+}

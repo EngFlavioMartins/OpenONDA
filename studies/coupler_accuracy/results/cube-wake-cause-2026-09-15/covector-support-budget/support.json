@@ -1,0 +1,112 @@
+{
+  "scope": "Separate occupied-support quadrature from a resolved periodic source integral.\n\nThis is a frozen self-induced-flow control, not a replacement for the native\nbody-bounded source budget. The full periodic source integral should vanish.\nThe fluid-only integral can be nonzero because of the excluded cube. Comparing\nthat integral with existing-particle quadrature isolates the effect of occupied\nsupport. No particles are inserted, masked, projected, or advanced.\n",
+  "input_sha256": "0ca70a418a22be7f6fcb43e336a0f7088166f65a982eed33e354090b603f89cc",
+  "source_sha256": "fd6d0e35e6a046fac6bba1c60ccd01cd99ffbd5491b2826844b23aa0979fe0ca",
+  "cases": [
+    {
+      "quadrature_spacing": 0.03,
+      "periodic_lengths": [
+        7.2,
+        3.6,
+        3.6
+      ],
+      "excluded_cube_volume": 1.000000000000002,
+      "whole_periodic_source_integral": [
+        -1.420585249434225e-14,
+        5.430599969713511e-14,
+        -2.378897079324815e-15
+      ],
+      "solid_source_integral": [
+        0.0019244315536285782,
+        -3.883795570440434e-05,
+        4.4842612807678485e-05
+      ],
+      "fluid_source_integral": [
+        -0.001924431553642784,
+        3.883795575871034e-05,
+        -4.484261281005738e-05
+      ],
+      "occupied_particle_source_integral": [
+        0.02295157293885689,
+        -0.010875872508673964,
+        -0.004353012650202668
+      ],
+      "occupied_minus_full_fluid": [
+        0.024876004492499677,
+        -0.010914710464432674,
+        -0.00430817003739261
+      ],
+      "seconds": 0.7165094160009176
+    },
+    {
+      "quadrature_spacing": 0.02,
+      "periodic_lengths": [
+        7.2,
+        3.6,
+        3.6
+      ],
+      "excluded_cube_volume": 1.000000000000002,
+      "whole_periodic_source_integral": [
+        4.9112713895738135e-17,
+        -4.547473508864642e-18,
+        -1.4551915228366854e-17
+      ],
+      "solid_source_integral": [
+        0.0019043773671150565,
+        -4.2328883209662014e-05,
+        4.8713939365395026e-05
+      ],
+      "fluid_source_integral": [
+        -0.0019043773671150075,
+        4.232888320965747e-05,
+        -4.8713939365409574e-05
+      ],
+      "occupied_particle_source_integral": [
+        0.022949579266962596,
+        -0.010875600010512514,
+        -0.00435348480817938
+      ],
+      "occupied_minus_full_fluid": [
+        0.024853956634077603,
+        -0.010917928893722171,
+        -0.00430477086881397
+      ],
+      "seconds": 2.556831042020349
+    },
+    {
+      "quadrature_spacing": 0.03,
+      "periodic_lengths": [
+        9.6,
+        4.8,
+        4.8
+      ],
+      "excluded_cube_volume": 1.0000000000000027,
+      "whole_periodic_source_integral": [
+        -1.0382734672020887e-14,
+        4.172930800905305e-14,
+        -1.752709977154154e-15
+      ],
+      "solid_source_integral": [
+        0.0019619461031152147,
+        -3.948815151906439e-05,
+        5.0065068359404355e-05
+      ],
+      "fluid_source_integral": [
+        -0.0019619461031255975,
+        3.94881515607937e-05,
+        -5.006506836115706e-05
+      ],
+      "occupied_particle_source_integral": [
+        0.021189652378453827,
+        -0.010781503341066225,
+        -0.0044009302264176745
+      ],
+      "occupied_minus_full_fluid": [
+        0.023151598481579425,
+        -0.01082099149262702,
+        -0.004350865158056517
+      ],
+      "seconds": 2.437495125021087
+    }
+  ]
+}

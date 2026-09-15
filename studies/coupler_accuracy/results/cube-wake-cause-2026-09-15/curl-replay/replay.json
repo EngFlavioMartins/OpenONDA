@@ -1,0 +1,509 @@
+{
+  "description": "Bounded VPM replay with reference-driven curl residual transfer.\n\nThis trial retains the original evolution, GBD, particle spacing, cores and\nhealth gates. Renewal first performs the coefficient-preserving control through\nits normal cleanup. A compact curl correction is added after that cleanup and\nis not clipped, pruned, or repaired back to the old impulse. Fine-reference\nvelocities are interpolated in time between the same native t=6 and t=7 states\nused by the preceding controls. Only those endpoints are exact saved times.\n",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "velocity_cache_sha256": "46d13f31713f6bd4c7d151294b345504dc4c14a756d76fb62ab4f16b44be41fa",
+  "body_velocity_residual_guard": [
+    0.06,
+    0.12
+  ],
+  "deconvolution_steps": 0,
+  "steps_completed": 22,
+  "status": "stopped_after_early_comparison",
+  "observations": [
+    {
+      "time": 6.0,
+      "particles": 43479,
+      "elapsed_wall_seconds": 0.19921362499007955,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.08201685332647604,
+          "transverse_error_rms": 0.07372209302261021,
+          "reflection_asymmetry_rms": 0.058929118481335446
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07932495669098402,
+          "transverse_error_rms": 0.061319166075719446,
+          "reflection_asymmetry_rms": 0.036256768065842
+        }
+      }
+    },
+    {
+      "time": 6.1,
+      "particles": 101688,
+      "elapsed_wall_seconds": 138.2591452919878,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.09115162047858286,
+          "transverse_error_rms": 0.08338818281004912,
+          "reflection_asymmetry_rms": 0.06442257250814905
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07565508901201161,
+          "transverse_error_rms": 0.05800423067922156,
+          "reflection_asymmetry_rms": 0.03710506215491594
+        }
+      }
+    },
+    {
+      "time": 6.2,
+      "particles": 102415,
+      "elapsed_wall_seconds": 271.7322971249814,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.10452520117592454,
+          "transverse_error_rms": 0.09630975177721535,
+          "reflection_asymmetry_rms": 0.06987454212946588
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.0815562841818016,
+          "transverse_error_rms": 0.05758273343455192,
+          "reflection_asymmetry_rms": 0.038261987450715365
+        }
+      }
+    }
+  ],
+  "step_records": [
+    {
+      "step": 1,
+      "evolution_seconds": 14.167959833983332,
+      "passive_remap_seconds": 0.4219044159981422,
+      "curl_correction_seconds": 1.6147675000247546,
+      "health_and_body_seconds": 2.579154374980135,
+      "particles": 101064,
+      "correction_strength_l1": 2.1287291037406693,
+      "correction_net_strength": [
+        -4.213095226656342e-17,
+        -2.4327252775008986e-17,
+        -6.302287101808048e-17
+      ],
+      "correction_impulse": [
+        0.016341669819685642,
+        0.004850613944100327,
+        0.00034298230575319395
+      ]
+    },
+    {
+      "step": 2,
+      "evolution_seconds": 8.306326541001908,
+      "passive_remap_seconds": 0.3787843339960091,
+      "curl_correction_seconds": 1.5570280410174746,
+      "health_and_body_seconds": 2.6022485419816803,
+      "particles": 101137,
+      "correction_strength_l1": 1.4903538328126031,
+      "correction_net_strength": [
+        -3.889278501387963e-17,
+        -2.21981957574159e-17,
+        1.0675725334507384e-17
+      ],
+      "correction_impulse": [
+        0.003393858886804327,
+        0.0021402090045021414,
+        1.661521866421492e-05
+      ]
+    },
+    {
+      "step": 3,
+      "evolution_seconds": 8.437379166018218,
+      "passive_remap_seconds": 0.37751550000393763,
+      "curl_correction_seconds": 1.6466763749776874,
+      "health_and_body_seconds": 2.807769459002884,
+      "particles": 101214,
+      "correction_strength_l1": 1.1882261874275235,
+      "correction_net_strength": [
+        -3.698013167942022e-17,
+        -2.3948007007765674e-17,
+        1.0421165464077865e-17
+      ],
+      "correction_impulse": [
+        0.0037785185875247817,
+        0.0010773624355017914,
+        -9.584821712217944e-05
+      ]
+    },
+    {
+      "step": 4,
+      "evolution_seconds": 8.338966916984646,
+      "passive_remap_seconds": 0.3558062920055818,
+      "curl_correction_seconds": 1.72140004101675,
+      "health_and_body_seconds": 2.6091315840021707,
+      "particles": 101288,
+      "correction_strength_l1": 0.9907834766969881,
+      "correction_net_strength": [
+        -3.379340182594743e-17,
+        -1.6511037878538215e-17,
+        2.5525106254936826e-17
+      ],
+      "correction_impulse": [
+        0.004639562046334526,
+        0.0008626939871901127,
+        0.00011845953168661638
+      ]
+    },
+    {
+      "step": 5,
+      "evolution_seconds": 9.077820375008741,
+      "passive_remap_seconds": 0.589410874992609,
+      "curl_correction_seconds": 1.8901756659906823,
+      "health_and_body_seconds": 2.9861681670008693,
+      "particles": 101361,
+      "correction_strength_l1": 0.8757741271267336,
+      "correction_net_strength": [
+        -3.250461472692041e-17,
+        -2.0723359195013453e-17,
+        8.176200590331398e-18
+      ],
+      "correction_impulse": [
+        0.0034603364141229604,
+        0.0006358761358677582,
+        6.666020281560924e-05
+      ]
+    },
+    {
+      "step": 6,
+      "evolution_seconds": 8.810109499987448,
+      "passive_remap_seconds": 0.32853425000212155,
+      "curl_correction_seconds": 1.65005458300584,
+      "health_and_body_seconds": 2.54648283298593,
+      "particles": 101418,
+      "correction_strength_l1": 0.795131081980958,
+      "correction_net_strength": [
+        -3.158661630055396e-17,
+        -1.3591580007148659e-17,
+        1.7113188968529867e-17
+      ],
+      "correction_impulse": [
+        0.00040129340092636063,
+        0.0005228509281399316,
+        4.9193838956816434e-05
+      ]
+    },
+    {
+      "step": 7,
+      "evolution_seconds": 8.35098795799422,
+      "passive_remap_seconds": 0.5280620830017142,
+      "curl_correction_seconds": 1.6656317090091761,
+      "health_and_body_seconds": 2.54469979100395,
+      "particles": 101482,
+      "correction_strength_l1": 0.7373245046773517,
+      "correction_net_strength": [
+        -2.77858007952116e-17,
+        -1.2875804079494273e-17,
+        3.2192579038808254e-18
+      ],
+      "correction_impulse": [
+        0.0025408060680177785,
+        0.000516599663831948,
+        0.00010988042604694428
+      ]
+    },
+    {
+      "step": 8,
+      "evolution_seconds": 8.36814524998772,
+      "passive_remap_seconds": 0.35339699999894947,
+      "curl_correction_seconds": 1.6686272080114577,
+      "health_and_body_seconds": 2.6021406250074506,
+      "particles": 101538,
+      "correction_strength_l1": 0.6987663665401207,
+      "correction_net_strength": [
+        -2.8555052295106315e-17,
+        -9.436069455143564e-18,
+        1.7678441185756753e-17
+      ],
+      "correction_impulse": [
+        0.0027120270060876396,
+        0.00045996494032397145,
+        0.00014319819966272714
+      ]
+    },
+    {
+      "step": 9,
+      "evolution_seconds": 8.306201333005447,
+      "passive_remap_seconds": 0.2909021249797661,
+      "curl_correction_seconds": 1.6985146670194808,
+      "health_and_body_seconds": 2.6016272919951007,
+      "particles": 101602,
+      "correction_strength_l1": 0.6716761061934553,
+      "correction_net_strength": [
+        -2.5963323382410268e-17,
+        -6.043298837251165e-18,
+        1.3682483847745786e-17
+      ],
+      "correction_impulse": [
+        0.002693160306625117,
+        0.0004617231989534106,
+        0.00018309905251103322
+      ]
+    },
+    {
+      "step": 10,
+      "evolution_seconds": 8.450434958009282,
+      "passive_remap_seconds": 0.3516338749905117,
+      "curl_correction_seconds": 1.6549502499983646,
+      "health_and_body_seconds": 2.578441667021252,
+      "particles": 101688,
+      "correction_strength_l1": 0.652188160088637,
+      "correction_net_strength": [
+        -2.4022545907124052e-17,
+        -1.1406724694155195e-17,
+        1.03421597894117e-17
+      ],
+      "correction_impulse": [
+        0.002617090650517261,
+        0.0004744791810513023,
+        0.00022042224473402378
+      ]
+    },
+    {
+      "step": 11,
+      "evolution_seconds": 8.395258124975953,
+      "passive_remap_seconds": 0.3625802920141723,
+      "curl_correction_seconds": 1.7189383750082925,
+      "health_and_body_seconds": 2.5966976250056177,
+      "particles": 101780,
+      "correction_strength_l1": 0.638035609174731,
+      "correction_net_strength": [
+        -2.479341868101937e-17,
+        -8.415355049032729e-18,
+        2.4244700149876193e-17
+      ],
+      "correction_impulse": [
+        0.0028371286209802394,
+        0.00047130761976321917,
+        0.00028211989433770367
+      ]
+    },
+    {
+      "step": 12,
+      "evolution_seconds": 8.568717541988008,
+      "passive_remap_seconds": 0.4126891670166515,
+      "curl_correction_seconds": 1.689887082990026,
+      "health_and_body_seconds": 2.6682990420085844,
+      "particles": 101846,
+      "correction_strength_l1": 0.6276031609217275,
+      "correction_net_strength": [
+        -2.3717925066022824e-17,
+        -5.973544350555793e-18,
+        1.4833006053023342e-17
+      ],
+      "correction_impulse": [
+        0.0025014465175018383,
+        0.0005052069281393549,
+        0.0003046521569469821
+      ]
+    },
+    {
+      "step": 13,
+      "evolution_seconds": 8.497435500001302,
+      "passive_remap_seconds": 0.3194657909916714,
+      "curl_correction_seconds": 1.7902527499827556,
+      "health_and_body_seconds": 2.6842370000085793,
+      "particles": 101897,
+      "correction_strength_l1": 0.6198417557700829,
+      "correction_net_strength": [
+        -2.288489132345537e-17,
+        -1.4228704293439053e-17,
+        1.1977595122102542e-17
+      ],
+      "correction_impulse": [
+        0.0023316255420387914,
+        0.0005341520984362918,
+        0.0003106957943679472
+      ]
+    },
+    {
+      "step": 14,
+      "evolution_seconds": 8.575062499992782,
+      "passive_remap_seconds": 0.3698084170173388,
+      "curl_correction_seconds": 1.719106374977855,
+      "health_and_body_seconds": 2.6054882910102606,
+      "particles": 101970,
+      "correction_strength_l1": 0.6141964448586902,
+      "correction_net_strength": [
+        -2.2131981603742254e-17,
+        -6.77450002896844e-18,
+        1.1871199842993521e-17
+      ],
+      "correction_impulse": [
+        0.0021580693124256967,
+        0.0005509387625696752,
+        0.00031841420585162496
+      ]
+    },
+    {
+      "step": 15,
+      "evolution_seconds": 8.61424037499819,
+      "passive_remap_seconds": 0.33959004099597223,
+      "curl_correction_seconds": 1.6210191669815686,
+      "health_and_body_seconds": 2.609937417000765,
+      "particles": 102050,
+      "correction_strength_l1": 0.6106532006402277,
+      "correction_net_strength": [
+        -2.0733705570115266e-17,
+        -1.5754779731705484e-17,
+        1.6864780013135292e-17
+      ],
+      "correction_impulse": [
+        0.002226218866546359,
+        0.0007464769033567678,
+        0.00019668638812530417
+      ]
+    },
+    {
+      "step": 16,
+      "evolution_seconds": 8.366386290988885,
+      "passive_remap_seconds": 0.31123620900325477,
+      "curl_correction_seconds": 1.7468743750068825,
+      "health_and_body_seconds": 2.634837040997809,
+      "particles": 102108,
+      "correction_strength_l1": 0.6080553163391996,
+      "correction_net_strength": [
+        -2.0609247975150537e-17,
+        -1.0778828434778443e-17,
+        1.974404021547722e-18
+      ],
+      "correction_impulse": [
+        0.001787703464663812,
+        0.00044967095325949705,
+        0.0004616078279507026
+      ]
+    },
+    {
+      "step": 17,
+      "evolution_seconds": 8.611698875000002,
+      "passive_remap_seconds": 0.37659674999304116,
+      "curl_correction_seconds": 1.729673374997219,
+      "health_and_body_seconds": 2.708459249988664,
+      "particles": 102191,
+      "correction_strength_l1": 0.6084406673618543,
+      "correction_net_strength": [
+        -1.9902888671589455e-17,
+        -1.54687836892765e-17,
+        2.2580442535921554e-17
+      ],
+      "correction_impulse": [
+        0.0011736592874608107,
+        0.0004956806945973024,
+        0.0003177810223854893
+      ]
+    },
+    {
+      "step": 18,
+      "evolution_seconds": 8.707391250005458,
+      "passive_remap_seconds": 0.6603245839942247,
+      "curl_correction_seconds": 1.8794059159990866,
+      "health_and_body_seconds": 2.858939834026387,
+      "particles": 102263,
+      "correction_strength_l1": 0.6071601792092204,
+      "correction_net_strength": [
+        -2.036767153161565e-17,
+        -1.9457700065913416e-17,
+        2.843268912145257e-17
+      ],
+      "correction_impulse": [
+        0.0011214827333772448,
+        0.0005875873928266936,
+        0.00037260918278204637
+      ]
+    },
+    {
+      "step": 19,
+      "evolution_seconds": 8.819587833975675,
+      "passive_remap_seconds": 0.31982791601330973,
+      "curl_correction_seconds": 1.6374405839887913,
+      "health_and_body_seconds": 2.616627083014464,
+      "particles": 102340,
+      "correction_strength_l1": 0.6073379514995505,
+      "correction_net_strength": [
+        -1.8490342118034702e-17,
+        -8.052282317126054e-18,
+        7.415055460439703e-18
+      ],
+      "correction_impulse": [
+        0.0017102156088098475,
+        0.0008641473429798624,
+        0.00012513961609759617
+      ]
+    },
+    {
+      "step": 20,
+      "evolution_seconds": 8.446251874993322,
+      "passive_remap_seconds": 0.37513737499830313,
+      "curl_correction_seconds": 1.6191687500104308,
+      "health_and_body_seconds": 2.643824875005521,
+      "particles": 102415,
+      "correction_strength_l1": 0.6078742840081762,
+      "correction_net_strength": [
+        -2.000951225254754e-17,
+        2.1181117637277848e-19,
+        8.70661196015755e-18
+      ],
+      "correction_impulse": [
+        0.0005320307694283233,
+        0.0004384252128901069,
+        0.0005749942501518344
+      ]
+    },
+    {
+      "step": 21,
+      "evolution_seconds": 8.549045290972572,
+      "passive_remap_seconds": 0.34324841701891273,
+      "curl_correction_seconds": 1.6449883749883156,
+      "health_and_body_seconds": 2.6029620000044815,
+      "particles": 102497,
+      "correction_strength_l1": 0.6080783827035036,
+      "correction_net_strength": [
+        -1.9190993875369168e-17,
+        -1.6757084406103338e-17,
+        2.2967334760747306e-17
+      ],
+      "correction_impulse": [
+        0.0005481311988798972,
+        0.0005626313813346722,
+        0.00046418484313444976
+      ]
+    },
+    {
+      "step": 22,
+      "evolution_seconds": 8.342173541983357,
+      "passive_remap_seconds": 0.3354305410175584,
+      "curl_correction_seconds": 1.6702515840006527,
+      "health_and_body_seconds": 2.580090208008187,
+      "particles": 102570,
+      "correction_strength_l1": 0.6093231884261492,
+      "correction_net_strength": [
+        -1.8126663889919637e-17,
+        -1.527269225326468e-17,
+        1.7371613426781234e-17
+      ],
+      "correction_impulse": [
+        0.0009885061314647576,
+        0.0005202847246351835,
+        0.0003721430976740706
+      ]
+    }
+  ],
+  "source_sha256": {
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_curl_transfer_replay.py": "bd409dc97478df14021e3b7e7b2825a65ecbc1b8cea06f3fdf43035525e26d84",
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_curl_residual_transfer.py": "3672c08dd8ca49f95ca867a64337ebcc708eeaf52c3c9d9ba86eaba09085cde2",
+    "/private/tmp/openonda-cube-wake-centred-ties-333fc4bb/source/coupler/stable_renewal.py": "0271b0bee03bd98505a18b2b9ab4d89bf8b4957b4621aff9ede2ce5810f61686",
+    "/private/tmp/openonda-cube-wake-centred-ties-333fc4bb/source/coupler/vorticity_transfer.py": "81c5954405703cd296fd4b061f611a66935c9a1ab26903235ad7b1a46db7ea80",
+    "/private/tmp/openonda-cube-wake-centred-ties-333fc4bb/source/solvers/vpm/core/evolution.py": "a67c93dc771d75341b935e802b6a9af1b1566c54319c0c73bfa2d9201b42bdaa"
+  },
+  "termination": {
+    "signal": "SIGINT",
+    "exit_code": 130,
+    "completed_steps": 22,
+    "interrupted_step": 23,
+    "reason": "No material early velocity-error reduction, with roughly doubled particle count. Reject this full-support prototype for production; the trial does not decide clean-start or long-horizon behavior."
+  },
+  "post_run_source_change": {
+    "file": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_curl_residual_transfer.py",
+    "executed_sha256": "3672c08dd8ca49f95ca867a64337ebcc708eeaf52c3c9d9ba86eaba09085cde2",
+    "current_sha256": "122c6b2b4556f91e0ea4e2b834f267535b09d0808268e317ee49f7f32c554dee",
+    "changes": [
+      "spacing = float(particle_spacing) became spacing = particle_spacing",
+      "Two isinstance tuple checks became equivalent union checks required by repository Ruff0.9.10"
+    ],
+    "verification": "Reversing exactly these three lines reproduces the executed source hash. Float0.06 arithmetic is identical; integer-type checks are semantically equivalent on supported Python3.11. No stencil, mask, inverse filter or cleanup changed."
+  }
+}

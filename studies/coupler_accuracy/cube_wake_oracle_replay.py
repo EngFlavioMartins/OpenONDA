@@ -3,7 +3,8 @@
 Reference native velocities at t=6 and 7 supply the renewal target, linearly
 interpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary
 feedback is necessary for the existing transverse disturbance to grow.
-An optional alignment control changes only the existing relaxation operator.
+Optional controls change either the existing alignment operator or the nodal
+covector stage source. They are distinct, mutually exclusive experiments.
 """
 
 from __future__ import annotations
@@ -108,23 +109,43 @@ def run(args):
     report = {
         "description": __doc__,
         "alignment_rate_per_second": args.alignment_rate,
+        "nodal_covector_control": args.covector_control,
         "checkpoint": str(args.checkpoint.resolve()),
         "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
         "target_cache_sha256": hashlib.sha256(args.target_cache.read_bytes()).hexdigest(),
         "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
         "observations": [],
         "steps_completed": 0,
+        "steps_requested": args.steps,
+        "status": "running",
+        "source_sha256": {
+            str(Path(__file__).resolve()): hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        },
     }
     masks = {
         "renewal_seam": (points[:, 0] >= 1.25) & (points[:, 0] <= 1.62),
         "outer_wake": points[:, 0] > 1.62,
     }
     solver = VPMSolver(policy)
+    covector = None
     try:
         solver.load_backup(args.checkpoint)
         assert abs(solver.time - 6) < 1e-8
         solver.physics.configure_body_box(np.array([-0.5, 0.5] * 3))
         solver.physics.configure_grid_lattice_anchor(np.array([-0.03] * 3), 0.06)
+        if args.covector_control:
+            from cube_covector_stage_source import NodalCovectorSource
+
+            covector = NodalCovectorSource(solver)
+            solver.stage_rhs.providers = (*solver.stage_rhs.providers, covector)
+            solver.stepper._apply_viscous_diffusion = covector.observe_diffusion(
+                solver.stepper._apply_viscous_diffusion
+            )
+            for name in ("cube_covector_stage_source.py", "cube_wake_measured_longitudinal.py"):
+                path = Path(__file__).with_name(name)
+                report["source_sha256"][str(path.resolve())] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
         if args.alignment_rate:
             stabilization = replace(
                 solver.stabilization_config,
@@ -139,8 +160,8 @@ def run(args):
             solver.case = replace(solver.case, numerics=solver.setup)
         solver.refresh_boundary_element_solution()
         started = wall_clock.perf_counter()
-        for step in range(101):
-            if step % 10 == 0:
+        for step in range(args.steps + 1):
+            if step % 10 == 0 or step == args.steps:
                 u = solver.compute_velocity_at_points(points)
                 reference = (1 - step / 100) * references[0] + (step / 100) * references[1]
                 reflected = points.copy()
@@ -161,6 +182,8 @@ def run(args):
                     },
                 }
                 report["observations"].append(row)
+                if covector is not None:
+                    report["covector_source"] = covector.measurements()
                 print(json.dumps(row), flush=True)
                 np.savez_compressed(
                     args.output / f"fields_step{step:03d}.npz",
@@ -169,9 +192,11 @@ def run(args):
                     reference=reference,
                     asymmetry=asymmetry,
                 )
-            if step == 100:
+            if step == args.steps:
                 break
             solver.advance(defer_output=True)
+            if covector is not None:
+                covector.step_budgets[-1]["before_transfer"] = covector.invariants()
             fraction = (step + 1) / 100
             target = (1 - fraction) * targets[0] + fraction * targets[1]
             replace_particles_from_buffered_m4_renewal(
@@ -191,7 +216,11 @@ def run(args):
             )
             solver.refresh_boundary_element_solution()
             solver.execute_scheduled_samplers()
+            if covector is not None:
+                covector.step_budgets[-1]["after_transfer"] = covector.invariants()
             report["steps_completed"] = step + 1
+            if covector is not None:
+                report["covector_source"] = covector.measurements()
             (args.output / "replay.json").write_text(json.dumps(report, indent=2) + "\n")
         np.savez_compressed(
             args.output / "final_particles.npz",
@@ -201,6 +230,13 @@ def run(args):
         )
         report["status"] = "completed"
         (args.output / "replay.json").write_text(json.dumps(report, indent=2) + "\n")
+    except Exception as error:
+        report["status"] = "failed"
+        report["error"] = repr(error)
+        if covector is not None:
+            report["covector_source"] = covector.measurements()
+        (args.output / "replay.json").write_text(json.dumps(report, indent=2) + "\n")
+        raise
     finally:
         solver.close()
 
@@ -213,7 +249,13 @@ def main():
     parser.add_argument("--target-cache", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--alignment-rate", type=float, default=0)
+    parser.add_argument("--covector-control", action="store_true")
+    parser.add_argument("--steps", type=int, default=100)
     args = parser.parse_args()
+    if not 1 <= args.steps <= 100:
+        parser.error("This bounded replay supports 1 through 100 steps")
+    if args.covector_control and args.alignment_rate:
+        parser.error("The two controls must be measured separately")
     set_num_threads(2)
     with threadpool_limits(limits=2):
         run(args)

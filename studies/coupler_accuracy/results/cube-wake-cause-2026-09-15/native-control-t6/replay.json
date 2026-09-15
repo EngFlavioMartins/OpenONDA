@@ -1,0 +1,51 @@
+{
+  "description": "Replay VPM with prescribed 3D reference donors and no FVM boundary feedback.\n\nReference native velocities at t=6 and 7 supply the renewal target, linearly\ninterpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary\nfeedback is necessary for the existing transverse disturbance to grow.\nOptional controls change either the existing alignment operator or the nodal\ncovector stage source. They are distinct, mutually exclusive experiments.\n",
+  "alignment_rate_per_second": 0,
+  "nodal_covector_control": false,
+  "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000600.h5",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "target_cache_sha256": "8f84e5a66edc2acd74f6b2992afdd2c2320b3c0e138c5d2049f4f022d86a6632",
+  "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
+  "observations": [
+    {
+      "time": 6.0,
+      "particles": 43479,
+      "elapsed_wall_seconds": 0.22182779101422057,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.08201685332647604,
+          "transverse_error_rms": 0.07372209302261021,
+          "reflection_asymmetry_rms": 0.058929118481335446
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07932495669098402,
+          "transverse_error_rms": 0.061319166075719446,
+          "reflection_asymmetry_rms": 0.036256768065842
+        }
+      }
+    },
+    {
+      "time": 6.1,
+      "particles": 44214,
+      "elapsed_wall_seconds": 49.54340979101835,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.09133836015453244,
+          "transverse_error_rms": 0.0833012560537685,
+          "reflection_asymmetry_rms": 0.06499782323806684
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07560125336351943,
+          "transverse_error_rms": 0.05826123137469609,
+          "reflection_asymmetry_rms": 0.037152543627622055
+        }
+      }
+    }
+  ],
+  "steps_completed": 10,
+  "steps_requested": 10,
+  "status": "completed",
+  "source_sha256": {
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_wake_oracle_replay.py": "b663bbe8fd2e8a9fea4545e9b4438f71c07e647befe0e999a82f91bf1be597e6"
+  }
+}

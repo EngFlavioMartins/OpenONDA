@@ -1,0 +1,487 @@
+{
+  "scope": "Budget one saved cube stage using the actual uniform-core particle cloud.\n\nThe three resolved terms use the cloud's self-induced velocity plus the saved\nunit freestream. Native-minus-self motion/stretching is retained separately;\nit includes the body contribution and native induction discrepancy. This avoids\nsilently extending a body potential through a solid in a Helmholtz identity.\n\nRun: python studies/coupler_accuracy/cube_represented_evolution_budget.py\n     --audit DIRECTORY --output NEW_DIRECTORY\nNo solver is constructed or advanced. Fourier workers are limited to two.\n",
+  "time_s": 6.0,
+  "particle_count": 43479,
+  "core_radius_m": 0.06599999964237213,
+  "native_stage_array_precision": "saved float32 values, accumulated here in float64",
+  "input_sha256": {
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/operator-audit/fields_t6.npz": "0ca70a418a22be7f6fcb43e336a0f7088166f65a982eed33e354090b603f89cc",
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/operator-audit/particles_accepted_t6.npz": "37d011b4039b36d45b9cecd795dee57c0a1564b7cfa448acbd4363a1f0043e81"
+  },
+  "cases": [
+    {
+      "quadrature_spacing_m": 0.03,
+      "periodic_lengths_m": [
+        7.2,
+        3.6,
+        3.6
+      ],
+      "grid_shape": [
+        240,
+        120,
+        120
+      ],
+      "validation": {
+        "represented_vorticity_probe_error_rms": 2.9697099805783105e-05,
+        "velocity_curl_probe_error_rms": 0.0013503556510865,
+        "self_velocity_probe_error_rms": 0.060700107912901785,
+        "native_velocity_rate_probe_error_rms": 0.00340418103020335,
+        "source_snap_max_m": 2.6702880884243996e-07,
+        "self_velocity_selected_particle_error_rms": 0.057372216531163873,
+        "self_gradient_selected_particle_error_rms": 0.023721752349110527,
+        "resolved_product_rule_closure_rms": 2.152235330833034e-05
+      },
+      "regions": {
+        "authority_ramp": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.2905530842942431,
+            "reflection_energy_derivative": 0.0014248080031389627
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.2898004365620276,
+            "reflection_energy_derivative": 0.0014247804329358689
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.34155794572001374,
+            "reflection_energy_derivative": 0.0014298854219527174
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.037300444382450844,
+            "reflection_energy_derivative": -0.000166048419747923
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.07345459990462484,
+            "reflection_energy_derivative": -0.00012720004075872436
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.10432213125143201,
+            "reflection_energy_derivative": 0.0002881391930666307
+          },
+          "closure": {
+            "velocity_rate_rms": 1.9831665436809476e-05,
+            "reflection_energy_derivative": -4.2784231679718045e-09
+          }
+        },
+        "renewal_seam": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.4286223021714106,
+            "reflection_energy_derivative": 0.009867051762680977
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.4276551441728456,
+            "reflection_energy_derivative": 0.009864060695501333
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.5112671526309418,
+            "reflection_energy_derivative": 0.0040582734966880755
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.09128372530291277,
+            "reflection_energy_derivative": 0.0062284972604804666
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.0676762166206838,
+            "reflection_energy_derivative": -0.0006178791842938804
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.08899965803323878,
+            "reflection_energy_derivative": 0.0001951372487783115
+          },
+          "closure": {
+            "velocity_rate_rms": 2.5717515455625622e-05,
+            "reflection_energy_derivative": -3.187384835911288e-08
+          }
+        },
+        "outer_wake": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.33055614563448327,
+            "reflection_energy_derivative": 0.0012267121697685677
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.3302731981164821,
+            "reflection_energy_derivative": 0.0012276846481757845
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.3726968023771718,
+            "reflection_energy_derivative": 0.0012667747336965753
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.03727629829386842,
+            "reflection_energy_derivative": 0.0005308785757811773
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.04037852392486079,
+            "reflection_energy_derivative": -0.0004812473607450525
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.03775171050821845,
+            "reflection_energy_derivative": -8.875797384304913e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 1.1694896805708149e-05,
+            "reflection_energy_derivative": -3.667328613320449e-08
+          }
+        }
+      },
+      "wall_seconds_not_a_benchmark": 3.4530221660097595,
+      "label": "base",
+      "coefficient_projection": {
+        "path": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-cause-2026-09-15/represented-evolution-budget/coefficient_longitudinal_potential.npz",
+        "sha256": "fe04dd86ca35b8f8be5713f84e64b1f813ae7832e492689268a11e0ecbcc22bd",
+        "meaning": "Periodic coefficient-density projection: a_L_hat=i*k*psi_hat plus mean(a); a_T=a-a_L. Truncating this field as free-space particles is not velocity-preserving without an independent check."
+      }
+    },
+    {
+      "quadrature_spacing_m": 0.03,
+      "periodic_lengths_m": [
+        9.6,
+        4.8,
+        4.8
+      ],
+      "grid_shape": [
+        320,
+        160,
+        160
+      ],
+      "validation": {
+        "represented_vorticity_probe_error_rms": 2.9491088078599972e-05,
+        "velocity_curl_probe_error_rms": 0.0005621374102557436,
+        "self_velocity_probe_error_rms": 0.027987448676076086,
+        "native_velocity_rate_probe_error_rms": 0.0010261507022141098,
+        "source_snap_max_m": 2.6702880884243996e-07,
+        "self_velocity_selected_particle_error_rms": 0.026371229304061633,
+        "self_gradient_selected_particle_error_rms": 0.00670917086860945,
+        "resolved_product_rule_closure_rms": 2.149450210854713e-05
+      },
+      "regions": {
+        "authority_ramp": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.2905530842942431,
+            "reflection_energy_derivative": 0.0014248080031389627
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.29035712897801186,
+            "reflection_energy_derivative": 0.00142473357922575
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.3194052671103638,
+            "reflection_energy_derivative": 0.0015932030189732302
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.037392957051799215,
+            "reflection_energy_derivative": -0.00017177443162036271
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.07361804238415788,
+            "reflection_energy_derivative": -0.00012893250250031832
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.04672770784336776,
+            "reflection_energy_derivative": 0.00013223419860787402
+          },
+          "closure": {
+            "velocity_rate_rms": 2.0511734608977965e-05,
+            "reflection_energy_derivative": -3.295765326316039e-09
+          }
+        },
+        "renewal_seam": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.4286223021714106,
+            "reflection_energy_derivative": 0.009867051762680977
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.4283606804917741,
+            "reflection_energy_derivative": 0.009866423683034675
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.4831690275236449,
+            "reflection_energy_derivative": 0.004142824491191242
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.09160448251774472,
+            "reflection_energy_derivative": 0.006264733316646676
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.0680000153101659,
+            "reflection_energy_derivative": -0.0006225600849740792
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.039679116724921346,
+            "reflection_energy_derivative": 8.139768507024255e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 2.5520080887031288e-05,
+            "reflection_energy_derivative": -2.8275100593372506e-08
+          }
+        },
+        "outer_wake": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.33055614563448327,
+            "reflection_energy_derivative": 0.0012267121697685677
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.33045965206216843,
+            "reflection_energy_derivative": 0.0012270298679328206
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.3607166348078833,
+            "reflection_energy_derivative": 0.001219462370611943
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.03725477821898424,
+            "reflection_energy_derivative": 0.0005318414008722811
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.040492365958146204,
+            "reflection_energy_derivative": -0.0004870585259403761
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.017675723739777365,
+            "reflection_energy_derivative": -3.72505145139945e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 1.1170235894866527e-05,
+            "reflection_energy_derivative": -3.513690296760395e-08
+          }
+        }
+      },
+      "wall_seconds_not_a_benchmark": 8.0421242909797,
+      "label": "larger_domain"
+    },
+    {
+      "quadrature_spacing_m": 0.02,
+      "periodic_lengths_m": [
+        7.2,
+        3.6,
+        3.6
+      ],
+      "grid_shape": [
+        360,
+        180,
+        180
+      ],
+      "validation": {
+        "represented_vorticity_probe_error_rms": 2.2263021466724443e-06,
+        "velocity_curl_probe_error_rms": 0.0013510317365563076,
+        "self_velocity_probe_error_rms": 0.06070017650289855,
+        "native_velocity_rate_probe_error_rms": 0.0034031099265124784,
+        "source_snap_max_m": 2.6702880795426154e-07,
+        "self_velocity_selected_particle_error_rms": 0.057372162220161116,
+        "self_gradient_selected_particle_error_rms": 0.023720108296041577,
+        "resolved_product_rule_closure_rms": 6.681422374076851e-09
+      },
+      "regions": {
+        "authority_ramp": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.2905530842942431,
+            "reflection_energy_derivative": 0.0014248080031389627
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.28979954178362727,
+            "reflection_energy_derivative": 0.001424778633623767
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.34155641427002453,
+            "reflection_energy_derivative": 0.0014298951914531678
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.037300275024728526,
+            "reflection_energy_derivative": -0.00016605539510930597
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.07345632684745332,
+            "reflection_energy_derivative": -0.00012720257162484707
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.10432136527379796,
+            "reflection_energy_derivative": 0.0002881414170924345
+          },
+          "closure": {
+            "velocity_rate_rms": 5.047531029768383e-09,
+            "reflection_energy_derivative": 8.187682492401934e-12
+          }
+        },
+        "renewal_seam": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.4286223021714106,
+            "reflection_energy_derivative": 0.009867051762680977
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.42765678342179264,
+            "reflection_energy_derivative": 0.009864037817095035
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.5112683104859402,
+            "reflection_energy_derivative": 0.004058226577387167
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.0912833354909277,
+            "reflection_energy_derivative": 0.006228465641611797
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.06767794286335932,
+            "reflection_energy_derivative": -0.0006177987238203054
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.08899944620545311,
+            "reflection_energy_derivative": 0.00019514425264431239
+          },
+          "closure": {
+            "velocity_rate_rms": 8.373453297502691e-09,
+            "reflection_energy_derivative": -6.927206227672894e-11
+          }
+        },
+        "outer_wake": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.33055614563448327,
+            "reflection_energy_derivative": 0.0012267121697685677
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.33027312008520604,
+            "reflection_energy_derivative": 0.0012276938547215806
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.3726966518719234,
+            "reflection_energy_derivative": 0.0012668152424724535
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.037276037668679096,
+            "reflection_energy_derivative": 0.0005308807824149783
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.04037889475658377,
+            "reflection_energy_derivative": -0.000481246922668401
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.037751726141066685,
+            "reflection_energy_derivative": -8.875523941768335e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 3.5858904076765848e-09,
+            "reflection_energy_derivative": 8.079766632431715e-12
+          }
+        }
+      },
+      "wall_seconds_not_a_benchmark": 11.69988454200211,
+      "label": "finer_quadrature"
+    },
+    {
+      "quadrature_spacing_m": 0.03,
+      "periodic_lengths_m": [
+        10.8,
+        5.4,
+        5.4
+      ],
+      "grid_shape": [
+        360,
+        180,
+        180
+      ],
+      "validation": {
+        "represented_vorticity_probe_error_rms": 2.9435622845596783e-05,
+        "velocity_curl_probe_error_rms": 0.0003941171376664065,
+        "self_velocity_probe_error_rms": 0.020185812799824305,
+        "native_velocity_rate_probe_error_rms": 0.0006125824218383109,
+        "source_snap_max_m": 2.670288097306184e-07,
+        "self_velocity_selected_particle_error_rms": 0.019068834212427967,
+        "self_gradient_selected_particle_error_rms": 0.004097393774820667,
+        "resolved_product_rule_closure_rms": 2.1490062131238037e-05
+      },
+      "regions": {
+        "authority_ramp": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.2905530842942431,
+            "reflection_energy_derivative": 0.0014248080031389627
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.29044308855951323,
+            "reflection_energy_derivative": 0.0014247528226797204
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.3156865795390001,
+            "reflection_energy_derivative": 0.0016310178275562959
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.03740711304679669,
+            "reflection_energy_derivative": -0.00017258529373146052
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.07364337470499369,
+            "reflection_energy_derivative": -0.00012919735495366046
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.03402917223714811,
+            "reflection_energy_derivative": 9.55146485517135e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 2.069672302332979e-05,
+            "reflection_energy_derivative": -2.9952568322598947e-09
+          }
+        },
+        "renewal_seam": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.4286223021714106,
+            "reflection_energy_derivative": 0.009867051762680977
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.42847284000296615,
+            "reflection_energy_derivative": 0.00986674488174318
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.4770229240172829,
+            "reflection_energy_derivative": 0.004162016233799242
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.09165586927859996,
+            "reflection_energy_derivative": 0.006270554761483892
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.06805116845225084,
+            "reflection_energy_derivative": -0.0006232860237128182
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.028493601729996564,
+            "reflection_energy_derivative": 5.7433067579264996e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 2.5468527799763273e-05,
+            "reflection_energy_derivative": -2.6842593598572584e-08
+          }
+        },
+        "outer_wake": {
+          "native_free_space_direct": {
+            "velocity_rate_rms": 0.33055614563448327,
+            "reflection_energy_derivative": 0.0012267121697685677
+          },
+          "native_periodic": {
+            "velocity_rate_rms": 0.33049676932378036,
+            "reflection_energy_derivative": 0.001226911381274168
+          },
+          "self_euler": {
+            "velocity_rate_rms": 0.35759703549829147,
+            "reflection_energy_derivative": 0.0012084958686316822
+          },
+          "self_longitudinal": {
+            "velocity_rate_rms": 0.037250402506290976,
+            "reflection_energy_derivative": 0.0005320810705073334
+          },
+          "self_finite_core": {
+            "velocity_rate_rms": 0.04051252851641783,
+            "reflection_energy_derivative": -0.00048808923386515113
+          },
+          "native_minus_self": {
+            "velocity_rate_rms": 0.01282500972002993,
+            "reflection_energy_derivative": -2.5610787953290198e-05
+          },
+          "closure": {
+            "velocity_rate_rms": 1.1029275639806348e-05,
+            "reflection_energy_derivative": -3.4463953594061666e-08
+          }
+        }
+      },
+      "coefficient_projection": null,
+      "wall_seconds_not_a_benchmark": 13.733991125016473,
+      "label": "largest_domain"
+    }
+  ]
+}

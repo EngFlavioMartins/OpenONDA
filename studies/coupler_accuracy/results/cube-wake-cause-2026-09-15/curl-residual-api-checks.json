@@ -1,0 +1,8 @@
+{
+  "hover_examples": 4,
+  "query_order_and_read_only_input": true,
+  "invalid_weight_rejected": true,
+  "missing_inverse_core_rejected": true,
+  "incomplete_support_rejected": true,
+  "final_source_reproduces_qualified_case": true
+}
