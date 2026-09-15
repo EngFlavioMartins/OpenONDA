@@ -1,0 +1,39 @@
+{
+  "source_tree": "/private/tmp/openonda-cube-wake-centred-ties-333fc4bb",
+  "state_directory": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution",
+  "direct_derivative_relative_error": 5.072299924340434e-11,
+  "times": [
+    {
+      "time": 8.0,
+      "particle_count": 59793,
+      "target_count": 1960,
+      "tree_velocity_error_rms": 0.0003987022929294293,
+      "tree_velocity_error_max": 0.0015296099399720708,
+      "tree_jacobian_error_relative": 0.0006847142357593806,
+      "replayed_vs_saved_velocity_rms": 5.376528357801597e-09,
+      "replayed_vs_saved_by_sampler": {
+        "centreline": {
+          "points": 131,
+          "rms": 1.4968371487456573e-08,
+          "maximum": 2.9264068616707942e-08
+        },
+        "offaxis_y075": {
+          "points": 139,
+          "rms": 1.4016177981475598e-08,
+          "maximum": 4.673284854720816e-08
+        },
+        "slice_z0": {
+          "points": 612,
+          "rms": 0.0,
+          "maximum": 0.0
+        },
+        "wake_slice_z0": {
+          "points": 1078,
+          "rms": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "body_velocity_rms": 0.0014573603116613664
+    }
+  ]
+}

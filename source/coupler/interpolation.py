@@ -111,10 +111,10 @@ class FVMVelocityInterpolator:
         )
         indices = np.asarray(indices, dtype=np.int32).reshape(len(evaluation_position), query_count)
 
+        cutoff = distance[:, count - 1]
+        tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, cutoff)
         tied_rows = np.empty(0, dtype=np.int64)
         if query_count > count:
-            cutoff = distance[:, count - 1]
-            tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, cutoff)
             tied_rows = np.flatnonzero(
                 (distance[:, count] <= cutoff + tolerance) & (distance[:, 0] > 1.0e-12)
             )

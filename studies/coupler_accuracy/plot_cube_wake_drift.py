@@ -24,13 +24,13 @@ def read(path):
 def save(fig, axes, output, name, extension):
     theme.fit_thesis_y_label_margins(fig, axes)
     theme.validate_thesis_figure(fig, axes)
-    fig.savefig(output / f"{name}.{extension}", dpi=300)
+    fig.savefig(output / f"{name}.{extension}", dpi=theme.DEFAULT_DPI, bbox_inches=None)
     plt.close(fig)
 
 
 def profiles(args, time, directory):
     """Plot saved line samples without smoothing or inventing FVM coverage."""
-    fig, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 15.5 / 2.54))
+    fig, axes = plt.subplots(2, 1, figsize=(12.5 * theme.CM, 15.5 * theme.CM))
     theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.1, top=0.79, hspace=0.55)
     for ax, name, label in zip(
         axes,
@@ -58,10 +58,10 @@ def profiles(args, time, directory):
                 markersize=2,
                 label=title,
             )
-        ax.axvline(1.5, color="0.4", ls=":", lw=0.8)
-        ax.axhline(0, color="0.7", lw=0.6, zorder=0)
+        ax.axvline(1.5, color=theme.COLORS["DarkText"], ls=":", lw=0.8)
+        ax.axhline(0, color=theme.COLORS["RefGray"], lw=0.6, zorder=0)
         if name == "centreline":
-            ax.axvspan(-0.5, 0.5, facecolor="0.9", zorder=0)
+            ax.axvspan(-0.5, 0.5, facecolor=theme.COLORS["RefGray"], alpha=0.15, zorder=0)
         ax.set(
             xlabel=r"$x/D$",
             ylabel=r"$u_x/U_\infty$",
@@ -78,6 +78,67 @@ def profiles(args, time, directory):
     save(fig, axes, args.output, f"velocity_profiles_t{time:g}", args.format)
 
 
+def forces(args, files):
+    """Show the longest supplied complete matched force interval."""
+    if not files:
+        return
+    histories = [pd.read_csv(path) for path in files]
+    data = max(histories, key=lambda d: d["time"].iloc[-1] - d["time"].iloc[0])
+    if len(data) < 2:
+        return
+    fig, ax = plt.subplots(figsize=(12.5 * theme.CM, 10.5 * theme.CM))
+    theme.centered_subplots_adjust(fig, outer=0.19, bottom=0.14, top=0.73)
+    for name, label, colour, style in (
+        ("reference", "Reference FVM", "RefGray", "-"),
+        ("baseline", "Baseline FVM", "FVMorange", "-"),
+        ("candidate", "Corrected FVM", "TUDcyan", "--"),
+    ):
+        ax.plot(data["time"], data[name], color=theme.COLORS[colour], ls=style, label=label)
+    ax.set(xlabel=r"$tU_\infty/D$", ylabel=r"$C_D$")
+    ax.xaxis.set_major_locator(MaxNLocator(5, integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(4))
+    fig.legend(loc="upper center", bbox_to_anchor=(0.5, 0.99), ncol=2, frameon=False)
+    save(fig, (ax,), args.output, "matched_drag_history", args.format)
+
+
+def vpm_outflow_error(args, rows):
+    """Expose the remaining vector error at the actual saved wake-plane probes."""
+    if not rows:
+        return
+    fig, axes = plt.subplots(2, 1, figsize=(12.5 * theme.CM, 14.5 * theme.CM))
+    theme.centered_subplots_adjust(fig, outer=0.19, bottom=0.11, top=0.81, hspace=0.65)
+    for name, label, colour, marker in (
+        ("baseline", "Baseline VPM", "FVMorange", "o"),
+        ("candidate", "Corrected VPM", "TUDcyan", "s"),
+    ):
+        data = [r["sampled_plane"][name]["near_xmax"] for r in rows]
+        times = [r["time"] for r in rows]
+        axes[0].plot(
+            times,
+            [100 * r["rms"] for r in data],
+            color=theme.COLORS[colour],
+            marker=marker,
+            label=label,
+        )
+        axes[1].plot(
+            times,
+            [100 * np.linalg.norm(r["component_rms"][1:]) for r in data],
+            color=theme.COLORS[colour],
+            marker=marker,
+        )
+    for ax, title in zip(
+        axes,
+        ("(a) All three velocity components", "(b) Transverse velocity components"),
+        strict=True,
+    ):
+        ax.set(xlabel=r"$tU_\infty/D$", ylabel=r"RMS error (\% $U_\infty$)", title=title)
+        ax.xaxis.set_major_locator(MaxNLocator(5, integer=True))
+        ax.yaxis.set_major_locator(MaxNLocator(4))
+    fig.legend(loc="upper center", bbox_to_anchor=(0.5, 0.995), ncol=2, frameon=False)
+    fig.text(0.5, 0.89, r"$z=0$; $1.25 \le x/D \le 1.75$", ha="center")
+    save(fig, axes, args.output, "vpm_outflow_velocity_error", args.format)
+
+
 def plot(args):
     args.output.mkdir(parents=True, exist_ok=True)
     theme.set_thesis_style()
@@ -85,7 +146,11 @@ def plot(args):
     phase = read(args.results / "lattice-phase-production/phase.json")["times"]
     by_time = {}
     profile_directories = {}
+    force_files = []
     for filename in args.comparisons:
+        history = filename.parent / "drag_history.csv"
+        if history.exists():
+            force_files.append(history)
         for row in read(filename)["times"]:
             if row["time"] in by_time and by_time[row["time"]] != row:
                 raise ValueError("Conflicting comparison results at the same time")
@@ -103,9 +168,11 @@ def plot(args):
             },
         }
     old = [old_by_time[t] for t in sorted(old_by_time)]
+    forces(args, force_files)
+    vpm_outflow_error(args, new)
     orange, blue, gray = (theme.COLORS[k] for k in ("FVMorange", "TUDcyan", "RefGray"))
 
-    fig, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 15.5 / 2.54))
+    fig, axes = plt.subplots(2, 1, figsize=(12.5 * theme.CM, 15.5 * theme.CM))
     theme.centered_subplots_adjust(fig, outer=0.18, bottom=0.1, top=0.8, hspace=0.55)
     t = [r["time"] for r in old]
     axes[0].plot(
@@ -152,7 +219,7 @@ def plot(args):
     save(fig, axes, args.output, "wake_error_and_reattachment", args.format)
 
     if new:
-        fig, ax = plt.subplots(figsize=(12.5 / 2.54, 10.5 / 2.54))
+        fig, ax = plt.subplots(figsize=(12.5 * theme.CM, 10.5 * theme.CM))
         theme.centered_subplots_adjust(fig, outer=0.19, bottom=0.14, top=0.78)
         for name, label, color in (
             ("baseline", "Baseline", orange),
@@ -178,7 +245,7 @@ def plot(args):
             if np.any(np.isclose(list(by_time), time, atol=1e-8, rtol=0)):
                 profiles(args, time, profile_directories[time])
 
-    fig, ax = plt.subplots(figsize=(12.5 / 2.54, 10.5 / 2.54))
+    fig, ax = plt.subplots(figsize=(12.5 * theme.CM, 10.5 * theme.CM))
     theme.centered_subplots_adjust(fig, outer=0.19, bottom=0.14, top=0.75)
     for name, label, color, style, marker in (
         ("minimum_corner", "Lower corner", orange, "-", "o"),

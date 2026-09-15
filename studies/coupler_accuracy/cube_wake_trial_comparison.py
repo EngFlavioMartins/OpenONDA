@@ -46,6 +46,59 @@ def read_diagnostics(path):
         return [json.loads(line) for line in stream if line.endswith("\n") and line.strip()]
 
 
+def drag_history(samples, start, end, output):
+    """Use every exactly matched force sample, with trapezoidal time weights."""
+    tables = {}
+    for name, directory in samples.items():
+        data = pd.read_csv(directory / "forces_history.csv")
+        data = data[(data["time"] >= start - 1e-8) & (data["time"] <= end + 1e-8)].copy()
+        if not (data["patch"] == "cube").all():
+            raise ValueError("Force history contains another patch")
+        data["time_key"] = data["time"].round(8)
+        if data["time_key"].duplicated().any():
+            raise ValueError("Force history contains duplicate times")
+        tables[name] = data.set_index("time_key")
+    common = sorted(set.intersection(*(set(t.index) for t in tables.values())))
+    if not common:
+        raise ValueError("No common force sample times")
+    time = tables["reference"].loc[common, "time"].to_numpy()
+    values = {}
+    for name, table in tables.items():
+        selected = table.loc[common]
+        np.testing.assert_allclose(selected["time"], time, atol=1e-8, rtol=0)
+        values[name] = selected["drag_coefficient"].to_numpy()
+        if not np.all(np.isfinite(values[name])):
+            raise ValueError("Nonfinite drag coefficient")
+    if abs(time[0] - start) > 1e-8 or abs(time[-1] - end) > 1e-8:
+        raise ValueError("The matched force interval is incomplete")
+    weights = np.ones(len(time))
+    if len(time) > 1:
+        intervals = np.diff(time)
+        weights[0], weights[-1] = intervals[0] / 2, intervals[-1] / 2
+        weights[1:-1] = (intervals[:-1] + intervals[1:]) / 2
+    reference_rms = float(np.sqrt(np.average(values["reference"] ** 2, weights=weights)))
+    report = {
+        "method": "All common physical sample times; trapezoidal time weights; relative RMS divides by reference Cd RMS",
+        "time_start": float(time[0]),
+        "time_end": float(time[-1]),
+        "matched_samples": len(time),
+        "available_samples": {name: len(table) for name, table in tables.items()},
+        "maximum_sample_gap": float(np.diff(time).max()) if len(time) > 1 else None,
+        "errors": {},
+    }
+    for name in ("baseline", "candidate"):
+        difference = values[name] - values["reference"]
+        error = float(np.sqrt(np.average(difference**2, weights=weights)))
+        report["errors"][name] = {
+            "rms": error,
+            "relative_rms": error / reference_rms,
+            "mean_bias": float(np.average(difference, weights=weights)),
+            "maximum_absolute": float(np.abs(difference).max()),
+        }
+    pd.DataFrame({"time": time, **values}).to_csv(output / "drag_history.csv", index=False)
+    return report
+
+
 def compare(args):
     args.output.mkdir(parents=True, exist_ok=False)
     sys.path.insert(0, str(args.source_tree.resolve()))
@@ -100,6 +153,7 @@ def compare(args):
         "reattachment": "First downstream negative-to-positive crossing; null means not resolved inside available profile coverage, not zero recirculation.",
         "times": [],
     }
+    report["drag_history"] = drag_history(samples, min(args.times), max(args.times), args.output)
     for time in args.times:
         fields = {
             name: ordered_fields(

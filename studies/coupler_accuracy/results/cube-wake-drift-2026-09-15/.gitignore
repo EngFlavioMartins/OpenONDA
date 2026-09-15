@@ -1,0 +1,23 @@
+# Local preliminary/partial studies remain available but are superseded by
+# the checked component results and the final advancing-comparison dataset.
+/comparison-t*/
+/comparison-checked-t1-t3/
+/comparison-planes-t6/
+/drag-history-t*/
+/geometry-cache/
+/induction/
+/induction-device/
+/lattice-phase/
+/symmetry/
+/vorticity-consistency/
+/live-baseline-check/
+/live-centred/
+
+# The replay controls are represented by their provenance and equivalence
+# checks. Their duplicate sampler files are retained locally.
+/live-baseline/samples/
+/live-baseline-storage/samples/
+
+# Small, inspectable tables supporting the final figures and controls.
+!/advancing-comparison/*.csv
+!/core-sensitivity-t7/*.csv

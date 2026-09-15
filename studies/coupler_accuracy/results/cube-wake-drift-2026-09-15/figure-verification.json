@@ -1,0 +1,47 @@
+{
+  "width_cm": 12.5,
+  "font_pt": 10.95,
+  "png_dpi": 400,
+  "pdf_pages": [
+    {
+      "name": "downstream_velocity_error.pdf",
+      "page_size": "Page size:       354.331 x 297.638 pts"
+    },
+    {
+      "name": "lattice_phase_rotation_error.pdf",
+      "page_size": "Page size:       354.331 x 297.638 pts"
+    },
+    {
+      "name": "matched_drag_history.pdf",
+      "page_size": "Page size:       354.331 x 297.638 pts"
+    },
+    {
+      "name": "velocity_profiles_t6.pdf",
+      "page_size": "Page size:       354.331 x 439.37 pts"
+    },
+    {
+      "name": "velocity_profiles_t8.pdf",
+      "page_size": "Page size:       354.331 x 439.37 pts"
+    },
+    {
+      "name": "vpm_outflow_velocity_error.pdf",
+      "page_size": "Page size:       354.331 x 411.024 pts"
+    },
+    {
+      "name": "wake_error_and_reattachment.pdf",
+      "page_size": "Page size:       354.331 x 439.37 pts"
+    }
+  ],
+  "checks": "Shared strict layout validator passed for all seven PNG and PDF figures; fixed page dimensions verified; visual inspection recorded after rendering.",
+  "png_visual_review": "All seven final PNGs inspected; no text clipping or overlap; actual probes and partial time coverage retained.",
+  "pdf_visual_review": "All seven PDF pages rendered with Poppler and visually inspected; no text clipping, overlap or font substitution visible.",
+  "figures_sha256": {
+    "downstream_velocity_error.png": "e410a74bfacb8c69ed92e15640f31c39fbe2003a46310155531a6aa70380c8b7",
+    "lattice_phase_rotation_error.png": "c3dbd16bbbc77b660e9e8bf5b54ca1f5bcece10e24340599daf116d73c9bdc99",
+    "matched_drag_history.png": "522bdb69b112a6ee28d4222aeb07bb2fab188cffe84e22675d3611e4d30860d2",
+    "velocity_profiles_t6.png": "101e91a41ca1421e23c71064096973b5f1e1598442d2f053e0b1a59a6aee62d7",
+    "velocity_profiles_t8.png": "27da35d187b5f81dcfe86137f428dcd5bb451c977d71da2f47f756463e9d878a",
+    "vpm_outflow_velocity_error.png": "e4173cbe52b97b5b48fdc01a1a4debf1852bec7557a6f029d3840dd6ae0cba10",
+    "wake_error_and_reattachment.png": "c384637eefd76225737596130d7e47c6ef3e6ebff0177d585cb8d8786a726412"
+  }
+}
