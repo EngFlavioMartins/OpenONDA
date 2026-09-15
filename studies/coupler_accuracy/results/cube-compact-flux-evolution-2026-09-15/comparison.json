@@ -1,0 +1,219 @@
+{
+  "scope": "Compare completed conservative-source controls using native 3D reference fields.",
+  "pairs": {
+    "dt001": {
+      "time": 7.0,
+      "native_particles": 51313,
+      "corrected_particles": 51296,
+      "particle_count_ratio": 0.9996686999395865,
+      "regions": {
+        "renewal_seam": {
+          "native_error_rms": 0.12968368824883975,
+          "corrected_error_rms": 0.11965295980580654,
+          "error_reduction": 0.01003072844303321,
+          "relative_error_reduction": 0.07734764933417104
+        },
+        "outer_wake": {
+          "native_error_rms": 0.10258739389246842,
+          "corrected_error_rms": 0.08943824738779792,
+          "error_reduction": 0.0131491465046705,
+          "relative_error_reduction": 0.12817507108576487
+        }
+      }
+    },
+    "dt0005": {
+      "time": 7.0,
+      "native_particles": 49017,
+      "corrected_particles": 49051,
+      "particle_count_ratio": 1.0006936369014832,
+      "regions": {
+        "renewal_seam": {
+          "native_error_rms": 0.12767622339182805,
+          "corrected_error_rms": 0.11498737774959028,
+          "error_reduction": 0.012688845642237767,
+          "relative_error_reduction": 0.099382996341431
+        },
+        "outer_wake": {
+          "native_error_rms": 0.10375624693619453,
+          "corrected_error_rms": 0.0905718773882883,
+          "error_reduction": 0.013184369547906236,
+          "relative_error_reduction": 0.12707060959918914
+        }
+      }
+    },
+    "pilot": {
+      "time": 6.1,
+      "native_particles": 44214,
+      "corrected_particles": 44213,
+      "particle_count_ratio": 0.9999773827294522,
+      "regions": {
+        "renewal_seam": {
+          "native_error_rms": 0.09133836041359734,
+          "corrected_error_rms": 0.08971105402158257,
+          "error_reduction": 0.0016273063920147768,
+          "relative_error_reduction": 0.017816242645981695
+        },
+        "outer_wake": {
+          "native_error_rms": 0.07560125412874327,
+          "corrected_error_rms": 0.0744714173225642,
+          "error_reduction": 0.001129836806179077,
+          "relative_error_reduction": 0.01494468338124455
+        }
+      }
+    }
+  },
+  "step_sensitivity": {
+    "renewal_seam": {
+      "benefit_at_both_steps": true,
+      "change_in_benefit": 0.002658117199204557,
+      "change_smaller_than_benefit": true,
+      "native_error_change": -0.002007464857011698,
+      "corrected_error_change": -0.004665582056216255
+    },
+    "outer_wake": {
+      "benefit_at_both_steps": true,
+      "change_in_benefit": 3.522304323573533e-05,
+      "change_smaller_than_benefit": true,
+      "native_error_change": 0.0011688530437261174,
+      "corrected_error_change": 0.001133630000490382
+    }
+  },
+  "source_balances": {
+    "flux_dt001": {
+      "evaluations": 400,
+      "source_preserved_count": true,
+      "max_source_net_rate": 3.599607318718478e-16,
+      "max_storage_net_closure": 1.2468227261979023e-08,
+      "max_storage_impulse_closure": 6.1238935523297045e-09,
+      "total_applied_source_net_change": [
+        -3.774723232596866e-08,
+        5.665283393796461e-08,
+        -3.079032890110356e-08
+      ],
+      "total_source_impulse_increment": [
+        0.0029096823177918282,
+        -0.007125490170857378,
+        0.003443651163229213
+      ],
+      "other_phase_changes": {
+        "native_transport_and_gbd": {
+          "net_strength": [
+            -0.001035001834162122,
+            -0.010742863932304551,
+            0.011425516982459586
+          ],
+          "linear_impulse_per_density": [
+            0.022920107135050216,
+            -0.004734702225205504,
+            0.0030505851453790063
+          ]
+        },
+        "renewal": {
+          "net_strength": [
+            -0.049413188508189126,
+            0.01965184819446939,
+            -0.005955555040052629
+          ],
+          "linear_impulse_per_density": [
+            -0.6257857082103957,
+            0.004311081390112784,
+            -0.001438312446378947
+          ]
+        }
+      }
+    },
+    "flux_dt0005": {
+      "evaluations": 800,
+      "source_preserved_count": true,
+      "max_source_net_rate": 3.913611907134553e-16,
+      "max_storage_net_closure": 1.228068084528613e-08,
+      "max_storage_impulse_closure": 5.934365822413804e-09,
+      "total_applied_source_net_change": [
+        4.8779326994319305e-08,
+        1.2997445869231128e-07,
+        1.7119970475987234e-08
+      ],
+      "total_source_impulse_increment": [
+        0.006690990699582423,
+        -0.007083286295770893,
+        0.0035018676409155625
+      ],
+      "other_phase_changes": {
+        "native_transport_and_gbd": {
+          "net_strength": [
+            -0.001016656140928024,
+            -0.011651192018074331,
+            0.012384702164075216
+          ],
+          "linear_impulse_per_density": [
+            0.022623357305135094,
+            -0.0039124497407551605,
+            0.004173138318150299
+          ]
+        },
+        "renewal": {
+          "net_strength": [
+            -0.033628571672935176,
+            0.02707622280063891,
+            -0.011285914875183684
+          ],
+          "linear_impulse_per_density": [
+            -0.6276253790783928,
+            0.0062081021068197545,
+            0.0022604672503690085
+          ]
+        }
+      }
+    }
+  },
+  "timings": {
+    "native_dt001_pilot": {
+      "steps": 10,
+      "mean_seconds_per_step": 5.15350168760051,
+      "mean_seconds_per_step_after_first_two": 3.8779878438763262,
+      "native_evolution_mean_seconds": 4.144791004099534,
+      "renewal_calls": 10
+    },
+    "flux_dt001_pilot": {
+      "steps": 10,
+      "mean_seconds_per_step": 10.672294175100978,
+      "mean_seconds_per_step_after_first_two": 9.033466906374088,
+      "native_evolution_mean_seconds": 4.3632938374066725,
+      "renewal_calls": null,
+      "source_mean_seconds_per_step": 5.122729912609794
+    },
+    "flux_dt001": {
+      "steps": 100,
+      "mean_seconds_per_step": 9.209246401727432,
+      "mean_seconds_per_step_after_first_two": 9.128511301078774,
+      "native_evolution_mean_seconds": 3.3171513962806785,
+      "renewal_calls": 100,
+      "source_mean_seconds_per_step": 4.786432453339803
+    },
+    "native_dt0005": {
+      "steps": 200,
+      "mean_seconds_per_step": 5.921185106665217,
+      "mean_seconds_per_step_after_first_two": 5.866010565439626,
+      "native_evolution_mean_seconds": 4.426177318945119,
+      "renewal_calls": 100
+    },
+    "flux_dt0005": {
+      "steps": 200,
+      "mean_seconds_per_step": 10.832672006024222,
+      "mean_seconds_per_step_after_first_two": 10.740812953473792,
+      "native_evolution_mean_seconds": 3.8979179243648834,
+      "renewal_calls": 100,
+      "source_mean_seconds_per_step": 5.649926041904837
+    }
+  },
+  "timing_limit": "The .01 pilots are sequential laptop runs with uncontrolled external load. The .005 pair runs concurrently for accuracy; exclude its timing from performance ratios. Historical native full-step timing is not a matched cost benchmark. No full-coupler timing claim.",
+  "source_sha256": "ab834f550ff69975ddc331bf7a5e729fb2b16565965f4138ebeeba3017c2f391",
+  "input_sha256": {
+    "studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/reference-driven-controls/native/replay.json": "1c70fc5d5aac1c2bdb8423c21dc4e7333bbec84ccc0d984f99061fd69a6b585d",
+    "studies/coupler_accuracy/results/cube-compact-flux-evolution-2026-09-15/native-dt001-pilot/replay.json": "3101c90ededb3567827822a12707f5e3bf81f62b2dfa05d53f5eeb977f7653ff",
+    "studies/coupler_accuracy/results/cube-compact-flux-evolution-2026-09-15/flux-dt001-pilot/replay.json": "04b9adeddf90bf888882d4c664284a3f8b02c3918e8ab1c52189cdf5d503a897",
+    "studies/coupler_accuracy/results/cube-compact-flux-evolution-2026-09-15/flux-dt001/replay.json": "ad7440863e1469c455fae27ca53222b2d52600b13f33a16fff430319b75d93f4",
+    "studies/coupler_accuracy/results/cube-compact-flux-evolution-2026-09-15/native-dt0005/replay.json": "62c9ae2c032a6e7cced6ed4f66a3970ac89c9f569850819e8b29813dff8de94e",
+    "studies/coupler_accuracy/results/cube-compact-flux-evolution-2026-09-15/flux-dt0005/replay.json": "38cc0d5785cd62f282d5155611cae52c6bade03cc1c122b701fbe69a9ec4da3d"
+  }
+}

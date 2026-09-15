@@ -1,0 +1,826 @@
+{
+  "description": "Replay VPM with prescribed 3D reference donors and no FVM boundary feedback.\n\nReference native velocities at t=6 and 7 supply the renewal target, linearly\ninterpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary\nfeedback is necessary for the existing transverse disturbance to grow.\nOptional controls change alignment, the nodal covector source, or the compact\nconservative source on remeshed cells. They are mutually exclusive experiments.\n",
+  "alignment_rate_per_second": 0,
+  "nodal_covector_control": false,
+  "compact_flux_control": false,
+  "time_step_size": 0.01,
+  "renewal_interval": 0.01,
+  "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000600.h5",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "target_cache_sha256": "8f84e5a66edc2acd74f6b2992afdd2c2320b3c0e138c5d2049f4f022d86a6632",
+  "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
+  "observations": [
+    {
+      "time": 6.0,
+      "particles": 43479,
+      "elapsed_wall_seconds": 0.32458845898509026,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.08201685332647604,
+          "transverse_error_rms": 0.07372209302261021,
+          "reflection_asymmetry_rms": 0.058929118481335446
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07932495669098402,
+          "transverse_error_rms": 0.061319166075719446,
+          "reflection_asymmetry_rms": 0.036256768065842
+        }
+      }
+    },
+    {
+      "time": 6.1,
+      "particles": 44214,
+      "elapsed_wall_seconds": 51.9802406669769,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.09133836041359734,
+          "transverse_error_rms": 0.08330125653430598,
+          "reflection_asymmetry_rms": 0.06499782519964807
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07560125412874327,
+          "transverse_error_rms": 0.05826123091843183,
+          "reflection_asymmetry_rms": 0.03715254917930606
+        }
+      }
+    }
+  ],
+  "step_budgets": [
+    {
+      "start_time": 6.0,
+      "before": {
+        "particles": 43479,
+        "net_strength": [
+          -0.08736621476227832,
+          -0.0036697624811852236,
+          0.021027431481046577
+        ],
+        "linear_impulse_per_density": [
+          -4.95417213938848,
+          -0.016009944378533605,
+          -0.0032876998467425748
+        ],
+        "strength_l1": 26.16292008581816
+      },
+      "before_native_evolution": {
+        "particles": 43479,
+        "net_strength": [
+          -0.08736621476227832,
+          -0.0036697624811852236,
+          0.021027431481046577
+        ],
+        "linear_impulse_per_density": [
+          -4.95417213938848,
+          -0.016009944378533605,
+          -0.0032876998467425748
+        ],
+        "strength_l1": 26.16292008581816
+      },
+      "native_evolution_wall_seconds": 15.787439083011122,
+      "before_transfer": {
+        "particles": 44442,
+        "net_strength": [
+          -0.08737385364232803,
+          -0.0038078791199029904,
+          0.0211665769183072
+        ],
+        "linear_impulse_per_density": [
+          -4.953732723639999,
+          -0.01601790369337428,
+          -0.003250070005475216
+        ],
+        "strength_l1": 26.15056205362294
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.10221412501414306,
+      "after_transfer": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08956576460536131,
+          0.0007951478858201355,
+          0.020720788204313723
+        ],
+        "linear_impulse_per_density": [
+          -4.979275694363271,
+          -0.016957664072359928,
+          -0.002356415738878855
+        ],
+        "strength_l1": 26.203823546456515
+      },
+      "after": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08956576460536131,
+          0.0007951478858201355,
+          0.020720788204313723
+        ],
+        "linear_impulse_per_density": [
+          -4.979275694363271,
+          -0.016957664072359928,
+          -0.002356415738878855
+        ],
+        "strength_l1": 26.203823546456515
+      },
+      "wall_seconds": 16.789866375009296
+    },
+    {
+      "start_time": 6.01,
+      "before": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08956576460536131,
+          0.0007951478858201355,
+          0.020720788204313723
+        ],
+        "linear_impulse_per_density": [
+          -4.979275694363271,
+          -0.016957664072359928,
+          -0.002356415738878855
+        ],
+        "strength_l1": 26.203823546456515
+      },
+      "before_native_evolution": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08956576460536131,
+          0.0007951478858201355,
+          0.020720788204313723
+        ],
+        "linear_impulse_per_density": [
+          -4.979275694363271,
+          -0.016957664072359928,
+          -0.002356415738878855
+        ],
+        "strength_l1": 26.203823546456515
+      },
+      "native_evolution_wall_seconds": 2.728752708004322,
+      "before_transfer": {
+        "particles": 44489,
+        "net_strength": [
+          -0.08957470037174517,
+          0.0006566552375206203,
+          0.020865566392895774
+        ],
+        "linear_impulse_per_density": [
+          -4.978848507195136,
+          -0.016975271680418097,
+          -0.002335904613524407
+        ],
+        "strength_l1": 26.190723216203907
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.12730508399545215,
+      "after_transfer": {
+        "particles": 43555,
+        "net_strength": [
+          -0.09138562012822243,
+          0.0013113918409324299,
+          0.02137481128315094
+        ],
+        "linear_impulse_per_density": [
+          -4.986789788740983,
+          -0.01729342872072752,
+          -0.002220116584961894
+        ],
+        "strength_l1": 26.2111299970862
+      },
+      "after": {
+        "particles": 43555,
+        "net_strength": [
+          -0.09138562012822243,
+          0.0013113918409324299,
+          0.02137481128315094
+        ],
+        "linear_impulse_per_density": [
+          -4.986789788740983,
+          -0.01729342872072752,
+          -0.002220116584961894
+        ],
+        "strength_l1": 26.2111299970862
+      },
+      "wall_seconds": 3.7212477499851957
+    },
+    {
+      "start_time": 6.02,
+      "before": {
+        "particles": 43555,
+        "net_strength": [
+          -0.09138562012822243,
+          0.0013113918409324299,
+          0.02137481128315094
+        ],
+        "linear_impulse_per_density": [
+          -4.986789788740983,
+          -0.01729342872072752,
+          -0.002220116584961894
+        ],
+        "strength_l1": 26.2111299970862
+      },
+      "before_native_evolution": {
+        "particles": 43555,
+        "net_strength": [
+          -0.09138562012822243,
+          0.0013113918409324299,
+          0.02137481128315094
+        ],
+        "linear_impulse_per_density": [
+          -4.986789788740983,
+          -0.01729342872072752,
+          -0.002220116584961894
+        ],
+        "strength_l1": 26.2111299970862
+      },
+      "native_evolution_wall_seconds": 2.9197654580057133,
+      "before_transfer": {
+        "particles": 44599,
+        "net_strength": [
+          -0.09139510077720522,
+          0.0011742765381909104,
+          0.02151878456938333
+        ],
+        "linear_impulse_per_density": [
+          -4.986364153816202,
+          -0.01731035515935537,
+          -0.0021993963478718517
+        ],
+        "strength_l1": 26.198120123191806
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.10005970898782834,
+      "after_transfer": {
+        "particles": 43636,
+        "net_strength": [
+          -0.09319622603451905,
+          0.0016175221097617376,
+          0.021989984603034862
+        ],
+        "linear_impulse_per_density": [
+          -4.994759689446652,
+          -0.017586347128500303,
+          -0.0021360226796651905
+        ],
+        "strength_l1": 26.21679939420799
+      },
+      "after": {
+        "particles": 43636,
+        "net_strength": [
+          -0.09319622603451905,
+          0.0016175221097617376,
+          0.021989984603034862
+        ],
+        "linear_impulse_per_density": [
+          -4.994759689446652,
+          -0.017586347128500303,
+          -0.0021360226796651905
+        ],
+        "strength_l1": 26.21679939420799
+      },
+      "wall_seconds": 3.7808720000030007
+    },
+    {
+      "start_time": 6.03,
+      "before": {
+        "particles": 43636,
+        "net_strength": [
+          -0.09319622603451905,
+          0.0016175221097617376,
+          0.021989984603034862
+        ],
+        "linear_impulse_per_density": [
+          -4.994759689446652,
+          -0.017586347128500303,
+          -0.0021360226796651905
+        ],
+        "strength_l1": 26.21679939420799
+      },
+      "before_native_evolution": {
+        "particles": 43636,
+        "net_strength": [
+          -0.09319622603451905,
+          0.0016175221097617376,
+          0.021989984603034862
+        ],
+        "linear_impulse_per_density": [
+          -4.994759689446652,
+          -0.017586347128500303,
+          -0.0021360226796651905
+        ],
+        "strength_l1": 26.21679939420799
+      },
+      "native_evolution_wall_seconds": 2.9318406249803957,
+      "before_transfer": {
+        "particles": 44690,
+        "net_strength": [
+          -0.09320596394120495,
+          0.001481374140886782,
+          0.02213309578927411
+        ],
+        "linear_impulse_per_density": [
+          -4.994337521990422,
+          -0.01760304327582048,
+          -0.0021150427462750354
+        ],
+        "strength_l1": 26.204072351575938
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.12215599999763072,
+      "after_transfer": {
+        "particles": 43734,
+        "net_strength": [
+          -0.09502377698804693,
+          0.001856465195808843,
+          0.02257557996993695
+        ],
+        "linear_impulse_per_density": [
+          -5.002815728799591,
+          -0.017857696706693262,
+          -0.0020672890950767186
+        ],
+        "strength_l1": 26.221433386643934
+      },
+      "after": {
+        "particles": 43734,
+        "net_strength": [
+          -0.09502377698804693,
+          0.001856465195808843,
+          0.02257557996993695
+        ],
+        "linear_impulse_per_density": [
+          -5.002815728799591,
+          -0.017857696706693262,
+          -0.0020672890950767186
+        ],
+        "strength_l1": 26.221433386643934
+      },
+      "wall_seconds": 4.046066167007666
+    },
+    {
+      "start_time": 6.04,
+      "before": {
+        "particles": 43734,
+        "net_strength": [
+          -0.09502377698804693,
+          0.001856465195808843,
+          0.02257557996993695
+        ],
+        "linear_impulse_per_density": [
+          -5.002815728799591,
+          -0.017857696706693262,
+          -0.0020672890950767186
+        ],
+        "strength_l1": 26.221433386643934
+      },
+      "before_native_evolution": {
+        "particles": 43734,
+        "net_strength": [
+          -0.09502377698804693,
+          0.001856465195808843,
+          0.02257557996993695
+        ],
+        "linear_impulse_per_density": [
+          -5.002815728799591,
+          -0.017857696706693262,
+          -0.0020672890950767186
+        ],
+        "strength_l1": 26.221433386643934
+      },
+      "native_evolution_wall_seconds": 2.8747571670101024,
+      "before_transfer": {
+        "particles": 44755,
+        "net_strength": [
+          -0.09503376399611957,
+          0.0017216856817661164,
+          0.022717791001755805
+        ],
+        "linear_impulse_per_density": [
+          -5.002398521435388,
+          -0.017874370857321648,
+          -0.002045835446978774
+        ],
+        "strength_l1": 26.20867042659939
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.12682612502248958,
+      "after_transfer": {
+        "particles": 43810,
+        "net_strength": [
+          -0.09686872891765178,
+          0.0020621230439119564,
+          0.023141533658965985
+        ],
+        "linear_impulse_per_density": [
+          -5.010874031080866,
+          -0.018109012629391897,
+          -0.0020064607322682958
+        ],
+        "strength_l1": 26.22520112019152
+      },
+      "after": {
+        "particles": 43810,
+        "net_strength": [
+          -0.09686872891765178,
+          0.0020621230439119564,
+          0.023141533658965985
+        ],
+        "linear_impulse_per_density": [
+          -5.010874031080866,
+          -0.018109012629391897,
+          -0.0020064607322682958
+        ],
+        "strength_l1": 26.22520112019152
+      },
+      "wall_seconds": 3.9161446249927394
+    },
+    {
+      "start_time": 6.05,
+      "before": {
+        "particles": 43810,
+        "net_strength": [
+          -0.09686872891765178,
+          0.0020621230439119564,
+          0.023141533658965985
+        ],
+        "linear_impulse_per_density": [
+          -5.010874031080866,
+          -0.018109012629391897,
+          -0.0020064607322682958
+        ],
+        "strength_l1": 26.22520112019152
+      },
+      "before_native_evolution": {
+        "particles": 43810,
+        "net_strength": [
+          -0.09686872891765178,
+          0.0020621230439119564,
+          0.023141533658965985
+        ],
+        "linear_impulse_per_density": [
+          -5.010874031080866,
+          -0.018109012629391897,
+          -0.0020064607322682958
+        ],
+        "strength_l1": 26.22520112019152
+      },
+      "native_evolution_wall_seconds": 2.911003375018481,
+      "before_transfer": {
+        "particles": 44832,
+        "net_strength": [
+          -0.09687758406372021,
+          0.0019289430493268506,
+          0.023282365639671176
+        ],
+        "linear_impulse_per_density": [
+          -5.010461333184521,
+          -0.018124961577851716,
+          -0.0019845732194578676
+        ],
+        "strength_l1": 26.212559800192018
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.14186316699488088,
+      "after_transfer": {
+        "particles": 43874,
+        "net_strength": [
+          -0.09873050558842189,
+          0.0022371808804538817,
+          0.023693249227065394
+        ],
+        "linear_impulse_per_density": [
+          -5.0188888490657195,
+          -0.01835028496442877,
+          -0.001958814453444262
+        ],
+        "strength_l1": 26.228450293753898
+      },
+      "after": {
+        "particles": 43874,
+        "net_strength": [
+          -0.09873050558842189,
+          0.0022371808804538817,
+          0.023693249227065394
+        ],
+        "linear_impulse_per_density": [
+          -5.0188888490657195,
+          -0.01835028496442877,
+          -0.001958814453444262
+        ],
+        "strength_l1": 26.228450293753898
+      },
+      "wall_seconds": 4.055774792010197
+    },
+    {
+      "start_time": 6.06,
+      "before": {
+        "particles": 43874,
+        "net_strength": [
+          -0.09873050558842189,
+          0.0022371808804538817,
+          0.023693249227065394
+        ],
+        "linear_impulse_per_density": [
+          -5.0188888490657195,
+          -0.01835028496442877,
+          -0.001958814453444262
+        ],
+        "strength_l1": 26.228450293753898
+      },
+      "before_native_evolution": {
+        "particles": 43874,
+        "net_strength": [
+          -0.09873050558842189,
+          0.0022371808804538817,
+          0.023693249227065394
+        ],
+        "linear_impulse_per_density": [
+          -5.0188888490657195,
+          -0.01835028496442877,
+          -0.001958814453444262
+        ],
+        "strength_l1": 26.228450293753898
+      },
+      "native_evolution_wall_seconds": 2.965291917003924,
+      "before_transfer": {
+        "particles": 44933,
+        "net_strength": [
+          -0.09873957256816235,
+          0.0021053360478380245,
+          0.02383346741968806
+        ],
+        "linear_impulse_per_density": [
+          -5.018482468142841,
+          -0.018366278850756756,
+          -0.0019364533193292769
+        ],
+        "strength_l1": 26.216362195587273
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.12403762500616722,
+      "after_transfer": {
+        "particles": 43955,
+        "net_strength": [
+          -0.1006175595137391,
+          0.0023757402795065996,
+          0.024241522738301935
+        ],
+        "linear_impulse_per_density": [
+          -5.026860494578813,
+          -0.01858161259597977,
+          -0.0019315647131708568
+        ],
+        "strength_l1": 26.231827334040176
+      },
+      "after": {
+        "particles": 43955,
+        "net_strength": [
+          -0.1006175595137391,
+          0.0023757402795065996,
+          0.024241522738301935
+        ],
+        "linear_impulse_per_density": [
+          -5.026860494578813,
+          -0.01858161259597977,
+          -0.0019315647131708568
+        ],
+        "strength_l1": 26.231827334040176
+      },
+      "wall_seconds": 4.016474959003972
+    },
+    {
+      "start_time": 6.07,
+      "before": {
+        "particles": 43955,
+        "net_strength": [
+          -0.1006175595137391,
+          0.0023757402795065996,
+          0.024241522738301935
+        ],
+        "linear_impulse_per_density": [
+          -5.026860494578813,
+          -0.01858161259597977,
+          -0.0019315647131708568
+        ],
+        "strength_l1": 26.231827334040176
+      },
+      "before_native_evolution": {
+        "particles": 43955,
+        "net_strength": [
+          -0.1006175595137391,
+          0.0023757402795065996,
+          0.024241522738301935
+        ],
+        "linear_impulse_per_density": [
+          -5.026860494578813,
+          -0.01858161259597977,
+          -0.0019315647131708568
+        ],
+        "strength_l1": 26.231827334040176
+      },
+      "native_evolution_wall_seconds": 2.516549291991396,
+      "before_transfer": {
+        "particles": 45016,
+        "net_strength": [
+          -0.1006272062009324,
+          0.002244768511305395,
+          0.024380983744527907
+        ],
+        "linear_impulse_per_density": [
+          -5.026461200758839,
+          -0.018597633443038084,
+          -0.0019087094325792838
+        ],
+        "strength_l1": 26.219791659569687
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.06682870900840499,
+      "after_transfer": {
+        "particles": 44016,
+        "net_strength": [
+          -0.10252057783917284,
+          0.0025117455536518563,
+          0.024780328300839094
+        ],
+        "linear_impulse_per_density": [
+          -5.034788164970819,
+          -0.018806550587350614,
+          -0.0019002195519389883
+        ],
+        "strength_l1": 26.23473279501536
+      },
+      "after": {
+        "particles": 44016,
+        "net_strength": [
+          -0.10252057783917284,
+          0.0025117455536518563,
+          0.024780328300839094
+        ],
+        "linear_impulse_per_density": [
+          -5.034788164970819,
+          -0.018806550587350614,
+          -0.0019002195519389883
+        ],
+        "strength_l1": 26.23473279501536
+      },
+      "wall_seconds": 3.520693458005553
+    },
+    {
+      "start_time": 6.08,
+      "before": {
+        "particles": 44016,
+        "net_strength": [
+          -0.10252057783917284,
+          0.0025117455536518563,
+          0.024780328300839094
+        ],
+        "linear_impulse_per_density": [
+          -5.034788164970819,
+          -0.018806550587350614,
+          -0.0019002195519389883
+        ],
+        "strength_l1": 26.23473279501536
+      },
+      "before_native_evolution": {
+        "particles": 44016,
+        "net_strength": [
+          -0.10252057783917284,
+          0.0025117455536518563,
+          0.024780328300839094
+        ],
+        "linear_impulse_per_density": [
+          -5.034788164970819,
+          -0.018806550587350614,
+          -0.0019002195519389883
+        ],
+        "strength_l1": 26.23473279501536
+      },
+      "native_evolution_wall_seconds": 2.7708602499915287,
+      "before_transfer": {
+        "particles": 45107,
+        "net_strength": [
+          -0.10253066834947594,
+          0.0023819748756470638,
+          0.024919231670045477
+        ],
+        "linear_impulse_per_density": [
+          -5.0343962438607806,
+          -0.018822871125023496,
+          -0.0018769030600532645
+        ],
+        "strength_l1": 26.222893485331983
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.11350062498240732,
+      "after_transfer": {
+        "particles": 44125,
+        "net_strength": [
+          -0.10443722609298808,
+          0.002617976250657128,
+          0.025288543290118648
+        ],
+        "linear_impulse_per_density": [
+          -5.042636803060856,
+          -0.01900914675626491,
+          -0.0018866422070212014
+        ],
+        "strength_l1": 26.238193953476966
+      },
+      "after": {
+        "particles": 44125,
+        "net_strength": [
+          -0.10443722609298808,
+          0.002617976250657128,
+          0.025288543290118648
+        ],
+        "linear_impulse_per_density": [
+          -5.042636803060856,
+          -0.01900914675626491,
+          -0.0018866422070212014
+        ],
+        "strength_l1": 26.238193953476966
+      },
+      "wall_seconds": 3.7581053329922725
+    },
+    {
+      "start_time": 6.09,
+      "before": {
+        "particles": 44125,
+        "net_strength": [
+          -0.10443722609298808,
+          0.002617976250657128,
+          0.025288543290118648
+        ],
+        "linear_impulse_per_density": [
+          -5.042636803060856,
+          -0.01900914675626491,
+          -0.0018866422070212014
+        ],
+        "strength_l1": 26.238193953476966
+      },
+      "before_native_evolution": {
+        "particles": 44125,
+        "net_strength": [
+          -0.10443722609298808,
+          0.002617976250657128,
+          0.025288543290118648
+        ],
+        "linear_impulse_per_density": [
+          -5.042636803060856,
+          -0.01900914675626491,
+          -0.0018866422070212014
+        ],
+        "strength_l1": 26.238193953476966
+      },
+      "native_evolution_wall_seconds": 3.0416501659783535,
+      "before_transfer": {
+        "particles": 45195,
+        "net_strength": [
+          -0.10444754263021697,
+          0.0024887730227507454,
+          0.025426699611775738
+        ],
+        "linear_impulse_per_density": [
+          -5.0422524148379955,
+          -0.019025464798509403,
+          -0.0018628448584434559
+        ],
+        "strength_l1": 26.226109761351598
+      },
+      "transfer_due": true,
+      "transfer_wall_seconds": 0.10172700000111945,
+      "after_transfer": {
+        "particles": 44214,
+        "net_strength": [
+          -0.10639310289234799,
+          0.002721278727202181,
+          0.02578929178963474
+        ],
+        "linear_impulse_per_density": [
+          -5.050419174901012,
+          -0.019209293823501637,
+          -0.0018751375778029997
+        ],
+        "strength_l1": 26.241364009196367
+      },
+      "after": {
+        "particles": 44214,
+        "net_strength": [
+          -0.10639310289234799,
+          0.002721278727202181,
+          0.02578929178963474
+        ],
+        "linear_impulse_per_density": [
+          -5.050419174901012,
+          -0.019209293823501637,
+          -0.0018751375778029997
+        ],
+        "strength_l1": 26.241364009196367
+      },
+      "wall_seconds": 3.9297714169952087
+    }
+  ],
+  "steps_completed": 10,
+  "steps_requested": 10,
+  "status": "completed",
+  "source_sha256": {
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_wake_oracle_replay.py": "c450387523d589a517569a8fc5002c82fb7f22b68fc5d23e5992c0bbd6e9a7ab"
+  }
+}

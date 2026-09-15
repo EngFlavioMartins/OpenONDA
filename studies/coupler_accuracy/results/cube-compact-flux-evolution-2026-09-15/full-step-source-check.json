@@ -1,0 +1,19 @@
+{
+  "export_net_matches_ledger": 0.0,
+  "export_impulse_matches_ledger": 0.0,
+  "source_calls": 200,
+  "source_evaluations": 400,
+  "max_source_net_rate": 3.599607318718478e-16,
+  "max_storage_net_closure": 1.2468227261979023e-08,
+  "integrated_source_impulse": [
+    0.0029096823177918282,
+    -0.007125490170857378,
+    0.003443651163229213
+  ],
+  "count_invariant": true,
+  "source_net_change": [
+    -3.774723232596866e-08,
+    5.665283393796461e-08,
+    -3.079032890110356e-08
+  ]
+}

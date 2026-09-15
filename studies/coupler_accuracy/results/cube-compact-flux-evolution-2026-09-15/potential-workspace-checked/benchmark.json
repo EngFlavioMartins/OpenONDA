@@ -1,0 +1,61 @@
+{
+  "scope": "Measure an exact FFT workspace optimization for the research scalar potential.\n\nThe free-space kernel only needs displacements between the first N cells.\nAn embedding of at least 2*N-1 per axis therefore suffices. Cache its transforms\nand sum the three component products before a single inverse transform. This\nchanges neither the gauge nor the sampled Gaussian kernel. It is not used by\nthe trajectory controls, whose implementation and timing remain unchanged.\n",
+  "random_checks": [
+    {
+      "shape": [
+        3,
+        4,
+        5
+      ],
+      "max_absolute_difference": 6.46455545344482e-18
+    },
+    {
+      "shape": [
+        6,
+        7,
+        8
+      ],
+      "max_absolute_difference": 7.047314121155779e-18
+    },
+    {
+      "shape": [
+        9,
+        5,
+        4
+      ],
+      "max_absolute_difference": 1.3877787807814457e-17
+    }
+  ],
+  "actual_cloud_max_absolute_difference": 3.336293372645238e-16,
+  "shape": [
+    108,
+    37,
+    37
+  ],
+  "cached_fft_shape": [
+    216,
+    75,
+    75
+  ],
+  "preparation_seconds": 0.04393570899264887,
+  "kernel_cache_bytes": 29548800,
+  "timings_seconds": {
+    "original": [
+      0.19440358300926164,
+      0.3075110829959158,
+      0.442965207999805,
+      0.3570054580050055,
+      0.1806202080042567
+    ],
+    "cached_embedding": [
+      0.01595112500945106,
+      0.20589104198734276,
+      0.04713979197549634,
+      0.02449020801577717,
+      0.02957833299296908
+    ]
+  },
+  "median_speedup": 10.396498107889066,
+  "state_sha256": "ccf3e55a29cede0c4923cf6a2ea3f7c1e98a4a6f37934a7270ab46897954332c",
+  "source_sha256": "5ae4d6fddee2cf1510139cd57f131a1e8c467847e9da41fc5c3f88b931560f67"
+}

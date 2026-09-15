@@ -1,0 +1,2727 @@
+{
+  "description": "Replay VPM with prescribed 3D reference donors and no FVM boundary feedback.\n\nReference native velocities at t=6 and 7 supply the renewal target, linearly\ninterpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary\nfeedback is necessary for the existing transverse disturbance to grow.\nOptional controls change alignment, the nodal covector source, or the compact\nconservative source on remeshed cells. They are mutually exclusive experiments.\n",
+  "alignment_rate_per_second": 0,
+  "nodal_covector_control": false,
+  "compact_flux_control": true,
+  "time_step_size": 0.01,
+  "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000600.h5",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "target_cache_sha256": "8f84e5a66edc2acd74f6b2992afdd2c2320b3c0e138c5d2049f4f022d86a6632",
+  "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
+  "observations": [
+    {
+      "time": 6.0,
+      "particles": 43479,
+      "elapsed_wall_seconds": 0.31796549999853596,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.08201685332647604,
+          "transverse_error_rms": 0.07372209302261021,
+          "reflection_asymmetry_rms": 0.058929118481335446
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.07932495669098402,
+          "transverse_error_rms": 0.061319166075719446,
+          "reflection_asymmetry_rms": 0.036256768065842
+        }
+      }
+    },
+    {
+      "time": 6.1,
+      "particles": 44213,
+      "elapsed_wall_seconds": 107.57712008300587,
+      "regions": {
+        "renewal_seam": {
+          "velocity_error_rms": 0.08971105402158257,
+          "transverse_error_rms": 0.08170349950703779,
+          "reflection_asymmetry_rms": 0.06364389321138708
+        },
+        "outer_wake": {
+          "velocity_error_rms": 0.0744714173225642,
+          "transverse_error_rms": 0.05766047132282377,
+          "reflection_asymmetry_rms": 0.03668277584559977
+        }
+      }
+    }
+  ],
+  "step_budgets": [
+    {
+      "start_time": 6.0,
+      "before": {
+        "particles": 43479,
+        "net_strength": [
+          -0.08736621476227832,
+          -0.0036697624811852236,
+          0.021027431481046577
+        ],
+        "linear_impulse_per_density": [
+          -4.95417213938848,
+          -0.016009944378533605,
+          -0.0032876998467425748
+        ],
+        "strength_l1": 26.16292008581816
+      },
+      "before_native_evolution": {
+        "particles": 43479,
+        "net_strength": [
+          -0.08736621568422409,
+          -0.003669756033001681,
+          0.02102743737945323
+        ],
+        "linear_impulse_per_density": [
+          -4.954185131594512,
+          -0.01604933958504549,
+          -0.003281253841370857
+        ],
+        "strength_l1": 26.162790582496505
+      },
+      "native_evolution_wall_seconds": 15.74880712502636,
+      "before_transfer": {
+        "particles": 44442,
+        "net_strength": [
+          -0.08737373180739472,
+          -0.0038078581293403135,
+          0.021166572136859775
+        ],
+        "linear_impulse_per_density": [
+          -4.9537452033473475,
+          -0.016057090005067158,
+          -0.0032438211045596873
+        ],
+        "strength_l1": 26.15042307863839
+      },
+      "transfer_wall_seconds": 0.1366147920198273,
+      "after_transfer": {
+        "particles": 43480,
+        "net_strength": [
+          -0.0895047386207406,
+          0.0007808930706774686,
+          0.020744539961110232
+        ],
+        "linear_impulse_per_density": [
+          -4.979287578533862,
+          -0.016998195468132922,
+          -0.0023522300563281716
+        ],
+        "strength_l1": 26.203624695863958
+      },
+      "after": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08950473732521749,
+          0.0007808922402627871,
+          0.02074453999169379
+        ],
+        "linear_impulse_per_density": [
+          -4.979301136966562,
+          -0.017034207874934926,
+          -0.0023341872810953004
+        ],
+        "strength_l1": 26.203482330963567
+      },
+      "wall_seconds": 23.284300375002204
+    },
+    {
+      "start_time": 6.01,
+      "before": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08950473732521749,
+          0.0007808922402627871,
+          0.02074453999169379
+        ],
+        "linear_impulse_per_density": [
+          -4.979301136966562,
+          -0.017034207874934926,
+          -0.0023341872810953004
+        ],
+        "strength_l1": 26.203482330963567
+      },
+      "before_native_evolution": {
+        "particles": 43480,
+        "net_strength": [
+          -0.08950473975810408,
+          0.0007808885354005923,
+          0.020744539891958957
+        ],
+        "linear_impulse_per_density": [
+          -4.979314768657925,
+          -0.01707028234439272,
+          -0.0023161172230005784
+        ],
+        "strength_l1": 26.203345470265113
+      },
+      "native_evolution_wall_seconds": 3.8976637499872595,
+      "before_transfer": {
+        "particles": 44490,
+        "net_strength": [
+          -0.089513336660833,
+          0.0006424303281253874,
+          0.02088928783941635
+        ],
+        "linear_impulse_per_density": [
+          -4.978886090170434,
+          -0.017087392001274796,
+          -0.0022962517206830267
+        ],
+        "strength_l1": 26.19023651571325
+      },
+      "transfer_wall_seconds": 0.07879812500323169,
+      "after_transfer": {
+        "particles": 43556,
+        "net_strength": [
+          -0.09120360031473534,
+          0.0013126524247137894,
+          0.021431440996335094
+        ],
+        "linear_impulse_per_density": [
+          -4.986829431177741,
+          -0.017406361136685627,
+          -0.002180534639048459
+        ],
+        "strength_l1": 26.210548292337464
+      },
+      "after": {
+        "particles": 43556,
+        "net_strength": [
+          -0.09120359922927712,
+          0.0013126522767912263,
+          0.021431439979197053
+        ],
+        "linear_impulse_per_density": [
+          -4.986843385682621,
+          -0.01744358228508758,
+          -0.002162068633730505
+        ],
+        "strength_l1": 26.210428934092498
+      },
+      "wall_seconds": 11.17090612501488
+    },
+    {
+      "start_time": 6.02,
+      "before": {
+        "particles": 43556,
+        "net_strength": [
+          -0.09120359922927712,
+          0.0013126522767912263,
+          0.021431439979197053
+        ],
+        "linear_impulse_per_density": [
+          -4.986843385682621,
+          -0.01744358228508758,
+          -0.002162068633730505
+        ],
+        "strength_l1": 26.210428934092498
+      },
+      "before_native_evolution": {
+        "particles": 43556,
+        "net_strength": [
+          -0.09120359952689422,
+          0.0013126510245842216,
+          0.02143144066892777
+        ],
+        "linear_impulse_per_density": [
+          -4.986857419877689,
+          -0.017480866038216896,
+          -0.0021435707054878257
+        ],
+        "strength_l1": 26.210315110505068
+      },
+      "native_evolution_wall_seconds": 3.799178166023921,
+      "before_transfer": {
+        "particles": 44600,
+        "net_strength": [
+          -0.09121269393082065,
+          0.0011755367275350093,
+          0.021575307210978223
+        ],
+        "linear_impulse_per_density": [
+          -4.986429351656697,
+          -0.01749708501225679,
+          -0.0021238813289408327
+        ],
+        "strength_l1": 26.197276964939917
+      },
+      "transfer_wall_seconds": 0.13699162498232909,
+      "after_transfer": {
+        "particles": 43637,
+        "net_strength": [
+          -0.09289508079138314,
+          0.0016320330251533566,
+          0.022078792662423186
+        ],
+        "linear_impulse_per_density": [
+          -4.994827408627171,
+          -0.01777275243400838,
+          -0.0020615271966271356
+        ],
+        "strength_l1": 26.215833566833446
+      },
+      "after": {
+        "particles": 43637,
+        "net_strength": [
+          -0.09289508053167944,
+          0.0016320288808557848,
+          0.022078789390458597
+        ],
+        "linear_impulse_per_density": [
+          -4.994841422892452,
+          -0.017811050757423737,
+          -0.0020428010242216736
+        ],
+        "strength_l1": 26.215735354720177
+      },
+      "wall_seconds": 10.813094374985667
+    },
+    {
+      "start_time": 6.03,
+      "before": {
+        "particles": 43637,
+        "net_strength": [
+          -0.09289508053167944,
+          0.0016320288808557848,
+          0.022078789390458597
+        ],
+        "linear_impulse_per_density": [
+          -4.994841422892452,
+          -0.017811050757423737,
+          -0.0020428010242216736
+        ],
+        "strength_l1": 26.215735354720177
+      },
+      "before_native_evolution": {
+        "particles": 43637,
+        "net_strength": [
+          -0.09289508058675433,
+          0.0016320300375771701,
+          0.022078789617386407
+        ],
+        "linear_impulse_per_density": [
+          -4.994855521636615,
+          -0.01784941374609269,
+          -0.002024039847349788
+        ],
+        "strength_l1": 26.215642664293007
+      },
+      "native_evolution_wall_seconds": 2.731598541024141,
+      "before_transfer": {
+        "particles": 44689,
+        "net_strength": [
+          -0.09290435556638502,
+          0.0014959478675171667,
+          0.022221781518299302
+        ],
+        "linear_impulse_per_density": [
+          -4.994430016695023,
+          -0.017865192551886674,
+          -0.0020044985232694807
+        ],
+        "strength_l1": 26.202854974190014
+      },
+      "transfer_wall_seconds": 0.13252391701098531,
+      "after_transfer": {
+        "particles": 43733,
+        "net_strength": [
+          -0.09460206863857773,
+          0.0018832421439156644,
+          0.02269816175937696
+        ],
+        "linear_impulse_per_density": [
+          -5.002912375765022,
+          -0.018118421543717855,
+          -0.001958507999349048
+        ],
+        "strength_l1": 26.22008917105338
+      },
+      "after": {
+        "particles": 43733,
+        "net_strength": [
+          -0.09460207173324053,
+          0.0018832415051615037,
+          0.022698166695585997
+        ],
+        "linear_impulse_per_density": [
+          -5.002925731967101,
+          -0.0181573274006316,
+          -0.0019394234413421237
+        ],
+        "strength_l1": 26.22000370785651
+      },
+      "wall_seconds": 8.522344750002958
+    },
+    {
+      "start_time": 6.04,
+      "before": {
+        "particles": 43733,
+        "net_strength": [
+          -0.09460207173324053,
+          0.0018832415051615037,
+          0.022698166695585997
+        ],
+        "linear_impulse_per_density": [
+          -5.002925731967101,
+          -0.0181573274006316,
+          -0.0019394234413421237
+        ],
+        "strength_l1": 26.22000370785651
+      },
+      "before_native_evolution": {
+        "particles": 43733,
+        "net_strength": [
+          -0.09460206992640807,
+          0.001883241443804029,
+          0.022698170500231263
+        ],
+        "linear_impulse_per_density": [
+          -5.002939177675614,
+          -0.018196296448333957,
+          -0.0019203015809238504
+        ],
+        "strength_l1": 26.219923966340225
+      },
+      "native_evolution_wall_seconds": 2.7274287919863127,
+      "before_transfer": {
+        "particles": 44755,
+        "net_strength": [
+          -0.0946115513427142,
+          0.0017485224419163808,
+          0.022840288750487214
+        ],
+        "linear_impulse_per_density": [
+          -5.002517616344067,
+          -0.018211773440772887,
+          -0.001900484559627158
+        ],
+        "strength_l1": 26.20708738221958
+      },
+      "transfer_wall_seconds": 0.15442987499409355,
+      "after_transfer": {
+        "particles": 43811,
+        "net_strength": [
+          -0.09632885370904398,
+          0.0020987254775297615,
+          0.023297445307655984
+        ],
+        "linear_impulse_per_density": [
+          -5.010999701737966,
+          -0.018444454037693406,
+          -0.001864253881251339
+        ],
+        "strength_l1": 26.223474019984835
+      },
+      "after": {
+        "particles": 43811,
+        "net_strength": [
+          -0.09632885175902184,
+          0.0020987245649273234,
+          0.023297447594144316
+        ],
+        "linear_impulse_per_density": [
+          -5.011012464365552,
+          -0.018483738429218872,
+          -0.0018449409730167945
+        ],
+        "strength_l1": 26.223403959158343
+      },
+      "wall_seconds": 9.106006541987881
+    },
+    {
+      "start_time": 6.05,
+      "before": {
+        "particles": 43811,
+        "net_strength": [
+          -0.09632885175902184,
+          0.0020987245649273234,
+          0.023297447594144316
+        ],
+        "linear_impulse_per_density": [
+          -5.011012464365552,
+          -0.018483738429218872,
+          -0.0018449409730167945
+        ],
+        "strength_l1": 26.223403959158343
+      },
+      "before_native_evolution": {
+        "particles": 43811,
+        "net_strength": [
+          -0.0963288537542637,
+          0.0020987229890341297,
+          0.023297451513955902
+        ],
+        "linear_impulse_per_density": [
+          -5.011025318042751,
+          -0.018523088480907578,
+          -0.0018255912201298647
+        ],
+        "strength_l1": 26.223339517125986
+      },
+      "native_evolution_wall_seconds": 2.765582916996209,
+      "before_transfer": {
+        "particles": 44832,
+        "net_strength": [
+          -0.09633709704823729,
+          0.001965616563670114,
+          0.023438223066839736
+        ],
+        "linear_impulse_per_density": [
+          -5.010607543899625,
+          -0.018537784130377,
+          -0.0018057826172113642
+        ],
+        "strength_l1": 26.21059400154042
+      },
+      "transfer_wall_seconds": 0.13221712500671856,
+      "after_transfer": {
+        "particles": 43873,
+        "net_strength": [
+          -0.09808158368940278,
+          0.0022864604534365007,
+          0.023877289410079827
+        ],
+        "linear_impulse_per_density": [
+          -5.019049029704319,
+          -0.018759480727009035,
+          -0.0017809804298523925
+        ],
+        "strength_l1": 26.226338498736915
+      },
+      "after": {
+        "particles": 43873,
+        "net_strength": [
+          -0.0980815858841653,
+          0.0022864706863607864,
+          0.023877285815137816
+        ],
+        "linear_impulse_per_density": [
+          -5.019060929300234,
+          -0.018800057838781706,
+          -0.0017610233067718217
+        ],
+        "strength_l1": 26.226281075837726
+      },
+      "wall_seconds": 8.349460500001442
+    },
+    {
+      "start_time": 6.06,
+      "before": {
+        "particles": 43873,
+        "net_strength": [
+          -0.0980815858841653,
+          0.0022864706863607864,
+          0.023877285815137816
+        ],
+        "linear_impulse_per_density": [
+          -5.019060929300234,
+          -0.018800057838781706,
+          -0.0017610233067718217
+        ],
+        "strength_l1": 26.226281075837726
+      },
+      "before_native_evolution": {
+        "particles": 43873,
+        "net_strength": [
+          -0.09808158474903539,
+          0.0022864682063423736,
+          0.02387729114494619
+        ],
+        "linear_impulse_per_density": [
+          -5.019072928573639,
+          -0.018840704737079446,
+          -0.0017410314676951444
+        ],
+        "strength_l1": 26.226229360756058
+      },
+      "native_evolution_wall_seconds": 2.9302692920027766,
+      "before_transfer": {
+        "particles": 44938,
+        "net_strength": [
+          -0.09808996746958475,
+          0.002154570164684455,
+          0.024017379493153634
+        ],
+        "linear_impulse_per_density": [
+          -5.018660694106021,
+          -0.018855271689973804,
+          -0.0017210547331218782
+        ],
+        "strength_l1": 26.21402909953738
+      },
+      "transfer_wall_seconds": 0.06827870800043456,
+      "after_transfer": {
+        "particles": 43959,
+        "net_strength": [
+          -0.0998522491812832,
+          0.0024410383980749684,
+          0.024454792376085166
+        ],
+        "linear_impulse_per_density": [
+          -5.027058126934055,
+          -0.019066743502165143,
+          -0.0017150784232090545
+        ],
+        "strength_l1": 26.229373638118588
+      },
+      "after": {
+        "particles": 43959,
+        "net_strength": [
+          -0.09985224831703743,
+          0.002441042485115119,
+          0.024454794078270004
+        ],
+        "linear_impulse_per_density": [
+          -5.027069279669461,
+          -0.019107883741348693,
+          -0.0016953192536185314
+        ],
+        "strength_l1": 26.229323591281478
+      },
+      "wall_seconds": 8.427551834000042
+    },
+    {
+      "start_time": 6.07,
+      "before": {
+        "particles": 43959,
+        "net_strength": [
+          -0.09985224831703743,
+          0.002441042485115119,
+          0.024454794078270004
+        ],
+        "linear_impulse_per_density": [
+          -5.027069279669461,
+          -0.019107883741348693,
+          -0.0016953192536185314
+        ],
+        "strength_l1": 26.229323591281478
+      },
+      "before_native_evolution": {
+        "particles": 43959,
+        "net_strength": [
+          -0.09985224979711904,
+          0.002441038278127916,
+          0.024454794046490314
+        ],
+        "linear_impulse_per_density": [
+          -5.027080536804731,
+          -0.01914909125981206,
+          -0.0016755224549174948
+        ],
+        "strength_l1": 26.229279398374835
+      },
+      "native_evolution_wall_seconds": 2.8883102500112727,
+      "before_transfer": {
+        "particles": 45018,
+        "net_strength": [
+          -0.09986118884946282,
+          0.0023100533209819696,
+          0.024594063523980747
+        ],
+        "linear_impulse_per_density": [
+          -5.026674344930999,
+          -0.019163437309312952,
+          -0.0016553601379127357
+        ],
+        "strength_l1": 26.2170241888307
+      },
+      "transfer_wall_seconds": 0.1502232500060927,
+      "after_transfer": {
+        "particles": 44017,
+        "net_strength": [
+          -0.10163613515048658,
+          0.0025817220707951005,
+          0.02502256561189098
+        ],
+        "linear_impulse_per_density": [
+          -5.035022262910433,
+          -0.019367264463481106,
+          -0.0016528166501517255
+        ],
+        "strength_l1": 26.231783661161465
+      },
+      "after": {
+        "particles": 44017,
+        "net_strength": [
+          -0.10163613766110291,
+          0.002581719531390414,
+          0.025022563533010578
+        ],
+        "linear_impulse_per_density": [
+          -5.035032779845643,
+          -0.019408946073774535,
+          -0.0016330122444756742
+        ],
+        "strength_l1": 26.23173461908661
+      },
+      "wall_seconds": 7.911400709010195
+    },
+    {
+      "start_time": 6.08,
+      "before": {
+        "particles": 44017,
+        "net_strength": [
+          -0.10163613766110291,
+          0.002581719531390414,
+          0.025022563533010578
+        ],
+        "linear_impulse_per_density": [
+          -5.035032779845643,
+          -0.019408946073774535,
+          -0.0016330122444756742
+        ],
+        "strength_l1": 26.23173461908661
+      },
+      "before_native_evolution": {
+        "particles": 44017,
+        "net_strength": [
+          -0.10163613743866345,
+          0.0025817169485073954,
+          0.02502256598476227
+        ],
+        "linear_impulse_per_density": [
+          -5.035043401407238,
+          -0.01945069954405153,
+          -0.001613172218220681
+        ],
+        "strength_l1": 26.231691427686677
+      },
+      "native_evolution_wall_seconds": 3.045736375002889,
+      "before_transfer": {
+        "particles": 45108,
+        "net_strength": [
+          -0.1016455109115493,
+          0.002451967705428784,
+          0.0251612757331805
+        ],
+        "linear_impulse_per_density": [
+          -5.0346436869000195,
+          -0.019465243013989424,
+          -0.0015929307338590306
+        ],
+        "strength_l1": 26.21964859709535
+      },
+      "transfer_wall_seconds": 0.14073912499588914,
+      "after_transfer": {
+        "particles": 44126,
+        "net_strength": [
+          -0.10343901733279265,
+          0.002711452813400808,
+          0.025579399431703065
+        ],
+        "linear_impulse_per_density": [
+          -5.042920540788365,
+          -0.019661119676009187,
+          -0.0015981143403071031
+        ],
+        "strength_l1": 26.23484744905781
+      },
+      "after": {
+        "particles": 44126,
+        "net_strength": [
+          -0.1034390174731345,
+          0.002711459381974368,
+          0.02557939898534345
+        ],
+        "linear_impulse_per_density": [
+          -5.042930266759553,
+          -0.01970360081189946,
+          -0.0015778784046163365
+        ],
+        "strength_l1": 26.234805246436565
+      },
+      "wall_seconds": 9.142272083001444
+    },
+    {
+      "start_time": 6.09,
+      "before": {
+        "particles": 44126,
+        "net_strength": [
+          -0.1034390174731345,
+          0.002711459381974368,
+          0.02557939898534345
+        ],
+        "linear_impulse_per_density": [
+          -5.042930266759553,
+          -0.01970360081189946,
+          -0.0015778784046163365
+        ],
+        "strength_l1": 26.234805246436565
+      },
+      "before_native_evolution": {
+        "particles": 44126,
+        "net_strength": [
+          -0.10343901608603945,
+          0.0027114551370078788,
+          0.02557938771185364
+        ],
+        "linear_impulse_per_density": [
+          -5.042940106128333,
+          -0.01974614782691708,
+          -0.0015576034522530853
+        ],
+        "strength_l1": 26.23476896232759
+      },
+      "native_evolution_wall_seconds": 3.0983631660055835,
+      "before_transfer": {
+        "particles": 45195,
+        "net_strength": [
+          -0.10344853769463941,
+          0.002582272752948256,
+          0.02571734428824346
+        ],
+        "linear_impulse_per_density": [
+          -5.04254720487672,
+          -0.019760511690638135,
+          -0.0015372657473958125
+        ],
+        "strength_l1": 26.222372525981662
+      },
+      "transfer_wall_seconds": 0.1395491249859333,
+      "after_transfer": {
+        "particles": 44213,
+        "net_strength": [
+          -0.10525597960971789,
+          0.0027971981308674287,
+          0.02610062122108303
+        ],
+        "linear_impulse_per_density": [
+          -5.050734828517707,
+          -0.019930561023042134,
+          -0.0015659856559704915
+        ],
+        "strength_l1": 26.237481837777118
+      },
+      "after": {
+        "particles": 44213,
+        "net_strength": [
+          -0.10525597899365846,
+          0.0027971961088610886,
+          0.026100621811155023
+        ],
+        "linear_impulse_per_density": [
+          -5.050743734040041,
+          -0.01997423768485664,
+          -0.0015456849779191815
+        ],
+        "strength_l1": 26.237447923670466
+      },
+      "wall_seconds": 9.995604458003072
+    }
+  ],
+  "steps_completed": 10,
+  "steps_requested": 10,
+  "status": "completed",
+  "source_sha256": {
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_wake_oracle_replay.py": "a0f8fcc8659d031c07ea174efba056fee88a6ecc6b4415e7939c32a975db304f",
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_covector_flux_step.py": "eaefdc6b9448c5fced24458066c13d0309841268328e6faf4ec2e43b42d17cec",
+    "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/cube_covector_flux_control.py": "24b7d0e88f600759a6940e719528056ddf79c707f758f095e7a8c92b5c78f06b"
+  },
+  "compact_flux_source": {
+    "integration": "S(dt/2) A(dt) S(dt/2); each S uses explicit midpoint",
+    "total_order_claim": "None: native A includes GBD splitting and algebraic renewal",
+    "taper_width_m": 0.18,
+    "wall_seconds": 51.22729912609793,
+    "evaluations": 40,
+    "substeps": [
+      {
+        "time": 6.0,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43479,
+          "net_strength": [
+            -0.08736621476227832,
+            -0.0036697624811852236,
+            0.021027431481046577
+          ],
+          "linear_impulse_per_density": [
+            -4.95417213938848,
+            -0.016009944378533605,
+            -0.0032876998467425748
+          ],
+          "strength_l1": 26.16292008581816
+        },
+        "after": {
+          "particles": 43479,
+          "net_strength": [
+            -0.08736621568422409,
+            -0.003669756033001681,
+            0.02102743737945323
+          ],
+          "linear_impulse_per_density": [
+            -4.954185131594512,
+            -0.01604933958504549,
+            -0.003281253841370857
+          ],
+          "strength_l1": 26.162790582496505
+        },
+        "integrated_source_strength": [
+          -8.322013371461089e-19,
+          1.942831416445974e-19,
+          2.418391888938523e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.299076057738305e-05,
+          -3.9396202700257234e-05,
+          6.447015025673287e-06
+        ],
+        "storage_net_strength_closure": [
+          -9.219457688951712e-10,
+          6.448183542479008e-09,
+          5.8984066517521975e-09
+        ],
+        "wall_seconds": 3.2326381250168197,
+        "stages": [
+          {
+            "internal_faces": 119913,
+            "source_net_strength_rate": [
+              5.949574476201354e-17,
+              3.883625879954021e-17,
+              -8.824422631572775e-17
+            ],
+            "source_strength_rate_l1": 1.3332970270935827,
+            "source_impulse_rate_per_density": [
+              -0.0025905397458939046,
+              -0.007872940797490364,
+              0.0012863573557245962
+            ],
+            "midpoint_impulse_target": [
+              -0.0025988415795733183,
+              -0.007861828118802476,
+              0.0013144841371275212
+            ],
+            "strength_sha256": "930f3eeef44bb43eab2210fce64841cbde0e7c006208d95883481c93a95673e8",
+            "potential_direct_error_rms": 1.4331930594389963e-08,
+            "gradient_wall_seconds": 1.860059208003804,
+            "potential_and_flux_wall_seconds": 0.31020112498663366
+          },
+          {
+            "internal_faces": 119913,
+            "source_net_strength_rate": [
+              -7.276615369836501e-17,
+              1.9419682844960478e-17,
+              2.4540559287134107e-17
+            ],
+            "source_strength_rate_l1": 1.3329753880976312,
+            "source_impulse_rate_per_density": [
+              -0.002598152115476614,
+              -0.007879240540051308,
+              0.0012894030051346856
+            ],
+            "midpoint_impulse_target": [
+              -0.002606560472209353,
+              -0.007868567561704717,
+              0.0013177169185909644
+            ],
+            "strength_sha256": "8eac1a2d0aa1e3b615dce7e247fc6780b3cfd1be95f2a287df5a200b6f999c3a",
+            "gradient_wall_seconds": 0.6916611670167185,
+            "potential_and_flux_wall_seconds": 0.32603912497870624
+          }
+        ]
+      },
+      {
+        "time": 6.01,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43480,
+          "net_strength": [
+            -0.0895047386207406,
+            0.0007808930706774686,
+            0.020744539961110232
+          ],
+          "linear_impulse_per_density": [
+            -4.979287578533862,
+            -0.016998195468132922,
+            -0.0023522300563281716
+          ],
+          "strength_l1": 26.203624695863958
+        },
+        "after": {
+          "particles": 43480,
+          "net_strength": [
+            -0.08950473732521749,
+            0.0007808922402627871,
+            0.02074453999169379
+          ],
+          "linear_impulse_per_density": [
+            -4.979301136966562,
+            -0.017034207874934926,
+            -0.0023341872810953004
+          ],
+          "strength_l1": 26.203482330963567
+        },
+        "integrated_source_strength": [
+          8.039000633459459e-19,
+          2.809369024050333e-20,
+          -2.7807907093684504e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.355775669025754e-05,
+          -3.601412547911683e-05,
+          1.804251246408076e-05
+        ],
+        "storage_net_strength_closure": [
+          1.2955231046562057e-09,
+          -8.304146814911479e-10,
+          3.0583556798714895e-11
+        ],
+        "wall_seconds": 2.803073624992976,
+        "stages": [
+          {
+            "internal_faces": 119957,
+            "source_net_strength_rate": [
+              -1.8592625978627089e-16,
+              -3.488127998907512e-17,
+              -6.054335763407853e-17
+            ],
+            "source_strength_rate_l1": 1.3311715543425902,
+            "source_impulse_rate_per_density": [
+              -0.0027041691128152304,
+              -0.007196781152326671,
+              0.00360562659994556
+            ],
+            "midpoint_impulse_target": [
+              -0.002720813256625058,
+              -0.007182797710972039,
+              0.0036556323520387677
+            ],
+            "strength_sha256": "19521c6eddd6ad088bc510565a472e0f4d63363488d215d563322356c0ef0ba0",
+            "gradient_wall_seconds": 1.0158434589975514,
+            "potential_and_flux_wall_seconds": 0.287811749993125
+          },
+          {
+            "internal_faces": 119957,
+            "source_net_strength_rate": [
+              -1.7461535486709322e-16,
+              2.176406821089092e-17,
+              -6.768823915605101e-17
+            ],
+            "source_strength_rate_l1": 1.330966897344827,
+            "source_impulse_rate_per_density": [
+              -0.002711551338051474,
+              -0.007202825095823408,
+              0.003608502492816138
+            ],
+            "midpoint_impulse_target": [
+              -0.0027282934052738008,
+              -0.007189277626080065,
+              0.003658705568904199
+            ],
+            "strength_sha256": "b5d9ca33b40de4fec46c3ba17485a240470af0fe65589740f43e987bf37233e6",
+            "gradient_wall_seconds": 1.0731672499969136,
+            "potential_and_flux_wall_seconds": 0.3776470420125406
+          }
+        ]
+      },
+      {
+        "time": 6.01,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43480,
+          "net_strength": [
+            -0.08950473732521749,
+            0.0007808922402627871,
+            0.02074453999169379
+          ],
+          "linear_impulse_per_density": [
+            -4.979301136966562,
+            -0.017034207874934926,
+            -0.0023341872810953004
+          ],
+          "strength_l1": 26.203482330963567
+        },
+        "after": {
+          "particles": 43480,
+          "net_strength": [
+            -0.08950473975810408,
+            0.0007808885354005923,
+            0.020744539891958957
+          ],
+          "linear_impulse_per_density": [
+            -4.979314768657925,
+            -0.01707028234439272,
+            -0.0023161172230005784
+          ],
+          "strength_l1": 26.203345470265113
+        },
+        "integrated_source_strength": [
+          -2.511639805910848e-19,
+          -2.5790186104999218e-20,
+          -5.225611689346703e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.3631205938115184e-05,
+          -3.60750320147201e-05,
+          1.8071015010419984e-05
+        ],
+        "storage_net_strength_closure": [
+          -2.4328865863829337e-09,
+          -3.704862194783021e-09,
+          -9.973483098204421e-11
+        ],
+        "wall_seconds": 2.633195833011996,
+        "stages": [
+          {
+            "internal_faces": 119957,
+            "source_net_strength_rate": [
+              1.4172641879269088e-16,
+              1.0859862356306588e-17,
+              1.3103973993251206e-17
+            ],
+            "source_strength_rate_l1": 1.330775506780916,
+            "source_impulse_rate_per_density": [
+              -0.002718901450449796,
+              -0.007208922484842919,
+              0.003611355609946889
+            ],
+            "midpoint_impulse_target": [
+              -0.0027357396819826306,
+              -0.007195812233463822,
+              0.003661755936768599
+            ],
+            "strength_sha256": "d189b596530ea5213f00a5c41582896e6be36ff7da44a0aa755eb7451129b51a",
+            "gradient_wall_seconds": 1.1333226670103613,
+            "potential_and_flux_wall_seconds": 0.16297199999098666
+          },
+          {
+            "internal_faces": 119957,
+            "source_net_strength_rate": [
+              1.6588586888145674e-17,
+              -7.923811241829218e-18,
+              -7.961844799599253e-17
+            ],
+            "source_strength_rate_l1": 1.3305930652173563,
+            "source_impulse_rate_per_density": [
+              -0.00272624118762304,
+              -0.007215006402943872,
+              0.003614203002084005
+            ],
+            "midpoint_impulse_target": [
+              -0.002743175705564108,
+              -0.007202332903427817,
+              0.0036648007125187642
+            ],
+            "strength_sha256": "ccb811cc2c71296b4497337ef0550c1c5b4d60b4d0f6a59db59067946c254710",
+            "gradient_wall_seconds": 1.037971749989083,
+            "potential_and_flux_wall_seconds": 0.24228695800411515
+          }
+        ]
+      },
+      {
+        "time": 6.02,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43556,
+          "net_strength": [
+            -0.09120360031473534,
+            0.0013126524247137894,
+            0.021431440996335094
+          ],
+          "linear_impulse_per_density": [
+            -4.986829431177741,
+            -0.017406361136685627,
+            -0.002180534639048459
+          ],
+          "strength_l1": 26.210548292337464
+        },
+        "after": {
+          "particles": 43556,
+          "net_strength": [
+            -0.09120359922927712,
+            0.0013126522767912263,
+            0.021431439979197053
+          ],
+          "linear_impulse_per_density": [
+            -4.986843385682621,
+            -0.01744358228508758,
+            -0.002162068633730505
+          ],
+          "strength_l1": 26.210428934092498
+        },
+        "integrated_source_strength": [
+          3.2143347122830173e-19,
+          1.98391515102601e-21,
+          4.550532151179067e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.39556253793301e-05,
+          -3.7219643240833364e-05,
+          1.846623635030004e-05
+        ],
+        "storage_net_strength_closure": [
+          1.0854582229829806e-09,
+          -1.4792256308936097e-10,
+          -1.0171380409150504e-09
+        ],
+        "wall_seconds": 3.133640000014566,
+        "stages": [
+          {
+            "internal_faces": 120144,
+            "source_net_strength_rate": [
+              -4.118264759691425e-17,
+              -7.893883847267049e-19,
+              4.561921654347685e-17
+            ],
+            "source_strength_rate_l1": 1.3363057623022432,
+            "source_impulse_rate_per_density": [
+              -0.0027831534362363713,
+              -0.00743760471653496,
+              0.0036900820016593145
+            ],
+            "midpoint_impulse_target": [
+              -0.002800570238916724,
+              -0.007428703416004679,
+              0.0037435583371467707
+            ],
+            "strength_sha256": "1f74cf4fde424795c3a9e18e90f6bf02becc41a0b1131ab3bd989d6779de3948",
+            "gradient_wall_seconds": 1.0515315000084229,
+            "potential_and_flux_wall_seconds": 0.37045983399730176
+          },
+          {
+            "internal_faces": 120144,
+            "source_net_strength_rate": [
+              -1.4050303190161475e-16,
+              -1.654529308206526e-17,
+              -1.2332747641003053e-16
+            ],
+            "source_strength_rate_l1": 1.3361227930456934,
+            "source_impulse_rate_per_density": [
+              -0.0027911250758660003,
+              -0.0074439286481668325,
+              0.00369324727006004
+            ],
+            "midpoint_impulse_target": [
+              -0.0028086780482240643,
+              -0.007435459027433171,
+              0.0037469319677307625
+            ],
+            "strength_sha256": "b826183ee6dfbc7a94e4f71c59d11745d55c1fb67b0e551d34fc7852da62ca75",
+            "gradient_wall_seconds": 1.3017195409920532,
+            "potential_and_flux_wall_seconds": 0.3576245839940384
+          }
+        ]
+      },
+      {
+        "time": 6.02,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43556,
+          "net_strength": [
+            -0.09120359922927712,
+            0.0013126522767912263,
+            0.021431439979197053
+          ],
+          "linear_impulse_per_density": [
+            -4.986843385682621,
+            -0.01744358228508758,
+            -0.002162068633730505
+          ],
+          "strength_l1": 26.210428934092498
+        },
+        "after": {
+          "particles": 43556,
+          "net_strength": [
+            -0.09120359952689422,
+            0.0013126510245842216,
+            0.02143144066892777
+          ],
+          "linear_impulse_per_density": [
+            -4.986857419877689,
+            -0.017480866038216896,
+            -0.0021435707054878257
+          ],
+          "strength_l1": 26.210315110505068
+        },
+        "integrated_source_strength": [
+          1.3479571441628762e-19,
+          1.204715925385945e-19,
+          -6.36193651555722e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.4034979210560505e-05,
+          -3.728331839213623e-05,
+          1.8497657177587294e-05
+        ],
+        "storage_net_strength_closure": [
+          -2.976170977680028e-10,
+          -1.2522070048742853e-09,
+          6.897307176212755e-10
+        ],
+        "wall_seconds": 3.193461417016806,
+        "stages": [
+          {
+            "internal_faces": 120144,
+            "source_net_strength_rate": [
+              -1.0225339553042673e-17,
+              1.7515714906932872e-19,
+              1.2778862171977269e-16
+            ],
+            "source_strength_rate_l1": 1.3359531592840335,
+            "source_impulse_rate_per_density": [
+              -0.0027990668193225094,
+              -0.007450301400197387,
+              0.0036963911143619074
+            ],
+            "midpoint_impulse_target": [
+              -0.0028167551205674074,
+              -0.007442264489945707,
+              0.003750284590182851
+            ],
+            "strength_sha256": "aaea3fa2d3ed5cd9ba8a08a85d8a9f0e19822cc1b175472aa3d2aacceb4b2a0d",
+            "gradient_wall_seconds": 1.2202261660131626,
+            "potential_and_flux_wall_seconds": 0.36574425001163036
+          },
+          {
+            "internal_faces": 120144,
+            "source_net_strength_rate": [
+              7.323696753223733e-17,
+              -7.917114387589989e-18,
+              1.259368801044653e-16
+            ],
+            "source_strength_rate_l1": 1.3357924845016687,
+            "source_impulse_rate_per_density": [
+              -0.0028069958421121266,
+              -0.007456663678427436,
+              0.0036995314355174613
+            ],
+            "midpoint_impulse_target": [
+              -0.002824818751098024,
+              -0.0074490592879766955,
+              0.0037536336600912
+            ],
+            "strength_sha256": "9c30222c44f9759782776082d18e752aa137121af6e67652584eff0149275576",
+            "gradient_wall_seconds": 1.124452707997989,
+            "potential_and_flux_wall_seconds": 0.40198362499359064
+          }
+        ]
+      },
+      {
+        "time": 6.03,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43637,
+          "net_strength": [
+            -0.09289508079138314,
+            0.0016320330251533566,
+            0.022078792662423186
+          ],
+          "linear_impulse_per_density": [
+            -4.994827408627171,
+            -0.01777275243400838,
+            -0.0020615271966271356
+          ],
+          "strength_l1": 26.215833566833446
+        },
+        "after": {
+          "particles": 43637,
+          "net_strength": [
+            -0.09289508053167944,
+            0.0016320288808557848,
+            0.022078789390458597
+          ],
+          "linear_impulse_per_density": [
+            -4.994841422892452,
+            -0.017811050757423737,
+            -0.0020428010242216736
+          ],
+          "strength_l1": 26.215735354720177
+        },
+        "integrated_source_strength": [
+          1.3614515093743313e-19,
+          -1.5977379979904157e-19,
+          -5.465586333168298e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.4013945914652456e-05,
+          -3.8300197006094295e-05,
+          1.8728549861678953e-05
+        ],
+        "storage_net_strength_closure": [
+          2.5970370285107887e-10,
+          -4.144297571624476e-09,
+          -3.2719645876119237e-09
+        ],
+        "wall_seconds": 2.6036017920123413,
+        "stages": [
+          {
+            "internal_faces": 120332,
+            "source_net_strength_rate": [
+              -4.511753646504711e-17,
+              7.752623236211164e-17,
+              -5.842156284867335e-17
+            ],
+            "source_strength_rate_l1": 1.3425414336231025,
+            "source_impulse_rate_per_density": [
+              -0.0027943143096403143,
+              -0.007653683371845326,
+              0.0037424573988832787
+            ],
+            "midpoint_impulse_target": [
+              -0.0028165411480116065,
+              -0.007646074636981105,
+              0.003797878517728238
+            ],
+            "strength_sha256": "df41790077ecdcb8db52772f3271fa9bb7c4836ab86278d7507a8ff5b5560c03",
+            "gradient_wall_seconds": 1.015439915994648,
+            "potential_and_flux_wall_seconds": 0.4142114999995101
+          },
+          {
+            "internal_faces": 120332,
+            "source_net_strength_rate": [
+              -2.0381631460733038e-16,
+              2.0340468869991232e-17,
+              1.6865719069925693e-17
+            ],
+            "source_strength_rate_l1": 1.3423806692948927,
+            "source_impulse_rate_per_density": [
+              -0.002802789182930463,
+              -0.00766003940121893,
+              0.0037457099723357773
+            ],
+            "midpoint_impulse_target": [
+              -0.0028251784695603713,
+              -0.007652865879252294,
+              0.003801345269448463
+            ],
+            "strength_sha256": "3bbd20ab3d5998cd4ff32c93548d0628e5cc1dd2d63b7a3ec8e8851ac8a0f91b",
+            "gradient_wall_seconds": 0.9078166669933125,
+            "potential_and_flux_wall_seconds": 0.1911059579870198
+          }
+        ]
+      },
+      {
+        "time": 6.03,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43637,
+          "net_strength": [
+            -0.09289508053167944,
+            0.0016320288808557848,
+            0.022078789390458597
+          ],
+          "linear_impulse_per_density": [
+            -4.994841422892452,
+            -0.017811050757423737,
+            -0.0020428010242216736
+          ],
+          "strength_l1": 26.215735354720177
+        },
+        "after": {
+          "particles": 43637,
+          "net_strength": [
+            -0.09289508058675433,
+            0.0016320300375771701,
+            0.022078789617386407
+          ],
+          "linear_impulse_per_density": [
+            -4.994855521636615,
+            -0.01784941374609269,
+            -0.002024039847349788
+          ],
+          "strength_l1": 26.215642664293007
+        },
+        "integrated_source_strength": [
+          -4.2868172945302296e-19,
+          2.0523624726336978e-19,
+          8.538692718996243e-20
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.4098352752101007e-05,
+          -3.836423726474917e-05,
+          1.8760836977542754e-05
+        ],
+        "storage_net_strength_closure": [
+          -5.507488866504964e-11,
+          1.156721385137271e-09,
+          2.2692780979115566e-10
+        ],
+        "wall_seconds": 2.5170608750195242,
+        "stages": [
+          {
+            "internal_faces": 120332,
+            "source_net_strength_rate": [
+              -1.951164620052471e-17,
+              1.664027326872105e-17,
+              -1.2264054551110678e-16
+            ],
+            "source_strength_rate_l1": 1.3422334439731198,
+            "source_impulse_rate_per_density": [
+              -0.002811234654228305,
+              -0.007666447906941487,
+              0.003748935868226277
+            ],
+            "midpoint_impulse_target": [
+              -0.002833786243403298,
+              -0.007659710586479493,
+              0.0038047858587569212
+            ],
+            "strength_sha256": "cf4b05ae669279ef4e88e491bf302cc8ee64fb709e72b6ab898aae362f5de4d8",
+            "gradient_wall_seconds": 0.7432497089903336,
+            "potential_and_flux_wall_seconds": 0.3629986660089344
+          },
+          {
+            "internal_faces": 120332,
+            "source_net_strength_rate": [
+              -4.8969937693424056e-17,
+              1.127638749939644e-17,
+              1.4084313093277868e-17
+            ],
+            "source_strength_rate_l1": 1.3420954235706293,
+            "source_impulse_rate_per_density": [
+              -0.0028196705504201806,
+              -0.007672847452949704,
+              0.003752167395508514
+            ],
+            "midpoint_impulse_target": [
+              -0.0028423831959861817,
+              -0.007666545737267977,
+              0.003808232100904903
+            ],
+            "strength_sha256": "59c464ababb0a1f57eb189c1e30a3e9c20e2455b383ce77bbfa3dc779be00663",
+            "gradient_wall_seconds": 1.0092744999856222,
+            "potential_and_flux_wall_seconds": 0.3422547499940265
+          }
+        ]
+      },
+      {
+        "time": 6.04,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43733,
+          "net_strength": [
+            -0.09460206863857773,
+            0.0018832421439156644,
+            0.02269816175937696
+          ],
+          "linear_impulse_per_density": [
+            -5.002912375765022,
+            -0.018118421543717855,
+            -0.001958507999349048
+          ],
+          "strength_l1": 26.22008917105338
+        },
+        "after": {
+          "particles": 43733,
+          "net_strength": [
+            -0.09460207173324053,
+            0.0018832415051615037,
+            0.022698166695585997
+          ],
+          "linear_impulse_per_density": [
+            -5.002925731967101,
+            -0.0181573274006316,
+            -0.0019394234413421237
+          ],
+          "strength_l1": 26.22000370785651
+        },
+        "integrated_source_strength": [
+          -1.2374870784406753e-19,
+          1.5885999786671775e-19,
+          -5.027926864368209e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.3355523565647066e-05,
+          -3.890443869697196e-05,
+          1.9085468563347842e-05
+        ],
+        "storage_net_strength_closure": [
+          -3.0946628036693647e-09,
+          -6.387541608344631e-10,
+          4.936209039244494e-09
+        ],
+        "wall_seconds": 2.329409999976633,
+        "stages": [
+          {
+            "internal_faces": 120608,
+            "source_net_strength_rate": [
+              8.64830663541689e-17,
+              -5.177844577755309e-19,
+              -1.3140712475695198e-16
+            ],
+            "source_strength_rate_l1": 1.3526634044543433,
+            "source_impulse_rate_per_density": [
+              -0.002662032681997567,
+              -0.007774445815232612,
+              0.0038136653215241857
+            ],
+            "midpoint_impulse_target": [
+              -0.0026839297300953417,
+              -0.0077711203580423495,
+              0.0038719878487056755
+            ],
+            "strength_sha256": "39114ae421f359d90710636bbc2447ae58f24eb507492eb290d32b1bf5ac18d6",
+            "gradient_wall_seconds": 0.7727529999974649,
+            "potential_and_flux_wall_seconds": 0.3553111669898499
+          },
+          {
+            "internal_faces": 120608,
+            "source_net_strength_rate": [
+              8.219463961335148e-17,
+              3.214808582083964e-17,
+              1.5525332154774401e-16
+            ],
+            "source_strength_rate_l1": 1.3525216572318404,
+            "source_impulse_rate_per_density": [
+              -0.0026711047131294115,
+              -0.00778088773939441,
+              0.0038170937126695654
+            ],
+            "midpoint_impulse_target": [
+              -0.0026931812550881513,
+              -0.007777991098069561,
+              0.00387563781236172
+            ],
+            "strength_sha256": "e00f6cfab4b0f85a75d739b8e08292373fc3c2f7862756bc0af9345732e848b1",
+            "gradient_wall_seconds": 0.7770658750087023,
+            "potential_and_flux_wall_seconds": 0.35677783298888244
+          }
+        ]
+      },
+      {
+        "time": 6.04,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43733,
+          "net_strength": [
+            -0.09460207173324053,
+            0.0018832415051615037,
+            0.022698166695585997
+          ],
+          "linear_impulse_per_density": [
+            -5.002925731967101,
+            -0.0181573274006316,
+            -0.0019394234413421237
+          ],
+          "strength_l1": 26.22000370785651
+        },
+        "after": {
+          "particles": 43733,
+          "net_strength": [
+            -0.09460206992640807,
+            0.001883241443804029,
+            0.022698170500231263
+          ],
+          "linear_impulse_per_density": [
+            -5.002939177675614,
+            -0.018196296448333957,
+            -0.0019203015809238504
+          ],
+          "strength_l1": 26.219923966340225
+        },
+        "integrated_source_strength": [
+          1.1773476895063156e-19,
+          -1.4052529402023554e-19,
+          4.398341686357557e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.3445992761149488e-05,
+          -3.896930874997205e-05,
+          1.911952296555134e-05
+        ],
+        "storage_net_strength_closure": [
+          1.8068324613084763e-09,
+          -6.135747451610614e-11,
+          3.804645265064002e-09
+        ],
+        "wall_seconds": 2.3694359170040116,
+        "stages": [
+          {
+            "internal_faces": 120608,
+            "source_net_strength_rate": [
+              -1.4582937773319986e-18,
+              -5.283490762101601e-17,
+              1.1015592155393859e-16
+            ],
+            "source_strength_rate_l1": 1.352393599507915,
+            "source_impulse_rate_per_density": [
+              -0.002680158687746133,
+              -0.007787375971872441,
+              0.0038204981491281437
+            ],
+            "midpoint_impulse_target": [
+              -0.0027024144877026883,
+              -0.007784908752159261,
+              0.003879264164045887
+            ],
+            "strength_sha256": "0067c8ddb7a45c592da5e985531c9d09f75490c1bf8769fc90e4aa1f1b178475",
+            "gradient_wall_seconds": 0.6775195829977747,
+            "potential_and_flux_wall_seconds": 0.3931022080068942
+          },
+          {
+            "internal_faces": 120608,
+            "source_net_strength_rate": [
+              1.161683066354459e-16,
+              1.2841624976583582e-17,
+              2.500370308877653e-17
+            ],
+            "source_strength_rate_l1": 1.3522748290695015,
+            "source_impulse_rate_per_density": [
+              -0.002689198552229885,
+              -0.0077938617499944286,
+              0.00382390459311027
+            ],
+            "midpoint_impulse_target": [
+              -0.0027116333117659696,
+              -0.007791824153432054,
+              0.003882892643133775
+            ],
+            "strength_sha256": "d6de022b3a8458969bd1a1fb35c326cb52b1d7e4ae6dd527601a94ae0718e6a6",
+            "gradient_wall_seconds": 0.8821527080144733,
+            "potential_and_flux_wall_seconds": 0.3666606249753386
+          }
+        ]
+      },
+      {
+        "time": 6.05,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43811,
+          "net_strength": [
+            -0.09632885370904398,
+            0.0020987254775297615,
+            0.023297445307655984
+          ],
+          "linear_impulse_per_density": [
+            -5.010999701737966,
+            -0.018444454037693406,
+            -0.001864253881251339
+          ],
+          "strength_l1": 26.223474019984835
+        },
+        "after": {
+          "particles": 43811,
+          "net_strength": [
+            -0.09632885175902184,
+            0.0020987245649273234,
+            0.023297447594144316
+          ],
+          "linear_impulse_per_density": [
+            -5.011012464365552,
+            -0.018483738429218872,
+            -0.0018449409730167945
+          ],
+          "strength_l1": 26.223403959158343
+        },
+        "integrated_source_strength": [
+          -1.3892581429006782e-19,
+          -8.690431893785707e-20,
+          -1.0876016424650273e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.2763150189438414e-05,
+          -3.9285244818048884e-05,
+          1.931357588097104e-05
+        ],
+        "storage_net_strength_closure": [
+          1.950022143898537e-09,
+          -9.126024379765547e-10,
+          2.2864883321127155e-09
+        ],
+        "wall_seconds": 2.8631959169870242,
+        "stages": [
+          {
+            "internal_faces": 120796,
+            "source_net_strength_rate": [
+              8.502017190166746e-17,
+              3.4078375473139296e-17,
+              -2.8303804249054305e-17
+            ],
+            "source_strength_rate_l1": 1.35623025080701,
+            "source_impulse_rate_per_density": [
+              -0.0025432355233641775,
+              -0.007850643672488701,
+              0.0038591845306255495
+            ],
+            "midpoint_impulse_target": [
+              -0.002565037024357165,
+              -0.007847657585491514,
+              0.003925868539823498
+            ],
+            "strength_sha256": "43d2048ead7f3056181d7336330be3e37ef90ef6153fa04e9155daa538aba532",
+            "gradient_wall_seconds": 1.0072230840160046,
+            "potential_and_flux_wall_seconds": 0.38296779099619016
+          },
+          {
+            "internal_faces": 120796,
+            "source_net_strength_rate": [
+              1.1318860163282772e-16,
+              4.4703778447901404e-17,
+              -6.799459873079982e-17
+            ],
+            "source_strength_rate_l1": 1.3561942688860802,
+            "source_impulse_rate_per_density": [
+              -0.002552630037887699,
+              -0.00785704896360974,
+              0.0038627151761941904
+            ],
+            "midpoint_impulse_target": [
+              -0.00257462502544803,
+              -0.00785449551055394,
+              0.0039296235470974465
+            ],
+            "strength_sha256": "80ff0df9eb28b8edc8be7b37a0b4a04d7bef106f794f0211fa7c3c3355296135",
+            "gradient_wall_seconds": 1.0480984579771757,
+            "potential_and_flux_wall_seconds": 0.35161266700015403
+          }
+        ]
+      },
+      {
+        "time": 6.05,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43811,
+          "net_strength": [
+            -0.09632885175902184,
+            0.0020987245649273234,
+            0.023297447594144316
+          ],
+          "linear_impulse_per_density": [
+            -5.011012464365552,
+            -0.018483738429218872,
+            -0.0018449409730167945
+          ],
+          "strength_l1": 26.223403959158343
+        },
+        "after": {
+          "particles": 43811,
+          "net_strength": [
+            -0.0963288537542637,
+            0.0020987229890341297,
+            0.023297451513955902
+          ],
+          "linear_impulse_per_density": [
+            -5.011025318042751,
+            -0.018523088480907578,
+            -0.0018255912201298647
+          ],
+          "strength_l1": 26.223339517125986
+        },
+        "integrated_source_strength": [
+          -1.145924515713136e-19,
+          -2.862802048187903e-19,
+          -1.194888971241201e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.285678483995602e-05,
+          -3.934970799303109e-05,
+          1.9348595979695355e-05
+        ],
+        "storage_net_strength_closure": [
+          -1.9952418605049084e-09,
+          -1.5758931934308126e-09,
+          3.919811586547557e-09
+        ],
+        "wall_seconds": 2.211939667002298,
+        "stages": [
+          {
+            "internal_faces": 120796,
+            "source_net_strength_rate": [
+              -8.400378778606334e-17,
+              -2.3196119683289673e-17,
+              5.57807155376136e-17
+            ],
+            "source_strength_rate_l1": 1.3561710953301882,
+            "source_impulse_rate_per_density": [
+              -0.002561997935680315,
+              -0.00786350058375258,
+              0.003866215607334274
+            ],
+            "midpoint_impulse_target": [
+              -0.0025841863912698724,
+              -0.007861380645950987,
+              0.003933348482844945
+            ],
+            "strength_sha256": "d16f3d35c178d8f7771aede977be6d95c74346e3fe0ff1f1d98db795062eebf8",
+            "gradient_wall_seconds": 0.7596209579787683,
+            "potential_and_flux_wall_seconds": 0.2992762500070967
+          },
+          {
+            "internal_faces": 120796,
+            "source_net_strength_rate": [
+              9.92683207297658e-17,
+              2.8994801361074206e-17,
+              -9.420147882713143e-19
+            ],
+            "source_strength_rate_l1": 1.3561560291966894,
+            "source_impulse_rate_per_density": [
+              -0.0025713569679911667,
+              -0.007869941598606397,
+              0.003869719195939075
+            ],
+            "midpoint_impulse_target": [
+              -0.0025937381076910717,
+              -0.007868254879487531,
+              0.003937076870888836
+            ],
+            "strength_sha256": "568594463d7dd0153db9c60670d495d7a5f2b5a7f20504e94e9c0ee66cb3da8e",
+            "gradient_wall_seconds": 0.7504072500159964,
+            "potential_and_flux_wall_seconds": 0.3606500839814544
+          }
+        ]
+      },
+      {
+        "time": 6.06,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43873,
+          "net_strength": [
+            -0.09808158368940278,
+            0.0022864604534365007,
+            0.023877289410079827
+          ],
+          "linear_impulse_per_density": [
+            -5.019049029704319,
+            -0.018759480727009035,
+            -0.0017809804298523925
+          ],
+          "strength_l1": 26.226338498736915
+        },
+        "after": {
+          "particles": 43873,
+          "net_strength": [
+            -0.0980815858841653,
+            0.0022864706863607864,
+            0.023877285815137816
+          ],
+          "linear_impulse_per_density": [
+            -5.019060929300234,
+            -0.018800057838781706,
+            -0.0017610233067718217
+          ],
+          "strength_l1": 26.226281075837726
+        },
+        "integrated_source_strength": [
+          -5.938004496763361e-19,
+          3.995513322967785e-19,
+          1.1569388545076637e-18
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.189950174979995e-05,
+          -4.057853775853124e-05,
+          1.995559428158199e-05
+        ],
+        "storage_net_strength_closure": [
+          -2.1947625100273174e-09,
+          1.0232924285302887e-08,
+          -3.59494201189978e-09
+        ],
+        "wall_seconds": 2.2819425000052433,
+        "stages": [
+          {
+            "internal_faces": 120979,
+            "source_net_strength_rate": [
+              -2.9545682142338596e-17,
+              -4.191853559398225e-18,
+              1.582241354444518e-16
+            ],
+            "source_strength_rate_l1": 1.3687291432783142,
+            "source_impulse_rate_per_density": [
+              -0.002369978459212105,
+              -0.008109040775632225,
+              0.003987420402550531
+            ],
+            "midpoint_impulse_target": [
+              -0.00237681413735442,
+              -0.008109787427576148,
+              0.00405154006244355
+            ],
+            "strength_sha256": "970bef9901bc3c35dd930bfdd00f70b547918c4bc21c623c6b4ace80b5f3ac4c",
+            "gradient_wall_seconds": 0.7393959170149174,
+            "potential_and_flux_wall_seconds": 0.37302333299885504
+          },
+          {
+            "internal_faces": 120979,
+            "source_net_strength_rate": [
+              -1.9484693119970613e-16,
+              6.665659603968712e-17,
+              7.937796601580563e-17
+            ],
+            "source_strength_rate_l1": 1.3687122603712145,
+            "source_impulse_rate_per_density": [
+              -0.002379900349959994,
+              -0.00811570755170625,
+              0.003991118856316419
+            ],
+            "midpoint_impulse_target": [
+              -0.0023869596383204687,
+              -0.008116886029953243,
+              0.004055475769422611
+            ],
+            "strength_sha256": "35be23b64e8462c1edbe3c1287b1a2e1d40045840c97d733e71cee28c8e17006",
+            "gradient_wall_seconds": 0.7694907080149278,
+            "potential_and_flux_wall_seconds": 0.33605962499859743
+          }
+        ]
+      },
+      {
+        "time": 6.06,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43873,
+          "net_strength": [
+            -0.0980815858841653,
+            0.0022864706863607864,
+            0.023877285815137816
+          ],
+          "linear_impulse_per_density": [
+            -5.019060929300234,
+            -0.018800057838781706,
+            -0.0017610233067718217
+          ],
+          "strength_l1": 26.226281075837726
+        },
+        "after": {
+          "particles": 43873,
+          "net_strength": [
+            -0.09808158474903539,
+            0.0022864682063423736,
+            0.02387729114494619
+          ],
+          "linear_impulse_per_density": [
+            -5.019072928573639,
+            -0.018840704737079446,
+            -0.0017410314676951444
+          ],
+          "strength_l1": 26.226229360756058
+        },
+        "integrated_source_strength": [
+          1.2506282944800167e-19,
+          -2.4761103629619067e-19,
+          5.594634804766503e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.1998454139586132e-05,
+          -4.064557157261514e-05,
+          1.9992438284751605e-05
+        ],
+        "storage_net_strength_closure": [
+          1.1351299066124125e-09,
+          -2.4800184126061128e-09,
+          5.329808371863454e-09
+        ],
+        "wall_seconds": 2.104608958004974,
+        "stages": [
+          {
+            "internal_faces": 120979,
+            "source_net_strength_rate": [
+              8.605375392938717e-17,
+              6.268222480694134e-18,
+              -2.2691374073509815e-17
+            ],
+            "source_strength_rate_l1": 1.3687080849773685,
+            "source_impulse_rate_per_density": [
+              -0.0023898010554957113,
+              -0.008122416130896024,
+              0.003994806818947832
+            ],
+            "midpoint_impulse_target": [
+              -0.002397083777348905,
+              -0.008124027213826346,
+              0.004059401590629471
+            ],
+            "strength_sha256": "c58bd52c9307fcd1a310acfc1ff59161515689fe00e6fa4efcbdd98e0c890ecf",
+            "gradient_wall_seconds": 0.6745419159997255,
+            "potential_and_flux_wall_seconds": 0.2582419590034988
+          },
+          {
+            "internal_faces": 120979,
+            "source_net_strength_rate": [
+              4.3209652860794833e-17,
+              1.4771847627253622e-17,
+              -6.224049195506939e-17
+            ],
+            "source_strength_rate_l1": 1.368712013191189,
+            "source_impulse_rate_per_density": [
+              -0.0023996908279172165,
+              -0.008129114314523171,
+              0.003998487656950228
+            ],
+            "midpoint_impulse_target": [
+              -0.002407196680301442,
+              -0.008131157597485311,
+              0.004063320152839927
+            ],
+            "strength_sha256": "1668e22dbf3e9435eaa3dad77bf2ce8732b3560da56f28eb40c662e94eac08a0",
+            "gradient_wall_seconds": 0.7559264170122333,
+            "potential_and_flux_wall_seconds": 0.35221199999796227
+          }
+        ]
+      },
+      {
+        "time": 6.07,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 43959,
+          "net_strength": [
+            -0.0998522491812832,
+            0.0024410383980749684,
+            0.024454792376085166
+          ],
+          "linear_impulse_per_density": [
+            -5.027058126934055,
+            -0.019066743502165143,
+            -0.0017150784232090545
+          ],
+          "strength_l1": 26.229373638118588
+        },
+        "after": {
+          "particles": 43959,
+          "net_strength": [
+            -0.09985224831703743,
+            0.002441042485115119,
+            0.024454794078270004
+          ],
+          "linear_impulse_per_density": [
+            -5.027069279669461,
+            -0.019107883741348693,
+            -0.0016953192536185314
+          ],
+          "strength_l1": 26.229323591281478
+        },
+        "integrated_source_strength": [
+          1.3078322282350627e-19,
+          4.02030767408815e-19,
+          -3.149392625066573e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.115267692233806e-05,
+          -4.114007744155104e-05,
+          1.9757514212523928e-05
+        ],
+        "storage_net_strength_closure": [
+          8.642457720389195e-10,
+          4.087040150355529e-09,
+          1.7021848378414274e-09
+        ],
+        "wall_seconds": 2.3747498750162777,
+        "stages": [
+          {
+            "internal_faces": 121221,
+            "source_net_strength_rate": [
+              -1.0201561915462592e-16,
+              -3.226539740249252e-17,
+              1.482735008150792e-16
+            ],
+            "source_strength_rate_l1": 1.3810670187885496,
+            "source_impulse_rate_per_density": [
+              -0.0022201637695527213,
+              -0.008221328917662977,
+              0.0039475935574741425
+            ],
+            "midpoint_impulse_target": [
+              -0.0022187924635950537,
+              -0.008215603112296292,
+              0.004020573728152589
+            ],
+            "strength_sha256": "38e3910b5bebfc7175921fe4138ac19b13b4397e865db3eac3d9fa6163ab7bfc",
+            "gradient_wall_seconds": 0.7823371250124183,
+            "potential_and_flux_wall_seconds": 0.3383153329777997
+          },
+          {
+            "internal_faces": 121221,
+            "source_net_strength_rate": [
+              -7.460022073872882e-17,
+              -3.813920362350912e-17,
+              -1.9045804859507176e-16
+            ],
+            "source_strength_rate_l1": 1.3810700560447322,
+            "source_impulse_rate_per_density": [
+              -0.002230535384467622,
+              -0.008228015488310064,
+              0.00395150284250476
+            ],
+            "midpoint_impulse_target": [
+              -0.0022294081421448727,
+              -0.00822272208150513,
+              0.004024723997060562
+            ],
+            "strength_sha256": "00fe1a89211f03c6b56b13843d257abc08cedbea4e670f62f0b1fa83a877a322",
+            "gradient_wall_seconds": 0.8324589170224499,
+            "potential_and_flux_wall_seconds": 0.3678959999815561
+          }
+        ]
+      },
+      {
+        "time": 6.07,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 43959,
+          "net_strength": [
+            -0.09985224831703743,
+            0.002441042485115119,
+            0.024454794078270004
+          ],
+          "linear_impulse_per_density": [
+            -5.027069279669461,
+            -0.019107883741348693,
+            -0.0016953192536185314
+          ],
+          "strength_l1": 26.229323591281478
+        },
+        "after": {
+          "particles": 43959,
+          "net_strength": [
+            -0.09985224979711904,
+            0.002441038278127916,
+            0.024454794046490314
+          ],
+          "linear_impulse_per_density": [
+            -5.027080536804731,
+            -0.01914909125981206,
+            -0.0016755224549174948
+          ],
+          "strength_l1": 26.229279398374835
+        },
+        "integrated_source_strength": [
+          5.040702555837992e-19,
+          1.7451932819356498e-19,
+          -6.106877659732288e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.1256168904299405e-05,
+          -4.1207399067749366e-05,
+          1.9796389872247914e-05
+        ],
+        "storage_net_strength_closure": [
+          -1.4800816133298268e-09,
+          -4.206987203222649e-09,
+          -3.177968937999749e-11
+        ],
+        "wall_seconds": 1.9190367920091376,
+        "stages": [
+          {
+            "internal_faces": 121221,
+            "source_net_strength_rate": [
+              3.2076415583845595e-17,
+              2.988155883006575e-17,
+              -1.4533209908280952e-16
+            ],
+            "source_strength_rate_l1": 1.381085918116828,
+            "source_impulse_rate_per_density": [
+              -0.0022408903707056374,
+              -0.008234755179581707,
+              0.00395539039875005
+            ],
+            "midpoint_impulse_target": [
+              -0.0022400072774711086,
+              -0.008229895484356127,
+              0.004028852871351406
+            ],
+            "strength_sha256": "275df5488fddb67a099bbd46c264b3563786c51b1d6e34127c326ba8d5116721",
+            "gradient_wall_seconds": 0.7369139580114279,
+            "potential_and_flux_wall_seconds": 0.3189179999753833
+          },
+          {
+            "internal_faces": 121221,
+            "source_net_strength_rate": [
+              -1.4829484910591827e-16,
+              2.3438430663208506e-17,
+              -1.3762281092899134e-16
+            ],
+            "source_strength_rate_l1": 1.3811099501616153,
+            "source_impulse_rate_per_density": [
+              -0.0022512337808598677,
+              -0.008241479813550012,
+              0.0039592779744496214
+            ],
+            "midpoint_impulse_target": [
+              -0.002250594493585665,
+              -0.008237053182843254,
+              0.004032981819569732
+            ],
+            "strength_sha256": "67990eae1367630685ba330f6d3fbc0054f88d73944747cbc1b78b6180d64c8b",
+            "gradient_wall_seconds": 0.6556180840125307,
+            "potential_and_flux_wall_seconds": 0.17239187500672415
+          }
+        ]
+      },
+      {
+        "time": 6.08,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 44017,
+          "net_strength": [
+            -0.10163613515048658,
+            0.0025817220707951005,
+            0.02502256561189098
+          ],
+          "linear_impulse_per_density": [
+            -5.035022262910433,
+            -0.019367264463481106,
+            -0.0016528166501517255
+          ],
+          "strength_l1": 26.231783661161465
+        },
+        "after": {
+          "particles": 44017,
+          "net_strength": [
+            -0.10163613766110291,
+            0.002581719531390414,
+            0.025022563533010578
+          ],
+          "linear_impulse_per_density": [
+            -5.035032779845643,
+            -0.019408946073774535,
+            -0.0016330122444756742
+          ],
+          "strength_l1": 26.23173461908661
+        },
+        "integrated_source_strength": [
+          -6.348487447370031e-20,
+          3.732616324993738e-20,
+          3.7769635455842374e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.0515761917518367e-05,
+          -4.1681973384216304e-05,
+          1.980384240830082e-05
+        ],
+        "storage_net_strength_closure": [
+          -2.510616325882362e-09,
+          -2.5394046865674595e-09,
+          -2.078880401535031e-09
+        ],
+        "wall_seconds": 1.9973154579929542,
+        "stages": [
+          {
+            "internal_faces": 121348,
+            "source_net_strength_rate": [
+              -3.832155724390766e-18,
+              6.492399014607845e-17,
+              -3.1724013481840854e-17
+            ],
+            "source_strength_rate_l1": 1.3931579821253193,
+            "source_impulse_rate_per_density": [
+              -0.0020923744992249423,
+              -0.008329555407045029,
+              0.003956836774236497
+            ],
+            "midpoint_impulse_target": [
+              -0.00209456250544167,
+              -0.00832091535981789,
+              0.004036069225997501
+            ],
+            "strength_sha256": "dcf2bde4e827601283f3ca45f801852a943cd18ccb52625fbfa564b18a1e5740",
+            "gradient_wall_seconds": 0.8051425830053631,
+            "potential_and_flux_wall_seconds": 0.24140950001310557
+          },
+          {
+            "internal_faces": 121348,
+            "source_net_strength_rate": [
+              9.917816135171997e-17,
+              -5.372858362865095e-17,
+              6.171810010128194e-17
+            ],
+            "source_strength_rate_l1": 1.3931725070526038,
+            "source_impulse_rate_per_density": [
+              -0.0021031523835037045,
+              -0.00833639467684332,
+              0.003960768481660147
+            ],
+            "midpoint_impulse_target": [
+              -0.0021056340897154108,
+              -0.008328187240599697,
+              0.004040240699408006
+            ],
+            "strength_sha256": "cd8f84b24bc09eb776af09489c62b25ee5bc5a2f3fe3d21fb2989f5ea2cd5690",
+            "gradient_wall_seconds": 0.6764225829974748,
+            "potential_and_flux_wall_seconds": 0.21048541701748036
+          }
+        ]
+      },
+      {
+        "time": 6.08,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 44017,
+          "net_strength": [
+            -0.10163613766110291,
+            0.002581719531390414,
+            0.025022563533010578
+          ],
+          "linear_impulse_per_density": [
+            -5.035032779845643,
+            -0.019408946073774535,
+            -0.0016330122444756742
+          ],
+          "strength_l1": 26.23173461908661
+        },
+        "after": {
+          "particles": 44017,
+          "net_strength": [
+            -0.10163613743866345,
+            0.0025817169485073954,
+            0.02502256598476227
+          ],
+          "linear_impulse_per_density": [
+            -5.035043401407238,
+            -0.01945069954405153,
+            -0.001613172218220681
+          ],
+          "strength_l1": 26.231691427686677
+        },
+        "integrated_source_strength": [
+          -2.695153443720917e-19,
+          -1.9826368984856742e-19,
+          1.853607692764041e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -1.0623370049895755e-05,
+          -4.175078559129083e-05,
+          1.9842929985319887e-05
+        ],
+        "storage_net_strength_closure": [
+          2.224394560132546e-10,
+          -2.5828830183776352e-09,
+          2.4517516903721968e-09
+        ],
+        "wall_seconds": 2.4442143750202376,
+        "stages": [
+          {
+            "internal_faces": 121348,
+            "source_net_strength_rate": [
+              3.5876966391391935e-17,
+              2.509043607793001e-17,
+              -1.317871691670767e-16
+            ],
+            "source_strength_rate_l1": 1.3931999670570432,
+            "source_impulse_rate_per_density": [
+              -0.002113920482341926,
+              -0.008343280493359358,
+              0.0039646741003152245
+            ],
+            "midpoint_impulse_target": [
+              -0.0021166963707165277,
+              -0.008335506671098539,
+              0.00404438635919914
+            ],
+            "strength_sha256": "46b57aa687eb726c46f864400dd0359c7d53eab0df45ca5ce7596978661b3949",
+            "gradient_wall_seconds": 0.7093068340036552,
+            "potential_and_flux_wall_seconds": 0.38257691598846577
+          },
+          {
+            "internal_faces": 121348,
+            "source_net_strength_rate": [
+              -1.554047791450831e-17,
+              2.6852717903194634e-17,
+              -5.797606922014643e-17
+            ],
+            "source_strength_rate_l1": 1.3932357319004596,
+            "source_impulse_rate_per_density": [
+              -0.0021246740099791525,
+              -0.00835015711825802,
+              0.003968585997063992
+            ],
+            "midpoint_impulse_target": [
+              -0.0021277435289110028,
+              -0.008342816299760263,
+              0.0040485379503057955
+            ],
+            "strength_sha256": "6d7ead38c31352552ef065a85636435ee1976ad682256afa41d73a996c57c67c",
+            "gradient_wall_seconds": 0.9386241669999436,
+            "potential_and_flux_wall_seconds": 0.36977408299571835
+          }
+        ]
+      },
+      {
+        "time": 6.09,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 44126,
+          "net_strength": [
+            -0.10343901733279265,
+            0.002711452813400808,
+            0.025579399431703065
+          ],
+          "linear_impulse_per_density": [
+            -5.042920540788365,
+            -0.019661119676009187,
+            -0.0015981143403071031
+          ],
+          "strength_l1": 26.23484744905781
+        },
+        "after": {
+          "particles": 44126,
+          "net_strength": [
+            -0.1034390174731345,
+            0.002711459381974368,
+            0.02557939898534345
+          ],
+          "linear_impulse_per_density": [
+            -5.042930266759553,
+            -0.01970360081189946,
+            -0.0015778784046163365
+          ],
+          "strength_l1": 26.234805246436565
+        },
+        "integrated_source_strength": [
+          -6.588162343232739e-20,
+          3.005104287722616e-19,
+          -1.0732837147484055e-18
+        ],
+        "integrated_source_impulse_per_density": [
+          -9.72639906422347e-06,
+          -4.248119858962737e-05,
+          2.023579519392908e-05
+        ],
+        "storage_net_strength_closure": [
+          -1.403418491870524e-10,
+          6.568573559772388e-09,
+          -4.4635961486213736e-10
+        ],
+        "wall_seconds": 2.5514782500104047,
+        "stages": [
+          {
+            "internal_faces": 121677,
+            "source_net_strength_rate": [
+              1.5293395244998265e-16,
+              4.43857366013615e-17,
+              -1.9198704791000841e-16
+            ],
+            "source_strength_rate_l1": 1.4025137085961061,
+            "source_impulse_rate_per_density": [
+              -0.0019341432949204226,
+              -0.008489396885579627,
+              0.004043220499776755
+            ],
+            "midpoint_impulse_target": [
+              -0.0019252018288389344,
+              -0.008482199790070593,
+              0.004123345637699653
+            ],
+            "strength_sha256": "e301fbd55020835117a644ff7f36b23bd77009379f7386f2e18b2d9838f6fdaa",
+            "gradient_wall_seconds": 1.0504492500040215,
+            "potential_and_flux_wall_seconds": 0.3800234580121469
+          },
+          {
+            "internal_faces": 121677,
+            "source_net_strength_rate": [
+              -7.763926297390183e-17,
+              -4.893457070745495e-17,
+              -8.423125852540751e-17
+            ],
+            "source_strength_rate_l1": 1.4025675458450002,
+            "source_impulse_rate_per_density": [
+              -0.0019452798128447074,
+              -0.008496239717925387,
+              0.004047159038785764
+            ],
+            "midpoint_impulse_target": [
+              -0.0019366209361981225,
+              -0.008489473984831124,
+              0.004127533743496632
+            ],
+            "strength_sha256": "8f102d7b79e5ce3e04189f381d86cdd2c20f3390200d5b2aca90715b705cb9fa",
+            "gradient_wall_seconds": 0.80016620902461,
+            "potential_and_flux_wall_seconds": 0.2492195829981938
+          }
+        ]
+      },
+      {
+        "time": 6.09,
+        "phase": "before_native_evolution",
+        "duration": 0.005,
+        "before": {
+          "particles": 44126,
+          "net_strength": [
+            -0.1034390174731345,
+            0.002711459381974368,
+            0.02557939898534345
+          ],
+          "linear_impulse_per_density": [
+            -5.042930266759553,
+            -0.01970360081189946,
+            -0.0015778784046163365
+          ],
+          "strength_l1": 26.234805246436565
+        },
+        "after": {
+          "particles": 44126,
+          "net_strength": [
+            -0.10343901608603945,
+            0.0027114551370078788,
+            0.02557938771185364
+          ],
+          "linear_impulse_per_density": [
+            -5.042940106128333,
+            -0.01974614782691708,
+            -0.0015576034522530853
+          ],
+          "strength_l1": 26.23476896232759
+        },
+        "integrated_source_strength": [
+          -1.2938644798375058e-19,
+          -1.6506957163931944e-19,
+          2.672289347640513e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -9.837514868249419e-06,
+          -4.2550055545612175e-05,
+          2.0274995834131878e-05
+        ],
+        "storage_net_strength_closure": [
+          1.3870950500611166e-09,
+          -4.244966489265554e-09,
+          -1.1273489808606095e-08
+        ],
+        "wall_seconds": 2.9512621669855434,
+        "stages": [
+          {
+            "internal_faces": 121677,
+            "source_net_strength_rate": [
+              -1.5215021484621302e-16,
+              1.024688760799968e-17,
+              5.4303661717579203e-17
+            ],
+            "source_strength_rate_l1": 1.4026346264956713,
+            "source_impulse_rate_per_density": [
+              -0.0019563978668034375,
+              -0.008503129359153731,
+              0.004051080654844219
+            ],
+            "midpoint_impulse_target": [
+              -0.0019480216882273398,
+              -0.00849679573068052,
+              0.004131705343518889
+            ],
+            "strength_sha256": "844c1e12f5be4e7e62deb695af47879159c1a3f906183a6edea44a416d0036bd",
+            "gradient_wall_seconds": 1.1458734589978121,
+            "potential_and_flux_wall_seconds": 0.3882664999982808
+          },
+          {
+            "internal_faces": 121677,
+            "source_net_strength_rate": [
+              -9.281836589301194e-17,
+              7.042520526787973e-17,
+              -1.2000492722228929e-16
+            ],
+            "source_strength_rate_l1": 1.4027100297557602,
+            "source_impulse_rate_per_density": [
+              -0.0019675029736498264,
+              -0.008510011109122289,
+              0.004054999166826347
+            ],
+            "midpoint_impulse_target": [
+              -0.001959409051620117,
+              -0.00850410923393491,
+              0.004135873896893022
+            ],
+            "strength_sha256": "a9bc86bd348753c7eacee6b352dda0c560a4066fefa10e1958a1459b72dd1bb3",
+            "gradient_wall_seconds": 1.1698313340020832,
+            "potential_and_flux_wall_seconds": 0.1905202080088202
+          }
+        ]
+      },
+      {
+        "time": 6.1,
+        "phase": "after_renewal",
+        "duration": 0.005,
+        "before": {
+          "particles": 44213,
+          "net_strength": [
+            -0.10525597960971789,
+            0.0027971981308674287,
+            0.02610062122108303
+          ],
+          "linear_impulse_per_density": [
+            -5.050734828517707,
+            -0.019930561023042134,
+            -0.0015659856559704915
+          ],
+          "strength_l1": 26.237481837777118
+        },
+        "after": {
+          "particles": 44213,
+          "net_strength": [
+            -0.10525597899365846,
+            0.0027971961088610886,
+            0.026100621811155023
+          ],
+          "linear_impulse_per_density": [
+            -5.050743734040041,
+            -0.01997423768485664,
+            -0.0015456849779191815
+          ],
+          "strength_l1": 26.237447923670466
+        },
+        "integrated_source_strength": [
+          -3.5514875603651717e-20,
+          -1.796343416829544e-19,
+          -3.318005145363189e-19
+        ],
+        "integrated_source_impulse_per_density": [
+          -8.907076946637492e-06,
+          -4.367455182345369e-05,
+          2.030056171562105e-05
+        ],
+        "storage_net_strength_closure": [
+          6.160594257309404e-10,
+          -2.022006339961413e-09,
+          5.900719916006151e-10
+        ],
+        "wall_seconds": 2.712037582998164,
+        "stages": [
+          {
+            "internal_faces": 121905,
+            "source_net_strength_rate": [
+              -5.966648032051604e-17,
+              -5.1682013061741654e-18,
+              2.2952944816618604e-16
+            ],
+            "source_strength_rate_l1": 1.4160753770262051,
+            "source_impulse_rate_per_density": [
+              -0.001769759222058411,
+              -0.00872798397330107,
+              0.004056118258308448
+            ],
+            "midpoint_impulse_target": [
+              -0.0017571479490137633,
+              -0.008724071177292552,
+              0.00413807667931792
+            ],
+            "strength_sha256": "a866522d20ea4fb83ebd30a5cf11b06861bc4668561f574d19abca8978382e14",
+            "gradient_wall_seconds": 1.202631249994738,
+            "potential_and_flux_wall_seconds": 0.32431941700633615
+          },
+          {
+            "internal_faces": 121905,
+            "source_net_strength_rate": [
+              -5.77473247260565e-18,
+              -5.2744340442928194e-17,
+              -6.005408815996923e-17
+            ],
+            "source_strength_rate_l1": 1.4161553930769346,
+            "source_impulse_rate_per_density": [
+              -0.0017814153893274567,
+              -0.008734910364690582,
+              0.0040601123431241925
+            ],
+            "midpoint_impulse_target": [
+              -0.0017691077305818162,
+              -0.008731426484705313,
+              0.004142328014482336
+            ],
+            "strength_sha256": "d5e42d48c549207f491e8fc876f64a22935feb581b3ae650db3b3e82e9fac36f",
+            "gradient_wall_seconds": 0.894767874997342,
+            "potential_and_flux_wall_seconds": 0.22827737501938827
+          }
+        ]
+      }
+    ]
+  }
+}

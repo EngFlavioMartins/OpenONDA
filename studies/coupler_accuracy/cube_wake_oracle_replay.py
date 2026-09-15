@@ -3,8 +3,8 @@
 Reference native velocities at t=6 and 7 supply the renewal target, linearly
 interpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary
 feedback is necessary for the existing transverse disturbance to grow.
-Optional controls change either the existing alignment operator or the nodal
-covector stage source. They are distinct, mutually exclusive experiments.
+Optional controls change alignment, the nodal covector source, or the compact
+conservative source on remeshed cells. They are mutually exclusive experiments.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 import time as wall_clock
 
+from cube_covector_flux_step import invariants
 from cube_lattice_phase_study import distance, reference_gradient, smooth
 from cube_wake_drift_audit import frame, ordered_fields
 from cube_wake_particle_probe import load_case, rms
@@ -103,18 +104,25 @@ def run(args):
         directory=args.output / "runtime",
         samplers=case.vpm.Samplers(),
         numerics=replace(
-            case.VPM_CASE.numerics, max_n_particles=300000, max_evaluation_points=300000
+            case.VPM_CASE.numerics,
+            time_step_size=args.time_step_size,
+            max_n_particles=300000,
+            max_evaluation_points=300000,
         ),
     )
     report = {
         "description": __doc__,
         "alignment_rate_per_second": args.alignment_rate,
         "nodal_covector_control": args.covector_control,
+        "compact_flux_control": args.flux_control,
+        "time_step_size": args.time_step_size,
+        "renewal_interval": args.renewal_interval,
         "checkpoint": str(args.checkpoint.resolve()),
         "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
         "target_cache_sha256": hashlib.sha256(args.target_cache.read_bytes()).hexdigest(),
         "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
         "observations": [],
+        "step_budgets": [],
         "steps_completed": 0,
         "steps_requested": args.steps,
         "status": "running",
@@ -128,9 +136,14 @@ def run(args):
     }
     solver = VPMSolver(policy)
     covector = None
+    flux = None
     try:
-        solver.load_backup(args.checkpoint)
+        solver.load_backup(
+            args.checkpoint,
+            time_step_size=args.time_step_size if args.time_step_size != 0.01 else None,
+        )
         assert abs(solver.time - 6) < 1e-8
+        assert abs(solver.time_step_size - args.time_step_size) < 1e-12
         solver.physics.configure_body_box(np.array([-0.5, 0.5] * 3))
         solver.physics.configure_grid_lattice_anchor(np.array([-0.03] * 3), 0.06)
         if args.covector_control:
@@ -142,6 +155,15 @@ def run(args):
                 solver.stepper._apply_viscous_diffusion
             )
             for name in ("cube_covector_stage_source.py", "cube_wake_measured_longitudinal.py"):
+                path = Path(__file__).with_name(name)
+                report["source_sha256"][str(path.resolve())] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+        if args.flux_control:
+            from cube_covector_flux_step import CompactFluxStep
+
+            flux = CompactFluxStep(solver)
+            for name in ("cube_covector_flux_step.py", "cube_covector_flux_control.py"):
                 path = Path(__file__).with_name(name)
                 report["source_sha256"][str(path.resolve())] = hashlib.sha256(
                     path.read_bytes()
@@ -160,10 +182,13 @@ def run(args):
             solver.case = replace(solver.case, numerics=solver.setup)
         solver.refresh_boundary_element_solution()
         started = wall_clock.perf_counter()
+        observation_stride = round(0.1 / solver.time_step_size)
+        renewal_stride = round(args.renewal_interval / solver.time_step_size)
         for step in range(args.steps + 1):
-            if step % 10 == 0 or step == args.steps:
+            if step % observation_stride == 0 or step == args.steps:
                 u = solver.compute_velocity_at_points(points)
-                reference = (1 - step / 100) * references[0] + (step / 100) * references[1]
+                fraction = solver.time - 6.0
+                reference = (1 - fraction) * references[0] + fraction * references[1]
                 reflected = points.copy()
                 reflected[:, 2] *= -1
                 ur = solver.compute_velocity_at_points(reflected) * [1, 1, -1]
@@ -184,6 +209,8 @@ def run(args):
                 report["observations"].append(row)
                 if covector is not None:
                     report["covector_source"] = covector.measurements()
+                if flux is not None:
+                    report["compact_flux_source"] = flux.measurements()
                 print(json.dumps(row), flush=True)
                 np.savez_compressed(
                     args.output / f"fields_step{step:03d}.npz",
@@ -194,33 +221,53 @@ def run(args):
                 )
             if step == args.steps:
                 break
+            step_started = wall_clock.perf_counter()
+            budget = {"start_time": solver.time, "before": invariants(solver)}
+            if flux is not None:
+                flux.advance(0.5 * solver.time_step_size, "before_native_evolution")
+            budget["before_native_evolution"] = invariants(solver)
+            native_started = wall_clock.perf_counter()
             solver.advance(defer_output=True)
+            budget["native_evolution_wall_seconds"] = wall_clock.perf_counter() - native_started
+            budget["before_transfer"] = invariants(solver)
             if covector is not None:
                 covector.step_budgets[-1]["before_transfer"] = covector.invariants()
-            fraction = (step + 1) / 100
+            fraction = solver.time - 6.0
             target = (1 - fraction) * targets[0] + fraction * targets[1]
-            replace_particles_from_buffered_m4_renewal(
-                solver,
-                lattice=lattice,
-                fvm_vortex_strength_at_node=lambda _, target=target: target,
-                particle_fluid_weight=lambda p: smooth(distance(p), -0.06, 0),
-                particle_in_solid=lambda p: np.all(np.abs(p) < 0.5, axis=1),
-                prune_threshold=0.05 * 0.06**3,
-                core_radius_ratio=1.1,
-                amplification_cap=1.8,
-                boundary_prune_multiplier=10,
-                kinematic_viscosity=0.001,
-                freestream_speed=1,
-                time_step_size=solver.time_step_size,
-                compute_diagnostics=False,
-            )
+            transfer_started = wall_clock.perf_counter()
+            budget["transfer_due"] = (step + 1) % renewal_stride == 0
+            if budget["transfer_due"]:
+                replace_particles_from_buffered_m4_renewal(
+                    solver,
+                    lattice=lattice,
+                    fvm_vortex_strength_at_node=lambda _, target=target: target,
+                    particle_fluid_weight=lambda p: smooth(distance(p), -0.06, 0),
+                    particle_in_solid=lambda p: np.all(np.abs(p) < 0.5, axis=1),
+                    prune_threshold=0.05 * 0.06**3,
+                    core_radius_ratio=1.1,
+                    amplification_cap=1.8,
+                    boundary_prune_multiplier=10,
+                    kinematic_viscosity=0.001,
+                    freestream_speed=1,
+                    time_step_size=args.renewal_interval,
+                    compute_diagnostics=False,
+                )
+            budget["transfer_wall_seconds"] = wall_clock.perf_counter() - transfer_started
+            budget["after_transfer"] = invariants(solver)
+            if flux is not None:
+                flux.advance(0.5 * solver.time_step_size, "after_native_evolution")
             solver.refresh_boundary_element_solution()
             solver.execute_scheduled_samplers()
+            budget["after"] = invariants(solver)
+            budget["wall_seconds"] = wall_clock.perf_counter() - step_started
+            report["step_budgets"].append(budget)
             if covector is not None:
                 covector.step_budgets[-1]["after_transfer"] = covector.invariants()
             report["steps_completed"] = step + 1
             if covector is not None:
                 report["covector_source"] = covector.measurements()
+            if flux is not None:
+                report["compact_flux_source"] = flux.measurements()
             (args.output / "replay.json").write_text(json.dumps(report, indent=2) + "\n")
         np.savez_compressed(
             args.output / "final_particles.npz",
@@ -235,6 +282,8 @@ def run(args):
         report["error"] = repr(error)
         if covector is not None:
             report["covector_source"] = covector.measurements()
+        if flux is not None:
+            report["compact_flux_source"] = flux.measurements()
         (args.output / "replay.json").write_text(json.dumps(report, indent=2) + "\n")
         raise
     finally:
@@ -250,12 +299,18 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--alignment-rate", type=float, default=0)
     parser.add_argument("--covector-control", action="store_true")
+    parser.add_argument("--flux-control", action="store_true")
+    parser.add_argument("--time-step-size", type=float, choices=(0.01, 0.005, 0.0025), default=0.01)
+    parser.add_argument("--renewal-interval", type=float, default=0.01)
     parser.add_argument("--steps", type=int, default=100)
     args = parser.parse_args()
-    if not 1 <= args.steps <= 100:
-        parser.error("This bounded replay supports 1 through 100 steps")
-    if args.covector_control and args.alignment_rate:
-        parser.error("The two controls must be measured separately")
+    if not 1 <= args.steps <= round(1 / args.time_step_size):
+        parser.error("This bounded replay must remain inside the physical interval [6, 7]")
+    if sum((args.covector_control, args.flux_control, bool(args.alignment_rate))) > 1:
+        parser.error("The three controls must be measured separately")
+    ratio = args.renewal_interval / args.time_step_size
+    if not np.isfinite(ratio) or ratio < 1 or abs(ratio - round(ratio)) > 1e-10:
+        parser.error("Renewal interval must be a positive integer multiple of the time step")
     set_num_threads(2)
     with threadpool_limits(limits=2):
         run(args)

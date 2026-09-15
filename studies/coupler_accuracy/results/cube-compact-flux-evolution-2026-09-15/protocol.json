@@ -1,0 +1,27 @@
+{
+  "objective": "Qualify compact conservative source for evolving 3D cube wake; keep mesh, FVM reference, native RK, diffusion, LES, health and pruning unchanged.",
+  "horizon": [
+    6,
+    7
+  ],
+  "time_steps": [
+    0.01,
+    0.005
+  ],
+  "renewal_interval": 0.01,
+  "source_integrator": "Explicit midpoint for S; symmetric S(dt/2)-native advance plus due renewal-S(dt/2).",
+  "source_taper_m": 0.18,
+  "gates": {
+    "accepted_health": "Every requested step must pass original final-state health checks.",
+    "accuracy": "At t=7 both renewal-seam and outer-wake RMS velocity errors must be below the native control at the same dt. The benefit must persist at half dt; report the change in benefit and do not call it temporally resolved if the change is as large as the benefit.",
+    "source_conservation": "Every float64 shared-face source has net norm <= 1e-12*max(1,L1 rate); source impulse ledger must close on applied state within f32 rounding.",
+    "particle_count": "No particles added by S; report ratio to native endpoint and flag >5% growth.",
+    "cost": "Report measured seconds/step and source-phase cost; no efficiency or production-readiness claim from accuracy alone."
+  },
+  "bounds": "One dt=.01 corrected 100-step replay, then paired dt=.005 200-step replays if the first accuracy gates pass. Stop and consult Helper on numerical/interpretation failure; no full coupled run if the isolated correction is not qualified.",
+  "execution": {
+    "full_step_controls": "Sequential .01 pilots; full .01 correction uses the validated historical 100-step native trajectory.",
+    "half_step_controls": "The .005 native and corrected jobs run concurrently, beginning 2026-09-15 around 17:23 UTC. Their overlapping wall times are not used for the performance ratio.",
+    "timing_scope": "Only isolated VPM plus prescribed donor renewal; no full FVM/coupler speed claim."
+  }
+}

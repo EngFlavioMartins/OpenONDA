@@ -1,0 +1,67 @@
+{
+  "scope": "Qualify source-only time integration against a high-accuracy ODE solution.\n\nPositions, cores and occupied-cell taper remain fixed. Both free-space psi and\nthe self-induced Jacobian evolve with strength, plus a solenoidal affine\nbackground. DOP853 independently integrates the same nonlinear spatial ODE;\nthis assesses the midpoint integrator, not continuum spatial consistency or\nthe order of a full transport/remeshing/renewal composition.\n",
+  "particles": 512,
+  "reference_difference_rms": 2.1769657870719357e-18,
+  "rows": [
+    {
+      "duration": 0.1,
+      "strength_error_rms": 1.008404936171645e-08,
+      "net_strength_change": [
+        -9.10983934772e-19,
+        -9.99710635996888e-19,
+        -2.014350227689133e-19
+      ],
+      "impulse_balance_error": [
+        1.2798138437420444e-20,
+        2.6623304323386726e-20,
+        2.168404344971009e-19
+      ],
+      "midpoint_recomputed": true
+    },
+    {
+      "duration": 0.05,
+      "strength_error_rms": 2.5270361653284707e-09,
+      "net_strength_change": [
+        -6.130400955752999e-20,
+        1.0367683274392636e-18,
+        -6.471364804247357e-20
+      ],
+      "impulse_balance_error": [
+        1.4512056666630318e-20,
+        3.693857743416801e-21,
+        0.0
+      ],
+      "midpoint_recomputed": true,
+      "convergence_order": 1.9965568688872255
+    },
+    {
+      "duration": 0.025,
+      "strength_error_rms": 6.325759192299731e-10,
+      "net_strength_change": [
+        8.399390463210456e-19,
+        6.187575679692664e-19,
+        -3.417777942171102e-19
+      ],
+      "impulse_balance_error": [
+        -1.0050575314764307e-20,
+        1.737079286361358e-20,
+        3.2526065174565133e-19
+      ],
+      "midpoint_recomputed": true,
+      "convergence_order": 1.9981357695658315
+    }
+  ],
+  "checks": {
+    "second_order_source": true,
+    "reference_resolved": true,
+    "net_conserved": true,
+    "impulse_accounted": true,
+    "midpoint_state_updated": true
+  },
+  "passed": true,
+  "source_sha256": {
+    "qualify_covector_flux_time.py": "3cff94cfa4a0ad7b2c4813043ea4955e28995824f9c2ceb184f7eac6773f678e",
+    "cube_covector_flux_step.py": "eaefdc6b9448c5fced24458066c13d0309841268328e6faf4ec2e43b42d17cec",
+    "cube_covector_flux_control.py": "24b7d0e88f600759a6940e719528056ddf79c707f758f095e7a8c92b5c78f06b"
+  }
+}
