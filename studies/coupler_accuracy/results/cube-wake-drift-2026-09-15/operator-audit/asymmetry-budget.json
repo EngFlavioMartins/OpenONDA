@@ -1,0 +1,68 @@
+[
+  {
+    "time": 6.0,
+    "states": {
+      "accepted": {
+        "reflection_asymmetry_rms": 0.058913739755735745,
+        "energy_change_over_dt": 0.0
+      },
+      "advection_part": {
+        "reflection_asymmetry_rms": 0.05897775094096725,
+        "energy_change_over_dt": 0.0007546374048205372
+      },
+      "stretching_part": {
+        "reflection_asymmetry_rms": 0.059694085367133456,
+        "energy_change_over_dt": 0.009255509581205818
+      },
+      "after_rk": {
+        "reflection_asymmetry_rms": 0.05976046369092971,
+        "energy_change_over_dt": 0.010048428854836974
+      },
+      "remap_only": {
+        "reflection_asymmetry_rms": 0.05969991118110099,
+        "energy_change_over_dt": 0.009325066302478873
+      },
+      "molecular_gbd": {
+        "reflection_asymmetry_rms": 0.05960751637499187,
+        "energy_change_over_dt": 0.008222727638836557
+      },
+      "native_les_gbd": {
+        "reflection_asymmetry_rms": 0.059572333403851055,
+        "energy_change_over_dt": 0.007803417517302999
+      }
+    }
+  },
+  {
+    "time": 8.0,
+    "states": {
+      "accepted": {
+        "reflection_asymmetry_rms": 0.1172294839358303,
+        "energy_change_over_dt": 0.0
+      },
+      "advection_part": {
+        "reflection_asymmetry_rms": 0.11658325290054292,
+        "energy_change_over_dt": -0.01510970469891463
+      },
+      "stretching_part": {
+        "reflection_asymmetry_rms": 0.11859597588144107,
+        "energy_change_over_dt": 0.03222535914102556
+      },
+      "after_rk": {
+        "reflection_asymmetry_rms": 0.11794772199875792,
+        "energy_change_over_dt": 0.016891322083518664
+      },
+      "remap_only": {
+        "reflection_asymmetry_rms": 0.11783496652180427,
+        "energy_change_over_dt": 0.014232743133363833
+      },
+      "molecular_gbd": {
+        "reflection_asymmetry_rms": 0.11759066835713151,
+        "energy_change_over_dt": 0.008481338081579685
+      },
+      "native_les_gbd": {
+        "reflection_asymmetry_rms": 0.11749249167432427,
+        "energy_change_over_dt": 0.006173369598006309
+      }
+    }
+  }
+]

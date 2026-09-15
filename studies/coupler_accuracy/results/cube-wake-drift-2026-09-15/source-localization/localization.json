@@ -1,0 +1,405 @@
+{
+  "description": "Locate the sources of the saved cube's transverse symmetry defect.\n\nThe plane is an observation surface of the full 3D Gaussian particle field.\nLinear Biot-Savart source partitions add exactly; they are not separate flows.\n",
+  "times": [
+    {
+      "time": 1,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3896,
+      "peak_error_position": [
+        1.319999933242798,
+        0.1800000667572021,
+        0.0
+      ],
+      "peak_error": [
+        -0.019667903291305744,
+        0.006537928471494106,
+        5.960376933083152e-05
+      ],
+      "saved_plane_uz_rms": 3.770619552580378e-05,
+      "reference_plane_uz_rms": 1.1701639760954966e-06,
+      "reverse_flow_probe_count": 0,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 1205,
+          "uz_rms": 1.7746207677651752e-06,
+          "peak_velocity": [
+            -0.08405930146636993,
+            -0.03459170143673213,
+            -4.9369632981985835e-06
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.39365377413998115
+        },
+        "near_body": {
+          "particles": 8979,
+          "uz_rms": 9.093023054350966e-07,
+          "peak_velocity": [
+            -0.16676206011522696,
+            -0.0345811491355931,
+            1.817493683813707e-06
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.18859763135836402
+        },
+        "upstream_and_lateral": {
+          "particles": 4203,
+          "uz_rms": 3.51671932481966e-06,
+          "peak_velocity": [
+            -0.11477508646866427,
+            -0.03619603060520715,
+            -8.021172374062359e-06
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.7949438572183829
+        }
+      }
+    },
+    {
+      "time": 3,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3904,
+      "peak_error_position": [
+        1.559999942779541,
+        -0.2999999523162842,
+        0.0
+      ],
+      "peak_error": [
+        0.09807842672795819,
+        0.08084532584372062,
+        0.004006742545151841
+      ],
+      "saved_plane_uz_rms": 0.003953243403011151,
+      "reference_plane_uz_rms": 1.090844543792101e-05,
+      "reverse_flow_probe_count": 8,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 2707,
+          "uz_rms": 0.00039540495256601784,
+          "peak_velocity": [
+            -0.12249325467568277,
+            0.07054504294852829,
+            -0.000259191396046766
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.042629233832153536
+        },
+        "near_body": {
+          "particles": 9260,
+          "uz_rms": 1.4431449543029666e-05,
+          "peak_velocity": [
+            -0.09212686850221177,
+            0.026271850012341922,
+            1.7812708650333745e-05
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.0014811225696614143
+        },
+        "outer_wake": {
+          "particles": 2746,
+          "uz_rms": 0.0012376332056636774,
+          "peak_velocity": [
+            -0.04015168695216843,
+            -0.07073678153809107,
+            0.0021395361101566425
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.18145425100287058
+        },
+        "renewal_seam": {
+          "particles": 1527,
+          "uz_rms": 0.0032643019025775607,
+          "peak_velocity": [
+            -0.21841665181422035,
+            0.18477947295430205,
+            0.002087160144045494
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.7799814201570657
+        },
+        "upstream_and_lateral": {
+          "particles": 7385,
+          "uz_rms": 2.240239931456513e-05,
+          "peak_velocity": [
+            -0.05924329495280551,
+            0.02269190425142797,
+            2.6131976380584918e-05
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.002583782422428443
+        }
+      }
+    },
+    {
+      "time": 5,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3904,
+      "peak_error_position": [
+        1.319999933242798,
+        0.1800000667572021,
+        0.0
+      ],
+      "peak_error": [
+        -0.006468664283839298,
+        0.1074687105193857,
+        0.09197237090241707
+      ],
+      "saved_plane_uz_rms": 0.026974738669987893,
+      "reference_plane_uz_rms": 9.084797603966787e-06,
+      "reverse_flow_probe_count": 12,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 3282,
+          "uz_rms": 0.0017377655549821035,
+          "peak_velocity": [
+            -0.3728069406401155,
+            -0.09762067340521298,
+            -0.005575153384670096
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.019871203893820553
+        },
+        "near_body": {
+          "particles": 9260,
+          "uz_rms": 0.00013108161094339805,
+          "peak_velocity": [
+            -0.13313926313258348,
+            -0.0237184566624887,
+            0.00027989283327493306
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.0009017849454035383
+        },
+        "outer_wake": {
+          "particles": 12808,
+          "uz_rms": 0.013298813413542429,
+          "peak_velocity": [
+            -0.09208062216678364,
+            0.03215483049768624,
+            0.007404129218294672
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.36053545957745314
+        },
+        "renewal_seam": {
+          "particles": 2399,
+          "uz_rms": 0.019717994748702783,
+          "peak_velocity": [
+            -0.3892493938887184,
+            0.12589026836073325,
+            0.0894344536334284
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.6576335176969366
+        },
+        "upstream_and_lateral": {
+          "particles": 8810,
+          "uz_rms": 8.938608044754855e-05,
+          "peak_velocity": [
+            -0.18891082465154052,
+            -0.040964306006413306,
+            0.0003095603926345838
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.0008004416740274077
+        }
+      }
+    },
+    {
+      "time": 6,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3904,
+      "peak_error_position": [
+        1.319999933242798,
+        -0.1799999475479126,
+        0.0
+      ],
+      "peak_error": [
+        0.10176850557181208,
+        0.1685372220575505,
+        0.1242695210158678
+      ],
+      "saved_plane_uz_rms": 0.04537248372411594,
+      "reference_plane_uz_rms": 8.371863224272655e-06,
+      "reverse_flow_probe_count": 14,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 4009,
+          "uz_rms": 0.006232406675253806,
+          "peak_velocity": [
+            -0.5189081132727899,
+            0.1362132638562542,
+            0.02226667924883202
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.011300537042170157
+        },
+        "near_body": {
+          "particles": 9256,
+          "uz_rms": 0.00017393172204264158,
+          "peak_velocity": [
+            -0.11155968678246404,
+            0.019092316585017238,
+            0.0004362193288278822
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.00023418631473606967
+        },
+        "outer_wake": {
+          "particles": 18340,
+          "uz_rms": 0.014364129677477465,
+          "peak_velocity": [
+            -0.07422516122081696,
+            -0.021303389643714758,
+            0.0010453081542261629
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.1830114460437878
+        },
+        "renewal_seam": {
+          "particles": 2469,
+          "uz_rms": 0.03991650642829405,
+          "peak_velocity": [
+            -0.2782070601173916,
+            0.11875602043498729,
+            0.09944511214286052
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.8273952846829173
+        },
+        "upstream_and_lateral": {
+          "particles": 9405,
+          "uz_rms": 0.0003337409533523136,
+          "peak_velocity": [
+            -0.1931464177768314,
+            0.041535916428672125,
+            0.000988711475036567
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.00065962000072893
+        }
+      }
+    },
+    {
+      "time": 7,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3904,
+      "peak_error_position": [
+        1.4399999380111694,
+        -0.1799999475479126,
+        0.0
+      ],
+      "peak_error": [
+        0.06819191352828177,
+        -0.0227045305812954,
+        0.26432563049881874
+      ],
+      "saved_plane_uz_rms": 0.0670804459400846,
+      "reference_plane_uz_rms": 1.4821206197227469e-05,
+      "reverse_flow_probe_count": 33,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 4085,
+          "uz_rms": 0.00632848545155642,
+          "peak_velocity": [
+            -0.3658610479993366,
+            0.08762097648121601,
+            0.006693674613911179
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.022158753761857736
+        },
+        "near_body": {
+          "particles": 9253,
+          "uz_rms": 0.0006635142476143083,
+          "peak_velocity": [
+            -0.07821943957154237,
+            0.012860675414566494,
+            0.0011195545407678737
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.000779877754805761
+        },
+        "outer_wake": {
+          "particles": 24897,
+          "uz_rms": 0.02755283515886991,
+          "peak_velocity": [
+            -0.13179448420792036,
+            -0.03746553041462133,
+            0.0267002198799504
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.31844081347193454
+        },
+        "renewal_seam": {
+          "particles": 3011,
+          "uz_rms": 0.047267209190132116,
+          "peak_velocity": [
+            -0.4643359434394023,
+            0.006921010003914754,
+            0.22920502378741528
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.657958626518331
+        },
+        "upstream_and_lateral": {
+          "particles": 10146,
+          "uz_rms": 0.0004101424045823354,
+          "peak_velocity": [
+            -0.1977556639481224,
+            0.036816128026108196,
+            0.0007834028405095202
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.000661928493071003
+        }
+      }
+    },
+    {
+      "time": 8,
+      "minimum_particle_cube_clearance": 0.009999990463256836,
+      "particles_within_0_12D_of_cube": 3904,
+      "peak_error_position": [
+        1.4399999380111694,
+        -0.1799999475479126,
+        0.0
+      ],
+      "peak_error": [
+        0.17110285375323403,
+        0.3443271466794105,
+        0.3578509571553589
+      ],
+      "saved_plane_uz_rms": 0.10435507226596687,
+      "reference_plane_uz_rms": 2.7019980552896444e-05,
+      "reverse_flow_probe_count": 26,
+      "source_regions": {
+        "authority_ramp": {
+          "particles": 5036,
+          "uz_rms": 0.011427301794528867,
+          "peak_velocity": [
+            -0.42691993517539556,
+            0.08472159043412018,
+            0.008636345337292716
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.06140832726314393
+        },
+        "near_body": {
+          "particles": 9266,
+          "uz_rms": 0.000898948060427955,
+          "peak_velocity": [
+            -0.07225588347064962,
+            0.00928539248491375,
+            0.0015132055241615832
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.00021878628157989257
+        },
+        "outer_wake": {
+          "particles": 31663,
+          "uz_rms": 0.040760536862399666,
+          "peak_velocity": [
+            -0.10291196771496625,
+            -0.03268515840108211,
+            0.0233174408778694
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.26267402409320156
+        },
+        "renewal_seam": {
+          "particles": 3424,
+          "uz_rms": 0.07546697815037436,
+          "peak_velocity": [
+            -0.35095712256596306,
+            0.11834543126509225,
+            0.323552588194734
+          ],
+          "signed_fraction_of_induced_uz_energy": 0.6765016130013547
+        },
+        "upstream_and_lateral": {
+          "particles": 10404,
+          "uz_rms": 0.000558236853118331,
+          "peak_velocity": [
+            -0.18300212794402024,
+            0.034639915862361634,
+            0.0008503886093225101
+          ],
+          "signed_fraction_of_induced_uz_energy": -0.0003651780761202033
+        }
+      }
+    }
+  ]
+}

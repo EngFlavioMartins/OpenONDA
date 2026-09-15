@@ -1,0 +1,32 @@
+[
+  {
+    "variant": "native",
+    "iteration": 0,
+    "seam_reflection_asymmetry_rms": 0.1172294839358303
+  },
+  {
+    "variant": "native",
+    "iteration": 1,
+    "seam_reflection_asymmetry_rms": 0.11702861784414413
+  },
+  {
+    "variant": "native",
+    "iteration": 20,
+    "seam_reflection_asymmetry_rms": 0.11503703130118387
+  },
+  {
+    "variant": "no_pruning",
+    "iteration": 0,
+    "seam_reflection_asymmetry_rms": 0.1172294839358303
+  },
+  {
+    "variant": "no_pruning",
+    "iteration": 1,
+    "seam_reflection_asymmetry_rms": 0.11704694593946877
+  },
+  {
+    "variant": "no_pruning",
+    "iteration": 20,
+    "seam_reflection_asymmetry_rms": 0.11525049891823984
+  }
+]

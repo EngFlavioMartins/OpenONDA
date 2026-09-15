@@ -1,0 +1,49 @@
+{
+  "description": "Check actual temporary RK states and one-step time refinement in 3D.\n\nOnly the inviscid operator is applied; body strengths and Gaussian radii are\nheld fixed. Both half steps start from the same accepted backup as the full\nstep. No diffusion/remeshing cadence changes enter this comparison.\n",
+  "times": [
+    {
+      "time": 6,
+      "temporary_stages": [
+        {
+          "stage": 0,
+          "time": 6.0,
+          "velocity_error_rms": 0.0009806818451888728,
+          "stretching_relative_error": 0.0013690200730039385,
+          "maximum_position_change_from_accepted": 0.0
+        },
+        {
+          "stage": 1,
+          "time": 6.01,
+          "velocity_error_rms": 0.0009540591237151885,
+          "stretching_relative_error": 0.001438413314558373,
+          "maximum_position_change_from_accepted": 0.013023295657067325
+        }
+      ],
+      "full_vs_two_half_velocity_rms": 1.257533433134992e-06,
+      "seam_full_vs_two_half_velocity_rms": 1.291042237803319e-06,
+      "seam_full_vs_two_half_transverse_rms": 7.290255213599818e-07
+    },
+    {
+      "time": 8,
+      "temporary_stages": [
+        {
+          "stage": 0,
+          "time": 8.0,
+          "velocity_error_rms": 0.0006620196885513212,
+          "stretching_relative_error": 0.0007682553530779911,
+          "maximum_position_change_from_accepted": 0.0
+        },
+        {
+          "stage": 1,
+          "time": 8.01,
+          "velocity_error_rms": 0.0007074546665372212,
+          "stretching_relative_error": 0.0007658426131204518,
+          "maximum_position_change_from_accepted": 0.012860352911941503
+        }
+      ],
+      "full_vs_two_half_velocity_rms": 9.875885974359483e-07,
+      "seam_full_vs_two_half_velocity_rms": 1.0132922341013182e-06,
+      "seam_full_vs_two_half_transverse_rms": 7.367314019535694e-07
+    }
+  ]
+}

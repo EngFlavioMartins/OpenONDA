@@ -1,0 +1,48 @@
+[
+  {
+    "time": 6.0,
+    "regions": {
+      "near_body": {
+        "strength_weighted_angle_to_curl_degrees": 14.648903538822891,
+        "opposed_strength_fraction": 0.036308812377134674,
+        "strong_particle_nearest_distance_p99_over_h": 1.00000003973643,
+        "near_duplicate_count": 0
+      },
+      "seam": {
+        "strength_weighted_angle_to_curl_degrees": 16.45198045782771,
+        "opposed_strength_fraction": 0.01807441639591232,
+        "strong_particle_nearest_distance_p99_over_h": 1.0000000707805157,
+        "near_duplicate_count": 0
+      },
+      "outer_wake": {
+        "strength_weighted_angle_to_curl_degrees": 17.745290451426918,
+        "opposed_strength_fraction": 0.022529064560583782,
+        "strong_particle_nearest_distance_p99_over_h": 0.9999990463256836,
+        "near_duplicate_count": 0
+      }
+    }
+  },
+  {
+    "time": 8.0,
+    "regions": {
+      "near_body": {
+        "strength_weighted_angle_to_curl_degrees": 14.10252696972077,
+        "opposed_strength_fraction": 0.03851562616772944,
+        "strong_particle_nearest_distance_p99_over_h": 1.00000003973643,
+        "near_duplicate_count": 0
+      },
+      "seam": {
+        "strength_weighted_angle_to_curl_degrees": 11.844145178891939,
+        "opposed_strength_fraction": 0.009268105616855074,
+        "strong_particle_nearest_distance_p99_over_h": 1.00000003973643,
+        "near_duplicate_count": 0
+      },
+      "outer_wake": {
+        "strength_weighted_angle_to_curl_degrees": 17.861772246727966,
+        "opposed_strength_fraction": 0.023178605913573857,
+        "strong_particle_nearest_distance_p99_over_h": 0.9999990463256836,
+        "near_duplicate_count": 0
+      }
+    }
+  }
+]

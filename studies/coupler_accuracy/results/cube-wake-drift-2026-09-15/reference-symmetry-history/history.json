@@ -1,0 +1,122 @@
+{
+  "description": "Measure the fully meshed reference's late 3D symmetry breaking.\n\nThe probe grid closes exactly under z reflection. This distinguishes a shifted\nphysical symmetry-breaking transient from a blanket assumption that every\nout-of-plane velocity is intrinsically unphysical.\n",
+  "times": [
+    {
+      "time": 3,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 1.4557277492134237e-05,
+          "maximum_speed": 1.0102992761145488
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 5.030710414234719e-06,
+          "maximum_speed": 0.9558134260224659
+        }
+      }
+    },
+    {
+      "time": 6,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 1.808829597177125e-05,
+          "maximum_speed": 1.0671392803756516
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 1.5656975683165632e-05,
+          "maximum_speed": 0.9782141844674762
+        }
+      }
+    },
+    {
+      "time": 7,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 3.3668954705227895e-05,
+          "maximum_speed": 1.0273162679800414
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 1.4080493730138871e-05,
+          "maximum_speed": 0.9481462124106075
+        }
+      }
+    },
+    {
+      "time": 8,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 4.5788471038330204e-05,
+          "maximum_speed": 1.1254179912345654
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 2.7123517766699806e-05,
+          "maximum_speed": 0.9433449849502629
+        }
+      }
+    },
+    {
+      "time": 10,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 6.381463151043697e-05,
+          "maximum_speed": 1.0687395019247692
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 4.80646359622837e-05,
+          "maximum_speed": 0.9400010543816664
+        }
+      }
+    },
+    {
+      "time": 15,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 0.00018141417663618414,
+          "maximum_speed": 0.8699718412575083
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 0.00025249715827732036,
+          "maximum_speed": 0.9930784038067807
+        }
+      }
+    },
+    {
+      "time": 20,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 0.0004393592519268365,
+          "maximum_speed": 0.905705380288282
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 0.00046210734619331274,
+          "maximum_speed": 0.8136920233743911
+        }
+      }
+    },
+    {
+      "time": 25,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 0.0009210530189555677,
+          "maximum_speed": 0.8724114910899274
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 0.0012095615323031578,
+          "maximum_speed": 0.776831234214312
+        }
+      }
+    },
+    {
+      "time": 30,
+      "regions": {
+        "seam": {
+          "reflection_asymmetry_rms": 0.0016722856672208423,
+          "maximum_speed": 0.9346152592928743
+        },
+        "wake": {
+          "reflection_asymmetry_rms": 0.0016563555078612483,
+          "maximum_speed": 0.9240615807384859
+        }
+      }
+    }
+  ]
+}
