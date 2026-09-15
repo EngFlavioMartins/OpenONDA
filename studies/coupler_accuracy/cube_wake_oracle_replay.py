@@ -5,6 +5,8 @@ interpolated in time. Only VPM evolves. This tests whether FVM mixed-boundary
 feedback is necessary for the existing transverse disturbance to grow.
 Optional controls change alignment, the nodal covector source, or the compact
 conservative source on remeshed cells. They are mutually exclusive experiments.
+An optional precomputed strength file screens a fixed-basis correction from the
+same accepted particle checkpoint without changing donor or boundary inputs.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from pathlib import Path
 import time as wall_clock
 
 from cube_covector_flux_step import invariants
+from cube_fixed_basis_runtime_fit import fit_outer_strength
 from cube_lattice_phase_study import distance, reference_gradient, smooth
 from cube_wake_drift_audit import frame, ordered_fields
 from cube_wake_particle_probe import load_case, rms
@@ -115,14 +118,24 @@ def run(args):
         "alignment_rate_per_second": args.alignment_rate,
         "nodal_covector_control": args.covector_control,
         "compact_flux_control": args.flux_control,
+        "outer_projection_interval_steps": args.projection_interval,
         "time_step_size": args.time_step_size,
         "renewal_interval": args.renewal_interval,
         "checkpoint": str(args.checkpoint.resolve()),
         "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
+        "initial_strength_file": (
+            None if args.initial_strength is None else str(args.initial_strength.resolve())
+        ),
+        "initial_strength_sha256": (
+            None
+            if args.initial_strength is None
+            else hashlib.sha256(args.initial_strength.read_bytes()).hexdigest()
+        ),
         "target_cache_sha256": hashlib.sha256(args.target_cache.read_bytes()).hexdigest(),
         "time_interpolation": "Linear between native 3D reference fields at 6 and 7; endpoint errors use actual reference states",
         "observations": [],
         "step_budgets": [],
+        "outer_projection_events": [],
         "steps_completed": 0,
         "steps_requested": args.steps,
         "status": "running",
@@ -146,6 +159,15 @@ def run(args):
         assert abs(solver.time_step_size - args.time_step_size) < 1e-12
         solver.physics.configure_body_box(np.array([-0.5, 0.5] * 3))
         solver.physics.configure_grid_lattice_anchor(np.array([-0.03] * 3), 0.06)
+        if args.initial_strength is not None:
+            with np.load(args.initial_strength) as stored:
+                candidate = stored["vortex_strength"].astype(solver.np_dtype)
+            if candidate.shape != (len(solver.particles), 3) or not np.all(np.isfinite(candidate)):
+                raise ValueError("Initial fixed-basis strength is not a finite matched cloud")
+            report["initial_strength_before"] = invariants(solver)
+            solver.set_particles_properties(vortex_strength=candidate)
+            solver.notify_external_particle_mutation()
+            report["initial_strength_after"] = invariants(solver)
         if args.covector_control:
             from cube_covector_stage_source import NodalCovectorSource
 
@@ -168,6 +190,20 @@ def run(args):
                 report["source_sha256"][str(path.resolve())] = hashlib.sha256(
                     path.read_bytes()
                 ).hexdigest()
+        if args.projection_interval:
+            from source.solvers.vpm.stabilization.divergence_relaxation import (
+                GaussianParticleGridOperator,
+                _MomentNullspace,
+                gaussian_invariant_rows,
+            )
+            from source.solvers.vpm.stabilization.filament_refinement import (
+                gaussian_particle_moments,
+            )
+
+            path = Path(__file__).with_name("cube_fixed_basis_runtime_fit.py")
+            report["source_sha256"][str(path.resolve())] = hashlib.sha256(
+                path.read_bytes()
+            ).hexdigest()
         if args.alignment_rate:
             stabilization = replace(
                 solver.stabilization_config,
@@ -254,6 +290,47 @@ def run(args):
                 )
             budget["transfer_wall_seconds"] = wall_clock.perf_counter() - transfer_started
             budget["after_transfer"] = invariants(solver)
+            if (
+                args.projection_interval
+                and (step + 1) % args.projection_interval == 0
+                and step + 1 < args.steps
+            ):
+                particles = solver.particles
+                position = particles.position_cpu(use_cache=False).astype(np.float64)
+                strength = particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+                radius = particles.core_radius_cpu(use_cache=False).astype(np.float64)
+                volume = particles.particle_volume_cpu(use_cache=False).astype(np.float64)
+                before_moments = gaussian_particle_moments(position, strength, radius)
+                projected, fit = fit_outer_strength(
+                    position,
+                    strength,
+                    radius,
+                    volume,
+                    operator_type=GaussianParticleGridOperator,
+                    moment_nullspace_type=_MomentNullspace,
+                    gaussian_moment_rows=gaussian_invariant_rows,
+                    renewal_bounds=lattice.renewal_bounds,
+                )
+                stored_strength = np.asarray(projected, dtype=solver.np_dtype)
+                after_moments = gaussian_particle_moments(
+                    position, stored_strength.astype(np.float64), radius
+                )
+                moment_errors = [
+                    float(np.linalg.norm(after_moments[index] - before_moments[index]))
+                    for index in (0, 2, 3)
+                ]
+                if max(moment_errors) > 1e-6:
+                    raise RuntimeError(
+                        f"Research projection exceeded its storage moment error: {moment_errors}"
+                    )
+                if np.any(np.all(np.abs(position) < 0.5, axis=1)):
+                    raise RuntimeError("Research projection input has particles inside the cube")
+                solver.set_particles_properties(vortex_strength=stored_strength)
+                solver.notify_external_particle_mutation()
+                fit["time_s"] = float(solver.time)
+                fit["moment_errors_net_impulse_angular"] = moment_errors
+                report["outer_projection_events"].append(fit)
+                budget["after_projection"] = invariants(solver)
             if flux is not None:
                 flux.advance(0.5 * solver.time_step_size, "after_native_evolution")
             solver.refresh_boundary_element_solution()
@@ -296,6 +373,8 @@ def main():
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--target-cache", type=Path, required=True)
+    parser.add_argument("--initial-strength", type=Path)
+    parser.add_argument("--projection-interval", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--alignment-rate", type=float, default=0)
     parser.add_argument("--covector-control", action="store_true")
@@ -306,8 +385,20 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.steps <= round(1 / args.time_step_size):
         parser.error("This bounded replay must remain inside the physical interval [6, 7]")
-    if sum((args.covector_control, args.flux_control, bool(args.alignment_rate))) > 1:
-        parser.error("The three controls must be measured separately")
+    if args.projection_interval < 0:
+        parser.error("Projection interval must be a non-negative number of steps")
+    if (
+        sum(
+            (
+                args.covector_control,
+                args.flux_control,
+                bool(args.alignment_rate),
+                bool(args.projection_interval),
+            )
+        )
+        > 1
+    ):
+        parser.error("Accuracy controls must be measured separately")
     ratio = args.renewal_interval / args.time_step_size
     if not np.isfinite(ratio) or ratio < 1 or abs(ratio - round(ratio)) > 1e-10:
         parser.error("Renewal interval must be a positive integer multiple of the time step")

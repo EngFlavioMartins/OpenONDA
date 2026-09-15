@@ -1,0 +1,57 @@
+{
+  "scope": "Falsify a fixed-basis projection on a compact, genuinely helical 3D field.\n\nConstruct a solenoidal flow from the curl of a compact Beltrami-type vector\npotential on a regular 3D lattice. Add a sampled gradient field that should\ninduce no physical velocity or helicity. Fit on unchanged Gaussian particle\ncentres, then compare the represented helicity and longitudinal content with\nthe clean helical reference. This is a body-free numerical operator test.\n",
+  "source_sha256": "a282252a7c0f99c7847638d91807a41e61a8db48bac7fdfdbc8ad3df1c6ea4fa",
+  "grid_spacing_m": 0.06,
+  "core_radius_m": 0.066,
+  "particle_count": 35937,
+  "compact_support_radius_m": 0.75,
+  "helical_wavenumber_m_inv": 3.1733259127169626,
+  "contamination_rms_ratio": 0.25,
+  "physical_reference_helicity_m4_s2": 46.40614181517061,
+  "physical_gradient_velocity_orthogonality_m4_s2": 3.9290171116590493e-16,
+  "cg_iterations": 9,
+  "fit_wall_seconds": 0.4128945830000248,
+  "correction_strength_relative": 0.21857065193717728,
+  "moment_change_net_m3_s": [
+    1.7427954085982666e-16,
+    2.1139131349619626e-15,
+    -5.457594525346985e-15
+  ],
+  "moment_change_linear_impulse_m4_s": [
+    -1.7582201699336414e-16,
+    -1.4931395150245136e-15,
+    2.61577326639284e-15
+  ],
+  "moment_change_angular_impulse_m5_s": [
+    -8.326672684688674e-16,
+    1.7763568394002505e-15,
+    1.5543122344752192e-15
+  ],
+  "metrics": {
+    "clean": {
+      "represented_divergence_relative": 0.0001137480627837649,
+      "longitudinal_enstrophy_m3_s2": 4.254173811056956e-07,
+      "solenoidal_enstrophy_m3_s2": 388.4455752562192,
+      "fourier_helicity_m4_s2": 39.32492068264405,
+      "fourier_energy_m5_s2": 3.2195751874652987,
+      "fourier_raw_enstrophy_m3_s2": 388.41499981626725
+    },
+    "contaminated": {
+      "represented_divergence_relative": 0.2485280319510164,
+      "longitudinal_enstrophy_m3_s2": 24.336386400493286,
+      "solenoidal_enstrophy_m3_s2": 388.4455752667236,
+      "fourier_helicity_m4_s2": 39.32492068272542,
+      "fourier_energy_m5_s2": 3.2195751704870172,
+      "fourier_raw_enstrophy_m3_s2": 412.74955246338124
+    },
+    "candidate": {
+      "represented_divergence_relative": 0.025820217363677407,
+      "longitudinal_enstrophy_m3_s2": 0.23974877157177804,
+      "solenoidal_enstrophy_m3_s2": 388.347735674333,
+      "fourier_helicity_m4_s2": 39.3174634040848,
+      "fourier_energy_m5_s2": 3.21247619011204,
+      "fourier_raw_enstrophy_m3_s2": 388.55688002733535
+    }
+  },
+  "limit": "Spectral manufactured flow is periodic, while the particle fit and Fourier-integral audit use padded finite-support grids; quadrature and Gaussian smoothing are part of the test."
+}

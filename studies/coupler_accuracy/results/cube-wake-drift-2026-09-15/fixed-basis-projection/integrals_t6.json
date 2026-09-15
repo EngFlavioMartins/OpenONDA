@@ -1,0 +1,46 @@
+{
+  "scope": "Separate raw from solenoidal enstrophy for frozen cube projection screens.\n\nThe existing Gaussian Fourier-integral gate counts all reconstructed particle\nvorticity, including the longitudinal component that induces no velocity.\nThis diagnostic uses the SAME padded grid for all three strength fields and\nreports the Helmholtz-orthogonal solenoidal and longitudinal energies. It is\nnot a change to any production acceptance criterion.\n",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "global_candidate_sha256": "ba005fc853064d668d5a5634266103bb2104461575fd7cd38ab71d7b3f6505a9",
+  "outer_candidate_sha256": "42164699c65d4379665e18dd0216121bd44f4c07407cec5e30c2930038ad1ea1",
+  "source_sha256": "16e711ce3bac37602a285fc8cec2bc53dcd8ff34379eb734250a40d7775ac8c1",
+  "grid_shape": [
+    121,
+    51,
+    51
+  ],
+  "grid_spacing_m": 0.06,
+  "results": {
+    "native": {
+      "gaussian_fourier_energy_m5_s2": 2.2588302125456856,
+      "gaussian_fourier_raw_enstrophy_m3_s2": 99.96980796065036,
+      "gaussian_fourier_helicity_m4_s2": 0.17668543280663077,
+      "grid_raw_enstrophy_m3_s2": 100.02089550098437,
+      "grid_solenoidal_enstrophy_m3_s2": 99.6923782285779,
+      "grid_longitudinal_enstrophy_m3_s2": 0.32851727240644374,
+      "grid_divergence_relative": 0.0907782538131135,
+      "grid_helmholtz_orthogonality_error": 2.8471271366846546e-16
+    },
+    "global": {
+      "gaussian_fourier_energy_m5_s2": 2.2603872522303083,
+      "gaussian_fourier_raw_enstrophy_m3_s2": 99.63536938489959,
+      "gaussian_fourier_helicity_m4_s2": 0.16562603536987633,
+      "grid_raw_enstrophy_m3_s2": 99.6857257254015,
+      "grid_solenoidal_enstrophy_m3_s2": 99.65925352140214,
+      "grid_longitudinal_enstrophy_m3_s2": 0.026472203999356483,
+      "grid_divergence_relative": 0.03315564251824291,
+      "grid_helmholtz_orthogonality_error": 4.9873915708301426e-17
+    },
+    "outer_only": {
+      "gaussian_fourier_energy_m5_s2": 2.2582144665284054,
+      "gaussian_fourier_raw_enstrophy_m3_s2": 99.73883100315689,
+      "gaussian_fourier_helicity_m4_s2": 0.10571498419090156,
+      "grid_raw_enstrophy_m3_s2": 99.78953568451423,
+      "grid_solenoidal_enstrophy_m3_s2": 99.68334717513572,
+      "grid_longitudinal_enstrophy_m3_s2": 0.10618850937851389,
+      "grid_divergence_relative": 0.0574364020744473,
+      "grid_helmholtz_orthogonality_error": 1.682753921267254e-17
+    }
+  },
+  "limit": "Solenoidal/longitudinal split is a padded periodic-grid diagnostic, not an exact body-aware free-space norm. Raw Fourier values use a separate doubled grid."
+}

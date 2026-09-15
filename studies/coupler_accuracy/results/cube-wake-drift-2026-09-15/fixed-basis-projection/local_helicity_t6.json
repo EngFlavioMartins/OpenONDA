@@ -1,0 +1,40 @@
+{
+  "scope": "Compare physical local helicity at 3D cube probes with the fine FVM state.\n\nThe velocity-curl product uses the VPM body's complete target velocity and\nthe independently differentiated Gaussian particle curl. The harmonic body\nvelocity has zero analytic curl. Fine FVM vorticity is interpolated from its\nnative cell field with the same affine 12-cell probe used for fine velocity.\nThis is a local field test, not a global helicity-conservation assertion.\n",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "candidate_sha256": "42164699c65d4379665e18dd0216121bd44f4c07407cec5e30c2930038ad1ea1",
+  "fine_pvtu_sha256": "4be69d5477fc6eb0f9996e22ce243e1e4900bda6c66c2f17319732fbe4706996",
+  "fine_mesh_sha256": "c4ce23b3567889b3fef811f34259cb5558d8ddb85b96ca2e70054729c2d3f99f",
+  "body_fields_sha256": "91554f0f292b0ab4c516ec633f103b848d2dcfa2cc2e4fca8148340d3100da3a",
+  "source_sha256": "9fff2711320585b3bdd6ac5db233818c768873da4cfc77c7ecc568a37fb651d5",
+  "fresh_reference_velocity_match_max_m_s": 0.0,
+  "regions": {
+    "authority_ramp": {
+      "points": 98,
+      "reference_helicity_mean_m_s2": -1.167437352070423e-07,
+      "baseline_helicity_mean_m_s2": 0.050463024112797294,
+      "candidate_helicity_mean_m_s2": 0.03207036904717762,
+      "baseline_local_helicity_error_rms_m_s2": 0.11457752323641711,
+      "candidate_local_helicity_error_rms_m_s2": 0.105104336785483,
+      "reference_vorticity_rms_s_inv": 4.006354695321013
+    },
+    "renewal_seam": {
+      "points": 196,
+      "reference_helicity_mean_m_s2": 5.6523010074570364e-08,
+      "baseline_helicity_mean_m_s2": 0.09298864782204691,
+      "candidate_helicity_mean_m_s2": 0.07256763682596201,
+      "baseline_local_helicity_error_rms_m_s2": 0.2925779739121102,
+      "candidate_local_helicity_error_rms_m_s2": 0.2766631646739989,
+      "reference_vorticity_rms_s_inv": 2.1606790991040787
+    },
+    "outer_wake": {
+      "points": 98,
+      "reference_helicity_mean_m_s2": -1.0121974064843735e-08,
+      "baseline_helicity_mean_m_s2": -0.05313038214190515,
+      "candidate_helicity_mean_m_s2": -0.05416443851295434,
+      "baseline_local_helicity_error_rms_m_s2": 0.33927984429146163,
+      "candidate_local_helicity_error_rms_m_s2": 0.33921633810661056,
+      "reference_vorticity_rms_s_inv": 1.3987585380444472
+    }
+  },
+  "limit": "Fine FVM cell vorticity and VPM analytic curl are different reconstructions; local helicity is a validation field, not an exact shared invariant."
+}

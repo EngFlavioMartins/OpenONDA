@@ -1,0 +1,54 @@
+{
+  "scope": "Measure a fixed-basis cube projection through the historical VPM body path.\n\nThis frozen-state screen changes only the vortex strengths of one saved\ncloud in a private solver instance. It does not advance either solver or alter\nthe tutorial outputs. It uses the original checkpoint-compatible source tree.\n",
+  "source_tree": "/private/tmp/openonda-cube-wake-centred-ties-333fc4bb",
+  "checkpoint": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/live-centred-ties-storage/solution/vpm_000600.h5",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "candidate_strength_sha256": "42164699c65d4379665e18dd0216121bd44f4c07407cec5e30c2930038ad1ea1",
+  "reference_cache_sha256": "8f84e5a66edc2acd74f6b2992afdd2c2320b3c0e138c5d2049f4f022d86a6632",
+  "source_sha256": "3cb66ca1f8401266c2fbd7914cd91db2b172025aff00400e03cbbdd0fea96c27",
+  "time_s": 6.0,
+  "panel_coupling_scope": "fvm_vpm",
+  "study_compute_device": "METAL",
+  "baseline_probe_wall_s": 3.486195666999947,
+  "candidate_probe_wall_s": 0.2098092500000348,
+  "body_correction_before_rms_m_s": 0.001417555325535332,
+  "body_correction_after_rms_m_s": 0.0014223634455776157,
+  "body_correction_change_rms_m_s": 5.8688018949380855e-06,
+  "complete_velocity_change_rms_m_s": 0.009517394272607085,
+  "complete_velocity_change_max_m_s": 0.04117132441008866,
+  "before": {
+    "authority_ramp": {
+      "points": 98,
+      "complete_velocity_error_rms_m_s": 0.035360887768767675,
+      "transverse_velocity_error_rms_m_s": 0.027295762724428768
+    },
+    "renewal_seam": {
+      "points": 196,
+      "complete_velocity_error_rms_m_s": 0.08201685332647604,
+      "transverse_velocity_error_rms_m_s": 0.07372209302261021
+    },
+    "outer_wake": {
+      "points": 98,
+      "complete_velocity_error_rms_m_s": 0.07932495669098402,
+      "transverse_velocity_error_rms_m_s": 0.061319166075719446
+    }
+  },
+  "after": {
+    "authority_ramp": {
+      "points": 98,
+      "complete_velocity_error_rms_m_s": 0.03320848617070359,
+      "transverse_velocity_error_rms_m_s": 0.024400650651011963
+    },
+    "renewal_seam": {
+      "points": 196,
+      "complete_velocity_error_rms_m_s": 0.0770049858975282,
+      "transverse_velocity_error_rms_m_s": 0.06812613657370524
+    },
+    "outer_wake": {
+      "points": 98,
+      "complete_velocity_error_rms_m_s": 0.07910263255471031,
+      "transverse_velocity_error_rms_m_s": 0.06115603308336703
+    }
+  },
+  "interpretation_limit": "Frozen t=6 state only; no particle evolution, transfer, FVM boundary feedback, Cd, or stability claim."
+}

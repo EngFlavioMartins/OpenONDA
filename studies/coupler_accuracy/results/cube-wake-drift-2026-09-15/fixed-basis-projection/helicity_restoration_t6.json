@@ -1,0 +1,52 @@
+{
+  "scope": "Test whether an outer-only Helmholtz fit can preserve energy and helicity.\n\nThis is a frozen, three-dimensional operator study. It does not change a VPM\nsolver or its acceptance gates. The two moment-free restoration directions\nsolve the exact quadratic Gaussian Fourier energy and helicity equations after\nthe fixed-basis fit; the represented solenoidal enstrophy is audited separately.\n",
+  "checkpoint_sha256": "017171b6d4d9f2df4942830b1e2715a52c338684c12262f0bde70d51a62fe6c1",
+  "candidate_sha256": "42164699c65d4379665e18dd0216121bd44f4c07407cec5e30c2930038ad1ea1",
+  "reference_cache_sha256": "8f84e5a66edc2acd74f6b2992afdd2c2320b3c0e138c5d2049f4f022d86a6632",
+  "source_sha256": "8f3196fadf8359b2872c72bb604c7f76c87cc761d24b620a6a1408f8f99ac74d",
+  "restoration_coefficients": [
+    0.0008348004885767865,
+    0.005365954256761821
+  ],
+  "energy_helicity_before": [
+    2.2588302125456856,
+    0.17668543280663077
+  ],
+  "energy_helicity_fitted": [
+    2.2582144665284054,
+    0.10571498419090156
+  ],
+  "energy_helicity_final": [
+    2.258830212545685,
+    0.17668543280663065
+  ],
+  "quadratic_relative_errors": [
+    1.9660141226355267e-16,
+    6.283613804428428e-16
+  ],
+  "solenoidal_enstrophy_before": 99.6923782285779,
+  "solenoidal_enstrophy_final": 99.72027183829424,
+  "fitted_residual_ratio": 0.48414018425759187,
+  "final_residual_ratio": 0.508149881303561,
+  "correction_relative": 0.053607669584574406,
+  "moment_errors_net_linear_angular": [
+    1.985797100313059e-09,
+    1.9455041380916544e-09,
+    3.402219468733842e-09
+  ],
+  "regions": {
+    "renewal_seam": {
+      "points": 196,
+      "reference_error_before_particle_plus_freestream_rms_m_s": 0.08198397209671451,
+      "reference_error_fitted_particle_plus_freestream_rms_m_s": 0.07697067807032199,
+      "reference_error_restored_particle_plus_freestream_rms_m_s": 0.08022694937749676
+    },
+    "outer_wake": {
+      "points": 98,
+      "reference_error_before_particle_plus_freestream_rms_m_s": 0.07923602447999227,
+      "reference_error_fitted_particle_plus_freestream_rms_m_s": 0.07901469659416632,
+      "reference_error_restored_particle_plus_freestream_rms_m_s": 0.07864775788014719
+    }
+  },
+  "limit": "Velocity comparisons omit the separately refreshed body panel; this test does not satisfy or alter the production total-variation and correction-norm gates."
+}
