@@ -25,15 +25,16 @@ class FVMVelocityInterpolator:
     tree : scipy.spatial.cKDTree
         Search tree built from exactly ``cell_centre`` in the same order.
     neighbour_count : int, default=4
-        Number of nearest donors in the inverse-distance blend. It is clamped
-        to ``[1, M]``.
+        Minimum number of nearest donors in the inverse-distance blend. It is
+        clamped to ``[1, M]``. All donors tied at the last distance are included
+        so cell ordering does not select a preferred spatial direction.
 
     Attributes
     ----------
     cell_centre : ndarray, shape (M, 3)
         Normalized donor coordinates in m.
     neighbour_count : int
-        Effective stencil size after clamping.
+        Minimum stencil size after clamping; distance ties can increase it.
 
     Notes
     -----
@@ -57,8 +58,8 @@ class FVMVelocityInterpolator:
         tree : scipy.spatial.cKDTree
             Search tree built from the same ``M`` rows, in the same order.
         neighbour_count : int, default=4
-            Number of nearest donor cells used for each query; clipped to the
-            available range ``[1, M]``.
+            Minimum number of nearest donor cells used for each query, clipped
+            to ``[1, M]``. The last equal-distance shell is included in full.
 
         Notes
         -----
@@ -89,9 +90,9 @@ class FVMVelocityInterpolator:
         -------
         tuple of ndarray
             ``(indices, weights)`` with shapes ``(N, K)`` and ``(N, K)``;
-            ``K`` is the effective neighbour count. Each weight row sums to
-            one. The returned arrays are internal cache entries and must not
-            be modified by callers.
+            ``K`` includes the widest tied donor shell in this target array.
+            Shorter stencils have zero-weight padding. Each weight row sums
+            to one. These internal cache entries must not be modified.
         """
         key = self._key(evaluation_position)
         cached = self._cache.get(key)
@@ -99,13 +100,44 @@ class FVMVelocityInterpolator:
             self._cache.move_to_end(key)
             return cached
 
-        distance, indices = self.tree.query(evaluation_position, k=self.neighbour_count, workers=-1)
+        # Ask for one additional donor to detect a truncated distance shell.
+        # Cartesian cells frequently tie: choosing an arbitrary subset then
+        # changes reconstructed curvature under cell reordering/reflection.
+        count = self.neighbour_count
+        query_count = min(count + 1, len(self.cell_centre))
+        distance, indices = self.tree.query(evaluation_position, k=query_count, workers=-1)
         distance = np.asarray(distance, dtype=np.float64).reshape(
-            len(evaluation_position), self.neighbour_count
+            len(evaluation_position), query_count
         )
-        indices = np.asarray(indices, dtype=np.int32).reshape(
-            len(evaluation_position), self.neighbour_count
-        )
+        indices = np.asarray(indices, dtype=np.int32).reshape(len(evaluation_position), query_count)
+
+        tied_rows = np.empty(0, dtype=np.int64)
+        if query_count > count:
+            cutoff = distance[:, count - 1]
+            tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, cutoff)
+            tied_rows = np.flatnonzero(
+                (distance[:, count] <= cutoff + tolerance) & (distance[:, 0] > 1.0e-12)
+            )
+        if len(tied_rows):
+            neighbours = self.tree.query_ball_point(
+                evaluation_position[tied_rows],
+                r=cutoff[tied_rows] + tolerance[tied_rows],
+                workers=-1,
+            )
+            width = max(count, max(len(rows) for rows in neighbours))
+            complete_distance = np.full((len(evaluation_position), width), np.inf)
+            complete_indices = np.zeros((len(evaluation_position), width), dtype=np.int32)
+            complete_distance[:, :count] = distance[:, :count]
+            complete_indices[:, :count] = indices[:, :count]
+            for row, donors in zip(tied_rows, neighbours, strict=True):
+                donors = np.asarray(donors, dtype=np.int32)
+                complete_indices[row, : len(donors)] = donors
+                complete_distance[row, : len(donors)] = np.linalg.norm(
+                    evaluation_position[row] - self.cell_centre[donors], axis=1
+                )
+            distance, indices = complete_distance, complete_indices
+        else:
+            distance, indices = distance[:, :count], indices[:, :count]
 
         weights = 1.0 / np.maximum(distance, 1.0e-12) ** 2
         exact = distance[:, 0] <= 1.0e-12

@@ -1948,9 +1948,19 @@ class VorticityTransfer:
                     self._body_bounds = bounds
                     self._lattice_anchor = bounds[[0, 2, 4]]
                     if self.transfer_method == "buffered_m4_renewal":
-                        # This is the lattice phase used by the 20-second renewal
-                        # run: no particle centre lies directly on a cube face.
-                        self._lattice_anchor -= 0.5 * self.particle_spacing
+                        # Both phases below reflect about the body centre.
+                        # Choose the one whose wall-crossing control cells
+                        # have fluid centres: solid-centre exclusion must not
+                        # discard their fluid circulation. Integer side/h
+                        # ratios retain the previous wall-aligned lattice.
+                        side_cells = (bounds[1::2] - bounds[::2]) / self.particle_spacing
+                        roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, side_cells)
+                        whole_cells = np.floor(side_cells + roundoff).astype(np.int64)
+                        half_shift = whole_cells % 2 == 0
+                        self._lattice_anchor = (
+                            0.5 * (bounds[::2] + bounds[1::2])
+                            - 0.5 * self.particle_spacing * half_shift
+                        )
 
             ibm = getattr(fvm, "ibm", None)
             bodies = () if ibm is None else tuple(ibm.bodies)
@@ -1973,8 +1983,11 @@ class VorticityTransfer:
                     # Distance to a donor centre is not a fluid-domain test:
                     # coarse/anisotropic cells legitimately span many particles.
                     # Solid exclusion uses wall geometry, independently of h.
+                    roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, np.abs(self._fvm_box))
                     return np.all(
-                        (points >= self._fvm_box[::2]) & (points <= self._fvm_box[1::2]), axis=1
+                        (points >= self._fvm_box[::2] - roundoff[::2])
+                        & (points <= self._fvm_box[1::2] + roundoff[1::2]),
+                        axis=1,
                     ).astype(np.float64)
 
                 has_solid = bool(self._solid_bodies) or self._body_bounds is not None
