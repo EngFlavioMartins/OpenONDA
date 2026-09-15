@@ -33,8 +33,8 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 
 # FVM domain and mesh
 FVM_CORES = 4
-FVM_BOX = (-1.50, 1.50, -1.50, 1.50, -1.50, 1.50)
-TRANSFER_REGION_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
+FVM_BOX = (-1.50, 3.75, -1.50, 1.50, -1.50, 1.50)
+TRANSFER_REGION_BOX = (-1.25, 3.50, -1.25, 1.25, -1.25, 1.25)
 REFERENCE_FINE_DX = 0.06
 SURFACE_CELL_SIZE = REFERENCE_FINE_DX
 FVM_MAX_CELL_SIZE = 12 * REFERENCE_FINE_DX
@@ -106,8 +106,13 @@ FVM_MESH = msh.CartesianMesher(
     refinements=(
         msh.BoxRefinement(
             name="nearBody",
-            bounds=FVM_BOX,
+            bounds=(-1.50, 3.00, -1.50, 1.50, -1.50, 1.50),
             cell_size=REFERENCE_FINE_DX,
+        ),
+        msh.BoxRefinement(
+            name="wake",
+            bounds=(-1.50, 3.75, -1.50, 1.50, -1.50, 1.50),
+            cell_size=2 * REFERENCE_FINE_DX,
         ),
     ),
 )
