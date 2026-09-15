@@ -134,7 +134,7 @@ def audit():
 def plot_force_audit(report, fmt, dpi):
     util._THEME.set_thesis_style()
     fig, axes = plt.subplots(2, 1, sharex=True, figsize=util.figure_size(11.8), dpi=dpi)
-    util._THEME.centered_subplots_adjust(fig, outer=0.17, bottom=0.14, top=0.84, hspace=0.58)
+    util._THEME.centered_subplots_adjust(fig, outer=0.18, bottom=0.14, top=0.84, hspace=0.58)
     for source, style in (("reference", "-."), ("fvm", "-")):
         data = util.load_forces(source)
         keep = data["time"] <= report["comparison_end_time"] + util.TIME_ATOL

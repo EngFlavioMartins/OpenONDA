@@ -1,0 +1,384 @@
+{
+  "case_name": "fine",
+  "configuration": {
+    "acceptance": {
+      "max_continuity_error_abort": 0.01,
+      "max_continuity_error_warning": 0.0001,
+      "max_courant_number_abort": 1.5,
+      "max_courant_number_warning": 0.9,
+      "max_equation_residual_abort": 0.01,
+      "max_equation_residual_warning": 0.0001,
+      "max_velocity_magnitude_abort": 6.0,
+      "max_velocity_magnitude_warning": 4.0,
+      "sustained_steps": 1,
+      "type": "RunAcceptanceLimits"
+    },
+    "backup": {
+      "path": "backup",
+      "schedule": {
+        "every_n_steps": null,
+        "every_time": 1.0,
+        "final_only": false,
+        "type": "RunSchedule"
+      },
+      "type": "BackupConfig",
+      "write_at_end": true
+    },
+    "boundaries": [
+      {
+        "eddy_viscosity_type": "calculated",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": null,
+        "name": "inlet",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "fixedValue",
+        "velocity_value": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "calculated",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": null,
+        "name": "outlet",
+        "neighbour_patch": null,
+        "pressure_type": "fixedValue",
+        "type": "BoundaryConfig",
+        "velocity_type": "inletOutlet",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "zeroGradient",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "patch",
+        "name": "ymin",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "slip",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "zeroGradient",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "patch",
+        "name": "ymax",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "slip",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "zeroGradient",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "patch",
+        "name": "zmin",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "slip",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "zeroGradient",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "patch",
+        "name": "zmax",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "slip",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "calculated",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "wall",
+        "name": "cube",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "fixedValue",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "case_name": "fine",
+    "cores": 4,
+    "dynamic_mesh": {
+      "angular_speed": 0.0,
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "method": "static",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "type": "MeshMotionConfig",
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "execution": {
+      "linear_backend": "petsc",
+      "operator_backend": "numba",
+      "output_mode": "synchronous",
+      "parallel_mode": "petsc_partitioned",
+      "type": "ComputeConfig"
+    },
+    "initial_kinematic_pressure": 0.0,
+    "initial_velocity": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "linear": {
+      "amg_max_iterations": null,
+      "amg_reuse_tolerance": 0.05,
+      "amg_tolerance": null,
+      "ilu_drop_tolerance": 0.0001,
+      "ilu_fill_factor": 10.0,
+      "ilu_reuse_tolerance": null,
+      "linear_failure_action": "raise",
+      "linear_solver": "bicgstab",
+      "momentum_final_relative_tolerance": 0.0,
+      "momentum_max_iterations": 2000,
+      "momentum_relative_tolerance": 0.1,
+      "momentum_solver": null,
+      "momentum_tolerance": 1e-06,
+      "pressure_final_relative_tolerance": 0.0,
+      "pressure_max_iterations": 500,
+      "pressure_nullspace_method": "auto",
+      "pressure_relative_tolerance": 0.01,
+      "pressure_solver": "amg",
+      "pressure_tolerance": 1e-06,
+      "reuse_ilu": true,
+      "type": "LinearSolverConfig"
+    },
+    "logging": {
+      "console": true,
+      "filename": "fvm.log",
+      "mode": "simple",
+      "schedule": {
+        "every_n_steps": null,
+        "every_time": 0.25,
+        "final_only": false,
+        "type": "RunSchedule"
+      },
+      "type": "LoggingConfig"
+    },
+    "mesh": {
+      "max_aspect_ratio": null,
+      "max_lsq_condition": null,
+      "max_non_orthogonality_deg": 70.0,
+      "max_skewness": 1.0,
+      "type": "MeshQualityConfig"
+    },
+    "output": {
+      "asynchronous": false,
+      "compression": "lz4",
+      "data_location": "cell",
+      "encoding": "appended",
+      "format": "vtk_xml",
+      "ghost_layers": 0,
+      "point_interpolation": "none",
+      "precision": "f32",
+      "type": "OutputConfig"
+    },
+    "pimple": {
+      "algorithm": "PIMPLE",
+      "ddt_corr": true,
+      "ibm_forcing_loops": 2,
+      "ibm_second_solve": true,
+      "max_iterations": 20,
+      "min_outer_correctors": 1,
+      "n_correctors": 2,
+      "n_nonorthogonal_correctors": 1,
+      "n_orthogonal_correctors": 1,
+      "n_outer_correctors": 2,
+      "outer_continuity_tolerance": null,
+      "outer_residual_tolerance": null,
+      "pressure_relaxation": 0.3,
+      "tolerance": 1e-06,
+      "type": "PimpleControl",
+      "velocity_relaxation": 0.7
+    },
+    "samplers": [
+      {
+        "file_name": "forces_history",
+        "moment_centre": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "patch_names": [
+          "cube"
+        ],
+        "reference_area": 1.0,
+        "reference_length": 1.0,
+        "reference_velocity": 1.0,
+        "schedule": {
+          "every_n_steps": null,
+          "every_time": 0.05,
+          "final_only": false
+        },
+        "type": "ForceSampler"
+      },
+      {
+        "end": [
+          13.0,
+          0.0,
+          0.0
+        ],
+        "file_name": "centreline",
+        "inverse_distance_power": 2.0,
+        "k": 12,
+        "n_points": 163,
+        "reconstruction": "affine",
+        "schedule": {
+          "every_n_steps": null,
+          "every_time": 0.25,
+          "final_only": false
+        },
+        "start": [
+          -6.5,
+          0.0,
+          0.0
+        ],
+        "type": "LineSampler"
+      },
+      {
+        "end": [
+          13.0,
+          0.75,
+          0.0
+        ],
+        "file_name": "offaxis_y075",
+        "inverse_distance_power": 2.0,
+        "k": 12,
+        "n_points": 163,
+        "reconstruction": "affine",
+        "schedule": {
+          "every_n_steps": null,
+          "every_time": 0.25,
+          "final_only": false
+        },
+        "start": [
+          -6.5,
+          0.75,
+          0.0
+        ],
+        "type": "LineSampler"
+      }
+    ],
+    "schemes": {
+      "convection_scheme": "linearupwind",
+      "gradient_scheme": "gauss",
+      "time_scheme": "backward",
+      "type": "DiscretizationConfig"
+    },
+    "time": {
+      "adjustment": {
+        "maximum": 0.9,
+        "maximum_time_step_size": 0.04,
+        "type": "MaximumCourantTimeStep"
+      },
+      "end_time": 30.0,
+      "output_schedule": {
+        "every_n_steps": null,
+        "every_time": 1.0,
+        "final_only": false,
+        "type": "RunSchedule"
+      },
+      "start_time": 0.0,
+      "time_step_size": 0.01,
+      "type": "TimeConfig"
+    },
+    "transport": {
+      "density": 1.0,
+      "kinematic_viscosity": 0.001,
+      "type": "TransportConfig"
+    },
+    "turbulence": {
+      "dynamic": false,
+      "model": "equilibriumsmagorinsky",
+      "sigma_coefficient": 1.35,
+      "smagorinsky_coefficient": 0.16778594162371085,
+      "subgrid_dissipation_coefficient": 1.048,
+      "subgrid_kinetic_energy_coefficient": 0.094,
+      "type": "TurbulenceConfig",
+      "wale_coefficient": 0.325
+    },
+    "type": "FVMSetup"
+  },
+  "lifecycle": {
+    "status": "complete"
+  },
+  "mesh": {
+    "n_cells": 186299,
+    "n_faces": 533347,
+    "n_points": 187354,
+    "provenance": null
+  },
+  "schema_version": 1,
+  "solver": "FVM",
+  "state": {
+    "step": 3009,
+    "time": 30.0
+  }
+}

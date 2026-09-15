@@ -1,0 +1,1621 @@
+{
+  "method": "native-centres-affine-k12-v1",
+  "reference": {
+    "schema": "openonda-fvm-grid-run/1",
+    "case": "fine",
+    "cell_size": 0.06,
+    "cell_count": 692604,
+    "end_time": 30.0,
+    "profiles": [
+      "centreline",
+      "offaxis_y075"
+    ]
+  },
+  "frames": [
+    {
+      "time": 1.0,
+      "file": "fields_t1.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000109.pvtu",
+              1356,
+              1789431344888310055
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000109-rank-00000.vtu",
+              16885062,
+              1789431344880920687
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000109-rank-00001.vtu",
+              16894345,
+              1789431344878641427
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000109-rank-00002.vtu",
+              16747986,
+              1789431344879332305
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000109-rank-00003.vtu",
+              16948595,
+              1789431344882408569
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000100.pvtu",
+              1436,
+              1789420630318419451
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000100-rank-00000.vtu",
+              7605259,
+              1789420630231238907
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000100-rank-00001.vtu",
+              7582400,
+              1789420630282154044
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000100-rank-00002.vtu",
+              7572985,
+              1789420630279634950
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000100-rank-00003.vtu",
+              8376424,
+              1789420630285226974
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000100.vts",
+            32916,
+            1789420630044875517
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 2.0,
+      "file": "fields_t2.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000209.pvtu",
+              1356,
+              1789431563119362519
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000209-rank-00000.vtu",
+              16884965,
+              1789431562958584827
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000209-rank-00001.vtu",
+              16897882,
+              1789431563009684477
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000209-rank-00002.vtu",
+              16751414,
+              1789431562982733062
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000209-rank-00003.vtu",
+              16951927,
+              1789431562991399143
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000200.pvtu",
+              1436,
+              1789421844699900247
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000200-rank-00000.vtu",
+              7605258,
+              1789421844537974790
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000200-rank-00001.vtu",
+              7582406,
+              1789421844664992678
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000200-rank-00002.vtu",
+              7572991,
+              1789421844629589357
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000200-rank-00003.vtu",
+              8376429,
+              1789421844687221150
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000200.vts",
+            32938,
+            1789421844149290010
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 3.0,
+      "file": "fields_t3.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000309.pvtu",
+              1356,
+              1789431783580773870
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000309-rank-00000.vtu",
+              16883016,
+              1789431783554526125
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000309-rank-00001.vtu",
+              16899744,
+              1789431783546909549
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000309-rank-00002.vtu",
+              16754020,
+              1789431783550055021
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000309-rank-00003.vtu",
+              16953440,
+              1789431783567924186
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000300.pvtu",
+              1436,
+              1789423028262947557
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000300-rank-00000.vtu",
+              7605253,
+              1789423028205761641
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000300-rank-00001.vtu",
+              7582403,
+              1789423028224288264
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000300-rank-00002.vtu",
+              7572987,
+              1789423028221948587
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000300-rank-00003.vtu",
+              8376428,
+              1789423028241386797
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000300.vts",
+            32893,
+            1789423027971493827
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 4.0,
+      "file": "fields_t4.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000409.pvtu",
+              1356,
+              1789431997903673983
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000409-rank-00000.vtu",
+              16885841,
+              1789431997869867451
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000409-rank-00001.vtu",
+              16902401,
+              1789431997880407250
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000409-rank-00002.vtu",
+              16756654,
+              1789431997874773849
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000409-rank-00003.vtu",
+              16955464,
+              1789431997876207980
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000400.pvtu",
+              1436,
+              1789424187359537743
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000400-rank-00000.vtu",
+              7605256,
+              1789424187281470103
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000400-rank-00001.vtu",
+              7582403,
+              1789424187334907466
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000400-rank-00002.vtu",
+              7572990,
+              1789424187337781646
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000400-rank-00003.vtu",
+              8376426,
+              1789424187344755177
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000400.vts",
+            32800,
+            1789424187101317842
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 5.0,
+      "file": "fields_t5.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509.pvtu",
+              1356,
+              1789432213180522935
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509-rank-00000.vtu",
+              16890109,
+              1789432213166490370
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509-rank-00001.vtu",
+              16904982,
+              1789432213177374296
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509-rank-00002.vtu",
+              16758696,
+              1789432213175207577
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509-rank-00003.vtu",
+              16955331,
+              1789432213171075891
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000500.pvtu",
+              1436,
+              1789425241111593216
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000500-rank-00000.vtu",
+              7605263,
+              1789425241094265264
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000500-rank-00001.vtu",
+              7582409,
+              1789425241100103999
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000500-rank-00002.vtu",
+              7572985,
+              1789425241103462764
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000500-rank-00003.vtu",
+              8376429,
+              1789425241108163826
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000500.vts",
+            32817,
+            1789425241032245279
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 6.0,
+      "file": "fields_t6.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000609.pvtu",
+              1356,
+              1789432427428241334
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000609-rank-00000.vtu",
+              16887547,
+              1789432427405390936
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000609-rank-00001.vtu",
+              16906093,
+              1789432427410185208
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000609-rank-00002.vtu",
+              16760090,
+              1789432427404915601
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000609-rank-00003.vtu",
+              16954333,
+              1789432427411918758
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000600.pvtu",
+              1436,
+              1789426503334124163
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000600-rank-00000.vtu",
+              7605259,
+              1789426503306344417
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000600-rank-00001.vtu",
+              7582409,
+              1789426503322448446
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000600-rank-00002.vtu",
+              7572985,
+              1789426503325542917
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000600-rank-00003.vtu",
+              8376431,
+              1789426503327116174
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000600.vts",
+            32824,
+            1789426503251442844
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 7.0,
+      "file": "fields_t7.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000709.pvtu",
+              1356,
+              1789432641102403950
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000709-rank-00000.vtu",
+              16886715,
+              1789432641071731433
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000709-rank-00001.vtu",
+              16907254,
+              1789432641079732220
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000709-rank-00002.vtu",
+              16761323,
+              1789432641081694355
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000709-rank-00003.vtu",
+              16954938,
+              1789432641078336256
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000700.pvtu",
+              1436,
+              1789427517959830670
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000700-rank-00000.vtu",
+              7605256,
+              1789427517946994198
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000700-rank-00001.vtu",
+              7582409,
+              1789427517956190613
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000700-rank-00002.vtu",
+              7572988,
+              1789427517955736403
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000700-rank-00003.vtu",
+              8376433,
+              1789427517955426651
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000700.vts",
+            32880,
+            1789427517895472181
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 8.0,
+      "file": "fields_t8.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000809.pvtu",
+              1356,
+              1789432856976399636
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000809-rank-00000.vtu",
+              16888754,
+              1789432856960208644
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000809-rank-00001.vtu",
+              16908023,
+              1789432856960040726
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000809-rank-00002.vtu",
+              16761812,
+              1789432856954372659
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000809-rank-00003.vtu",
+              16953644,
+              1789432856960670479
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000800.pvtu",
+              1436,
+              1789428599763601224
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000800-rank-00000.vtu",
+              7605262,
+              1789428599744044471
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000800-rank-00001.vtu",
+              7582406,
+              1789428599755128937
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000800-rank-00002.vtu",
+              7572988,
+              1789428599750623375
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000800-rank-00003.vtu",
+              8376432,
+              1789428599758993579
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000800.vts",
+            32903,
+            1789428599676605508
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 9.0,
+      "file": "fields_t9.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000909.pvtu",
+              1356,
+              1789433068578129067
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000909-rank-00000.vtu",
+              16891315,
+              1789433068562415869
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000909-rank-00001.vtu",
+              16909398,
+              1789433068558733477
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000909-rank-00002.vtu",
+              16763117,
+              1789433068572459249
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000909-rank-00003.vtu",
+              16955831,
+              1789433068551847362
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000900.pvtu",
+              1436,
+              1789429857571665444
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000900-rank-00000.vtu",
+              7605262,
+              1789429857548209967
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000900-rank-00001.vtu",
+              7582409,
+              1789429857560217208
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000900-rank-00002.vtu",
+              7572989,
+              1789429857562512647
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_000900-rank-00003.vtu",
+              8376430,
+              1789429857569236796
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_000900.vts",
+            32902,
+            1789429857497453225
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 10.0,
+      "file": "fields_t10.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009.pvtu",
+              1356,
+              1789433280534169265
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009-rank-00000.vtu",
+              16890920,
+              1789433280500320775
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009-rank-00001.vtu",
+              16909932,
+              1789433280528198071
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009-rank-00002.vtu",
+              16762916,
+              1789433280469626716
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009-rank-00003.vtu",
+              16957318,
+              1789433280508753522
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001000.pvtu",
+              1436,
+              1789431269462216311
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001000-rank-00000.vtu",
+              7605259,
+              1789431269423451676
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001000-rank-00001.vtu",
+              7582403,
+              1789431269431843381
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001000-rank-00002.vtu",
+              7572989,
+              1789431269439716876
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001000-rank-00003.vtu",
+              8376432,
+              1789431269440542879
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001000.vts",
+            32888,
+            1789431269366554167
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 11.0,
+      "file": "fields_t11.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001109.pvtu",
+              1356,
+              1789433496758146822
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001109-rank-00000.vtu",
+              16891760,
+              1789433496739138859
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001109-rank-00001.vtu",
+              16910117,
+              1789433496754547056
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001109-rank-00002.vtu",
+              16763261,
+              1789433496748698445
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001109-rank-00003.vtu",
+              16955785,
+              1789433496744698718
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001100.pvtu",
+              1436,
+              1789432944753038689
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001100-rank-00000.vtu",
+              7605260,
+              1789432944730112000
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001100-rank-00001.vtu",
+              7582408,
+              1789432944743408645
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001100-rank-00002.vtu",
+              7572990,
+              1789432944738406955
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001100-rank-00003.vtu",
+              8376429,
+              1789432944745292612
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001100.vts",
+            32855,
+            1789432944675141953
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 12.0,
+      "file": "fields_t12.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001209.pvtu",
+              1356,
+              1789433712077499270
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001209-rank-00000.vtu",
+              16894022,
+              1789433712064754169
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001209-rank-00001.vtu",
+              16910346,
+              1789433712061010485
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001209-rank-00002.vtu",
+              16763551,
+              1789433712056054296
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001209-rank-00003.vtu",
+              16959573,
+              1789433712073947712
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001200.pvtu",
+              1436,
+              1789434821014133001
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001200-rank-00000.vtu",
+              7605260,
+              1789434820974241731
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001200-rank-00001.vtu",
+              7582404,
+              1789434821000261603
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001200-rank-00002.vtu",
+              7572986,
+              1789434820994059324
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001200-rank-00003.vtu",
+              8376431,
+              1789434821006714216
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001200.vts",
+            32834,
+            1789434820911515814
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 13.0,
+      "file": "fields_t13.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001309.pvtu",
+              1356,
+              1789433926456670446
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001309-rank-00000.vtu",
+              16897607,
+              1789433926448979744
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001309-rank-00001.vtu",
+              16910378,
+              1789433926433325088
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001309-rank-00002.vtu",
+              16763889,
+              1789433926421463700
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001309-rank-00003.vtu",
+              16961498,
+              1789433926423891211
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001300.pvtu",
+              1436,
+              1789436900011494477
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001300-rank-00000.vtu",
+              7605258,
+              1789436899995967071
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001300-rank-00001.vtu",
+              7582403,
+              1789436900000111341
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001300-rank-00002.vtu",
+              7572982,
+              1789436900005363615
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001300-rank-00003.vtu",
+              8376432,
+              1789436900008748630
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001300.vts",
+            32813,
+            1789436899936974964
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 14.0,
+      "file": "fields_t14.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001409.pvtu",
+              1356,
+              1789434141646328768
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001409-rank-00000.vtu",
+              16902509,
+              1789434141631069572
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001409-rank-00001.vtu",
+              16910604,
+              1789434141636036845
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001409-rank-00002.vtu",
+              16764551,
+              1789434141639404403
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001409-rank-00003.vtu",
+              16964948,
+              1789434141641030035
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001400.pvtu",
+              1436,
+              1789438836919428391
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001400-rank-00000.vtu",
+              7605264,
+              1789438836905122866
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001400-rank-00001.vtu",
+              7582407,
+              1789438836908803883
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001400-rank-00002.vtu",
+              7572989,
+              1789438836909344635
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001400-rank-00003.vtu",
+              8376430,
+              1789438836916940254
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001400.vts",
+            32793,
+            1789438836863644838
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    },
+    {
+      "time": 15.0,
+      "file": "fields_t15.000000000.npz",
+      "inputs": {
+        "method": "native-centres-affine-k12-v1",
+        "meshes": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/mesh.npz",
+              29142733,
+              1789431023799511956
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/mesh.npz",
+              14579268,
+              1789419377877844776
+            ]
+          ]
+        },
+        "configurations": [
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+              9634,
+              1789437561799013389
+            ]
+          ],
+          [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm_metadata.json",
+              7760,
+              1789442369104077439
+            ]
+          ]
+        ],
+        "fields": {
+          "reference": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001509.pvtu",
+              1356,
+              1789434355377631579
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001509-rank-00000.vtu",
+              16903912,
+              1789434355367658658
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001509-rank-00001.vtu",
+              16910112,
+              1789434355370039794
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001509-rank-00002.vtu",
+              16764564,
+              1789434355369839918
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001509-rank-00003.vtu",
+              16968374,
+              1789434355367985992
+            ]
+          ],
+          "fvm": [
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001500.pvtu",
+              1436,
+              1789440854875208406
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001500-rank-00000.vtu",
+              7605262,
+              1789440854858666453
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001500-rank-00001.vtu",
+              7582408,
+              1789440854867862496
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001500-rank-00002.vtu",
+              7572988,
+              1789440854868452332
+            ],
+            [
+              "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/coupled_replacement_flow_001500-rank-00003.vtu",
+              8376431,
+              1789440854873184813
+            ]
+          ]
+        },
+        "slice": [
+          [
+            "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/samples/fvm_slice_z0_001500.vts",
+            32832,
+            1789440854812445610
+          ]
+        ],
+        "points": {
+          "slice": "ced714a089c48e311ae9213a46100e2371477a0a5d10b10d658e5cd9b7057a5a",
+          "centreline": "865e13c0b9be17469d9522f1f54824589084c282b90bca8184fd530c213f76ac",
+          "offaxis_y075": "eabc20292def7f353c30cfbdecae069a7e04183bccc2e8dd1f6c3d1b06d7792e"
+        }
+      }
+    }
+  ]
+}

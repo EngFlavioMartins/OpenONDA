@@ -1,0 +1,11 @@
+{
+  "schema": "openonda-fvm-grid-run/1",
+  "case": "fine",
+  "cell_size": 0.06,
+  "cell_count": 692604,
+  "end_time": 30.0,
+  "profiles": [
+    "centreline",
+    "offaxis_y075"
+  ]
+}

@@ -1,7 +1,7 @@
 # Cube comparison audit
 
 Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
-Comparison ends at t=3 s. Reference data after
+Comparison ends at t=15 s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
 ## What is matched
@@ -55,13 +55,13 @@ region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
 does not establish accuracy everywhere in three dimensions.
 
-At the latest compared time, t=3 s:
+At the latest compared time, t=15 s:
 
 | Comparison | RMS [% U_inf] | Sampled max [% U_inf] | Area [D^2] |
 |---|---:|---:|---:|
-| Coupled FVM / VPM (overlap consistency) | 3.192 | 17.586 | 7.5456 |
-| Reference FVM / VPM (auxiliary overlap field) | 4.872 | 19.236 | 7.5456 |
-| Reference FVM / Coupled FVM (primary near field) | 3.647 | 25.438 | 7.5456 |
+| Coupled FVM / VPM (overlap consistency) | 6.991 | 65.014 | 7.5456 |
+| Reference FVM / VPM (auxiliary overlap field) | 32.116 | 118.602 | 7.5456 |
+| Reference FVM / Coupled FVM (primary near field) | 33.882 | 121.666 | 7.5456 |
 
 
 These are instantaneous sampled differences, not time-averaged error estimates.
@@ -69,13 +69,13 @@ These are instantaneous sampled differences, not time-averaged error estimates.
 ## Reference drag anomaly and remaining validation limits
 
 The largest saved reference Cd after t=1 within the compared interval is
-2.30890757 at t=1.2 s, with accepted dt=0.000126489445 s.
+1.2876943 at t=1 s, with accepted dt=0.01 s.
 reference_force_audit.* shows raw Cd and the accepted timestep; the vertical
 line marks this sample. comparison_audit.json records neighbouring pressure
 extrema where solver diagnostics are available. These are observations, not
 a completed diagnosis of the pressure/timestep algorithm.
 
-At this sample the pressure span increases by a factor of 7.14, and the timestep decreases by a factor of 120 relative to the preceding step.
+At this sample the pressure span increases by a factor of 0.999, and the timestep decreases by a factor of 1 relative to the preceding step.
 This diagnostic does not establish that the reference is converged or accurate.
 The diagnostic flags simultaneous pressure-span growth and timestep reduction
 above a factor of ten; this is a screening rule, not a convergence criterion,

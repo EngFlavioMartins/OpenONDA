@@ -1,0 +1,258 @@
+{
+  "format_version": 11,
+  "kind": "openonda.coupled_backup",
+  "created_utc": "2026-09-15T03:13:00.404527+00:00",
+  "backend": "fvm",
+  "config_sha256": "080e5a6feb0f269125e84a24bb8cf648d42f6ebcaf9ed2af79fa285e2dfca0d3",
+  "config": {
+    "coupler": {
+      "freestream_velocity": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "backup_interval_steps": 50,
+      "coupling_patch": "numericalBoundary",
+      "boundary_condition_mode": "vorticity_mixed",
+      "fvm_consistency_width": 0.0,
+      "interface_iterations": 12,
+      "interface_normal_tolerance": 1e-06,
+      "interface_gradient_tolerance": 1e-06,
+      "transfer_method": "buffered_m4_renewal",
+      "transfer_region_bounds": {
+        "xmin": -1.25,
+        "xmax": 1.25,
+        "ymin": -1.25,
+        "ymax": 1.25,
+        "zmin": -1.25,
+        "zmax": 1.25
+      },
+      "eta_blend_width": 0.36,
+      "vpm_only_width": 0.0,
+      "transfer_vorticity_cutoff": 0.05,
+      "transfer_boundary_prune_multiplier": 10.0,
+      "transfer_amplification_cap": 1.8,
+      "transfer_diagnostic_interval_steps": 50,
+      "transfer_discretization_error_limit": 0.08,
+      "renewal_vorticity_error_limit": 0.005,
+      "renewal_velocity_error_limit": 0.001,
+      "renewal_gaussian_tail_cutoff": 1e-08,
+      "renewal_solver_tolerance": 1e-09
+    },
+    "vpm": {
+      "axisymmetric_no_swirl_axis": null,
+      "compute_device": "AUTO",
+      "cutoff_radius_factor": 100,
+      "domain_bounds": [
+        -4.5,
+        12.0,
+        -3.0,
+        3.0,
+        -3.0,
+        3.0
+      ],
+      "health_limits": {
+        "finite_state": {
+          "enabled": true
+        },
+        "lagrangian_cfl": {
+          "maximum": 1.0
+        },
+        "maximum_particle_strength": {
+          "maximum": null
+        },
+        "divergence": {
+          "maximum": null
+        },
+        "misalignment": {
+          "maximum_degrees": null
+        },
+        "growth": {
+          "maximum_particle_strength_growth": null,
+          "maximum_vorticity_growth": null
+        }
+      },
+      "max_n_particles": 1500000,
+      "particle_kernel": "GAUSSIAN",
+      "precision": "f32",
+      "random_seed": 42,
+      "stabilization": {
+        "stretching_viscosity_coefficient": 0.0,
+        "stretching_viscosity_start_step": 0,
+        "stretching_viscosity_feedback_gain": 0.0,
+        "stretching_viscosity_feedback_interval_steps": 5,
+        "stretching_viscosity_feedback_growth_limit": 0.25,
+        "stretching_viscosity_max_coefficient": null,
+        "pedrizzetti_relaxation_factor": 0.0,
+        "pedrizzetti_relaxation_interval_steps": 1,
+        "pedrizzetti_relaxation_start_step": 0,
+        "pedrizzetti_relaxation_end_step": null,
+        "pedrizzetti_relaxation_preserve_vortex_strength": true,
+        "pedrizzetti_relaxation_preserve_moments": false,
+        "filament_refinement": {
+          "interval_steps": 0,
+          "max_vortex_strength_factor": 2.0,
+          "offset_fraction": 0.25,
+          "max_n_particles": null,
+          "max_absolute_vortex_strength": null,
+          "late_interval_steps": null,
+          "late_start_step": null,
+          "late_absolute_only": false,
+          "end_step": null
+        },
+        "divergence_relaxation": {
+          "interval_steps": 0,
+          "start_step": 0,
+          "grid_spacing": null,
+          "regularization": 0.1,
+          "solver_relative_tolerance": 1e-05,
+          "max_iterations": 30,
+          "max_projection_sweeps": 3,
+          "max_grid_nodes": 8000000,
+          "max_correction_norm": 0.02,
+          "max_residual_ratio": 0.9,
+          "total_kinetic_energy_tolerance": 1e-06,
+          "total_enstrophy_tolerance": 0.0001,
+          "total_helicity_tolerance": 0.0001,
+          "variation_tolerance": 0.001,
+          "vortex_strength_reference_scale": null,
+          "linear_impulse_reference_scale": null,
+          "angular_impulse_reference_scale": null,
+          "vortex_strength_reference_tolerance": 0.001,
+          "linear_impulse_reference_tolerance": 0.01,
+          "angular_impulse_reference_tolerance": 0.01,
+          "spectral_convergence_fraction": 0.1
+        },
+        "remove_particles_by_bounds": [
+          -4.5,
+          12.0,
+          -3.0,
+          3.0,
+          -3.0,
+          3.0
+        ],
+        "regularization_interval_steps": 0,
+        "regularization_start_step": 0,
+        "regularization_grid_spacing": null,
+        "regularization_tail_budget": 0.003,
+        "regularization_solenoidal_remesh": false,
+        "regularization_transfer_only": false,
+        "regularization_max_particles": null,
+        "regularization_capacity_max_particles": null,
+        "regularization_max_events": null,
+        "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+        "regularization_total_enstrophy_dissipation_limit": 0.15,
+        "regularization_divergence_trigger": 0.04,
+        "regularization_misalignment_trigger": 20.0,
+        "regularization_core_radius_trigger": null,
+        "regularization_capacity_divergence_trigger": null,
+        "regularization_capacity_misalignment_trigger": null,
+        "regularization_capacity_energy_rate_trigger": null,
+        "regularization_capacity_fraction": 1.0,
+        "regularization_capacity_grid_spacing": null,
+        "regularization_core_radius": null,
+        "regularization_capacity_core_radius": null,
+        "regularization_projection_trigger": 0.08,
+        "regularization_projection_max_correction": 0.2,
+        "max_vortex_strength_error": 1e-05,
+        "max_vortex_strength_growth": 0.001,
+        "max_vorticity_growth": 0.05
+      },
+      "integrator": {
+        "name": "RK2",
+        "order": 2,
+        "a": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        "b": [
+          0.5,
+          0.5
+        ],
+        "c": [
+          0.0,
+          1.0
+        ]
+      },
+      "induction": {
+        "type": "source.solvers.vpm.physics.induction.treecode.evaluator.TreecodeInduction",
+        "method": "TREECODE",
+        "theta": 0.1,
+        "multipole_order": 1,
+        "stretching_scheme": "TRANSPOSED",
+        "sort_particle_targets": false,
+        "traversal_block_dim": 128,
+        "kernel": "GAUSSIAN"
+      },
+      "time_step_size": 0.01,
+      "turbulence": {
+        "model": "LES_SMAGORINSKY",
+        "smagorinsky_coefficient": 0.16778594162371085,
+        "subgrid_dissipation_coefficient": 1.048,
+        "filter_width": null,
+        "flow_model": "LES"
+      },
+      "viscous": {
+        "scheme": "GBD",
+        "core_radius_ratio": 1.1,
+        "dvh_grid_spacing": null,
+        "dvh_domain_padding": 3.0,
+        "dvh_threshold": 0.01,
+        "dvh_threshold_mode": "budget",
+        "gbd_grid_spacing": 0.06,
+        "gbd_domain_padding": 5.0,
+        "gbd_threshold": 4.319999999999999e-06,
+        "gbd_threshold_mode": "absolute",
+        "gbd_max_nodes": 1500000,
+        "gbd_remeshing_kernel": "M4_PRIME",
+        "dvh_support_radius_ratio": 4,
+        "dvh_max_nodes": null,
+        "kinematic_viscosity": 0.001,
+        "particle_spacing": 0.06
+      }
+    },
+    "panel": {
+      "type": "source.solvers.vpm.boundary_elements.panels.solver.panel_solver.PanelSolver",
+      "max_n_panels": 128,
+      "float_dtype": "f32",
+      "linear_solver": "SCIPY",
+      "force_method": "BERNOULLI",
+      "boundary_condition_type": "NEUMANN",
+      "density": 1.0,
+      "freestream_velocity": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "coupling_scope": "fvm_vpm",
+      "raise_on_non_convergence": true,
+      "residual_tolerance": null,
+      "far_field_acceptance": 5.0,
+      "far_field_min_panels": 256,
+      "reuse_constrained_factorization": true
+    }
+  },
+  "coupling_step": 1550,
+  "time": 15.5,
+  "fvm_step": 1550,
+  "vpm_step": 1550,
+  "n_fvm_substeps": 1,
+  "artifacts": {
+    "fvm": "fvm_001550",
+    "vpm": "vpm_001550.h5",
+    "vpm_xdmf": "vpm_001550.xdmf",
+    "vpm_boundary_condition": "vpm_boundary_condition_001550.npz"
+  },
+  "artifact_sha256": {
+    "fvm": "06fb6e0284449c29b50cc9b22ae022b4f3c401fc17dfeb20ea5244fad05520ea",
+    "vpm": "9cf61062c4cfe4593b9c01f7dabe3334e4c2c4861cae936920d2b29941f94788",
+    "vpm_xdmf": "12367d69fd4138d9111253c91c0674ce4e0f459671b0ea4e4aadb1c74dad8152",
+    "vpm_boundary_condition": "cdfd1036f39fcb29c5628b9562256f1ad8f45149ded8e03a062f8c38b7cc8222"
+  }
+}

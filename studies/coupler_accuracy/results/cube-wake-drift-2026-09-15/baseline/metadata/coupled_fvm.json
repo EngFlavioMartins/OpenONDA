@@ -1,0 +1,323 @@
+{
+  "case_name": "coupled_replacement_flow",
+  "configuration": {
+    "acceptance": {
+      "max_continuity_error_abort": null,
+      "max_continuity_error_warning": null,
+      "max_courant_number_abort": null,
+      "max_courant_number_warning": null,
+      "max_equation_residual_abort": null,
+      "max_equation_residual_warning": null,
+      "max_velocity_magnitude_abort": null,
+      "max_velocity_magnitude_warning": null,
+      "sustained_steps": 1,
+      "type": "RunAcceptanceLimits"
+    },
+    "backup": {
+      "path": "backup",
+      "schedule": null,
+      "type": "BackupConfig",
+      "write_at_end": false
+    },
+    "boundaries": [
+      {
+        "eddy_viscosity_type": "calculated",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": null,
+        "name": "numericalBoundary",
+        "neighbour_patch": null,
+        "pressure_type": "fixedFluxPressure",
+        "type": "BoundaryConfig",
+        "velocity_type": "fixedValue",
+        "velocity_value": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "eddy_viscosity_type": "calculated",
+        "eddy_viscosity_value": 0.0,
+        "flux_type": "zeroGradient",
+        "flux_value": 0.0,
+        "kinematic_pressure_value": 0.0,
+        "mesh_type": "wall",
+        "name": "cube",
+        "neighbour_patch": null,
+        "pressure_type": "zeroGradient",
+        "type": "BoundaryConfig",
+        "velocity_type": "fixedValue",
+        "velocity_value": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "case_name": "coupled_replacement_flow",
+    "cores": 4,
+    "dynamic_mesh": {
+      "angular_speed": 0.0,
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "method": "static",
+      "origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "type": "MeshMotionConfig",
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "execution": {
+      "linear_backend": "petsc",
+      "operator_backend": "numba",
+      "output_mode": "synchronous",
+      "parallel_mode": "petsc_partitioned",
+      "type": "ComputeConfig"
+    },
+    "initial_kinematic_pressure": 0.0,
+    "initial_velocity": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "linear": {
+      "amg_max_iterations": null,
+      "amg_reuse_tolerance": 0.05,
+      "amg_tolerance": null,
+      "ilu_drop_tolerance": 0.0001,
+      "ilu_fill_factor": 10.0,
+      "ilu_reuse_tolerance": 0.05,
+      "linear_failure_action": "raise",
+      "linear_solver": "bicgstab",
+      "momentum_final_relative_tolerance": 0.0,
+      "momentum_max_iterations": 2000,
+      "momentum_relative_tolerance": 0.1,
+      "momentum_solver": null,
+      "momentum_tolerance": 1e-06,
+      "pressure_final_relative_tolerance": 0.0,
+      "pressure_max_iterations": 500,
+      "pressure_nullspace_method": "auto",
+      "pressure_relative_tolerance": 0.01,
+      "pressure_solver": "amg",
+      "pressure_tolerance": 1e-06,
+      "reuse_ilu": true,
+      "type": "LinearSolverConfig"
+    },
+    "logging": {
+      "console": true,
+      "filename": "fvm.log",
+      "mode": "simple",
+      "schedule": {
+        "every_n_steps": 1,
+        "every_time": null,
+        "final_only": false,
+        "type": "RunSchedule"
+      },
+      "type": "LoggingConfig"
+    },
+    "mesh": {
+      "max_aspect_ratio": null,
+      "max_lsq_condition": null,
+      "max_non_orthogonality_deg": null,
+      "max_skewness": null,
+      "type": "MeshQualityConfig"
+    },
+    "output": {
+      "asynchronous": false,
+      "compression": "lz4",
+      "data_location": "cell",
+      "encoding": "appended",
+      "format": "vtk_xml",
+      "ghost_layers": 0,
+      "point_interpolation": "none",
+      "precision": "f32",
+      "type": "OutputConfig"
+    },
+    "pimple": {
+      "algorithm": "PIMPLE",
+      "ddt_corr": true,
+      "ibm_forcing_loops": 2,
+      "ibm_second_solve": true,
+      "max_iterations": 20,
+      "min_outer_correctors": 1,
+      "n_correctors": 2,
+      "n_nonorthogonal_correctors": 1,
+      "n_orthogonal_correctors": 1,
+      "n_outer_correctors": 2,
+      "outer_continuity_tolerance": null,
+      "outer_residual_tolerance": null,
+      "pressure_relaxation": 0.3,
+      "tolerance": 1e-06,
+      "type": "PimpleControl",
+      "velocity_relaxation": 0.7
+    },
+    "samplers": [
+      {
+        "file_name": "forces_history",
+        "moment_centre": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "patch_names": [
+          "cube"
+        ],
+        "reference_area": 1.0,
+        "reference_length": 1.0,
+        "reference_velocity": 1.0,
+        "schedule": {
+          "every_n_steps": 5,
+          "every_time": null,
+          "final_only": false
+        },
+        "type": "ForceSampler"
+      },
+      {
+        "end": [
+          1.5,
+          0.0,
+          0.0
+        ],
+        "file_name": "fvm_centreline",
+        "inverse_distance_power": 2.0,
+        "k": 5,
+        "n_points": 26,
+        "reconstruction": "idw",
+        "schedule": {
+          "every_n_steps": 5,
+          "every_time": null,
+          "final_only": false
+        },
+        "start": [
+          -1.5,
+          0.0,
+          0.0
+        ],
+        "type": "LineSampler"
+      },
+      {
+        "end": [
+          1.5,
+          0.75,
+          0.0
+        ],
+        "file_name": "fvm_offaxis_y075",
+        "inverse_distance_power": 2.0,
+        "k": 5,
+        "n_points": 26,
+        "reconstruction": "idw",
+        "schedule": {
+          "every_n_steps": 5,
+          "every_time": null,
+          "final_only": false
+        },
+        "start": [
+          -1.5,
+          0.75,
+          0.0
+        ],
+        "type": "LineSampler"
+      },
+      {
+        "body_bounds": [
+          -0.5,
+          0.5,
+          -0.5,
+          0.5,
+          -0.5,
+          0.5
+        ],
+        "body_geometry": "box",
+        "bounds": [
+          -1.5,
+          1.5,
+          -1.5,
+          1.5
+        ],
+        "file_name": "fvm_slice_z0",
+        "inverse_distance_power": 2.0,
+        "k": 5,
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "reconstruction": "idw",
+        "schedule": {
+          "every_n_steps": 5,
+          "every_time": null,
+          "final_only": false
+        },
+        "spacing": 0.12,
+        "type": "SurfaceSampler"
+      }
+    ],
+    "schemes": {
+      "convection_scheme": "linearupwind",
+      "gradient_scheme": "gauss",
+      "time_scheme": "backward",
+      "type": "DiscretizationConfig"
+    },
+    "time": {
+      "adjustment": null,
+      "end_time": 20.0,
+      "output_schedule": {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false,
+        "type": "RunSchedule"
+      },
+      "start_time": 0.0,
+      "time_step_size": 0.01,
+      "type": "TimeConfig"
+    },
+    "transport": {
+      "density": 1.0,
+      "kinematic_viscosity": 0.001,
+      "type": "TransportConfig"
+    },
+    "turbulence": {
+      "dynamic": false,
+      "model": "equilibriumsmagorinsky",
+      "sigma_coefficient": 1.35,
+      "smagorinsky_coefficient": 0.16778594162371085,
+      "subgrid_dissipation_coefficient": 1.048,
+      "subgrid_kinetic_energy_coefficient": 0.094,
+      "type": "TurbulenceConfig",
+      "wale_coefficient": 0.325
+    },
+    "type": "FVMSetup"
+  },
+  "lifecycle": {
+    "status": "failed"
+  },
+  "mesh": {
+    "n_cells": 91095,
+    "n_faces": 235183,
+    "n_points": 83717,
+    "provenance": null
+  },
+  "schema_version": 1,
+  "solver": "FVM",
+  "state": {
+    "step": 1566,
+    "time": 15.65999999999971
+  }
+}
