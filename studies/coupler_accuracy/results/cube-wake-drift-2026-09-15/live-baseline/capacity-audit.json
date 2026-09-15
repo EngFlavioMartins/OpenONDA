@@ -1,0 +1,12 @@
+{
+  "allocation_limit": 1500000,
+  "accepted_records": 50,
+  "last_time": 0.5,
+  "peaks": {
+    "n_particles_before": 12010,
+    "n_particles_after": 11426,
+    "population_pruned_particles": 0,
+    "gbd_retained_node_count": 12010
+  },
+  "capacity_reached": false
+}

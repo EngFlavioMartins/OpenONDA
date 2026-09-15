@@ -1,0 +1,46 @@
+{
+  "source_tree": "/private/tmp/openonda-cube-wake-333fc4bb",
+  "direct_derivative_relative_error": 5.072299924340434e-11,
+  "times": [
+    {
+      "time": 3,
+      "particle_count": 22675,
+      "target_count": 270,
+      "tree_velocity_error_rms": 0.0006277533733704478,
+      "tree_velocity_error_max": 0.004421828462599961,
+      "tree_jacobian_error_relative": 0.0012901206571299159,
+      "replayed_vs_saved_velocity_rms": 1.4141441491879863e-08,
+      "body_velocity_rms": 0.008055322219608363
+    },
+    {
+      "time": 6,
+      "particle_count": 42021,
+      "target_count": 270,
+      "tree_velocity_error_rms": 0.0008402472221577957,
+      "tree_velocity_error_max": 0.005143912122915534,
+      "tree_jacobian_error_relative": 0.0016093360400883756,
+      "replayed_vs_saved_velocity_rms": 1.3615603179761122e-08,
+      "body_velocity_rms": 0.004868369180446488
+    },
+    {
+      "time": 10,
+      "particle_count": 77948,
+      "target_count": 270,
+      "tree_velocity_error_rms": 0.0003069957476825869,
+      "tree_velocity_error_max": 0.0012207435476173053,
+      "tree_jacobian_error_relative": 0.0005106875124845959,
+      "replayed_vs_saved_velocity_rms": 1.3066528876481911e-08,
+      "body_velocity_rms": 0.003925404014152301
+    },
+    {
+      "time": 15,
+      "particle_count": 139462,
+      "target_count": 270,
+      "tree_velocity_error_rms": 0.0005724836871248024,
+      "tree_velocity_error_max": 0.004359376964720947,
+      "tree_jacobian_error_relative": 0.0014621419053489,
+      "replayed_vs_saved_velocity_rms": 1.5587844703978304e-08,
+      "body_velocity_rms": 0.0034965250154857007
+    }
+  ]
+}

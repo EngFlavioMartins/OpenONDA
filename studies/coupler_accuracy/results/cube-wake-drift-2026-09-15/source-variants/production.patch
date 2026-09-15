@@ -1,0 +1,134 @@
+--- a/source/coupler/interpolation.py
++++ b/source/coupler/interpolation.py
+@@ -25,15 +25,16 @@
+     tree : scipy.spatial.cKDTree
+         Search tree built from exactly ``cell_centre`` in the same order.
+     neighbour_count : int, default=4
+-        Number of nearest donors in the inverse-distance blend. It is clamped
+-        to ``[1, M]``.
++        Minimum number of nearest donors in the inverse-distance blend. It is
++        clamped to ``[1, M]``. All donors tied at the last distance are included
++        so cell ordering does not select a preferred spatial direction.
+ 
+     Attributes
+     ----------
+     cell_centre : ndarray, shape (M, 3)
+         Normalized donor coordinates in m.
+     neighbour_count : int
+-        Effective stencil size after clamping.
++        Minimum stencil size after clamping; distance ties can increase it.
+ 
+     Notes
+     -----
+@@ -57,8 +58,8 @@
+         tree : scipy.spatial.cKDTree
+             Search tree built from the same ``M`` rows, in the same order.
+         neighbour_count : int, default=4
+-            Number of nearest donor cells used for each query; clipped to the
+-            available range ``[1, M]``.
++            Minimum number of nearest donor cells used for each query, clipped
++            to ``[1, M]``. The last equal-distance shell is included in full.
+ 
+         Notes
+         -----
+@@ -89,9 +90,9 @@
+         -------
+         tuple of ndarray
+             ``(indices, weights)`` with shapes ``(N, K)`` and ``(N, K)``;
+-            ``K`` is the effective neighbour count. Each weight row sums to
+-            one. The returned arrays are internal cache entries and must not
+-            be modified by callers.
++            ``K`` includes the widest tied donor shell in this target array.
++            Shorter stencils have zero-weight padding. Each weight row sums
++            to one. These internal cache entries must not be modified.
+         """
+         key = self._key(evaluation_position)
+         cached = self._cache.get(key)
+@@ -99,13 +100,44 @@
+             self._cache.move_to_end(key)
+             return cached
+ 
+-        distance, indices = self.tree.query(evaluation_position, k=self.neighbour_count, workers=-1)
++        # Ask for one additional donor to detect a truncated distance shell.
++        # Cartesian cells frequently tie: choosing an arbitrary subset then
++        # changes reconstructed curvature under cell reordering/reflection.
++        count = self.neighbour_count
++        query_count = min(count + 1, len(self.cell_centre))
++        distance, indices = self.tree.query(evaluation_position, k=query_count, workers=-1)
+         distance = np.asarray(distance, dtype=np.float64).reshape(
+-            len(evaluation_position), self.neighbour_count
++            len(evaluation_position), query_count
+         )
+-        indices = np.asarray(indices, dtype=np.int32).reshape(
+-            len(evaluation_position), self.neighbour_count
+-        )
++        indices = np.asarray(indices, dtype=np.int32).reshape(len(evaluation_position), query_count)
++
++        tied_rows = np.empty(0, dtype=np.int64)
++        if query_count > count:
++            cutoff = distance[:, count - 1]
++            tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, cutoff)
++            tied_rows = np.flatnonzero(
++                (distance[:, count] <= cutoff + tolerance) & (distance[:, 0] > 1.0e-12)
++            )
++        if len(tied_rows):
++            neighbours = self.tree.query_ball_point(
++                evaluation_position[tied_rows],
++                r=cutoff[tied_rows] + tolerance[tied_rows],
++                workers=-1,
++            )
++            width = max(count, max(len(rows) for rows in neighbours))
++            complete_distance = np.full((len(evaluation_position), width), np.inf)
++            complete_indices = np.zeros((len(evaluation_position), width), dtype=np.int32)
++            complete_distance[:, :count] = distance[:, :count]
++            complete_indices[:, :count] = indices[:, :count]
++            for row, donors in zip(tied_rows, neighbours, strict=True):
++                donors = np.asarray(donors, dtype=np.int32)
++                complete_indices[row, : len(donors)] = donors
++                complete_distance[row, : len(donors)] = np.linalg.norm(
++                    evaluation_position[row] - self.cell_centre[donors], axis=1
++                )
++            distance, indices = complete_distance, complete_indices
++        else:
++            distance, indices = distance[:, :count], indices[:, :count]
+ 
+         weights = 1.0 / np.maximum(distance, 1.0e-12) ** 2
+         exact = distance[:, 0] <= 1.0e-12
+--- a/source/coupler/vorticity_transfer.py
++++ b/source/coupler/vorticity_transfer.py
+@@ -1948,9 +1948,19 @@
+                     self._body_bounds = bounds
+                     self._lattice_anchor = bounds[[0, 2, 4]]
+                     if self.transfer_method == "buffered_m4_renewal":
+-                        # This is the lattice phase used by the 20-second renewal
+-                        # run: no particle centre lies directly on a cube face.
+-                        self._lattice_anchor -= 0.5 * self.particle_spacing
++                        # Both phases below reflect about the body centre.
++                        # Choose the one whose wall-crossing control cells
++                        # have fluid centres: solid-centre exclusion must not
++                        # discard their fluid circulation. Integer side/h
++                        # ratios retain the previous wall-aligned lattice.
++                        side_cells = (bounds[1::2] - bounds[::2]) / self.particle_spacing
++                        roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, side_cells)
++                        whole_cells = np.floor(side_cells + roundoff).astype(np.int64)
++                        half_shift = whole_cells % 2 == 0
++                        self._lattice_anchor = (
++                            0.5 * (bounds[::2] + bounds[1::2])
++                            - 0.5 * self.particle_spacing * half_shift
++                        )
+ 
+             ibm = getattr(fvm, "ibm", None)
+             bodies = () if ibm is None else tuple(ibm.bodies)
+@@ -1973,8 +1983,11 @@
+                     # Distance to a donor centre is not a fluid-domain test:
+                     # coarse/anisotropic cells legitimately span many particles.
+                     # Solid exclusion uses wall geometry, independently of h.
++                    roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, np.abs(self._fvm_box))
+                     return np.all(
+-                        (points >= self._fvm_box[::2]) & (points <= self._fvm_box[1::2]), axis=1
++                        (points >= self._fvm_box[::2] - roundoff[::2])
++                        & (points <= self._fvm_box[1::2] + roundoff[1::2]),
++                        axis=1,
+                     ).astype(np.float64)
+ 
+                 has_solid = bool(self._solid_bodies) or self._body_bounds is not None

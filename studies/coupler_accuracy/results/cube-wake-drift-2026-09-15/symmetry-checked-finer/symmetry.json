@@ -1,0 +1,64 @@
+{
+  "description": "Measure fourfold symmetry loss in the saved three-dimensional cube fields.",
+  "spacing": 0.05,
+  "bounds": [
+    -1.4,
+    1.4,
+    -1.4,
+    1.4,
+    -1.4,
+    1.4
+  ],
+  "fluid_query_count": 175932,
+  "projection": "One interpolation per point followed by exact C4 orbit permutations",
+  "times": [
+    {
+      "time": 6.0,
+      "coupled": {
+        "asymmetric_velocity_rms": 0.025630228344286375,
+        "sampled_velocity_rms": 0.9874002251743703
+      },
+      "reference_fine": {
+        "asymmetric_velocity_rms": 0.00014913945198948242,
+        "sampled_velocity_rms": 0.9878067441482715
+      },
+      "total_error_rms": 0.039274046038662795,
+      "symmetric_error_rms": 0.02974716167230663,
+      "asymmetric_error_rms": 0.02564287551521194,
+      "asymmetric_squared_error_fraction": 0.42630670010640204,
+      "orthogonality_residual": 9.781311462206948e-21
+    },
+    {
+      "time": 10.0,
+      "coupled": {
+        "asymmetric_velocity_rms": 0.10439186500243815,
+        "sampled_velocity_rms": 0.9779509860177257
+      },
+      "reference_fine": {
+        "asymmetric_velocity_rms": 0.0001726020270706769,
+        "sampled_velocity_rms": 0.9772200076337532
+      },
+      "total_error_rms": 0.1238520411169928,
+      "symmetric_error_rms": 0.06661029568033146,
+      "asymmetric_error_rms": 0.10441454208214529,
+      "asymmetric_squared_error_fraction": 0.7107479894215372,
+      "orthogonality_residual": 3.029051291522151e-20
+    },
+    {
+      "time": 15.0,
+      "coupled": {
+        "asymmetric_velocity_rms": 0.13030161322574266,
+        "sampled_velocity_rms": 0.9687866260815897
+      },
+      "reference_fine": {
+        "asymmetric_velocity_rms": 0.00022953306017380032,
+        "sampled_velocity_rms": 0.9571628035857096
+      },
+      "total_error_rms": 0.2145286819598552,
+      "symmetric_error_rms": 0.17041242025350933,
+      "asymmetric_error_rms": 0.13031562610360287,
+      "asymmetric_squared_error_fraction": 0.36899651193395694,
+      "orthogonality_residual": -1.1611363284168246e-19
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "velocity": {
+    "equal": false,
+    "maximum_abs_difference": 1.1920928955078125e-07
+  },
+  "vorticity": {
+    "equal": false,
+    "maximum_abs_difference": 1.3919052435085177e-06
+  },
+  "eddy_viscosity": {
+    "equal": false,
+    "maximum_abs_difference": 1.709850039333105e-10
+  },
+  "kinematic_pressure": {
+    "equal": false,
+    "maximum_abs_difference": 2.5797635316848755e-07
+  },
+  "particles": {
+    "position": {
+      "equal": true,
+      "shape_original": [
+        11426,
+        3
+      ],
+      "shape_replay": [
+        11426,
+        3
+      ]
+    },
+    "vortex_strength": {
+      "equal": false,
+      "shape_original": [
+        11426,
+        3
+      ],
+      "shape_replay": [
+        11426,
+        3
+      ]
+    },
+    "velocity": {
+      "equal": false,
+      "shape_original": [
+        11426,
+        3
+      ],
+      "shape_replay": [
+        11426,
+        3
+      ]
+    }
+  }
+}

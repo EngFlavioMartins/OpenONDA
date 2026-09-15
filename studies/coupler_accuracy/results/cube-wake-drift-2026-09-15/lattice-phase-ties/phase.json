@@ -1,0 +1,162 @@
+{
+  "description": "Isolate lattice phase using frozen, fully 3D fine-reference velocity.\n\nOnly the lattice anchor changes. The production velocity-trace curl, Gaussian\nrepresentation correction, body mask, pruning and moment recovery are used.\nNo elapsed time or particle advection is claimed by this component experiment.\n",
+  "spacing": 0.06,
+  "anchors": {
+    "minimum_corner": [
+      -0.53,
+      -0.53,
+      -0.53
+    ],
+    "mirrored_transverse": [
+      -0.53,
+      0.53,
+      0.53
+    ],
+    "centred_transverse": [
+      -0.53,
+      -0.03,
+      -0.03
+    ],
+    "centred_all": [
+      -0.03,
+      -0.03,
+      -0.03
+    ]
+  },
+  "times": [
+    {
+      "time": 1,
+      "native_vorticity_reconstruction_rms": 4.857107235744752e-07,
+      "donor_rotation_defect_rms": 0.00011039125200109536,
+      "phases": {
+        "minimum_corner": [
+          {
+            "renewal": 1,
+            "particles": 13373,
+            "rotation_defect_rms": 0.010217486148009524,
+            "rotation_defect_max": 0.028906797626684896,
+            "strength_net": [
+              2.0635490465397227e-08,
+              -0.03615929797940385,
+              0.036159558055458306
+            ],
+            "strength_l1": 13.262182688359776,
+            "representation_residual_after_prune": 0.32280884769655893
+          }
+        ],
+        "mirrored_transverse": [
+          {
+            "renewal": 1,
+            "particles": 13373,
+            "rotation_defect_rms": 0.010208808584384955,
+            "rotation_defect_max": 0.028686877604745246,
+            "strength_net": [
+              1.405505393240276e-08,
+              0.036153413875177426,
+              -0.03615387298976956
+            ],
+            "strength_l1": 13.262192750925907,
+            "representation_residual_after_prune": 0.32280953853581434
+          }
+        ],
+        "centred_transverse": [
+          {
+            "renewal": 1,
+            "particles": 13831,
+            "rotation_defect_rms": 0.00020395170286581637,
+            "rotation_defect_max": 0.0015941309803337257,
+            "strength_net": [
+              2.638436804282632e-09,
+              -2.1575215341651427e-06,
+              2.034385239426203e-06
+            ],
+            "strength_l1": 13.793564668675348,
+            "representation_residual_after_prune": 0.2882727322152793
+          }
+        ],
+        "centred_all": [
+          {
+            "renewal": 1,
+            "particles": 14276,
+            "rotation_defect_rms": 1.2471432221168081e-05,
+            "rotation_defect_max": 0.0001064245300660249,
+            "strength_net": [
+              2.835855677672458e-09,
+              -3.704104677913456e-06,
+              3.5473064876238934e-06
+            ],
+            "strength_l1": 13.700438917935106,
+            "representation_residual_after_prune": 0.28437534467456277
+          }
+        ]
+      }
+    },
+    {
+      "time": 6,
+      "native_vorticity_reconstruction_rms": 4.901211587009357e-07,
+      "donor_rotation_defect_rms": 0.0002577109224423426,
+      "phases": {
+        "minimum_corner": [
+          {
+            "renewal": 1,
+            "particles": 20888,
+            "rotation_defect_rms": 0.004381223472693542,
+            "rotation_defect_max": 0.013833830461942939,
+            "strength_net": [
+              -2.1776456237578007e-08,
+              2.2298750489036512e-05,
+              -2.219966986294114e-05
+            ],
+            "strength_l1": 17.873947798020247,
+            "representation_residual_after_prune": 0.25347895863908904
+          }
+        ],
+        "mirrored_transverse": [
+          {
+            "renewal": 1,
+            "particles": 20888,
+            "rotation_defect_rms": 0.004398533363692571,
+            "rotation_defect_max": 0.013844071677770072,
+            "strength_net": [
+              -3.340014482809759e-08,
+              -5.789862022833257e-05,
+              5.719530275958765e-05
+            ],
+            "strength_l1": 17.87393327949347,
+            "representation_residual_after_prune": 0.25347869012655655
+          }
+        ],
+        "centred_transverse": [
+          {
+            "renewal": 1,
+            "particles": 21440,
+            "rotation_defect_rms": 0.00039925999444767764,
+            "rotation_defect_max": 0.0024418957220152054,
+            "strength_net": [
+              -3.1890550807356534e-08,
+              -8.138382285124065e-05,
+              8.106337970525521e-05
+            ],
+            "strength_l1": 18.0406670034058,
+            "representation_residual_after_prune": 0.2513106622904064
+          }
+        ],
+        "centred_all": [
+          {
+            "renewal": 1,
+            "particles": 21796,
+            "rotation_defect_rms": 2.5587607341755698e-05,
+            "rotation_defect_max": 8.842882552915307e-05,
+            "strength_net": [
+              -3.226628639883138e-08,
+              -1.7904316899007154e-05,
+              1.763721776905015e-05
+            ],
+            "strength_l1": 17.812682485548578,
+            "representation_residual_after_prune": 0.24503501040579662
+          }
+        ]
+      }
+    }
+  ]
+}

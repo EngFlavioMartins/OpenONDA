@@ -1,0 +1,32 @@
+{
+  "identical": true,
+  "verified_geometry": {
+    "body_bounds": [
+      -0.5,
+      0.5,
+      -0.5,
+      0.5,
+      -0.5,
+      0.5
+    ],
+    "anchor": [
+      -0.03,
+      -0.03,
+      -0.03
+    ],
+    "shape": [
+      52,
+      52,
+      52
+    ],
+    "buffer_length": 0.135,
+    "array_sha256": {
+      "positions": "afeaf1f99ec52f14f358a8568195a8f08a22db7389dab3d56ef8982c9d1f6da5",
+      "mesh_weight": "ad425de5d139d283c5f0040a1a3600086158a916567f89530695de22446393ff",
+      "fluid_weight": "9bb70e9bdcd5ac4389bc14ca3cbb193d385e7bdbb3135a66024599265b40e338",
+      "fvm_authority": "30cb0746ff4c0350d1762d0ac22827dc5308479d3a05068bb6e72d74e8eb53a0",
+      "solid_interior": "37a2c83d44afeed7ad94160dbcd09e5851dcf3300197a8b5544422db7e944f99"
+    }
+  },
+  "interpolator_ast_equal_excluding_docstrings": true
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "cos": 1,
+    "sin": 0,
+    "maximum_centre_distance": 0.0,
+    "unique_rotated_cells": 303264,
+    "maximum_relative_volume_difference": 0.0
+  },
+  {
+    "cos": 0,
+    "sin": 1,
+    "maximum_centre_distance": 0.0031781287184387873,
+    "unique_rotated_cells": 303264,
+    "maximum_relative_volume_difference": 0.02472251584538102
+  },
+  {
+    "cos": -1,
+    "sin": 0,
+    "maximum_centre_distance": 0.0032055954136287197,
+    "unique_rotated_cells": 303264,
+    "maximum_relative_volume_difference": 0.02610729865053136
+  },
+  {
+    "cos": 0,
+    "sin": -1,
+    "maximum_centre_distance": 0.0031781287184387873,
+    "unique_rotated_cells": 303264,
+    "maximum_relative_volume_difference": 0.025349212144286058
+  }
+]

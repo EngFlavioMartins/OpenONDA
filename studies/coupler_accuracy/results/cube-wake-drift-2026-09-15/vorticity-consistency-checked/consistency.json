@@ -1,0 +1,194 @@
+{
+  "description": "Compare Gaussian particle vorticity with its actual Biot-Savart velocity curl.\n\nThe body source potential and uniform freestream have zero curl. Thus this\ncomparison uses saved particles directly, without an FVM reconstruction or a\ntree approximation. It measures representation inconsistency, not its cause.\n",
+  "particle_directory": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-wake-drift-2026-09-15/baseline/solution/coupled",
+  "query_count": 1980,
+  "spacing": [
+    0.2,
+    0.3,
+    0.3
+  ],
+  "vorticity_scale": "U_infinity/D=1 s^-1; relative metrics are null below 1e-10 s^-1 local RMS",
+  "direct_derivative_relative_error": 5.072299924340434e-11,
+  "times": [
+    {
+      "time": 1.0,
+      "particles": 13705,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 5.7155413363440255,
+          "velocity_curl_rms": 5.753881704648174,
+          "vorticity_minus_curl_rms": 0.11346923971040951,
+          "vorticity_minus_curl_relative_rms": 0.0198527546269118,
+          "spacing_times_divergence_relative_rms": 0.033261487933817946
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 0.47017229553400147,
+          "velocity_curl_rms": 0.4692803660426203,
+          "vorticity_minus_curl_rms": 0.01636714704509528,
+          "vorticity_minus_curl_relative_rms": 0.034810955899700936,
+          "spacing_times_divergence_relative_rms": 0.019862349078766817
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 2.5706271240582787e-23,
+          "velocity_curl_rms": 0.0007896085761996666,
+          "vorticity_minus_curl_rms": 0.0007896085761996666,
+          "vorticity_minus_curl_relative_rms": null,
+          "spacing_times_divergence_relative_rms": null
+        }
+      }
+    },
+    {
+      "time": 3.0,
+      "particles": 22675,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 4.514123425003012,
+          "velocity_curl_rms": 4.535131122079431,
+          "vorticity_minus_curl_rms": 0.09713735879696067,
+          "vorticity_minus_curl_relative_rms": 0.021518542948766595,
+          "spacing_times_divergence_relative_rms": 0.026149894110455475
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 0.647785324503597,
+          "velocity_curl_rms": 0.6294502804503279,
+          "vorticity_minus_curl_rms": 0.07298537065176933,
+          "vorticity_minus_curl_relative_rms": 0.11266907089582276,
+          "spacing_times_divergence_relative_rms": 0.10463290463677563
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 0.22839948863450246,
+          "velocity_curl_rms": 0.2160037003648087,
+          "vorticity_minus_curl_rms": 0.05484186043151396,
+          "vorticity_minus_curl_relative_rms": 0.24011376189758005,
+          "spacing_times_divergence_relative_rms": 0.06622846423907004
+        }
+      }
+    },
+    {
+      "time": 6.0,
+      "particles": 42021,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 4.102711846272303,
+          "velocity_curl_rms": 4.110014693765389,
+          "vorticity_minus_curl_rms": 0.07282146439346916,
+          "vorticity_minus_curl_relative_rms": 0.017749592738187124,
+          "spacing_times_divergence_relative_rms": 0.023310650655607675
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 1.5016943895076236,
+          "velocity_curl_rms": 1.5537354352042794,
+          "vorticity_minus_curl_rms": 0.18058069606255,
+          "vorticity_minus_curl_relative_rms": 0.12025129568590777,
+          "spacing_times_divergence_relative_rms": 0.09196958904792628
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 0.4784316577934644,
+          "velocity_curl_rms": 0.4873745120391015,
+          "vorticity_minus_curl_rms": 0.10162602303697146,
+          "vorticity_minus_curl_relative_rms": 0.21241492150764552,
+          "spacing_times_divergence_relative_rms": 0.3135557962237788
+        }
+      }
+    },
+    {
+      "time": 8.0,
+      "particles": 58657,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 4.170563239503695,
+          "velocity_curl_rms": 4.176476685844649,
+          "vorticity_minus_curl_rms": 0.05788967864014541,
+          "vorticity_minus_curl_relative_rms": 0.01388054210323745,
+          "spacing_times_divergence_relative_rms": 0.01790654545356434
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 2.1867582474248732,
+          "velocity_curl_rms": 2.198976066876218,
+          "vorticity_minus_curl_rms": 0.21632435964421873,
+          "vorticity_minus_curl_relative_rms": 0.09892467989955557,
+          "spacing_times_divergence_relative_rms": 0.1379570202544365
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 0.8159310879374008,
+          "velocity_curl_rms": 0.813814826897387,
+          "vorticity_minus_curl_rms": 0.12970991988848987,
+          "vorticity_minus_curl_relative_rms": 0.15897166048224085,
+          "spacing_times_divergence_relative_rms": 0.13662033187735365
+        }
+      }
+    },
+    {
+      "time": 10.0,
+      "particles": 77948,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 4.197424836794172,
+          "velocity_curl_rms": 4.205379683166204,
+          "vorticity_minus_curl_rms": 0.058496940440040425,
+          "vorticity_minus_curl_relative_rms": 0.013936387836480732,
+          "spacing_times_divergence_relative_rms": 0.016313377769963437
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 2.488333242249784,
+          "velocity_curl_rms": 2.4666523625680643,
+          "vorticity_minus_curl_rms": 0.20036119815341977,
+          "vorticity_minus_curl_relative_rms": 0.08052024333053824,
+          "spacing_times_divergence_relative_rms": 0.11930488371119803
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 1.0163330470107834,
+          "velocity_curl_rms": 1.0085661007913478,
+          "vorticity_minus_curl_rms": 0.16582301269647434,
+          "vorticity_minus_curl_relative_rms": 0.1631581430754312,
+          "spacing_times_divergence_relative_rms": 0.17988922276189784
+        }
+      }
+    },
+    {
+      "time": 15.0,
+      "particles": 139462,
+      "regions": {
+        "inner": {
+          "points": 180,
+          "gaussian_vorticity_rms": 4.259062196814836,
+          "velocity_curl_rms": 4.26146533363718,
+          "vorticity_minus_curl_rms": 0.07770170545341053,
+          "vorticity_minus_curl_relative_rms": 0.01824385319179424,
+          "spacing_times_divergence_relative_rms": 0.020290760867779704
+        },
+        "outflow_belt": {
+          "points": 243,
+          "gaussian_vorticity_rms": 2.49611113446517,
+          "velocity_curl_rms": 2.4703778884305025,
+          "vorticity_minus_curl_rms": 0.39318379103078366,
+          "vorticity_minus_curl_relative_rms": 0.15751854378672497,
+          "spacing_times_divergence_relative_rms": 0.15701042792673772
+        },
+        "outer_wake": {
+          "points": 891,
+          "gaussian_vorticity_rms": 3.3572822889064806,
+          "velocity_curl_rms": 3.1567905493450907,
+          "vorticity_minus_curl_rms": 1.3166674037046806,
+          "vorticity_minus_curl_relative_rms": 0.3921825126398709,
+          "spacing_times_divergence_relative_rms": 0.31247416865408784
+        }
+      }
+    }
+  ]
+}

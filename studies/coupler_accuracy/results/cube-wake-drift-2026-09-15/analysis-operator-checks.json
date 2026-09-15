@@ -1,0 +1,13 @@
+{
+  "0.1": {
+    "points": 23058,
+    "idempotence_error": 4.440892098500626e-16,
+    "orthogonality_error": 3.851931736057443e-20
+  },
+  "0.05": {
+    "points": 175932,
+    "idempotence_error": 4.440892098500626e-16,
+    "orthogonality_error": 8.077470110725737e-20
+  },
+  "gaussian_divergence_relative_fd_error": 8.456182281603903e-11
+}
