@@ -1,0 +1,3 @@
+figure,time,rms_percent,sampled_max_percent,covered_area_D2,valid_nodes
+reference_fvm_coupled_fvm_fields,1.0,2.0698562309975084,12.898390556034462,8.956799939346311,694
+reference_fvm_coupled_fvm_fields,2.0,3.693695925727387,23.274025145541604,8.956799939346311,694

@@ -1,0 +1,147 @@
+{
+  "reference_samples": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/fine",
+  "reference_grid": "fine",
+  "comparison_end_time": 2.0,
+  "meshes": {
+    "coupled": {
+      "cells": 145740,
+      "cube_faces": 1872,
+      "finest_cartesian_spacing": 0.05999999865889549,
+      "cube_adjacent_cartesian_spacings": [
+        0.05999999865889549
+      ]
+    },
+    "fine": {
+      "cells": 692604,
+      "cube_faces": 3360,
+      "finest_cartesian_spacing": 0.04500000178813934,
+      "cube_adjacent_cartesian_spacings": [
+        0.04500000178813934
+      ]
+    }
+  },
+  "cube_adjacent_spacing_matches": false,
+  "matched_configuration_sections": [
+    "transport",
+    "initial conditions",
+    "schemes",
+    "PIMPLE",
+    "turbulence",
+    "linear tolerances",
+    "force normalization"
+  ],
+  "coupled_time_config": {
+    "adjustment": null,
+    "end_time": 20.0,
+    "output_schedule": {
+      "every_n_steps": 50,
+      "every_time": null,
+      "final_only": false,
+      "type": "RunSchedule"
+    },
+    "start_time": 0.0,
+    "time_step_size": 0.01,
+    "type": "TimeConfig"
+  },
+  "reference_time_config": {
+    "adjustment": {
+      "maximum": 0.9,
+      "maximum_time_step_size": 0.04,
+      "type": "MaximumCourantTimeStep"
+    },
+    "end_time": 30.0,
+    "output_schedule": {
+      "every_n_steps": null,
+      "every_time": 1.0,
+      "final_only": false,
+      "type": "RunSchedule"
+    },
+    "start_time": 0.0,
+    "time_step_size": 0.01,
+    "type": "TimeConfig"
+  },
+  "largest_reference_Cd_after_t1": [
+    {
+      "step": 109,
+      "time": 1.0,
+      "Cd": 1.2876943038292132,
+      "accepted_dt": 0.010000000000000009
+    },
+    {
+      "step": 114,
+      "time": 1.05,
+      "Cd": 1.2664936021306048,
+      "accepted_dt": 0.010000000000000009
+    },
+    {
+      "step": 119,
+      "time": 1.1,
+      "Cd": 1.2458911037288616,
+      "accepted_dt": 0.010000000000000009
+    }
+  ],
+  "reference_pressure_around_largest_Cd": [
+    {
+      "step": 108,
+      "time": 0.99,
+      "time_step_size": 0.009999999999999953,
+      "min_kinematic_pressure": -0.9175437168580886,
+      "max_kinematic_pressure": 0.5265888720904441,
+      "max_velocity_magnitude": 1.4063415293335038,
+      "max_continuity_error": 6.816755780463537e-12
+    },
+    {
+      "step": 109,
+      "time": 1.0,
+      "time_step_size": 0.010000000000000009,
+      "min_kinematic_pressure": -0.9157590396934876,
+      "max_kinematic_pressure": 0.5263861154739554,
+      "max_velocity_magnitude": 1.4057561501261238,
+      "max_continuity_error": 7.206186740801798e-12
+    },
+    {
+      "step": 110,
+      "time": 1.01,
+      "time_step_size": 0.010000000000000009,
+      "min_kinematic_pressure": -0.9139983900643648,
+      "max_kinematic_pressure": 0.5261653317414862,
+      "max_velocity_magnitude": 1.4051365203369783,
+      "max_continuity_error": 7.058226891797128e-12
+    }
+  ],
+  "ratios_at_largest_Cd": {
+    "pressure_span_increase": 0.9986237871811086,
+    "timestep_reduction": 0.9999999999999944
+  },
+  "latest_field_differences": [
+    {
+      "figure": "coupled_fvm_vpm_fields",
+      "time": "2.0",
+      "rms_percent": "1.0900589424010871",
+      "sampled_max_percent": "6.994258111379772",
+      "covered_area_D2": "8.956799939346311",
+      "valid_nodes": "694"
+    },
+    {
+      "figure": "reference_fvm_vpm_fields",
+      "time": "2.0",
+      "rms_percent": "3.6059753469026314",
+      "sampled_max_percent": "21.836047728928847",
+      "covered_area_D2": "8.956799939346311",
+      "valid_nodes": "694"
+    },
+    {
+      "figure": "reference_fvm_coupled_fvm_fields",
+      "time": "2.0",
+      "rms_percent": "3.693695925727387",
+      "sampled_max_percent": "23.274025145541604",
+      "covered_area_D2": "8.956799939346311",
+      "valid_nodes": "694"
+    }
+  ],
+  "sampling": "native-centres-affine-k12-v1",
+  "definition": "100 * norm(u_test - u_comparison, 2) / U_inf; all three components",
+  "rms": "sqrt(sum(area_weight * difference_percent**2) / sum(area_weight))",
+  "support": "z=0, common finite fluid quads in [-1.5,1.5]^2; no extrapolation or body halo",
+  "display": "bilinear velocity interpolation, then vector norm; full native maximum colour range"
+}
