@@ -1,7 +1,5 @@
 """Device-hierarchy and covariance tests for production VPM FMM."""
 
-from __future__ import annotations
-
 import math
 
 import numpy as np
@@ -28,12 +26,18 @@ def _ensure_taichi_cpu() -> None:
         ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=2)
 
 
+@ti.kernel
+def _add_p2p_diagnostic(workspace: ti.template(), particle_pairs: ti.i32):
+    workspace._record_p2p_particle_count(particle_pairs)
+
+
 def test_fmm_workspace_estimate_is_linear_in_capacity():
     induction = FMMInduction()
     estimates = [induction.estimated_workspace_bytes(capacity) for capacity in (1, 10, 100)]
     assert estimates[1] > estimates[0]
     assert estimates[2] > estimates[1]
     assert estimates[2] - estimates[1] == 10 * (estimates[1] - estimates[0])
+    assert induction.estimated_workspace_bytes(100, max_evaluation_points=10) < estimates[2]
 
 
 def test_particle_capacity_warning_is_emitted_at_eighty_percent(monkeypatch):
@@ -67,15 +71,34 @@ def test_particle_capacity_error_precedes_overflow():
         )
 
 
+def test_p2p_diagnostic_retains_exact_counts_across_a_u32_carry():
+    harness = _DeviceFMMHarness(capacity=2)
+    assert harness.induction.workspace is not None
+    workspace = harness.induction.workspace
+    workspace._p2p_particle_count_low[None] = np.uint32(0xFFFFFFFE)
+    workspace._p2p_particle_count_high[None] = np.uint32(7)
+
+    _add_p2p_diagnostic(workspace, 3)
+
+    assert workspace.p2p_particle_count() == (8 << 32) + 1
+
+
 class _DeviceFMMHarness:
-    def __init__(self, capacity: int = 64, kernel_name: str = "GAUSSIAN") -> None:
+    def __init__(
+        self,
+        capacity: int = 64,
+        kernel_name: str = "GAUSSIAN",
+        max_evaluation_points: int | None = None,
+    ) -> None:
         _ensure_taichi_cpu()
         self.capacity = capacity
         physics = PhysicsBase(
             particle_kernel=kernel_name,
             max_n_particles=capacity,
             accumulator_dtype=ti.f32,
-            max_evaluation_points=capacity,
+            max_evaluation_points=(
+                capacity if max_evaluation_points is None else max_evaluation_points
+            ),
         )
         self.induction = FMMInduction().bind(physics, kernel=make_vortex_kernel(kernel_name))
         self.position = ti.Vector.field(3, dtype=ti.f32, shape=capacity)
@@ -84,6 +107,38 @@ class _DeviceFMMHarness:
         self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=capacity)
         self.gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=capacity)
         self.rate = ti.Vector.field(3, dtype=ti.f32, shape=capacity)
+
+    def evaluate_targets(self, position, strength, radius, targets, background):
+        source_count = len(position)
+        target_count = len(targets)
+        position_buffer = np.full((self.capacity, 3), 1.0e12, dtype=np.float32)
+        strength_buffer = np.full((self.capacity, 3), 1.0e12, dtype=np.float32)
+        radius_buffer = np.full(self.capacity, 1.0e12, dtype=np.float32)
+        position_buffer[:source_count] = position
+        strength_buffer[:source_count] = strength
+        radius_buffer[:source_count] = radius
+        self.position.from_numpy(position_buffer)
+        self.strength.from_numpy(strength_buffer)
+        self.radius.from_numpy(radius_buffer)
+        target_position = ti.Vector.field(3, dtype=ti.f32, shape=target_count)
+        target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=target_count)
+        target_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=target_count)
+        background_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
+        target_position.from_numpy(np.asarray(targets, dtype=np.float32))
+        background_velocity[None] = background
+        self.induction.evaluate_targets(
+            target_position=target_position,
+            source_position=self.position,
+            source_vortex_strength=self.strength,
+            source_core_radius=self.radius,
+            target_velocity=target_velocity,
+            target_velocity_gradient=target_gradient,
+            target_count=target_count,
+            source_count=source_count,
+            include_freestream=True,
+            background_velocity=background_velocity,
+        )
+        return target_velocity.to_numpy(), target_gradient.to_numpy()
 
     def evaluate(self, position, strength, radius):
         count = len(position)
@@ -361,6 +416,122 @@ def test_device_fmm_is_permutation_translation_and_axis_rotation_covariant():
     np.testing.assert_allclose(rotated_velocity, velocity @ rotation.T, rtol=4.0e-4, atol=1.0e-5)
     np.testing.assert_allclose(rotated_gradient, expected_gradient, rtol=4.0e-4, atol=1.0e-5)
     np.testing.assert_allclose(rotated_rate, rate @ rotation.T, rtol=4.0e-4, atol=1.0e-5)
+
+
+@pytest.mark.parametrize("kernel_name", ("GAUSSIAN", "WINCKELMANS"))
+def test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage(
+    kernel_name,
+):
+    source_count = 128
+    harness = _DeviceFMMHarness(
+        capacity=160,
+        kernel_name=kernel_name,
+        max_evaluation_points=7,
+    )
+    rng = np.random.default_rng(20260916)
+    position = rng.normal(scale=0.07, size=(source_count, 3)).astype(np.float32)
+    position[: source_count // 2, 0] -= 3.0
+    position[source_count // 2 :, 0] += 3.0
+    strength = rng.normal(scale=0.01, size=(source_count, 3)).astype(np.float32)
+    radius = rng.uniform(0.015, 0.035, size=source_count).astype(np.float32)
+    targets = rng.uniform(-4.0, 4.0, size=(23, 3)).astype(np.float32)
+    targets[0] = position[0]
+    targets[1] = position[1] + np.array([0.1 * radius[1], 0.0, 0.0], dtype=np.float32)
+    background = np.array([0.2, -0.1, 0.05], dtype=np.float32)
+
+    velocity, gradient = harness.evaluate_targets(position, strength, radius, targets, background)
+
+    kernel = make_vortex_kernel(kernel_name)
+    displacement = targets[:, None, :] - position[None, :, :]
+    reference_velocity = kernel.velocity_pair(
+        displacement,
+        strength[None, :, :],
+        radius[None, :],
+        radius[None, :],
+    ).sum(axis=1)
+    reference_velocity += background
+    reference_gradient = kernel.gradient_pair(
+        displacement,
+        strength[None, :, :],
+        radius[None, :],
+        radius[None, :],
+    ).sum(axis=1)
+
+    assert np.linalg.norm(velocity - reference_velocity) / np.linalg.norm(reference_velocity) < 5e-3
+    assert np.linalg.norm(gradient - reference_gradient) / np.linalg.norm(reference_gradient) < 1e-2
+    assert np.isfinite(velocity).all()
+    assert np.isfinite(gradient).all()
+
+
+def test_device_fmm_raises_before_consuming_an_overflowed_interaction_queue():
+    harness = _DeviceFMMHarness(capacity=64)
+    rng = np.random.default_rng(20260916)
+    position = rng.normal(size=(64, 3)).astype(np.float32)
+    strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
+    radius = np.full(64, 0.02, dtype=np.float32)
+
+    # The allocated arrays retain their normal size; restricting the logical
+    # queue isolates the required hard-failure path from allocator behaviour.
+    assert harness.induction.workspace is not None
+    harness.induction.workspace.max_pairs = 1
+    with pytest.raises(RuntimeError, match="interaction-list capacity was exceeded"):
+        harness.evaluate(position, strength, radius)
+
+
+def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
+    harness = _DeviceFMMHarness(capacity=2, kernel_name="HIGH_ORDER_GAUSSIAN")
+    position = np.array([[0.0, 0.0, 0.0], [0.3, -0.1, 0.2]], dtype=np.float32)
+    strength = np.array([[0.0, 0.02, 0.01], [0.01, -0.01, 0.0]], dtype=np.float32)
+    radius = np.array([0.08, 0.1], dtype=np.float32)
+    targets = np.array([[0.05, 0.02, -0.01]], dtype=np.float32)
+    background = np.array([0.2, -0.1, 0.05], dtype=np.float32)
+
+    velocity, gradient = harness.evaluate_targets(position, strength, radius, targets, background)
+
+    kernel = make_vortex_kernel("HIGH_ORDER_GAUSSIAN")
+    displacement = targets[:, None, :] - position[None, :, :]
+    reference_velocity = kernel.velocity_pair(
+        displacement,
+        strength[None, :, :],
+        radius[None, :],
+        radius[None, :],
+    ).sum(axis=1)
+    reference_velocity += background
+    reference_gradient = kernel.gradient_pair(
+        displacement,
+        strength[None, :, :],
+        radius[None, :],
+        radius[None, :],
+    ).sum(axis=1)
+    np.testing.assert_allclose(velocity, reference_velocity, rtol=2e-5, atol=1e-7)
+    np.testing.assert_allclose(gradient, reference_gradient, rtol=2e-5, atol=1e-7)
+
+
+def test_device_fmm_target_query_with_no_sources_writes_only_freestream_and_zero_gradient():
+    harness = _DeviceFMMHarness(capacity=8, max_evaluation_points=2)
+    target_position = ti.Vector.field(3, dtype=ti.f32, shape=3)
+    target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=3)
+    target_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=3)
+    background_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
+    target_position.from_numpy(np.zeros((3, 3), dtype=np.float32))
+    background = np.array([0.2, -0.1, 0.05], dtype=np.float32)
+    background_velocity[None] = background
+
+    harness.induction.evaluate_targets(
+        target_position=target_position,
+        source_position=harness.position,
+        source_vortex_strength=harness.strength,
+        source_core_radius=harness.radius,
+        target_velocity=target_velocity,
+        target_velocity_gradient=target_gradient,
+        target_count=3,
+        source_count=0,
+        include_freestream=True,
+        background_velocity=background_velocity,
+    )
+
+    np.testing.assert_array_equal(target_velocity.to_numpy(), np.broadcast_to(background, (3, 3)))
+    np.testing.assert_array_equal(target_gradient.to_numpy(), np.zeros((3, 3, 3), dtype=np.float32))
 
 
 @pytest.mark.parametrize(

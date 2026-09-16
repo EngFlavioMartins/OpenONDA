@@ -81,8 +81,14 @@ def test_induction_configuration_builds_independent_runtime_evaluators() -> None
 
 
 def test_fmm_advertises_only_qualified_device_backends() -> None:
-    assert vpm.FMMInduction.supported_devices == frozenset({"AUTO", "CPU", "VULKAN"})
-    for device in ("CUDA", "METAL"):
+    assert vpm.FMMInduction.supported_devices == frozenset({"AUTO", "CPU", "VULKAN", "METAL"})
+    numerics = vpm.Numerics(
+        induction=vpm.FMMInduction(),
+        compute_device="METAL",
+        verbose=False,
+    )
+    assert numerics.compute_device == "METAL"
+    for device in ("CUDA",):
         with pytest.raises(ValueError, match="does not support compute_device"):
             vpm.Numerics(
                 induction=vpm.FMMInduction(),

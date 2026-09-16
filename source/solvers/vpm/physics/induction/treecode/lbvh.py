@@ -86,6 +86,8 @@ class TaichiTreecode:
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
         device_sort_only: bool = False,
+        hierarchy_only: bool = False,
+        max_evaluation_points: int | None = None,
     ):
         """Allocate an LBVH treecode workspace.
 
@@ -115,6 +117,14 @@ class TaichiTreecode:
         device_sort_only : bool, default=False
             Require device sorting and surface sorting/backend failures rather
             than using the deterministic host fallback.
+        hierarchy_only : bool, default=False
+            Allocate source hierarchy fields without particle-evaluation
+            outputs and stacks. FMM uses this mode because it owns its p=3
+            expansions and particle outputs.
+        max_evaluation_points : int or None, default=None
+            Capacity of arbitrary-target scratch and traversal storage. ``None``
+            uses ``max_n_particles``. In hierarchy-only mode, target vectors
+            are owned by the caller and only the traversal stack is allocated.
 
         Notes
         -----
@@ -150,6 +160,13 @@ class TaichiTreecode:
         # backend failure is surfaced to the caller instead of downloading
         # Morton keys.
         self.device_sort_only = bool(device_sort_only)
+        self.hierarchy_only = bool(hierarchy_only)
+        evaluation_capacity = (
+            max_n_particles if max_evaluation_points is None else int(max_evaluation_points)
+        )
+        if evaluation_capacity < 1:
+            raise ValueError("max_evaluation_points must be positive")
+        self.max_evaluation_points = evaluation_capacity
 
         # -------------------------------------------------------------
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
@@ -239,21 +256,24 @@ class TaichiTreecode:
         # -------------------------------------------------------------
         # OUTPUT VELOCITIES
         # -------------------------------------------------------------
-        self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+        particle_output_capacity = 1 if self.hierarchy_only else max_n_particles
+        self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=particle_output_capacity)
 
         # -------------------------------------------------------------
         # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
         # -------------------------------------------------------------
-        self.velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
-        self.strain_rate = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
+        self.velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
+        self.strain_rate = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
 
         # -------------------------------------------------------------
         # TARGET POINT FIELDS
         # -------------------------------------------------------------
-        self.max_evaluation_points = max_n_particles
-        self.target_position = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
-        self.target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
-        self.target_velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
+        target_field_capacity = 1 if self.hierarchy_only else evaluation_capacity
+        self.target_position = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
+        self.target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
+        self.target_velocity_gradient = ti.Matrix.field(
+            3, 3, dtype=ti.f32, shape=target_field_capacity
+        )
         self.n_targets = ti.field(dtype=ti.i32, shape=())
         self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
         self.regularization_tail_cutoff = ti.field(dtype=ti.f32, shape=())
@@ -264,8 +284,9 @@ class TaichiTreecode:
         # TREE TRAVERSAL STACK
         # -------------------------------------------------------------
         self.max_stack_depth = 48
-        self.traversal_stack = ti.field(dtype=ti.i32, shape=(max_n_particles, 48))
-        self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(max_n_particles, 48))
+        particle_stack_capacity = 1 if self.hierarchy_only else max_n_particles
+        self.traversal_stack = ti.field(dtype=ti.i32, shape=(particle_stack_capacity, 48))
+        self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(evaluation_capacity, 48))
 
         # -------------------------------------------------------------
         # COUNTERS
@@ -275,6 +296,7 @@ class TaichiTreecode:
         self._root = ti.field(dtype=ti.i32, shape=())
         self._max_depth = ti.field(dtype=ti.i32, shape=())
         self._topology_error = ti.field(dtype=ti.i32, shape=())
+        self._external_target_traversal_error = ti.field(dtype=ti.i32, shape=())
         self.max_tree_depth_guard = 96
 
         # Background velocity
@@ -2173,6 +2195,120 @@ class TaichiTreecode:
             self._download_vector_field(self.target_velocity, M),
             self._download_matrix_field(self.target_velocity_gradient, M),
         )
+
+    @ti.kernel
+    def compute_external_target_fields_kernel(
+        self,
+        target_position: ti.template(),
+        target_velocity: ti.template(),
+        target_gradient: ti.template(),
+        freestream_velocity: ti.template(),
+        theta_sq: ti.f32,
+        target_start: ti.i32,
+        count: ti.i32,
+        write_velocity: ti.template(),
+        write_gradient: ti.template(),
+    ):
+        """Traverse the built LBVH at external target fields on the device.
+
+        ``count`` targets beginning at ``target_start`` read positions from an
+        external field and reuse this tree's bounded target stack with local
+        batch indices. Velocity includes ``freestream_velocity`` when written;
+        the Jacobian is source induced only. No host staging or hierarchy
+        rebuild occurs.
+        """
+        n_nodes = self.n_nodes[None]
+        root = self._root[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_target in range(count):
+            target = target_start + local_target
+            target_pos = target_position[target]
+            velocity = ti.Vector([0.0, 0.0, 0.0])
+            gradient = ti.Matrix.zero(ti.f32, 3, 3)
+            self.target_traversal_stack[local_target, 0] = root
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.target_traversal_stack[local_target, stack_ptr]
+                if node < 0 or node >= n_nodes:
+                    continue
+                com = self.node_com[node]
+                r_vec = target_pos - com
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                node_size = 2.0 * self.node_half_size[node]
+                if (
+                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                    and (node_size * node_size / r_sq) < theta_sq
+                    and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
+                ):
+                    sigma = self.node_avg_radius[node]
+                    if ti.static(write_velocity):
+                        velocity += self._far_velocity_node(node, r_vec, r_mag, sigma)
+                    if ti.static(write_gradient):
+                        gradient += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                elif self.node_is_leaf[node] == 1:
+                    if ti.static(write_velocity):
+                        velocity += self._target_leaf_velocity_sum(node, target_pos)
+                    if ti.static(write_gradient):
+                        gradient += self._target_leaf_gradient_sum(node, target_pos)
+                elif stack_ptr + 2 <= self.max_stack_depth:
+                    self.target_traversal_stack[local_target, stack_ptr] = self.node_right[node]
+                    self.target_traversal_stack[local_target, stack_ptr + 1] = self.node_left[node]
+                    stack_ptr += 2
+                else:
+                    ti.atomic_max(self._external_target_traversal_error[None], 1)
+            if ti.static(write_velocity):
+                target_velocity[target] = velocity + freestream_velocity[None]
+            if ti.static(write_gradient):
+                target_gradient[target] = gradient
+
+    def compute_external_target_fields(
+        self,
+        target_position,
+        target_velocity,
+        target_gradient,
+        freestream_velocity,
+        target_count: int,
+        batch_capacity: int,
+        *,
+        write_velocity: bool,
+        write_gradient: bool,
+    ) -> None:
+        """Evaluate external target fields through one already-built LBVH.
+
+        Target positions and outputs remain in caller-owned Taichi fields.
+        Batches use the fixed target-stack capacity, allowing target count to
+        exceed source capacity without reallocating this hierarchy.
+        """
+        if target_count < 0:
+            raise ValueError("target_count must be non-negative")
+        if batch_capacity < 1 or batch_capacity > self.max_evaluation_points:
+            raise ValueError("batch_capacity must fit the allocated target stack")
+        self._reset_external_target_traversal_error()
+        for target_start in range(0, target_count, batch_capacity):
+            count = min(batch_capacity, target_count - target_start)
+            self.compute_external_target_fields_kernel(
+                target_position,
+                target_velocity,
+                target_gradient,
+                freestream_velocity,
+                self.theta_sq,
+                target_start,
+                count,
+                write_velocity,
+                write_gradient,
+            )
+        if int(self._external_target_traversal_error[None]) != 0:
+            raise RuntimeError(
+                f"LBVH target traversal exceeded the stack depth {self.max_stack_depth}"
+            )
+
+    @ti.kernel
+    def _reset_external_target_traversal_error(self):
+        """Clear the external-target stack-overflow signal before a query."""
+        self._external_target_traversal_error[None] = 0
 
     # INFO
 

@@ -36,7 +36,7 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 FVM_CORES = 4
 PIMPLE_CORRECTORS = 2
 
-CELL_SIZE = 0.06
+CELL_SIZE = 0.045
 FVM_BOX = (-1.50, 2.00, -1.50, 1.50, -1.50, 1.50)
 TRANSFER_REGION_BOX = (-1.25, 1.75, -1.25, 1.25, -1.25, 1.25)
 
@@ -61,8 +61,7 @@ END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
 FVM_TIME_STEP_SIZE = 0.01
-# Match the FVM step and keep samples/backups on exact common times. Reducing
-# dt alone did not cure the wake's vorticity-consistency instability.
+
 VPM_TIME_STEP_MULTIPLIER = 1
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
@@ -275,7 +274,7 @@ VPM_CASE = vpm.VPMCase(
         ),
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(),
-        induction=vpm.TreecodeInduction(),
+        induction=vpm.FMMInduction(),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",

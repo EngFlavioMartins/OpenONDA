@@ -105,7 +105,7 @@ selects the strength-rate formulation:
 | --- | --- | --- |
 | `DirectInduction` | Exact all-pairs regularized velocity/gradient and strength-rate evaluation, O(N²). | Supports f32/f64, all four public radial kernels, and CPU/Vulkan/CUDA/Metal Taichi devices. |
 | `TreecodeInduction` | LBVH/Barnes--Hut traversal with hierarchical velocity/gradient approximation. | Device-resident; currently f32 and Gaussian/Winckelmans kernels only. |
-| `FMMInduction` | Fixed-order device FMM (`P2M → M2M → M2L → L2L → L2P`) plus exact kernel-specific near-field P2P. | Device-resident CPU/Vulkan path; currently f32 only. |
+| `FMMInduction` | Fixed-order device FMM (`P2M → M2M → M2L → L2L → L2P`) plus exact kernel-specific near-field P2P. | Device-resident CPU/Vulkan/Metal path; currently f32 only. |
 
 For the current Jacobian convention the choices are:
 

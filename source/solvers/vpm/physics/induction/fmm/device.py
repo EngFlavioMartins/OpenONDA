@@ -61,7 +61,11 @@ _MAX_DERIVATIVE_TERMS = 8
 _M2L_BATCH_SIZE = 32768
 _FMM_LEAF_CAPACITY = 32
 _MAX_TREE_LEVELS = 96
-_PAIR_CAPACITY_FACTOR = 64
+# The dual-tree queues and final near/far lists each have independent storage.
+# Qualification on volumetric, sheet-like, and filamentary clouds reaches at
+# most 16.1 pairs per particle in either final list. A factor of 32 retains a
+# twofold margin. Capacity exhaustion remains a hard error.
+_PAIR_CAPACITY_FACTOR = 32
 _EPSILON_SQUARED = 1.0e-24
 _ONE_OVER_FOUR_PI = 0.07957747154594767
 _GEOMETRIC_SEPARATION_FACTOR = 3.0
@@ -154,8 +158,14 @@ class FMMDeviceWorkspace:
         count.
     radial_factors : callable
         Kernel-specific finite P2P velocity/Jacobian factors in m⁻³ and m⁻⁵.
+    kernel_name : {"GAUSSIAN", "WINCKELMANS"}
+        Radial kernel used by the shared strict LBVH target traversal. Other
+        FMM kernels use the exact direct arbitrary-target operator.
     velocity_tail_cutoff, gradient_tail_cutoff : float
         Dimensionless regularization-tail multipliers used by admissibility.
+    max_evaluation_points : int
+        Maximum arbitrary-target batch size. Target traversal storage scales
+        with the smaller of this value and particle capacity.
 
     Notes
     -----
@@ -167,8 +177,10 @@ class FMMDeviceWorkspace:
         self,
         max_n_particles: int,
         radial_factors,
+        kernel_name: str,
         velocity_tail_cutoff: float,
         gradient_tail_cutoff: float,
+        max_evaluation_points: int,
     ) -> None:
         """Allocate fixed-capacity f32 storage for one device FMM evaluator.
 
@@ -180,9 +192,14 @@ class FMMDeviceWorkspace:
         radial_factors : callable
             Taichi function of ``(r/sigma, sigma, with_gradient)`` returning
             the finite induced velocity and Jacobian factors in m⁻³ and m⁻⁵.
+        kernel_name : str
+            Radial-kernel name used by the shared LBVH target traversal.
         velocity_tail_cutoff, gradient_tail_cutoff : float
             Dimensionless tail thresholds used when deciding whether a cell
             interaction is admissible for velocity and gradient evaluation.
+        max_evaluation_points : int
+            Maximum arbitrary-target batch size. Larger queries are processed
+            in consecutive batches without changing their results.
 
         Notes
         -----
@@ -192,21 +209,27 @@ class FMMDeviceWorkspace:
         """
         self.max_n_particles = int(max_n_particles)
         self.max_nodes = 2 * self.max_n_particles
-        self.max_pairs = max(64, _PAIR_CAPACITY_FACTOR * self.max_n_particles)
+        self.max_pairs = _PAIR_CAPACITY_FACTOR * self.max_n_particles
         self.m2l_batch_size = min(_M2L_BATCH_SIZE, self.max_pairs)
         self.radial_factors = radial_factors
         self.velocity_tail_cutoff = float(velocity_tail_cutoff)
         self.gradient_tail_cutoff = float(gradient_tail_cutoff)
+        self.target_batch_capacity = min(
+            self.max_n_particles,
+            max(1, int(max_evaluation_points)),
+        )
         self.tree = TaichiTreecode(
             max_n_particles=self.max_n_particles,
             max_nodes=self.max_nodes,
-            theta=0.3,
+            theta=0.1,
             max_leaf_size=1,
-            kernel_type="GAUSSIAN",
+            kernel_type=kernel_name if kernel_name in {"GAUSSIAN", "WINCKELMANS"} else "GAUSSIAN",
             multipole_order=1,
             sort_particle_targets=False,
             traversal_block_dim=0,
             device_sort_only=True,
+            hierarchy_only=True,
+            max_evaluation_points=self.target_batch_capacity,
         )
         self.multipole = ti.Vector.field(3, dtype=ti.f32, shape=self.max_nodes * _MOMENT_COUNT)
         self.local = ti.Vector.field(3, dtype=ti.f32, shape=self.max_nodes * _LOCAL_COUNT)
@@ -245,7 +268,12 @@ class FMMDeviceWorkspace:
         self.near_source = ti.field(dtype=ti.i32, shape=self.max_pairs)
         self._m2l_count = ti.field(dtype=ti.i32, shape=())
         self._near_count = ti.field(dtype=ti.i32, shape=())
-        self._p2p_particle_count = ti.field(dtype=ti.i64, shape=())
+        # Metal lacks the i64 atomic required by a monolithic exact counter.
+        # Two u32 limbs retain every near P2P interaction count without
+        # relying on lossy f32 accumulation. A single list entry contains at
+        # most 32*32 interactions, so carry detection is unambiguous.
+        self._p2p_particle_count_low = ti.field(dtype=ti.u32, shape=())
+        self._p2p_particle_count_high = ti.field(dtype=ti.u32, shape=())
         self._list_error = ti.field(dtype=ti.i32, shape=())
         self._nonzero_l2l_count = ti.field(dtype=ti.i32, shape=())
         self._queue_target_a = ti.field(dtype=ti.i32, shape=self.max_pairs)
@@ -254,6 +282,9 @@ class FMMDeviceWorkspace:
         self._queue_source_b = ti.field(dtype=ti.i32, shape=self.max_pairs)
         self._queue_count_a = ti.field(dtype=ti.i32, shape=())
         self._queue_count_b = ti.field(dtype=ti.i32, shape=())
+        self._near_target_count = ti.field(dtype=ti.i32, shape=self.max_nodes)
+        self._near_scan_a = ti.field(dtype=ti.i32, shape=self.max_nodes)
+        self._near_scan_b = ti.field(dtype=ti.i32, shape=self.max_nodes)
         self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=self.max_n_particles)
         self.gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=self.max_n_particles)
         self.rate = ti.Vector.field(3, dtype=ti.f32, shape=self.max_n_particles)
@@ -368,8 +399,9 @@ class FMMDeviceWorkspace:
 
     @ti.kernel
     def _m2m_level(self, count: ti.i32, level: ti.i32):
-        for node in range(self.max_nodes):
-            if node >= count and node < 2 * count - 1 and self.tree.node_depth[node] == level:
+        for internal_slot in range(count - 1):
+            node = count + internal_slot
+            if self.tree.node_depth[node] == level:
                 node_base = node * _MOMENT_COUNT
                 for alpha_index in range(_MOMENT_COUNT):
                     alpha_a = self._coefficient_a[alpha_index]
@@ -407,7 +439,8 @@ class FMMDeviceWorkspace:
     def _initialize_interaction_lists(self):
         self._m2l_count[None] = 0
         self._near_count[None] = 0
-        self._p2p_particle_count[None] = 0
+        self._p2p_particle_count_low[None] = ti.u32(0)
+        self._p2p_particle_count_high[None] = ti.u32(0)
         self._list_error[None] = 0
         root = self.tree._root[None]
         self._queue_target_a[0] = root
@@ -416,13 +449,21 @@ class FMMDeviceWorkspace:
         self._queue_count_b[None] = 0
 
     @ti.func
+    def _record_p2p_particle_count(self, particle_pairs: ti.i32):
+        """Atomically add a bounded P2P count to the portable u64 diagnostic."""
+        increment = ti.cast(particle_pairs, ti.u32)
+        previous = ti.atomic_add(self._p2p_particle_count_low[None], increment)
+        if previous > ti.u32(0xFFFFFFFF) - increment:
+            ti.atomic_add(self._p2p_particle_count_high[None], ti.u32(1))
+
+    @ti.func
     def _append_m2l_pair(self, target: ti.i32, source: ti.i32):
         slot = ti.atomic_add(self._m2l_count[None], 1)
         if slot < self.max_pairs:
             self.m2l_target[slot] = target
             self.m2l_source[slot] = source
         else:
-            self._list_error[None] = 1
+            ti.atomic_max(self._list_error[None], 1)
 
     @ti.func
     def _append_near_pair(self, target: ti.i32, source: ti.i32):
@@ -431,13 +472,13 @@ class FMMDeviceWorkspace:
             self.near_target[slot] = target
             self.near_source[slot] = source
         else:
-            self._list_error[None] = 1
+            ti.atomic_max(self._list_error[None], 1)
         particle_pairs = (
             self.tree.node_particle_count[target] * self.tree.node_particle_count[source]
         )
         if target == source:
             particle_pairs -= self.tree.node_particle_count[target]
-        ti.atomic_add(self._p2p_particle_count[None], ti.cast(particle_pairs, ti.i64))
+        self._record_p2p_particle_count(particle_pairs)
 
     @ti.func
     def _append_queue_pair(
@@ -453,7 +494,7 @@ class FMMDeviceWorkspace:
             target_queue[slot] = target
             source_queue[slot] = source
         else:
-            self._list_error[None] = 1
+            ti.atomic_max(self._list_error[None], 1)
 
     @ti.func
     def _process_dual_tree_pair(
@@ -606,8 +647,9 @@ class FMMDeviceWorkspace:
 
     @ti.kernel
     def _l2l_level(self, count: ti.i32, level: ti.i32):
-        for node in range(self.max_nodes):
-            if node >= count and node < 2 * count - 1 and self.tree.node_depth[node] == level:
+        for internal_slot in range(count - 1):
+            node = count + internal_slot
+            if self.tree.node_depth[node] == level:
                 for child_slot in ti.static(range(2)):
                     child = (
                         self.tree.node_left[node] if child_slot == 0 else self.tree.node_right[node]
@@ -690,29 +732,76 @@ class FMMDeviceWorkspace:
             )
 
     @ti.kernel
-    def _near_field_pass(self, pair_count: ti.i32):
+    def _count_near_targets(self, node_count: ti.i32, pair_count: ti.i32):
+        for node in range(node_count):
+            self._near_target_count[node] = 0
         for pair in range(pair_count):
-            target_node = self.near_target[pair]
-            source_node = self.near_source[pair]
-            target_start = self.tree.node_particle_start[target_node]
-            source_start = self.tree.node_particle_start[source_node]
-            target_count = self.tree.node_particle_count[target_node]
-            source_count = self.tree.node_particle_count[source_node]
-            for target_slot in range(target_start, target_start + target_count):
-                target = self.tree.sorted_indices[target_slot]
+            ti.atomic_add(self._near_target_count[self.near_target[pair]], 1)
+
+    @ti.kernel
+    def _copy_near_counts(self, node_count: ti.i32):
+        for node in range(node_count):
+            self._near_scan_a[node] = self._near_target_count[node]
+
+    @ti.kernel
+    def _scan_near_counts(
+        self,
+        source: ti.template(),
+        destination: ti.template(),
+        node_count: ti.i32,
+        stride: ti.i32,
+    ):
+        """Perform one parallel inclusive-scan step over target-node counts."""
+        for node in range(node_count):
+            value = source[node]
+            if node >= stride:
+                value += source[node - stride]
+            destination[node] = value
+
+    @ti.kernel
+    def _initialize_near_cursor(
+        self,
+        inclusive_count: ti.template(),
+        cursor: ti.template(),
+        node_count: ti.i32,
+    ):
+        for node in range(node_count):
+            cursor[node] = inclusive_count[node] - self._near_target_count[node]
+
+    @ti.kernel
+    def _order_near_sources(self, cursor: ti.template(), pair_count: ti.i32):
+        """Group source cells by target cell in the reusable M2L source array."""
+        for pair in range(pair_count):
+            target = self.near_target[pair]
+            destination = ti.atomic_add(cursor[target], 1)
+            self.m2l_source[destination] = self.near_source[pair]
+
+    @ti.kernel
+    def _near_field_target_pass(self, inclusive_count: ti.template(), particle_count: ti.i32):
+        """Accumulate exact near interactions once per target particle."""
+        for target_slot in range(particle_count):
+            target = self.tree.sorted_indices[target_slot]
+            target_node = target_slot
+            parent = self.tree.node_parent[target_node]
+            while parent >= 0 and self._is_fmm_leaf(parent) == 1:
+                target_node = parent
+                parent = self.tree.node_parent[target_node]
+            pair_count = self._near_target_count[target_node]
+            pair_start = inclusive_count[target_node] - pair_count
+            velocity = self.velocity[target]
+            gradient = self.gradient[target]
+            for pair in range(pair_start, pair_start + pair_count):
+                source_node = self.m2l_source[pair]
+                source_start = self.tree.node_particle_start[source_node]
+                source_count = self.tree.node_particle_count[source_node]
                 for source_slot in range(source_start, source_start + source_count):
                     source = self.tree.sorted_indices[source_slot]
                     displacement = self.tree.position[target] - self.tree.position[source]
-                    radius_sq = displacement.dot(displacement)
+                    radius = ti.sqrt(displacement.dot(displacement))
                     sigma = 0.5 * (self.tree.core_radius[target] + self.tree.core_radius[source])
                     source_strength = self.tree.vortex_strength[source]
-                    radius = ti.sqrt(radius_sq)
                     factors = self.radial_factors(radius / sigma, sigma, True)
-                    term1 = factors[0]
-                    term2 = factors[1]
-                    velocity = source_strength.cross(displacement) * term1
-                    for component in ti.static(range(3)):
-                        ti.atomic_add(self.velocity[target][component], velocity[component])
+                    velocity += source_strength.cross(displacement) * factors[0]
                     cross_value = displacement.cross(source_strength)
                     for row in ti.static(range(3)):
                         for column in ti.static(range(3)):
@@ -729,11 +818,44 @@ class FMMDeviceWorkspace:
                                 skew_value = -source_strength[1]
                             elif row == 2 and column == 1:
                                 skew_value = source_strength[0]
-                            ti.atomic_add(
-                                self.gradient[target][row, column],
-                                term1 * skew_value
-                                + term2 * cross_value[row] * displacement[column],
+                            gradient[row, column] += (
+                                factors[0] * skew_value
+                                + factors[1] * cross_value[row] * displacement[column]
                             )
+            self.velocity[target] = velocity
+            self.gradient[target] = gradient
+
+    def _near_field_pass(self, node_count: int, particle_count: int, pair_count: int) -> None:
+        """Build target adjacency and evaluate exact near fields without output atomics."""
+        self._count_near_targets(node_count, pair_count)
+        self._copy_near_counts(node_count)
+        source = self._near_scan_a
+        destination = self._near_scan_b
+        stride = 1
+        while stride < node_count:
+            self._scan_near_counts(source, destination, node_count, stride)
+            source, destination = destination, source
+            stride *= 2
+        self._initialize_near_cursor(source, destination, node_count)
+        self._order_near_sources(destination, pair_count)
+        self._near_field_target_pass(source, particle_count)
+
+    @ti.kernel
+    def _empty_target_pass(
+        self,
+        target_velocity: ti.template(),
+        target_gradient: ti.template(),
+        background_velocity: ti.template(),
+        target_count: ti.i32,
+        write_velocity: ti.template(),
+        write_gradient: ti.template(),
+    ):
+        """Write freestream velocity and zero gradient for an empty source cloud."""
+        for target in range(target_count):
+            if ti.static(write_velocity):
+                target_velocity[target] = background_velocity[None]
+            if ti.static(write_gradient):
+                target_gradient[target] = ti.Matrix.zero(ti.f32, 3, 3)
 
     @ti.kernel
     def _reset_rate_diagnostics(self):
@@ -832,7 +954,7 @@ class FMMDeviceWorkspace:
             ti.sync()
             self.last_phase_seconds["downward"] = time.perf_counter() - phase_start
         phase_start = time.perf_counter()
-        self._near_field_pass(int(self._near_count[None]))
+        self._near_field_pass(node_count, count, int(self._near_count[None]))
         if self.profile_passes:
             ti.sync()
             self.last_phase_seconds["near_field"] = time.perf_counter() - phase_start
@@ -843,6 +965,84 @@ class FMMDeviceWorkspace:
         ti.sync()
         if self.profile_passes:
             self.last_phase_seconds["strength_rate"] = time.perf_counter() - phase_start
+
+    def evaluate_targets(
+        self,
+        target_position,
+        source_position,
+        source_vortex_strength,
+        source_core_radius,
+        target_velocity,
+        target_gradient,
+        target_count: int,
+        source_count: int,
+        background_velocity,
+    ) -> None:
+        """Evaluate arbitrary targets without transferring particle fields to the host.
+
+        The source LBVH is rebuilt from the supplied active source prefix.
+        Targets then use the same strict device tree traversal as the qualified
+        treecode, without host staging or a second hierarchy build. Particle
+        stages remain fixed-order p=3 FMM evaluations.
+
+        Target batches reuse the LBVH traversal stack, so target count is not
+        limited by particle capacity. Only active source and target prefixes
+        are read or written.
+        """
+        target_count = int(target_count)
+        source_count = int(source_count)
+        if target_count < 0:
+            raise ValueError("target_count must be non-negative")
+        if source_count < 0 or source_count > self.max_n_particles:
+            raise ValueError(
+                f"source count {source_count} exceeds FMM capacity {self.max_n_particles}"
+            )
+        if target_velocity is None and target_gradient is None:
+            raise ValueError("at least one target output is required")
+        if target_count == 0:
+            return
+        write_velocity = target_velocity is not None
+        write_gradient = target_gradient is not None
+        velocity_output = self.velocity if target_velocity is None else target_velocity
+        gradient_output = self.gradient if target_gradient is None else target_gradient
+        if source_count == 0:
+            self._empty_target_pass(
+                velocity_output,
+                gradient_output,
+                background_velocity,
+                target_count,
+                write_velocity,
+                write_gradient,
+            )
+            return
+
+        self.tree.build(
+            source_position,
+            source_vortex_strength,
+            source_core_radius,
+            source_count,
+        )
+        self.tree.compute_external_target_fields(
+            target_position,
+            velocity_output,
+            gradient_output,
+            background_velocity,
+            target_count,
+            self.target_batch_capacity,
+            write_velocity=write_velocity,
+            write_gradient=write_gradient,
+        )
+
+    def p2p_particle_count(self) -> int:
+        """Return the exact accumulated near-field interaction count.
+
+        The two device ``u32`` limbs form one unsigned 64-bit diagnostic
+        counter. This host-side reconstruction happens after stage completion
+        and does not participate in FMM arithmetic.
+        """
+        return (int(self._p2p_particle_count_high[None]) << 32) | int(
+            self._p2p_particle_count_low[None]
+        )
 
 
 @ti.data_oriented
@@ -855,16 +1055,16 @@ class FMMInduction:
     requested particle-strength rate. The stretching formulation is
     independent of the FMM approximation.
 
-    Supported production combinations are CPU/Vulkan/AUTO resolution, f32
-    precision, and Gaussian, high-order Gaussian, super-Gaussian, or
-    Winckelmans radial kernels. Arbitrary target queries use the shared
-    regularized target kernels until a dual-tree target path is available.
+    Supported production combinations are CPU, Vulkan, Metal, and AUTO
+    resolution; f32 precision; and Gaussian, high-order Gaussian, super-Gaussian, or
+    Winckelmans radial kernels. Arbitrary target queries reuse the source LBVH,
+    p=3 multipoles, and exact regularized near interactions on the device.
     """
 
     # AUTO is accepted as a request to resolve a backend at solver construction;
     # the resolved backend is checked again before any FMM workspace is built.
     # Only the backends exercised by the production qualification are advertised.
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN"})
+    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "METAL"})
     supported_kernels = frozenset(
         {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
     )
@@ -947,25 +1147,34 @@ class FMMInduction:
         self.workspace = FMMDeviceWorkspace(
             self.max_n_particles,
             physics._kernel_functions["radial_factors_"],
+            self.kernel.name,
             velocity_tail_cutoff,
             gradient_tail_cutoff,
+            physics.max_evaluation_points,
         )
         return self
 
-    def estimated_workspace_bytes(self, max_n_particles: int) -> int:
-        """Estimate principal FMM workspace bytes for a particle capacity.
+    def estimated_workspace_bytes(
+        self, max_n_particles: int, max_evaluation_points: int | None = None
+    ) -> int:
+        """Estimate fixed FMM and hierarchy field payloads for a capacity.
 
         Parameters
         ----------
         max_n_particles : int
-            Positive capacity used to size hierarchy, interaction-list, and
-            output arrays.
+            Positive source-particle capacity used to size hierarchy,
+            interaction-list, and particle-output arrays.
+        max_evaluation_points : int or None, default=None
+            Maximum simultaneous arbitrary-target batch size. ``None`` uses
+            the bound workspace's batch capacity when available, otherwise
+            ``max_n_particles``.
 
         Returns
         -------
         int
-            Approximate bytes for the principal f32/vector allocations. Python
-            object overhead and Taichi runtime allocations are excluded.
+            Approximate bytes for the fixed FMM and LBVH field payloads,
+            including target traversal stacks. Taichi allocator metadata,
+            compiled kernels, and driver allocations are excluded.
 
         Raises
         ------
@@ -975,12 +1184,43 @@ class FMMInduction:
         capacity = int(max_n_particles)
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")
+        if max_evaluation_points is None:
+            evaluation_capacity = (
+                self.workspace.target_batch_capacity if self.workspace is not None else capacity
+            )
+        else:
+            evaluation_capacity = int(max_evaluation_points)
+        if evaluation_capacity < 1:
+            raise ValueError("max_evaluation_points must be positive")
+        evaluation_capacity = min(capacity, evaluation_capacity)
         node_count = 2 * capacity
-        max_pairs = max(64, _PAIR_CAPACITY_FACTOR * capacity)
+        max_pairs = _PAIR_CAPACITY_FACTOR * capacity
         coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
         interaction_bytes = max_pairs * 8 * 4
+        near_adjacency_bytes = node_count * 3 * 4
         output_bytes = capacity * (3 + 9 + 3) * 4
-        return int(coefficient_bytes + interaction_bytes + output_bytes)
+        # ``hierarchy_only`` retains only source-tree state plus the target
+        # traversal stack.  The legacy particle stack and target outputs are
+        # one-element stubs, so they are intentionally not capacity-scaled.
+        source_particle_bytes = capacity * (3 + 3 + 1) * 4
+        node_metadata_bytes = node_count * (3 + 1 + 3 + 3 + 3 + 6 + 2 + 6) * 4
+        sort_and_leaf_bytes = capacity * (1 + 7) * 4
+        target_stack_depth = (
+            self.workspace.tree.max_stack_depth if self.workspace is not None else 48
+        )
+        target_stack_bytes = evaluation_capacity * target_stack_depth * 4
+        derivative_cache_bytes = min(_M2L_BATCH_SIZE, max_pairs) * _DERIVATIVE_COUNT * 4
+        return int(
+            coefficient_bytes
+            + interaction_bytes
+            + near_adjacency_bytes
+            + output_bytes
+            + source_particle_bytes
+            + node_metadata_bytes
+            + sort_and_leaf_bytes
+            + target_stack_bytes
+            + derivative_cache_bytes
+        )
 
     def evaluate_stage(
         self,
@@ -1060,7 +1300,7 @@ class FMMInduction:
         self.diagnostics.p2m_operations += count
         self.diagnostics.m2m_operations += max(count - 1, 0)
         self.diagnostics.m2l_interactions += m2l_count
-        self.diagnostics.p2p_interactions += int(self.workspace._p2p_particle_count[None])
+        self.diagnostics.p2p_interactions += self.workspace.p2p_particle_count()
         self.diagnostics.l2l_operations += 2 * max(count - 1, 0)
         self.diagnostics.nonzero_l2l_operations += int(self.workspace._nonzero_l2l_count[None])
         self.diagnostics.l2p_evaluations += count
@@ -1102,13 +1342,7 @@ class FMMInduction:
         include_freestream: bool,
         background_velocity,
     ) -> None:
-        """Evaluate arbitrary target fields through the FMM backend boundary.
-
-        The production FMM workspace currently has a particle-target pass but
-        no dual-tree arbitrary-target pass.  Keep that limitation explicit at
-        the backend boundary and use the shared regularized target kernels as
-        a bounded correctness fallback; PhysicsBase no longer silently
-        bypasses the selected induction method.
+        """Evaluate arbitrary target fields with a device-resident hierarchy.
 
         Parameters
         ----------
@@ -1135,37 +1369,58 @@ class FMMInduction:
 
         Notes
         -----
-        The arbitrary-target path is an explicit regularized O(target_count ×
-        source_count) fallback and is not the device-resident FMM particle
-        stage path.
+        Particle stages use the p=3 FMM. Arbitrary targets reuse its source
+        LBVH with the qualified strict tree traversal at theta=0.1, so no
+        particle field is downloaded and no second hierarchy is built for
+        Gaussian and Winckelmans kernels. High-order Gaussian and
+        super-Gaussian target queries retain the exact regularized direct
+        operator because the shared LBVH does not implement those leaf kernels.
         """
-        if self.physics is None:
+        if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
-        if target_velocity is not None:
-            self.physics.compute_target_velocity_kernel(
-                target_position,
-                source_position,
-                source_vortex_strength,
-                source_core_radius,
-                target_velocity,
-                background_velocity if include_freestream else self.physics._zero_velocity,
-                int(target_count),
-                int(source_count),
-            )
-        if target_velocity_gradient is not None:
-            self.physics.compute_target_velocity_gradient_kernel(
-                target_position,
-                source_position,
-                source_vortex_strength,
-                source_core_radius,
-                target_velocity_gradient,
-                int(target_count),
-                int(source_count),
-            )
+        if self.kernel.name not in {"GAUSSIAN", "WINCKELMANS"}:
+            if target_velocity is not None:
+                self.physics.compute_target_velocity_kernel(
+                    target_position,
+                    source_position,
+                    source_vortex_strength,
+                    source_core_radius,
+                    target_velocity,
+                    background_velocity if include_freestream else self.physics._zero_velocity,
+                    int(target_count),
+                    int(source_count),
+                )
+            if target_velocity_gradient is not None:
+                self.physics.compute_target_velocity_gradient_kernel(
+                    target_position,
+                    source_position,
+                    source_vortex_strength,
+                    source_core_radius,
+                    target_velocity_gradient,
+                    int(target_count),
+                    int(source_count),
+                )
+            return
+        self.workspace.evaluate_targets(
+            target_position,
+            source_position,
+            source_vortex_strength,
+            source_core_radius,
+            target_velocity,
+            target_velocity_gradient,
+            int(target_count),
+            int(source_count),
+            background_velocity if include_freestream else self.physics._zero_velocity,
+        )
 
     def _estimate_memory_bytes(self) -> int:
         """Return the current capacity-based workspace estimate in bytes."""
-        return self.estimated_workspace_bytes(self.max_n_particles)
+        if self.workspace is None:
+            return self.estimated_workspace_bytes(self.max_n_particles)
+        return self.estimated_workspace_bytes(
+            self.max_n_particles,
+            self.workspace.target_batch_capacity,
+        )
 
 
 __all__ = ["FMMDeviceWorkspace", "FMMInduction"]
