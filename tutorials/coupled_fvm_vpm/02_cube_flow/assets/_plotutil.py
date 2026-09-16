@@ -463,6 +463,33 @@ def _is_lfs_pointer(path: Path) -> bool:
         return stream.readline().startswith(b"version https://git-lfs.github.com/spec/")
 
 
+_PIMPLE_COMPARISON_FIELDS = (
+    "type",
+    "algorithm",
+    "n_correctors",
+    "n_outer_correctors",
+    "n_nonorthogonal_correctors",
+    "min_outer_correctors",
+    "outer_residual_tolerance",
+    "outer_continuity_tolerance",
+    "max_iterations",
+    "tolerance",
+    "velocity_relaxation",
+    "pressure_relaxation",
+    "ddt_corr",
+    "ibm_forcing_loops",
+    "ibm_second_solve",
+)
+
+
+def _pimple_configurations_match(coupled: dict, reference: dict) -> bool:
+    """Compare every current executable PIMPLE control recorded by both runs."""
+    try:
+        return all(coupled[key] == reference[key] for key in _PIMPLE_COMPARISON_FIELDS)
+    except KeyError:
+        return False
+
+
 def comparison_configurations() -> tuple[dict, dict]:
     reference = json.loads(
         (CASE_DIR / "reference_flow" / "solution" / "fine" / "fvm_metadata.json").read_text()
@@ -473,11 +500,12 @@ def comparison_configurations() -> tuple[dict, dict]:
         "initial_velocity",
         "initial_kinematic_pressure",
         "schemes",
-        "pimple",
         "turbulence",
     ):
         if coupled[key] != reference[key]:
             raise ValueError(f"Coupled/fine configurations differ in {key}; review the comparison")
+    if not _pimple_configurations_match(coupled["pimple"], reference["pimple"]):
+        raise ValueError("Coupled/fine configurations differ in pimple; review the comparison")
     for key in (
         "momentum_tolerance",
         "pressure_tolerance",

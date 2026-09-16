@@ -147,6 +147,20 @@ def test_neighbouring_times_are_never_substituted(modules):
     )
 
 
+def test_pimple_comparison_uses_current_executable_controls(modules):
+    fields, _ = modules
+    util = fields.util
+    current = {name: index for index, name in enumerate(util._PIMPLE_COMPARISON_FIELDS)}
+    recorded_before_alias_removal = {**current, "n_orthogonal_correctors": 1}
+    assert util._pimple_configurations_match(current, recorded_before_alias_removal)
+    for name in util._PIMPLE_COMPARISON_FIELDS:
+        changed = {**recorded_before_alias_removal, name: object()}
+        assert not util._pimple_configurations_match(current, changed)
+    missing = current.copy()
+    missing.pop("n_nonorthogonal_correctors")
+    assert not util._pimple_configurations_match(current, missing)
+
+
 @pytest.mark.parametrize("state", ["missing_volume_index", "no_common_time"])
 def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_plots(
     modules,
