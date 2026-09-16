@@ -85,3 +85,65 @@ def test_completed_reference_mesh_publishes_strict_box_sizes(dx):
 def test_invalid_size_queries_fail_without_entering_refinement_loop(requested, strict):
     with pytest.raises(ValueError, match="finite and positive"):
         _reference_mesher(12.0).effective_cell_size(requested, strict=strict)
+
+
+def test_exact_lattice_preserves_local_size_and_expands_only_domain():
+    root = Path(__file__).resolve().parents[2]
+    surface = msh.STLSurface(
+        root / "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+        patch="cube",
+    )
+    original_triangles = surface.triangles.copy()
+    mesher = msh.CartesianMesher(
+        domain=msh.BoxDomain(
+            (-1.3, 1.7, -1.1, 1.1, -1.1, 1.1),
+            msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+        ),
+        surfaces=(surface,),
+        max_cell_size=0.6,
+        refinements=(
+            msh.BoxRefinement("nearBody", (-0.8, 1.2, -0.8, 0.8, -0.8, 0.8), 0.05),
+            msh.BoxRefinement("wake", (0.0, 1.2, -0.8, 0.8, -0.8, 0.8), 0.1),
+        ),
+        patch_refinements=(msh.PatchRefinement("cube", 0.05),),
+        cell_size_anchor=0.05,
+    )
+
+    assert mesher.background_cell_size == pytest.approx(0.4)
+    assert mesher.requested_domain.bounds == pytest.approx((-1.3, 1.7, -1.1, 1.1, -1.1, 1.1))
+    assert mesher.domain.bounds == pytest.approx((-1.6, 2.0, -1.2, 1.2, -1.2, 1.2))
+    assert mesher.effective_cell_size(0.05, strict=True) == pytest.approx(0.05)
+    assert mesher.effective_cell_size(0.1, strict=True) == pytest.approx(0.1)
+    np.testing.assert_array_equal(surface.triangles, original_triangles)
+
+    mesh = mesher.build(stop_after="templateGeneration")
+    centres = mesh["vertex_position"][mesh["cell_vertex_indices"]].mean(axis=1)
+    near_body = mesher.refinements[0].contains(centres)
+    assert np.unique(mesh["cell_sizes"][near_body]) == pytest.approx([0.05])
+    generation = mesh["mesh_generation"]
+    assert generation["requested_domain_bounds"] == pytest.approx(mesher.requested_domain.bounds)
+    assert generation["resolved_domain_bounds"] == pytest.approx(mesher.domain.bounds)
+    assert generation["resolved_background_cell_size"] == pytest.approx(0.4)
+    assert generation["resolved_box_sizes"] == pytest.approx({"nearBody": 0.05, "wake": 0.1})
+    root_size = generation["root_box"][1] - generation["root_box"][0]
+    patch_level = generation["surface_patch_refinement_levels"]["cube"]
+    assert root_size / 2**patch_level == pytest.approx(0.05)
+
+
+def test_exact_lattice_rejects_incompatible_local_size():
+    root = Path(__file__).resolve().parents[2]
+    surface = msh.STLSurface(
+        root / "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+        patch="cube",
+    )
+    with pytest.raises(ValueError, match="power-of-two multiples"):
+        msh.CartesianMesher(
+            domain=msh.BoxDomain(
+                (-2.0, 2.0, -2.0, 2.0, -2.0, 2.0),
+                msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+            ),
+            surfaces=(surface,),
+            max_cell_size=0.6,
+            refinements=(msh.BoxRefinement("incompatible", (-1, 1, -1, 1, -1, 1), 0.075),),
+            cell_size_anchor=0.05,
+        )

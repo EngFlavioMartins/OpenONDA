@@ -156,16 +156,18 @@ def refine_objects(
     max_cell_size: float,
     global_level: int,
     max_level: int,
+    exact_cell_sizes: bool,
     classify: Callable[[int, int, int, int, int], Leaf],
 ) -> list[Leaf]:
-    """Native box intersection and regularity, excluding outside leaves."""
+    """Apply box refinement using strict cfMesh or exact lattice levels."""
     finest = root_size / (2**max_level)
     tolerance = 1.0e-15 * root_size
+    level_for_size = _inclusive_additional_level if exact_cell_sizes else object_additional_level
     controls = [
         (
             np.asarray(request.bounds[::2]),
             np.asarray(request.bounds[1::2]),
-            global_level + object_additional_level(max_cell_size, request.cell_size),
+            global_level + level_for_size(max_cell_size, request.cell_size),
         )
         for request in requests
     ]
@@ -193,6 +195,14 @@ def refine_objects(
         if not selected:
             return leaves
         leaves = refine_selected_leaves(leaves, selected, max_level, classify)
+
+
+def _inclusive_additional_level(max_cell_size: float, requested: float) -> int:
+    """Return the first dyadic level whose size is at most ``requested``."""
+    level = 0
+    while max_cell_size / (2**level) > requested * (1.0 + 1.0e-15):
+        level += 1
+    return level
 
 
 @njit(cache=True, fastmath=False)

@@ -31,6 +31,7 @@ def create_solver(directory_name: str, dx: float):
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
         max_cell_size=12 * dx,
+        cell_size_anchor=dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.
             msh.BoxRefinement(

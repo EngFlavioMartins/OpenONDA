@@ -45,6 +45,10 @@ def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_recommended")
     assert setup.CELL_SIZE == 0.06
     assert setup.FVM_MESH.max_cell_size == pytest.approx(0.06)
+    assert setup.FVM_MESH.cell_size_anchor == pytest.approx(0.06)
+    assert setup.FVM_MESH.background_cell_size == pytest.approx(0.06)
+    assert setup.FVM_MESH.requested_domain.bounds == setup.FVM_BOX
+    assert setup.FVM_MESH.domain.bounds == pytest.approx((-1.5, 2.04, -1.5, 1.5, -1.5, 1.5))
     assert setup.FVM_MESH.boundary_cell_size == pytest.approx(0.06)
     assert setup.FVM_MESH.refinements == ()
     assert setup.FVM_MESH.effective_cell_size(0.06) == pytest.approx(0.06)

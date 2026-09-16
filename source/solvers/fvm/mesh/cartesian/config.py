@@ -202,10 +202,11 @@ class PatchRefinement:
     """Request a local surface cell size on one exact named patch.
 
     ``cell_size`` is an upper target in metres. The patch must exist in the
-    domain/surface patch namespace before mesher execution.
-    cfMesh selects ``max_cell_size / 2**level <= cell_size``; the target is
-    exact only when it belongs to that dyadic lattice. Final surface and
-    wrapper geometry can differ from the nominal octree size.
+    domain/surface patch namespace before mesher execution. Without a
+    ``CartesianMesher.cell_size_anchor``, cfMesh selects
+    ``max_cell_size / 2**level <= cell_size``. With an anchor, compatible
+    power-of-two requests are exact. Final surface and wrapper geometry can
+    differ from the nominal octree size.
 
     Parameters
     ----------
@@ -229,12 +230,12 @@ class BoxRefinement(Refinement):
 
     ``bounds`` uses ``(xmin, xmax, ymin, ymax, zmin, zmax)`` and ``contains``
     accepts points of shape ``(n, 3)``.
-    cfMesh selects ``max_cell_size / 2**level < cell_size`` (with its native
-    floating-point tolerance). Equality adds a level: a request of one quarter
-    of the background resolves to one eighth. Changing the background changes
-    this lattice even when the requested box size stays fixed. Intersecting
-    leaves and the 2:1 neighbour transition can extend refinement past the box;
-    overlapping controls select the finest applicable level.
+    Without a ``CartesianMesher.cell_size_anchor``, cfMesh selects
+    ``max_cell_size / 2**level < cell_size`` (with its native floating-point
+    tolerance). Equality then adds a level. With an anchor, compatible
+    power-of-two requests are exact and equality retains the requested level.
+    Intersecting leaves and the 2:1 neighbour transition can extend refinement
+    past the box; overlapping controls select the finest applicable level.
 
     Parameters
     ----------

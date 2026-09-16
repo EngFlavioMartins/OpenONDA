@@ -509,8 +509,9 @@ def build_cfmesh_template(
     patch_refinements: Sequence[PatchRefinement] = (),
     domain_patch_names: Sequence[str] = (),
     surface_patch_names: Sequence[str] = (),
+    exact_cell_sizes: bool = False,
 ) -> dict[str, Any]:
-    """Build the native equivalent of cfMesh's ``templateGeneration`` stage."""
+    """Build the cfMesh template, optionally preserving an exact size lattice."""
     root_bounds, global_level = _root_cube(domain, max_cell_size)
     boundary_level = global_level + _additional_level(max_cell_size, boundary_cell_size)
     automatic_level = (
@@ -523,12 +524,13 @@ def build_cfmesh_template(
         request.patch: global_level + _additional_level(max_cell_size, request.cell_size)
         for request in patch_refinements
     }
+    object_level = _additional_level if exact_cell_sizes else object_additional_level
     max_level = max(
         [
             boundary_level,
             *patch_levels.values(),
             *(
-                global_level + object_additional_level(max_cell_size, request.cell_size)
+                global_level + object_level(max_cell_size, request.cell_size)
                 for request in box_refinements
             ),
         ]
@@ -673,6 +675,7 @@ def build_cfmesh_template(
                 max_cell_size=max_cell_size,
                 global_level=global_level,
                 max_level=max_level,
+                exact_cell_sizes=exact_cell_sizes,
                 classify=classify,
             )
             progress.details(leaves=len(octree_leaves))

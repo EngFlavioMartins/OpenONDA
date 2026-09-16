@@ -96,6 +96,7 @@ FVM_MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=CELL_SIZE,
+    cell_size_anchor=CELL_SIZE,
     boundary_cell_size=CELL_SIZE,
     patch_refinements=(msh.PatchRefinement("cube", CELL_SIZE),),
 )

@@ -28,12 +28,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = Path(
-    os.environ.get(
-        "OPENONDA_CUBE_REFERENCE_SAMPLES",
-        str(CASE_DIR / "reference_flow" / "samples" / "fine"),
-    )
-)
+REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples" / "fine"
 FIGURES = CASE_DIR / "figures"
 AUXILIARY = FIGURES / "auxiliary"
 
@@ -152,17 +147,6 @@ class NativeVelocity:
             values[~inside] = np.nan
             result[name] = values
         return result
-
-
-def validate_reference() -> dict:
-    """Validate that every comparison uses the registered fine reference."""
-    expected = CASE_DIR / "reference_flow" / "samples" / "fine"
-    if REFERENCE_SAMPLES.resolve() != expected.resolve():
-        raise ValueError(f"Cube comparisons require the fine reference: {expected}")
-    info = json.loads((expected / "grid_run.json").read_text())
-    if info["case"] != "fine" or not np.isclose(info["cell_size"], 0.06, rtol=0, atol=1e-12):
-        raise ValueError("Expected the registered fine reference with dx=0.06")
-    return info
 
 
 def label(source: str) -> str:
@@ -640,7 +624,6 @@ def comparison_configurations() -> tuple[dict, dict]:
 
 def prepare_comparison_fields() -> int:
     """Prepare exactly coincident FVM fields on the native comparison lattice."""
-    info = validate_reference()
     reference_solution = CASE_DIR / "reference_flow" / "solution" / "fine"
     reference_config = reference_solution / "fvm_metadata.json"
     coupled_config = SOLUTION / "fvm_metadata.json"
@@ -724,7 +707,7 @@ def prepare_comparison_fields() -> int:
             count += 1
             print(f"  prepared matched FVM fields at t={time:g}", flush=True)
         rows.append(entry)
-    manifest = {"method": PREPARATION_METHOD, "reference": info, "frames": rows}
+    manifest = {"method": PREPARATION_METHOD, "frames": rows}
     temporary = manifest_path.with_suffix(".tmp")
     temporary.write_text(json.dumps(manifest, indent=2) + "\n")
     os.replace(temporary, manifest_path)
@@ -733,7 +716,6 @@ def prepare_comparison_fields() -> int:
 
 def validate_plot_inputs() -> dict[str, float]:
     """Check physical provenance and exact times; adaptive dt need not match."""
-    validate_reference()
     _validate_metadata_provenance(metadata())
     comparison_configurations()
     profile_times = common_times(

@@ -457,7 +457,9 @@ class CartesianMesher:
     surfaces : tuple[STLSurface, ...]
         Validated surfaces to carve/fit as wall patches.
     max_cell_size : float
-        Background upper cell size in metres.
+        Background upper cell size in metres. With ``cell_size_anchor``, the
+        realized background is the largest compatible power-of-two multiple
+        that does not exceed this value.
     boundary_cell_size : float or None
         Upper size near surfaces; defaults to ``max_cell_size``.
     min_cell_size : float or None
@@ -473,6 +475,12 @@ class CartesianMesher:
     surface_may_cross_domain_boundary : bool, default=False
         Permit a surface intersecting the outer domain; otherwise surfaces must
         lie strictly inside it.
+    cell_size_anchor : float or None, default=None
+        Exact Cartesian lattice spacing in metres. When supplied, every explicit
+        local size must be a power-of-two multiple of this value. The background
+        becomes the largest compatible spacing not exceeding ``max_cell_size``,
+        and the outer domain expands to background-cell planes. Embedded surface
+        coordinates are never scaled or translated.
 
     Notes
     -----
@@ -494,6 +502,7 @@ class CartesianMesher:
         features: FeatureRefinement | None = None,
         boundary_layers: tuple[BoundaryLayers, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
+        cell_size_anchor: float | None = None,
     ) -> None:
         """Validate and retain meshing intent without generating a mesh.
 
@@ -511,6 +520,7 @@ class CartesianMesher:
         max_cell_size = float(max_cell_size)
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")
+        boundary_size_is_default = boundary_cell_size is None
         if boundary_cell_size is None:
             boundary_cell_size = max_cell_size
         boundary_cell_size = float(boundary_cell_size)
@@ -566,6 +576,57 @@ class CartesianMesher:
         )
         if unknown_local:
             raise ValueError(f"patch refinement refers to unknown patches: {sorted(unknown_local)}")
+        if cell_size_anchor is not None:
+            cell_size_anchor = float(cell_size_anchor)
+            if not math.isfinite(cell_size_anchor) or cell_size_anchor <= 0.0:
+                raise ValueError("cell_size_anchor must be finite and positive")
+            if cell_size_anchor > max_cell_size:
+                raise ValueError("cell_size_anchor must not exceed max_cell_size")
+            background_level = int(math.floor(math.log2(max_cell_size / cell_size_anchor) + 1e-12))
+            background_cell_size = cell_size_anchor * (2**background_level)
+            exact_controls = [
+                *(float(_refinement_attribute(item, "cell_size")) for item in refinements),
+                *(item.cell_size for item in patch_refinements),
+            ]
+            if not boundary_size_is_default:
+                exact_controls.append(boundary_cell_size)
+            if features is not None:
+                exact_controls.append(features.cell_size)
+            for requested in exact_controls:
+                if requested > background_cell_size * (1.0 + 1e-12):
+                    raise ValueError(
+                        f"cell size {requested:g} exceeds the resolved exact-lattice "
+                        f"background {background_cell_size:g}; increase max_cell_size "
+                        "to the next compatible power-of-two multiple"
+                    )
+                ratio = requested / cell_size_anchor
+                level = round(math.log2(ratio)) if ratio >= 1.0 else -1
+                if level < 0 or not math.isclose(ratio, 2**level, rel_tol=1e-12, abs_tol=1e-12):
+                    raise ValueError(
+                        f"cell size {requested:g} is incompatible with exact lattice anchor "
+                        f"{cell_size_anchor:g}; local sizes must be power-of-two multiples"
+                    )
+            if boundary_size_is_default:
+                boundary_cell_size = background_cell_size
+            requested_bounds = np.asarray(domain.bounds, dtype=np.float64)
+            resolved_bounds = []
+            tolerance = 1e-12 * background_cell_size
+            for axis in range(3):
+                lower = requested_bounds[2 * axis]
+                upper = requested_bounds[2 * axis + 1]
+                resolved_bounds.extend(
+                    (
+                        background_cell_size
+                        * math.floor((lower + tolerance) / background_cell_size),
+                        background_cell_size
+                        * math.ceil((upper - tolerance) / background_cell_size),
+                    )
+                )
+            requested_domain = domain
+            domain = BoxDomain(tuple(resolved_bounds), domain.patches)
+        else:
+            background_cell_size = max_cell_size
+            requested_domain = domain
         for refinement in refinements:
             bounds = tuple(float(value) for value in _refinement_attribute(refinement, "bounds"))
             if not all(
@@ -581,9 +642,12 @@ class CartesianMesher:
             unknown = sorted(set(layer.patches) - known_patches)
             if unknown:
                 raise ValueError(f"boundary layer refers to unknown surface patches: {unknown}")
+        self.requested_domain = requested_domain
         self.domain = domain
         self.surfaces = surfaces
         self.max_cell_size = max_cell_size
+        self.background_cell_size = background_cell_size
+        self.cell_size_anchor = cell_size_anchor
         self.boundary_cell_size = boundary_cell_size
         self.min_cell_size = min_cell_size
         self.refinements = refinements
@@ -611,21 +675,22 @@ class CartesianMesher:
         return self._report
 
     def effective_cell_size(self, requested: float, *, strict: bool = False) -> float:
-        """Return the nominal octree size selected by cfMesh for a request.
+        """Return the nominal octree size selected for one request.
 
         Parameters
         ----------
         requested : float
             Positive requested upper size in metres.
         strict : bool, default=False
-            Use the strict object-refinement rule for a ``BoxRefinement``.
-            Boundary and patch sizes use the default inclusive upper bound.
+            Without ``cell_size_anchor``, use the strict cfMesh object-refinement
+            rule for a ``BoxRefinement``. Exact anchored lattices always use the
+            inclusive level that preserves a compatible requested size.
 
         Returns
         -------
         float
-            A background size divided by a power of two, never coarser than the
-            request and never larger than the background size.
+            The resolved background size divided by a power of two, never
+            coarser than the request.
 
         Notes
         -----
@@ -637,8 +702,14 @@ class CartesianMesher:
         """
         if not math.isfinite(requested) or requested <= 0.0:
             raise ValueError("requested cell sizes must be finite and positive")
-        conversion = object_additional_level if strict else _additional_level
-        return self.max_cell_size / (2 ** conversion(self.max_cell_size, requested))
+        conversion = (
+            _additional_level
+            if self.cell_size_anchor is not None
+            else object_additional_level
+            if strict
+            else _additional_level
+        )
+        return self.background_cell_size / (2 ** conversion(self.background_cell_size, requested))
 
     def _cfmesh_size_reports(self) -> tuple[SizeReport, ...]:
         """Report the same control levels used by the production octree."""
@@ -661,14 +732,27 @@ class CartesianMesher:
             controls.append(("features", self.features.cell_size, False))
         sizes = []
         for name, requested, strict in controls:
-            conversion = object_additional_level if strict else _additional_level
-            level = conversion(self.max_cell_size, requested)
-            sizes.append(SizeReport(name, requested, self.max_cell_size / (2**level), level))
+            conversion = (
+                _additional_level
+                if self.cell_size_anchor is not None
+                else object_additional_level
+                if strict
+                else _additional_level
+            )
+            level = conversion(self.background_cell_size, requested)
+            sizes.append(SizeReport(name, requested, self.background_cell_size / (2**level), level))
         if self.min_cell_size is not None:
-            level = _additional_level(self.max_cell_size, self.min_cell_size * (1.0 + 1.0e-15))
+            level = _additional_level(
+                self.background_cell_size, self.min_cell_size * (1.0 + 1.0e-15)
+            )
             sizes.insert(
                 2,
-                SizeReport("minimum", self.min_cell_size, self.max_cell_size / (2**level), level),
+                SizeReport(
+                    "minimum",
+                    self.min_cell_size,
+                    self.background_cell_size / (2**level),
+                    level,
+                ),
             )
         return tuple(sizes)
 
@@ -725,7 +809,7 @@ class CartesianMesher:
         )
         return CartesianOctree(
             domain=self.domain.bounds,
-            max_cell_size=self.max_cell_size,
+            max_cell_size=self.background_cell_size,
             surface_data=surface,
             exact_surface_components=exact_surface_components,
             surface_exclusion_distance=0.0,
@@ -774,19 +858,35 @@ class CartesianMesher:
             stage_mesh = build_cfmesh_template(
                 domain=self.domain.bounds,
                 surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                max_cell_size=self.max_cell_size,
+                max_cell_size=self.background_cell_size,
                 boundary_cell_size=self.boundary_cell_size,
                 min_cell_size=self.min_cell_size,
                 box_refinements=cast(tuple[BoxRefinement, ...], self.refinements),
                 patch_refinements=self.patch_refinements,
                 domain_patch_names=self.domain.patches.as_tuple(),
                 surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                exact_cell_sizes=self.cell_size_anchor is not None,
             )
             progress.details(
                 cells=stage_mesh.get("n_cells"),
                 faces=stage_mesh.get("n_faces"),
                 points=stage_mesh.get("n_points"),
             )
+        generation = stage_mesh["mesh_generation"]
+        generation["requested_domain_bounds"] = list(self.requested_domain.bounds)
+        generation["resolved_domain_bounds"] = list(self.domain.bounds)
+        generation["cell_size_anchor"] = self.cell_size_anchor
+        generation["resolved_background_cell_size"] = self.background_cell_size
+        generation["resolved_box_sizes"] = {
+            request.name: self.effective_cell_size(request.cell_size, strict=True)
+            for request in cast(tuple[BoxRefinement, ...], self.refinements)
+        }
+        root_box = generation["root_box"]
+        root_size = float(root_box[1] - root_box[0])
+        patch_levels = generation.get("surface_patch_refinement_levels", {})
+        generation["resolved_surface_patch_sizes"] = {
+            str(name): root_size / (2 ** int(level)) for name, level in patch_levels.items()
+        }
         with mesh_stage("surface topology check") as progress:
             topology_trace = _verify_cfmesh_surface_topology(stage_mesh)
             progress.details(changes=topology_trace["changes"])
@@ -978,17 +1078,16 @@ class CartesianMesher:
         boundary_level = generation.get("boundary_refinement_level")
         if root_box is not None and global_level is not None:
             root_size = float(root_box[1] - root_box[0])
-            generation["resolved_background_cell_size"] = root_size / (2 ** int(global_level))
+            generated_background = root_size / (2 ** int(global_level))
+            if not math.isclose(
+                generated_background,
+                self.background_cell_size,
+                rel_tol=1e-12,
+                abs_tol=1e-14,
+            ):
+                raise RuntimeError("Cartesian template changed the resolved background spacing")
             if boundary_level is not None:
                 generation["resolved_boundary_cell_size"] = root_size / (2 ** int(boundary_level))
-            patch_levels = generation.get("surface_patch_refinement_levels", {})
-            generation["resolved_surface_patch_sizes"] = {
-                str(name): root_size / (2 ** int(level)) for name, level in patch_levels.items()
-            }
-            generation["resolved_box_sizes"] = {
-                request.name: self.effective_cell_size(request.cell_size, strict=True)
-                for request in cast(tuple[BoxRefinement, ...], self.refinements)
-            }
         return mesh_data
 
     def _constrain_cfmesh_wall_points(self, mesh_data: dict[str, Any]) -> None:

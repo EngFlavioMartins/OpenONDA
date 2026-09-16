@@ -31,10 +31,12 @@ class CachedMesh:
                 "max_cell_size",
                 "boundary_cell_size",
                 "min_cell_size",
+                "cell_size_anchor",
                 "surface_may_cross_domain_boundary",
             )
         }
         data["domain"] = asdict(m.domain)
+        data["requested_domain"] = asdict(m.requested_domain)
         data["surfaces"] = [
             {"sha256": s.sha256, "patch": s.patch, "allow_open": s.allow_open} for s in m.surfaces
         ]
