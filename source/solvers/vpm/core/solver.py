@@ -186,6 +186,7 @@ class VPMSolver:
         self._backend_claimed = True
         self.restart_state = RestartState()
         self._restart_provenance: dict | None = None
+        self._restart_loaded = False
         self._initial_conditions_built = False
         self._initial_n_particles_total = 0
         self._run_initial_step = 0
@@ -2509,6 +2510,7 @@ class VPMSolver:
         filename = str(filename)
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(self, path, time_step_size=time_step_size)
+        self._restart_loaded = True
         # A numerical restart replaces the complete particle state. Declarative
         # initial conditions must never be rebuilt by the next advance/run.
         self._initial_conditions_built = True

@@ -522,6 +522,7 @@ def test_vlm_sampler_uses_owner_samples_path_and_resumable_polydata_index(tmp_pa
     assert not (tmp_path / "solution/vlm_000001.vtp").exists()
     runtime.step = 2
     runtime.time = 0.2
+    runtime._restart_loaded = True
     OutputManager(runtime).dispatch(OutputEvent.ACCEPTED_STEP)
     assert (folder / "vlm.pvd").read_text().count("<DataSet") == 2
     import pyvista as pv

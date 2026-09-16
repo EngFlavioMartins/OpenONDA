@@ -68,6 +68,10 @@ class SamplingContext:
         Accepted physical time in seconds.
     event : OutputEvent
         Lifecycle event that selected the sampler.
+    continuing_output : bool
+        ``True`` when the writer must append to an existing stream from a
+        loaded numerical restart or an earlier event in this process. ``False``
+        means this is the first event of a fresh run and replaces stale output.
 
     The context is a snapshot of dispatch metadata; it does not copy particle
     or field arrays and therefore must not be retained as a mutable state view.
@@ -78,6 +82,7 @@ class SamplingContext:
     step: int
     time: float
     event: OutputEvent
+    continuing_output: bool
 
 
 @runtime_checkable
@@ -248,7 +253,17 @@ class OutputManager:
             return
         directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
         directory.mkdir(parents=True, exist_ok=True)
-        context = SamplingContext(self.solver, directory, self.solver.step, self.solver.time, event)
+        continuing_output = bool(
+            getattr(self.solver, "_restart_loaded", False) or identity in self._runtime.last_written
+        )
+        context = SamplingContext(
+            self.solver,
+            directory,
+            self.solver.step,
+            self.solver.time,
+            event,
+            continuing_output,
+        )
         try:
             self._write(sampler, context)
             self._runtime.last_written[identity] = (context.step, context.time)
@@ -290,9 +305,13 @@ class OutputManager:
             extension = getattr(sampler, "vtk_extension", ".vts")
             filename = f"{prefix}_{context.step:06d}{extension}"
             final_path = context.output_directory / filename
-            entries = self._runtime.pvd_entries.setdefault(
-                prefix, self._read_pvd(context.output_directory, prefix)
-            )
+            if prefix not in self._runtime.pvd_entries:
+                self._runtime.pvd_entries[prefix] = (
+                    self._read_pvd(context.output_directory, prefix)
+                    if context.continuing_output
+                    else []
+                )
+            entries = self._runtime.pvd_entries[prefix]
             temp_path = context.output_directory / f".{filename}.tmp{extension}"
             sampler.save_vtp(context.solver, temp_path, time=context.time)
             os.replace(temp_path, final_path)
@@ -339,7 +358,9 @@ class OutputManager:
         if len(lengths) != 1:
             raise ValueError("Sampler result columns do not all have the same length")
         header = ["time", "step", *columns]
-        existing = OutputManager._read_csv_rows(filepath, header)
+        existing = (
+            OutputManager._read_csv_rows(filepath, header) if context.continuing_output else []
+        )
         if existing and float(cast(str, existing[-1][0])) >= context.time:
             raise ValueError("CSV event is duplicate or nonmonotonic during resume")
         rows: list[list[object]] = [

@@ -119,7 +119,7 @@ class RingDiagnosticsSampler:
         """Write one atomic, monotonic ring-diagnostics event."""
         path = context.output_directory / f"{self.file_name}.csv"
         existing: list[list[str]] = []
-        if path.exists() and path.stat().st_size:
+        if context.continuing_output and path.exists() and path.stat().st_size:
             with path.open(newline="", encoding="utf-8") as stream:
                 reader = csv.reader(stream)
                 next(reader, None)

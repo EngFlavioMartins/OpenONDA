@@ -89,6 +89,11 @@ class FlowIntegralsSampler:
 
     def write(self, context: SamplingContext) -> None:
         """Write one restart-aware diagnostic event from typed runtime context."""
+        path = context.output_directory / f"{self.file_name}.csv"
+        if not context.continuing_output and path.exists():
+            path.unlink()
         self.save_csv(
-            context.solver, context.output_directory / f"{self.file_name}.csv", time=context.time
+            context.solver,
+            path,
+            time=context.time,
         )

@@ -325,6 +325,7 @@ def _solver(tmp_path, samplers: Samplers):
         time=0.1,
         time_step_size=0.1,
         backups=0,
+        _restart_loaded=False,
     )
 
 
@@ -342,7 +343,7 @@ def test_final_only_is_not_an_accepted_step_schedule():
     assert not schedule.is_due(10, 1.0, 0.1)
 
 
-def test_csv_series_is_atomic_and_preserved_on_resume(tmp_path):
+def test_csv_series_is_atomic_and_appended_within_one_run(tmp_path):
     solver = _solver(tmp_path, Samplers(samples=(_TableSampler(),)))
     manager = OutputManager(solver)
 
@@ -353,7 +354,7 @@ def test_csv_series_is_atomic_and_preserved_on_resume(tmp_path):
     assert len((tmp_path / "samples" / "table.csv").read_text().splitlines()) == 3
 
 
-def test_pvd_series_is_atomic_and_preserved_on_resume(tmp_path):
+def test_pvd_series_is_atomic_and_appended_within_one_run(tmp_path):
     solver = _solver(tmp_path, Samplers(samples=(_VtkSampler(),)))
     manager = OutputManager(solver)
 
@@ -371,6 +372,28 @@ def test_resume_rejects_nonmonotonic_csv_event(tmp_path):
 
     with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
         manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+
+def test_fresh_run_replaces_stale_csv_while_restart_appends(tmp_path):
+    sampler = _TableSampler()
+    original = _solver(tmp_path, Samplers(samples=(sampler,)))
+    OutputManager(original).dispatch(OutputEvent.ACCEPTED_STEP)
+
+    fresh = _solver(tmp_path, Samplers(samples=(sampler,)))
+    fresh.step, fresh.time = 2, 0.2
+    OutputManager(fresh).dispatch(OutputEvent.ACCEPTED_STEP)
+    path = tmp_path / "samples" / "table.csv"
+    fresh_rows = path.read_text().splitlines()
+    assert len(fresh_rows) == 2
+    assert fresh_rows[-1].startswith("0.2,2,")
+
+    resumed = _solver(tmp_path, Samplers(samples=(sampler,)))
+    resumed._restart_loaded = True
+    resumed.step, resumed.time = 3, 0.3
+    OutputManager(resumed).dispatch(OutputEvent.ACCEPTED_STEP)
+    resumed_rows = path.read_text().splitlines()
+    assert len(resumed_rows) == 3
+    assert resumed_rows[-1].startswith("0.3,3,")
 
 
 def test_output_manager_is_the_only_backup_cadence_owner(tmp_path):
@@ -425,10 +448,10 @@ def test_ring_periodic_and_final_schedules_write_one_terminal_event(tmp_path, te
     assert len(contents.splitlines()) == (3 if terminal_step == 1540 else 5)
     manager.write_all(OutputEvent.FINAL, skip_current=True)
     assert path.read_bytes() == contents
-    # A fresh manager has no proof that existing rows belong to this state;
-    # the CSV resume guard must still reject a repeated or earlier clock.
-    with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
-        OutputManager(solver).dispatch(OutputEvent.FINAL)
+    # Replaying the case without loading a checkpoint starts a fresh output
+    # stream and replaces stale rows from the prior run.
+    OutputManager(solver).dispatch(OutputEvent.FINAL)
+    assert len(path.read_text().splitlines()) == 3
 
 
 class _ExecutionSample:
