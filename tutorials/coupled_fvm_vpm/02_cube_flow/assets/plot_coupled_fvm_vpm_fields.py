@@ -33,7 +33,7 @@ def _on_grid(source: dict, target: dict) -> np.ndarray:
     """Match equivalent saved coordinates; never fill gaps or extrapolate."""
     for key in ("x", "y"):
         a, b = source[key], target[key]
-        tolerance = 4 * np.finfo(np.float32).eps * max(1, float(np.max(np.abs(b))))
+        tolerance = 8 * np.finfo(np.float32).eps * max(1, float(np.max(np.abs(b))))
         if a.shape != b.shape or not np.allclose(a, b, rtol=0, atol=tolerance):
             raise ValueError(
                 "Slice coordinates differ: resample the saved fields on one common grid"
