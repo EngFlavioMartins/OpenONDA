@@ -52,8 +52,7 @@ Missing fluid coverage stays masked, and colour scales include the full sampled 
 whole-domain hybrid error map.
 
 `figures/auxiliary/comparison_report.md`, `comparison_report.json` and the three field-comparison
-CSV files document the definitions, coverage and source checks. `reference_force_history.*` shows
-raw drag and the accepted timestep at each force sample. The
+CSV files document the definitions, coverage and source checks. The
 current fine reference has pressure/drag spikes coincident with very small timesteps; they remain
 visible, without smoothing or filtering. This needs resolution before its drag can validate hybrid
 accuracy. The schemes and local Cartesian sizing match, but fitted meshes and timestep histories

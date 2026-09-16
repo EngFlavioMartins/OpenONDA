@@ -13,6 +13,7 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 import csv
+import argparse
 import hashlib
 import json
 import os
@@ -987,10 +988,9 @@ These are instantaneous sampled differences, not time-averaged error estimates.
 
 The largest saved reference Cd after t=1 within the compared interval is
 {peak["Cd"]:.9g} at t={peak["time"]:g} s, with accepted dt={peak["accepted_dt"]:.9g} s.
-reference_force_history.* shows raw Cd and the accepted timestep; the vertical
-line marks this sample. auxiliary/comparison_report.json records neighbouring pressure
-extrema where solver diagnostics are available. These are observations, not
-a completed diagnosis of the pressure/timestep algorithm.
+auxiliary/comparison_report.json records neighbouring pressure extrema where
+solver diagnostics are available. These are observations, not a completed
+diagnosis of the pressure/timestep algorithm.
 
 {observation}
 {verdict}
@@ -1020,8 +1020,18 @@ common support, auxiliary-field status and finite-reference limitations.
     print(verdict)
 
 
-def main() -> int:
+def main(arguments: list[str] | None = None) -> int:
     """Prepare and validate the matched data consumed by every cube plotter."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="write the comparison report after the field plotters have updated their metrics",
+    )
+    options = parser.parse_args([] if arguments is None else arguments)
+    if options.report:
+        write_comparison_report(build_comparison_report())
+        return 0
     try:
         count = prepare_comparison_fields()
     except (FileNotFoundError, ComparisonNotReady) as error:
@@ -1049,4 +1059,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

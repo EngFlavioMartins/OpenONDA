@@ -1,7 +1,7 @@
 {
   "reference_samples": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/fine",
   "reference_grid": "fine",
-  "comparison_end_time": 4.0,
+  "comparison_end_time": 8.0,
   "meshes": {
     "coupled": {
       "cells": 484088,
@@ -115,25 +115,25 @@
   "latest_field_differences": [
     {
       "figure": "coupled_fvm_vpm_fields",
-      "time": "4.0",
-      "rms_percent": "1.404184564583428",
-      "sampled_max_percent": "10.38398905345463",
+      "time": "8.0",
+      "rms_percent": "1.3451139951855469",
+      "sampled_max_percent": "10.205155513767409",
       "covered_area_D2": "14.112000148773191",
       "valid_nodes": "1066"
     },
     {
       "figure": "reference_fvm_vpm_fields",
-      "time": "4.0",
-      "rms_percent": "1.7313665282359796",
-      "sampled_max_percent": "11.669182148970119",
+      "time": "8.0",
+      "rms_percent": "1.8096898958640835",
+      "sampled_max_percent": "10.394377657675786",
       "covered_area_D2": "14.112000148773191",
       "valid_nodes": "1066"
     },
     {
       "figure": "reference_fvm_coupled_fvm_fields",
-      "time": "4.0",
-      "rms_percent": "0.9097063723039662",
-      "sampled_max_percent": "7.4583317364716875",
+      "time": "8.0",
+      "rms_percent": "1.269558440484635",
+      "sampled_max_percent": "8.68392442915147",
       "covered_area_D2": "14.112000148773191",
       "valid_nodes": "1066"
     }

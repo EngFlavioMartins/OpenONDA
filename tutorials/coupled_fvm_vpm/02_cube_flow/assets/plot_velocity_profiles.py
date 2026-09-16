@@ -96,7 +96,7 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     fig.text(
         0.5,
         0.982,
-        rf"$z/D=0,\quad tU_\infty/D={time * consts['freestream_speed']:g}$",
+        rf"$z/D=0,\quad tU_\infty/D={time * consts['freestream_speed']:.2f}$",
         ha="center",
         va="top",
     )

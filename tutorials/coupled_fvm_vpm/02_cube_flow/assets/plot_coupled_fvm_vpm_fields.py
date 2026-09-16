@@ -122,16 +122,22 @@ def _field_figure(
         low, high = low - 0.01, high + 0.01
     maximum = max(stats["sampled_max_percent"], 1e-6)
 
-    height_cm = 11.8
+    height_cm = 10.0
     fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
     axes = [
-        fig.add_axes((0.14, 6.6 / height_cm, 0.30, 3.75 / height_cm)),
-        fig.add_axes((0.56, 6.6 / height_cm, 0.30, 3.75 / height_cm)),
-        fig.add_axes((0.14, 1.27 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.14, 5.3 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.56, 5.3 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.14, 0.9 / height_cm, 0.30, 3.75 / height_cm)),
     ]
-    velocity_bar = fig.add_axes((0.56, 4.3 / height_cm, 0.30, 0.26 / height_cm))
-    error_bar = fig.add_axes((0.56, 2.8 / height_cm, 0.30, 0.26 / height_cm))
-    fig.text(0.5, 0.977, rf"$z/D=0,\quad tU_\infty/D={time * time_scale:g}$", ha="center", va="top")
+    velocity_bar = fig.add_axes((0.56, 3.65 / height_cm, 0.30, 0.14 / height_cm))
+    error_bar = fig.add_axes((0.56, 2.25 / height_cm, 0.30, 0.14 / height_cm))
+    fig.text(
+        0.5,
+        0.975,
+        rf"$z/D=0,\quad tU_\infty/D={time * time_scale:.2f}$",
+        ha="center",
+        va="top",
+    )
     levels = np.linspace(low, high, 41)
     for ax, values, title in zip(axes[:2], (dense_left, dense_right), (left_title, right_title)):
         velocity_plot = ax.contourf(
@@ -162,13 +168,14 @@ def _field_figure(
             aspect="equal",
         )
         ax.set_facecolor(util.COLORS["background_light"])
+        ax.xaxis.labelpad = 1.0
         ax.add_patch(
             plt.Rectangle((-0.5, -0.5), 1, 1, facecolor="white", edgecolor="black", lw=0.5)
         )
     axes[0].set_ylabel(r"$y/D$")
     axes[2].set_ylabel(r"$y/D$")
     axes[1].tick_params(labelleft=False)
-    fig.colorbar(
+    velocity_colorbar = fig.colorbar(
         velocity_plot,
         cax=velocity_bar,
         orientation="horizontal",
@@ -176,7 +183,7 @@ def _field_figure(
         ticks=[low, (low + high) / 2, high],
         label=r"$u_x/U_\infty$",
     )
-    fig.colorbar(
+    error_colorbar = fig.colorbar(
         error_plot,
         cax=error_bar,
         orientation="horizontal",
@@ -184,9 +191,11 @@ def _field_figure(
         ticks=[0, maximum / 2, maximum],
         label=r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]",
     )
+    velocity_colorbar.ax.xaxis.labelpad = 1.0
+    error_colorbar.ax.xaxis.labelpad = 1.0
     fig.text(
         0.71,
-        1.2 / height_cm,
+        0.9 / height_cm,
         rf"RMS: {stats['rms_percent']:.2g}\%"
         "\n"
         rf"Max: {stats['sampled_max_percent']:.2g}\%",

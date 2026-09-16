@@ -1,7 +1,7 @@
 # Cube comparison report
 
 Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
-Comparison ends at t=4 s. Reference data after
+Comparison ends at t=8 s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
 ## What is matched
@@ -55,13 +55,13 @@ region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
 does not establish accuracy everywhere in three dimensions.
 
-At the latest compared time, t=4 s:
+At the latest compared time, t=8 s:
 
 | Comparison | RMS [% U_inf] | Sampled max [% U_inf] | Area [D^2] |
 |---|---:|---:|---:|
-| Coupled FVM / VPM (overlap consistency) | 1.404 | 10.384 | 14.1120 |
-| Reference FVM / VPM (auxiliary overlap field) | 1.731 | 11.669 | 14.1120 |
-| Reference FVM / Coupled FVM (primary near field) | 0.910 | 7.458 | 14.1120 |
+| Coupled FVM / VPM (overlap consistency) | 1.345 | 10.205 | 14.1120 |
+| Reference FVM / VPM (auxiliary overlap field) | 1.810 | 10.394 | 14.1120 |
+| Reference FVM / Coupled FVM (primary near field) | 1.270 | 8.684 | 14.1120 |
 
 
 These are instantaneous sampled differences, not time-averaged error estimates.
@@ -70,10 +70,9 @@ These are instantaneous sampled differences, not time-averaged error estimates.
 
 The largest saved reference Cd after t=1 within the compared interval is
 1.2876943 at t=1 s, with accepted dt=0.01 s.
-reference_force_history.* shows raw Cd and the accepted timestep; the vertical
-line marks this sample. auxiliary/comparison_report.json records neighbouring pressure
-extrema where solver diagnostics are available. These are observations, not
-a completed diagnosis of the pressure/timestep algorithm.
+auxiliary/comparison_report.json records neighbouring pressure extrema where
+solver diagnostics are available. These are observations, not a completed
+diagnosis of the pressure/timestep algorithm.
 
 At this sample the pressure span increases by a factor of 0.999, and the timestep decreases by a factor of 1 relative to the preceding step.
 This diagnostic does not establish that the reference is converged or accurate.
