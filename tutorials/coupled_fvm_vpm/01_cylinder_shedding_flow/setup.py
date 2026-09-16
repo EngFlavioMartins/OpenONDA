@@ -56,6 +56,8 @@ FVM_SURFACE_CELL_SIZE = 1.0 / 32.0
 VPM_PARTICLE_SPACING = 1.0 / 16.0
 SAMPLE_SPACING = 1.0 / 16.0
 VPM_PARTICLE_LIMIT = 750_000
+GBD_VORTICITY_FLOOR = 0.01
+TRANSFER_VORTICITY_CUTOFF = 0.05
 
 
 def interval_steps(interval: float, time_step_size: float) -> int:
@@ -242,7 +244,7 @@ VPM_CASE = vpm.VPMCase(
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
-            threshold=0.01 * VPM_PARTICLE_SPACING**3,
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=VPM_PARTICLE_LIMIT,
             core_radius_ratio=1.0,
         ),
@@ -311,8 +313,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     fvm_consistency_width=0.25,
     eta_blend_width=6.0 * VPM_PARTICLE_SPACING,
     vpm_only_width=0.0,
-    transfer_vorticity_cutoff=0.05,
-    transfer_boundary_prune_multiplier=10.0,
+    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
     transfer_amplification_cap=1.8,
     transfer_diagnostic_interval_steps=interval_steps(LINE_INTERVAL_TIME, VPM_TIME_STEP_SIZE),
 )

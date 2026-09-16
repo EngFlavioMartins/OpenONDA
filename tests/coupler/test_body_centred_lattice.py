@@ -32,7 +32,15 @@ def box_transfer(spacing, centre, seed=0):
         vpm_core_radius_ratio=1.1,
         vpm_particle_spacing=spacing,
         vpm_time_step_size=0.01,
-        vpm_solver=SimpleNamespace(viscous_scheme="GBD"),
+        vpm_solver=SimpleNamespace(
+            viscous_scheme="GBD",
+            setup=SimpleNamespace(
+                viscous=SimpleNamespace(
+                    gbd_threshold_mode="absolute",
+                    gbd_threshold=0.0,
+                )
+            ),
+        ),
     )
     fvm = SimpleNamespace(
         setup=SimpleNamespace(boundaries=[SimpleNamespace(name="cube", mesh_type="wall")]),

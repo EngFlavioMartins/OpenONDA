@@ -12,6 +12,7 @@ from source.coupler.solver import _validate_gbd_moment_recovery
 from source.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
+    gaussian_represented_vortex_strength,
     inward_cosine_authority,
     redistribute_pruned_vortex_strength_locally,
     renew_stable_overlap,
@@ -287,6 +288,74 @@ def test_local_prune_redistribution_preserves_strength_and_linear_impulse():
     )
 
 
+def test_resolved_weak_wake_survives_pruning_across_the_release_belt():
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        [-0.3, 0.3, -0.3, 0.3, -0.3, 0.3],
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        vpm_dead_zone=0.1,
+        lattice_anchor=np.zeros(3),
+    )
+
+    def weak_wake(points: np.ndarray) -> np.ndarray:
+        vorticity = np.zeros_like(points)
+        radius_squared = points[:, 1] ** 2 + points[:, 2] ** 2
+        vorticity[:, 2] = 0.08 * np.exp(-radius_squared / 0.22**2)
+        return vorticity * spacing**3
+
+    position = lattice.positions.copy()
+    vortex_strength = weak_wake(position)
+    common = {
+        "fvm_vortex_strength_at_node": weak_wake,
+        "amplification_cap": 1.8,
+        "compute_diagnostics": False,
+    }
+    pruned = renew_stable_overlap(
+        position,
+        vortex_strength,
+        lattice,
+        prune_threshold=0.05 * spacing**3,
+        release_prune_threshold=0.002 * spacing**3,
+        **common,
+    )
+    unpruned = renew_stable_overlap(
+        position,
+        vortex_strength,
+        lattice,
+        prune_threshold=0.0,
+        **common,
+    )
+
+    def represented_strength(result) -> np.ndarray:
+        rows = slice(0, result.renewed_output_count)
+        index = np.rint((result.position[rows] - lattice.origin) / spacing).astype(int)
+        flat_index = np.ravel_multi_index(index.T, lattice.shape)
+        lattice_strength = np.zeros_like(lattice.positions)
+        lattice_strength[flat_index] = result.vortex_strength[rows]
+        return gaussian_represented_vortex_strength(
+            lattice_strength,
+            lattice.shape,
+            spacing,
+            core_radius=1.1 * spacing,
+        )
+
+    represented_pruned = represented_strength(pruned)
+    represented_unpruned = represented_strength(unpruned)
+    release = (lattice.positions[:, 0] >= 0.3) & (
+        np.linalg.norm(represented_unpruned, axis=1) > 0.1 * 0.08 * spacing**3
+    )
+    difference = represented_pruned[release] - represented_unpruned[release]
+    relative_rms = np.sqrt(np.mean(difference**2)) / np.sqrt(
+        np.mean(represented_unpruned[release] ** 2)
+    )
+
+    assert pruned.renewed_output_count < unpruned.renewed_output_count
+    assert np.count_nonzero(release) > 20
+    assert relative_rms < 0.012
+
+
 def test_whole_belt_remesh_preserves_outer_wake_and_does_not_accumulate():
     spacing = 0.1
     lattice = build_stable_renewal_lattice(
@@ -386,7 +455,6 @@ def test_prune_diagnostics_expose_raw_mismatch_and_applied_closure():
             prune_threshold=0.05,
             core_radius_ratio=1.0,
             amplification_cap=1.0,
-            boundary_prune_multiplier=1.0,
             kinematic_viscosity=1.0e-3,
             freestream_speed=1.0,
             time_step_size=0.01,
@@ -487,7 +555,6 @@ def test_population_cap_preserves_total_strength_and_linear_impulse():
             prune_threshold=0.0,
             core_radius_ratio=1.0,
             amplification_cap=1.0,
-            boundary_prune_multiplier=1.0,
             kinematic_viscosity=1.0e-3,
             freestream_speed=1.0,
             time_step_size=0.01,
@@ -528,7 +595,6 @@ def test_production_wrapper_replaces_one_complete_gbd_cloud_without_accumulation
             prune_threshold=1.0e-8,
             core_radius_ratio=1.0,
             amplification_cap=1.8,
-            boundary_prune_multiplier=10.0,
             kinematic_viscosity=1.0e-3,
             freestream_speed=1.0,
             time_step_size=0.01,
@@ -586,7 +652,6 @@ def test_production_wrapper_certifies_the_actual_float32_particle_state():
         prune_threshold=0.0,
         core_radius_ratio=1.0,
         amplification_cap=1.0,
-        boundary_prune_multiplier=1.0,
         kinematic_viscosity=1.0e-3,
         freestream_speed=1.0,
         time_step_size=0.01,
@@ -661,7 +726,6 @@ def test_support_output_coalesces_with_a_persistent_particle_on_the_same_lattice
         prune_threshold=0.0,
         core_radius_ratio=1.0,
         amplification_cap=1.0,
-        boundary_prune_multiplier=1.0,
         kinematic_viscosity=1.0e-3,
         freestream_speed=1.0,
         time_step_size=0.01,
@@ -714,7 +778,6 @@ def test_invalid_coalesced_input_index_is_rejected_before_vpm_mutation(monkeypat
             prune_threshold=0.0,
             core_radius_ratio=1.0,
             amplification_cap=1.0,
-            boundary_prune_multiplier=1.0,
             kinematic_viscosity=1.0e-3,
             freestream_speed=1.0,
             time_step_size=0.01,
@@ -765,7 +828,6 @@ def test_support_seam_coalesces_multiple_particles_but_preserves_a_near_miss_acr
             prune_threshold=0.0,
             core_radius_ratio=1.0,
             amplification_cap=1.0,
-            boundary_prune_multiplier=1.0,
             kinematic_viscosity=1.0e-3,
             freestream_speed=1.0,
             time_step_size=0.01,

@@ -523,12 +523,12 @@ def replace_particles_from_buffered_m4_renewal(
     prune_threshold: float,
     core_radius_ratio: float,
     amplification_cap: float,
-    boundary_prune_multiplier: float,
     kinematic_viscosity: float,
     freestream_speed: float,
     time_step_size: float,
     compute_diagnostics: bool,
     maximum_closure_correction_fraction: float | None = None,
+    release_prune_threshold: float | None = None,
 ) -> TransferResult:
     """Atomically apply the recovered whole-belt M4' renewal to a GBD cloud."""
     if str(getattr(vpm, "viscous_scheme", "")).upper() != "GBD":
@@ -559,9 +559,9 @@ def replace_particles_from_buffered_m4_renewal(
         particle_fluid_weight=particle_fluid_weight,
         particle_in_solid=particle_in_solid,
         prune_threshold=prune_threshold,
+        release_prune_threshold=release_prune_threshold,
         core_radius_ratio=core_radius_ratio,
         amplification_cap=amplification_cap,
-        boundary_prune_multiplier=boundary_prune_multiplier,
         maximum_particle_count=int(particles.capacity),
         freestream_speed=freestream_speed,
         time_step_size=time_step_size,
@@ -1658,7 +1658,19 @@ class VorticityTransfer:
         self.transfer_prune_threshold_abs = (
             float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
         )
-        self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
+        self.transfer_release_prune_threshold_abs = self.transfer_prune_threshold_abs
+        if self.transfer_method == "buffered_m4_renewal" and candidate_vpm is not None:
+            viscous = candidate_vpm.setup.viscous
+            if str(viscous.gbd_threshold_mode).lower() != "absolute":
+                raise ValueError(
+                    "buffered_m4_renewal requires GBD threshold_mode='absolute' so "
+                    "release-belt pruning has a resolved physical floor"
+                )
+            self.transfer_release_prune_threshold_abs = float(viscous.gbd_threshold)
+            if self.transfer_release_prune_threshold_abs > self.transfer_prune_threshold_abs:
+                raise ValueError(
+                    "transfer_vorticity_cutoff must be at least the VPM GBD vorticity floor"
+                )
         self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         coupling_time_step = getattr(coupler, "vpm_time_step_size", None)
@@ -2894,9 +2906,9 @@ class VorticityTransfer:
             particle_fluid_weight=fluid_weight if has_solid else None,
             particle_in_solid=in_solid if has_solid else None,
             prune_threshold=self.transfer_prune_threshold_abs,
+            release_prune_threshold=self.transfer_release_prune_threshold_abs,
             core_radius_ratio=self.core_radius_ratio,
             amplification_cap=self.transfer_amplification_cap,
-            boundary_prune_multiplier=self.transfer_boundary_prune_multiplier,
             kinematic_viscosity=self.kinematic_viscosity,
             freestream_speed=float(np.linalg.norm(self.config.freestream_velocity_vector)),
             time_step_size=self.coupling_time_step,

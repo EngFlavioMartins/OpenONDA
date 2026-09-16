@@ -36,11 +36,9 @@ class CouplerSetup:
         Inner face band in m retained entirely by the VPM. A positive value
         requires ``0 < vpm_only_width < eta_blend_width``.
     transfer_vorticity_cutoff : float, default=0.05
-        Soft-pruning threshold in 1/s. The stable-renewal path converts this
-        to a particle-strength threshold by multiplying by ``h**3``.
-    transfer_boundary_prune_multiplier : float, default=10.0
-        Dimensionless multiplier, at least one, applied to pruning near the
-        transfer boundary where FVM authority approaches zero.
+        Interior soft-pruning threshold in 1/s. The stable-renewal path
+        converts this to particle strength with ``h**3`` and blends it to the
+        VPM GBD vorticity floor at the release surface.
     transfer_amplification_cap : float, default=1.8
         Dimensionless upper gain, at least one, for represented-state
         corrections in stable renewal.
@@ -125,10 +123,7 @@ class CouplerSetup:
     """Width (m) just inside the transfer faces where stable renewal keeps
     FVM authority exactly zero. It must be smaller than ``eta_blend_width``."""
     transfer_vorticity_cutoff: float = 0.05
-    """Stable-renewal soft-prune threshold in vorticity units (1/s)."""
-    transfer_boundary_prune_multiplier: float = 10.0
-    """Multiplier on the stable-renewal prune threshold as FVM authority
-    approaches zero at the transfer boundary."""
+    """Interior stable-renewal soft-prune threshold in vorticity units (1/s)."""
     transfer_amplification_cap: float = 1.8
     """Maximum gain used by the stable represented-state correction."""
     transfer_diagnostic_interval_steps: int = 1
@@ -244,11 +239,6 @@ class CouplerSetup:
             raise ValueError("vpm_only_width must be smaller than eta_blend_width")
         if not np.isfinite(self.transfer_vorticity_cutoff) or self.transfer_vorticity_cutoff < 0.0:
             raise ValueError("transfer_vorticity_cutoff must be finite and non-negative")
-        if (
-            not np.isfinite(self.transfer_boundary_prune_multiplier)
-            or self.transfer_boundary_prune_multiplier < 1.0
-        ):
-            raise ValueError("transfer_boundary_prune_multiplier must be at least one")
         if (
             not np.isfinite(self.transfer_amplification_cap)
             or self.transfer_amplification_cap < 1.0
@@ -370,7 +360,6 @@ class CouplerSetup:
                 "eta_blend_width": self.eta_blend_width,
                 "vpm_only_width": self.vpm_only_width,
                 "transfer_vorticity_cutoff": self.transfer_vorticity_cutoff,
-                "transfer_boundary_prune_multiplier": (self.transfer_boundary_prune_multiplier),
                 "transfer_amplification_cap": self.transfer_amplification_cap,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "transfer_discretization_error_limit": (self.transfer_discretization_error_limit),

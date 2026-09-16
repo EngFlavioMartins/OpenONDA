@@ -157,9 +157,13 @@ complete M4-prime support:
   L_\mathrm{buffer} = s\,||U_\infty||\,\Delta t_\mathrm{couple} + 2h.
 \]
 
-The `transfer_boundary_prune_multiplier` and `transfer_amplification_cap` limit
-population/strength growth near the ownership boundary. A transfer failure rolls back
-the VPM particle fields through the atomic replacement API before surfacing the error.
+The configured pruning threshold applies in the FVM-owned interior. It decreases with
+FVM authority through the overlap and reaches the VPM GBD scheme's absolute vorticity
+floor at the release surface. The VPM floor is read from its solver configuration, so
+the transfer cannot silently impose a second, stronger cutoff after FVM authority has
+decayed. The `transfer_amplification_cap` limits represented-state corrections. A
+transfer failure rolls back the VPM particle fields through the atomic replacement API
+before surfacing the error.
 
 ## Conservation and diagnostics
 

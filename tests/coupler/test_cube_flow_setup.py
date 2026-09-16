@@ -63,11 +63,40 @@ def test_cube_recommended_formulation_preserves_reference_resolution():
     assert setup.FVM_MESH.patch_refinements[0].cell_size == 0.06
     assert setup.COUPLER_SETUP.interface_iterations == 12
     assert setup.COUPLER_SETUP.fvm_consistency_width == 0
+    assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.06)
+    assert setup.COUPLER_SETUP.vpm_only_width == pytest.approx(2.0 * 0.06)
+    assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
+    assert pytest.approx(0.002) == setup.GBD_VORTICITY_FLOOR
     assert setup.COUPLER_SETUP.boundary_condition_mode == "vorticity_mixed"
     assert setup.VPM_PANEL_SOLVER.coupling_scope == "fvm_vpm"
     assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
     assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.TreecodeInduction)
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
+
+
+def test_cube_transfer_blends_pruning_to_the_vpm_release_floor():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_release_floor")
+    vpm_solver = SimpleNamespace(
+        viscous_scheme="GBD",
+        setup=setup.VPM_CASE.numerics,
+    )
+    transfer = VorticityTransfer(
+        SimpleNamespace(
+            setup=setup.COUPLER_SETUP,
+            kinematic_viscosity=setup.KINEMATIC_VISCOSITY,
+            fvm_box=np.asarray(setup.FVM_BOX),
+            vpm_core_radius_ratio=setup.VPM_CORE_RADIUS_RATIO,
+            vpm_particle_spacing=setup.VPM_PARTICLE_SPACING,
+            vpm_time_step_size=setup.VPM_TIME_STEP_SIZE,
+            vpm_solver=vpm_solver,
+        )
+    )
+
+    particle_volume = setup.VPM_PARTICLE_SPACING**3
+    assert transfer.transfer_prune_threshold_abs == pytest.approx(0.05 * particle_volume)
+    assert transfer.transfer_release_prune_threshold_abs == pytest.approx(
+        setup.GBD_VORTICITY_FLOOR * particle_volume
+    )
 
 
 def test_cube_uses_only_bounded_domain_stabilization_and_retains_health_limits():

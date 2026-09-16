@@ -68,7 +68,15 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=h,
         vpm_time_step_size=0.01,
-        vpm_solver=SimpleNamespace(viscous_scheme="GBD"),
+        vpm_solver=SimpleNamespace(
+            viscous_scheme="GBD",
+            setup=SimpleNamespace(
+                viscous=SimpleNamespace(
+                    gbd_threshold_mode="absolute",
+                    gbd_threshold=0.0,
+                )
+            ),
+        ),
     )
     donors = SimpleNamespace(
         setup=SimpleNamespace(boundaries=[]),
@@ -178,7 +186,15 @@ def test_curved_cylinder_wall_is_recognized_without_a_box_approximation(capped):
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=0.125,
         vpm_time_step_size=0.01,
-        vpm_solver=SimpleNamespace(viscous_scheme="GBD"),
+        vpm_solver=SimpleNamespace(
+            viscous_scheme="GBD",
+            setup=SimpleNamespace(
+                viscous=SimpleNamespace(
+                    gbd_threshold_mode="absolute",
+                    gbd_threshold=0.0,
+                )
+            ),
+        ),
     )
     fvm = SimpleNamespace(
         setup=SimpleNamespace(boundaries=[SimpleNamespace(name="cylinder", mesh_type="wall")]),

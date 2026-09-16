@@ -648,9 +648,9 @@ def renew_stable_overlap(
     particle_fluid_weight: ArrayFunction | None = None,
     particle_in_solid: ArrayFunction | None = None,
     prune_threshold: float = 0.0,
+    release_prune_threshold: float | None = None,
     core_radius_ratio: float = CORE_RADIUS_RATIO,
     amplification_cap: float = DEFAULT_AMPLIFICATION_CAP,
-    boundary_prune_multiplier: float = 1.0,
     maximum_particle_count: int | None = None,
     freestream_speed: float = 0.0,
     time_step_size: float = 0.0,
@@ -661,7 +661,10 @@ def renew_stable_overlap(
     This is the side-effect-free numerical core of the long-running method.
     The caller supplies a synchronized FVM velocity-trace target through
     ``fvm_vortex_strength_at_node`` and may then atomically replace the VPM
-    particle arrays with the returned state.
+    particle arrays with the returned state. ``prune_threshold`` is the
+    particle-strength cutoff in the FVM-owned interior. A distinct
+    ``release_prune_threshold`` is blended in as FVM authority decreases and
+    applies at the transfer surface; ``None`` uses a uniform threshold.
     """
     position = _vectors("positions", positions)
     strength = _vectors("vortex_strength", vortex_strength)
@@ -670,7 +673,13 @@ def renew_stable_overlap(
     spacing = lattice.particle_spacing
     ratio = _positive_finite("core_radius_ratio", core_radius_ratio)
     threshold = _nonnegative_finite("prune_threshold", prune_threshold)
-    boundary_multiplier = _positive_finite("boundary_prune_multiplier", boundary_prune_multiplier)
+    release_threshold = (
+        threshold
+        if release_prune_threshold is None
+        else _nonnegative_finite("release_prune_threshold", release_prune_threshold)
+    )
+    if release_threshold > threshold:
+        raise ValueError("release_prune_threshold must not exceed prune_threshold")
     if maximum_particle_count is not None and maximum_particle_count < 2:
         raise ValueError("maximum_particle_count must be at least two")
 
@@ -746,9 +755,9 @@ def renew_stable_overlap(
 
     pre_prune_invariants = vortex_invariants(lattice.positions, blend.vortex_strength)
     magnitude_before = np.linalg.norm(blend.vortex_strength, axis=1)
-    local_threshold = threshold * (
-        1.0 + (boundary_multiplier - 1.0) * (1.0 - lattice.fvm_authority)
-    )
+    # Interior state is regenerated from the FVM. At the release surface the
+    # VPM is the sole owner, so pruning must fall to its own resolved GBD floor.
+    local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_authority
     shrunk, removed = soft_prune_vortex_strength(blend.vortex_strength, local_threshold)
     redistributed = redistribute_pruned_vortex_strength_locally(
         removed,
