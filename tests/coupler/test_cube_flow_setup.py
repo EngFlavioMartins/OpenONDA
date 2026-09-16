@@ -48,14 +48,25 @@ def test_cube_flow_schedules_share_physical_time():
     assert ratio == pytest.approx(round(ratio))
 
 
-def test_cube_recommended_formulation_preserves_resolution_and_small_domain():
+def test_cube_recommended_formulation_preserves_reference_resolution():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_recommended")
     assert setup.REFERENCE_FINE_DX == 0.06
     assert setup.FVM_MESH.max_cell_size == pytest.approx(0.72)
     assert setup.FVM_MESH.refinements[0].name == "nearBody"
     assert setup.FVM_MESH.effective_cell_size(0.06, strict=True) == pytest.approx(0.045)
     assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.06)
-    assert setup.FVM_BOX == (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+    assert setup.FVM_BOX == (-1.5, 3.75, -1.5, 1.5, -1.5, 1.5)
+    assert setup.TRANSFER_REGION_BOX == (-1.25, 3.5, -1.25, 1.25, -1.25, 1.25)
+    assert setup.FVM_MESH.refinements[0].bounds == (
+        -1.5,
+        3.0,
+        -1.5,
+        1.5,
+        -1.5,
+        1.5,
+    )
+    assert setup.FVM_MESH.refinements[1].name == "wake"
+    assert setup.FVM_MESH.refinements[1].cell_size == pytest.approx(0.12)
     assert setup.FVM_MESH.patch_refinements[0].cell_size == 0.06
     assert setup.COUPLER_SETUP.interface_iterations == 12
     assert setup.COUPLER_SETUP.fvm_consistency_width == 0
@@ -66,19 +77,11 @@ def test_cube_recommended_formulation_preserves_resolution_and_small_domain():
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
 
 
-def test_cube_controls_vorticity_alignment_without_weakening_health_limits():
-    setup = _load_setup(CASE_DIR / "setup.py", "cube_alignment")
+def test_cube_uses_only_bounded_domain_stabilization_and_retains_health_limits():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_stabilization")
     numerics = setup.VPM_CASE.numerics
     policy = numerics.stabilization
-    assert policy.pedrizzetti_relaxation_enabled
-    assert policy.pedrizzetti_relaxation_factor == pytest.approx(
-        setup.VPM_ALIGNMENT_RELAXATION_RATE * numerics.time_step_size
-    )
-    assert policy.pedrizzetti_relaxation_preserve_vortex_strength
-    assert policy.pedrizzetti_relaxation_preserve_moments
-    assert policy.pedrizzetti_relaxation_interval_steps == 1
-    assert policy.pedrizzetti_relaxation_start_step == 0
-    assert policy.pedrizzetti_relaxation_end_step is None
+    assert not policy.pedrizzetti_relaxation_enabled
     assert tuple(policy.remove_particles_by_bounds) == setup.VPM_DOMAIN
     assert numerics.health_limits.finite_state.enabled
     assert numerics.health_limits.lagrangian_cfl.maximum == 1.0

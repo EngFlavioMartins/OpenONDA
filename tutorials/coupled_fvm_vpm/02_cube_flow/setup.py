@@ -47,10 +47,6 @@ VPM_CORE_RADIUS_RATIO = 1.1
 GBD_VORTICITY_FLOOR = 0.02
 VPM_PARTICLE_SPACING = REFERENCE_FINE_DX
 ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
-# Correct strength/curl misalignment before stretching amplifies the divergent
-# part of the discrete wake. Express the relaxation as a physical rate so a
-# timestep refinement also refines the per-step correction.
-VPM_ALIGNMENT_RELAXATION_RATE = 10.0  # 1/s
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -293,11 +289,7 @@ VPM_CASE = vpm.VPMCase(
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(),
         induction=vpm.TreecodeInduction(),
-        stabilization=vpm.StabilizationConfig(
-            remove_particles_by_bounds=list(VPM_DOMAIN),
-            pedrizzetti_relaxation_factor=VPM_ALIGNMENT_RELAXATION_RATE * VPM_TIME_STEP_SIZE,
-            pedrizzetti_relaxation_preserve_moments=True,
-        ),
+        stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",
         compute_device="AUTO",

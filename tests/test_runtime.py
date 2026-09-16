@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -71,6 +72,26 @@ def test_existing_wrong_mpi_world_is_rejected(monkeypatch):
     monkeypatch.setattr(runtime, "_world_size", lambda: 2)
     with pytest.raises(RuntimeError, match="launched 2 ranks.*cores=4"):
         runtime.RunConfig(cpu_cores=4, parallel_mode="mpi").ensure_runtime("case.py")
+
+
+@pytest.mark.parametrize(("rank", "suppressed"), [(0, False), (1, True)])
+def test_mpi_worker_suppresses_only_uncaught_exception_rendering(monkeypatch, rank, suppressed):
+    import openonda.runtime as runtime
+
+    def owner_hook(_type, _value, _traceback):
+        return None
+
+    monkeypatch.setattr(sys, "excepthook", owner_hook)
+    monkeypatch.setitem(
+        sys.modules,
+        "mpi4py",
+        SimpleNamespace(MPI=SimpleNamespace(COMM_WORLD=SimpleNamespace(Get_rank=lambda: rank))),
+    )
+
+    runtime._configure_mpi_exception_reporting()
+
+    assert (sys.excepthook is not owner_hook) is suppressed
+    assert sys.excepthook(RuntimeError, RuntimeError("failure"), None) is None
 
 
 def test_resource_allocation_does_not_impersonate_an_mpi_launch(monkeypatch):

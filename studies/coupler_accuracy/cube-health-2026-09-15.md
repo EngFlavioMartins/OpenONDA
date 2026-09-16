@@ -92,14 +92,16 @@ on both ranks. The production four-rank replay also advances after this fix.
 This defect affects restarting; it did not cause the original fresh-run CFL
 failure.
 
-## Implemented correction and validation
+## Historical correction trial and validation
 
-The cube setup now enables the existing Pedrizzetti alignment operator from
+The tested cube setup enabled the existing Pedrizzetti alignment operator from
 the first step, with relaxation rate 10/s and global moment restoration.
 The timestep, mesh, LES coefficients and health thresholds are unchanged.
 This addresses the observed particle-strength/curl inconsistency; it is a
 case stabilization change, not a replacement of the stretching or diffusion
-operators.
+operators. It is no longer enabled in the tutorial: a later reference-driven
+control found worse seam error, and the clean enlarged-domain initialization
+exceeded the unchanged strength-growth acceptance limit.
 
 A controlled four-rank continuation of the same t=15.5 checkpoint passed the
 original failure point with strain increment **0.684243 at t=15.66**, compared

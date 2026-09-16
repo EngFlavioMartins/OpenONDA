@@ -151,12 +151,14 @@ but it cannot be called a cheaper solver before matched timing.
 
 The expensive fixed-basis projection and full-support curl-transfer candidates
 are study-only; neither is enabled in the production cube. The current run
-does use two converged interface sweeps and particle alignment. Dropping the
+does use converged interface sweeps. Dropping the
 second sweep would remove one FVM advance and one renewal, but the existing
 short 3D controls show a measurable interface replacement jump and a drag
 response when sweeps are removed. Alignment passed the old t=15.66 health
-crossing in a short continuation, while a later VPM-only accuracy control
-found worse seam error with it. Neither is a certified long-time accuracy fix.
+crossing in a short continuation, but a later VPM-only accuracy control found
+worse seam error with it. The clean enlarged case then rejected its first
+application for 0.156% particle-strength growth against the unchanged 0.1%
+limit. Alignment is disabled rather than weakening that scientific guard.
 The measured developed-wake cost is dominated by VPM induction, so dropping
 either existing option without qualification cannot by itself meet the
 reference runtime. [Developed-wake cost](cube-developed-wake-cost-2026-09-15.md),

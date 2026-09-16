@@ -5,9 +5,24 @@ Run from your OpenONDA Python environment:
 ./allplot.sh
 ```
 
-The cube occupies `[-0.5, 0.5]^3`; the FVM domain is `[-1.5, 1.5]^3`, giving one diameter of clearance on every side. Its mesh uses the same `12 × 0.06` background, `0.06` near-body box, and `0.06` cube-patch targets as `reference_flow/setup.py --name fine --dx 0.06`. The mesher resolves the nominal near-body and wall octree spacing to `0.045 m`; particle spacing is `0.06 m`. Four FVM processes, RK2/GBD VPM and coupling use `dt=0.01 s`, through `t=20 s`. Both solvers retain equilibrium Smagorinsky LES at Re=1000. Samples remain every `0.05 s` and backups every `0.5 s`.
+The cube occupies `[-0.5, 0.5]^3`. The FVM domain is
+`[-1.5, 3.75] × [-1.5, 1.5] × [-1.5, 1.5]`; its transfer region ends at
+`x=3.5`. This placement keeps the fine reference's measured reverse-flow
+region inside the FVM authority through `t=20`. The mesh uses the reference's
+`0.06 m` near-body target through `x=3.0`, its `0.12 m` wake target beyond,
+and a `0.06 m` cube-patch target. Particle spacing is `0.06 m`. Four FVM
+processes, RK2/GBD VPM and coupling use `dt=0.01 s`, through `t=20 s`. Both
+solvers retain equilibrium Smagorinsky LES at Re=1000. Samples remain every
+`0.05 s` and backups every `0.5 s`.
 
-Both the previous `0.05 s` step and the subsequent `0.01 s` step developed a growing VPM wake disturbance near `t=15.5 s`. Reducing the timestep alone did not cure its vorticity-consistency error. The case now applies conservative Pedrizzetti alignment from the first step, at `VPM_ALIGNMENT_RELAXATION_RATE = 10 /s` (a blend of `0.1` per `0.01 s` step). It aligns particle strength with the induced velocity curl and restores total vector strength, linear impulse and angular impulse after the correction. The finite-state check and strain limit of `1` remain enabled. See the [failure investigation and controlled replays](../../../studies/coupler_accuracy/cube-health-2026-09-15.md).
+Both the previous `0.05 s` step and the subsequent `0.01 s` step developed a
+growing VPM wake disturbance near `t=15.5 s`. Reducing the timestep alone did
+not cure its vorticity-consistency error. A Pedrizzetti-alignment trial passed
+that old health-limit crossing, but later worsened the reference-driven seam
+error and failed the clean enlarged case's first-step strength-growth limit.
+It is therefore disabled; the scientific limits remain unchanged. See the
+[boundary diagnosis](../../../studies/coupler_accuracy/cube-2d-3d-boundary-diagnosis-2026-09-15.md)
+and [historical health continuation](../../../studies/coupler_accuracy/cube-health-2026-09-15.md).
 
 Use a fresh run from `t=0` for replacement results: the old late-time checkpoint already contains an amplified wake disturbance. Continuing that checkpoint with a changed stabilization policy is an investigation, not clean case data. A completed run still needs the usual mesh, timestep and reference-flow accuracy checks.
 

@@ -28,6 +28,21 @@ _THREAD_VARIABLES = (
 _WORKER_THREADS: int | None = None
 
 
+def _configure_mpi_exception_reporting() -> None:
+    """Leave uncaught tracebacks to rank zero in an active MPI application.
+
+    Collective solver phases propagate a rank-local failure to every rank.
+    Worker processes must still exit unsuccessfully, but repeating the same
+    traceback from every interpreter obscures the primary owner report.
+    Replacing a worker's exception hook suppresses only its final rendering;
+    it does not catch the exception or change the process exit status.
+    """
+    from mpi4py import MPI
+
+    if MPI.COMM_WORLD.Get_rank() != 0:
+        sys.excepthook = lambda _type, _value, _traceback: None
+
+
 def worker_thread_count() -> int:
     """CPU budget for owner-only particle work between collective FVM solves.
 
@@ -190,6 +205,7 @@ class RunConfig:
                 raise RuntimeError(
                     f"MPI launched {size} ranks, but FVMSetup requests cores={self.cpu_cores}"
                 )
+            _configure_mpi_exception_reporting()
             self._set_thread_count(1)
             return
         self._set_thread_count(1)
