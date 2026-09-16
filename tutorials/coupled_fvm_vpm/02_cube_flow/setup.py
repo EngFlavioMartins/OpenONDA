@@ -34,19 +34,18 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 
 # FVM domain and mesh
 FVM_CORES = 4
-FVM_BOX = (-1.50, 3.75, -1.50, 1.50, -1.50, 1.50)
-TRANSFER_REGION_BOX = (-1.25, 3.50, -1.25, 1.25, -1.25, 1.25)
-REFERENCE_FINE_DX = 0.06
-SURFACE_CELL_SIZE = REFERENCE_FINE_DX
-FVM_MAX_CELL_SIZE = 12 * REFERENCE_FINE_DX
 PIMPLE_CORRECTORS = 2
+
+CELL_SIZE = 0.06
+FVM_BOX = (-1.50, 2.00, -1.50, 1.50, -1.50, 1.50)
+TRANSFER_REGION_BOX = (-1.25, 1.75, -1.25, 1.25, -1.25, 1.25)
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 PARTICLE_LIMIT = 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.1
 GBD_VORTICITY_FLOOR = 0.002
-VPM_PARTICLE_SPACING = REFERENCE_FINE_DX
+VPM_PARTICLE_SPACING = CELL_SIZE
 ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
 
 # Coupling
@@ -71,7 +70,7 @@ VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIM
 FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
-SAMPLE_SPACING = min(0.125, 2 * REFERENCE_FINE_DX)
+SAMPLE_SPACING = min(0.125, 2 * CELL_SIZE)
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
 
 # Case files and derived sampling data
@@ -96,21 +95,9 @@ FVM_MESH = msh.CartesianMesher(
         ),
     ),
     surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
-    max_cell_size=FVM_MAX_CELL_SIZE,
-    boundary_cell_size=REFERENCE_FINE_DX,
-    patch_refinements=(msh.PatchRefinement("cube", SURFACE_CELL_SIZE),),
-    refinements=(
-        msh.BoxRefinement(
-            name="nearBody",
-            bounds=(-1.50, 3.00, -1.50, 1.50, -1.50, 1.50),
-            cell_size=REFERENCE_FINE_DX,
-        ),
-        msh.BoxRefinement(
-            name="wake",
-            bounds=(-1.50, 3.75, -1.50, 1.50, -1.50, 1.50),
-            cell_size=2 * REFERENCE_FINE_DX,
-        ),
-    ),
+    max_cell_size=CELL_SIZE,
+    boundary_cell_size=CELL_SIZE,
+    patch_refinements=(msh.PatchRefinement("cube", CELL_SIZE),),
 )
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)

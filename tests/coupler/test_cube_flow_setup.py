@@ -41,26 +41,17 @@ def test_cube_flow_schedules_share_physical_time():
     assert ratio == pytest.approx(round(ratio))
 
 
-def test_cube_recommended_formulation_preserves_reference_resolution():
+def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_recommended")
-    assert setup.REFERENCE_FINE_DX == 0.06
-    assert setup.FVM_MESH.max_cell_size == pytest.approx(0.72)
-    assert setup.FVM_MESH.refinements[0].name == "nearBody"
-    assert setup.FVM_MESH.effective_cell_size(0.06, strict=True) == pytest.approx(0.045)
+    assert setup.CELL_SIZE == 0.06
+    assert setup.FVM_MESH.max_cell_size == pytest.approx(0.06)
+    assert setup.FVM_MESH.boundary_cell_size == pytest.approx(0.06)
+    assert setup.FVM_MESH.refinements == ()
+    assert setup.FVM_MESH.effective_cell_size(0.06) == pytest.approx(0.06)
     assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.06)
-    assert setup.FVM_BOX == (-1.5, 3.75, -1.5, 1.5, -1.5, 1.5)
-    assert setup.TRANSFER_REGION_BOX == (-1.25, 3.5, -1.25, 1.25, -1.25, 1.25)
-    assert setup.FVM_MESH.refinements[0].bounds == (
-        -1.5,
-        3.0,
-        -1.5,
-        1.5,
-        -1.5,
-        1.5,
-    )
-    assert setup.FVM_MESH.refinements[1].name == "wake"
-    assert setup.FVM_MESH.refinements[1].cell_size == pytest.approx(0.12)
-    assert setup.FVM_MESH.patch_refinements[0].cell_size == 0.06
+    assert setup.FVM_BOX == (-1.5, 2.0, -1.5, 1.5, -1.5, 1.5)
+    assert setup.TRANSFER_REGION_BOX == (-1.25, 1.75, -1.25, 1.25, -1.25, 1.25)
+    assert setup.FVM_MESH.patch_refinements[0].cell_size == pytest.approx(0.06)
     assert setup.COUPLER_SETUP.interface_iterations == 12
     assert setup.COUPLER_SETUP.fvm_consistency_width == 0
     assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.06)
