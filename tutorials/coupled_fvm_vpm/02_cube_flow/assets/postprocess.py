@@ -822,11 +822,11 @@ def build_comparison_report():
         "coupled": mesh_summary(SOLUTION / "mesh.npz"),
         "fine": mesh_summary(CASE_DIR / "reference_flow/solution/fine/mesh.npz"),
     }
-    if (
-        meshes["coupled"]["cube_adjacent_cartesian_spacings"]
-        != meshes["fine"]["cube_adjacent_cartesian_spacings"]
-    ):
-        raise ValueError("The cube-adjacent Cartesian spacings differ")
+    coupled_spacing = meshes["coupled"]["cube_adjacent_cartesian_spacings"]
+    reference_spacing = meshes["fine"]["cube_adjacent_cartesian_spacings"]
+    spacing_matches = len(coupled_spacing) == len(reference_spacing) and np.allclose(
+        coupled_spacing, reference_spacing, rtol=0, atol=1e-8
+    )
     before = next((row for row in pressure if row["step"] == peak_step - 1), None)
     at_peak = next((row for row in pressure if row["step"] == peak_step), None)
     ratios = None
@@ -857,6 +857,7 @@ def build_comparison_report():
         "reference_grid": "fine",
         "comparison_end_time": end,
         "meshes": meshes,
+        "cube_adjacent_spacing_matches": bool(spacing_matches),
         "matched_configuration_sections": [
             "transport",
             "initial conditions",
@@ -921,6 +922,20 @@ def write_comparison_report(report):
                 f"| {labels[row['figure']]} | {float(row['rms_percent']):.3f} | "
                 f"{float(row['sampled_max_percent']):.3f} | {float(row['covered_area_D2']):.4f} |\n"
             )
+    coupled_spacing = mesh["coupled"]["cube_adjacent_cartesian_spacings"]
+    reference_spacing = mesh["fine"]["cube_adjacent_cartesian_spacings"]
+    if report["cube_adjacent_spacing_matches"]:
+        mesh_resolution = (
+            "- Both meshes have cube-adjacent Cartesian spacing "
+            f"{reference_spacing[0]:.6g} m (requested fine target: 0.06 m)."
+        )
+    else:
+        mesh_resolution = (
+            "- The saved meshes have different cube-adjacent Cartesian spacings: "
+            f"{coupled_spacing} m for the coupled mesh and {reference_spacing} m for the "
+            "reference. The field plots remain comparisons at common physical sample "
+            "coordinates, but their differences include this resolution mismatch."
+        )
     text = f"""# Cube comparison report
 
 Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
@@ -932,8 +947,7 @@ this time are not used in the figures. No simulation was advanced by plotting.
 - Density, viscosity, initial conditions, FVM spatial/time schemes, turbulence
   closure, PIMPLE correctors/relaxation, linear tolerances and force definitions
   agree in the saved configurations.
-- Both meshes have cube-adjacent Cartesian spacing
-  {mesh["fine"]["finest_cartesian_spacing"]:.6g} m (requested fine target: 0.06 m).
+{mesh_resolution}
   The coupled mesh has {mesh["coupled"]["cells"]:,} cells and
   {mesh["coupled"]["cube_faces"]:,} cube faces; the reference has
   {mesh["fine"]["cells"]:,} cells and {mesh["fine"]["cube_faces"]:,} cube faces.

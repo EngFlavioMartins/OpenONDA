@@ -122,11 +122,11 @@ def _field_figure(
         low, high = low - 0.01, high + 0.01
     maximum = max(stats["sampled_max_percent"], 1e-6)
 
-    height_cm = 10.0
+    height_cm = 10.5
     fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
     axes = [
-        fig.add_axes((0.14, 5.3 / height_cm, 0.30, 3.75 / height_cm)),
-        fig.add_axes((0.56, 5.3 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.14, 5.65 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((0.56, 5.65 / height_cm, 0.30, 3.75 / height_cm)),
         fig.add_axes((0.14, 0.9 / height_cm, 0.30, 3.75 / height_cm)),
     ]
     velocity_bar = fig.add_axes((0.56, 3.65 / height_cm, 0.30, 0.14 / height_cm))
@@ -148,7 +148,7 @@ def _field_figure(
             cmap=util.COLORMAPS["velocity"],
             corner_mask=False,
         )
-        ax.set_title(title)
+        ax.set_title(title, pad=2.0)
     error_plot = axes[2].contourf(
         xx,
         yy,
@@ -157,7 +157,7 @@ def _field_figure(
         cmap=util.COLORMAPS["error"],
         corner_mask=False,
     )
-    axes[2].set_title("(c) Difference")
+    axes[2].set_title("(c) Difference", pad=2.0)
     for ax in axes:
         ax.set(
             xlabel=r"$x/D$",
