@@ -1,8 +1,0 @@
-# Preserve the small accepted evidence tables with this study.
-!data/
-!data/**
-
-# Optional reproductions and interpreter caches are disposable.
-data/**/reproduced/
-__pycache__/
-*.pyc

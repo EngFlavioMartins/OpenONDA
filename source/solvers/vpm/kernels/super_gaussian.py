@@ -21,11 +21,13 @@ def create_super_gaussian_kernels(dtype=ti.f32):
         dtype: Taichi data type (ti.f32 or ti.f64)
 
     Returns:
-        Dictionary with keys: 'q_', 'zeta_', 'g_', 'diffusivity_constant_'
+        Dictionary with the selected q, density, energy and diffusion functions,
+        plus finite ``radial_factors_`` for velocity and its Jacobian.
     """
 
     corrected = create_high_order_gaussian_kernels(dtype)
     corrected_q, corrected_g, corrected_zeta = corrected["q_"], corrected["g_"], corrected["zeta_"]
+    corrected_radial_factors = corrected["radial_factors_"]
     inverse_sqrt_two = 1.0 / math.sqrt(2.0)
 
     @ti.func
@@ -37,6 +39,16 @@ def create_super_gaussian_kernels(dtype=ti.f32):
     def q_(density: ti.template()) -> ti.template():
         """Enclosed circulation is invariant under the core-coordinate rescaling."""
         return ti.cast(corrected_q(density * inverse_sqrt_two), dtype)
+
+    @ti.func
+    def radial_factors_(density: ti.template(), sigma: ti.template(), with_gradient: ti.template()):
+        """Return corrected Gaussian factors after the sqrt(2) core rescaling."""
+        factors = corrected_radial_factors(density * inverse_sqrt_two, sigma, with_gradient)
+        first = factors[0] * 0.5 * inverse_sqrt_two
+        second = ti.cast(0.0, dtype)
+        if ti.static(with_gradient):
+            second = factors[1] * 0.25 * inverse_sqrt_two
+        return ti.Vector([first, second])
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():
@@ -74,6 +86,7 @@ def create_super_gaussian_kernels(dtype=ti.f32):
     return {
         "q_": q_,
         "zeta_": zeta_,
+        "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
         "energy_equivalence_constant_": energy_equivalence_constant_,

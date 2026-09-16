@@ -58,7 +58,8 @@ def create_gaussian_kernels(dtype=ti.f32):
         dtype: Taichi data type (ti.f32 or ti.f64)
 
     Returns:
-        Dictionary with keys: 'q_', 'zeta_', 'g_', 'diffusivity_constant_'
+        Dictionary containing q, density, energy and diffusion functions,
+        plus ``radial_factors_`` for finite velocity/Jacobian coefficients.
     """
 
     ONE_OVER_PI_15 = math.pi**-1.5
@@ -117,6 +118,37 @@ def create_gaussian_kernels(dtype=ti.f32):
         return ti.cast(res, dtype)
 
     @ti.func
+    def radial_factors_(density: ti.template(), sigma: ti.template(), with_gradient: ti.template()):
+        """Return Gaussian ``q/r³`` [m⁻³] and ``3q/r⁵-ζ/(σ³r²)`` [m⁻⁵].
+
+        ``density=r/sigma`` is dimensionless. The integrated-density series
+        evaluates both finite core limits without an f32 inverse fifth power.
+        The second entry is zero for velocity-only calls.
+        """
+        first = ti.cast(0.0, dtype)
+        second = ti.cast(0.0, dtype)
+        if density < 1.0:
+            d2 = density * density
+            polynomial = ti.cast(GAUSSIAN_Q_SERIES_COEFFICIENTS[series_terms - 1], dtype)
+            for n in ti.static(range(series_terms - 2, -1, -1)):
+                polynomial = polynomial * d2 + GAUSSIAN_Q_SERIES_COEFFICIENTS[n]
+            first = ONE_OVER_PI_15 * polynomial / (sigma * sigma * sigma)
+            if ti.static(with_gradient):
+                derivative = ti.cast(
+                    -2.0 * (series_terms - 1) * GAUSSIAN_Q_SERIES_COEFFICIENTS[series_terms - 1],
+                    dtype,
+                )
+                for n in ti.static(range(series_terms - 2, 0, -1)):
+                    derivative = derivative * d2 - 2.0 * n * GAUSSIAN_Q_SERIES_COEFFICIENTS[n]
+                second = ONE_OVER_PI_15 * derivative / (sigma**5)
+        else:
+            q_value = q_(density)
+            first = q_value / (sigma**3 * density**3)
+            if ti.static(with_gradient):
+                second = (3.0 * q_value / density**5 - zeta_(density) / density**2) / sigma**5
+        return ti.Vector([first, second])
+
+    @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
         # Energy kernel g = ∫_density^∞ q(s)/s² ds
         #                 = erf(density)/(4*pi*density).
@@ -154,6 +186,7 @@ def create_gaussian_kernels(dtype=ti.f32):
     return {
         "q_": q_,
         "zeta_": zeta_,
+        "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
         "energy_equivalence_constant_": energy_equivalence_constant_,

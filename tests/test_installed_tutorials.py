@@ -184,7 +184,15 @@ def test_direct_asset_script_reads_the_edited_local_setup(tmp_path):
     assert "default: 37" in result.stdout
 
 
-@pytest.mark.parametrize("script", ["plot_core_sections.py", "plot_lbm_comparison.py"])
+@pytest.mark.parametrize(
+    "script",
+    [
+        "plot_core_sections.py",
+        "plot_core_trajectories.py",
+        "plot_diagnostic_histories.py",
+        "plot_group_history.py",
+    ],
+)
 def test_interaction_plotters_run_directly_from_a_copied_case(tmp_path, script):
     import subprocess
 

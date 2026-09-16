@@ -1,4 +1,0 @@
-{
-  "field": "overlap_definition",
-  "clarification": "The executed masks use max(abs(position)) >= 1. In the all_donor experiment the 328 held cells extend to 1.375712, so the old description with an upper limit of 1.375 applies only to the original dataset. Numerical values are unchanged."
-}

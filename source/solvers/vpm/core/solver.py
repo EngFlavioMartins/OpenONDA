@@ -828,7 +828,9 @@ class VPMSolver:
         Exception
             The primary evolution/output/finalization failure is re-raised
             after failed-event output, metadata writing, and resource cleanup
-            have been attempted.
+            have been attempted. With ``health_limit_action="STOP"``, a rejected
+            nonfinite accepted state instead returns with ``run_status="unstable"``;
+            its failure reason remains in ``run_failure`` and native logging.
 
         Side Effects
         ------------
@@ -857,6 +859,7 @@ class VPMSolver:
             self._write_run_manifest(self.run_status, None)
             self._log_configuration_once()
             health_limit_failure = None
+            invalid_health_failure = None
             resource_limit_failure = None
             try:
                 self._enforce_run_resource_limits()
@@ -883,46 +886,54 @@ class VPMSolver:
                     try:
                         self.advance()
                     except HealthError as exc:
-                        if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
+                        if self.case.run.health_limit_action == "RAISE":
                             raise
-                        if isinstance(exc, ResourceLimitError):
+                        if not exc.restartable:
+                            invalid_health_failure = exc
+                        elif isinstance(exc, ResourceLimitError):
                             resource_limit_failure = exc
                         else:
                             health_limit_failure = exc
                         break
-                self._refresh_diagnostics_for_output()
-                # Preserve the accepted numerical state before fallible
-                # scientific output, including an off-cadence health stop.
-                if self.case.run.final_backup:
-                    self._save_final_backup()
-                try:
-                    if budget_exhausted:
-                        self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-                    elif health_limit_failure is None and resource_limit_failure is None:
-                        self.output_manager.dispatch(OutputEvent.FINAL)
-                    else:
-                        # A health limit describes the last usable accepted state.
-                        # Persist every sampler once even when its regular cadence
-                        # is not due at this step.
-                        self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-                except Exception as output_failure:
-                    stopping_failure = health_limit_failure or resource_limit_failure
-                    if stopping_failure is not None:
-                        output_failure.add_note(
-                            f"Final output was triggered by {type(stopping_failure).__name__}: "
-                            f"{stopping_failure}"
-                        )
-                    raise
-                if budget_exhausted:
-                    status = "wall_time_limit"
-                elif health_limit_failure is None and resource_limit_failure is None:
-                    status = "completed"
-                elif resource_limit_failure is not None:
-                    status = "resource_limit"
-                    failure = resource_limit_failure
+                if invalid_health_failure is not None:
+                    # The clock identifies the rejected state. Do not evaluate
+                    # scientific samplers or serialize it as a restart backup.
+                    status = "unstable"
+                    failure = invalid_health_failure
                 else:
-                    status = "resolution_lost"
-                    failure = health_limit_failure
+                    self._refresh_diagnostics_for_output()
+                    # Preserve the accepted numerical state before fallible
+                    # scientific output, including an off-cadence health stop.
+                    if self.case.run.final_backup:
+                        self._save_final_backup()
+                    try:
+                        if budget_exhausted:
+                            self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                        elif health_limit_failure is None and resource_limit_failure is None:
+                            self.output_manager.dispatch(OutputEvent.FINAL)
+                        else:
+                            # A health limit describes the last usable accepted state.
+                            # Persist every sampler once even when its regular cadence
+                            # is not due at this step.
+                            self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                    except Exception as output_failure:
+                        stopping_failure = health_limit_failure or resource_limit_failure
+                        if stopping_failure is not None:
+                            output_failure.add_note(
+                                f"Final output was triggered by {type(stopping_failure).__name__}: "
+                                f"{stopping_failure}"
+                            )
+                        raise
+                    if budget_exhausted:
+                        status = "wall_time_limit"
+                    elif health_limit_failure is None and resource_limit_failure is None:
+                        status = "completed"
+                    elif resource_limit_failure is not None:
+                        status = "resource_limit"
+                        failure = resource_limit_failure
+                    else:
+                        status = "resolution_lost"
+                        failure = health_limit_failure
         except BaseException as exc:
             failure = exc
             primary_failure = exc

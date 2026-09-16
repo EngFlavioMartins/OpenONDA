@@ -152,8 +152,8 @@ class FMMDeviceWorkspace:
     max_n_particles : int
         Fixed particle capacity. Allocation scales with capacity, not active
         count.
-    q_kernel, zeta_kernel : callable
-        Device functions for the selected radial kernel and derivative.
+    radial_factors : callable
+        Kernel-specific finite P2P velocity/Jacobian factors in m⁻³ and m⁻⁵.
     velocity_tail_cutoff, gradient_tail_cutoff : float
         Dimensionless regularization-tail multipliers used by admissibility.
 
@@ -166,8 +166,7 @@ class FMMDeviceWorkspace:
     def __init__(
         self,
         max_n_particles: int,
-        q_kernel,
-        zeta_kernel,
+        radial_factors,
         velocity_tail_cutoff: float,
         gradient_tail_cutoff: float,
     ) -> None:
@@ -178,10 +177,9 @@ class FMMDeviceWorkspace:
         max_n_particles : int
             Maximum active source/target count. Device fields are allocated
             for this capacity, so increasing it changes memory use.
-        q_kernel, zeta_kernel : callable
-            Taichi-compatible regularization functions for the selected
-            radial kernel. ``q`` supplies velocity attenuation and ``zeta``
-            supplies the gradient attenuation.
+        radial_factors : callable
+            Taichi function of ``(r/sigma, sigma, with_gradient)`` returning
+            the finite induced velocity and Jacobian factors in m⁻³ and m⁻⁵.
         velocity_tail_cutoff, gradient_tail_cutoff : float
             Dimensionless tail thresholds used when deciding whether a cell
             interaction is admissible for velocity and gradient evaluation.
@@ -196,8 +194,7 @@ class FMMDeviceWorkspace:
         self.max_nodes = 2 * self.max_n_particles
         self.max_pairs = max(64, _PAIR_CAPACITY_FACTOR * self.max_n_particles)
         self.m2l_batch_size = min(_M2L_BATCH_SIZE, self.max_pairs)
-        self.q_kernel = q_kernel
-        self.zeta_kernel = zeta_kernel
+        self.radial_factors = radial_factors
         self.velocity_tail_cutoff = float(velocity_tail_cutoff)
         self.gradient_tail_cutoff = float(gradient_tail_cutoff)
         self.tree = TaichiTreecode(
@@ -709,20 +706,13 @@ class FMMDeviceWorkspace:
                     radius_sq = displacement.dot(displacement)
                     sigma = 0.5 * (self.tree.core_radius[target] + self.tree.core_radius[source])
                     source_strength = self.tree.vortex_strength[source]
-                    term1 = self.zeta_kernel(0.0) / (3.0 * sigma**3)
-                    term2 = 0.0
-                    if radius_sq > ti.cast(_EPSILON_SQUARED, ti.f32):
-                        radius = ti.sqrt(radius_sq)
-                        rho = radius / sigma
-                        q_value = self.q_kernel(rho)
-                        zeta_value = self.zeta_kernel(rho)
-                        inv_r2 = 1.0 / radius_sq
-                        inv_r3 = inv_r2 / radius
-                        velocity = source_strength.cross(displacement) * q_value * inv_r3
-                        for component in ti.static(range(3)):
-                            ti.atomic_add(self.velocity[target][component], velocity[component])
-                        term1 = q_value * inv_r3
-                        term2 = 3.0 * q_value * inv_r3 * inv_r2 - zeta_value / sigma**3 * inv_r2
+                    radius = ti.sqrt(radius_sq)
+                    factors = self.radial_factors(radius / sigma, sigma, True)
+                    term1 = factors[0]
+                    term2 = factors[1]
+                    velocity = source_strength.cross(displacement) * term1
+                    for component in ti.static(range(3)):
+                        ti.atomic_add(self.velocity[target][component], velocity[component])
                     cross_value = displacement.cross(source_strength)
                     for row in ti.static(range(3)):
                         for column in ti.static(range(3)):
@@ -956,8 +946,7 @@ class FMMInduction:
         )
         self.workspace = FMMDeviceWorkspace(
             self.max_n_particles,
-            physics._kernel_functions["q_"],
-            physics._kernel_functions["zeta_"],
+            physics._kernel_functions["radial_factors_"],
             velocity_tail_cutoff,
             gradient_tail_cutoff,
         )

@@ -1,8 +1,0 @@
-{
-  "status": "STARTUP_SMOKE_ONLY",
-  "requested_steps": 10,
-  "step": 10,
-  "time": 0.06,
-  "particles": 1350,
-  "wall_seconds": 148.1301427090002
-}

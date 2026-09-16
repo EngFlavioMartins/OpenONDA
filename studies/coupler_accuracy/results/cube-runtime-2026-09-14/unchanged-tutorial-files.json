@@ -1,7 +1,0 @@
-{
-  "tutorials/coupled_fvm_vpm/02_cube_flow/setup.py": "9bf8ae1b63c1941f466ca28b9ffb0abb50b202bc4d7b7b8c8a8e8a59626bb2dc",
-  "tutorials/coupled_fvm_vpm/02_cube_flow/allplot.sh": "4f41b16b53094b08a4ff4f1bd06f5c5b6e9a010eac187b85c3a11715b3c7eb37",
-  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_coupling_diagnostics.py": "78412471a361eb6497928f87e3961470d466aee3b3ade5801ed5ab5408fda92a",
-  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_fields.py": "d960e9af91c240954721149dbfeb7e0666c56727098e92c26493e2c09c364249",
-  "tutorials/coupled_fvm_vpm/02_cube_flow/assets/plot_velocity_profiles.py": "609b2401b4c1277ac99a47ec6f9b22448e7e6266a27aa24fe8140ba200aab849"
-}

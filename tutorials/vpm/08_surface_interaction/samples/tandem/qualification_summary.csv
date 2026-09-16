@@ -1,3 +1,0 @@
-case,precision,compute_device,boundary_response,surface,n_force_samples,final_lift,peak_abs_lift,integrated_lift,final_drag,intersection_events,side_bypass_events,core_overlap_events,final_leakage_R1,final_transport_R1
-real_tandem_vpm_vlm,f64,CPU,responsive,front_wing,2,1.0601739700753905,9.805817788849366,0.05432995879462379,0.0366741627015709,0,0,17,0.1639476746684932,0.0486020920219422
-real_tandem_vpm_vlm,f64,CPU,responsive,rear_wing,2,0.963217425427374,9.253802840687054,0.05108510133057214,0.042352254581585,0,0,32,0.1639476746684932,0.0486020920219422

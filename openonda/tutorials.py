@@ -54,17 +54,22 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
     Tutorial("fvm/taylor_green", "Taylor-Green vortex decay"),
     Tutorial("vpm/delta_wing", "Delta-wing VLM-VPM flow", "vpm/05_delta_wing"),
     Tutorial("vpm/flat_plate", "Finite flat-plate VLM-VPM loading", "vpm/04_flat_plate"),
-    Tutorial("vpm/lamb_oseen_vortex", "Lamb-Oseen vortex diffusion and interaction", "vpm/01_lamb_oseen_vortex"),
+    Tutorial(
+        "vpm/lamb_oseen_vortex",
+        "Lamb-Oseen vortex diffusion and interaction",
+        "vpm/01_lamb_oseen_vortex",
+    ),
     Tutorial("vpm/quadcopter", "Four-rotor VLM-VPM flow", "vpm/07_quadcopter_PENDING"),
     Tutorial("vpm/rotor_flow", "Wind-turbine rotor loading and wake", "vpm/06_rotor_flow_PENDING"),
     Tutorial(
-        "vpm/surface_interaction",
-        "Tandem delta-wing surface-interaction qualification",
-        "vpm/08_surface_interaction",
+        "vpm/vortex_interactions",
+        "Vortex-ring interaction stabilization",
+        "vpm/03_vortex_interactions",
     ),
-    Tutorial("vpm/vortex_interactions", "Vortex-ring interaction stabilization", "vpm/03_vortex_interactions_PENDING"),
     Tutorial("vpm/vortex_ring", "Viscous vortex-ring propagation", "vpm/02_vortex_ring"),
-    Tutorial("coupled_fvm_vpm/cube_flow", "Coupled FVM-VPM cube flow", "coupled_fvm_vpm/02_cube_flow"),
+    Tutorial(
+        "coupled_fvm_vpm/cube_flow", "Coupled FVM-VPM cube flow", "coupled_fvm_vpm/02_cube_flow"
+    ),
     Tutorial(
         "coupled_fvm_vpm/cube_flow/reference_flow",
         "Fully resolved reference for the coupled cube flow",
@@ -80,7 +85,11 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
         "FVM grid study for cylinder shedding",
         "coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow",
     ),
-    Tutorial("coupled_fvm_vpm/naca4412_flow", "Coupled NACA 4412 flow", "coupled_fvm_vpm/03_naca4412_flow"),
+    Tutorial(
+        "coupled_fvm_vpm/naca4412_flow",
+        "Coupled NACA 4412 flow",
+        "coupled_fvm_vpm/03_naca4412_flow",
+    ),
 )
 
 _BY_NAME: Final = {tutorial.name: tutorial for tutorial in TUTORIALS}

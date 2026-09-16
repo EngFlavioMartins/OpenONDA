@@ -16,8 +16,8 @@ from ..config.constants import (
 )
 
 
-def _make_compute_velocities_kernel(q_):
-    """Mini-factory: creates compute_velocities_kernel capturing q_."""
+def _make_compute_velocities_kernel(radial_factors_):
+    """Create direct velocity using finite blob factors at all separations."""
 
     @ti.kernel
     def compute_velocities_kernel(
@@ -43,10 +43,9 @@ def _make_compute_velocities_kernel(q_):
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
 
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    r_sigma = r_mag / sigma
-                    vel += q_(r_sigma) * (r_ij.cross(strength_j)) / (r_sq * r_mag)
+                sigma = 0.5 * (radii_i + core_radius[j])
+                factors = radial_factors_(r_mag / sigma, sigma, False)
+                vel += factors[0] * r_ij.cross(strength_j)
 
             velocity[i] = -vel + freestream_vec
 
@@ -169,8 +168,8 @@ def _make_step_euler_forward_strengths_kernel():
     return step_euler_forward_strengths_kernel
 
 
-def _make_target_velocity_kernel(q_):
-    """Mini-factory: creates compute_target_velocity_kernel capturing q_."""
+def _make_target_velocity_kernel(radial_factors_):
+    """Create target velocity using source-core factors at all separations."""
 
     @ti.kernel
     def compute_target_velocity_kernel(
@@ -196,16 +195,15 @@ def _make_target_velocity_kernel(q_):
                 r_ij = target_pos - pos_j
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
-                if r_mag > EPSILON:
-                    sigma = core_radius[j]
-                    r_sigma = r_mag / sigma
-                    vel += q_(r_sigma) * (r_ij.cross(strength_j)) / (r_sq * r_mag)
+                sigma = core_radius[j]
+                factors = radial_factors_(r_mag / sigma, sigma, False)
+                vel += factors[0] * r_ij.cross(strength_j)
             target_velocity[i] = -vel + freestream_vec
 
     return compute_target_velocity_kernel
 
 
-def _make_transport_target_velocity_kernel(q_):
+def _make_transport_target_velocity_kernel(radial_factors_):
     """Build a direct finite-target probe kernel with symmetric blob radii."""
 
     @ti.kernel
@@ -227,20 +225,16 @@ def _make_transport_target_velocity_kernel(q_):
                 displacement = targets[i] - position[j]
                 distance_squared = displacement.dot(displacement)
                 distance = ti.sqrt(distance_squared)
-                if distance > EPSILON:
-                    sigma = 0.5 * (target_core[i] + core[j])
-                    value += (
-                        q_(distance / sigma)
-                        * strength[j].cross(displacement)
-                        / (distance_squared * distance)
-                    )
+                sigma = 0.5 * (target_core[i] + core[j])
+                factors = radial_factors_(distance / sigma, sigma, False)
+                value += factors[0] * strength[j].cross(displacement)
             velocity[i] = value + background[None]
 
     return compute_transport_target_velocity_kernel
 
 
-def _make_target_source_velocity_kernel(q_):
-    """Mini-factory: creates compute_target_source_velocity_kernel capturing q_."""
+def _make_target_source_velocity_kernel(radial_factors_):
+    """Create the source-core radial velocity kernel with a finite centre limit."""
 
     @ti.kernel
     def compute_target_source_velocity_kernel(
@@ -265,16 +259,15 @@ def _make_target_source_velocity_kernel(q_):
                 r_ij = target_pos - pos_j
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
-                if r_mag > EPSILON:
-                    sigma = radii_j
-                    r_sigma = r_mag / sigma
-                    vel += q_(r_sigma) * strength_j * r_ij / (r_sq * r_mag)
+                sigma = radii_j
+                factors = radial_factors_(r_mag / sigma, sigma, False)
+                vel += factors[0] * strength_j * r_ij
             target_velocity[i] += vel
 
     return compute_target_source_velocity_kernel
 
 
-def _make_target_source_velocity_gradient_kernel(q_, zeta_):
+def _make_target_source_velocity_gradient_kernel(radial_factors_):
     """Create the Jacobian kernel for radial source-particle induction."""
 
     @ti.kernel
@@ -296,20 +289,14 @@ def _make_target_source_velocity_gradient_kernel(q_, zeta_):
                 r_vec = target_pos - source_position[j]
                 r_sq = r_vec.dot(r_vec)
                 r_mag = ti.sqrt(r_sq)
-                if r_mag > 1e-10:
-                    sigma = source_core_radius[j]
-                    rho = r_mag / sigma
-                    q_val = q_(rho)
-                    zeta_val = zeta_(rho)
-                    q_prime = rho * rho * zeta_val
-                    a = q_val / (r_mag * r_mag * r_mag)
-                    da_over_r = q_prime / (sigma * r_mag**4) - 3.0 * q_val / r_mag**5
-                    for row in ti.static(range(3)):
-                        for column in ti.static(range(3)):
-                            identity = 1.0 if row == column else 0.0
-                            gradient[row, column] += source_strength[j][row] * (
-                                identity * a + da_over_r * r_vec[row] * r_vec[column]
-                            )
+                sigma = source_core_radius[j]
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                for row in ti.static(range(3)):
+                    for column in ti.static(range(3)):
+                        identity = 1.0 if row == column else 0.0
+                        gradient[row, column] += source_strength[j][row] * (
+                            identity * factors[0] - factors[1] * r_vec[row] * r_vec[column]
+                        )
             target_velocity_gradient[i] = gradient
 
     return compute_target_source_velocity_gradient_kernel
@@ -437,38 +424,21 @@ def _stretching_contribution(
     str_i,
     str_j,
     r_ij,
-    q_val,
-    zeta_val,
-    sigma,
-    r_sigma,
+    radial_factors,
     mode,
 ):
-    """Compute stretching contribution from particle j to particle i.
-
-    Uses numerically stable formulation with protected denominators.
-    """
+    """Contract the finite pair Jacobian with a target strength [m³/s]."""
     dstr = str_i * 0.0
-
-    # The regularized kernels are finite as r/sigma -> 0.  Only protect the
-    # exact self denominator; do not mask near-core particle interactions.
-    r_sigma_safe = ti.max(r_sigma, EPSILON)
-    sigma_safe = ti.max(sigma, EPSILON)
-
-    # Compute denominators with protection
-    denom_coeff1 = sigma_safe**3 * r_sigma_safe**3
-    denom_coeff2 = sigma_safe**5 * r_sigma_safe**5
-
-    coeff2 = (3.0 * q_val - zeta_val * r_sigma_safe * r_sigma_safe * r_sigma_safe) / denom_coeff2
+    coeff1 = radial_factors[0]
+    coeff2 = radial_factors[1]
     r_cross_Gj = r_ij.cross(str_j)
     Gi_dot_r = str_i.dot(r_ij)
     Gi_dot_rCrossGj = str_i.dot(r_cross_Gj)
 
     if mode == 0:
-        coeff1 = -q_val / denom_coeff1
-        dstr = coeff1 * str_i.cross(str_j) + coeff2 * Gi_dot_r * r_cross_Gj
+        dstr = -coeff1 * str_i.cross(str_j) + coeff2 * Gi_dot_r * r_cross_Gj
 
     elif mode == 1:
-        coeff1 = q_val / denom_coeff1
         dstr = coeff1 * str_i.cross(str_j) + coeff2 * Gi_dot_rCrossGj * r_ij
 
     else:
@@ -478,20 +448,8 @@ def _stretching_contribution(
     return dstr
 
 
-@ti.func
-def _origin_stretching_contribution(target_strength, source_strength, sigma, zeta_origin, mode):
-    """Contract the finite skew Jacobian of a coincident regularized source."""
-    rate = target_strength * 0.0
-    scale = zeta_origin / (3.0 * sigma**3)
-    if mode == 0:
-        rate = scale * source_strength.cross(target_strength)
-    elif mode == 1:
-        rate = scale * target_strength.cross(source_strength)
-    return rate
-
-
-def _make_stretching_rate_kernel(q_, zeta_):
-    """Mini-factory: creates compute_stretching_rate_kernel capturing q_ and zeta_."""
+def _make_stretching_rate_kernel(radial_factors_):
+    """Create direct stretching from finite kernel-specific radial factors."""
 
     @ti.kernel
     def compute_stretching_rate_kernel(
@@ -516,27 +474,16 @@ def _make_stretching_rate_kernel(q_, zeta_):
                 r_ij = pos_i - pos_j
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
 
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    r_sigma = r_mag / sigma
-
-                    q_val = q_(r_sigma)
-                    zeta_val = zeta_(r_sigma)
-                    dstr_dt += _stretching_contribution(
-                        str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
-                    )
-                else:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    dstr_dt += _origin_stretching_contribution(
-                        str_i, str_j, sigma, zeta_(0.0), mode
-                    )
+                sigma = 0.5 * (radii_i + core_radius[j])
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                dstr_dt += _stretching_contribution(str_i, str_j, r_ij, factors, mode)
 
             dstr_dt_out[i] = dstr_dt
 
     return compute_stretching_rate_kernel
 
 
-def _make_stretching_rate_batch_kernel(q_, zeta_):
+def _make_stretching_rate_batch_kernel(radial_factors_):
     """Create the bounded-dispatch form of the direct stretching kernel."""
 
     @ti.kernel
@@ -565,27 +512,16 @@ def _make_stretching_rate_batch_kernel(q_, zeta_):
                 r_ij = pos_i - pos_j
                 r_mag = ti.sqrt(r_ij.dot(r_ij))
 
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    r_sigma = r_mag / sigma
-
-                    q_val = q_(r_sigma)
-                    zeta_val = zeta_(r_sigma)
-                    dstr_dt += _stretching_contribution(
-                        str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
-                    )
-                else:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    dstr_dt += _origin_stretching_contribution(
-                        str_i, str_j, sigma, zeta_(0.0), mode
-                    )
+                sigma = 0.5 * (radii_i + core_radius[j])
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                dstr_dt += _stretching_contribution(str_i, str_j, r_ij, factors, mode)
 
             dstr_dt_out[i] = dstr_dt
 
     return compute_stretching_rate_batch_kernel
 
 
-def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
+def _make_velocity_and_stretching_rate_kernel(radial_factors_):
     """Fuse direct-summation velocity and the selected stretching in one pair walk."""
 
     @ti.kernel
@@ -609,29 +545,12 @@ def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
                 displacement = position_i - position[j]
                 radius_sq = displacement.dot(displacement)
                 radius = ti.sqrt(radius_sq)
-                if radius > EPSILON:
-                    sigma = 0.5 * (radius_i + core_radius[j])
-                    normalized_radius = radius / sigma
-                    q_value = q_(normalized_radius)
-                    zeta_value = zeta_(normalized_radius)
-                    induced_velocity += (
-                        q_value * displacement.cross(vortex_strength[j]) / (radius_sq * radius)
-                    )
-                    strength_rate += _stretching_contribution(
-                        strength_i,
-                        vortex_strength[j],
-                        displacement,
-                        q_value,
-                        zeta_value,
-                        sigma,
-                        normalized_radius,
-                        stretching_mode,
-                    )
-                else:
-                    sigma = 0.5 * (radius_i + core_radius[j])
-                    strength_rate += _origin_stretching_contribution(
-                        strength_i, vortex_strength[j], sigma, zeta_(0.0), stretching_mode
-                    )
+                sigma = 0.5 * (radius_i + core_radius[j])
+                factors = radial_factors_(radius / sigma, sigma, True)
+                induced_velocity += factors[0] * displacement.cross(vortex_strength[j])
+                strength_rate += _stretching_contribution(
+                    strength_i, vortex_strength[j], displacement, factors, stretching_mode
+                )
             velocity[i] = -induced_velocity + freestream_velocity[None]
             vortex_strength_rate[i] = strength_rate
 
@@ -640,7 +559,7 @@ def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
 
 def _create_basic_kernels(kernel_functions):
     """Create basic velocity and vorticity computation kernels."""
-    q_ = kernel_functions["q_"]
+    radial_factors_ = kernel_functions["radial_factors_"]
     zeta_ = kernel_functions["zeta_"]
 
     @ti.kernel
@@ -654,7 +573,7 @@ def _create_basic_kernels(kernel_functions):
             velocity[i][2] += freestream_velocity[2]
 
     return {
-        "compute_velocities_kernel": _make_compute_velocities_kernel(q_),
+        "compute_velocities_kernel": _make_compute_velocities_kernel(radial_factors_),
         "add_freestream_velocity_kernel": add_freestream_velocity_kernel,
         "compute_vorticities_kernel": _make_compute_vorticities_kernel(zeta_),
     }
@@ -662,8 +581,7 @@ def _create_basic_kernels(kernel_functions):
 
 def _create_gradient_kernels(kernel_functions):
     """Create velocity gradient and strain tensor computation kernels."""
-    q_ = kernel_functions["q_"]
-    zeta_ = kernel_functions["zeta_"]
+    radial_factors_ = kernel_functions["radial_factors_"]
 
     @ti.func
     def skew(v):
@@ -691,26 +609,11 @@ def _create_gradient_kernels(kernel_functions):
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
 
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    r_sigma = r_mag / sigma
-
-                    # The regularized gradient has a nonzero algebraic far
-                    # field.  Do not replace it with a dimensionless cutoff;
-                    # this direct path must represent the same operator as
-                    # the error-controlled tree/FMM backends.
-                    q_val = q_(r_sigma)
-                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                    r_cb = r_sq * r_mag  # r³ = r² · r
-
-                    term1 = q_val / r_cb
-                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
-
-                    gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
-                else:
-                    # A blob has zero centre velocity, not zero velocity gradient.
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
+                sigma = 0.5 * (radii_i + core_radius[j])
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                gradu += factors[0] * skew(str_j) + factors[1] * (
+                    r_ij.cross(str_j).outer_product(r_ij)
+                )
 
             velocity_gradient[i] = gradu
 
@@ -746,20 +649,12 @@ def _create_gradient_kernels(kernel_functions):
                 r_ij = pos_i - position[j]
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
-                if r_mag > EPSILON:
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    r_sigma = r_mag / sigma
-                    q_val = q_(r_sigma)
-                    vel += q_val * (r_ij.cross(str_j)) / (r_sq * r_mag)
-                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                    r_cb = r_sq * r_mag
-                    term1 = q_val / r_cb
-                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
-                    gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
-                else:
-                    # A blob has zero centre velocity, not zero velocity gradient.
-                    sigma = 0.5 * (radii_i + core_radius[j])
-                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
+                sigma = 0.5 * (radii_i + core_radius[j])
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                vel += factors[0] * r_ij.cross(str_j)
+                gradu += factors[0] * skew(str_j) + factors[1] * (
+                    r_ij.cross(str_j).outer_product(r_ij)
+                )
             velocity[i] = -vel + freestream_vec
             velocity_gradient[i] = gradu
             strain_rate[i] = 0.5 * (gradu + gradu.transpose())
@@ -772,7 +667,7 @@ def _create_gradient_kernels(kernel_functions):
 
 def _create_energy_kernels(kernel_functions):
     """Create the kinetic-energy and helicity computation kernels."""
-    q_ = kernel_functions["q_"]
+    radial_factors_ = kernel_functions["radial_factors_"]
     g_ = kernel_functions["g_"]
 
     @ti.kernel
@@ -796,10 +691,10 @@ def _create_energy_kernels(kernel_functions):
                 r_ij = pos_i - pos_j
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
-                if r_mag > EPSILON:
-                    r_sigma = r_mag / sigma
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        hel += q_(r_sigma) * r_ij.dot(str_i.cross(str_j)) / (r_sq * r_mag)
+                r_sigma = r_mag / sigma
+                if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
+                    factor = radial_factors_(r_sigma, sigma, False)[0]
+                    hel += factor * r_ij.dot(str_i.cross(str_j))
             particle_helicity[i] = hel
 
     return {
@@ -901,7 +796,7 @@ def _create_position_update_kernels(kernel_functions):
 
 def _create_target_eval_kernels(kernel_functions):
     """Create kernels for evaluating flow fields at arbitrary target position."""
-    q_ = kernel_functions["q_"]
+    radial_factors_ = kernel_functions["radial_factors_"]
     zeta_ = kernel_functions["zeta_"]
 
     @ti.func
@@ -932,31 +827,24 @@ def _create_target_eval_kernels(kernel_functions):
                 r_sq = r_ij.dot(r_ij)
                 r_mag = ti.sqrt(r_sq)
 
-                if r_mag > EPSILON:
-                    sigma = core_radius[j]
-                    r_sigma = r_mag / sigma
-
-                    q_val = q_(r_sigma)
-                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                    r_cb = r_sq * r_mag  # r³ = r² · r
-
-                    term1 = q_val / r_cb
-                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
-
-                    gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
-                else:
-                    # A blob has zero centre velocity, not zero velocity gradient.
-                    sigma = core_radius[j]
-                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
+                sigma = core_radius[j]
+                factors = radial_factors_(r_mag / sigma, sigma, True)
+                gradu += factors[0] * skew(str_j) + factors[1] * (
+                    r_ij.cross(str_j).outer_product(r_ij)
+                )
 
             target_velocity_gradient[i] = gradu
 
     return {
-        "compute_target_velocity_kernel": _make_target_velocity_kernel(q_),
-        "compute_transport_target_velocity_kernel": _make_transport_target_velocity_kernel(q_),
-        "compute_target_source_velocity_kernel": _make_target_source_velocity_kernel(q_),
+        "compute_target_velocity_kernel": _make_target_velocity_kernel(radial_factors_),
+        "compute_transport_target_velocity_kernel": _make_transport_target_velocity_kernel(
+            radial_factors_
+        ),
+        "compute_target_source_velocity_kernel": _make_target_source_velocity_kernel(
+            radial_factors_
+        ),
         "compute_target_source_velocity_gradient_kernel": _make_target_source_velocity_gradient_kernel(
-            q_, zeta_
+            radial_factors_
         ),
         "compute_target_vorticity_kernel": _make_target_vorticity_kernel(zeta_),
         "compute_target_velocity_gradient_kernel": compute_target_velocity_gradient_kernel,
@@ -1011,14 +899,13 @@ def _make_gradient_contraction_kernel():
 
 def _create_stretching_kernels(kernel_functions):
     """Create kernels for vortex stretching computations."""
-    q_ = kernel_functions["q_"]
-    zeta_ = kernel_functions["zeta_"]
+    radial_factors_ = kernel_functions["radial_factors_"]
 
     return {
-        "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
-        "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(q_, zeta_),
+        "compute_stretching_rate_kernel": _make_stretching_rate_kernel(radial_factors_),
+        "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(radial_factors_),
         "compute_velocity_and_stretching_rate_kernel": _make_velocity_and_stretching_rate_kernel(
-            q_, zeta_
+            radial_factors_
         ),
         "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
     }

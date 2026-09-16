@@ -383,10 +383,14 @@ class Logging:
     @staticmethod
     def run_finished(system, status: str, failure=None) -> None:
         """Report terminal state even when routine messages are suppressed."""
-        label = "Stopped (resolution limit)" if status == "resolution_lost" else status.capitalize()
+        labels = {
+            "resolution_lost": "Stopped (resolution limit)",
+            "unstable": "Stopped (invalid particle state)",
+        }
+        label = labels.get(status, status.capitalize())
         rows = [
             ("status", label),
-            ("accepted step", system.step),
+            ("invalid step" if status == "unstable" else "accepted step", system.step),
             ("physical time", system.time, "s"),
             ("elapsed", log_style.elapsed_time(system.elapsed_wall_time)),
         ]

@@ -29,7 +29,7 @@ def create_solver(directory_name: str, dx: float):
     )
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
-        surfaces=(msh.STLSurface(case_dir.parent / "assets/cube.stl", patch="cube"),),
+        surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
         max_cell_size=12 * dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.

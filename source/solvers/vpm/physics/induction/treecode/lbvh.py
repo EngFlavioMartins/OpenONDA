@@ -38,6 +38,7 @@ import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 from ....config.constants import TREECODE_SUPPORTED_KERNELS
 from ....kernels.base import make_vortex_kernel
 from ....kernels.gaussian import create_gaussian_kernels
+from ....kernels.winckelmans import create_winckelmans_kernels
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 # Bound each traversal dispatch.  Large all-particle kernels can exceed the
@@ -136,6 +137,8 @@ class TaichiTreecode:
         gaussian = create_gaussian_kernels(ti.f32)
         self._gaussian_q = gaussian["q_"]
         self._gaussian_zeta = gaussian["zeta_"]
+        self._gaussian_radial_factors = gaussian["radial_factors_"]
+        self._winckelmans_radial_factors = create_winckelmans_kernels(ti.f32)["radial_factors_"]
         if multipole_order not in (1, 2, 3):
             raise ValueError(f"Unsupported treecode multipole_order: {multipole_order}")
         if traversal_block_dim < 0:
@@ -1429,6 +1432,22 @@ class TaichiTreecode:
     # LEAF SUMMATION FUNCTIONS
 
     @ti.func
+    def _leaf_radial_coefficients(
+        self, r_mag: ti.f32, sigma: ti.f32, with_gradient: ti.template()
+    ) -> ti.math.vec2:
+        """Evaluate selected blob factors for a leaf pair in m⁻³ and m⁻⁵.
+
+        ``r_mag`` and ``sigma`` are in m. The kernel owns the finite centre
+        limit; leaf traversal selects Gaussian or Winckelmans at runtime.
+        """
+        factors = ti.Vector([0.0, 0.0])
+        if self.kernel_type_id[None] == 0:
+            factors = self._gaussian_radial_factors(r_mag / sigma, sigma, with_gradient)
+        else:
+            factors = self._winckelmans_radial_factors(r_mag / sigma, sigma, with_gradient)
+        return factors
+
+    @ti.func
     def _leaf_velocity_sum(
         self, node: int, target_pos: ti.template(), target_rad: ti.f32, self_idx: int
     ) -> ti.math.vec3:
@@ -1440,10 +1459,9 @@ class TaichiTreecode:
             if j != self_idx:
                 r_vec_j = target_pos - self.position[j]
                 r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
-                if r_mag_j > 1e-10:
-                    sigma = 0.5 * (target_rad + self.core_radius[j])
-                    q_val = self.q_kernel(r_mag_j / sigma)
-                    vel -= q_val * r_vec_j.cross(self.vortex_strength[j]) / (r_mag_j**3)
+                sigma = 0.5 * (target_rad + self.core_radius[j])
+                radial = self._leaf_radial_coefficients(r_mag_j, sigma, False)
+                vel -= radial[0] * r_vec_j.cross(self.vortex_strength[j])
         return vel
 
     @ti.func
@@ -1455,10 +1473,9 @@ class TaichiTreecode:
             j = self.leaf_particles[start + k]
             r_vec_j = target_pos - self.position[j]
             r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
-            if r_mag_j > 1e-10:
-                sigma = self.core_radius[j]
-                q_val = self.q_kernel(r_mag_j / sigma)
-                vel -= q_val * r_vec_j.cross(self.vortex_strength[j]) / (r_mag_j**3)
+            sigma = self.core_radius[j]
+            radial = self._leaf_radial_coefficients(r_mag_j, sigma, False)
+            vel -= radial[0] * r_vec_j.cross(self.vortex_strength[j])
         return vel
 
     @ti.func
@@ -1475,23 +1492,12 @@ class TaichiTreecode:
             j = self.leaf_particles[start + k]
             r_vec_j = target_pos - self.position[j]
             r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
-            if r_mag_j > 1e-10:
-                sigma = 0.5 * (target_rad + self.core_radius[j])
-                r_sigma = r_mag_j / sigma
-                q_val = self.q_kernel(r_sigma)
-                zeta_val = self.zeta_kernel(r_sigma) / sigma**3
-                term1 = q_val / r_mag_j**3
-                term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                cross_j = r_vec_j.cross(self.vortex_strength[j])
-                gradu += term1 * self.skew(self.vortex_strength[j]) + term2 * cross_j.outer_product(
-                    r_vec_j
-                )
-            else:
-                # Retain the finite skew derivative at self and coincident sources.
-                sigma = 0.5 * (target_rad + self.core_radius[j])
-                gradu += (
-                    self.zeta_kernel(0.0) / (3.0 * sigma**3) * self.skew(self.vortex_strength[j])
-                )
+            sigma = 0.5 * (target_rad + self.core_radius[j])
+            radial = self._leaf_radial_coefficients(r_mag_j, sigma, True)
+            cross_j = r_vec_j.cross(self.vortex_strength[j])
+            gradu += radial[0] * self.skew(self.vortex_strength[j]) + radial[
+                1
+            ] * cross_j.outer_product(r_vec_j)
         return gradu
 
     @ti.func
@@ -1531,24 +1537,12 @@ class TaichiTreecode:
             j = self.leaf_particles[start + k]
             r_vec_j = target_pos - self.position[j]
             r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
-            if r_mag_j > 1e-10:
-                sigma = self.core_radius[j]
-                r_sigma = r_mag_j / sigma
-                q_val = self.q_kernel(r_sigma)
-                zeta_val = self.zeta_kernel(r_sigma) / sigma**3
-                term1 = q_val / r_mag_j**3
-                term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                cross_j = r_vec_j.cross(self.vortex_strength[j])
-                gradu += term1 * self.skew(self.vortex_strength[j]) + term2 * cross_j.outer_product(
-                    r_vec_j
-                )
-            else:
-                # An arbitrary target at a source centre still sees its finite
-                # velocity Jacobian: q(r/sigma)/r^3 -> zeta(0)/(3 sigma^3).
-                sigma = self.core_radius[j]
-                gradu += (
-                    self.zeta_kernel(0.0) / (3.0 * sigma**3) * self.skew(self.vortex_strength[j])
-                )
+            sigma = self.core_radius[j]
+            radial = self._leaf_radial_coefficients(r_mag_j, sigma, True)
+            cross_j = r_vec_j.cross(self.vortex_strength[j])
+            gradu += radial[0] * self.skew(self.vortex_strength[j]) + radial[
+                1
+            ] * cross_j.outer_product(r_vec_j)
         return gradu
 
     # Near-core targets use direct leaf sums: inverse powers in the multipole

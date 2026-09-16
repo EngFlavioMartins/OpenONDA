@@ -1,8 +1,0 @@
-{
-  "source": "/Users/flaviomartins/OpenONDA/studies/coupler_accuracy/results/cube-tutorial-delivery/smoke-configured/solution/mesh.npz",
-  "cache": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/constant/mesh.npz",
-  "cells": 642416,
-  "identity": "8b6d2f857fc8a7dd85cbcba368e41e5da962b1a044d5dbb892f0ac0274ebfefd",
-  "save_seconds": 8.866347250004765,
-  "reason": "Retain completed native mesh; restart validation with finalized rank-zero-only VPM setup."
-}

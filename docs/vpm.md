@@ -206,6 +206,10 @@ at case construction/runtime boundaries.
 from the strain-rate field and stores `effective_viscosity = nu + nu_t`. Stabilization
 limits and diagnostics are evaluated around accepted steps; configured health failures
 either raise or stop the finite run according to `RunPlan.health_limit_action`.
+With `STOP`, a finite resolution-limit crossing saves a terminal backup and
+samples (`resolution_lost`). A nonfinite particle state is reported as `unstable`;
+the rejected state is not sampled or saved for restart. Other solver and output
+exceptions still raise.
 They are not substitutes for grid or time-step convergence studies.
 
 ## Sampling, backups, and restart

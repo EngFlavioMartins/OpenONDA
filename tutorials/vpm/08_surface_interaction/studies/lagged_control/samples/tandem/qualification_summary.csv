@@ -1,3 +1,0 @@
-case,precision,compute_device,boundary_response,surface,n_force_samples,final_lift,peak_abs_lift,integrated_lift,final_drag,intersection_events,side_bypass_events,core_overlap_events,final_leakage_R1,final_transport_R1
-lagged_control,f64,CPU,lagged,front_wing,2,1.060145479992029,9.80583753805929,0.05432991509025659,0.0366700859068695,0,0,17,0.1639465913903025,0.048599330300307
-lagged_control,f64,CPU,lagged,rear_wing,2,0.9630663636718326,9.253823931570928,0.0510844514762138,0.0423330732223378,0,0,32,0.1639465913903025,0.048599330300307

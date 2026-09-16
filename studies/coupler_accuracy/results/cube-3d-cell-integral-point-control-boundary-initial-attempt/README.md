@@ -1,1 +1,0 @@
-This attempt stopped before candidate evaluation because the old Sf/sum(triangle areas) boundary direction differs from the unit Sf/|Sf| native trace on warped faces. See the completed sibling directory without the initial-attempt suffix. No result from this directory is used in the study.

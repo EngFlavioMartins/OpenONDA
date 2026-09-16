@@ -10,9 +10,11 @@ from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
 from tests._tutorial_helpers import load_tutorial_module
 
 setup = load_tutorial_module("vpm/vortex_interactions")
-_plot_core_sections = load_tutorial_module("vpm/vortex_interactions", "assets.plot_core_sections")
-discover = _plot_core_sections.discover
-read_plane = _plot_core_sections.read_plane
+postprocess = load_tutorial_module("vpm/vortex_interactions", "assets.postprocess")
+plot_core_sections = load_tutorial_module("vpm/vortex_interactions", "assets.plot_core_sections")
+discover = postprocess.discover_core_sections
+arrange_records = plot_core_sections.arrange_records
+read_plane = postprocess.read_core_section
 
 
 def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(tmp_path):
@@ -81,7 +83,23 @@ def test_discovery_uses_only_the_requested_current_run(tmp_path):
     records = discover(tmp_path, ["selective_eddy_viscosity"])
     assert len(records) == 1
     assert records[0]["run"] == "selective_eddy_viscosity"
-    assert records[0]["recorded_run"] == "selective_eddy_viscosity"
     assert records[0]["path"].parent == tmp_path / "selective_eddy_viscosity"
     (tmp_path / "selective_eddy_viscosity" / "core_section_000000.vts").unlink()
     assert discover(tmp_path, ["selective_eddy_viscosity"]) == []
+
+
+def test_grid_preserves_missing_run_time_combinations():
+    records = [
+        {"run": "baseline", "time": 1.5},
+        {"run": "selective_eddy_viscosity", "time": 1.5},
+        {"run": "selective_eddy_viscosity", "time": 3.0},
+    ]
+    grid = arrange_records(
+        records,
+        ["baseline", "selective_eddy_viscosity"],
+        [1.5, 3.0],
+    )
+    assert [[record is not None for record in row] for row in grid] == [
+        [True, True],
+        [False, True],
+    ]

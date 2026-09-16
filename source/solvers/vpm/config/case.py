@@ -219,7 +219,9 @@ class RunPlan:
     controls an accepted state that crosses a configured health limit:
     ``"RAISE"`` preserves the exception behavior, while ``"STOP"`` writes
     terminal samples and a restart before returning with status
-    ``"resolution_lost"``.
+    ``"resolution_lost"`` when the state remains finite. A nonfinite state
+    returns with status ``"unstable"`` and its failure reason, without final
+    scientific samples or a restart of the rejected state.
 
     Attributes
     ----------
@@ -229,7 +231,8 @@ class RunPlan:
         Framework lifecycle switches for initial scientific output and the
         terminal numerical backup.
     health_limit_action : {'RAISE', 'STOP'}
-        Policy when an accepted-state health limit is crossed.
+        Policy when an accepted-state health limit is crossed. ``STOP`` also
+        records a nonfinite state as ``unstable`` without serializing it.
     wall_time_limit_seconds : float or None
         Optional positive runtime budget checked between accepted steps.
     resource_limits : ResourceLimits or None

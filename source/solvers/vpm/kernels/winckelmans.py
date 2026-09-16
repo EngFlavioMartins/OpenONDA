@@ -19,7 +19,8 @@ def create_winckelmans_kernels(dtype=ti.f32):
         dtype: Taichi data type (ti.f32 or ti.f64)
 
     Returns:
-        Dictionary with keys: 'q_', 'zeta_', 'g_',  'diffusivity_constant_', 'energy_equivalence_constant_'
+        Dictionary with q, density, energy and diffusion functions, plus
+        finite ``radial_factors_`` for velocity and its Jacobian.
     """
 
     # Half-integer powers of (ρ²+1) are written as muls + one sqrt instead of the
@@ -39,6 +40,21 @@ def create_winckelmans_kernels(dtype=ti.f32):
             density * d2 * (d2 + 2.5) / (base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI,
             dtype,
         )
+
+    @ti.func
+    def radial_factors_(density: ti.template(), sigma: ti.template(), with_gradient: ti.template()):
+        """Return exact algebraic blob factors ``q/r³`` and its radial derivative.
+
+        The outputs have units m⁻³ and m⁻⁵; both are finite at ``density=0``.
+        """
+        d2 = density * density
+        base = d2 + 1.0
+        root = ti.sqrt(base)
+        first = ONE_OVER_FOUR_PI * (d2 + 2.5) / (sigma**3 * base * base * root)
+        second = ti.cast(0.0, dtype)
+        if ti.static(with_gradient):
+            second = ONE_OVER_FOUR_PI * (3.0 * d2 + 10.5) / (sigma**5 * base**3 * root)
+        return ti.Vector([first, second])
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
@@ -86,6 +102,7 @@ def create_winckelmans_kernels(dtype=ti.f32):
     return {
         "q_": q_,
         "zeta_": zeta_,
+        "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
         "energy_equivalence_constant_": energy_equivalence_constant_,

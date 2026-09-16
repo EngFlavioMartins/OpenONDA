@@ -1,8 +1,0 @@
-{
-  "base_commit": "333fc4bb75f582aa975eeaf346bb80526ea56ca5",
-  "source_sha256": {
-    "source/coupler/interpolation.py": "77c8989a7867596a4b13e75af5b1b4517c741bed37ed65cc83fd3fd7ac464961",
-    "source/coupler/vorticity_transfer.py": "76f36840a6c323bbf7009c05fbc18f4f411624ac0dee95188e5272757384a882"
-  },
-  "geometry_matches_advancing_trial_at_spacing": 0.06
-}

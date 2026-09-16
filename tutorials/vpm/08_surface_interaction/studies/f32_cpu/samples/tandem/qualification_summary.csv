@@ -1,3 +1,0 @@
-case,precision,compute_device,boundary_response,surface,n_force_samples,final_lift,peak_abs_lift,integrated_lift,final_drag,intersection_events,side_bypass_events,core_overlap_events,final_leakage_R1,final_transport_R1
-f32_cpu,f32,CPU,responsive,front_wing,2,1.060585618019104,9.806265830993652,0.054334257245063786,0.0373398251831531,0,0,17,0.1639477267502571,0.0486021015816427
-f32_cpu,f32,CPU,responsive,rear_wing,2,0.9658216834068298,9.256579399108888,0.05111200541257859,0.0451328381896019,0,0,31,0.1639477267502571,0.0486021015816427

@@ -1,4 +1,0 @@
-{
-  "status": "invalid_derivative_measurement",
-  "reason": "Incorrect sign for the full-step sample in the half-step interior derivative; corrected rerun required."
-}

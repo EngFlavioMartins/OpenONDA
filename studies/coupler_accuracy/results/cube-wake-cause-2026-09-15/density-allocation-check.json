@@ -1,7 +1,0 @@
-{
-  "original_seconds": 2.9990964170137886,
-  "scalar_inner_loop_seconds": 1.6077384579984937,
-  "speed_ratio": 1.8654131224474313,
-  "maximum_absolute_density_difference": 0.0,
-  "scope": "Identical 43479-particle Gaussian density; same support cutoff, source order and two Numba workers. Original timing includes cached JIT loading; optimized measurement follows warm compilation. Not a whole-solver benchmark."
-}

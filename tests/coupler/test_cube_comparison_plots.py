@@ -186,9 +186,7 @@ def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_pl
     (reference_samples / "grid_run.json").write_text(
         json.dumps({"case": "fine", "cell_size": 0.06})
     )
-    (solution / "fvm_metadata.json").write_text(
-        json.dumps({"case_name": "coupled_replacement_flow"})
-    )
+    (solution / "fvm_metadata.json").write_text(json.dumps({"case_name": "coupled_cube_flow"}))
     previous = comparison / "manifest.json"
     previous.write_text('{"frames": [{"time": 9.0, "file": "previous.npz"}]}')
     original = previous.read_bytes()
@@ -196,7 +194,7 @@ def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_pl
         # Samples exist before the next full-volume output. Never substitute
         # the reference at t=1 for the coupled state at t=.5.
         for path, time in (
-            (solution / "coupled_replacement_flow.pvd", 0.5),
+            (solution / "coupled_cube_flow.pvd", 0.5),
             (reference_solution / "fine.pvd", 1.0),
             (samples / "fvm_slice_z0.pvd", 0.5),
             (samples / "vpm_slice_z0.pvd", 0.5),

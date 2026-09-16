@@ -1,15 +1,26 @@
 # OpenONDA
 
+<p align="center">
+  <img src="docs/logos/Logo_V7_Color.png" alt="OpenONDA logo" width="900">
+</p>
+
 **OpenONDA is a Python library for simulating fluid flow and aerodynamics.**
 It combines finite-volume, vortex-particle, and vortex-lattice methods to study
 viscous flows, wakes, wings, rotors, and interacting vortices.
+
+<p align="center">
+  <img src="tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif"
+       alt="Looping visualization of the wake from two heaving delta wings"
+       width="960">
+</p>
+
+<p align="center"><em>Vortex wake from the <a href="tutorials/vpm/05_delta_wing/README.md">two heaving delta wings</a> tutorial.</em></p>
 
 ## Main capabilities
 
 - **FVM:** incompressible flow, native mesh generation, immersed bodies, and sampling.
 - **VPM/VLM:** particle-based wake evolution and aerodynamic lifting surfaces, with CPU and supported GPU backends.
 - **Hybrid coupling:** native FVM near-field flow coupled to a VPM outer domain.
-- **Scientific workflows:** restartable simulations, diagnostics, and VTK/HDF5 output.
 
 ## Installation
 
@@ -33,7 +44,7 @@ and verifies the result outside the checkout. Use `python install.py --dev`
 to work on the source without reinstalling after edits. Ordinary
 `python -m pip install .` is also supported.
 
-Run a case directly with normal Python arguments:
+One of the goals of this project is to make simulation setup easy to understand and quick to start using. To run a case:
 
 ```bash
 cd tutorials/vpm/01_lamb_oseen_vortex
@@ -44,19 +55,6 @@ python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
 See [installation details](docs/installation.md) for environment setup,
 optional mesh import and MPI/PETSc support.
 
-## Quick start
-
-Run the small Taylor–Green vortex example from any directory:
-
-```bash
-openonda tutorial run fvm/taylor_green --workspace ./first-flow
-```
-
-This creates an editable example, runs the FVM solver, compares its decay with
-the analytical solution, and saves a plot. Find the case under
-`first-flow/tutorials/fvm/taylor_green/`, with results in its case-defined
-`solution/` and `figures/` directories. No external CFD solver is needed.
-
 ## Tutorials
 
 ```bash
@@ -64,10 +62,7 @@ openonda tutorial list
 openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
-Each case includes its own instructions and input assets. The
-[hybrid examples](docs/tutorials.md#catalog-and-scope) are another
-quick introduction; wing, rotor, and vortex-interaction campaigns take longer.
-See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
+Each case includes its own instructions and input assets. See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 
 ## Documentation
 

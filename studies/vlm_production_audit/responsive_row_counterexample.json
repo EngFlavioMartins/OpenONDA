@@ -1,6 +1,0 @@
-{
-  "status": "CONFIRMED_RESPONSIVE_FORMULATION_GAP",
-  "matrix_max_difference": 0.0,
-  "omitted_old_circulation_normal_velocity": 0.004326245309654903,
-  "explanation": "Identical geometry and convection give identical new-row matrices, but only the accepted row includes the nonzero old-circulation RHS. The responsive solve must not be production-qualified from its small algebraic residual."
-}

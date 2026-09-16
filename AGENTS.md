@@ -376,6 +376,14 @@ fresh run is intended. Do not add loops over `cases.txt`, shell functions, statu
 accumulators, interpreter variables, `tee`, environment exports or plotting to
 `allrun.sh`. The shebang propagates command failure.
 
+Name every figure script `plot_<figure>.py`; it may generate only
+`<figure>.png`, `<figure>.pdf`, and non-figure data for that figure. Each
+generated figure has exactly one plotting script. A tutorial may have one shared
+`assets/postprocess.py` module for data loading and analysis used by its plotting
+scripts; do not add parallel audit, runner, projection, or combined multi-figure
+postprocessing scripts. Put generated tables and manifests under
+`figures/auxiliary/`, never beside the top-level figures.
+
 ```bash
 #!/bin/bash -e
 cd -- "$(dirname -- "$0")"

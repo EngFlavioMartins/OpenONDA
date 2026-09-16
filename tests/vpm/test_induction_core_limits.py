@@ -84,6 +84,88 @@ def test_particle_centre_gradient_matches_velocity_derivative(backend, kernel_na
     np.testing.assert_allclose(expected + expected.swapaxes(1, 2), 0, atol=1e-10)
 
 
+@pytest.mark.parametrize("kernel_name", ["GAUSSIAN", "WINCKELMANS"])
+@pytest.mark.parametrize("separation", [1e-8, 0.06])
+@pytest.mark.parametrize("backend", [DirectInduction, TreecodeInduction, FMMInduction])
+def test_nearly_coincident_sources_have_finite_jacobians(backend, kernel_name, separation):
+    physics, induction, x, g, r, u, rate, gradient = fields(backend, kernel_name, 3)
+    position = np.array(
+        [[0.0, 0.0, 0.0], [separation, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float32
+    )
+    strength = np.array([[0.2, 0.4, -0.1], [-0.3, 0.1, 0.5], [50.0, 50.0, 50.0]], dtype=np.float32)
+    radius = np.array([0.2, 0.3, 0.01], dtype=np.float32)
+    x.from_numpy(position)
+    g.from_numpy(strength)
+    r.from_numpy(radius)
+    kernel = make_vortex_kernel(kernel_name)
+
+    # The tiny pair uses the finite centre limit; the resolved core pair uses
+    # the independent host Jacobian. The inactive third source must not enter.
+    displacement = position[:2, None, :].astype(np.float64) - position[None, :2, :]
+    if separation < 1e-7:
+        displacement.fill(0.0)
+
+    expected_particle_gradient = np.array(
+        [
+            sum(
+                kernel.gradient_pair(displacement[i, j], strength[j], radius[i], radius[j])
+                for j in range(2)
+            )
+            for i in range(2)
+        ]
+    )
+    induction.evaluate_stage(
+        position=x,
+        vortex_strength=g,
+        core_radius=r,
+        count=2,
+        velocity_out=u,
+        vortex_strength_rate_out=rate,
+        velocity_gradient_out=gradient,
+    )
+    assert np.isfinite(u.to_numpy()[:2]).all()
+    assert np.isfinite(gradient.to_numpy()[:2]).all()
+    assert np.isfinite(rate.to_numpy()[:2]).all()
+    np.testing.assert_allclose(
+        gradient.to_numpy()[:2], expected_particle_gradient, rtol=5e-5, atol=3e-7
+    )
+    np.testing.assert_allclose(
+        rate.to_numpy()[:2],
+        np.einsum("nji,nj->ni", expected_particle_gradient, strength[:2]),
+        rtol=5e-5,
+        atol=3e-7,
+    )
+
+    induction.evaluate_targets(
+        target_position=x,
+        source_position=x,
+        source_vortex_strength=g,
+        source_core_radius=r,
+        target_velocity=u,
+        target_velocity_gradient=gradient,
+        target_count=2,
+        source_count=2,
+        include_freestream=False,
+        background_velocity=physics._zero_velocity,
+    )
+    expected_target_gradient = np.array(
+        [
+            sum(
+                kernel.gradient_pair(displacement[i, j], strength[j], radius[j], radius[j])
+                for j in range(2)
+            )
+            for i in range(2)
+        ]
+    )
+    assert np.isfinite(gradient.to_numpy()[:2]).all()
+    np.testing.assert_allclose(
+        gradient.to_numpy()[:2],
+        expected_target_gradient,
+        rtol=5e-5,
+        atol=3e-7,
+    )
+
+
 @pytest.mark.parametrize(
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -35,6 +36,36 @@ def test_terminal_backup_does_not_repeat_a_scheduled_backup(tmp_path, monkeypatc
     solver.run()
     assert writes == [1, 2]
     assert len(list((tmp_path / "solution").glob("vpm_*.h5"))) == 2
+
+
+def test_unstable_run_retains_only_earlier_accepted_backup(tmp_path, monkeypatch):
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        numerics=vpm.Numerics(compute_device="CPU", max_n_particles=8, verbose=False),
+        run=vpm.RunPlan(
+            steps=2, initial_samples=False, final_backup=True, health_limit_action="STOP"
+        ),
+        backup=vpm.Backup(interval_steps=1),
+    )
+    solver = vpm.VPMSolver(case)
+    original_health = solver._refresh_accepted_step_health
+
+    def reject_second_step() -> None:
+        if solver.step == 2:
+            raise HealthError("non-finite accepted state", restartable=False)
+        original_health()
+
+    monkeypatch.setattr(solver, "_refresh_accepted_step_health", reject_second_step)
+    solver.run()
+
+    assert solver.run_status == "unstable"
+    assert solver.run_failure is not None
+    assert sorted(path.name for path in (tmp_path / "solution").glob("vpm_*.h5")) == [
+        "vpm_000001.h5"
+    ]
+    metadata = json.loads((tmp_path / "solution" / "vpm_metadata.json").read_text())
+    assert metadata["lifecycle"]["status"] == "unstable"
+    assert metadata["state"]["step"] == 2
 
 
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
@@ -376,7 +407,13 @@ def test_terminal_sampler_failure_retains_backup_and_underlying_health_reason() 
     assert events[-1] == "close"
 
 
-def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> None:
+@pytest.mark.parametrize(
+    ("health_limit_action", "expected_status"),
+    [("STOP", "unstable"), ("RAISE", "failed")],
+)
+def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit(
+    health_limit_action: str, expected_status: str
+) -> None:
     events: list[object] = []
 
     class Manager:
@@ -389,7 +426,7 @@ def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> N
     solver = object.__new__(VPMSolver)
     solver.case = vpm.VPMCase(
         numerics=vpm.Numerics(),
-        run=vpm.RunPlan(steps=1, health_limit_action="STOP"),
+        run=vpm.RunPlan(steps=1, health_limit_action=health_limit_action),
     )
     solver.output_manager = Manager()
     solver._run_started = False
@@ -406,12 +443,15 @@ def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> N
     solver._write_run_manifest = lambda status, failure: events.append((status, failure))
     solver.close = lambda: events.append("close")
 
-    with pytest.raises(HealthError, match="non-finite accepted state"):
+    if health_limit_action == "RAISE":
+        with pytest.raises(HealthError, match="non-finite accepted state"):
+            VPMSolver.run(solver)
+    else:
         VPMSolver.run(solver)
 
-    assert solver.run_status == "failed"
+    assert solver.run_status == expected_status
     assert isinstance(solver.run_failure, HealthError)
-    assert ("dispatch", OutputEvent.FAILED) in events
+    assert (("dispatch", OutputEvent.FAILED) in events) == (health_limit_action == "RAISE")
     assert not any(event == "backup" for event in events)
     assert not any(isinstance(event, tuple) and event[0] == "write_all" for event in events)
 

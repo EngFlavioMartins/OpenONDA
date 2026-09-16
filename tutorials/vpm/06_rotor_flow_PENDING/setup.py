@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import re
 
 import numpy as np
 
@@ -59,15 +58,6 @@ TUTORIAL_DIR = Path(__file__).resolve().parent
 FIXED_WAKE_SPACING = (ROTOR_RADIUS - HUB_RADIUS) / (N_RADIAL_STATIONS - 1)
 
 
-def _output_tag(value: str | None) -> str | None:
-    """Validate an optional fresh-run namespace without permitting traversal."""
-    if value is None:
-        return None
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
-        raise ValueError("--output-tag must be a simple filesystem name")
-    return value
-
-
 def build_case(
     *,
     time_step_size: float = TIME_STEP_SIZE,
@@ -82,16 +72,9 @@ def build_case(
     restart-pilot utility. It does not alter the ordinary VLM/VPM physics,
     plane geometry, or native sample schedules.
     """
-    if not np.isfinite(time_step_size) or time_step_size <= 0.0:
-        raise ValueError("time_step_size must be finite and positive")
-    if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0:
-        raise ValueError("steps must be a non-negative integer")
     solution_directory = Path(solution_directory)
     sample_directory = Path(sample_directory)
-    try:
-        relative_sample_directory = sample_directory.relative_to("samples")
-    except ValueError as error:
-        raise ValueError("sample_directory must be under the samples/ namespace") from error
+    relative_sample_directory = sample_directory.relative_to("samples")
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
     rotation_period = 2.0 * np.pi / ANGULAR_VELOCITY
@@ -209,17 +192,10 @@ def build_case(
 
 def run(output_tag: str | None = None) -> None:
     """Run one ordinary fresh rotor case in an explicit output namespace."""
-    output_tag = _output_tag(output_tag)
     solution_directory = Path("solution") if output_tag is None else Path("solution") / output_tag
     sample_directory = Path("samples") / CASE_NAME
     if output_tag is not None:
         sample_directory /= output_tag
-    metadata = TUTORIAL_DIR / solution_directory / "vpm_metadata.json"
-    if metadata.exists():
-        raise FileExistsError(
-            f"output namespace {solution_directory} already contains native metadata; "
-            "choose --output-tag to preserve the existing result"
-        )
     solver = vpm.VPMSolver(
         build_case(
             solution_directory=solution_directory,

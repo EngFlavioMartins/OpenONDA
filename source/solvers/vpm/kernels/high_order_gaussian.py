@@ -37,6 +37,7 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
 
     gaussian = create_gaussian_kernels(dtype)
     gaussian_q, gaussian_g, gaussian_zeta = gaussian["q_"], gaussian["g_"], gaussian["zeta_"]
+    gaussian_radial_factors = gaussian["radial_factors_"]
     coefficient = 0.5 * math.pi**-1.5
 
     @ti.func
@@ -51,6 +52,17 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
         return ti.cast(
             gaussian_q(density) + coefficient * density * rho_sq * ti.exp(-rho_sq), dtype
         )
+
+    @ti.func
+    def radial_factors_(density: ti.template(), sigma: ti.template(), with_gradient: ti.template()):
+        """Return corrected Gaussian radial factors in m⁻³ and m⁻⁵."""
+        factors = gaussian_radial_factors(density, sigma, with_gradient)
+        correction = coefficient * ti.exp(-density * density)
+        first = factors[0] + correction / sigma**3
+        second = ti.cast(0.0, dtype)
+        if ti.static(with_gradient):
+            second = factors[1] + 2.0 * correction / sigma**5
+        return ti.Vector([first, second])
 
     @ti.func
     def g_(density: ti.template()) -> ti.template():
@@ -78,6 +90,7 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
     return {
         "q_": q_,
         "zeta_": zeta_,
+        "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
         "energy_equivalence_constant_": energy_equivalence_constant_,

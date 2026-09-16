@@ -24,6 +24,7 @@ import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
+CASE_NAME = "coupled_cube_flow"
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
@@ -151,7 +152,7 @@ FVM_SAMPLERS = (
 )
 
 FVM_SETUP = fvm.FVMSetup(
-    case_name="coupled_replacement_flow",
+    case_name=CASE_NAME,
     cores=FVM_CORES,
     execution=fvm.ComputeConfig(operator_backend="numba"),
     output=fvm.OutputConfig(
@@ -273,7 +274,7 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
     coupling_scope="fvm_vpm",
 )
 VPM_CASE = vpm.VPMCase(
-    name="coupled_replacement_flow",
+    name=CASE_NAME,
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),

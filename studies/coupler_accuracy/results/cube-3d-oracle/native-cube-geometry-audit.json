@@ -1,7 +1,0 @@
-{
-  "wall_faces": 600,
-  "wall_area": 6.0,
-  "solid_volume": 1.0,
-  "faces_strictly_inside_solid": 0,
-  "cube_surface_centres_conformal": true
-}

@@ -1,0 +1,324 @@
+{
+  "style": {
+    "width_cm": 12.5,
+    "font_size_pt": 10.95,
+    "cases": {
+      "baseline": {
+        "label": "Baseline",
+        "color": "#0C2340",
+        "marker": "o"
+      },
+      "selective_eddy_viscosity": {
+        "label": "Selective eddy viscosity",
+        "color": "#5C3D9B",
+        "marker": "s"
+      },
+      "pedrizzetti_relaxation": {
+        "label": "Pedrizzetti relaxation",
+        "color": "#0E8A85",
+        "marker": "D"
+      },
+      "particle_splitting": {
+        "label": "Particle splitting",
+        "color": "#2B7A4E",
+        "marker": "^"
+      }
+    }
+  },
+  "generator": "assets/plot_core_sections.py",
+  "generator_sha256": "0f85c5c650ba2df2fb716475534fdefc456e3a645025dea70a12b53acc64ec40",
+  "layout": {
+    "rows": 7,
+    "columns": 4,
+    "runs": [
+      "baseline",
+      "selective_eddy_viscosity",
+      "pedrizzetti_relaxation",
+      "particle_splitting"
+    ],
+    "times": [
+      1.5,
+      3.0,
+      3.3,
+      4.5,
+      6.0,
+      7.5,
+      9.0
+    ]
+  },
+  "coordinate": "(x - vorticity-weighted section centre) / R0",
+  "panels": [
+    {
+      "run": "baseline",
+      "requested_time": 1.5,
+      "available": true,
+      "recorded_time": 1.5,
+      "recorded_run": "baseline",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 2.0510278067146293,
+      "source": "samples/baseline/core_section_000400.vts",
+      "source_sha256": "9486dc32ea150391134b9d84247a9a22e5c5e5f91c387d68bcd1fb9ec1ac2859"
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 1.5,
+      "available": true,
+      "recorded_time": 1.5,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 2.0286524634448853,
+      "source": "samples/selective_eddy_viscosity/core_section_000400.vts",
+      "source_sha256": "278a2d34457120a7705b2e16b07058bc875506122ed8499441722d4b7da38118"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 1.5,
+      "available": true,
+      "recorded_time": 1.5,
+      "recorded_run": "pedrizzetti_relaxation",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 2.051040909127297,
+      "source": "samples/pedrizzetti_relaxation/core_section_000400.vts",
+      "source_sha256": "4c18e5967e821655fbc53b0138d8c1d809a0d2fc008fc9ee0c8e1905bff90c7a"
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 1.5,
+      "available": true,
+      "recorded_time": 1.5,
+      "recorded_run": "particle_splitting",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 2.0510278067146293,
+      "source": "samples/particle_splitting/core_section_000400.vts",
+      "source_sha256": "9486dc32ea150391134b9d84247a9a22e5c5e5f91c387d68bcd1fb9ec1ac2859"
+    },
+    {
+      "run": "baseline",
+      "requested_time": 3.0,
+      "available": true,
+      "recorded_time": 3.0,
+      "recorded_run": "baseline",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 3.7951549492442043,
+      "source": "samples/baseline/core_section_000800.vts",
+      "source_sha256": "00bf7db09dc485d76273e8a2399c3a7c928d536a64c0d0cd684dde8df1d6a270"
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 3.0,
+      "available": true,
+      "recorded_time": 3.0,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 3.7398146646993977,
+      "source": "samples/selective_eddy_viscosity/core_section_000800.vts",
+      "source_sha256": "00850aafa34319fc957cfbfeebc011256c1982e439540258afe8693926cb8ed3"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 3.0,
+      "available": true,
+      "recorded_time": 3.0,
+      "recorded_run": "pedrizzetti_relaxation",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 3.7951758553085924,
+      "source": "samples/pedrizzetti_relaxation/core_section_000800.vts",
+      "source_sha256": "5b8540138d2fbd67e401f5cae65137d0e98cf618a0d5b5264fb5b95f0ec085f4"
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 3.0,
+      "available": true,
+      "recorded_time": 3.0,
+      "recorded_run": "particle_splitting",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 3.795125253950088,
+      "source": "samples/particle_splitting/core_section_000800.vts",
+      "source_sha256": "eeabaca271c75689576f4e4ae4cc1545211ceba6cd1843b5bb546fb078adee6f"
+    },
+    {
+      "run": "baseline",
+      "requested_time": 3.3,
+      "available": true,
+      "recorded_time": 3.3,
+      "recorded_run": "baseline",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 4.1943570251723274,
+      "source": "samples/baseline/core_section_000880.vts",
+      "source_sha256": "6fbffbfbc868a8afcb18e325f10cf0b439d3507f0f5f661e44dc86cdd8d0cdcd"
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 3.3,
+      "available": true,
+      "recorded_time": 3.3,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 4.146425035791794,
+      "source": "samples/selective_eddy_viscosity/core_section_000880.vts",
+      "source_sha256": "bbb117b8c2837262ddd158fcedeb9624afdc965fca8bb55b34698a019809b71e"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 3.3,
+      "available": true,
+      "recorded_time": 3.3,
+      "recorded_run": "pedrizzetti_relaxation",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 4.19427904033852,
+      "source": "samples/pedrizzetti_relaxation/core_section_000880.vts",
+      "source_sha256": "32d2d2fdead22615725768eed863755ed3ecbb40c4f0faf4a70336b138e9dee4"
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 3.3,
+      "available": true,
+      "recorded_time": 3.3,
+      "recorded_run": "particle_splitting",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 4.194327842119074,
+      "source": "samples/particle_splitting/core_section_000880.vts",
+      "source_sha256": "8f5432c6ebfd0d549d4632098ddbb8d9de13bc45ea0298c0f3094c864b656c84"
+    },
+    {
+      "run": "baseline",
+      "requested_time": 4.5,
+      "available": true,
+      "recorded_time": 4.5,
+      "recorded_run": "baseline",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 5.7179594556948015,
+      "source": "samples/baseline/core_section_001200.vts",
+      "source_sha256": "466f495bc33df571c0cf9e64dbd94153b620aa8abb867e5efbc7123bc93c8009"
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 4.5,
+      "available": true,
+      "recorded_time": 4.5,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 5.57296304441601,
+      "source": "samples/selective_eddy_viscosity/core_section_001200.vts",
+      "source_sha256": "0f21456f9cd9c85f483561269ec65475ff97d6db4dec9cd45733de9c64bdb5d8"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 4.5,
+      "available": true,
+      "recorded_time": 4.5,
+      "recorded_run": "pedrizzetti_relaxation",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 5.719182621711603,
+      "source": "samples/pedrizzetti_relaxation/core_section_001200.vts",
+      "source_sha256": "7e1d6ddeeb91f292b6e2c2d4a0787e07af9385b4b68b1b34b44e425db6f12ddd"
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 4.5,
+      "available": true,
+      "recorded_time": 4.5,
+      "recorded_run": "particle_splitting",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 5.717657768271731,
+      "source": "samples/particle_splitting/core_section_001200.vts",
+      "source_sha256": "0648aea178edbbbe0d046a559f384d58a701f30b091986c3d44a48f0793b5dc2"
+    },
+    {
+      "run": "baseline",
+      "requested_time": 6.0,
+      "available": false
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 6.0,
+      "available": true,
+      "recorded_time": 6.0,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 7.276605050796808,
+      "source": "samples/selective_eddy_viscosity/core_section_001600.vts",
+      "source_sha256": "a66c07c75edf8f5736f6b5284b56a53f1660dd0d10365de2fb94090025547476"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 6.0,
+      "available": true,
+      "recorded_time": 6.0,
+      "recorded_run": "pedrizzetti_relaxation",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 7.5291778440693715,
+      "source": "samples/pedrizzetti_relaxation/core_section_001600.vts",
+      "source_sha256": "510551f91c44c8e7b29990f0f198fdbbfb22d51fcdd01c6188fc5e5efb6a6e77"
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 6.0,
+      "available": true,
+      "recorded_time": 6.0,
+      "recorded_run": "particle_splitting",
+      "run_status": "resolution_lost",
+      "axial_centre_over_radius": 7.536080819611389,
+      "source": "samples/particle_splitting/core_section_001600.vts",
+      "source_sha256": "e26cdca6e0c466a354ed3df7f22c5c6e8fb1926f5a80742e042b2a5dab171566"
+    },
+    {
+      "run": "baseline",
+      "requested_time": 7.5,
+      "available": false
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 7.5,
+      "available": true,
+      "recorded_time": 7.5,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 8.872293477474184,
+      "source": "samples/selective_eddy_viscosity/core_section_002000.vts",
+      "source_sha256": "bc6cfd2f81e719ff1cfd6c3a44f28b0654ffd6d29cf0e9342849609dedef51d2"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 7.5,
+      "available": false
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 7.5,
+      "available": false
+    },
+    {
+      "run": "baseline",
+      "requested_time": 9.0,
+      "available": false
+    },
+    {
+      "run": "selective_eddy_viscosity",
+      "requested_time": 9.0,
+      "available": true,
+      "recorded_time": 9.0,
+      "recorded_run": "selective_eddy_viscosity",
+      "run_status": "completed",
+      "axial_centre_over_radius": 10.409339394575165,
+      "source": "samples/selective_eddy_viscosity/core_section_002400.vts",
+      "source_sha256": "4c00480401ea8b288a9919e9674d7a3358df332bb013602eb720e392ce093dba"
+    },
+    {
+      "run": "pedrizzetti_relaxation",
+      "requested_time": 9.0,
+      "available": false
+    },
+    {
+      "run": "particle_splitting",
+      "requested_time": 9.0,
+      "available": false
+    }
+  ],
+  "exports": [
+    {
+      "file": "core_sections.png",
+      "sha256": "f554ab6a5f6dbb413bb83a2b1fe4fa35ff10726563ebb4a1551586eb34cf06d3"
+    }
+  ]
+}

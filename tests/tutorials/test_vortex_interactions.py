@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from openonda.tutorial_runner import load_case_module
-from tests._tutorial_helpers import load_tutorial_module
 
 CASE_DIR = (
     Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions_PENDING"
@@ -123,23 +122,6 @@ def test_frozen_representation_controls_are_retained():
     assert config.regularization_total_enstrophy_dissipation_limit == 0.01
 
 
-def test_dns_metadata_does_not_report_an_active_smagorinsky_closure():
-    postprocess = load_tutorial_module("vpm/vortex_interactions", "assets.postprocess")
-    settings = postprocess.metadata_settings(
-        {
-            "configuration": {
-                "initial_conditions": [{"circulation": np.pi, "kinematic_viscosity": np.pi / 3000}],
-                "numerics": {
-                    "time_step_size": 0.00375,
-                    "turbulence": {"model": "DNS", "smagorinsky_coefficient": 0.2},
-                },
-            }
-        }
-    )
-    assert settings["flow_model"] == "DNS"
-    assert settings["smagorinsky"] == 0.0
-
-
 def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     import json
     import os
@@ -167,20 +149,35 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     commands = [json.loads(line) for line in log.read_text().splitlines()]
     assert [c[1] for c in commands[: len(setup.CASES)]] == list(setup.CASES)
     assert all(len(c) == 2 for c in commands[: len(setup.CASES)])
-    sections, assessment = commands[-2:]
+    sections, trajectories, diagnostics, groups = commands[-4:]
     expected = list(setup.CASES)
     assert sections[sections.index("--runs") + 1 : sections.index("--times")] == expected
-    assert assessment[1 : assessment.index("--peak-merge-bridge")] == expected
+    assert trajectories[1 : trajectories.index("--merge-bridge")] == expected
+    for command in (diagnostics, groups):
+        assert command[1 : command.index("--format")] == expected
+    for command in (sections, trajectories, diagnostics, groups):
+        assert command[command.index("--output") + 1] == "figures"
+    for command in (sections, trajectories):
+        assert command[command.index("--auxiliary-output") + 1] == "figures/auxiliary"
+    assert "--clean-output" in sections
     log.write_text("")
     result = subprocess.run(
         [str(tmp_path / "allrun.sh")], cwd=tmp_path, env=dict(env, FAIL_VARIANT="baseline")
     )
     assert result.returncode == 1
     assert [json.loads(line) for line in log.read_text().splitlines()] == [["setup.py", "baseline"]]
-    run_lines = (tmp_path / "allrun.sh").read_text().splitlines()
-    assert run_lines == [
-        "#!/bin/bash -e",
-        'cd -- "$(dirname -- "$0")"',
-        "./allclean.sh",
-        *[f"python setup.py {name}" for name in expected],
+
+
+def test_each_figure_has_one_matching_plot_script_and_one_shared_postprocessor():
+    assets = CASE_DIR / "assets"
+    scripts = sorted(path.name for path in assets.glob("*.py"))
+    assert scripts == [
+        "plot_core_sections.py",
+        "plot_core_trajectories.py",
+        "plot_diagnostic_histories.py",
+        "plot_group_history.py",
+        "postprocess.py",
     ]
+    assert all(
+        path.stem.removeprefix("plot_") in path.read_text() for path in assets.glob("plot_*.py")
+    )

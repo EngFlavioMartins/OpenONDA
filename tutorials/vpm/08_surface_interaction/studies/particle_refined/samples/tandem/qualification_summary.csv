@@ -1,3 +1,0 @@
-case,precision,compute_device,boundary_response,surface,n_force_samples,final_lift,peak_abs_lift,integrated_lift,final_drag,intersection_events,side_bypass_events,core_overlap_events,final_leakage_R1,final_transport_R1
-particle_refined,f64,CPU,responsive,front_wing,2,1.0600443108429494,9.806081066212498,0.05433062688527723,0.0366511898478426,0,0,17,0.1639492623988971,0.0419993735172784
-particle_refined,f64,CPU,responsive,rear_wing,2,0.9632015457906232,9.25382996838276,0.051085157570866915,0.0423495684775684,0,0,32,0.1639492623988971,0.0419993735172784
