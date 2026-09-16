@@ -13,7 +13,7 @@
   },
   "surfaces": [
     {
-      "path": "../../../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/assets/cube.stl",
+      "path": "../../../tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
       "patch": "body"
     }
   ],

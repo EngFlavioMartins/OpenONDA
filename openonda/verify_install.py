@@ -250,7 +250,7 @@ def _verify_direct_tutorial_scripts() -> int:
         ),
         "vpm/vortex_ring": ("setup.py", "assets/postprocess.py"),
         "vpm/vortex_interactions": ("setup.py", "setup_les.py", "assets/study.py"),
-        "coupled_fvm_vpm/cube_flow": ("assets/check_run.py",),
+        "coupled_fvm_vpm/cube_flow": ("assets/validate_results.py",),
     }
     checked = 0
     with tempfile.TemporaryDirectory(prefix="openonda-direct-scripts-") as directory:

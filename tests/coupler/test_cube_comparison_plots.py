@@ -12,8 +12,8 @@ PACKAGE = "tutorials.coupled_fvm_vpm.02_cube_flow.assets."
 @pytest.fixture
 def modules():
     return (
-        importlib.import_module(PACKAGE + "plot_velocity_fields"),
-        importlib.import_module(PACKAGE + "prepare_fine_reference"),
+        importlib.import_module(PACKAGE + "plot_coupled_fvm_vpm_fields"),
+        importlib.import_module(PACKAGE + "postprocess"),
     )
 
 
@@ -170,7 +170,7 @@ def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_pl
     state,
 ):
     _, prepare = modules
-    util = prepare.util
+    util = prepare
     samples, solution = tmp_path / "samples", tmp_path / "solution"
     reference_samples = tmp_path / "reference_flow/samples/fine"
     reference_solution = tmp_path / "reference_flow/solution/fine"
@@ -236,5 +236,10 @@ def test_all_field_pairings_use_identical_sample_support(modules, monkeypatch):
         return stats
 
     monkeypatch.setattr(fields, "_field_figure", record)
-    fields.plot_frame(1, {"reference_length": 1, "freestream_speed": 1})
+    for comparison in fields.COMPARISONS:
+        fields.plot_frame(
+            1,
+            {"reference_length": 1, "freestream_speed": 1},
+            comparison=comparison,
+        )
     assert areas == pytest.approx([5, 5, 5])

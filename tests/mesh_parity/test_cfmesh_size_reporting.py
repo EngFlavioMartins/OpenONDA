@@ -17,7 +17,7 @@ def _reference_mesher(factor, dx=0.25):
         ),
         surfaces=(
             msh.STLSurface(
-                root / "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/assets/cube.stl",
+                root / "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
                 patch="cube",
             ),
         ),

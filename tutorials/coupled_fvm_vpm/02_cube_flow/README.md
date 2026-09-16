@@ -44,8 +44,19 @@ Before the first common saved state, `allplot.sh` reports that comparison plots
 are not ready and stops before changing the figures. Run it again once the
 simulations have written those outputs; no simulation restart is needed.
 
-Field colours show the full three-component velocity difference normalized by freestream speed. Contours interpolate vectors for display; RMS and maximum differences use the original sample grid. Missing fluid coverage stays masked, and colour scales include the full sampled maximum. `reference_fvm_fields_*` compares the primary near-body solution. `reference_vpm_fields_*` compares the auxiliary VPM field inside the FVM region; it is not a whole-domain hybrid error map.
+Field colours show the full three-component velocity difference normalized by freestream speed.
+Contours interpolate vectors for display; RMS and maximum differences use the original sample grid.
+Missing fluid coverage stays masked, and colour scales include the full sampled maximum.
+`reference_fvm_coupled_fvm_fields_*` compares the primary near-body solution.
+`reference_fvm_vpm_fields_*` compares the auxiliary VPM field inside the FVM region; it is not a
+whole-domain hybrid error map.
 
-`figures/comparison_audit.md`, `comparison_audit.json` and `field_differences.csv` document the definitions, coverage and source checks. `reference_force_audit.*` shows raw drag and the accepted timestep at each force sample. The current fine reference has pressure/drag spikes coincident with very small timesteps; they remain visible, without smoothing or filtering. This needs resolution before its drag can validate hybrid accuracy. The schemes and local Cartesian sizing match, but fitted meshes and timestep histories differ.
+`figures/auxiliary/comparison_report.md`, `comparison_report.json` and the three field-comparison
+CSV files document the definitions, coverage and source checks. `reference_force_history.*` shows
+raw drag and the accepted timestep at each force sample. The
+current fine reference has pressure/drag spikes coincident with very small timesteps; they remain
+visible, without smoothing or filtering. This needs resolution before its drag can validate hybrid
+accuracy. The schemes and local Cartesian sizing match, but fitted meshes and timestep histories
+differ.
 
 Research plots and their generating scripts remain under `studies/coupler_accuracy/`. A full 20-second accuracy or speedup claim for this finer LES case requires validation beyond these instantaneous comparisons.

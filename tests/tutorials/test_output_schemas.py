@@ -101,7 +101,7 @@ def _write_vpm_metadata(
 
 def test_cube_plot_metadata_accepts_only_supported_coupling_schemas():
     plot_util = _load_module(
-        TUTORIALS / "coupled_fvm_vpm/02_cube_flow/assets/_plotutil.py",
+        TUTORIALS / "coupled_fvm_vpm/02_cube_flow/assets/postprocess.py",
         "cube_flow_plot_metadata_test",
     )
 

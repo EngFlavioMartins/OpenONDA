@@ -3,7 +3,6 @@
 from dataclasses import replace
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -20,12 +19,6 @@ def _load_setup(path: Path, module_name: str):
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _load_trial(monkeypatch, module_name: str):
-    setup = _load_setup(CASE_DIR / "setup.py", f"{module_name}_setup")
-    monkeypatch.setitem(sys.modules, "setup", setup)
-    return _load_setup(CASE_DIR / "assets" / "run_trial.py", module_name)
 
 
 def test_cube_flow_schedules_share_physical_time():
@@ -158,37 +151,10 @@ def test_buffered_cube_transfer_explicitly_requires_gbd(scheme):
         VorticityTransfer(coupler)
 
 
-def test_trial_restart_step_limit_keeps_the_production_horizon(tmp_path, monkeypatch):
-    trial = _load_trial(monkeypatch, "cube_flow_restart_step_limit_test")
-    captured = {}
-    monkeypatch.setattr(trial, "_run_case", lambda **kwargs: captured.update(kwargs))
-    restart = tmp_path / "seed"
-    output = tmp_path / "restart"
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "run_trial.py",
-            "--coupling-steps",
-            "5",
-            "--case-directory",
-            str(output),
-            "--restart-from",
-            str(restart),
-        ],
-    )
-
-    trial.main()
-
-    assert trial.case.FVM_SETUP.time.end_time == pytest.approx(trial.case.END_TIME)
-    assert captured["restart_from"] == restart.resolve()
-    assert captured["max_coupling_steps"] == 5
-
-
 def test_cube_acceptance_rejects_an_excessive_renewal_closure(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "check_run.py",
+        CASE_DIR / "assets" / "validate_results.py",
         "cube_flow_check_renewal_closure_test",
     )
     transfer = {
@@ -251,7 +217,7 @@ def test_cube_acceptance_rejects_an_excessive_renewal_closure(monkeypatch):
 def test_cube_acceptance_requires_contiguous_coupler_diagnostics(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "check_run.py",
+        CASE_DIR / "assets" / "validate_results.py",
         "cube_flow_check_coupling_coverage_test",
     )
     metadata = {
@@ -277,7 +243,7 @@ def test_cube_acceptance_requires_contiguous_coupler_diagnostics(monkeypatch):
 def test_cube_acceptance_horizon_supports_short_runs_and_defaults_to_two_seconds(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "check_run.py",
+        CASE_DIR / "assets" / "validate_results.py",
         "cube_flow_check_acceptance_horizon_test",
     )
 
@@ -295,7 +261,7 @@ def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
 ):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "check_run.py",
+        CASE_DIR / "assets" / "validate_results.py",
         "cube_flow_check_reference_coverage_test",
     )
     candidate = tmp_path / "candidate" / "samples"
@@ -337,7 +303,7 @@ def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
 def test_cube_reference_gate_uses_spatial_mean_profile_error(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "check_run.py",
+        CASE_DIR / "assets" / "validate_results.py",
         "cube_flow_check_profile_mean_test",
     )
     candidate = tmp_path / "candidate" / "samples"

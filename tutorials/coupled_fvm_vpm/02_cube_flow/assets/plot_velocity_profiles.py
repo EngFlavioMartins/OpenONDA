@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
-from . import _plotutil as util
+from . import postprocess as util
 
 
 def _force_series(source: str, end_time: float):
@@ -57,7 +57,7 @@ def _profile(ax, name, time, consts, title):
     ax.margins(y=0.08)
 
 
-def plot_frame(time, consts, figure_format="pdf", dpi=util.FIGURE_DPI):
+def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     util._THEME.set_thesis_style()
     fig, axes = plt.subplots(3, 1, figsize=util.figure_size(16), dpi=dpi)
     util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.82, hspace=0.76)
@@ -106,7 +106,7 @@ def plot_frame(time, consts, figure_format="pdf", dpi=util.FIGURE_DPI):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="pdf")
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
     util.validate_plot_inputs()

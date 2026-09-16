@@ -19,9 +19,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from . import _plotutil as util  # noqa: E402
+from . import postprocess as util  # noqa: E402
 
-FIGURE_FORMAT = "pdf"
+FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI
 FIGURE_HEIGHT_CM = 18.5
 FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
