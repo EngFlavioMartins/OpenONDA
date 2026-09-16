@@ -1,14 +1,14 @@
 {
   "reference_samples": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/fine",
   "reference_grid": "fine",
-  "comparison_end_time": 2.0,
+  "comparison_end_time": 6.0,
   "meshes": {
     "coupled": {
-      "cells": 145740,
-      "cube_faces": 1872,
-      "finest_cartesian_spacing": 0.05999999865889549,
+      "cells": 359184,
+      "cube_faces": 3360,
+      "finest_cartesian_spacing": 0.04500000178813934,
       "cube_adjacent_cartesian_spacings": [
-        0.05999999865889549
+        0.04500000178813934
       ]
     },
     "fine": {
@@ -20,7 +20,7 @@
       ]
     }
   },
-  "cube_adjacent_spacing_matches": false,
+  "cube_adjacent_spacing_matches": true,
   "matched_configuration_sections": [
     "transport",
     "initial conditions",
@@ -116,27 +116,27 @@
   "latest_field_differences": [
     {
       "figure": "coupled_fvm_vpm_fields",
-      "time": "2.0",
-      "rms_percent": "1.0900589424010871",
-      "sampled_max_percent": "6.994258111379772",
-      "covered_area_D2": "8.956799939346311",
-      "valid_nodes": "694"
+      "time": "6.0",
+      "rms_percent": "1.3948712331630189",
+      "sampled_max_percent": "23.094372405410194",
+      "covered_area_D2": "9.258300108146667",
+      "valid_nodes": "1239"
     },
     {
       "figure": "reference_fvm_vpm_fields",
-      "time": "2.0",
-      "rms_percent": "3.6059753469026314",
-      "sampled_max_percent": "21.836047728928847",
-      "covered_area_D2": "8.956799939346311",
-      "valid_nodes": "694"
+      "time": "6.0",
+      "rms_percent": "1.6700830929199801",
+      "sampled_max_percent": "28.048535158189146",
+      "covered_area_D2": "9.258300108146667",
+      "valid_nodes": "1239"
     },
     {
       "figure": "reference_fvm_coupled_fvm_fields",
-      "time": "2.0",
-      "rms_percent": "3.693695925727387",
-      "sampled_max_percent": "23.274025145541604",
-      "covered_area_D2": "8.956799939346311",
-      "valid_nodes": "694"
+      "time": "6.0",
+      "rms_percent": "1.0720679163988878",
+      "sampled_max_percent": "7.858010693645136",
+      "covered_area_D2": "9.258300108146667",
+      "valid_nodes": "1239"
     }
   ],
   "sampling": "native-centres-affine-k12-v1",
