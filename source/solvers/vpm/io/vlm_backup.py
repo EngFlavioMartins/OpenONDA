@@ -2,17 +2,59 @@
 
 from pathlib import Path
 
+from defusedxml.ElementTree import ParseError, parse
 import h5py
 import numpy as np
 
+from source.solution_layout import collection_path, component_directory
+
 from ..boundary_elements.vlm.solver.vtk_export import CELL_FIELDS, write_lattice_vtk
-from .sampler import OutputManager
 
 
-def _surface_entry(directory, step, time):
+def _read_surface_entries(solution_directory: Path) -> list[tuple[float, str]]:
+    """Read the canonical VLM collection and validate its relative entries."""
+    collection = collection_path(solution_directory, "vlm")
+    if not collection.is_file():
+        return []
+    try:
+        root = parse(collection).getroot()
+        entries = [
+            (float(dataset.attrib["timestep"]), dataset.attrib["file"])
+            for dataset in root.findall(".//DataSet")
+        ]
+    except (ParseError, OSError, ValueError, KeyError) as exc:
+        raise ValueError(f"invalid VLM collection {collection}") from exc
+    if entries != sorted(entries) or len({filename for _, filename in entries}) != len(entries):
+        raise ValueError(f"VLM collection {collection} is not monotonic and unique")
+    return entries
+
+
+def _write_surface_entries(solution_directory: Path, entries: list[tuple[float, str]]) -> None:
+    """Atomically publish the root-level VLM collection."""
+    collection = collection_path(solution_directory, "vlm")
+    collection.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        '<?xml version="1.0"?>',
+        '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
+        "  <Collection>",
+        *(f'    <DataSet timestep="{time:.17g}" file="{filename}"/>' for time, filename in entries),
+        "  </Collection>",
+        "</VTKFile>",
+        "",
+    ]
+    temporary = collection.with_name(f".{collection.name}.tmp")
+    try:
+        temporary.write_text("\n".join(lines), encoding="utf-8")
+        temporary.replace(collection)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _surface_entry(solution_directory, step, time):
     """Merge by checkpoint name, allowing an older saved state to be filled in."""
-    filename = f"vlm_{step:06d}.vtp"
-    entries = OutputManager._read_pvd(directory, "vlm")
+    frame_directory = component_directory(solution_directory, "vlm")
+    filename = (frame_directory / f"vlm_{step:06d}.vtp").relative_to(solution_directory).as_posix()
+    entries = _read_surface_entries(solution_directory)
     for existing_time, existing_file in entries:
         if (existing_file == filename) != (existing_time == time):
             raise ValueError("VLM backup filename/time conflicts with the existing series")
@@ -22,11 +64,13 @@ def _surface_entry(directory, step, time):
 
 def write_vlm_backup(vlm, directory, *, step, time):
     """Save the accepted surface on the VPM backup clock, independent of samplers."""
-    directory = Path(directory)
-    filename, entries = _surface_entry(directory, step, time)
-    vlm.save_results(str((directory / filename).with_suffix("")), time=time)
-    OutputManager._write_pvd(directory, "vlm", entries)
-    return directory / filename
+    solution_directory = Path(directory)
+    filename, entries = _surface_entry(solution_directory, step, time)
+    destination = solution_directory / filename
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    vlm.save_results(str(destination.with_suffix("")), time=time)
+    _write_surface_entries(solution_directory, entries)
+    return destination
 
 
 def export_vlm_backup(checkpoint):
@@ -53,13 +97,19 @@ def export_vlm_backup(checkpoint):
         step = int(file["solver"].attrs["step"])
         time = float(file["solver"].attrs["time"])
         force_density = state.attrs.get("force_density")
-    filename, entries = _surface_entry(checkpoint.parent, step, time)
+    source_directory = checkpoint.parent
+    solution_directory = (
+        source_directory.parent if source_directory.name in {"backups", "vpm"} else source_directory
+    )
+    filename, entries = _surface_entry(solution_directory, step, time)
+    destination = solution_directory / filename
+    destination.parent.mkdir(parents=True, exist_ok=True)
     result = write_lattice_vtk(
         fields,
-        checkpoint.parent / filename,
+        destination,
         reference_speed=reference_speed,
         time=time,
         force_density=force_density,
     )
-    OutputManager._write_pvd(checkpoint.parent, "vlm", entries)
+    _write_surface_entries(solution_directory, entries)
     return result

@@ -312,7 +312,7 @@ def _vtp_time(path: Path) -> tuple[float, float]:
 
 def _check_owner_collections(expected: dict[int, float], solution_dir: Path | None = None) -> None:
     directory = SOLUTION_DIR if solution_dir is None else Path(solution_dir)
-    vtp_by_step = _named_steps(directory, VTP_NAME, ".vtp")
+    vtp_by_step = _named_steps(directory / "vlm", VTP_NAME, ".vtp")
     if set(vtp_by_step) != set(expected):
         raise RuntimeError("native VTP owners do not exactly match coupled H5 backups")
     for step, path in vtp_by_step.items():
@@ -329,7 +329,7 @@ def _check_owner_collections(expected: dict[int, float], solution_dir: Path | No
         raise RuntimeError("native VLM collection does not contain one entry per coupled backup")
     row_steps = []
     for time, filename in rows:
-        match = VTP_NAME.fullmatch(filename)
+        match = VTP_NAME.fullmatch(Path(filename).name)
         if match is None or int(match.group(1)) not in expected:
             raise RuntimeError(f"native VLM collection references unexpected owner {filename!r}")
         step = int(match.group(1))
@@ -737,7 +737,7 @@ def _check_native_segment(
     """Validate one namespace's complete coupled owner clock."""
     solution = segment["solution_path"]
     expected_steps = _segment_owner_steps(segment, interval)
-    backups = _named_steps(solution, BACKUP_NAME, ".h5")
+    backups = _named_steps(solution / "vpm", BACKUP_NAME, ".h5")
     if sorted(backups) != expected_steps:
         raise RuntimeError(
             f"{segment['id']}: native H5 backups are not the complete scheduled owner clock"
@@ -758,7 +758,7 @@ def _check_native_segment(
             raise RuntimeError(f"{segment['id']}: native H5 clock mismatch at step {step}")
         clocks[step] = actual_time
 
-    xdmf_by_step = _named_steps(solution, XDMF_NAME, ".xdmf")
+    xdmf_by_step = _named_steps(solution / "vpm", XDMF_NAME, ".xdmf")
     if set(xdmf_by_step) != set(expected_steps):
         raise RuntimeError(f"{segment['id']}: native XDMF owners do not match H5 backups")
     for step, path in xdmf_by_step.items():
@@ -1083,7 +1083,7 @@ def _check_declared_resume_lineage(manifest_path: Path) -> tuple[dict, list[dict
     prefix_end = boundary(prefix, "end")
     continuation_start = boundary(continuation, "start")
     prefix_owner = (
-        prefix["solution_path"] / f"vpm_{prefix['accepted_interval']['last_step']:06d}.h5"
+        prefix["solution_path"] / "vpm" / f"vpm_{prefix['accepted_interval']['last_step']:06d}.h5"
     )
     prefix_clock = (
         prefix["accepted_interval"]["last_step"],
@@ -1093,7 +1093,7 @@ def _check_declared_resume_lineage(manifest_path: Path) -> tuple[dict, list[dict
     require_owner_boundary(continuation, continuation_start, prefix_owner, prefix_clock)
     if continuation["status"] == "accepted":
         continuation_end = boundary(continuation, "end")
-        continuation_owner = continuation["solution_path"] / f"vpm_{endpoint_step:06d}.h5"
+        continuation_owner = continuation["solution_path"] / "vpm" / f"vpm_{endpoint_step:06d}.h5"
         require_owner_boundary(
             continuation,
             continuation_end,
@@ -1145,7 +1145,7 @@ def finalize_lineage(case_dir: Path = CASE_DIR) -> Path:
         continuation["status"] = "accepted"
         continuation["accepted_interval"]["last_step"] = end_step
         continuation["accepted_interval"]["last_time"] = end_time
-        end_path = effective_segments[-1]["solution_path"] / f"vpm_{end_step:06d}.h5"
+        end_path = effective_segments[-1]["solution_path"] / "vpm" / f"vpm_{end_step:06d}.h5"
         boundaries = continuation.setdefault("boundary_checkpoints", [])
         if not any(boundary.get("role") == "end" for boundary in boundaries):
             boundaries.append(
@@ -1163,7 +1163,7 @@ def finalize_lineage(case_dir: Path = CASE_DIR) -> Path:
         print(f"finalized {MANIFEST_PATH} at step {end_step} / t={end_time:g} s")
         return MANIFEST_PATH
     end_step, end_time, _ = _check_completed_native_run()
-    end_path = SOLUTION_DIR / f"vpm_{end_step:06d}.h5"
+    end_path = SOLUTION_DIR / "vpm" / f"vpm_{end_step:06d}.h5"
     payload = {
         "schema_version": 1,
         "case_root": "..",
@@ -1191,7 +1191,7 @@ def finalize_lineage(case_dir: Path = CASE_DIR) -> Path:
                 "boundary_checkpoints": [
                     {
                         "role": "end",
-                        "path": f"solution/vpm_{end_step:06d}.h5",
+                        "path": f"solution/vpm/vpm_{end_step:06d}.h5",
                         "sha256": _sha256(end_path),
                         "step": end_step,
                         "time": end_time,

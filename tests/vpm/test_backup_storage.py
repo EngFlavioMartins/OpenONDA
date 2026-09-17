@@ -128,7 +128,7 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"
 
     with h5py.File(f"{backup}.h5", "r") as archive:
         particles = archive["particles"]
@@ -148,6 +148,9 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     visual = pv.read(f"{backup}.xdmf")
     assert "velocity" in visual.point_data
     assert "velocity_gradient" not in visual.point_data
+    series = pv.get_reader(tmp_path / "writer" / "solution" / "vpm.pvd")
+    assert series.time_values == [0.0]
+    assert "velocity" in series.read()[0].point_data
 
     restored = _solver(tmp_path / "reader")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -193,7 +196,7 @@ def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):
     solver._set_freestream_velocity([0.12345679, -0.25, 0.5])
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"
 
     with h5py.File(f"{backup}.h5", "r") as archive:
         assert archive["particles"]["position"].dtype == np.dtype(np.float32)
@@ -229,7 +232,7 @@ def test_restart_preserves_unbounded_filament_refinement(tmp_path):
         writer.save_backup()
     finally:
         writer.close()
-    backup = tmp_path / "writer/solution/vpm_000001.h5"
+    backup = tmp_path / "writer/solution/vpm/vpm_000001.h5"
     restored = solver("reader", np.float32("inf"))
     try:
         restored.load_backup(str(backup))
@@ -317,7 +320,7 @@ def test_splitting_inherits_labels_properties_and_rolls_back_a_rejected_event(
             assert solver._particles_removed_this_step == 0
             solver.save_backup()
             references = manager.reference_vortex_strength.copy()
-            solver.load_backup(tmp_path / "split/solution/vpm_000000.h5")
+            solver.load_backup(tmp_path / "split/solution/vpm/vpm_000000.h5")
             np.testing.assert_array_equal(solver.particle_group_id, [11, 7, 7])
             np.testing.assert_array_equal(manager.reference_vortex_strength, references)
     finally:
@@ -355,7 +358,7 @@ def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     solver = _solver(tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000.h5"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000.h5"
     with h5py.File(backup, "r+") as archive:
         archive["solver"].attrs["backup_format_version"] = "9.0"
 
@@ -372,13 +375,13 @@ def test_selective_viscosity_feedback_survives_current_backup_roundtrip(tmp_path
         writer.save_backup()
     finally:
         writer.close()
-    backup = tmp_path / "writer/solution/vpm_000000.h5"
+    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
     reader = _solver(tmp_path / "reader", stabilization=config)
     try:
         reader.load_backup(backup)
         assert reader.stabilization.selective_eddy_viscosity_coefficient == 0.875
         reader.save_backup()
-        with h5py.File(tmp_path / "reader/solution/vpm_000000.h5") as archive:
+        with h5py.File(tmp_path / "reader/solution/vpm/vpm_000000.h5") as archive:
             assert archive["solver"].attrs["selective_eddy_viscosity_feedback_coefficient"] == 0.875
     finally:
         reader.close()
@@ -388,7 +391,7 @@ def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
     solver = _solver(tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"
 
     case = _case(tmp_path / "reader", time_step_size=0.02)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -409,7 +412,7 @@ def test_explicit_changed_time_step_restart_preserves_clock_and_checkpoint_state
     finally:
         writer.close()
 
-    backup = tmp_path / "writer/solution/vpm_000002.h5"
+    backup = tmp_path / "writer/solution/vpm/vpm_000002.h5"
     reader = _solver(tmp_path / "reader", time_step_size=0.005)
     try:
         reader.load_backup(backup, time_step_size=0.005)
@@ -424,7 +427,7 @@ def test_explicit_changed_time_step_restart_preserves_clock_and_checkpoint_state
     finally:
         reader.close()
 
-    with h5py.File(tmp_path / "reader/solution/vpm_000003.h5", "r") as archive:
+    with h5py.File(tmp_path / "reader/solution/vpm/vpm_000003.h5", "r") as archive:
         assert archive["solver"].attrs["step"] == 3
         assert archive["solver"].attrs["time"] == pytest.approx(0.025)
         assert archive["solver"].attrs["time_step_size"] == pytest.approx(0.005)
@@ -449,7 +452,7 @@ def test_changed_time_step_restart_does_not_relax_other_configuration_checks(tmp
         writer.save_backup()
     finally:
         writer.close()
-    backup = tmp_path / "writer/solution/vpm_000000.h5"
+    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
     reader = _solver(tmp_path / "reader", time_step_size=0.005, random_seed=43)
     try:
         _add_counter_rotating_pair(reader)
@@ -529,7 +532,7 @@ def test_larger_restart_capacity_preserves_the_particle_trajectory(tmp_path, ind
         writer.close()
     reader = _solver(tmp_path / "reader", max_n_particles=128, induction=induction_type())
     try:
-        reader.load_backup(tmp_path / "writer/solution/vpm_000001.h5")
+        reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000001.h5")
         _advance(reader, 1)
         np.testing.assert_allclose(reader.particle_position, position, rtol=1e-6, atol=1e-7)
         np.testing.assert_allclose(reader.particle_vortex_strength, strength, rtol=1e-5, atol=1e-10)
@@ -563,7 +566,7 @@ def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_p
     )
     try:
         with pytest.raises(ValueError, match="max_n_particles"):
-            reader.load_backup(tmp_path / "writer/solution/vpm_000000.h5")
+            reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
         assert reader.particles.n_particles_total == 0
     finally:
         reader.close()
@@ -593,7 +596,7 @@ def test_empty_vpm_backup_is_still_paraview_readable(tmp_path):
     solver = _solver(tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"
 
     import pyvista as pv
 
@@ -614,7 +617,7 @@ def _assert_split_run_matches(tmp_path, options: dict[str, object]) -> None:
         interrupted.save_backup()
 
     resumed = _solver(tmp_path / "resumed", **options)
-    resumed.load_backup(str(tmp_path / "interrupted" / "solution" / "vpm_000002"))
+    resumed.load_backup(str(tmp_path / "interrupted" / "solution" / "vpm" / "vpm_000002"))
     _advance(resumed, 2)
 
     assert resumed.step == uninterrupted.step == 4
@@ -688,7 +691,7 @@ def test_fmm_restart_and_repeated_run_match_over_twenty_accepted_steps(tmp_path)
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
         induction=FMMInduction(),
     )
-    resumed.load_backup(str(tmp_path / "interrupted" / "solution" / "vpm_000010"))
+    resumed.load_backup(str(tmp_path / "interrupted" / "solution" / "vpm" / "vpm_000010"))
     _advance(resumed, 10)
 
     assert uninterrupted.step == repeated.step == resumed.step == 20
@@ -775,7 +778,7 @@ def test_truncated_backup_is_rejected_before_state_mutation(tmp_path):
     _add_counter_rotating_pair(writer)
     with contextlib.redirect_stdout(io.StringIO()):
         writer.save_backup()
-    valid = tmp_path / "writer" / "solution" / "vpm_000000.h5"
+    valid = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000.h5"
     corrupted = tmp_path / "truncated.h5"
     corrupted.write_bytes(valid.read_bytes()[:128])
 
@@ -791,7 +794,7 @@ def test_atomic_backup_failure_preserves_the_last_complete_file(tmp_path, monkey
     _add_counter_rotating_pair(solver)
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    destination = tmp_path / "writer" / "solution" / "vpm_000000.h5"
+    destination = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000.h5"
     original = destination.read_bytes()
 
     def fail_replace(_source, _destination):
@@ -844,7 +847,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
     monkeypatch.setattr(reader.stepper, "_update_velocity_and_gradients", lambda **_kwargs: None)
-    reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm_000000"))
+    reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"))
 
     assert reader.particles.n_particles_total == count
     np.testing.assert_array_equal(reader.particle_position[[0, -1]], position[[0, -1]])
@@ -857,14 +860,14 @@ def test_backup_rejects_a_different_random_seed(tmp_path):
 
     reader = _solver(tmp_path / "reader", random_seed=8)
     with pytest.raises(ValueError, match="random_seed"):
-        reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm_000000"))
+        reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"))
 
 
 @pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
 def test_restart_requires_explicit_matching_stretching(tmp_path, induction_type):
     solver = _solver(tmp_path / "writer", induction=induction_type())
     solver.save_backup()
-    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    backup = tmp_path / "writer" / "solution" / "vpm" / "vpm_000000"
     solver.close()
     for form in ("explicit", "missing"):
         if form == "missing":
@@ -961,7 +964,7 @@ def test_relaxation_transfer_is_native_sampled_and_restartable(tmp_path):
         )
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
-    backup = tmp_path / "relaxation_writer/solution/vpm_000000.h5"
+    backup = tmp_path / "relaxation_writer/solution/vpm/vpm_000000.h5"
     restored = _solver(tmp_path / "relaxation_reader", stabilization=config)
     with contextlib.redirect_stdout(io.StringIO()):
         restored.load_backup(backup)

@@ -7,12 +7,15 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, NoReturn
 
+from defusedxml.ElementTree import ParseError, parse
 import h5py
 import numpy as np
 
+from source.solution_layout import collection_path, component_directory
 from source.write_precision import DEFAULT_WRITE_PRECISION
 
 from ..config.fingerprint import numerical_configuration
@@ -46,6 +49,7 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "lagrangian_cfl",
     "selective_eddy_viscosity_feedback_coefficient",
 )
+_FRAME_NAME = re.compile(r"vpm_(\d{6})\.xdmf")
 
 
 def _atomic_write_text(path: str | Path, text: str) -> None:
@@ -582,6 +586,80 @@ class _BackupIO:
   </Domain>
 </Xdmf>"""
         _atomic_write_text(xdmf_file, xdmf_content)
+
+    @staticmethod
+    def write_pvd(solution_directory: str | Path) -> Path:
+        """Write the ParaView index for retained VPM particle frames.
+
+        Parameters
+        ----------
+        solution_directory : str or pathlib.Path
+            Case solution root. Canonical ``vpm_XXXXXX.h5`` and
+            ``vpm_XXXXXX.xdmf`` pairs are stored below ``vpm/``.
+
+        Returns
+        -------
+        pathlib.Path
+            Atomically replaced ``vpm.pvd`` collection path. Each entry
+            references an immutable XDMF frame by a relative filename below
+            ``vpm/``.
+
+        Raises
+        ------
+        FileNotFoundError
+            If an indexed XDMF frame has no matching HDF5 particle state.
+        ValueError
+            If frame steps or physical times are duplicate or nonmonotonic.
+
+        Notes
+        -----
+        The atomically written XDMF frame clock is authoritative for the
+        visualization series. Rebuilding the small index from retained frames
+        makes scheduled output and coupled publication resume-safe without
+        keeping a second in-memory clock.
+        """
+        solution = Path(solution_directory)
+        directory = component_directory(solution, "vpm")
+        frames: list[tuple[int, float, str]] = []
+        for xdmf in directory.glob("vpm_*.xdmf"):
+            match = _FRAME_NAME.fullmatch(xdmf.name)
+            if match is None:
+                continue
+            hdf5 = xdmf.with_suffix(".h5")
+            if not hdf5.is_file():
+                raise FileNotFoundError(f"VPM frame {xdmf.name} is missing {hdf5.name}")
+            try:
+                time_element = parse(xdmf).find(".//Time")
+                if time_element is None:
+                    raise ValueError("missing Time element")
+                time = float(time_element.attrib["Value"])
+            except (ParseError, OSError, KeyError, ValueError) as exc:
+                raise ValueError(f"Invalid VPM XDMF frame {xdmf.name}") from exc
+            if not np.isfinite(time):
+                raise ValueError(f"VPM frame {xdmf.name} has non-finite time")
+            frames.append((int(match.group(1)), time, f"vpm/{xdmf.name}"))
+
+        frames.sort()
+        steps = [step for step, _, _ in frames]
+        times = [time for _, time, _ in frames]
+        if len(set(steps)) != len(steps) or any(
+            current <= previous for previous, current in zip(times, times[1:], strict=False)
+        ):
+            raise ValueError("VPM particle frames are duplicate or nonmonotonic")
+
+        lines = [
+            '<?xml version="1.0"?>',
+            '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
+            "  <Collection>",
+        ]
+        lines.extend(
+            f'    <DataSet timestep="{time:.17g}" file="{filename}"/>'
+            for _, time, filename in frames
+        )
+        lines.extend(("  </Collection>", "</VTKFile>", ""))
+        destination = collection_path(solution, "vpm")
+        _atomic_write_text(destination, "\n".join(lines))
+        return destination
 
     @staticmethod
     def create_temporal_xdmf(

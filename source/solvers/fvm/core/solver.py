@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from source.solution_layout import collection_path, component_directory
+
 from ..config.case import FVMCase
 from ..config.types import FVMSetup
 from ..coupling import CouplerInterfaceMixin
@@ -2450,18 +2452,17 @@ class FVMSolver(CouplerInterfaceMixin):
         Updates the PVD collection file for time-series visualisation.
 
         Args:
-            filename: Optional output path.  If ``None``, auto-generates
-                      ``solution/{case_name}_{step:06d}.vtu``.
+            filename: Optional output path. If ``None``, auto-generates
+                ``solution/fvm/fvm_<step>.vtu`` and indexes it in
+                ``solution/fvm.pvd``.
         """
         if not self.parallel.is_root and not self.parallel.is_partitioned:
             return
-        sol_dir = self.solution_dir
+        sol_dir = Path(self.solution_dir)
+        frame_dir = component_directory(sol_dir, "fvm")
         if filename is None:
-            os.makedirs(sol_dir, exist_ok=True)
-            # Use case_name and sequential numbering: case_name_000000.vtu
-            filename = os.path.join(
-                sol_dir, f"{self._resolved_setup.case_name}_{self.step:06d}.vtu"
-            )
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            filename = str(frame_dir / f"fvm_{self.step:06d}.vtu")
 
         fields = {
             "velocity": self.velocity,
@@ -2476,8 +2477,6 @@ class FVMSolver(CouplerInterfaceMixin):
             fields["eddy_viscosity"] = self.eddy_viscosity
 
         if self.parallel.is_partitioned:
-            from pathlib import Path
-
             from ..io.partitioned import write_partition_vtu
             from ..io.vtk_exporter import VTKExporter
 
@@ -2499,7 +2498,7 @@ class FVMSolver(CouplerInterfaceMixin):
             if self.parallel.is_root:
                 from ..io.vtk_exporter import PVDManager
 
-                pvd_file = os.path.join(sol_dir, f"{self._resolved_setup.case_name}.pvd")
+                pvd_file = str(collection_path(sol_dir, "fvm"))
                 if self.pvd_manager is None:
                     self.pvd_manager = PVDManager(pvd_file)
                 self.pvd_manager.add_step(self.time, str(collection))
@@ -2514,7 +2513,7 @@ class FVMSolver(CouplerInterfaceMixin):
             if self._buffered_vtk_writer is None:
                 from ..io.async_output import BufferedVTKWriter
 
-                pvd_file = os.path.join(sol_dir, f"{self._resolved_setup.case_name}.pvd")
+                pvd_file = str(collection_path(sol_dir, "fvm"))
                 self._buffered_vtk_writer = BufferedVTKWriter(
                     self.mesh_data,
                     pvd_file,
@@ -2530,7 +2529,7 @@ class FVMSolver(CouplerInterfaceMixin):
             if self.pvd_manager is None:
                 from ..io.vtk_exporter import PVDManager
 
-                pvd_file = os.path.join(sol_dir, f"{self._resolved_setup.case_name}.pvd")
+                pvd_file = str(collection_path(sol_dir, "fvm"))
                 self.pvd_manager = PVDManager(pvd_file)
             self.vtk_exporter.export(filename, fields)
             self.pvd_manager.add_step(self.time, filename)

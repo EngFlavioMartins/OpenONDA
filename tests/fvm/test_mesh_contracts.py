@@ -110,6 +110,27 @@ def test_section_extrusion_conserves_volume_and_shared_faces():
     np.testing.assert_allclose(mesh["vertex_position"][:, 2].max(), 0.5)
 
 
+def test_section_extrusion_recovers_displaced_outer_edges():
+    source = structured_box(2, 2, 1, lx=2, ly=2, lz=1)
+    points = np.asarray(source["vertex_position"], dtype=float).copy()
+    points[np.isclose(points[:, 0], 0.0), 0] = 1.0e-3
+    points[np.isclose(points[:, 0], 2.0), 0] = 2.0 - 1.0e-3
+    points[np.isclose(points[:, 1], 0.0), 1] = 1.0e-3
+    points[np.isclose(points[:, 1], 2.0), 1] = 2.0 - 1.0e-3
+    source["vertex_position"] = points
+    domain = BoxDomain(
+        bounds=(0, 2, 0, 2, -0.5, 0.5),
+        patches=BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+    )
+
+    mesh = extrude_mesh_section(source, coordinate=0.4, levels=(-0.5, 0.5), domain=domain)
+
+    geometry = compute_mesh_geometry(mesh, gradient_scheme="lsq")
+    validate_geometry(mesh, geometry)
+    assert geometry["cell_volume"].sum() == pytest.approx(4.0)
+    assert {patch["name"] for patch in mesh["boundary"]} == set(domain.patches.as_tuple())
+
+
 @pytest.mark.parametrize("levels", [(-0.5, -0.5, 0.5), (-0.5, -0.6, 0.5), (-0.5, 0.4)])
 def test_invalid_extrusion_levels_are_rejected(levels):
     source = structured_box(1, 1, 1)

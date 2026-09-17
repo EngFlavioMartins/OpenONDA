@@ -1029,7 +1029,7 @@ class FVMVPMCoupler:
         -------
         pathlib.Path
             Backup directory. On rank zero the committed VPM HDF5/XDMF pair is
-            also copied into :attr:`solution_dir` as a retained output frame.
+            also copied into ``solution/vpm`` as a retained output frame.
 
         Raises
         ------

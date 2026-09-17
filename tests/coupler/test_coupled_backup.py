@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 import re
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
 
 import numpy as np
 import pytest
@@ -129,7 +130,10 @@ class _VPM:
 
     def _save_backup_to(self, filename: str) -> None:
         Path(f"{filename}.h5").write_bytes(b"fake-vpm-state")
-        Path(f"{filename}.xdmf").write_text("<Xdmf/>", encoding="utf-8")
+        Path(f"{filename}.xdmf").write_text(
+            f'<Xdmf><Domain><Grid><Time Value="{self.time}"/></Grid></Domain></Xdmf>',
+            encoding="utf-8",
+        )
 
     def _load_backup_from(self, filename: str) -> None:
         assert Path(filename).is_file()
@@ -351,13 +355,19 @@ def test_post_renewal_particle_history_is_published_outside_the_rolling_backup(t
         save_coupled_backup(coupler, backup, coupling_step=step)
         publish_vpm_snapshot(backup, output)
 
-    assert sorted(path.name for path in output.glob("vpm_*.h5")) == [
+    vpm_frames = output / "vpm"
+    assert sorted(path.name for path in vpm_frames.glob("vpm_*.h5")) == [
         "vpm_000001.h5",
         "vpm_000002.h5",
     ]
-    assert sorted(path.name for path in output.glob("vpm_*.xdmf")) == [
+    assert sorted(path.name for path in vpm_frames.glob("vpm_*.xdmf")) == [
         "vpm_000001.xdmf",
         "vpm_000002.xdmf",
+    ]
+    entries = ET.parse(output / "vpm.pvd").findall(".//DataSet")
+    assert [(float(entry.attrib["timestep"]), entry.attrib["file"]) for entry in entries] == [
+        (0.1, "vpm/vpm_000001.xdmf"),
+        (0.2, "vpm/vpm_000002.xdmf"),
     ]
     assert sorted(path.name for path in backup.glob("vpm_*.h5")) == ["vpm_000002.h5"]
     assert sorted(path.name for path in backup.glob("fvm_*")) == ["fvm_000002.npz"]

@@ -186,12 +186,16 @@ errors are below a physical accuracy target.
 
 ## Output and restart artifacts
 
-The coupler writes its compatibility output below the FVM case directory, historically
-using `solution/` for coupled logs/backups. VPM scientific samples remain under the VPM
-solver's `samples/` path. Coupled backups contain both solver states, step/time identity,
-configuration identity, and boundary-condition history. The VPM/FVM solver metadata and
-coupler run metadata should be kept with the backup because they capture backend,
-version, mesh, transfer, and restart assumptions.
+The solution root is the user-facing ParaView launch point. Open `solution/fvm.pvd`,
+`solution/vpm.pvd`, or `solution/vlm.pvd` for the resolved fields, particles, or lifting
+surfaces respectively. Each collection uses relative paths to immutable files below its
+matching `fvm/`, `vpm/`, or `vlm/` directory, so the complete solution directory can be
+moved without editing the collection. Solver metadata and coupled diagnostics remain at
+the solution root for Python post-processing; VPM scientific samples remain under the
+VPM solver's `samples/` path.
+
+Restart state is not a visualization product, and this layout does not prescribe a
+restart location. It remains independent of the component directories above.
 
 ## Failure modes and limitations
 

@@ -241,11 +241,13 @@ or newton-seconds unless the documented density/reference factors are applied.
 The VPM ``total_enstrophy`` convention is ``integral(|omega|²) dV`` without the
 one-half factor used by the FVM diagnostic.
 
-`Backup` controls numerical restart cadence and directories. The current VPM default is
-the historical `solution/` directory under `VPMCase.directory`; `Samplers` always
-writes below `samples/` (optionally below a validated relative subdirectory). Backups
-are not scientific samples. The solver writes `vpm_metadata.json` in that same backup
-directory at construction, run startup, checkpoint writes and lifecycle completion.
+`Backup` controls numerical restart cadence. The current VPM default uses the case's
+`solution/` directory: `solution/vpm.pvd` is the ParaView entry point and its HDF5/XDMF
+frames are below `solution/vpm/`. An HDF5 frame is also the explicit restart target;
+pass that file to a newly constructed solver. `Samplers` always writes below `samples/`
+(optionally below a validated relative subdirectory). The solver writes
+`vpm_metadata.json` in the solution root at construction, run startup, checkpoint
+writes and lifecycle completion.
 During a run it reports `running` with the latest recorded checkpoint state;
 manual checkpoints report `partial` until the solver closes. Closing a manually
 advanced solver also records its accepted state. Infinite

@@ -201,8 +201,8 @@ def test_solver_factory_persists_generated_mesh_in_solution_directory(tmp_path):
         )
     solver.close()
 
-    native = solution / "mesh.npz"
-    paraview = solution / "mesh.vtu"
+    native = solution / "fvm" / "mesh.npz"
+    paraview = solution / "fvm" / "mesh.vtu"
     assert native.is_file()
     assert paraview.is_file()
     validate_topology(load_native_mesh(native))
@@ -229,8 +229,8 @@ def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
         )
     solver.close()
 
-    assert (solution / "mesh.npz").is_file()
-    assert (solution / "mesh.vtu").is_file()
+    assert (solution / "fvm" / "mesh.npz").is_file()
+    assert (solution / "fvm" / "mesh.vtu").is_file()
 
 
 def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path, monkeypatch):
@@ -343,8 +343,8 @@ def test_factory_backs_up_loaded_mesh_before_solver_admission(tmp_path, monkeypa
     def reject(*args, **kwargs):
         import pyvista as pv
 
-        assert pv.read(solution / "mesh.vtu").n_cells == 8
-        validate_topology(load_native_mesh(solution / "mesh.npz"))
+        assert pv.read(solution / "fvm" / "mesh.vtu").n_cells == 8
+        validate_topology(load_native_mesh(solution / "fvm" / "mesh.npz"))
         raise ValueError("deliberate production admission failure")
 
     monkeypatch.setattr(solver_module, "FVMSolver", reject)
@@ -356,13 +356,13 @@ def test_mesh_backup_preserves_previous_pair_on_repeated_startup(tmp_path):
     from source.solvers.fvm.factory import _save_generated_mesh
 
     _save_generated_mesh(structured_box(2, 2, 2), tmp_path, _setup().output)
-    previous = {name: (tmp_path / name).read_bytes() for name in ("mesh.npz", "mesh.vtu")}
+    previous = {name: (tmp_path / "fvm" / name).read_bytes() for name in ("mesh.npz", "mesh.vtu")}
     _save_generated_mesh(structured_box(3, 2, 2), tmp_path, _setup().output)
-    archives = list(tmp_path.glob("mesh-backup-*"))
+    archives = list((tmp_path / "fvm").glob("mesh-backup-*"))
     assert len(archives) == 1
     for name, content in previous.items():
         assert (archives[0] / name).read_bytes() == content
-    assert load_native_mesh(tmp_path / "mesh.npz")["n_cells"] == 12
+    assert load_native_mesh(tmp_path / "fvm" / "mesh.npz")["n_cells"] == 12
 
 
 def test_pvd_index_merges_existing_frames_across_restart(tmp_path):

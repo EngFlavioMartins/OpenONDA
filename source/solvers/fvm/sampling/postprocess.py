@@ -35,6 +35,8 @@ import re
 
 import numpy as np
 
+from source.solution_layout import collection_path
+
 from .executor import FVMSamplerExecutor
 
 
@@ -311,14 +313,11 @@ class PostProcess:
 
     def _pvd_frames(self) -> list[tuple[float, int, Path]]:
         solution_dir = self.solution_dir
-        pvd_path = solution_dir / f"{self.setup.case_name}.pvd"
+        pvd_path = collection_path(solution_dir, "fvm")
         if not pvd_path.exists():
-            candidates = sorted(solution_dir.glob("*.pvd"))
-            if not candidates:
-                raise FileNotFoundError(
-                    f"No PVD index in {solution_dir}; PostProcess needs archived snapshots"
-                )
-            pvd_path = candidates[0]
+            raise FileNotFoundError(
+                f"No FVM collection at {pvd_path}; PostProcess needs archived snapshots"
+            )
         text = pvd_path.read_text(encoding="utf-8")
         matches = re.finditer(r'timestep="([^"]+)"[^>]*file="([^"]+)"', text)
         frames = []

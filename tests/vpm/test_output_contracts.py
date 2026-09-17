@@ -276,7 +276,7 @@ def test_native_metadata_tracks_checkpoint_progress_before_completion(tmp_path, 
     initial_status = "running" if managed else "created"
     assert observed[0][0]["lifecycle"]["status"] == initial_status
     assert observed[0][1]["state"]["step"] == 0
-    assert (tmp_path / "solution/vpm_000002.h5").is_file()
+    assert (tmp_path / "solution/vpm/vpm_000002.h5").is_file()
     for _, after in observed[1:]:
         assert after["state"]["step"] == 2
         assert after["state"]["time"] == pytest.approx(0.02)

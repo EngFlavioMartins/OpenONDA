@@ -86,8 +86,8 @@ def test_backfill_preserves_checkpoint_exact_fields_and_sorted_unique_times(tmp_
         assert surface.n_cells == 2
     entries = ET.parse(tmp_path / "vlm.pvd").findall(".//DataSet")
     assert [(float(e.attrib["timestep"]), e.attrib["file"]) for e in entries] == [
-        (0.5, "vlm_000004.vtp"),
-        (1.125, "vlm_000009.vtp"),
+        (0.5, "vlm/vlm_000004.vtp"),
+        (1.125, "vlm/vlm_000009.vtp"),
     ]
     reader = pv.get_reader(tmp_path / "vlm.pvd")
     assert reader.time_values == [0.5, 1.125]

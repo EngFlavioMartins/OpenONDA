@@ -1,9 +1,9 @@
 """Audit a published native VPM/VLM checkpoint prefix.
 
 A published checkpoint owns three synchronized series below one solution
-directory: the native ``vpm_<step>.h5`` backups with their ``.xdmf`` templated
-companions, and the ``vlm.pvd`` time series of triangulated surface frames
-(``vlm_<step>.vtp``).  ``audit_checkpoint`` proves that every native backup up
+directory: native ``vpm/vpm_<step>.h5`` frames with their ``.xdmf`` templated
+companions, and the root-level ``vlm.pvd`` time series of triangulated surface
+frames below ``vlm/``. ``audit_checkpoint`` proves that every native backup up
 to and including the audited step is present, paired with its XDMF/VTP
 companions, and that all clocks agree.  Later publications are ignored so the
 audit can run while the solver is writing its next outputs.
@@ -25,6 +25,8 @@ from typing import Final, cast
 from defusedxml import ElementTree
 import h5py
 import numpy as np
+
+from source.solution_layout import collection_path
 
 # Detection tolerance must be below the dataset's own isclose margins so that a
 # single ulp drift (for example 1.0 + 1e-12) is reported as a clock conflict.
@@ -105,7 +107,7 @@ def _classify(path: Path) -> tuple[str, int] | None:
 
 def _pvd_timestep(entries: Sequence[tuple[str, float]], candidate_step: int) -> float:
     for name, timestep in entries:
-        frame_match = _VTP_RE.fullmatch(name)
+        frame_match = _VTP_RE.fullmatch(Path(name).name)
         if frame_match and int(frame_match.group(1)) == candidate_step:
             return timestep
     raise ValueError(f"vlm.pvd does not index step {candidate_step:06d}")
@@ -123,7 +125,10 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
             at or before the audited step.
     """
     checkpoint_path = Path(checkpoint_path).expanduser().resolve()
-    directory = checkpoint_path.parent
+    frame_directory = checkpoint_path.parent
+    if frame_directory.name != "vpm":
+        raise ValueError("checkpoint must be stored below a solution/vpm directory")
+    solution_directory = frame_directory.parent
 
     match = _NATIVE_RE.fullmatch(checkpoint_path.name)
     if not match:
@@ -143,7 +148,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
 
     h5_files: dict[int, Path] = {}
     xdmf_files: dict[int, Path] = {}
-    for path in sorted(directory.iterdir()):
+    for path in sorted(frame_directory.iterdir()):
         classification = _classify(path)
         if classification is None:
             continue
@@ -179,9 +184,9 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         _check_clock(stored_time, _xdmf_time(xdmf_files[candidate_step]), "native", path)
         native_steps.add(candidate_step)
 
-    pvd = directory / "vlm.pvd"
+    pvd = collection_path(solution_directory, "vlm")
     if not pvd.is_file():
-        raise ValueError(f"missing vlm.pvd index below {directory.name}")
+        raise ValueError(f"missing vlm.pvd index below {solution_directory.name}")
     parsed = ElementTree.parse(str(pvd))
     entries: list[tuple[str, float]] = []
     for element in parsed.iter():
@@ -189,7 +194,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
             entries.append((element.attrib["file"], float(element.attrib["timestep"])))
     pvd_counts: dict[int, int] = {}
     for name, _timestep in entries:
-        frame_match = _VTP_RE.fullmatch(name)
+        frame_match = _VTP_RE.fullmatch(Path(name).name)
         if not frame_match:
             raise ValueError(f"invalid vlm series filename: {name}")
         candidate_step = int(frame_match.group(1))
@@ -199,7 +204,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
     frame_steps: set[int] = set()
     last_frame = None
     for candidate_step in sorted(pvd_counts):
-        vtp = directory / f"vlm_{candidate_step:06d}.vtp"
+        vtp = solution_directory / f"vlm/vlm_{candidate_step:06d}.vtp"
         if not vtp.is_file():
             raise ValueError(f"missing surface frame referenced by vlm.pvd: {vtp.name}")
         _check_clock(
@@ -215,7 +220,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
     missing = sorted(native_steps - frame_steps)
     if extra or missing:
         raise ValueError(
-            f"native VPM backup steps (extra={extra}, missing={missing}) above {directory}"
+            f"native VPM backup steps (extra={extra}, missing={missing}) above {solution_directory}"
         )
 
     return {

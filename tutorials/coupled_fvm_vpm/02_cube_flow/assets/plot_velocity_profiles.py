@@ -60,9 +60,12 @@ def _profile(ax, name, time, consts, title):
 def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     util._THEME.set_thesis_style()
     fig, axes = plt.subplots(3, 1, figsize=util.figure_size(16), dpi=dpi)
-    util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.82, hspace=0.76)
-    _profile(axes[0], "centreline", time, consts, "(a) Centreline")
-    _profile(axes[1], "offaxis_y075", time, consts, r"(b) $y/D=0.75$")
+    axes[1].sharex(axes[0])
+    util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.95, hspace=0.5)
+    _profile(axes[0], "centreline", time, consts, r"(a) Centrreline, $y/D=0$")
+    _profile(axes[1], "offaxis_y075", time, consts, r"(b) Off-axis, $y/D=0.75$")
+    axes[0].set_xlabel("")
+    axes[0].tick_params(labelbottom=False)
     for source, style in (("fvm", "-"), ("reference", "-.")):
         t, cd = _force_series(source, time)
         axes[2].plot(
@@ -82,24 +85,17 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     axes[2].xaxis.set_major_locator(MaxNLocator(6))
     axes[2].margins(y=0.08)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(
+    axes[2].legend(
         handles,
         labels,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.938),
-        ncol=3,
+        loc="upper right",
+        ncol=1,
         frameon=False,
         columnspacing=0.8,
         handlelength=1.5,
         handletextpad=0.4,
     )
-    fig.text(
-        0.5,
-        0.982,
-        rf"$z/D=0,\quad tU_\infty/D={time * consts['freestream_speed']:.2f}$",
-        ha="center",
-        va="top",
-    )
+    util._THEME.fit_thesis_y_label_margins(fig, axes)
     util.save(fig, f"velocity_profiles_t{time:.2f}", figure_format, dpi)
     plt.close(fig)
 

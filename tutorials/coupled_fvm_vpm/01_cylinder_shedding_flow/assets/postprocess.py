@@ -1,72 +1,115 @@
-#!/usr/bin/env python3
-"""Compute force statistics for the coupled cylinder case."""
+"""Shared data loading and analysis for the cylinder figures."""
 
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+
+from openonda.plotting import DEFAULT_DPI, validate_thesis_figure
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-STATISTICS_WINDOW = 30.0
+FIGURES = CASE_DIR / "figures"
+AUXILIARY = FIGURES / "auxiliary"
+REFERENCE = CASE_DIR / "reference_flow" / "samples" / "fine"
+VELOCITY_COLUMNS = tuple(f"velocity_{axis}" for axis in "xyz")
 
 
-def time_mean(time: np.ndarray, values: np.ndarray) -> float:
-    return float(np.trapezoid(values, time) / (time[-1] - time[0]))
+def history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
+    """Load a finite, strictly increasing sampled history."""
+    frame = pd.read_csv(path)
+    missing = {"time", *columns} - set(frame.columns)
+    if missing:
+        raise ValueError(f"{path} is missing columns {sorted(missing)}")
+    values = frame[["time", *columns]].to_numpy(dtype=float)
+    if len(values) < 2 or not np.all(np.isfinite(values)):
+        raise ValueError(f"{path} must contain at least two finite samples")
+    if np.any(np.diff(values[:, 0]) <= 0.0):
+        raise ValueError(f"{path} times must be strictly increasing")
+    return frame
 
 
-def strouhal_number(time: np.ndarray, lift: np.ndarray) -> float:
-    centred = lift - time_mean(time, lift)
-    indices = np.flatnonzero((centred[:-1] <= 0.0) & (centred[1:] > 0.0))
-    crossings = []
-    for index in indices:
-        fraction = -centred[index] / (centred[index + 1] - centred[index])
-        crossings.append(time[index] + fraction * (time[index + 1] - time[index]))
-    periods = np.diff(crossings)
-    if len(periods) < 2:
-        raise ValueError("Fewer than three rising lift zero-crossings in the statistics window")
-    return float(1.0 / np.median(periods))
+def common_history(
+    candidate: pd.DataFrame,
+    reference: pd.DataFrame,
+    columns: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, dict[str, float]]]:
+    """Interpolate histories only over their common physical time interval."""
+    start = max(float(candidate.time.iloc[0]), float(reference.time.iloc[0]))
+    end = min(float(candidate.time.iloc[-1]), float(reference.time.iloc[-1]))
+    if end <= start:
+        raise ValueError("Force histories have no common physical time interval")
+    times = np.unique(np.r_[start, end, candidate.time, reference.time])
+    times = times[(times >= start) & (times <= end)]
+    left = np.column_stack(
+        [np.interp(times, candidate.time, candidate[column]) for column in columns]
+    )
+    right = np.column_stack(
+        [np.interp(times, reference.time, reference[column]) for column in columns]
+    )
+    errors = {}
+    for index, column in enumerate(columns):
+        difference = left[:, index] - right[:, index]
+        errors[column] = {
+            "rms": float(np.sqrt(np.trapezoid(difference**2, times) / (end - start))),
+            "maximum": float(np.abs(difference).max()),
+        }
+    return times, left, right, errors
 
 
-def main() -> None:
-    path = CASE_DIR / "samples" / "forces_history.csv"
-    rows = list(csv.DictReader(path.open(encoding="utf-8")))
-    if not rows:
-        raise ValueError(f"No force samples in {path}")
-
-    time = np.asarray([float(row["time"]) for row in rows], dtype=np.float64)
-    drag = np.asarray([float(row["drag_coefficient"]) for row in rows], dtype=np.float64)
-    lift = np.asarray([float(row["lift_coefficient"]) for row in rows], dtype=np.float64)
-    if not np.all(np.isfinite(np.column_stack((time, drag, lift)))):
-        raise ValueError(f"Non-finite force samples in {path}")
-    if np.any(np.diff(time) <= 0.0):
-        raise ValueError(f"Force-sample times are not strictly increasing in {path}")
-    if time[-1] < STATISTICS_WINDOW:
-        raise ValueError(f"Force history ends at t={time[-1]:g}; require t>={STATISTICS_WINDOW:g}")
-
-    start = time[-1] - STATISTICS_WINDOW
-    keep = time >= start - 1.0e-12
-    time = time[keep]
-    drag = drag[keep]
-    lift = lift[keep]
-    mean_drag = time_mean(time, drag)
-    mean_lift = time_mean(time, lift)
-    report = {
-        "statistics_window": {"start": float(time[0]), "end": float(time[-1])},
-        "samples": int(len(time)),
-        "mean_cd": mean_drag,
-        "cd_rms": float(np.sqrt(time_mean(time, (drag - mean_drag) ** 2))),
-        "mean_cl": mean_lift,
-        "cl_rms": float(np.sqrt(time_mean(time, (lift - mean_lift) ** 2))),
-        "cl_amplitude": 0.5 * float(np.ptp(lift)),
-        "strouhal": strouhal_number(time, lift),
-    }
-    output = CASE_DIR / "solution" / "cylinder_statistics.json"
-    output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    print(f"Wrote {output}")
+def profile(path: Path, time: float) -> pd.DataFrame:
+    """Load one native line-sampler state at an exact saved time."""
+    columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
+    frame = profile_history(path, columns)
+    selected = frame[np.isclose(frame.time, time, rtol=0.0, atol=1.0e-7)].copy()
+    if selected.empty:
+        raise ValueError(f"{path} has no profile at t={time:g} s")
+    return selected.sort_values("position_y")
 
 
-if __name__ == "__main__":
-    main()
+def profile_history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
+    """Load finite line profiles whose time repeats once per spatial point."""
+    frame = pd.read_csv(path)
+    missing = {"time", *columns} - set(frame.columns)
+    if missing:
+        raise ValueError(f"{path} is missing columns {sorted(missing)}")
+    values = frame[["time", *columns]].to_numpy(dtype=float)
+    if len(values) < 2 or not np.all(np.isfinite(values)):
+        raise ValueError(f"{path} must contain finite profile samples")
+    times = np.unique(values[:, 0])
+    if len(times) == 0 or np.any(np.diff(times) <= 0.0):
+        raise ValueError(f"{path} profile times must be ordered")
+    return frame
+
+
+def latest_common_profile_time(paths: tuple[Path, ...]) -> float:
+    """Return the latest physical time stored by every requested profile."""
+    columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
+    common: set[float] | None = None
+    for path in paths:
+        frame = profile_history(path, columns)
+        available = set(np.round(frame.time.to_numpy(dtype=float), 7))
+        common = available if common is None else common & available
+    if not common:
+        raise ValueError("Velocity profiles have no common physical sample time")
+    return float(max(common))
+
+
+def write_json(name: str, payload: dict) -> None:
+    """Write non-figure results below the figure auxiliary directory."""
+    AUXILIARY.mkdir(parents=True, exist_ok=True)
+    (AUXILIARY / name).write_text(
+        json.dumps(payload, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def save_figure(fig, axes, name: str, figure_format: str) -> None:
+    """Validate and save one fixed-canvas thesis figure."""
+    FIGURES.mkdir(parents=True, exist_ok=True)
+    validate_thesis_figure(fig, axes)
+    fig.savefig(FIGURES / f"{name}.{figure_format}", dpi=DEFAULT_DPI, bbox_inches=None)
+    plt.close(fig)

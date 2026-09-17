@@ -121,7 +121,7 @@ def main():
     state = meta.get("state", {})
     status = meta.get("lifecycle", {}).get("status")
     completed_steps = int(state.get("step", -1))
-    final_backup = CASE / "solution/les_transposed" / f"vpm_{completed_steps:06d}.h5"
+    final_backup = CASE / "solution/les_transposed/vpm" / f"vpm_{completed_steps:06d}.h5"
     if args.available and (status != "completed" or not final_backup.is_file()):
         print("Skipping ring scenes until the final LES backup is available.")
         return

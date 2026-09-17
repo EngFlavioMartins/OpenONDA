@@ -95,7 +95,7 @@ def test_public_load_backup_rejects_unsupported_vlm_schema_before_mutation(tmp_p
     try:
         source.advance(defer_output=True)
         source.save_backup()
-        checkpoint = tmp_path / "source/solution/vpm_000001.h5"
+        checkpoint = tmp_path / "source/solution/vpm/vpm_000001.h5"
         with h5py.File(checkpoint, "a") as archive:
             archive["solver/vlm"].attrs["version"] = -1
         clock = target.step, target.time
@@ -208,7 +208,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         original.save_backup()
         import pyvista as pv
 
-        surface = pv.read(tmp_path / "first/solution/vlm_000002.vtp")
+        surface = pv.read(tmp_path / "first/solution/vlm/vlm_000002.vtp")
         lattice = original.vlm_solver.lattice
         np.testing.assert_array_equal(
             surface.points,
@@ -218,7 +218,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
             np.testing.assert_array_equal(surface[field], getattr(lattice, field).to_numpy()[:12])
         assert pv.get_reader(tmp_path / "first/solution/vlm.pvd").time_values == [original.time]
         saved_forces = original.vlm_solver.compute_forces(1.3)
-        checkpoint = tmp_path / "first/solution/vpm_000002.h5"
+        checkpoint = tmp_path / "first/solution/vpm/vpm_000002.h5"
         # The solver-free export must reproduce the live companion, including
         # area-dependent normal loading, from the persisted VLM state alone.
         from source.solvers.vpm.io.vlm_backup import export_vlm_backup
@@ -228,7 +228,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         export_checkpoint = export_directory / checkpoint.name
         shutil.copy2(checkpoint, export_checkpoint)
         regenerated = pv.read(export_vlm_backup(export_checkpoint))
-        live = pv.read(tmp_path / "first/solution/vlm_000002.vtp")
+        live = pv.read(tmp_path / "first/solution/vlm/vlm_000002.vtp")
         for field in (
             "area",
             "relative_velocity",
@@ -260,7 +260,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         # A manual backup immediately after restore must retain the derived
         # frame fields and dimensional-force provenance, before another solve.
         resumed.save_backup()
-        immediate = pv.read(tmp_path / "resumed/solution/vlm_000002.vtp")
+        immediate = pv.read(tmp_path / "resumed/solution/vlm/vlm_000002.vtp")
         np.testing.assert_array_equal(
             immediate["relative_velocity"],
             resumed.vlm_solver.lattice.relative_velocity.to_numpy()[:12],
@@ -346,7 +346,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
         original.advance(defer_output=True)
         original.advance(defer_output=True)
         original.save_backup()
-        checkpoint = tmp_path / "original/solution/vpm_000002.h5"
+        checkpoint = tmp_path / "original/solution/vpm/vpm_000002.h5"
         expected_circulation = original.vlm_solver.lattice.get_circulation().copy()
         surface_name = next(iter(original.vlm_solver.surfaces))
         expected_position = original.vlm_solver.surfaces[surface_name][1].current_position.copy()
@@ -388,7 +388,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
         assert (resumed.step, resumed.time) == (3, pytest.approx(0.025))
         assert resumed.vlm_solver._current_time == pytest.approx(0.025)
         pvd = (tmp_path / "resumed/solution/vlm.pvd").read_text(encoding="utf-8")
-        assert 'timestep="0.025" file="vlm_000003.vtp"' in pvd
+        assert 'timestep="0.025000000000000001" file="vlm/vlm_000003.vtp"' in pvd
         forces = resumed.vlm_solver.compute_forces(1.3)
         assert all(np.isfinite(value).all() for value in forces.values())
         assert resumed.particles.n_particles_total > 0

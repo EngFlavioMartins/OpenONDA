@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from openonda.runtime import RunConfig
 from source.simulation.paths import CasePaths
+from source.solution_layout import component_directory
 
 from .config import FVMSetup
 from .config.types import validate_fvm_setup
@@ -154,26 +155,28 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
     from .io.vtk_exporter import VTKExporter, mesh_cell_fields
 
     solution_dir.mkdir(parents=True, exist_ok=True)
+    frame_directory = component_directory(solution_dir, "fvm")
+    frame_directory.mkdir(parents=True, exist_ok=True)
     fields = mesh_cell_fields(mesh_data)
     # Export before geometric/LSQ admission so a rejected mesh remains inspectable.
     # Finish both new files before moving any previous successful backup.
     with mesh_stage("mesh backup export") as stage:
-        with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=solution_dir) as temporary:
+        with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=frame_directory) as temporary:
             staging = Path(temporary)
             save_native_mesh(mesh_data, staging / "mesh.npz")
             exporter = VTKExporter(mesh_data, output)
             exporter.export(str(staging / "mesh.vtu"), fields)
-            existing = [solution_dir / name for name in ("mesh.npz", "mesh.vtu")]
+            existing = [frame_directory / name for name in ("mesh.npz", "mesh.vtu")]
             if any(path.exists() for path in existing):
-                previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=solution_dir))
+                previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=frame_directory))
                 for path in existing:
                     if path.exists():
                         path.rename(previous / path.name)
             for name in ("mesh.npz", "mesh.vtu"):
-                (staging / name).replace(solution_dir / name)
+                (staging / name).replace(frame_directory / name)
         stage.details(
-            native=solution_dir / "mesh.npz",
-            visualisation=solution_dir / "mesh.vtu",
+            native=frame_directory / "mesh.npz",
+            visualisation=frame_directory / "mesh.vtu",
         )
     # Enrich a valid backup without making its availability depend on geometry.
     from .mesh.geometry import compute_mesh_geometry
@@ -181,7 +184,7 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
     with mesh_stage("mesh geometry and final visualisation") as stage:
         geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
         fields = mesh_cell_fields(mesh_data, geometry["cell_volume"])
-        exporter.export(str(solution_dir / "mesh.vtu"), fields)
+        exporter.export(str(frame_directory / "mesh.vtu"), fields)
         stage.details(cells=mesh_data.get("n_cells"), faces=mesh_data.get("n_faces"))
 
 

@@ -194,8 +194,8 @@ def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_pl
         # Samples exist before the next full-volume output. Never substitute
         # the reference at t=1 for the coupled state at t=.5.
         for path, time in (
-            (solution / "coupled_cube_flow.pvd", 0.5),
-            (reference_solution / "fine.pvd", 1.0),
+            (solution / "fvm.pvd", 0.5),
+            (reference_solution / "fvm.pvd", 1.0),
             (samples / "fvm_slice_z0.pvd", 0.5),
             (samples / "vpm_slice_z0.pvd", 0.5),
         ):

@@ -12,12 +12,16 @@ from pathlib import Path
 import shutil
 from typing import Protocol
 
+import h5py
 import numpy as np
 
 from source import log_style
+from source.solution_layout import component_directory
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.vpm.config.case import Numerics
 from source.solvers.vpm.config.fingerprint import numerical_configuration
+from source.solvers.vpm.io.backup import _BackupIO
+from source.solvers.vpm.io.vlm_backup import export_vlm_backup
 
 BACKUP_DIRECTORY = "backups"
 BACKUP_FORMAT_VERSION = 11
@@ -287,9 +291,10 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
     """Publish the post-renewal VPM state as a user-facing time-series frame.
 
     The atomic coupled backup remains a rolling restart artifact. This
-    function copies its already-written VPM HDF5/XDMF pair directly into the
-    solution directory, where every scheduled frame is retained and visible to
-    plotting and ParaView without navigating restart internals.
+    function copies its already-written VPM HDF5/XDMF pair into
+    ``solution/vpm/`` and updates the root-level ``vpm.pvd`` collection. If
+    the saved state contains a VLM surface, it also publishes the corresponding
+    ``solution/vlm/`` frame and ``vlm.pvd`` collection.
     """
     backup = Path(backup_directory)
     output = Path(output_directory)
@@ -301,7 +306,9 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
         raise FileNotFoundError("Coupled backup does not contain a complete VPM snapshot")
 
     output.mkdir(parents=True, exist_ok=True)
-    destinations = (output / source_h5.name, output / source_xdmf.name)
+    frame_directory = component_directory(output, "vpm")
+    frame_directory.mkdir(parents=True, exist_ok=True)
+    destinations = (frame_directory / source_h5.name, frame_directory / source_xdmf.name)
     for source, destination in zip((source_h5, source_xdmf), destinations, strict=True):
         temporary = destination.with_name(f".{destination.name}.tmp")
         try:
@@ -309,6 +316,9 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
             os.replace(temporary, destination)
         finally:
             temporary.unlink(missing_ok=True)
+    if h5py.is_hdf5(destinations[0]):
+        export_vlm_backup(destinations[0])
+    _BackupIO.write_pvd(output)
     logging.getLogger("coupler").info(
         log_style.Event(
             "VPM snapshot", (("HDF5", str(destinations[0])), ("XDMF", str(destinations[1])))

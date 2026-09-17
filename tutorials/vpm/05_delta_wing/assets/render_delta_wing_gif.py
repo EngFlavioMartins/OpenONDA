@@ -264,7 +264,7 @@ def coupled_frames(
         sources = [(segment["solution_path"], segment) for segment in lineage]
     by_step: dict[int, tuple[float, Path, str]] = {}
     for directory, segment_info in sources:
-        paths = sorted(directory.glob("vpm_*.h5"), key=_backup_step)
+        paths = sorted((directory / "vpm").glob("vpm_*.h5"), key=_backup_step)
         if segment_info is not None:
             interval = segment_info["accepted_interval"]
             paths = [

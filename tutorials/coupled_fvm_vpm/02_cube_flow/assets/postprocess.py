@@ -628,8 +628,8 @@ def prepare_comparison_fields() -> int:
     reference_config = reference_solution / "fvm_metadata.json"
     coupled_config = SOLUTION / "fvm_metadata.json"
     configuration = json.loads(coupled_config.read_text())
-    coupled_frames = _pvd_frames(SOLUTION / f"{configuration['case_name']}.pvd")
-    reference_frames = _pvd_frames(reference_solution / "fine.pvd")
+    coupled_frames = _pvd_frames(SOLUTION / "fvm.pvd")
+    reference_frames = _pvd_frames(reference_solution / "fvm.pvd")
     vpm_frames = _pvd_frames(SAMPLES / "vpm_slice_z0.pvd")
     fvm_slices = _pvd_frames(SAMPLES / "fvm_slice_z0.pvd")
     line_names = ("centreline", "offaxis_y075")
@@ -646,7 +646,10 @@ def prepare_comparison_fields() -> int:
     COMPARISON.mkdir(parents=True, exist_ok=True)
     manifest_path = COMPARISON / "manifest.json"
     previous = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {"frames": []}
-    meshes = {"reference": reference_solution / "mesh.npz", "fvm": SOLUTION / "mesh.npz"}
+    meshes = {
+        "reference": reference_solution / "fvm" / "mesh.npz",
+        "fvm": SOLUTION / "fvm" / "mesh.npz",
+    }
     fixed = {
         "method": PREPARATION_METHOD,
         "meshes": {name: _file_stamp(path) for name, path in meshes.items()},
@@ -801,8 +804,8 @@ def build_comparison_report():
                     }
                 )
     meshes = {
-        "coupled": mesh_summary(SOLUTION / "mesh.npz"),
-        "fine": mesh_summary(CASE_DIR / "reference_flow/solution/fine/mesh.npz"),
+        "coupled": mesh_summary(SOLUTION / "fvm" / "mesh.npz"),
+        "fine": mesh_summary(CASE_DIR / "reference_flow/solution/fine/fvm/mesh.npz"),
     }
     coupled_spacing = meshes["coupled"]["cube_adjacent_cartesian_spacings"]
     reference_spacing = meshes["fine"]["cube_adjacent_cartesian_spacings"]

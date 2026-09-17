@@ -60,8 +60,9 @@ not cropped or scaled down to fit.
 Force, loading and motion tables are sampled every accepted step under
 `samples/delta_wing/`. Flow integrals and wake planes are sampled every 10 steps.
 `solution/` contains coupled H5/XDMF/VTP backups every 10 steps (0.025 s).
-Open `solution/vlm.pvd` for the VLM surface series and matching `vpm_*.xdmf`
-files for the particles. Saved owner steps and times match.
+Open `solution/vlm.pvd` for the VLM surface series and `solution/vpm.pvd` for
+the particle series. The immutable VTP and XDMF/HDF5 frames are below `vlm/`
+and `vpm/` respectively; saved owner steps and times match.
 
 For explicit validation after completion:
 

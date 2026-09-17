@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 from matplotlib.text import Text
 import numpy as np
 
+from source.solution_layout import collection_path
+
 # =================================================
 # OpenONDA project-specific imports moved to functions
 # =================================================
@@ -46,7 +48,7 @@ def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
     ----------
     solution_directory : str or pathlib.Path
         FVM output directory containing ``fvm_metadata.json`` and the case's
-        PVD index. Geometry-only ``mesh.vtu`` files are never selected.
+        ``fvm.pvd`` index. Geometry-only ``fvm/mesh.vtu`` files are never selected.
 
     Returns
     -------
@@ -67,8 +69,8 @@ def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
     metadata_path = directory / "fvm_metadata.json"
     if not metadata_path.is_file():
         return None
-    metadata = json.loads(metadata_path.read_text())
-    series = directory / f"{metadata['case_name']}.pvd"
+    json.loads(metadata_path.read_text())
+    series = collection_path(directory, "fvm")
     if not series.is_file():
         return None
     frames = ElementTree.parse(series).findall(".//DataSet")

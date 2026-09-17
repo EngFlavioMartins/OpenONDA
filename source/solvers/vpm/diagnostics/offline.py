@@ -111,7 +111,7 @@ class OfflineFlowDiagnostics:
         results: List of FlowIntegrals for each timestep.
 
     Example:
-        >>> diagnostics = OfflineFlowDiagnostics('solution/vpm_temporal.xdmf')
+        >>> diagnostics = OfflineFlowDiagnostics('solution/vpm/vpm_temporal.xdmf')
         >>> diagnostics.compute_all()
         >>> diagnostics.save()  # Saves to 'diagnostics.log'
         >>> diagnostics.save('custom_output.csv')
@@ -445,7 +445,7 @@ def compute_offline_diagnostics(
         >>> compute_offline_diagnostics('solution/lamb_oseen/lamb_oseen_*')
 
         >>> # From existing XDMF file
-        >>> compute_offline_diagnostics(xdmf_path='solution/vpm_temporal.xdmf')
+        >>> compute_offline_diagnostics(xdmf_path='solution/vpm/vpm_temporal.xdmf')
     """
     from ..io.backup import _BackupIO
 

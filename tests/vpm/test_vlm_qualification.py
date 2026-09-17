@@ -590,7 +590,7 @@ def test_vlm_sampler_and_backup_use_distinct_owner_series(tmp_path, monkeypatch)
     folder = tmp_path / "native_solution"
     sample_folder = tmp_path / "samples/case_a"
     assert calls == [(2, 0.2), (3, 0.3), (4, 0.4)]
-    assert sorted(path.name for path in folder.glob("vlm_*.vtp")) == ["vlm_000003.vtp"]
+    assert sorted(path.name for path in (folder / "vlm").glob("vlm_*.vtp")) == ["vlm_000003.vtp"]
     assert (folder / "vlm.pvd").read_text().count("<DataSet") == 1
     assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3]
     assert sorted(path.name for path in sample_folder.glob("vlm_*.vtp")) == [

@@ -1,7 +1,7 @@
 # Cube comparison report
 
 Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
-Comparison ends at t=6 s. Reference data after
+Comparison ends at t=13 s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
 ## What is matched
@@ -54,13 +54,13 @@ region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
 does not establish accuracy everywhere in three dimensions.
 
-At the latest compared time, t=6 s:
+At the latest compared time, t=13 s:
 
 | Comparison | RMS [% U_inf] | Sampled max [% U_inf] | Area [D^2] |
 |---|---:|---:|---:|
-| Coupled FVM / VPM (overlap consistency) | 1.395 | 23.094 | 9.2583 |
-| Reference FVM / VPM (auxiliary overlap field) | 1.670 | 28.049 | 9.2583 |
-| Reference FVM / Coupled FVM (primary near field) | 1.072 | 7.858 | 9.2583 |
+| Coupled FVM / VPM (overlap consistency) | 2.089 | 21.858 | 9.2583 |
+| Reference FVM / VPM (auxiliary overlap field) | 3.716 | 26.053 | 9.2583 |
+| Reference FVM / Coupled FVM (primary near field) | 3.963 | 26.756 | 9.2583 |
 
 
 These are instantaneous sampled differences, not time-averaged error estimates.

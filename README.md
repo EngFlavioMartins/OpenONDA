@@ -69,6 +69,7 @@ Each case includes its own instructions and input assets. See the [tutorial guid
 - [FVM solver guide](docs/fvm.md)
 - [VPM solver guide](docs/vpm.md)
 - [FVM--VPM coupling guide](docs/coupling.md)
+- [Solution-output layout](docs/solution_layout.md)
 - [FVM package/API notes](source/solvers/fvm/README.md)
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)

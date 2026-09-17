@@ -35,7 +35,7 @@ def test_terminal_backup_does_not_repeat_a_scheduled_backup(tmp_path, monkeypatc
     monkeypatch.setattr(solver.io, "write_backup", record)
     solver.run()
     assert writes == [1, 2]
-    assert len(list((tmp_path / "solution").glob("vpm_*.h5"))) == 2
+    assert len(list((tmp_path / "solution" / "vpm").glob("vpm_*.h5"))) == 2
 
 
 def test_unstable_run_retains_only_earlier_accepted_backup(tmp_path, monkeypatch):
@@ -60,7 +60,7 @@ def test_unstable_run_retains_only_earlier_accepted_backup(tmp_path, monkeypatch
 
     assert solver.run_status == "unstable"
     assert solver.run_failure is not None
-    assert sorted(path.name for path in (tmp_path / "solution").glob("vpm_*.h5")) == [
+    assert sorted(path.name for path in (tmp_path / "solution" / "vpm").glob("vpm_*.h5")) == [
         "vpm_000001.h5"
     ]
     metadata = json.loads((tmp_path / "solution" / "vpm_metadata.json").read_text())
@@ -116,7 +116,7 @@ def test_runtime_compute_device_override_preserves_restart_identity(tmp_path) ->
         assert numerical_configuration(solver.setup)["compute_device"] == "AUTO"
         solver.advance(defer_output=True)
         solver.save_backup()
-        checkpoint = tmp_path / "solution" / "vpm_000001.h5"
+        checkpoint = tmp_path / "solution" / "vpm" / "vpm_000001.h5"
         assert checkpoint.exists()
         manifest = build_manifest(solver)
         assert manifest["configuration"]["run"]["runtime_compute_device"] == "CPU"

@@ -20,6 +20,75 @@ from .config import BoundaryLayers, BoxDomain
 from .mesher import CartesianMesher
 
 
+def _section_edges(polygons):
+    """Return oriented polygon adjacencies keyed by undirected section edge."""
+    edges: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    for cell, ids in enumerate(polygons):
+        for a, b in zip(ids, np.roll(ids, -1), strict=True):
+            edges.setdefault(tuple(sorted((int(a), int(b)))), []).append((cell, int(a), int(b)))
+    for adjacent in edges.values():
+        if len(adjacent) == 2:
+            if adjacent[0][1:] != adjacent[1][1:][::-1]:
+                raise ValueError("Section has overlapping polygon windings")
+        elif len(adjacent) != 1:
+            raise ValueError("Section has a non-manifold edge")
+    return edges
+
+
+def _merge_projected_points(points, polygons, source_cells, *, tolerance=1.0e-10):
+    """Merge wall vertices coincident after projection and remove collapsed cells."""
+    key_to_point: dict[tuple[int, int], int] = {}
+    remap = np.empty(len(points), dtype=np.int32)
+    merged_points: list[np.ndarray] = []
+    for index, point in enumerate(points):
+        key = tuple(np.rint(point[:2] / tolerance).astype(np.int64))
+        target = key_to_point.get(key)
+        if target is None:
+            target = len(merged_points)
+            key_to_point[key] = target
+            merged_points.append(point)
+        remap[index] = target
+
+    retained_polygons = []
+    retained_sources = []
+    for ids, source_cell in zip(polygons, source_cells, strict=True):
+        mapped = remap[ids]
+        compact = [int(mapped[0])]
+        compact.extend(int(value) for value in mapped[1:] if int(value) != compact[-1])
+        if len(compact) > 1 and compact[0] == compact[-1]:
+            compact.pop()
+        if len(compact) < 3:
+            continue
+        compact_array = np.asarray(compact, dtype=np.int32)
+        xy = np.asarray(merged_points)[compact_array, :2]
+        signed_area = np.sum(xy[:, 0] * np.roll(xy[:, 1], -1) - xy[:, 1] * np.roll(xy[:, 0], -1))
+        if abs(signed_area) <= 1.0e-14:
+            continue
+        retained_polygons.append(compact_array if signed_area > 0.0 else compact_array[::-1])
+        retained_sources.append(source_cell)
+    if not retained_polygons:
+        raise ValueError("Surface projection collapsed the complete mesh section")
+    return (
+        np.asarray(merged_points, dtype=float),
+        retained_polygons,
+        np.asarray(retained_sources, dtype=int),
+    )
+
+
+def _section_boundary_name(xy, names, bounds, indices):
+    """Classify a section edge by proximity to a box side or immersed surface."""
+    box_distances = [np.max(np.abs(xy[:, side // 2] - bounds[side])) for side in range(4)]
+    box_side = int(np.argmin(box_distances))
+    if not indices:
+        return names[box_side]
+    centre = xy.mean(axis=0)
+    surface_name, surface_distance = min(
+        ((name, float(index.nearest_point(centre)[1])) for name, index in indices.items()),
+        key=lambda item: item[1],
+    )
+    return names[box_side] if box_distances[box_side] <= surface_distance else surface_name
+
+
 def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
     """Extrude a z-normal section, preserving shared edges and named patches.
 
@@ -60,32 +129,16 @@ def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
     if not polygons or len(polygons) != len(source_cells):
         raise ValueError("Source section is empty or contains non-polygon cells")
 
-    edges: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
-    for cell, ids in enumerate(polygons):
-        for a, b in zip(ids, np.roll(ids, -1), strict=True):
-            edges.setdefault(tuple(sorted((int(a), int(b)))), []).append((cell, int(a), int(b)))
+    edges = _section_edges(polygons)
     names = domain.patches.as_tuple()
     indices = {surface.patch: SurfaceIndex.build(surface.triangles) for surface in surfaces}
     edge_patches = {}
     patch_points: dict[str, set[int]] = {}
     for key, adjacent in edges.items():
         if len(adjacent) == 2:
-            if adjacent[0][1:] != adjacent[1][1:][::-1]:
-                raise ValueError("Section has overlapping polygon windings")
             continue
-        if len(adjacent) != 1:
-            raise ValueError("Section has a non-manifold edge")
         xy = points[list(key)]
-        name = None
-        for side in range(4):
-            if np.max(np.abs(xy[:, side // 2] - domain.bounds[side])) < 1e-8:
-                name = names[side]
-                break
-        if name is None:
-            if not indices:
-                raise ValueError("Section has an unnamed interior boundary")
-            centre = xy.mean(axis=0)
-            name = min(indices, key=lambda item: indices[item].nearest_point(centre)[1])
+        name = _section_boundary_name(xy, names, domain.bounds, indices)
         edge_patches[key] = name
         patch_points.setdefault(name, set()).update(key)
 
@@ -97,10 +150,23 @@ def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
                 raise ValueError("Surface projection leaves the selected section plane")
             points[ids, :2] = mapped[:, :2]
         else:
-            for side in range(4):
-                if names[side] == name:
-                    on_side = np.abs(points[ids, side // 2] - domain.bounds[side]) < 1e-8
-                    points[ids[on_side], side // 2] = domain.bounds[side]
+            candidate_sides = [side for side in range(4) if names[side] == name]
+            distances = np.column_stack(
+                [np.abs(points[ids, side // 2] - domain.bounds[side]) for side in candidate_sides]
+            )
+            nearest = distances.min(axis=1)
+            for column, side in enumerate(candidate_sides):
+                on_side = distances[:, column] <= nearest + 1.0e-8
+                points[ids[on_side], side // 2] = domain.bounds[side]
+
+    points, polygons, source_cells = _merge_projected_points(points, polygons, source_cells)
+    edges = _section_edges(polygons)
+    edge_patches = {}
+    for key, adjacent in edges.items():
+        if len(adjacent) == 2:
+            continue
+        xy = points[list(key)]
+        edge_patches[key] = _section_boundary_name(xy, names, domain.bounds, indices)
 
     np2, nc2, nz = len(points), len(polygons), len(levels) - 1
     vertices = np.vstack([np.column_stack((points[:, :2], np.full(np2, z))) for z in levels])

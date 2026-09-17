@@ -255,8 +255,10 @@ available nominal sizes, and ParaView's **Cell Size** filter can calculate
 volume from old field-file geometry.
 
 The default FVM artifacts are below the case directory, normally `solution/`
-and `samples/`. An explicit `solution_dir` or `samples_dir` overrides that
-default; inspect the resolved paths on the solver when integrating with other tools.
+and `samples/`. `solution/fvm.pvd` is the ParaView entry point; it uses
+portable relative paths to immutable fields and mesh files below `solution/fvm/`.
+An explicit `solution_dir` or `samples_dir` overrides that default; inspect the
+resolved paths on the solver when integrating with other tools.
 At successful construction, the solver writes `fvm_metadata.json` in the resolved
 solution directory. The same solver refreshes its generic configuration, mesh counts,
 accepted clock, and lifecycle status as the run advances or finishes; tutorial input

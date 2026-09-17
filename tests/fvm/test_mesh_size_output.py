@@ -60,7 +60,7 @@ def test_mesh_backup_includes_physical_and_equivalent_sizes(tmp_path, sized_mesh
 
     _save_generated_mesh(sized_mesh, tmp_path, OutputConfig())
     geometry = compute_mesh_geometry(sized_mesh, compute_lsq=False)
-    _assert_geometry_fields(pv.read(tmp_path / "mesh.vtu"), sized_mesh, geometry)
+    _assert_geometry_fields(pv.read(tmp_path / "fvm" / "mesh.vtu"), sized_mesh, geometry)
 
 
 @pytest.mark.parametrize("interpolate_to_points", [False, True])

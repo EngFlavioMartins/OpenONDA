@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from source.solution_layout import component_directory
+
 from .backup import _BackupIO
 from .logging import Logging
 from .sampling import resolve_samples_dir
@@ -44,9 +46,8 @@ class SolverIO:
         """
         self.solver = solver
 
-        self.export_dir = self.solver._backup_path
-
-        self._xdmf_series_entries = []  # Track VPM particle time-series entries
+        self.solution_dir = self.solver._backup_path
+        self.export_dir = component_directory(self.solution_dir, "vpm")
 
     @property
     def vpm_prefix(self) -> str:
@@ -69,7 +70,7 @@ class SolverIO:
         return self.solver.time
 
     def write_backup(self, verbose: bool = True) -> None:
-        """Write restart state and a ParaView companion for the accepted surface.
+        """Write restart state, its XDMF frame, and the ``vpm.pvd`` index.
 
         VLM surface companions share the sparse backup clock with VPM particles.
         Accepted-step VLM force/loading tables are emitted through the owner's
@@ -78,11 +79,12 @@ class SolverIO:
         os.makedirs(self.export_dir, exist_ok=True)
         backup_path = os.path.join(self.export_dir, self.vpm_prefix)
         _BackupIO.save(self.solver, backup_path, verbose=verbose)
+        _BackupIO.write_pvd(self.solution_dir)
         vlm = getattr(self.solver, "vlm_solver", None)
         if vlm is not None:
             from .vlm_backup import write_vlm_backup
 
-            write_vlm_backup(vlm, self.export_dir, step=self.step, time=self.time)
+            write_vlm_backup(vlm, self.solution_dir, step=self.step, time=self.time)
 
     def export_diagnostics_csv(self, diagnostics_history: dict, filename: str) -> None:
         """Export diagnostics history to CSV for offline analysis.

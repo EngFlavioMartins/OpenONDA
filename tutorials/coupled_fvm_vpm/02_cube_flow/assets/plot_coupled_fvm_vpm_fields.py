@@ -28,6 +28,10 @@ COMPARISONS = {
     ),
 }
 
+FIELD_OUTER = 0.105
+FIELD_WIDTH = 0.35
+FIELD_RIGHT_LEFT = 1.0 - FIELD_OUTER - FIELD_WIDTH
+
 
 def _on_grid(source: dict, target: dict) -> np.ndarray:
     """Match equivalent saved coordinates; never fill gaps or extrapolate."""
@@ -108,9 +112,7 @@ def display_grid(x, y, vectors, valid, subdivisions=4):
     return xx, yy, values
 
 
-def _field_figure(
-    time, x, y, left, right, left_title, right_title, name, fmt, dpi, *, time_scale=1
-):
+def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, dpi):
     util._THEME.set_thesis_style()
     error, valid, stats = differences(x, y, left, right)
     xx, yy, dense_left = display_grid(x, y, left, valid)
@@ -125,19 +127,12 @@ def _field_figure(
     height_cm = 10.5
     fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
     axes = [
-        fig.add_axes((0.14, 5.65 / height_cm, 0.30, 3.75 / height_cm)),
-        fig.add_axes((0.56, 5.65 / height_cm, 0.30, 3.75 / height_cm)),
-        fig.add_axes((0.14, 0.9 / height_cm, 0.30, 3.75 / height_cm)),
+        fig.add_axes((FIELD_OUTER, 5.7 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_RIGHT_LEFT, 5.7 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_OUTER, 1.0 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
     ]
-    velocity_bar = fig.add_axes((0.56, 3.65 / height_cm, 0.30, 0.14 / height_cm))
-    error_bar = fig.add_axes((0.56, 2.25 / height_cm, 0.30, 0.14 / height_cm))
-    fig.text(
-        0.5,
-        0.975,
-        rf"$z/D=0,\quad tU_\infty/D={time * time_scale:.2f}$",
-        ha="center",
-        va="top",
-    )
+    velocity_bar = fig.add_axes((FIELD_RIGHT_LEFT, 3.55 / height_cm, FIELD_WIDTH, 0.16 / height_cm))
+    error_bar = fig.add_axes((FIELD_RIGHT_LEFT, 2.1 / height_cm, FIELD_WIDTH, 0.16 / height_cm))
     levels = np.linspace(low, high, 41)
     for ax, values, title in zip(axes[:2], (dense_left, dense_right), (left_title, right_title)):
         velocity_plot = ax.contourf(
@@ -174,6 +169,8 @@ def _field_figure(
         )
     axes[0].set_ylabel(r"$y/D$")
     axes[2].set_ylabel(r"$y/D$")
+    for ax in axes[:2]:
+        ax.set_xlabel("")
     axes[1].tick_params(labelleft=False)
     velocity_colorbar = fig.colorbar(
         velocity_plot,
@@ -194,8 +191,8 @@ def _field_figure(
     velocity_colorbar.ax.xaxis.labelpad = 1.0
     error_colorbar.ax.xaxis.labelpad = 1.0
     fig.text(
-        0.71,
-        0.9 / height_cm,
+        FIELD_RIGHT_LEFT + FIELD_WIDTH / 2,
+        0.75 / height_cm,
         rf"RMS: {stats['rms_percent']:.2g}\%"
         "\n"
         rf"Max: {stats['sampled_max_percent']:.2g}\%",
@@ -246,7 +243,6 @@ def plot_frame(
         comparison,
         figure_format,
         dpi,
-        time_scale=speed / consts["reference_length"],
     )
 
 

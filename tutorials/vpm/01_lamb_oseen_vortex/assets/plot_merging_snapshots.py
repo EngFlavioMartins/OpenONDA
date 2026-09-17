@@ -216,7 +216,7 @@ def main():
     sigma0 = np.concatenate([p.core_radius for p in clouds])
     # Use the recorded final step, never a hard-coded backup filename.
     completed_steps = int(run.get("completed_steps", run.get("number_of_steps", -1)))
-    path = CASE_DIR / "solution/merging_gbd" / f"vpm_{completed_steps:06d}.h5"
+    path = CASE_DIR / "solution/merging_gbd/vpm" / f"vpm_{completed_steps:06d}.h5"
     if not path.is_file():
         raise FileNotFoundError(f"Final GBD particle backup required for sphere views: {path}")
     with h5py.File(path) as f:

@@ -235,7 +235,7 @@ def validate(pre_plot: bool, figure_format: str = "png") -> int:
             continue
         outcomes.append((float(metadata["final_time"]), name, str(metadata["status"])))
 
-        all_files = sorted(glob.glob(str(SOLUTION_DIR / name / "vpm_*.h5")))
+        all_files = sorted(glob.glob(str(SOLUTION_DIR / name / "vpm" / "vpm_*.h5")))
         numbered = {
             int(match.group(1)): path
             for path in all_files

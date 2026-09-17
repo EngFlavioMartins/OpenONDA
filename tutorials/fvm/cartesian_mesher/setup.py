@@ -2,7 +2,7 @@
 """Copy-and-run STL to Cartesian FVM tutorial.
 
 Run ``python setup.py`` from this directory.  The ordinary public API builds
-the mesh, writes ``solution/mesh.npz`` and ``solution/mesh.vtu``, and advances
+the mesh, writes ``solution/fvm/mesh.npz`` and ``solution/fvm/mesh.vtu``, and advances
 the short inlet/wall flow case for twenty steps.
 """
 

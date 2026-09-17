@@ -9,6 +9,8 @@ from pathlib import Path
 import shutil
 import tempfile
 
+from source.solution_layout import collection_path
+
 from .storage import append_line_recoverably
 
 
@@ -111,8 +113,7 @@ class SolverIO:
 
         self._rewind_jsonl(solution / "diagnostics.jsonl", time)
         self._rewind_jsonl(solution / "performance.jsonl", time)
-        config = getattr(self.solver, "_resolved_setup", self.solver.setup)
-        self._rewind_pvd(solution / f"{config.case_name}.pvd", time)
+        self._rewind_pvd(collection_path(solution, "fvm"), time)
 
         # Reconcile in-memory indexes held by already-created writers.  The
         # on-disk branch remains available for inspection; only the active

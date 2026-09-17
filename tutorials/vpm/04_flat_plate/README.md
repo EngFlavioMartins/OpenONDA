@@ -36,7 +36,7 @@ and surface state are owned by the VPM accepted-step/checkpoint lifecycle; this
 setup has no independent `VLMSampler` clock.
 
 - Under `samples/exp_<mode>_aoa<angle>/`: `vlm_forces.csv` contains total forces, coefficients, moments, separate unsteady-pressure forces and bound/wake vector-strength budget, recorded every step; `vlm_spanwise_flat_plate.csv` contains sectional loading, circulation and physical strip widths; `vlm_chordwise_flat_plate.csv` contains panel circulation, pressure jump, forces and relative velocities at bound midpoints; `flow_integrals.csv` and any configured field probes contain VPM diagnostics and sampled flow. Velocity probes include the attached VLM field.
-- Under `solution/<case>/`: `vpm_*.h5` are coupled VPM+VLM restart backups; each backup also has the native VLM companion surface export for ParaView.
+- Under `solution/<case>/`, open `vpm.pvd` or `vlm.pvd` in ParaView. Particle HDF5/XDMF frames are below `vpm/`; VLM surface frames are below `vlm/`.
 
 Numerical checkpoints, logs and the default `vpm_metadata.json` remain under
 `solution/<case>`. Backups are every forty accepted steps (0.5 s); the backup

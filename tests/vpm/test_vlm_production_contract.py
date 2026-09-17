@@ -73,7 +73,7 @@ def test_coupled_backup_velocity_contains_bound_induction_and_preserves_state(tm
         solver.particles.vorticity.fill(-999.0)
         solver.particles.vorticity_cpu(use_cache=False)
         solver.save_backup()
-        with h5py.File(tmp_path / "solution/vpm_000001.h5") as archive:
+        with h5py.File(tmp_path / "solution/vpm/vpm_000001.h5") as archive:
             np.testing.assert_allclose(
                 archive["particles/velocity"][:],
                 expected_velocity,
@@ -132,11 +132,14 @@ def test_periodic_and_final_backups_pair_exact_moving_surface_states(tmp_path):
             solver.execute_scheduled_samplers()
         solver.save_backup()
         solution = tmp_path / "solution"
-        assert sorted(p.stem for p in solution.glob("vpm_*.h5")) == ["vpm_000002", "vpm_000003"]
+        assert sorted(p.stem for p in (solution / "vpm").glob("vpm_*.h5")) == [
+            "vpm_000002",
+            "vpm_000003",
+        ]
         assert sorted(p.stem for p in solution.glob("vlm_*.vtp")) == ["vlm_000002", "vlm_000003"]
         for step in (2, 3):
             surface = pv.read(solution / f"vlm_{step:06d}.vtp")
-            with h5py.File(solution / f"vpm_{step:06d}.h5") as archive:
+            with h5py.File(solution / "vpm" / f"vpm_{step:06d}.h5") as archive:
                 assert surface.field_data["TimeValue"][0] == archive["solver"].attrs["time"]
                 np.testing.assert_array_equal(
                     surface.points,
