@@ -161,6 +161,24 @@ def test_pimple_comparison_uses_current_executable_controls(modules):
     assert not util._pimple_configurations_match(current, missing)
 
 
+def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
+    _, prepare = modules
+    current = tmp_path / "current"
+    current.mkdir()
+    (current / "fvm_metadata.json").write_text(json.dumps({"case_name": "current_case"}))
+    (current / "fvm").mkdir()
+    (current / "fvm.pvd").touch()
+    (current / "fvm/mesh.npz").touch()
+    assert prepare._fvm_artifacts(current) == (current / "fvm.pvd", current / "fvm/mesh.npz")
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "fvm_metadata.json").write_text(json.dumps({"case_name": "fine"}))
+    (reference / "fine.pvd").touch()
+    (reference / "mesh.npz").touch()
+    assert prepare._fvm_artifacts(reference) == (reference / "fine.pvd", reference / "mesh.npz")
+
+
 @pytest.mark.parametrize("state", ["missing_volume_index", "no_common_time"])
 def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_plots(
     modules,

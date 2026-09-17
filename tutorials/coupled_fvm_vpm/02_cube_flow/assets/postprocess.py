@@ -89,6 +89,48 @@ def _pvd_frames(pvd: Path) -> list[tuple[float, Path]]:
     return result
 
 
+def _fvm_artifacts(solution_directory: Path) -> tuple[Path, Path]:
+    """Locate the saved FVM collection and native mesh for one run.
+
+    Parameters
+    ----------
+    solution_directory : pathlib.Path
+        Solver-owned solution directory containing ``fvm_metadata.json``.
+
+    Returns
+    -------
+    tuple[pathlib.Path, pathlib.Path]
+        The PVD collection and native mesh belonging to the same saved run.
+        Current output uses ``fvm.pvd`` and ``fvm/mesh.npz``. A reference run
+        recorded with the case-name layout uses ``<case_name>.pvd`` and
+        ``mesh.npz`` in the solution directory; both paths are selected as a
+        pair so a collection is never combined with a mesh from another run.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the metadata or a complete collection/mesh pair is absent.
+    ValueError
+        If the metadata does not contain a usable case name.
+    """
+    metadata_path = solution_directory / "fvm_metadata.json"
+    if not metadata_path.is_file():
+        raise FileNotFoundError(metadata_path)
+    metadata = json.loads(metadata_path.read_text())
+    case_name = metadata.get("case_name")
+    if not isinstance(case_name, str) or not case_name.strip():
+        raise ValueError(f"FVM metadata has no usable case_name: {metadata_path}")
+
+    candidates = (
+        (solution_directory / "fvm.pvd", solution_directory / "fvm" / "mesh.npz"),
+        (solution_directory / f"{case_name}.pvd", solution_directory / "mesh.npz"),
+    )
+    for pvd, mesh in candidates:
+        if pvd.is_file() and mesh.is_file():
+            return pvd, mesh
+    raise FileNotFoundError(candidates[0][0])
+
+
 def _frame_at_time(items: list[tuple[float, Path]], time: float) -> Path | None:
     return next(
         (path for value, path in items if np.isclose(value, time, rtol=0, atol=TIME_ATOL)), None
@@ -627,9 +669,10 @@ def prepare_comparison_fields() -> int:
     reference_solution = CASE_DIR / "reference_flow" / "solution" / "fine"
     reference_config = reference_solution / "fvm_metadata.json"
     coupled_config = SOLUTION / "fvm_metadata.json"
-    configuration = json.loads(coupled_config.read_text())
-    coupled_frames = _pvd_frames(SOLUTION / "fvm.pvd")
-    reference_frames = _pvd_frames(reference_solution / "fvm.pvd")
+    coupled_pvd, coupled_mesh = _fvm_artifacts(SOLUTION)
+    reference_pvd, reference_mesh = _fvm_artifacts(reference_solution)
+    coupled_frames = _pvd_frames(coupled_pvd)
+    reference_frames = _pvd_frames(reference_pvd)
     vpm_frames = _pvd_frames(SAMPLES / "vpm_slice_z0.pvd")
     fvm_slices = _pvd_frames(SAMPLES / "fvm_slice_z0.pvd")
     line_names = ("centreline", "offaxis_y075")
@@ -646,10 +689,7 @@ def prepare_comparison_fields() -> int:
     COMPARISON.mkdir(parents=True, exist_ok=True)
     manifest_path = COMPARISON / "manifest.json"
     previous = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {"frames": []}
-    meshes = {
-        "reference": reference_solution / "fvm" / "mesh.npz",
-        "fvm": SOLUTION / "fvm" / "mesh.npz",
-    }
+    meshes = {"reference": reference_mesh, "fvm": coupled_mesh}
     fixed = {
         "method": PREPARATION_METHOD,
         "meshes": {name: _file_stamp(path) for name, path in meshes.items()},
@@ -804,8 +844,8 @@ def build_comparison_report():
                     }
                 )
     meshes = {
-        "coupled": mesh_summary(SOLUTION / "fvm" / "mesh.npz"),
-        "fine": mesh_summary(CASE_DIR / "reference_flow/solution/fine/fvm/mesh.npz"),
+        "coupled": mesh_summary(_fvm_artifacts(SOLUTION)[1]),
+        "fine": mesh_summary(_fvm_artifacts(CASE_DIR / "reference_flow" / "solution" / "fine")[1]),
     }
     coupled_spacing = meshes["coupled"]["cube_adjacent_cartesian_spacings"]
     reference_spacing = meshes["fine"]["cube_adjacent_cartesian_spacings"]
