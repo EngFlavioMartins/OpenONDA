@@ -374,6 +374,28 @@ def test_resume_rejects_nonmonotonic_csv_event(tmp_path):
         manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
 
+def test_restart_rewinds_post_checkpoint_sampler_history(tmp_path):
+    samplers = Samplers(samples=(_TableSampler(), _VtkSampler()))
+    solver = _solver(tmp_path, samplers)
+    manager = OutputManager(solver)
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    solver.step, solver.time = 2, 0.2
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+    manager.rewind_histories(0.1)
+
+    csv_path = tmp_path / "samples/table.csv"
+    assert csv_path.read_text().splitlines()[-1].startswith("0.1,1,")
+    pvd_path = tmp_path / "samples/surface.pvd"
+    assert pvd_path.read_text().count("<DataSet") == 1
+    assert list((tmp_path / "samples/restart-branches").glob("before-*/surface.pvd"))
+
+    solver.step, solver.time = 2, 0.2
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    assert csv_path.read_text().splitlines()[-1].startswith("0.2,2,")
+    assert pvd_path.read_text().count("<DataSet") == 2
+
+
 def test_fresh_run_replaces_stale_csv_while_restart_appends(tmp_path):
     sampler = _TableSampler()
     original = _solver(tmp_path, Samplers(samples=(sampler,)))

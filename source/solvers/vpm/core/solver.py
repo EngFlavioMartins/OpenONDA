@@ -2515,6 +2515,7 @@ class VPMSolver:
         # initial conditions must never be rebuilt by the next advance/run.
         self._initial_conditions_built = True
         self._sync_restart_state()
+        self.output_manager.rewind_histories(self.time)
         # A growth limit compares adjacent accepted states.  A loaded restart
         # begins a new in-memory history, so its first accepted state becomes
         # the baseline rather than being compared to a discarded cloud.

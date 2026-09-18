@@ -6,10 +6,11 @@ field is read by ParaView and by post-processing, not by the time integrator.
 
 Three levels are available. ``f64`` and ``f32`` are stored in containers of
 the matching width. ``f16`` rounds each value to half precision and stores the
-result in a ``float32`` container: neither VTK XML nor the XDMF readers
-understand a 16-bit float, so a native half array would produce files ParaView
-cannot open. Rounding still pays, because the discarded mantissa bytes become
-zeros that the deflate and byte-shuffle filters remove almost entirely.
+result in a ``float32`` container: neither VTK XML nor other visualization
+readers understand a 16-bit float, so a native half array would produce files
+ParaView cannot open. Rounding still pays, because the discarded mantissa
+bytes become zeros that the deflate and byte-shuffle filters remove almost
+entirely.
 
 Integer fields are identity, whatever the level: particle and cell identifiers
 are exact quantities and are never rounded.

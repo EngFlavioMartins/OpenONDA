@@ -11,14 +11,12 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tests._tutorial_helpers import load_tutorial_module
+from tests._tutorial_helpers import load_tutorial_module, write_vtu_time_frame
 
 load_animation_lineage = load_tutorial_module(
-    "vpm/delta_wing", "assets._delta_wing_plots"
+    "vpm/delta_wing", "assets.postprocess"
 ).load_animation_lineage
-finalize_lineage = load_tutorial_module(
-    "vpm/delta_wing", "assets.finalize_delta_wing_lineage"
-).finalize_lineage
+finalize_lineage = load_tutorial_module("vpm/delta_wing", "assets.postprocess").finalize_lineage
 
 FRESH_NUMERICS = {
     "compute_device": "CPU",
@@ -61,9 +59,13 @@ def _write_complete_case(tmp_path: Path) -> tuple[Path, Path]:
     assets.mkdir(parents=True)
     owner_steps = (10, 20)
 
+    vpm_frames = solution / "vpm"
+    vlm_frames = solution / "vlm"
+    vpm_frames.mkdir(parents=True, exist_ok=True)
+    vlm_frames.mkdir(parents=True, exist_ok=True)
     for step in owner_steps:
         time = step * 0.0025
-        with h5py.File(solution / f"vpm_{step:06d}.h5", "w") as archive:
+        with h5py.File(vpm_frames / f"vpm_{step:06d}.h5", "w") as archive:
             solver = archive.create_group("solver")
             numerical_configuration = FRESH_NATIVE_CONFIG
             solver.attrs["backup_format_version"] = "10.0"
@@ -83,17 +85,15 @@ def _write_complete_case(tmp_path: Path) -> tuple[Path, Path]:
             vlm.create_dataset("panel_corner_position", data=np.zeros((2, 4, 3)))
             vlm.create_dataset("circulation", data=np.zeros(2))
             vlm.create_dataset("panel_force", data=np.zeros((2, 3)))
-        (solution / f"vpm_{step:06d}.xdmf").write_text(
-            f'<Xdmf><Domain><Grid><Time Value="{time}"/></Grid></Domain></Xdmf>',
-            encoding="utf-8",
-        )
+        write_vtu_time_frame(vpm_frames / f"vpm_{step:06d}.vtu", time)
         surface = pv.PolyData(np.zeros((4, 3)))
         surface.field_data["time"] = np.array([time])
         surface.field_data["TimeValue"] = np.array([time])
-        surface.save(solution / f"vlm_{step:06d}.vtp")
+        surface.save(vlm_frames / f"vlm_{step:06d}.vtp")
 
     pvd_rows = "".join(
-        f'<DataSet timestep="{step * 0.0025}" file="vlm_{step:06d}.vtp"/>' for step in owner_steps
+        f'<DataSet timestep="{step * 0.0025}" file="vlm/vlm_{step:06d}.vtp"/>'
+        for step in owner_steps
     )
     (solution / "vlm.pvd").write_text(
         f"<VTKFile><Collection>{pvd_rows}</Collection></VTKFile>", encoding="utf-8"
@@ -224,7 +224,7 @@ def test_finalizer_rejects_nonnumeric_required_time_without_promotion(tmp_path):
 
 def test_finalizer_rejects_stale_h5_vlm_clock_without_promotion(tmp_path):
     case, manifest = _write_complete_case(tmp_path)
-    with h5py.File(case / "solution/vpm_000020.h5", "r+") as archive:
+    with h5py.File(case / "solution/vpm/vpm_000020.h5", "r+") as archive:
         archive["solver/vlm"].attrs["time"] = 0.049
     before = manifest.read_bytes()
     with pytest.raises(RuntimeError, match="saved VLM time"):
@@ -234,20 +234,17 @@ def test_finalizer_rejects_stale_h5_vlm_clock_without_promotion(tmp_path):
 
 @pytest.mark.parametrize(
     ("artifact", "pattern"),
-    [("xdmf", "native XDMF time"), ("vtp", "native VTP time")],
+    [("vtu", "native VTU time"), ("vtp", "native VTP time")],
 )
 def test_finalizer_rejects_stale_companion_clock_without_promotion(tmp_path, artifact, pattern):
     case, manifest = _write_complete_case(tmp_path)
-    if artifact == "xdmf":
-        (case / "solution/vpm_000020.xdmf").write_text(
-            '<Xdmf><Domain><Grid><Time Value="0.049"/></Grid></Domain></Xdmf>',
-            encoding="utf-8",
-        )
+    if artifact == "vtu":
+        write_vtu_time_frame(case / "solution/vpm/vpm_000020.vtu", 0.049)
     else:
         surface = pv.PolyData(np.zeros((4, 3)))
         surface.field_data["time"] = np.array([0.049])
         surface.field_data["TimeValue"] = np.array([0.049])
-        surface.save(case / "solution/vlm_000020.vtp")
+        surface.save(case / "solution/vlm/vlm_000020.vtp")
     before = manifest.read_bytes()
     with pytest.raises(RuntimeError, match=pattern):
         finalize_lineage(case)

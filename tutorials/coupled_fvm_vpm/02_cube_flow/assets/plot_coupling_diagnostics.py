@@ -8,30 +8,29 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 
-from pathlib import Path
 import argparse
 import json
-import sys
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.ticker import MaxNLocator, ScalarFormatter  # noqa: E402
 
 from . import postprocess as util  # noqa: E402
 
 FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI
-FIGURE_HEIGHT_CM = 16.0
+FIGURE_HEIGHT_CM = 10.5
 FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
 
 # Manual layout controls (fractions of the fixed 12.5 cm canvas).
-LAYOUT_LEFT = 0.14
-LAYOUT_RIGHT = 0.86
-LAYOUT_BOTTOM = 0.09
-LAYOUT_TOP = 0.95
-LAYOUT_HSPACE = 0.36
+LAYOUT_LEFT = 0.16
+LAYOUT_RIGHT = 0.84
+LAYOUT_BOTTOM = 0.13
+LAYOUT_TOP = 0.92
+LAYOUT_HSPACE = 0.42
 LEGEND_FONT_SIZE = util.FONT_SIZE_PT
 
 
@@ -63,6 +62,49 @@ def _values(records: list[dict], section: str, key: str) -> np.ndarray:
     )
 
 
+def _timing_per_fvm_step(records: list[dict], key: str) -> np.ndarray:
+    """Normalize one recorded coupling cost to one equivalent FVM step.
+
+    A coupling record contains one VPM step, one transfer, and all FVM
+    substeps needed to advance the same physical interval. Dividing each
+    component by the recorded number of FVM substeps gives a common cost unit:
+    wall seconds per FVM flow-field step. The normalization is performed per
+    record so a run may use a different valid subcycling ratio in another
+    configuration.
+
+    Parameters
+    ----------
+    records : list[dict]
+        Coupler diagnostic records containing ``timing_seconds`` and the
+        positive integer ``n_fvm_substeps``.
+    key : str
+        Timing component, for example ``"vpm"``, ``"fvm"`` or ``"transfer"``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Component wall time divided by the number of FVM substeps, in seconds
+        per equivalent FVM step.
+
+    Raises
+    ------
+    ValueError
+        If a record has a missing, non-finite, or non-positive substep count.
+    """
+    timing = _values(records, "timing_seconds", key)
+    try:
+        substeps = np.asarray([row["n_fvm_substeps"] for row in records], dtype=float)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("each record must contain n_fvm_substeps") from error
+    if (
+        np.any(~np.isfinite(substeps))
+        or np.any(substeps <= 0.0)
+        or np.any(substeps != np.floor(substeps))
+    ):
+        raise ValueError("n_fvm_substeps must be a positive integer")
+    return timing / substeps
+
+
 def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     util._THEME.set_thesis_style()
     records = _records()
@@ -70,7 +112,7 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         raise SystemExit("No coupling diagnostics found in solution/.")
 
     time = np.asarray([row["time"] for row in records], dtype=float)
-    fig, axes = plt.subplots(4, 1, figsize=FIGURE_SIZE, dpi=dpi, sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=FIGURE_SIZE, dpi=dpi, sharex=True)
     fig.subplots_adjust(
         left=LAYOUT_LEFT,
         right=LAYOUT_RIGHT,
@@ -80,13 +122,10 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     )
 
     timing = axes[0]
-    vpm = _values(records, "timing_seconds", "vpm")
-    fvm = _values(records, "timing_seconds", "fvm")
+    vpm = _timing_per_fvm_step(records, "vpm")
+    fvm = _timing_per_fvm_step(records, "fvm")
     transfer = sum(
-        (
-            _values(records, "timing_seconds", name)
-            for name in ("vpm_boundary_condition", "transfer")
-        ),
+        (_timing_per_fvm_step(records, name) for name in ("vpm_boundary_condition", "transfer")),
         start=np.zeros_like(time),
     )
     timing.stackplot(
@@ -98,7 +137,10 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         colors=(util.COLORS["vpm"], util.COLORS["fvm"], util.COLORS["accent"]),
         alpha=0.85,
     )
-    timing.set(ylabel="Wall time [s]", title="(a) Cost per coupling interval")
+    timing.set(
+        ylabel="Cost [s]",
+        title="(a) Cost per FVM step",
+    )
     timing.legend(
         loc="upper left",
         bbox_to_anchor=(0.01, 0.99),
@@ -117,21 +159,17 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         color=util.COLORS["vpm"],
         label="total",
     )
-    for key, label, style in (
-        ("n_particles_retained", "retained", "-"),
-        ("n_particles_injected", "injected", "--"),
-    ):
-        population.plot(
-            time,
-            _values(records, "transfer", key) / 1e6,
-            linestyle=style,
-            label=label,
-        )
+    population.plot(
+        time,
+        _values(records, "transfer", "n_particles_injected") / 1e6,
+        linestyle="--",
+        label="injected",
+    )
     population.set(ylabel=r"$N$ [million]", title="(b) Particle population")
     population.legend(
         loc="upper left",
         bbox_to_anchor=(0.01, 0.99),
-        ncol=3,
+        ncol=2,
         frameon=False,
         fontsize=LEGEND_FONT_SIZE,
         handlelength=1.5,
@@ -153,31 +191,19 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     )
     fidelity.set(
         ylabel=r"$\|\Delta\sum_p\boldsymbol{\Gamma}_p\|$ [m$^3$/s]",
-        title="(c) Net transfer state change",
+        title="(c) Net change in total vortex strength",
     )
 
-    quality = axes[3]
-    for key, label, color in (
-        ("replaced_vortex_strength_l1", "replaced", util.COLORS["fvm"]),
-        ("injected_vortex_strength_l1", "injected", util.COLORS["accent"]),
-    ):
-        quality.plot(
-            time,
-            _values(records, "transfer", key),
-            color=color,
-            label=label,
-        )
-    quality.set(
-        ylabel=r"$\sum_p\|\boldsymbol{\Gamma}_p\|$ [m$^3$/s]",
-        title="(d) State replacement",
-    )
-    quality.legend(loc="upper left", bbox_to_anchor=(0.01, 0.99), ncol=2, frameon=False)
-    from matplotlib.ticker import MaxNLocator
+    fidelity.yaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+    fidelity.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
 
     for ax in axes:
         ax.yaxis.set_major_locator(MaxNLocator(4))
-    axes[3].set_xlabel("Flow time [s]")
+    axes[2].set_xlabel("Flow time [s]")
     util._THEME.fit_thesis_y_label_margins(fig, axes)
+    # The longer cost label needs a slightly wider symmetric margin than the
+    # automatic minimum to remain clear with the fixed thesis canvas.
+    util._THEME.centered_subplots_adjust(fig, outer=LAYOUT_LEFT)
 
     util.save(fig, "coupling_diagnostics", figure_format, dpi)
     plt.close(fig)

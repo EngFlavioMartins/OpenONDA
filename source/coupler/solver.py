@@ -1019,7 +1019,7 @@ class FVMVPMCoupler:
         ----------
         directory : str or pathlib.Path
             Destination directory. It is created if needed. A rolling manifest
-            and referenced FVM, VPM, XDMF, and boundary-history artifacts are
+            and referenced FVM, VPM, VTU, and boundary-history artifacts are
             stored below it.
         coupling_step : int or None, default=None
             Step label for the checkpoint. ``None`` derives it from the FVM
@@ -1028,7 +1028,7 @@ class FVMVPMCoupler:
         Returns
         -------
         pathlib.Path
-            Backup directory. On rank zero the committed VPM HDF5/XDMF pair is
+            Backup directory. On rank zero the committed VPM HDF5/VTU pair is
             also copied into ``solution/vpm`` as a retained output frame.
 
         Raises

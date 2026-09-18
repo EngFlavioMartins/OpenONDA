@@ -31,6 +31,11 @@ class Backup:
     ``log_directory`` are relative to the case directory unless absolute.
     Backups keep compute precision and do not trigger samples.
 
+    Each written HDF5 restart frame has a same-step VTK ``.vtu`` companion
+    below the ``vpm/`` component directory; the root ``vpm.pvd`` collection
+    indexes those VTK frames for ParaView. The VTK companion is a visualization
+    export and is not used to restore numerical state.
+
     Attributes
     ----------
     interval_steps : int

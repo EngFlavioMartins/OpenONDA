@@ -110,6 +110,50 @@ def test_section_extrusion_conserves_volume_and_shared_faces():
     np.testing.assert_allclose(mesh["vertex_position"][:, 2].max(), 0.5)
 
 
+def test_section_extrusion_snaps_uniform_vtk_plane_offset(monkeypatch):
+    """A uniform VTK slice-rounding offset must not fail wall projection."""
+    import pyvista as pv
+
+    from source.solvers.fvm.mesh.cartesian import extrusion
+
+    source = structured_box(3, 2, 1, lx=3, ly=2, lz=1)
+    domain = BoxDomain(
+        bounds=(0, 3, 0, 2, -0.5, 0.5),
+        patches=BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+    )
+
+    real_clean = pv.PolyData.clean
+
+    def offset_clean(dataset, **kwargs):
+        cleaned = real_clean(dataset, **kwargs)
+        cleaned.points[:, 2] += 6.0e-8
+        return cleaned
+
+    class IdentityIndex:
+        @staticmethod
+        def nearest_points(points):
+            values = np.asarray(points, dtype=float)
+            return values.copy(), np.zeros(len(values)), np.zeros(len(values), dtype=np.int64)
+
+        @staticmethod
+        def nearest_point(point):
+            return np.asarray(point, dtype=float), 0.0
+
+    monkeypatch.setattr(pv.PolyData, "clean", offset_clean)
+    monkeypatch.setattr(extrusion.SurfaceIndex, "build", lambda triangles: IdentityIndex())
+    monkeypatch.setattr(extrusion, "_section_boundary_name", lambda *args: "body")
+
+    mesh = extrude_mesh_section(
+        source,
+        coordinate=0.06,
+        levels=(-0.5, 0.5),
+        domain=domain,
+        surfaces=(SimpleNamespace(patch="body", triangles=np.zeros((1, 3, 3))),),
+    )
+
+    np.testing.assert_allclose(np.unique(mesh["vertex_position"][:, 2]), (-0.5, 0.5))
+
+
 def test_section_extrusion_recovers_displaced_outer_edges():
     source = structured_box(2, 2, 1, lx=2, ly=2, lz=1)
     points = np.asarray(source["vertex_position"], dtype=float).copy()

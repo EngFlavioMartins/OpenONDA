@@ -137,18 +137,18 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert manifest["artifacts"] == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
-        "vpm_xdmf": "vpm_000002.xdmf",
+        "vpm_vtu": "vpm_000002.vtu",
         "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
     assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
     assert not list(backup.glob("*_000001*"))
-    assert sorted(path.name for path in sol.glob("vpm_*.h5")) == [
+    assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.h5")) == [
         "vpm_000001.h5",
         "vpm_000002.h5",
     ]
-    assert sorted(path.name for path in sol.glob("vpm_*.xdmf")) == [
-        "vpm_000001.xdmf",
-        "vpm_000002.xdmf",
+    assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.vtu")) == [
+        "vpm_000001.vtu",
+        "vpm_000002.vtu",
     ]
 
     expected_u = fvm.velocity.copy()

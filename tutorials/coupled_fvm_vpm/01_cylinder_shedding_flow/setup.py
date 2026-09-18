@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Coupled FVM--VPM flow past a finite circular cylinder at Re = 150.
+"""Coupled FVM–VPM flow past a finite circular cylinder at Re = 150.
 
 The body-fitted FVM resolves the cylinder and a compact near-body box. The
 VPM carries vorticity through the outer domain. The supplied body is 12D long,
@@ -7,7 +7,7 @@ so this remains a three-dimensional calculation even though the midspan flow
 is compared with the quasi-two-dimensional FVM reference.
 
 Usage:
-    python setup.py
+    ./allrun.sh
 """
 
 from pathlib import Path
@@ -30,31 +30,65 @@ REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
 REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 
-# Geometry and resolution. CELL_SIZE matches the reference-flow fine case.
-CASE_DIR = Path(__file__).resolve().parent
-CYLINDER_STL = CASE_DIR / "assets" / "cylinder_long.stl"
+# FVM domain and mesh
+FVM_CORES = 4
+PIMPLE_CORRECTORS = 2
+
 CELL_SIZE = 0.03
 SPANWISE_CELL_SIZE = 1.0 / 9.0
-FVM_HALF_SPAN = 6.0
-FVM_BOX = (-1.44, 1.92, -1.44, 1.44, -FVM_HALF_SPAN, FVM_HALF_SPAN)
-TRANSFER_REGION = (-1.20, 1.68, -1.20, 1.20, -5.76, 5.76)
-VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -6.60, 6.60)
-PARTICLE_SPACING = CELL_SIZE
-SAMPLE_SPACING = 2.0 * CELL_SIZE
-PARTICLE_LIMIT = 1_500_000
+FVM_HALF_SPAN = 0.5
+FVM_BOX = (
+    -1.5,
+    1.5,
+    -1.5,
+    1.5,
+    -FVM_HALF_SPAN,
+    FVM_HALF_SPAN,
+)  # We need a sensitivity analysis of this value.
+TRANSFER_REGION_BOX = (
+    -1.25,
+    1.25,
+    -1.25,
+    1.25,
+    -FVM_HALF_SPAN,
+    FVM_HALF_SPAN,
+)  # We need a sensitivity analysis of this value with respect to the one above.
 
-# Numerical controls and output schedules
-FVM_CORES = 6
-TIME_STEP_SIZE = 0.004
+# VPM domain and resolution
+VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -6.60, 6.60)
+VPM_PARTICLE_SPACING = CELL_SIZE
+SAMPLE_SPACING = 2.0 * CELL_SIZE
+PARTICLE_LIMIT = 1_000_000
+
+# Coupling
+BOUNDARY_CONDITION_MODE = "vorticity_mixed"
+TRANSFER_METHOD = "buffered_m4_renewal"
+TRANSFER_VORTICITY_CUTOFF = 0.05
+TRANSFER_AMPLIFICATION_CAP = 1.8
+FVM_CONSISTENCY_WIDTH = 0.0
+INTERFACE_ITERATIONS = 5  # We need a sensitivity analysis of this value.
+
+# Time and output
+FVM_TIME_STEP_SIZE = 0.004
+VPM_TIME_STEP_MULTIPLIER = 5
+VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 END_TIME = 60.0
 SAMPLING_INTERVAL_TIME = 0.1
 SLICE_INTERVAL_TIME = 0.5
-BACKUP_INTERVAL_TIME = 2.5
+WRITE_SOLUTION_BACKUP = 2.5
 GBD_VORTICITY_FLOOR = 0.01
 
-SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / TIME_STEP_SIZE)
-SLICE_INTERVAL_STEPS = round(SLICE_INTERVAL_TIME / TIME_STEP_SIZE)
-BACKUP_INTERVAL_STEPS = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
+FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
+VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIME_STEP_SIZE)
+FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
+VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
+FVM_SLICE_INTERVAL_STEPS = round(SLICE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
+VPM_SLICE_INTERVAL_STEPS = round(SLICE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+
+# Case files and derived sampling data
+CASE_DIR = Path(__file__).resolve().parent
+CYLINDER_STL = CASE_DIR / "assets" / "cylinder_long.stl"
 
 FVM_PATCHES = msh.BoxPatches(
     xmin="numericalBoundary",
@@ -81,7 +115,14 @@ FVM_MESH = msh.ExtrudedCartesianMesher(
         refinements=(
             msh.BoxRefinement(
                 name="nearBody",
-                bounds=(-1.0, 1.92, -1.0, 1.0, FVM_SOURCE_BOX[4], FVM_SOURCE_BOX[5]),
+                bounds=(
+                    -1.0,
+                    FVM_BOX[1] - 2.0 * CELL_SIZE,
+                    -1.0,
+                    1.0,
+                    FVM_SOURCE_BOX[4],
+                    FVM_SOURCE_BOX[5],
+                ),
                 cell_size=2.0 * CELL_SIZE,
             ),
         ),
@@ -92,10 +133,10 @@ FVM_MESH = msh.ExtrudedCartesianMesher(
     levels=FVM_SPAN_LEVELS,
 )
 
-FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=SAMPLING_INTERVAL_STEPS)
-FVM_SLICE_SCHEDULE = fvm.RunSchedule(every_n_steps=SLICE_INTERVAL_STEPS)
-VPM_SAMPLING_SCHEDULE = vpm.EverySteps(SAMPLING_INTERVAL_STEPS)
-VPM_SLICE_SCHEDULE = vpm.EverySteps(SLICE_INTERVAL_STEPS)
+FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
+FVM_SLICE_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SLICE_INTERVAL_STEPS)
+VPM_SAMPLING_SCHEDULE = vpm.EverySteps(VPM_SAMPLING_INTERVAL_STEPS)
+VPM_SLICE_SCHEDULE = vpm.EverySteps(VPM_SLICE_INTERVAL_STEPS)
 
 FVM_SAMPLERS = (
     fvm.ForceSampler(
@@ -139,9 +180,9 @@ FVM_SETUP = fvm.FVMSetup(
     execution=fvm.ComputeConfig(operator_backend="numba"),
     output=fvm.OutputConfig(compression="lz4", asynchronous=True, ghost_layers=0),
     time=fvm.TimeConfig(
-        time_step_size=TIME_STEP_SIZE,
+        time_step_size=FVM_TIME_STEP_SIZE,
         end_time=END_TIME,
-        output_schedule=fvm.RunSchedule(every_n_steps=BACKUP_INTERVAL_STEPS),
+        output_schedule=fvm.RunSchedule(every_n_steps=FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS),
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
@@ -156,7 +197,7 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_relative_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
-        n_correctors=2,
+        n_correctors=PIMPLE_CORRECTORS,
         n_outer_correctors=2,
         velocity_relaxation=0.7,
         pressure_relaxation=0.3,
@@ -184,17 +225,17 @@ FVM_SETUP = fvm.FVMSetup(
 
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    transfer_method="buffered_m4_renewal",
-    transfer_region_bounds=TRANSFER_REGION,
-    backup_interval_steps=BACKUP_INTERVAL_STEPS,
-    boundary_condition_mode="vorticity_mixed",
-    fvm_consistency_width=0.0,
-    interface_iterations=12,
-    eta_blend_width=6.0 * PARTICLE_SPACING,
-    vpm_only_width=2.0 * PARTICLE_SPACING,
-    transfer_vorticity_cutoff=0.05,
-    transfer_amplification_cap=1.8,
-    transfer_diagnostic_interval_steps=BACKUP_INTERVAL_STEPS,
+    transfer_method=TRANSFER_METHOD,
+    transfer_region_bounds=TRANSFER_REGION_BOX,
+    backup_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+    boundary_condition_mode=BOUNDARY_CONDITION_MODE,
+    fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
+    interface_iterations=INTERFACE_ITERATIONS,
+    eta_blend_width=6.0 * VPM_PARTICLE_SPACING,
+    vpm_only_width=2.0 * VPM_PARTICLE_SPACING,
+    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
+    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
+    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
 VPM_SAMPLERS = (
@@ -250,14 +291,14 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
 VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     numerics=vpm.Numerics(
-        time_step_size=TIME_STEP_SIZE,
+        time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
-            particle_spacing=PARTICLE_SPACING,
+            particle_spacing=VPM_PARTICLE_SPACING,
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
-            threshold=GBD_VORTICITY_FLOOR * PARTICLE_SPACING**3,
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=PARTICLE_LIMIT,
             core_radius_ratio=1.0,
         ),
@@ -283,7 +324,7 @@ VPM_CASE = vpm.VPMCase(
     ),
     backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),
     samplers=Samplers(samples=VPM_SAMPLERS),
-    run=vpm.RunPlan(steps=round(END_TIME / TIME_STEP_SIZE)),
+    run=vpm.RunPlan(steps=round(END_TIME / VPM_TIME_STEP_SIZE)),
     directory=CASE_DIR,
 )
 

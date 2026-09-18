@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot ``delta_wing_circulation_history.png``."""
+"""Plot ``delta_wing_wake_vertical.png``."""
 
 if not __package__:
     from pathlib import Path as _CasePath
@@ -10,16 +10,20 @@ if not __package__:
 import argparse
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 from openonda import plotting as _theme
 
-from .postprocess import FIGURES_DIR, _save_figure, flow_integrals, resolve_plot_sources
+from .postprocess import FIGURES_DIR, _plot_wake_field, resolve_plot_sources
 
 
-def plot_circulation(
-    samples_arg=None, destination=FIGURES_DIR, figure_format="png", *, partial=False
+def plot_wake_vertical(
+    samples_arg=None,
+    destination=FIGURES_DIR,
+    figure_format="png",
+    solution_dirs=None,
+    *,
+    partial=False,
 ):
-    """Export the sampled vortex-strength history figure.
+    """Export the vertical wake-field figure from native wake-plane samples.
 
     Parameters
     ----------
@@ -30,20 +34,20 @@ def plot_circulation(
         ``figures/`` or ``figures/partial/`` directory for the export.
     figure_format : str
         Export extension, ``png`` or ``pdf``.
+    solution_dirs : list[Path] | None
+        Matching solver directories when ``samples_arg`` is explicit.
     partial : bool
-        True to label the figure as a partial-run diagnostic.
+        True to plot the latest common native wake timestamp instead of the
+        measured-period mean.
     """
-    _theme.set_thesis_style()
-    data = flow_integrals(samples_arg)
-    fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.0 * _theme.CM))
-    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.20, top=0.88)
-    ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_theme.COLORS["VPMpurple"])
-    ax.set(
-        xlabel="Time [s]",
-        ylabel=r"$\sum_p |\boldsymbol{\Gamma}_p|$ [m$^3$/s]",
-        title="Partial run" if partial else "",
+    _plot_wake_field(
+        samples_arg,
+        destination,
+        figure_format,
+        "vertical",
+        solution_dirs=solution_dirs,
+        partial=partial,
     )
-    _save_figure(fig, (ax,), destination / "delta_wing_circulation_history.png", figure_format)
 
 
 def main() -> None:
@@ -55,13 +59,23 @@ def main() -> None:
         action="append",
         help="sample directory; repeat in sparse-to-dense order for a continuation",
     )
+    parser.add_argument(
+        "--solution",
+        type=Path,
+        action="append",
+        help="matching solution directory for each --samples directory",
+    )
     args = parser.parse_args()
     if args.samples:
-        plot_circulation(args.samples, FIGURES_DIR, args.format)
+        plot_wake_vertical(args.samples, FIGURES_DIR, args.format, args.solution)
         return
     sources = resolve_plot_sources()
-    plot_circulation(
-        sources.samples_arg, sources.destination, args.format, partial=not sources.complete
+    plot_wake_vertical(
+        sources.samples_arg,
+        sources.destination,
+        args.format,
+        sources.solution_dirs,
+        partial=not sources.complete,
     )
 
 

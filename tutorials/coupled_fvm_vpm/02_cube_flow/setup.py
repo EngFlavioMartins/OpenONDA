@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Coupled LES FVM–VPM simulation of flow past a cube at Re = 1000.
 
 The FVM mesh is generated directly as solver-native data by OpenONDA's native
@@ -9,10 +10,10 @@ them here to define a different case.
 
 Usage:
     ./allrun.sh
+    ./allcontinue.sh
 """
 
-from __future__ import annotations
-
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -28,25 +29,24 @@ CASE_NAME = "coupled_cube_flow"
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
-REYNOLDS = 1000.0
-KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS
-INITIAL_VELOCITY = (1.0, 0.0, 0.0)
+REYNOLDS_NUMBER = 1000.0
+KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS_NUMBER
 
 # FVM domain and mesh
 FVM_CORES = 4
 PIMPLE_CORRECTORS = 2
 
 CELL_SIZE = 0.045
-FVM_BOX = (-1.50, 2.00, -1.50, 1.50, -1.50, 1.50)
-TRANSFER_REGION_BOX = (-1.25, 1.75, -1.25, 1.25, -1.25, 1.25)
+FVM_BOX = (-1.50, 1.50, -1.50, 1.50, -1.50, 1.50)
+TRANSFER_REGION_BOX = (-1.45, 1.45, -1.45, 1.45, -1.45, 1.45)
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
-PARTICLE_LIMIT = 1_500_000
-VPM_CORE_RADIUS_RATIO = 1.1
-GBD_VORTICITY_FLOOR = 0.002
+PARTICLE_LIMIT = 1_000_000
+VPM_CORE_RADIUS_RATIO = 1.05
+GBD_VORTICITY_FLOOR = 0.003
 VPM_PARTICLE_SPACING = CELL_SIZE
-ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
+ETA_BLEND_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -54,22 +54,22 @@ TRANSFER_METHOD = "buffered_m4_renewal"
 TRANSFER_VORTICITY_CUTOFF = 0.05
 TRANSFER_AMPLIFICATION_CAP = 1.8
 FVM_CONSISTENCY_WIDTH = 0.0
-INTERFACE_ITERATIONS = 12
+INTERFACE_ITERATIONS = 3
 
 # Time and output
 END_TIME = 20.0
-SAMPLING_INTERVAL_TIME = 0.050
+SAMPLING_INTERVAL_TIME = 0.05
 WRITE_SOLUTION_BACKUP = 0.5
 FVM_TIME_STEP_SIZE = 0.01
 
-VPM_TIME_STEP_MULTIPLIER = 1
+VPM_TIME_STEP_MULTIPLIER = 5
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
 VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIME_STEP_SIZE)
 FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
-SAMPLE_SPACING = min(0.125, 2 * CELL_SIZE)
+SAMPLE_SPACING = min(0.125, 2.0 * CELL_SIZE)
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
 
 # Case files and derived sampling data
@@ -116,19 +116,19 @@ FVM_SAMPLERS = (
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
-        file_name=f"fvm_centreline",
+        file_name="fvm_centreline",
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
-        file_name=f"fvm_offaxis_y075",
+        file_name="fvm_offaxis_y075",
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
+        normal=[0.0, 0.0, 1.0],
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
@@ -164,14 +164,14 @@ FVM_SETUP = fvm.FVMSetup(
     linear=fvm.LinearSolverConfig(
         linear_solver="bicgstab",
         pressure_solver="amg",
-        pressure_tolerance=1e-6,
+        pressure_tolerance=1.0e-6,
         pressure_relative_tolerance=0.01,
         pressure_final_relative_tolerance=0.0,
-        momentum_tolerance=1e-6,
+        momentum_tolerance=1.0e-6,
         momentum_relative_tolerance=0.1,
         momentum_final_relative_tolerance=0.0,
         momentum_max_iterations=2000,
-        ilu_drop_tolerance=1e-4,
+        ilu_drop_tolerance=1.0e-4,
         ilu_fill_factor=10.0,
         ilu_reuse_tolerance=0.05,
     ),
@@ -194,7 +194,7 @@ FVM_SETUP = fvm.FVMSetup(
         ),
         fvm.BoundaryConfig.wall("cube"),
     ],
-    initial_velocity=list(INITIAL_VELOCITY),
+    initial_velocity=list(FREESTREAM_VELOCITY),
     initial_kinematic_pressure=0.0,
 )
 
@@ -213,7 +213,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
-
 VPM_SAMPLERS = (
     vpm.LineSampler(
         start=[VPM_DOMAIN[0], 0.0, 0.0],
@@ -231,7 +230,7 @@ VPM_SAMPLERS = (
     ),
     vpm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
+        normal=[0.0, 0.0, 1.0],
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="vpm_slice_z0",
@@ -240,7 +239,7 @@ VPM_SAMPLERS = (
     ),
     vpm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
+        normal=[0.0, 0.0, 1.0],
         bounds=WAKE_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="vpm_wake_slice_z0",
@@ -262,7 +261,7 @@ VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
-        freestream_velocity=list(FREESTREAM_VELOCITY),
+        freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             particle_spacing=VPM_PARTICLE_SPACING,
@@ -281,7 +280,7 @@ VPM_CASE = vpm.VPMCase(
         compute_device="AUTO",
         max_n_particles=PARTICLE_LIMIT,
         max_evaluation_points=PARTICLE_LIMIT,
-        domain_bounds=list(VPM_DOMAIN),
+        domain_bounds=VPM_DOMAIN,
         write_precision="f32",
         panel_solver=VPM_PANEL_SOLVER,
         bodies=(vpm.PanelBodySetup(stl=BODY_STL, uid="body", reference_area=CUBE_SIDE**2),),
@@ -294,12 +293,22 @@ VPM_CASE = vpm.VPMCase(
 )
 
 
-def main() -> int:
+def main(restart_from: Path | None = None) -> int:
     mesh = msh.CachedMesh(FVM_MESH, CASE_DIR / "constant" / "mesh.npz")
     with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=mesh) as solver:
-        solver.run()
+        if restart_from is None:
+            solver.run()
+        else:
+            solver.run(restart_from=restart_from)
     return 0
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--restart-from",
+        type=Path,
+        help="Restore the latest committed coupled backup from this directory before continuing.",
+    )
+    arguments = parser.parse_args()
+    main(arguments.restart_from)

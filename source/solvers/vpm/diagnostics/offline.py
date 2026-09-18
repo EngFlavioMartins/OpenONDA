@@ -10,13 +10,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
-# defusedxml for safe parsing; Element type only from stdlib (defusedxml has none).
-from xml.etree.ElementTree import Element
-
-import defusedxml.ElementTree as ET  # noqa: N817
 import h5py
 import numpy as np
 import taichi as ti
@@ -100,89 +95,52 @@ class ParticleContainerWrapper:
 
 class OfflineFlowDiagnostics:
     """
-    Offline flow diagnostics processor for VPM backup files.
+    Offline flow diagnostics processor for native VPM backup frames.
 
-    Reads particle data from HDF5 backup files referenced by a temporal XDMF file
-    and computes all integral flow quantities using GPU-accelerated Taichi kernels.
+    Reads particle data directly from the canonical ``vpm_<step>.h5`` backup
+    series in one solution directory and computes all integral flow quantities
+    using GPU-accelerated Taichi kernels. No visualization intermediate is
+    involved.
 
     Attributes:
-        xdmf_path: Path to the temporal XDMF file.
-        h5_files: List of HDF5 files extracted from XDMF.
+        h5_directory: Directory containing the canonical ``vpm_*.h5`` frames.
+        h5_files: List of HDF5 frame files, sorted by timestep.
         results: List of FlowIntegrals for each timestep.
 
     Example:
-        >>> diagnostics = OfflineFlowDiagnostics('solution/vpm/vpm_temporal.xdmf')
+        >>> diagnostics = OfflineFlowDiagnostics('solution/vpm')
         >>> diagnostics.compute_all()
         >>> diagnostics.save()  # Saves to 'diagnostics.log'
         >>> diagnostics.save('custom_output.csv')
     """
 
-    def __init__(self, xdmf_path: str | Path):
+    def __init__(self, h5_directory: str | Path, h5_glob: str = "vpm_*.h5"):
         """
         Initialize the offline diagnostics processor.
 
         Args:
-            xdmf_path: Path to the temporal XDMF file containing references
-                       to all timestep HDF5 files.
+            h5_directory: Directory containing the canonical HDF5 backup
+                frames (``vpm_<step>.h5`` by default).
+            h5_glob: Filename pattern used to select the frames below
+                ``h5_directory``.
 
         Raises:
-            FileNotFoundError: If the XDMF file does not exist.
-            ValueError: If the XDMF file is not a valid temporal collection.
+            FileNotFoundError: If the directory does not exist or contains no
+                matching HDF5 frames.
         """
-        self.xdmf_path = Path(xdmf_path)
-        if not self.xdmf_path.exists():
-            raise FileNotFoundError(f"XDMF file not found: {xdmf_path}")
+        self.base_dir = Path(h5_directory)
+        if not self.base_dir.is_dir():
+            raise FileNotFoundError(f"HDF5 backup directory not found: {h5_directory}")
 
-        self.base_dir = self.xdmf_path.parent
-        self.h5_files: list[Path] = []
+        self.h5_files: list[Path] = sorted(self.base_dir.glob(h5_glob))
+        if not self.h5_files:
+            raise FileNotFoundError(f"No HDF5 backup files found below {self.base_dir}")
+
         self.results: list[FlowIntegrals] = []
 
-        self._parse_xdmf()
-
-        Logging.info(f"Offline diagnostics: Loaded {len(self.h5_files)} timesteps from {xdmf_path}")
-
-    def _parse_xdmf(self) -> None:
-        """Parse the temporal XDMF file to extract HDF5 file references."""
-        tree = ET.parse(self.xdmf_path)
-        root = tree.getroot()
-
-        # Extract unique HDF5 file references
-        h5_refs = self._extract_h5_references(root)
-        if not h5_refs:
-            raise ValueError(f"No HDF5 references found in {self.xdmf_path}")
-
-        # Convert to validated paths and sort by timestep
-        self.h5_files = self._resolve_and_sort_h5_paths(h5_refs)
-
-    def _extract_h5_references(self, root: Element) -> set:
-        """Extract unique HDF5 file references from XDMF DataItem elements."""
-        h5_refs = set()
-        for data_item in root.iter("DataItem"):
-            if data_item.get("Format") != "HDF":
-                continue
-            text = (data_item.text or "").strip()
-            if ":" in text:
-                h5_refs.add(text.split(":")[0])
-        return h5_refs
-
-    def _resolve_and_sort_h5_paths(self, h5_refs: set) -> list[Path]:
-        """Convert HDF5 references to validated paths, sorted by timestep."""
-        h5_paths = []
-        for ref in h5_refs:
-            path = self.base_dir / ref
-            if path.exists():
-                h5_paths.append(path)
-            else:
-                Logging.warning(f"HDF5 file not found: {path}")
-
-        # Sort by timestep number extracted from filename
-        return sorted(h5_paths, key=self._extract_time_step_from_path)
-
-    @staticmethod
-    def _extract_time_step_from_path(path: Path) -> int:
-        """Extract timestep number from HDF5 filename (e.g., _000123.h5 -> 123)."""
-        match = re.search(r"_(\d{6})\.h5$", path.name)
-        return int(match.group(1)) if match else 0
+        Logging.info(
+            f"Offline diagnostics: Loaded {len(self.h5_files)} timesteps from {self.base_dir}"
+        )
 
     def _load_particle_data(self, h5_path: Path) -> dict[str, Any]:
         """
@@ -335,8 +293,8 @@ class OfflineFlowDiagnostics:
         Save diagnostics to a log file.
 
         Args:
-            output_path: Output file path. Defaults to 'diagnostics.log' in the
-                         same directory as the XDMF file.
+            output_path: Output file path. Defaults to 'diagnostics.log' in
+                ``h5_directory``.
 
         Returns:
             Path to the created output file.
@@ -353,7 +311,7 @@ class OfflineFlowDiagnostics:
         with open(output_path, "w") as f:
             # Header
             f.write("# OpenONDA Offline Flow Diagnostics\n")
-            f.write(f"# Source: {self.xdmf_path}\n")
+            f.write(f"# Source: {self.base_dir}\n")
             f.write(f"# Timesteps: {len(self.results)}\n")
             f.write("#\n")
             f.write("# Columns:\n")
@@ -398,7 +356,7 @@ class OfflineFlowDiagnostics:
 
         Logging.section(
             "offline flow diagnostics",
-            ("source", str(self.xdmf_path)),
+            ("source", str(self.base_dir)),
             ("recorded states", len(self.results)),
             ("initial time", first.time, "s"),
             ("final time", last.time, "s"),
@@ -417,45 +375,30 @@ class OfflineFlowDiagnostics:
 
 
 def compute_offline_diagnostics(
-    backup_pattern: str | None = None,
-    xdmf_path: str | Path | None = None,
+    h5_directory: str | Path,
+    h5_glob: str = "vpm_*.h5",
     output_path: str | Path | None = None,
     verbose: bool = True,
 ) -> Path:
     """
-    Compute and save offline flow diagnostics from VPM backup files.
-
-    This function can accept either a glob pattern for backup files or a
-    pre-existing temporal XDMF file. If backup_pattern is provided, it will
-    automatically create the temporal XDMF file.
+    Compute and save offline flow diagnostics from native VPM backup frames.
 
     Args:
-        backup_pattern: Glob pattern for backup files (e.g., 'solution/case/case_*').
-                        If provided, a temporal XDMF is generated automatically.
-        xdmf_path: Path to existing temporal XDMF file. Ignored if backup_pattern is set.
-        output_path: Output file path. Defaults to 'diagnostics.log' in the
-                     same directory as the backup files.
-        verbose: If True, print progress to console.
+        h5_directory: Directory containing the canonical HDF5 backup frames
+            (``vpm_<step>.h5`` by default).
+        h5_glob: Filename pattern used to select the frames below
+            ``h5_directory``.
+        output_path: Output file path. Defaults to 'diagnostics.log' in
+            ``h5_directory``.
+        verbose: If True, print a summary to the shared log.
 
     Returns:
         Path to the created output file.
 
     Example:
-        >>> # From backup pattern (recommended)
-        >>> compute_offline_diagnostics('solution/lamb_oseen/lamb_oseen_*')
-
-        >>> # From existing XDMF file
-        >>> compute_offline_diagnostics(xdmf_path='solution/vpm/vpm_temporal.xdmf')
+        >>> compute_offline_diagnostics('solution/vpm')
     """
-    from ..io.backup import _BackupIO
-
-    # Resolve XDMF path
-    if backup_pattern is not None:
-        xdmf_path = _BackupIO.create_temporal_xdmf(backup_pattern=backup_pattern)
-    elif xdmf_path is None:
-        raise ValueError("Either backup_pattern or xdmf_path must be provided")
-
-    diagnostics = OfflineFlowDiagnostics(xdmf_path)
+    diagnostics = OfflineFlowDiagnostics(h5_directory, h5_glob=h5_glob)
     diagnostics.compute_all(verbose=verbose)
 
     if verbose:

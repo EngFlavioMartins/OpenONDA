@@ -9,7 +9,7 @@ It combines finite-volume, vortex-particle, and vortex-lattice methods to study
 viscous flows, wakes, wings, rotors, and interacting vortices.
 
 <p align="center">
-  <img src="tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif"
+  <img src="tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.gif"
        alt="Looping visualization of the wake from two heaving delta wings"
        width="960">
 </p>
@@ -70,6 +70,7 @@ Each case includes its own instructions and input assets. See the [tutorial guid
 - [VPM solver guide](docs/vpm.md)
 - [FVM--VPM coupling guide](docs/coupling.md)
 - [Solution-output layout](docs/solution_layout.md)
+- [Visualization style and colour maps](docs/visualization.md)
 - [FVM package/API notes](source/solvers/fvm/README.md)
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)

@@ -22,7 +22,7 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
         assert not re.search(r"parents\[[3-9]", source), setup
 
     for script in TUTORIALS.rglob("all*.sh"):
-        assert script.name in {"allrun.sh", "allplot.sh", "allclean.sh"}, script
+        assert script.name in {"allrun.sh", "allplot.sh", "allclean.sh", "allcontinue.sh"}, script
         for line in script.read_text().splitlines():
             if not line or line.startswith("#"):
                 continue

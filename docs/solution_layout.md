@@ -17,7 +17,7 @@ solution/
     fvm_*.vtu|pvtu        # field frames and MPI pieces
   vpm/
     vpm_*.h5              # particle fields and explicit VPM restart targets
-    vpm_*.xdmf            # XDMF descriptors
+    vpm_*.vtu             # ParaView particle frames indexed by vpm.pvd
   vlm/
     vlm_*.vtp             # surface frames
 ```
@@ -26,7 +26,9 @@ Open a root-level `.pvd` file in ParaView. The collection stores relative
 paths, so copying or moving the entire `solution/` directory preserves the
 series. Python post-processing should read `fvm/mesh.npz` for native FVM mesh
 data, `vpm/*.h5` for particle states, and the root metadata records for the
-executed configuration and clock.
+executed configuration and clock. ParaView should open the root `.pvd`
+collections; the VPM collection references `.vtu` frames because ParaView's
+PVD reader does not accept XDMF collection members.
 
 The layout intentionally does not reserve a restart directory. Restart
 persistence is separate from visualization, and an explicit restart target is

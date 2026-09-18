@@ -259,3 +259,85 @@ def test_all_field_pairings_use_identical_sample_support(modules, monkeypatch):
             comparison=comparison,
         )
     assert areas == pytest.approx([5, 5, 5])
+
+
+def test_coupling_costs_are_normalized_to_one_fvm_step():
+    diagnostics = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    records = [
+        {"n_fvm_substeps": 5, "timing_seconds": {"vpm": 10.0}},
+        {"n_fvm_substeps": 4, "timing_seconds": {"vpm": 8.0}},
+    ]
+    np.testing.assert_allclose(diagnostics._timing_per_fvm_step(records, "vpm"), [2.0, 2.0])
+
+
+def test_coupling_diagnostics_figure_keeps_only_requested_population_series(
+    monkeypatch,
+):
+    diagnostics = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    records = []
+    for time, total, injected in ((0.05, 10, 4), (0.10, 20, 5)):
+        records.append(
+            {
+                "time": time,
+                "n_fvm_substeps": 5,
+                "timing_seconds": {
+                    "vpm": 10.0,
+                    "fvm": 5.0,
+                    "vpm_boundary_condition": 1.0,
+                    "transfer": 2.0,
+                },
+                "transfer": {
+                    "n_particles_after": total,
+                    "n_particles_injected": injected,
+                    "state_change_vortex_strength_net_x": 1.0e-5,
+                    "state_change_vortex_strength_net_y": 0.0,
+                    "state_change_vortex_strength_net_z": 0.0,
+                },
+            }
+        )
+    saved = {}
+    monkeypatch.setattr(diagnostics, "_records", lambda: records)
+    monkeypatch.setattr(
+        diagnostics.util, "save", lambda figure, *args: saved.setdefault("figure", figure)
+    )
+
+    diagnostics.plot("png", dpi=72)
+
+    figure = saved["figure"]
+    assert len(figure.axes) == 3
+    assert [line.get_label() for line in figure.axes[1].lines] == ["total", "injected"]
+    assert figure.axes[0].get_ylabel() == "Cost [s]"
+    assert figure.axes[2].get_title() == "(c) Net change in total vortex strength"
+
+
+def test_field_comparison_places_panel_labels_at_top_and_keeps_x_axes_visible(
+    modules,
+    monkeypatch,
+):
+    fields, _ = modules
+    coordinates = np.linspace(-1.0, 1.0, 9)
+    x, y = np.meshgrid(coordinates, coordinates)
+    left = np.zeros((*x.shape, 3))
+    right = np.zeros_like(left)
+    saved = {}
+    monkeypatch.setattr(
+        fields.util, "save", lambda figure, *args: saved.setdefault("figure", figure)
+    )
+
+    fields._field_figure(
+        1.0,
+        x,
+        y,
+        left,
+        right,
+        "(a) Left",
+        "(b) Right",
+        "test_fields",
+        "png",
+        72,
+    )
+
+    axes = saved["figure"].axes[:3]
+    assert [axis.get_title() for axis in axes] == ["(a) Left", "(b) Right", "(c) Difference"]
+    assert [axis.get_xlabel() for axis in axes] == ["", "", r"$x/D$"]
+    assert all(label.get_visible() for axis in axes for label in axis.get_xticklabels())

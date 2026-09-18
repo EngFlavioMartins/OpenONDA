@@ -247,7 +247,7 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
         "artifacts": {
             "fvm": fvm_artifact,
             "vpm": f"vpm_{suffix}.h5",
-            "vpm_xdmf": f"vpm_{suffix}.xdmf",
+            "vpm_vtu": f"vpm_{suffix}.vtu",
             "vpm_boundary_condition": boundary_artifact,
         },
     }
@@ -291,7 +291,7 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
     """Publish the post-renewal VPM state as a user-facing time-series frame.
 
     The atomic coupled backup remains a rolling restart artifact. This
-    function copies its already-written VPM HDF5/XDMF pair into
+    function copies its already-written VPM HDF5/VTK pair into
     ``solution/vpm/`` and updates the root-level ``vpm.pvd`` collection. If
     the saved state contains a VLM surface, it also publishes the corresponding
     ``solution/vlm/`` frame and ``vlm.pvd`` collection.
@@ -301,15 +301,15 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
     manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
     artifacts = manifest.get("artifacts", {})
     source_h5 = _resolve_artifact(backup, artifacts.get("vpm", ""))
-    source_xdmf = _resolve_artifact(backup, artifacts.get("vpm_xdmf", ""))
-    if not source_h5.is_file() or not source_xdmf.is_file():
+    source_vtu = _resolve_artifact(backup, artifacts.get("vpm_vtu", ""))
+    if not source_h5.is_file() or not source_vtu.is_file():
         raise FileNotFoundError("Coupled backup does not contain a complete VPM snapshot")
 
     output.mkdir(parents=True, exist_ok=True)
     frame_directory = component_directory(output, "vpm")
     frame_directory.mkdir(parents=True, exist_ok=True)
-    destinations = (frame_directory / source_h5.name, frame_directory / source_xdmf.name)
-    for source, destination in zip((source_h5, source_xdmf), destinations, strict=True):
+    destinations = (frame_directory / source_h5.name, frame_directory / source_vtu.name)
+    for source, destination in zip((source_h5, source_vtu), destinations, strict=True):
         temporary = destination.with_name(f".{destination.name}.tmp")
         try:
             shutil.copy2(source, temporary)
@@ -321,7 +321,7 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
     _BackupIO.write_pvd(output)
     logging.getLogger("coupler").info(
         log_style.Event(
-            "VPM snapshot", (("HDF5", str(destinations[0])), ("XDMF", str(destinations[1])))
+            "VPM snapshot", (("HDF5", str(destinations[0])), ("VTK", str(destinations[1])))
         ),
     )
     return destinations
@@ -427,9 +427,9 @@ def load_coupled_backup(
             required_artifacts = [
                 "fvm",
                 "vpm",
+                "vpm_vtu",
                 "vpm_boundary_condition",
             ]
-            required_artifacts.append("vpm_xdmf")
             missing = [
                 name
                 for name in required_artifacts

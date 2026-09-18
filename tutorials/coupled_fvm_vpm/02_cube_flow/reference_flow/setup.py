@@ -50,6 +50,7 @@ def create_solver(directory_name: str, dx: float):
 
     force_schedule = fvm.RunSchedule(every_time=0.05)
     line_schedule = fvm.RunSchedule(every_time=0.25)
+    solution_schedule = fvm.RunSchedule(every_time=0.5)
     sample_spacing = min(0.125, 2.0 * dx)
     solver_setup = fvm.FVMSetup(
         case_name=directory_name,
@@ -76,13 +77,13 @@ def create_solver(directory_name: str, dx: float):
             max_velocity_magnitude_abort=6.0,
         ),
         backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=1.0),
+            schedule=solution_schedule,
             write_at_end=True,
         ),
         time=fvm.TimeConfig(
             time_step_size=0.01,
             end_time=30.0,
-            output_schedule=fvm.RunSchedule(every_time=1.0),
+            output_schedule=solution_schedule,
             adjustment=fvm.MaximumCourantTimeStep(
                 maximum=0.9,
                 maximum_time_step_size=0.04,

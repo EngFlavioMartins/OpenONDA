@@ -1,12 +1,12 @@
 """Audit a published native VPM/VLM checkpoint prefix.
 
 A published checkpoint owns three synchronized series below one solution
-directory: native ``vpm/vpm_<step>.h5`` frames with their ``.xdmf`` templated
-companions, and the root-level ``vlm.pvd`` time series of triangulated surface
-frames below ``vlm/``. ``audit_checkpoint`` proves that every native backup up
-to and including the audited step is present, paired with its XDMF/VTP
-companions, and that all clocks agree.  Later publications are ignored so the
-audit can run while the solver is writing its next outputs.
+directory: native ``vpm/vpm_<step>.h5`` frames with their ``.vtu``
+visualization companions, and the root-level ``vlm.pvd`` time series of
+triangulated surface frames below ``vlm/``. ``audit_checkpoint`` proves that
+every native backup up to and including the audited step is present, paired
+with its VTU/VTP companions, and that all clocks agree. Later publications are
+ignored so the audit can run while the solver is writing its next outputs.
 
 This helper is deliberately a shared owner: the Delta-wing lineage finalizer,
 the flat-plate and delta-wing studies, and the checkpoint-audit qualification
@@ -32,24 +32,12 @@ from source.solution_layout import collection_path
 # single ulp drift (for example 1.0 + 1e-12) is reported as a clock conflict.
 CLOCK_ATOL: Final[float] = 1.0e-13
 
-_NATIVE_RE: Final = re.compile(r"vpm_(\d{6})\.(?:h5|xdmf)")
-_NATIVE_TMP_RE: Final = re.compile(r"vpm_(\d{6})\.(?:h5|xdmf)\.tmp")
+_NATIVE_RE: Final = re.compile(r"vpm_(\d{6})\.(?:h5|vtu)")
+_NATIVE_TMP_RE: Final = re.compile(r"vpm_(\d{6})\.(?:h5|vtu)\.tmp")
 _VTP_RE: Final = re.compile(r"vlm_(\d{6})\.vtp")
 
 
-def _xdmf_time(path: Path) -> float:
-    parsed = ElementTree.parse(str(path))
-    values = [
-        float(element.attrib["Value"])
-        for element in parsed.iter()
-        if element.tag.endswith("Time") and "Value" in element.attrib
-    ]
-    if len(values) != 1:
-        raise ValueError(f"XDMF companion must carry exactly one Time value: {path}")
-    return values[0]
-
-
-def _vtp_time(path: Path) -> float:
+def _frame_time(path: Path) -> float:
     """Read the clock from ASCII, encoded or raw-appended native VTK files."""
     try:
         parsed = ElementTree.parse(str(path))
@@ -67,7 +55,7 @@ def _vtp_time(path: Path) -> float:
         frame = pv.read(path)
         values = np.asarray(frame.field_data.get("TimeValue", [])).reshape(-1).tolist()
     if len(values) != 1:
-        raise ValueError(f"VTP frame must carry exactly one TimeValue: {path}")
+        raise ValueError(f"VTK frame must carry exactly one TimeValue: {path}")
     return values[0]
 
 
@@ -82,13 +70,11 @@ def _classify(path: Path) -> tuple[str, int] | None:
     """Classify a native ``vpm_*`` file in the prefix directory.
 
     Returns a ``("checkpoint"|"unfinished", step)`` pair, ``None`` for files
-    that are not checkpoint frames (temporal collections, unrelated resources),
-    and raises for malformed numeric filenames below the ``vpm_*`` prefix.
+    that are not checkpoint frames (unrelated resources), and raises for
+    malformed numeric filenames below the ``vpm_*`` prefix.
     """
     name = path.name
     if not name.startswith("vpm_"):
-        return None
-    if name == "vpm_series_temporal.xdmf":
         return None
     if name.endswith(".tmp"):
         match = _NATIVE_TMP_RE.fullmatch(name)
@@ -117,7 +103,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
     """Audit the published prefix through one native checkpoint.
 
     ``checkpoint_path`` is a native ``vpm_<step>.h5`` backup.  The audit scans
-    its solution directory, proves the native/XDMF/VTP/pvd clocks agree through
+    its solution directory, proves the native/VTU/VTP/pvd clocks agree through
     that step, and returns a machine-readable evidence snapshot.
 
     Raises:
@@ -147,7 +133,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         )
 
     h5_files: dict[int, Path] = {}
-    xdmf_files: dict[int, Path] = {}
+    vtu_files: dict[int, Path] = {}
     for path in sorted(frame_directory.iterdir()):
         classification = _classify(path)
         if classification is None:
@@ -156,20 +142,20 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         if candidate_step > step:
             continue
         if kind == "unfinished":
-            raise ValueError(f"native HDF5/XDMF prefix is not fully published: {path.name}")
+            raise ValueError(f"native HDF5/VTU prefix is not fully published: {path.name}")
         if path.suffix == ".h5":
             h5_files[candidate_step] = path
         else:
-            xdmf_files[candidate_step] = path
+            vtu_files[candidate_step] = path
 
     native_steps: set[int] = set()
-    for candidate_step in sorted(h5_files.keys() | xdmf_files.keys()):
+    for candidate_step in sorted(h5_files.keys() | vtu_files.keys()):
         has_h5 = candidate_step in h5_files
-        has_xdmf = candidate_step in xdmf_files
-        if not has_h5 or not has_xdmf:
-            missing = "h5" if has_xdmf else "xdmf"
+        has_vtu = candidate_step in vtu_files
+        if not has_h5 or not has_vtu:
+            missing = "h5" if has_vtu else "vtu"
             raise ValueError(
-                f"native HDF5/XDMF prefix is not fully published: "
+                f"native HDF5/VTU prefix is not fully published: "
                 f"missing vpm_{candidate_step:06d}.{missing}"
             )
         path = h5_files[candidate_step]
@@ -181,7 +167,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
                 f"native VPM step/time conflicts with filename {path.name}: "
                 f"stored step {stored_step}"
             )
-        _check_clock(stored_time, _xdmf_time(xdmf_files[candidate_step]), "native", path)
+        _check_clock(stored_time, _frame_time(vtu_files[candidate_step]), "native", path)
         native_steps.add(candidate_step)
 
     pvd = collection_path(solution_directory, "vlm")
@@ -208,7 +194,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         if not vtp.is_file():
             raise ValueError(f"missing surface frame referenced by vlm.pvd: {vtp.name}")
         _check_clock(
-            _vtp_time(vtp),
+            _frame_time(vtp),
             _pvd_timestep(entries, candidate_step),
             "index",
             vtp,

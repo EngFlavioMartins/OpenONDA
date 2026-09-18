@@ -140,12 +140,9 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
         assert "backup_store_velocity_gradient" not in archive["solver"].attrs
         assert archive["solver"].attrs["backup_format_version"] == "10.1"
 
-    xdmf = Path(f"{backup}.xdmf").read_text(encoding="utf-8")
-    assert 'Name="velocity_gradient"' not in xdmf
-
     import pyvista as pv
 
-    visual = pv.read(f"{backup}.xdmf")
+    visual = pv.read(f"{backup}.vtu")
     assert "velocity" in visual.point_data
     assert "velocity_gradient" not in visual.point_data
     series = pv.get_reader(tmp_path / "writer" / "solution" / "vpm.pvd")
@@ -600,7 +597,7 @@ def test_empty_vpm_backup_is_still_paraview_readable(tmp_path):
 
     import pyvista as pv
 
-    visual = pv.read(f"{backup}.xdmf")
+    visual = pv.read(f"{backup}.vtu")
 
     assert visual.n_points == 0
 

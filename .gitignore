@@ -157,8 +157,8 @@ vpm*.json
 !**/*.svg
 
 # Delta-wing animation products are regenerated from native solver backups.
-tutorials/vpm/05_delta_wing/assets/animation_frames/
-tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif
+tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.gif
+tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.json
 
 # ===============================
 # Specific tutorial data management

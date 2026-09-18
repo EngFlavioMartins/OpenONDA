@@ -30,6 +30,19 @@ The mixed vorticity boundary and buffered M4 renewal are iterated from the same 
 
 `allrun.sh` runs `python setup.py` in the active OpenONDA environment. The coupled factory accepts `FVM_SETUP`, `VPM_CASE` and `COUPLER_SETUP`; it launches the requested MPI ranks, creates VPM only on rank zero, owns logging, and closes its solvers when the context exits. `FVM_SETUP.cores` is the CPU allocation. The library limits each MPI rank's BLAS/Numba pools to one thread and gives owner-only particle work the case CPU budget. PETSc retains separate momentum and pressure workspaces internally. The tutorial requires no runtime exports or rank checks.
 
+If a coupled run is interrupted after at least one scheduled checkpoint, resume it
+with:
+
+```bash
+./allcontinue.sh
+```
+
+This restores the latest committed atomic FVM+VPM checkpoint from
+`solution/backups/` and continues to `t=20`. It does not clean or restart the
+case. The active setup must match the checkpoint configuration; incompatible
+changes are rejected by restart admission. If no committed checkpoint exists,
+start a fresh run with `./allrun.sh`.
+
 For development, install the checkout once with `python -m pip install -e .` from the repository root; subsequent source edits then apply from any case directory without `PYTHONPATH`. Normal package installations also work and use their installed solver version.
 
 The native mesh is cached in `constant/mesh.npz`; geometry, mesh-setting or mesher-code changes invalidate it automatically. Run `./allclean.sh --keep-mesh` to clear run outputs while retaining that cache; plain `./allclean.sh` also removes the mesh. Iteration snapshots stay in memory. Research replays and per-sweep archives are not part of the tutorial run.
@@ -38,7 +51,7 @@ The tutorial entry point writes directly into `samples/` and `solution/`. Before
 
 `allplot.sh` writes PNG figures by default; `./allplot.sh pdf` selects PDF and `./allplot.sh png` explicitly selects PNG. Every figure is exactly 12.5 cm wide, with LaTeX-rendered NewPX text/math at 10.95 pt. LaTeX, dvipng, newpxtext and newpxmath must be available. Include PDFs at natural size, without rescaling or cropping.
 
-The comparison always uses the registered fine reference in `reference_flow/samples/fine/` and `reference_flow/solution/fine/`. Both saved FVM solutions are sampled with the same 3D affine reconstruction, using 12 native cell-centroid neighbours. Open each `solution/<case>/fvm.pvd` in ParaView; its fields and mesh are below the matching `fvm/` directory. Derived fields are cached in `samples/comparison/`; original samples, reference results and running simulations are untouched. The cache checks source files and MPI pieces before reuse. Profiles and fields use exactly coincident saved states, currently at one-second intervals. Old generated frames without matching states are removed after successful plotting.
+The comparison always uses the registered fine reference in `reference_flow/samples/fine/` and `reference_flow/solution/fine/`. Both saved FVM solutions are sampled with the same 3D affine reconstruction, using 12 native cell-centroid neighbours. Open each `solution/<case>/fvm.pvd` in ParaView; its fields and mesh are below the matching `fvm/` directory. Derived fields are cached in `samples/comparison/`; original samples, reference results and running simulations are untouched. The cache checks source files and MPI pieces before reuse. Profiles and fields use exactly coincident saved states, currently at 0.5-second intervals for full solution fields. Old generated frames without matching states are removed after successful plotting.
 
 Before the first common saved state, `allplot.sh` reports that comparison plots
 are not ready and stops before changing the figures. Run it again once the

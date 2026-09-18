@@ -405,5 +405,5 @@ def test_reference_flow_declares_its_sampling_and_backup_cadence(monkeypatch):
         "centreline": 0.25,
         "offaxis_y075": 0.25,
     }
-    assert config.time.output_schedule.every_time == 1.0
-    assert config.backup.schedule.every_time == 1.0
+    assert config.time.output_schedule.every_time == 0.5
+    assert config.backup.schedule.every_time == 0.5

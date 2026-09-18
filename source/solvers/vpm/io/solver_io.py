@@ -41,7 +41,7 @@ class SolverIO:
 
         Notes
         -----
-        Construction does not write files.  Backup, CSV, VTK, and XDMF output
+        Construction does not write files.  Backup, CSV, VTK, and VTU output
         occur only when their explicit methods or schedules are invoked.
         """
         self.solver = solver
@@ -70,7 +70,7 @@ class SolverIO:
         return self.solver.time
 
     def write_backup(self, verbose: bool = True) -> None:
-        """Write restart state, its XDMF frame, and the ``vpm.pvd`` index.
+        """Write restart state, its VTU frame, and the ``vpm.pvd`` index.
 
         VLM surface companions share the sparse backup clock with VPM particles.
         Accepted-step VLM force/loading tables are emitted through the owner's

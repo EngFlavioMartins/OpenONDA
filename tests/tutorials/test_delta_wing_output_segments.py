@@ -7,12 +7,11 @@ import pytest
 
 from tests._tutorial_helpers import load_tutorial_module
 
-_plots = load_tutorial_module("vpm/delta_wing", "assets._delta_wing_plots")
-_gif = load_tutorial_module("vpm/delta_wing", "assets.render_delta_wing_gif")
-_validate_duplicate_csv_rows = _plots._validate_duplicate_csv_rows
-_require_dense_native_source = _gif._require_dense_native_source
-_require_unique_presentation_sources = _gif._require_unique_presentation_sources
-select_frames = _gif.select_frames
+_postprocess = load_tutorial_module("vpm/delta_wing", "assets.postprocess")
+_validate_duplicate_csv_rows = _postprocess._validate_duplicate_csv_rows
+_require_dense_native_source = _postprocess._require_dense_native_source
+_require_unique_presentation_sources = _postprocess._require_unique_presentation_sources
+select_frames = _postprocess.select_frames
 
 
 def test_duplicate_sample_clock_is_stricter_than_physical_f32_tolerance():

@@ -67,8 +67,8 @@ and `vpm/` respectively; saved owner steps and times match.
 For explicit validation after completion:
 
 ```bash
-python assets/finalize_delta_wing_lineage.py
-python assets/validate_results.py --pre-plot
+python assets/postprocess.py finalize
+python assets/postprocess.py validate --pre-plot
 ```
 
 The accepted lineage in `assets/delta_wing_accepted_lineage.json` supports one
@@ -77,7 +77,7 @@ Individual plotters accept explicit `--samples` paths for forensic inspection;
 the wake plot also accepts matching `--solution` paths. The default individual
 plotters retain accepted-lineage checks.
 
-The completed-run animation is `assets/delta_wing_30fps.gif`. Its JSON sidecar
+The completed-run animation is `figures/delta_wing_30fps.gif`. Its JSON sidecar
 records exact native backups, source namespaces and presentation timestamps.
 The renderer selects distinct nearest native states at 30 fps; it does not
 interpolate geometry or loads. A fixed oblique projection uses

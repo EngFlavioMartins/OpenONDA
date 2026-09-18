@@ -29,7 +29,11 @@ COMPARISONS = {
 }
 
 FIELD_OUTER = 0.105
-FIELD_WIDTH = 0.35
+# The axes are square (equal data aspect) and four centimetres high on a
+# 12.5-cm canvas.  Matching the allocated width to that physical width keeps
+# Matplotlib from shrinking the plotting boxes inward and breaking the
+# symmetric outer margins after ``set_aspect('equal')``.
+FIELD_WIDTH = 4.0 / 12.5
 FIELD_RIGHT_LEFT = 1.0 - FIELD_OUTER - FIELD_WIDTH
 
 
@@ -124,17 +128,17 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
         low, high = low - 0.01, high + 0.01
     maximum = max(stats["sampled_max_percent"], 1e-6)
 
-    height_cm = 10.5
+    height_cm = 12.0
     fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
     axes = [
-        fig.add_axes((FIELD_OUTER, 5.7 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
-        fig.add_axes((FIELD_RIGHT_LEFT, 5.7 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
-        fig.add_axes((FIELD_OUTER, 1.0 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_OUTER, 7.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_RIGHT_LEFT, 7.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_OUTER, 1.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
     ]
     velocity_bar = fig.add_axes((FIELD_RIGHT_LEFT, 3.55 / height_cm, FIELD_WIDTH, 0.16 / height_cm))
     error_bar = fig.add_axes((FIELD_RIGHT_LEFT, 2.1 / height_cm, FIELD_WIDTH, 0.16 / height_cm))
     levels = np.linspace(low, high, 41)
-    for ax, values, title in zip(axes[:2], (dense_left, dense_right), (left_title, right_title)):
+    for ax, values in zip(axes[:2], (dense_left, dense_right), strict=True):
         velocity_plot = ax.contourf(
             xx,
             yy,
@@ -143,7 +147,6 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
             cmap=util.COLORMAPS["velocity"],
             corner_mask=False,
         )
-        ax.set_title(title, pad=2.0)
     error_plot = axes[2].contourf(
         xx,
         yy,
@@ -152,7 +155,6 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
         cmap=util.COLORMAPS["error"],
         corner_mask=False,
     )
-    axes[2].set_title("(c) Difference", pad=2.0)
     for ax in axes:
         ax.set(
             xlabel=r"$x/D$",
@@ -169,8 +171,17 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
         )
     axes[0].set_ylabel(r"$y/D$")
     axes[2].set_ylabel(r"$y/D$")
-    for ax in axes[:2]:
-        ax.set_xlabel("")
+    # Keep each x-axis independent and identify every panel at its top edge.
+    # The two velocity panels use the same y scale, so only the left one needs
+    # y tick labels; they are still separate axes with independent x ticks.
+    axes[0].set_title(left_title, pad=0.0)
+    axes[1].set_title(right_title, pad=0.0)
+    axes[2].set_title("(c) Difference", pad=0.0)
+    axes[0].set_xlabel("")
+    axes[1].set_xlabel("")
+    axes[2].set_xlabel(r"$x/D$")
+    for ax in axes:
+        ax.xaxis.labelpad = 1.0
     axes[1].tick_params(labelleft=False)
     velocity_colorbar = fig.colorbar(
         velocity_plot,

@@ -113,6 +113,18 @@ def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
         tolerance=1e-10, absolute=True
     )
     points = np.asarray(section.points, dtype=float).copy()
+    section_z = points[:, 2]
+    plane_tolerance = 1.0e-7 * max(1.0, abs(float(coordinate)))
+    if (
+        not np.all(np.isfinite(section_z))
+        or np.ptp(section_z) > plane_tolerance
+        or np.max(np.abs(section_z - coordinate)) > plane_tolerance
+    ):
+        raise ValueError("Source section is not a planar slice at the selected coordinate")
+    # VTK can represent an otherwise exact plane with a small uniform offset
+    # after interpolation.  Preserve the requested physical section rather
+    # than propagating that representation error into surface projection.
+    points[:, 2] = coordinate
     source_cells = np.asarray(section.cell_data["source_cell"], dtype=int)
     polygons = []
     packed = section.faces
@@ -309,14 +321,13 @@ class ExtrudedCartesianMesher:
         This method performs the expensive source build and invokes
         ``on_generated`` after validation. It does not create solver fields.
         """
-        # Select the planar interior before the unrelated end-rim correction.
+        # Select a planar interior before the unrelated end-rim correction.
         with mesh_stage("source mesh generation"):
             raw = self.source.build(stop_after="meshOptimisation")
         dx = min(item.cell_size for item in self.source.patch_refinements)
-        # Stay inside a finest-size slab, clear of its central wrapper
-        # transition. Near a transition, a planar cut can graze a sliver
-        # even though the original three-dimensional cell is well shaped.
-        coordinate = 0.75 * dx
+        # The midpoint avoids the refinement-transition planes produced by
+        # the source octree while remaining inside the finest-size slab.
+        coordinate = 0.5 * dx
         with mesh_stage("section extrusion") as progress:
             result = extrude_mesh_section(
                 raw,

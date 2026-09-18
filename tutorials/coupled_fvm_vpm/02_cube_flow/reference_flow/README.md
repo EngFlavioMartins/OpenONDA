@@ -39,8 +39,9 @@ rank-owned output are handled by the FVM factory using the configured cores.
 Adaptive timesteps now divide the interval to the next output/sample/backup
 time into CFL-limited steps. This prevents an almost complete interval from
 being followed by a tiny remainder step, which caused pressure and drag
-spikes in the earlier fine run. The Courant target, BDF2 scheme and output
-times are unchanged. See the [diagnosis](../../../../studies/coupler_accuracy/cube-drift-and-drag-2026-09-14.md).
+spikes in the earlier fine run. Full solution fields and restart backups are
+saved every 0.5 s; force samples remain every 0.05 s and line samples every
+0.25 s. See the [diagnosis](../../../../studies/coupler_accuracy/cube-drift-and-drag-2026-09-14.md).
 
 The outer domain is `[-6.5,13] x [-6.5,6.5] x [-6.5,6.5]`. The background
 cell-size target is `12h`; the near-body region

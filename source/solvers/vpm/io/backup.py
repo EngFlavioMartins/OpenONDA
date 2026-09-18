@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import json
 import os
@@ -11,7 +10,6 @@ import re
 import tempfile
 from typing import Any, NoReturn
 
-from defusedxml.ElementTree import ParseError, parse
 import h5py
 import numpy as np
 
@@ -49,7 +47,7 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "lagrangian_cfl",
     "selective_eddy_viscosity_feedback_coefficient",
 )
-_FRAME_NAME = re.compile(r"vpm_(\d{6})\.xdmf")
+_FRAME_NAME = re.compile(r"vpm_(\d{6})\.vtu")
 
 
 def _atomic_write_text(path: str | Path, text: str) -> None:
@@ -289,7 +287,7 @@ class _BackupIO:
         append_step: bool = True,
         verbose: bool = True,
     ) -> None:
-        """Write HDF5 restart state and its XDMF descriptor."""
+        """Write HDF5 restart state and its VTK visualization frame."""
         try:
             time_value = float(solver.time if time is None else time)
             backup_base = str(backup_path)
@@ -297,7 +295,7 @@ class _BackupIO:
                 backup_base = f"{backup_base}_{int(solver.step):06d}"
 
             hdf5_file = f"{backup_base}.h5"
-            xdmf_file = f"{backup_base}.xdmf"
+            vtu_file = f"{backup_base}.vtu"
             Path(hdf5_file).parent.mkdir(parents=True, exist_ok=True)
 
             temporary_hdf5 = f"{hdf5_file}.tmp"
@@ -314,10 +312,9 @@ class _BackupIO:
                 if os.path.exists(temporary_hdf5):
                     os.remove(temporary_hdf5)
 
-            _BackupIO._write_xdmf(
+            _BackupIO._write_vtu(
                 solver,
-                backup_base,
-                xdmf_file,
+                vtu_file,
                 time_value,
             )
 
@@ -493,99 +490,75 @@ class _BackupIO:
             )
 
     @staticmethod
-    def _write_xdmf(
+    def _write_vtu(
         solver,
-        backup_base: str,
-        xdmf_file: str,
+        vtu_file: str,
         time: float,
     ) -> None:
-        """Write an XDMF descriptor using canonical field names."""
+        """Write a VTK particle frame using canonical field names.
+
+        One ``VTK_POLY_VERTEX`` cell spans the full particle cloud, matching
+        the solver's Polyvertex particle topology. The points and arrays retain
+        the compute dtype; the exact metadata keys ``time`` and ``TimeValue``
+        let ParaView recover the physical clock from the standalone frame
+        series. The frame is written atomically in appended-raw XML, so a
+        reader never observes a partially written file.
+        """
+        from vtk import VTK_POLY_VERTEX, vtkCellArray, vtkPoints, vtkUnstructuredGrid
+        from vtk.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
+
+        from source.vtk_output import write_vtk_dataset
+
         n_particles_total = int(solver.particles.n_particles_total)
-        hdf5_basename = os.path.basename(f"{backup_base}.h5")
-        float_precision = _restart_dtype(solver).itemsize
-        optional_parts = [
-            f"""
-      <Attribute Name="zone_id" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Int" Format="HDF">
-          {hdf5_basename}:/particles/zone_id
-        </DataItem>
-      </Attribute>"""
-        ]
+        if not np.isfinite(time):
+            raise ValueError("VPM frame time must be finite")
+        position = np.ascontiguousarray(solver.particles.position_cpu(use_cache=False))
+        if position.ndim != 2 or position.shape[1] != 3 or len(position) != n_particles_total:
+            raise ValueError("VPM particle positions must have shape (n_particles_total, 3)")
 
-        optional = "\n".join(optional_parts)
+        points = vtkPoints()
+        points.SetData(numpy_to_vtk(position, deep=True))
+        grid = vtkUnstructuredGrid()
+        grid.SetPoints(points)
+        if n_particles_total:
+            cells = vtkCellArray()
+            cells.SetData(
+                numpy_to_vtkIdTypeArray(np.zeros(1, dtype=np.int64), deep=True),
+                numpy_to_vtkIdTypeArray(
+                    np.arange(n_particles_total, dtype=np.int64),
+                    deep=True,
+                ),
+            )
+            grid.SetCells(
+                numpy_to_vtk(np.array([VTK_POLY_VERTEX], dtype=np.uint8), deep=True),
+                cells,
+            )
 
-        xdmf_content = f"""<?xml version="1.0" ?>
-<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
-<Xdmf Version="3.0">
-  <Domain>
-    <Grid Name="vortex_particles" GridType="Uniform">
-      <Topology TopologyType="Polyvertex" NumberOfElements="{n_particles_total}"/>
+        def add_point_data(name: str, values: np.ndarray) -> None:
+            array = numpy_to_vtk(np.ascontiguousarray(values), deep=True)
+            array.SetName(name)
+            grid.GetPointData().AddArray(array)
 
-      <Geometry GeometryType="XYZ">
-        <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/position
-        </DataItem>
-      </Geometry>
+        for name in ("velocity", "vortex_strength", "vorticity"):
+            add_point_data(name, solver.particles.__getattribute__(f"{name}_cpu")(use_cache=False))
+        for name in (
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "effective_viscosity",
+            "group_id",
+            "zone_id",
+        ):
+            add_point_data(name, solver.particles.__getattribute__(f"{name}_cpu")(use_cache=False))
 
-      <Time Value="{time:.17g}"/>
-      <Attribute Name="velocity" AttributeType="Vector" Center="Node">
-        <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/velocity
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="vortex_strength" AttributeType="Vector" Center="Node">
-        <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/vortex_strength
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="vorticity" AttributeType="Vector" Center="Node">
-        <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/vorticity
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="core_radius" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/core_radius
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="particle_volume" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/particle_volume
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="kinematic_viscosity" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/kinematic_viscosity
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="eddy_viscosity" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/eddy_viscosity
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="effective_viscosity" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/effective_viscosity
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="group_id" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Int" Format="HDF">
-          {hdf5_basename}:/particles/group_id
-        </DataItem>
-      </Attribute>
-{optional}
-    </Grid>
-  </Domain>
-</Xdmf>"""
-        _atomic_write_text(xdmf_file, xdmf_content)
+        # VTK requires the exact metadata keys time and TimeValue to recover
+        # the physical clock from the standalone frame series.
+        for name in ("time", "TimeValue"):
+            field = numpy_to_vtk(np.array([time], dtype=np.float64), deep=True)
+            field.SetName(name)
+            grid.GetFieldData().AddArray(field)
+        write_vtk_dataset(grid, Path(vtu_file))
 
     @staticmethod
     def write_pvd(solution_directory: str | Path) -> Path:
@@ -595,25 +568,25 @@ class _BackupIO:
         ----------
         solution_directory : str or pathlib.Path
             Case solution root. Canonical ``vpm_XXXXXX.h5`` and
-            ``vpm_XXXXXX.xdmf`` pairs are stored below ``vpm/``.
+            ``vpm_XXXXXX.vtu`` pairs are stored below ``vpm/``.
 
         Returns
         -------
         pathlib.Path
             Atomically replaced ``vpm.pvd`` collection path. Each entry
-            references an immutable XDMF frame by a relative filename below
+            references an immutable VTK frame by a relative filename below
             ``vpm/``.
 
         Raises
         ------
         FileNotFoundError
-            If an indexed XDMF frame has no matching HDF5 particle state.
+            If an indexed VTK frame has no matching HDF5 particle state.
         ValueError
             If frame steps or physical times are duplicate or nonmonotonic.
 
         Notes
         -----
-        The atomically written XDMF frame clock is authoritative for the
+        The atomically written native HDF5 clock is authoritative for the
         visualization series. Rebuilding the small index from retained frames
         makes scheduled output and coupled publication resume-safe without
         keeping a second in-memory clock.
@@ -621,23 +594,21 @@ class _BackupIO:
         solution = Path(solution_directory)
         directory = component_directory(solution, "vpm")
         frames: list[tuple[int, float, str]] = []
-        for xdmf in directory.glob("vpm_*.xdmf"):
-            match = _FRAME_NAME.fullmatch(xdmf.name)
+        for vtu in directory.glob("vpm_*.vtu"):
+            match = _FRAME_NAME.fullmatch(vtu.name)
             if match is None:
                 continue
-            hdf5 = xdmf.with_suffix(".h5")
+            hdf5 = vtu.with_suffix(".h5")
             if not hdf5.is_file():
-                raise FileNotFoundError(f"VPM frame {xdmf.name} is missing {hdf5.name}")
+                raise FileNotFoundError(f"VPM frame {vtu.name} is missing {hdf5.name}")
             try:
-                time_element = parse(xdmf).find(".//Time")
-                if time_element is None:
-                    raise ValueError("missing Time element")
-                time = float(time_element.attrib["Value"])
-            except (ParseError, OSError, KeyError, ValueError) as exc:
-                raise ValueError(f"Invalid VPM XDMF frame {xdmf.name}") from exc
+                with h5py.File(hdf5, "r") as archive:
+                    time = float(archive["solver"].attrs["time"])
+            except (OSError, KeyError) as exc:
+                raise ValueError(f"Invalid VPM frame {vtu.name}") from exc
             if not np.isfinite(time):
-                raise ValueError(f"VPM frame {xdmf.name} has non-finite time")
-            frames.append((int(match.group(1)), time, f"vpm/{xdmf.name}"))
+                raise ValueError(f"VPM frame {vtu.name} has non-finite time")
+            frames.append((int(match.group(1)), time, f"vpm/{vtu.name}"))
 
         frames.sort()
         steps = [step for step, _, _ in frames]
@@ -660,117 +631,6 @@ class _BackupIO:
         destination = collection_path(solution, "vpm")
         _atomic_write_text(destination, "\n".join(lines))
         return destination
-
-    @staticmethod
-    def create_temporal_xdmf(
-        backup_pattern: str,
-        output_file: str | None = None,
-    ) -> str:
-        """Create an XDMF temporal collection from canonical HDF5 files."""
-        hdf5_files = sorted(glob.glob(f"{backup_pattern}.h5"))
-        if not hdf5_files:
-            raise FileNotFoundError(f"No backup files found matching {backup_pattern}.h5")
-
-        if output_file is None:
-            output_file = f"{backup_pattern.replace('*', 'series')}_temporal.xdmf"
-        Path(output_file).parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        grids: list[str] = []
-        for hdf5_file in hdf5_files:
-            with h5py.File(hdf5_file, "r") as file:
-                solver_group = file["solver"]
-                particles_group = file["particles"]
-                time = float(_read_attribute(solver_group, "time"))
-                step = int(_read_attribute(solver_group, "step"))
-                n_particles_total = _read_particle_count(solver_group)
-                canonical_datasets = (
-                    "position",
-                    "velocity",
-                    "vortex_strength",
-                    "core_radius",
-                    "particle_volume",
-                    "kinematic_viscosity",
-                    "eddy_viscosity",
-                    "effective_viscosity",
-                    "group_id",
-                    "vorticity",
-                    "zone_id",
-                    "filament_reference_vortex_strength",
-                    "filament_reference_length",
-                    "total_enstrophy",
-                )
-                stored = {
-                    name: name if name in particles_group else None for name in canonical_datasets
-                }
-                float_precision = int(particles_group["position"].dtype.itemsize)
-
-            hdf5_basename = os.path.basename(hdf5_file)
-
-            def data_item(
-                canonical: str,
-                dimensions: str,
-                *,
-                number_type: str = "Float",
-                stored: dict[str, str | None] = stored,
-                hdf5_basename: str = hdf5_basename,
-                float_precision: int = float_precision,
-            ) -> str:
-                stored_name = stored[canonical]
-                if stored_name is None:
-                    return ""
-                precision = f' Precision="{float_precision}"' if number_type == "Float" else ""
-                return (
-                    f'<DataItem Dimensions="{dimensions}" '
-                    f'NumberType="{number_type}"{precision} Format="HDF">'
-                    f"{hdf5_basename}:/particles/{stored_name}"
-                    "</DataItem>"
-                )
-
-            optional_parts: list[str] = []
-            if stored["zone_id"] is not None:
-                optional_parts.append(
-                    f"""        <Attribute Name="zone_id" AttributeType="Scalar" Center="Node">
-          {data_item("zone_id", str(n_particles_total), number_type="Int")}
-        </Attribute>"""
-                )
-            optional_text = "\n".join(optional_parts)
-            grids.append(
-                f"""      <Grid Name="step_{step:06d}" GridType="Uniform">
-        <Topology TopologyType="Polyvertex" NumberOfElements="{n_particles_total}"/>
-        <Geometry GeometryType="XYZ">
-          {data_item("position", f"{n_particles_total} 3")}
-        </Geometry>
-        <Time Value="{time:.17g}"/>
-        <Attribute Name="velocity" AttributeType="Vector" Center="Node">
-          {data_item("velocity", f"{n_particles_total} 3")}
-        </Attribute>
-        <Attribute Name="vortex_strength" AttributeType="Vector" Center="Node">
-          {data_item("vortex_strength", f"{n_particles_total} 3")}
-        </Attribute>
-        <Attribute Name="vorticity" AttributeType="Vector" Center="Node">
-          {data_item("vorticity", f"{n_particles_total} 3")}
-        </Attribute>
-{optional_text}
-      </Grid>"""
-            )
-
-        content = (
-            '<?xml version="1.0" ?>\n'
-            '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n'
-            '<Xdmf Version="3.0">\n'
-            "  <Domain>\n"
-            '    <Grid Name="vortex_particles_time_series" '
-            'GridType="Collection" CollectionType="Temporal">\n'
-            + "\n".join(grids)
-            + "\n    </Grid>\n"
-            "  </Domain>\n"
-            "</Xdmf>\n"
-        )
-        _atomic_write_text(output_file, content)
-        return output_file
 
     @staticmethod
     def _load_auxiliary_particle_fields(

@@ -22,7 +22,7 @@ def create_solver(directory_name: str, dx: float):
     case_dir = Path(__file__).resolve().parent
     domain = (-8.0, 24.0, -10.0, 10.0, -0.5, 0.5)
     velocity = [1.0, 0.0, 0.0]
-    background_size = 8.0 * dx
+    background_size = 12.0 * dx
 
     source_domain = (*domain[:4], -16.0 * dx, 16.0 * dx)
     span_levels = tuple(np.linspace(-0.5, 0.5, math.ceil(1.0 / (4.0 * dx)) + 1))
@@ -43,18 +43,18 @@ def create_solver(directory_name: str, dx: float):
                 # cfMesh treats box cell sizes as strict upper bounds.
                 msh.BoxRefinement(
                     name="nearBody",
-                    bounds=(-1.0, 2.0, -1.0, 1.0, source_domain[4], source_domain[5]),
-                    cell_size=3.0 * dx,
+                    bounds=(-1.5, 1.5, -1.5, 1.5, source_domain[4], source_domain[5]),
+                    cell_size=dx,
                 ),
                 msh.BoxRefinement(
                     name="nearWake",
-                    bounds=(0.0, 6.0, -1.0, 1.0, source_domain[4], source_domain[5]),
-                    cell_size=3.0 * dx,
+                    bounds=(-2.0, 6.0, -2.0, 2.0, source_domain[4], source_domain[5]),
+                    cell_size=2.0 * dx,
                 ),
                 msh.BoxRefinement(
                     name="wake",
-                    bounds=(0.0, 12.0, -1.5, 1.5, source_domain[4], source_domain[5]),
-                    cell_size=6.0 * dx,
+                    bounds=(-2.5, 12.0, -2.5, 2.5, source_domain[4], source_domain[5]),
+                    cell_size=4.0 * dx,
                 ),
             ),
             patch_refinements=(msh.PatchRefinement("cylinder", dx),),

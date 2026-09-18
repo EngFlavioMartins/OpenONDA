@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import os
 from pathlib import Path
+import shutil
+import tempfile
 from tempfile import NamedTemporaryFile
 from typing import Protocol, cast, runtime_checkable
 
@@ -204,6 +206,111 @@ class OutputManager:
             and self._is_due(sample, step, time)
             for sample in self.samplers.samples
         )
+
+    def rewind_histories(self, time: float) -> None:
+        """Reconcile VPM scientific output with an accepted restart time.
+
+        Parameters
+        ----------
+        time : float
+            Inclusive accepted physical time in seconds. Rows and VTK
+            collection entries after this time are removed before resumed
+            output is appended.
+
+        Notes
+        -----
+        A process can publish a sample after the last atomic numerical
+        checkpoint and then be interrupted. Keeping that sample would make a
+        resumed writer reject the first repeated event as duplicate or
+        nonmonotonic. Only configured sampler streams are owned here;
+        unrecognized files in the shared samples directory are preserved.
+        Superseded PVD indexes are copied to ``restart-branches`` before the
+        active index is replaced. Snapshot payloads remain in place because
+        they are immutable and may be useful when inspecting the interrupted
+        branch.
+        """
+        if not np.isfinite(time):
+            raise ValueError("restart time must be finite")
+
+        output_directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
+        if not output_directory.is_dir():
+            self._runtime.pvd_entries.clear()
+            self._runtime.last_written.clear()
+            return
+
+        owned_names = {self._name(sampler) for sampler in self.samplers.samples}
+        for name in owned_names:
+            self._rewind_csv(output_directory / f"{name}.csv", time)
+            self._rewind_pvd(output_directory, name, time)
+
+        for name, entries in self._runtime.pvd_entries.items():
+            self._runtime.pvd_entries[name] = [
+                (entry_time, filename)
+                for entry_time, filename in entries
+                if entry_time <= time + 1.0e-12
+            ]
+        self._runtime.last_written.clear()
+
+    @classmethod
+    def _rewind_csv(cls, filepath: Path, time: float) -> None:
+        """Keep configured CSV rows through an inclusive restart time."""
+        if not filepath.is_file() or filepath.stat().st_size == 0:
+            return
+        with filepath.open(newline="", encoding="utf-8") as stream:
+            rows = list(csv.reader(stream))
+        if not rows:
+            return
+        try:
+            time_column = rows[0].index("time")
+        except ValueError:
+            raise ValueError(f"CSV sampler output {filepath} has no time column") from None
+
+        kept = [rows[0]]
+        for row in rows[1:]:
+            if not row or len(row) <= time_column:
+                raise ValueError(f"CSV sampler output {filepath} has an invalid row")
+            try:
+                event_time = float(row[time_column])
+            except ValueError as exc:
+                raise ValueError(f"CSV sampler output {filepath} has an invalid time") from exc
+            if not np.isfinite(event_time):
+                raise ValueError(f"CSV sampler output {filepath} has a non-finite time")
+            if event_time <= time + 1.0e-12:
+                kept.append(row)
+        if len(kept) != len(rows):
+            cls._replace_csv(filepath, kept[0], kept[1:])
+
+    @classmethod
+    def _replace_csv(cls, filepath: Path, header: list[str], rows: list[list[str]]) -> None:
+        """Atomically replace a CSV stream after history reconciliation."""
+        with NamedTemporaryFile(
+            "w", newline="", encoding="utf-8", dir=filepath.parent, delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(header)
+            writer.writerows(rows)
+        try:
+            os.replace(temporary, filepath)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @classmethod
+    def _rewind_pvd(cls, output_directory: Path, name: str, time: float) -> None:
+        """Keep one configured VTK collection through an inclusive time."""
+        pvd_path = output_directory / f"{name}.pvd"
+        if not pvd_path.is_file():
+            return
+        entries = cls._read_pvd(output_directory, name)
+        kept = [entry for entry in entries if entry[0] <= time + 1.0e-12]
+        if len(kept) == len(entries):
+            return
+
+        branch_root = output_directory / "restart-branches"
+        branch_root.mkdir(parents=True, exist_ok=True)
+        branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
+        shutil.copy2(pvd_path, branch / pvd_path.name)
+        cls._write_pvd(output_directory, name, kept)
 
     def _selected(self, event: OutputEvent) -> tuple[object, ...]:
         """Select configured samplers for one lifecycle event."""

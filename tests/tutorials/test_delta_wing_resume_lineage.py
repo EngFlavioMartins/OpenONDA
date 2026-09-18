@@ -11,17 +11,16 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tests._tutorial_helpers import load_tutorial_module
+from tests._tutorial_helpers import load_tutorial_module, write_vtu_time_frame
 
-_plots = load_tutorial_module("vpm/delta_wing", "assets._delta_wing_plots")
-_finalizer = load_tutorial_module("vpm/delta_wing", "assets.finalize_delta_wing_lineage")
-_read_lineage_csv = _plots._read_lineage_csv
-load_accepted_lineage = _plots.load_accepted_lineage
-_check_csv = _finalizer._check_csv
-_clock = _finalizer._clock
-_require_exact_steps = _finalizer._require_exact_steps
-_require_force_surface_steps = _finalizer._require_force_surface_steps
-finalize_lineage = _finalizer.finalize_lineage
+_postprocess = load_tutorial_module("vpm/delta_wing", "assets.postprocess")
+_read_lineage_csv = _postprocess._read_lineage_csv
+load_accepted_lineage = _postprocess.load_accepted_lineage
+_check_csv = _postprocess._check_csv
+_clock = _postprocess._clock
+_require_exact_steps = _postprocess._require_exact_steps
+_require_force_surface_steps = _postprocess._require_force_surface_steps
+finalize_lineage = _postprocess.finalize_lineage
 
 FIXTURE_NUMERICS = {
     "axisymmetric_no_swirl_axis": None,
@@ -129,10 +128,7 @@ def _write_owner_companions(solution: Path, steps: list[int]) -> None:
     for step in steps:
         time = step * 0.0025
         _write_backup(solution / f"vpm_{step:06d}.h5", step, time)
-        (solution / f"vpm_{step:06d}.xdmf").write_text(
-            f'<Xdmf><Domain><Grid><Time Value="{time}"/></Grid></Domain></Xdmf>',
-            encoding="utf-8",
-        )
+        write_vtu_time_frame(solution / f"vpm_{step:06d}.vtu", time)
         surface = pv.PolyData(np.zeros((4, 3)))
         surface.field_data["time"] = np.array([time])
         surface.field_data["TimeValue"] = np.array([time])
