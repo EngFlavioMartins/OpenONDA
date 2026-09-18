@@ -1,7 +1,7 @@
 # Cube comparison report
 
 Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
-Comparison ends at t=13 s. Reference data after
+Comparison ends at t=20 s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
 ## What is matched
@@ -10,8 +10,8 @@ this time are not used in the figures. No simulation was advanced by plotting.
   closure, PIMPLE correctors/relaxation, linear tolerances and force definitions
   agree in the saved configurations.
 - Both meshes have cube-adjacent Cartesian spacing 0.045 m (requested fine target: 0.06 m).
-  The coupled mesh has 359,184 cells and
-  3,360 cube faces; the reference has
+  The coupled mesh has 303,264 cells and
+  3,456 cube faces; the reference has
   692,604 cells and 3,360 cube faces.
   Their fitted wall cells and outer boundaries are not identical.
 - Both FVM velocity fields use the existing 3D affine reconstruction with 12
@@ -54,13 +54,13 @@ region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
 does not establish accuracy everywhere in three dimensions.
 
-At the latest compared time, t=13 s:
+At the latest compared time, t=20 s:
 
 | Comparison | RMS [% U_inf] | Sampled max [% U_inf] | Area [D^2] |
 |---|---:|---:|---:|
-| Coupled FVM / VPM (overlap consistency) | 2.089 | 21.858 | 9.2583 |
-| Reference FVM / VPM (auxiliary overlap field) | 3.716 | 26.053 | 9.2583 |
-| Reference FVM / Coupled FVM (primary near field) | 3.963 | 26.756 | 9.2583 |
+| Coupled FVM / VPM (overlap consistency) | 2.567 | 32.277 | 7.6545 |
+| Reference FVM / VPM (auxiliary overlap field) | 12.175 | 45.695 | 7.6545 |
+| Reference FVM / Coupled FVM (primary near field) | 12.561 | 59.021 | 7.6545 |
 
 
 These are instantaneous sampled differences, not time-averaged error estimates.

@@ -1,11 +1,11 @@
 {
   "reference_samples": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/fine",
   "reference_grid": "fine",
-  "comparison_end_time": 13.0,
+  "comparison_end_time": 20.0,
   "meshes": {
     "coupled": {
-      "cells": 359184,
-      "cube_faces": 3360,
+      "cells": 303264,
+      "cube_faces": 3456,
       "finest_cartesian_spacing": 0.04500000178813934,
       "cube_adjacent_cartesian_spacings": [
         0.04500000178813934
@@ -116,27 +116,27 @@
   "latest_field_differences": [
     {
       "figure": "coupled_fvm_vpm_fields",
-      "time": "13.0",
-      "rms_percent": "2.088661003298712",
-      "sampled_max_percent": "21.858132371911488",
-      "covered_area_D2": "9.258300108146667",
-      "valid_nodes": "1239"
+      "time": "20.0",
+      "rms_percent": "2.567072836708608",
+      "sampled_max_percent": "32.276964784417586",
+      "covered_area_D2": "7.654500205993653",
+      "valid_nodes": "1035"
     },
     {
       "figure": "reference_fvm_vpm_fields",
-      "time": "13.0",
-      "rms_percent": "3.716476482203883",
-      "sampled_max_percent": "26.05251307213238",
-      "covered_area_D2": "9.258300108146667",
-      "valid_nodes": "1239"
+      "time": "20.0",
+      "rms_percent": "12.175158240546212",
+      "sampled_max_percent": "45.694873117119286",
+      "covered_area_D2": "7.654500205993653",
+      "valid_nodes": "1035"
     },
     {
       "figure": "reference_fvm_coupled_fvm_fields",
-      "time": "13.0",
-      "rms_percent": "3.9630974601991573",
-      "sampled_max_percent": "26.75646632301329",
-      "covered_area_D2": "9.258300108146667",
-      "valid_nodes": "1239"
+      "time": "20.0",
+      "rms_percent": "12.56076272572924",
+      "sampled_max_percent": "59.021389844173896",
+      "covered_area_D2": "7.654500205993653",
+      "valid_nodes": "1035"
     }
   ],
   "sampling": "native-centres-affine-k12-v1",
