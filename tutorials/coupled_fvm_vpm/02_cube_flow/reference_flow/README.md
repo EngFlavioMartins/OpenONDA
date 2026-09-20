@@ -1,33 +1,41 @@
 # Cube reference flow
 
-Body-fitted flow around a unit cube at Re = 1000, with U = 1 m/s and
-kinematic viscosity 0.001 m²/s. The setup declares the domain, geometric
-refinement, equilibrium Smagorinsky model, boundary conditions and samplers.
+This is a four-grid body-fitted reference study for flow around a unit cube at
+Re = 1000. The physical problem and numerical method are defined in `setup.py`;
+the grid names and baseline spacings are defined in `allrun.sh`.
 
-Run a standalone case with the installed OpenONDA API:
-
-```bash
-python setup.py --name fine --dx 0.06
-```
-
-The grid-independence assessment uses four exact wall spacings in a geometric
-progression, followed by a timestep control on the identical fine mesh:
+Run the grids with:
 
 ```bash
 ./allrun.sh
 ```
 
-This explicit `--campaign` assessment requires an OpenONDA source checkout with
-its `studies` package available. The study owns resource admission and mesh
-qualification; the tutorial remains the single physical configuration.
-The fine reference level runs to 30 s with visualization and rolling checkpoints
-every 0.25 s; the other levels run to 120 s. Fresh outputs use
-`campaigns/geometric_r15_30s_fine`. Already-running simulations retain their
-submitted settings.
-See [GRID_CAMPAIGN.md](GRID_CAMPAIGN.md) for domains, spacings, statistics,
-restart and reporting commands. Each case writes force and velocity-profile
-samples plus native solver metadata. Campaign outputs are separate from the
-standalone `solution/` and `samples/` directories.
+The launcher runs:
 
-The launcher contains only run commands. Postprocessing is a separate action;
-run completion alone does not establish grid independence.
+| Case | Wall spacing h (m) |
+| --- | ---: |
+| `grid_h010125` | 0.10125 |
+| `grid_h00675` | 0.0675 |
+| `grid_h0045` | 0.045 |
+| `grid_h003` | 0.03 |
+
+Successive grids have a refinement ratio of 1.5. Each command has only the
+output name and baseline grid spacing:
+
+```bash
+python setup.py --name grid_h0045 -h 0.045
+```
+
+After all grids finish, post-process their force histories with:
+
+```bash
+python postprocess_grid_study.py
+```
+
+The script writes `grid_forces.json`, `grid_forces.csv` and `grid_forces.png`
+under `figures/`. It reports mean drag, force RMS, Strouhal number and
+Richardson/GCI estimates over the statistics window declared at the top of the
+script.
+
+`allclean.sh` removes generated solutions, samples and figures. It is never run
+automatically.

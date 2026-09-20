@@ -24,7 +24,6 @@ from .artifacts import Backup, Samplers
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
 from .diagnostics import DiagnosticsConfig
 from .health import HealthLimits, ResourceLimits
-from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
 from .viscous import ViscousConfig
@@ -77,7 +76,7 @@ class Numerics:
     -----
     PlanarInduction selects infinite-span Gaussian filaments, planar GBD and
     zero stretching. It requires zero spanwise freestream and rejects VLM,
-    panel bodies, axisymmetric projection, LES and three-dimensional
+    axisymmetric projection, LES and three-dimensional
     stabilization/pressure combinations. Its positive represented span
     converts stored strengths (m³/s) to filament circulation (m²/s); see
     PlanarInduction for the complete source-plane and field conventions.
@@ -107,8 +106,6 @@ class Numerics:
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     verbose: bool = True
-    panel_solver: object | None = None
-    bodies: tuple[PanelBodySetup, ...] = ()
     domain_bounds: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -180,7 +177,7 @@ class Numerics:
                 raise ValueError("Planar induction cannot use axisymmetric projection")
             if self.turbulence.flow_model == "LES":
                 raise ValueError("Planar induction currently supports laminar flow only")
-            if self.panel_solver is not None or self.bodies or self.vlm is not None:
+            if self.vlm is not None:
                 raise ValueError("Planar induction cannot be combined with 3D boundary elements")
             if abs(self.freestream_velocity[2]) > 1e-14:
                 raise ValueError("Planar induction requires zero spanwise freestream")
@@ -219,11 +216,6 @@ class Numerics:
             if axis not in {"x", "y", "z"}:
                 raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
             object.__setattr__(self, "axisymmetric_no_swirl_axis", axis)
-        object.__setattr__(self, "bodies", tuple(self.bodies))
-        body_uids = [body.uid for body in self.bodies]
-        if len(body_uids) != len(set(body_uids)):
-            duplicates = sorted({uid for uid in body_uids if body_uids.count(uid) > 1})
-            raise ValueError("Duplicate panel body uid(s): " + ", ".join(duplicates))
         if self.domain_bounds is not None:
             if len(self.domain_bounds) != 6:
                 raise ValueError("domain_bounds must contain (xmin, xmax, ymin, ymax, zmin, zmax)")

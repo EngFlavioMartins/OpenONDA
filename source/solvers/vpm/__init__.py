@@ -7,8 +7,6 @@ import os
 os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "False")
 
 from .boundary_elements import vlm
-from .boundary_elements.panels.coupling.kinematics import BodyPose
-from .boundary_elements.panels.solver.panel_solver import PanelSolver
 from .boundary_elements.vlm.config import (
     ForceConfig,
     VLMMeshSetup,
@@ -28,7 +26,6 @@ from .config import (
     LagrangianCFLLimit,
     MisalignmentLimit,
     Numerics,
-    PanelBodySetup,
     ParticleStrengthLimit,
     ResourceLimitError,
     ResourceLimits,
@@ -103,9 +100,6 @@ __all__ = [
     "ResourceLimitError",
     "ResourceLimits",
     "MisalignmentLimit",
-    "BodyPose",
-    "PanelSolver",
-    "PanelBodySetup",
     "Numerics",
     "RestartState",
     "ParticleDistribution",

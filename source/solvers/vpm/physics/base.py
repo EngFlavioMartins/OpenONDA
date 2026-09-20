@@ -89,7 +89,7 @@ class PhysicsBase:
         # Cached treecode instance (to avoid memory leak from repeated allocations)
         self._treecode = None
         self._treecode_max_particles = 0
-        # A target-query phase often asks for panel, blending, and coupling-face
+        # A target-query phase often asks for blending and coupling-face
         # fields from one immutable particle state.  Keep one source-tree key so
         # those traversals share the LBVH instead of rebuilding it per caller.
         self._target_tree_key = None

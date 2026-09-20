@@ -2574,9 +2574,6 @@ class VorticityTransfer:
         position = np.vstack(position_parts)
         normal = np.vstack(normal_parts)
         target = np.vstack(target_parts)
-        refresh = getattr(vpm, "refresh_boundary_element_solution", None)
-        if callable(refresh):
-            refresh()
         actual = np.asarray(
             vpm.compute_velocity_at_points(position, include_freestream=True, include_body=True),
             dtype=np.float64,
@@ -2867,9 +2864,6 @@ class VorticityTransfer:
         )
         if velocity_error is not None and velocity_error > self.renewal_velocity_error_limit:
             _restore_particle_state(vpm, snapshot)
-            refresh = getattr(vpm, "refresh_boundary_element_solution", None)
-            if callable(refresh):
-                refresh()
             raise RuntimeError(
                 "projected renewal failed its boundary normal-velocity gate: "
                 f"error={velocity_error:.6e}, "

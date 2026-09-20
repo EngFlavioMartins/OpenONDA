@@ -1,8 +1,0 @@
-{
-  "source": "studies/panel_removal/runs/cylinder_no_panel_planar/solution/fvm/mesh.npz",
-  "replay": "studies/panel_removal/runs/cylinder_no_panel_converged/solution/fvm/mesh.npz",
-  "arrays_compared": 10,
-  "different_arrays": [],
-  "source_array_sha256": "0831a9273cd66463352e4d260da81d603bb87e1b60b6fdb17971741ee2d9ee0f",
-  "exact_arrays_equal": true
-}

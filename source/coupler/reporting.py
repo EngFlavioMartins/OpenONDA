@@ -264,11 +264,6 @@ def write_run_metadata(
             "eta_blend_width": coupler.setup.eta_blend_width,
             "viscous_scheme": coupler.vpm_solver.setup.viscous.scheme,
             "viscous_config": viscous_config,
-            "panel_coupling_scope": (
-                None
-                if coupler.vpm_solver.panel_solver is None
-                else coupler.vpm_solver.panel_solver.coupling_scope
-            ),
         },
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,

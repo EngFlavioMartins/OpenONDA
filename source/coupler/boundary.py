@@ -218,31 +218,6 @@ def evaluate_vpm_boundary(
     with collective_phase(comm, "VPM boundary evaluation"):
         if coupler._is_master:
             assert coupler.vpm_solver is not None
-            coupler.vpm_solver.refresh_boundary_element_solution()
-            # Evaluating the panel at every boundary face repeats work the
-            # boundary trace below already performs, so it runs only on the
-            # panel's own diagnostic schedule, which is off by default.
-            panel_solver = getattr(coupler.vpm_solver, "panel_solver", None)
-            if (
-                panel_solver is not None
-                and len(face_centre) > 0
-                and panel_solver.induced_velocity_diagnostic_is_due()
-            ):
-                panel_velocity_norm = np.linalg.norm(
-                    panel_solver.compute_induced_velocity(face_centre), axis=1
-                )
-                logger.info(
-                    format_coupler_log(
-                        "panel-induced velocity at fvm boundary faces",
-                        ("refreshes", f"{panel_solver.refresh_count:,}"),
-                        ("velocity, max", f"{float(np.max(panel_velocity_norm)):.3e}", "m/s"),
-                        (
-                            "velocity, rms",
-                            f"{float(np.sqrt(np.mean(panel_velocity_norm**2))):.3e}",
-                            "m/s",
-                        ),
-                    )
-                )
             if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
                 vpm_boundary_condition_velocity, tangential_normal_gradient = (
                     coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
@@ -448,9 +423,6 @@ def initialize_vpm_boundary_history(
     if needs_boundary_history:
         evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
     else:
-        if coupler._is_master:
-            assert coupler.vpm_solver is not None
-            coupler.vpm_solver.refresh_boundary_element_solution()
         active_velocity = evaluate_active_vpm_velocity(coupler)
         assert band is not None
         band.update_target(active_velocity)
@@ -519,7 +491,6 @@ def update_boundary_history_after_replacement(
     active_velocity = None
     if coupler._is_master:
         assert coupler.vpm_solver is not None
-        coupler.vpm_solver.refresh_boundary_element_solution()
         tangential_normal_gradient: np.ndarray | None = None
         if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
             corrected_boundary, tangential_normal_gradient = (

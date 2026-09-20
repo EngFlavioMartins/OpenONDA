@@ -352,13 +352,27 @@ def _cpu_candidates() -> list[tuple]:
     return cands or [(ti.cpu, "CPU")]
 
 
-def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list[tuple]:
-    """Return compatible backends without silently replacing a GPU by the CPU."""
+def _supported_backend_chain(
+    candidates: list[tuple], supported_devices: set[str] | frozenset[str] | None
+) -> list[tuple]:
+    """Filter resolved devices against a numerical method's qualified backends."""
+    if supported_devices is None:
+        return candidates
+    supported = {str(device).upper() for device in supported_devices}
+    return [candidate for candidate in candidates if candidate[1] in supported]
+
+
+def _build_backend_chain(
+    preferred_backend: str,
+    precision: str = "f32",
+    supported_devices: set[str] | frozenset[str] | None = None,
+) -> list[tuple]:
+    """Return qualified backends without silently replacing a GPU by the CPU."""
     cpu_chain = _cpu_candidates()
     system = platform.system()
 
     if preferred_backend == "CPU":
-        return cpu_chain
+        return _supported_backend_chain(cpu_chain, supported_devices)
 
     if preferred_backend == "METAL":
         if system != "Darwin":
@@ -367,15 +381,15 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
             raise ValueError(
                 "precision='f64' is not supported by the Metal backend; use f32 or CPU"
             )
-        return [(ti.metal, "METAL")]
+        return _supported_backend_chain([(ti.metal, "METAL")], supported_devices)
 
     if preferred_backend == "CUDA":
-        return [(ti.cuda, "CUDA")]
+        return _supported_backend_chain([(ti.cuda, "CUDA")], supported_devices)
 
     if preferred_backend == "VULKAN":
         if system == "Darwin":
             raise ValueError("compute_device='VULKAN' is unavailable on macOS; use AUTO or METAL")
-        return [(ti.vulkan, "VULKAN")]
+        return _supported_backend_chain([(ti.vulkan, "VULKAN")], supported_devices)
 
     if system == "Darwin":
         if precision == "f64":
@@ -383,7 +397,7 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
                 "precision='f64' is not supported by the macOS GPU backend; "
                 "request CPU explicitly or use f32"
             )
-        return [(ti.metal, "METAL")]
+        return _supported_backend_chain([(ti.metal, "METAL")], supported_devices)
 
     vulkan = (ti.vulkan, "VULKAN")
     cuda = (ti.cuda, "CUDA")
@@ -393,7 +407,7 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
     for cand in gpu_order:
         if cand not in chain:
             chain.append(cand)
-    return chain
+    return _supported_backend_chain(chain, supported_devices)
 
 
 def reset_taichi_backend(*, owner: object | None = None) -> None:
@@ -484,6 +498,7 @@ def initialize_taichi_backend(
     precision: str = "f32",
     device_memory_fraction: float = 0.5,
     random_seed: int = 42,
+    supported_devices: set[str] | frozenset[str] | None = None,
 ) -> str:
     """
     Initialize Taichi with user-specified backend and precision settings.
@@ -506,6 +521,10 @@ def initialize_taichi_backend(
               (default 42). RWM uses its own counter-based generator keyed by
               this declared seed and does not depend on a backend RNG cursor.
               Ignored by Taichi initialization on Metal.
+          supported_devices: Optional qualified-device set for the selected
+              numerical method. ``AUTO`` considers only GPU backends in this
+              set, so (for example) an FMM case does not resolve to CUDA before
+              discovering that its qualified devices are Vulkan and Metal.
 
     Returns:
           str: Name of the successfully initialised backend
@@ -516,9 +535,16 @@ def initialize_taichi_backend(
     if ti.lang.impl.get_runtime().prog is not None:
         cached = getattr(constants_module, "TAICHI_BACKEND", None)
         if cached in {"CPU", "VULKAN", "CUDA", "METAL"}:
-            _BACKEND_CONFIGURATION = (cached, str(precision).lower())
-            return cached
-        resolved = _active_backend_name()
+            resolved = cached
+        else:
+            resolved = _active_backend_name()
+        if supported_devices is not None and resolved not in {
+            str(device).upper() for device in supported_devices
+        }:
+            raise RuntimeError(
+                f"The initialized Taichi backend {resolved!r} is not supported by "
+                f"this numerical method; supported devices: {sorted(supported_devices)}"
+            )
         constants_module.TAICHI_BACKEND = resolved
         _BACKEND_CONFIGURATION = (resolved, str(precision).lower())
         return resolved
@@ -527,7 +553,13 @@ def initialize_taichi_backend(
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
 
     # Build the ordered list of compatible backends.
-    chain = _build_backend_chain(preferred_backend, precision)
+    chain = _build_backend_chain(preferred_backend, precision, supported_devices)
+    if not chain:
+        supported = sorted(supported_devices or ())
+        raise ValueError(
+            f"No qualified Taichi backend remains for compute_device={preferred_backend!r}; "
+            f"supported devices: {supported}"
+        )
     strict_gpu = preferred_backend in {"AUTO", "METAL", "VULKAN", "CUDA"} and precision == "f32"
 
     # Clamp to a safe range.

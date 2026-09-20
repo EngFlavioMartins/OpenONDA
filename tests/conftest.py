@@ -23,9 +23,6 @@ QUALIFICATION_MODULES = frozenset(
         "test_transfer_representation_qualification.py",
         "test_core_numerical_qualification.py",
         "test_manufactured_gradient_qualification.py",
-        "test_panel_linear_solver_convergence.py",
-        "test_panel_moving_qualification.py",
-        "test_panel_solver_sphere_analytic.py",
     }
 )
 
@@ -36,8 +33,6 @@ INTEGRATION_MODULES = frozenset(
         "test_flux_handoff.py",
         "test_fvm_vpm_smoke.py",
         "test_lattice_transfer.py",
-        "test_panel_multibody.py",
-        "test_panel_particle_coupling.py",
         "test_physical_coupling.py",
         "test_stable_renewal.py",
     }
@@ -47,7 +42,6 @@ SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
     {
         "test_backup_storage.py",
         "test_common_m4_viscous_lifecycle.py",
-        "test_panel_multibody.py",
     }
 )
 

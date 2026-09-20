@@ -46,7 +46,7 @@ class EvolutionStepper:
         ----------
         solver : VPMSolver
             Solver whose particle container, physics evaluator, clock, and
-            optional coupling/stabilization subsystems are driven. The
+            optional VLM/stabilization subsystems are driven. The
             stepper stores a back-reference; it does not copy solver state.
 
         Notes
@@ -105,11 +105,6 @@ class EvolutionStepper:
     def vlm_solver(self):
         """Return the optional VLM solver, or ``None`` when disabled."""
         return self.solver.vlm_solver
-
-    @property
-    def panel_solver(self):
-        """Return the optional panel solver, or ``None`` when disabled."""
-        return self.solver.panel_solver
 
     @property
     def time_step_size(self):
@@ -244,10 +239,6 @@ class EvolutionStepper:
         self._debug_validate_particle_geometry("step entry")
 
         with self.profiler.step():
-            if self.panel_solver is not None:
-                with self.profiler.section("Panel coupling"):
-                    self.coupling.advance_panel()
-
             _gradients_required = (
                 self.flow_model == "LES"
                 or self.stabilization_config.selective_eddy_viscosity_coefficient > 0.0
@@ -297,7 +288,7 @@ class EvolutionStepper:
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
         # state (including any topology-changing stabilization) is committed so
-        # post-step boundary/panel queries cannot reuse the previous tree.
+        # post-step boundary queries cannot reuse the previous tree.
         self.particles.touch_state()
         self._commit_accepted_step()
         self.profiler.report_step()

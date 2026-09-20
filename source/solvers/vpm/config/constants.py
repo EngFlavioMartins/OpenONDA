@@ -130,10 +130,6 @@ VLM_EPSILON = 1e-8
 # Cutoff threshold for zero-velocity detection
 VLM_CUTOFF = 1e-14
 
-# Panel-method regularization and cutoff constants
-PANEL_EPSILON = 1e-14
-PANEL_CUTOFF = 1e-8
-
 # Tolerance for detecting coincident particles (for merging)
 VLM_COINCIDENT_TOL = 1e-6
 

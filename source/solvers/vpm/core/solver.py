@@ -104,7 +104,7 @@ class VPMSolver:
 
     The solver is the owner of the mutable particle fields, accepted clock,
     induction backend, Runge--Kutta workspace, viscous/turbulence models,
-    optional VLM/panel coupling, diagnostics, samplers, and restart I/O. A
+    optional VLM coupling, diagnostics, samplers, and restart I/O. A
     particle's ``vortex_strength`` is the particle-strength/circulation vector
     ``Gamma = omega * V`` in m³/s; it is distinct from vorticity ``omega`` in
     1/s and from core radius ``sigma`` in m.
@@ -375,6 +375,7 @@ class VPMSolver:
             self.precision,
             device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
             random_seed=final_setup.random_seed,
+            supported_devices=getattr(self.induction, "supported_devices", None),
         )
         # Keep the resolved backend identity independent of the process-global
         # Taichi constant.  ``close()`` releases that global runtime before a
@@ -580,7 +581,7 @@ class VPMSolver:
         self.wall_time = 0.0
         # The step algorithm lives in the stepper; this facade drives it.
         self.stepper = EvolutionStepper(self)
-        # Panel/VLM coupling orchestration runs inside the step.
+        # VLM coupling orchestration runs inside the step.
         self.coupling = CouplingStepper(self)
 
     def _setup_vlm_solver(self) -> None:
@@ -594,93 +595,7 @@ class VPMSolver:
             )
 
     def _init_optional_solvers(self, final_setup) -> None:
-        """Initialize optional sub-solvers (panel, VLM) with error handling."""
-        self.panel_solver = getattr(final_setup, "panel_solver", None)
-        if self.panel_solver is not None:
-            try:
-                bodies = getattr(final_setup, "bodies", ())
-                lattice = getattr(self.panel_solver, "lattice", None)
-                if bodies and (lattice is None or lattice.n_panels == 0):
-                    for body in bodies:
-                        stl_path = Path(body.stl)
-                        if not stl_path.is_absolute():
-                            stl_path = self.case_dir / stl_path
-                        self.panel_solver.add_surface(
-                            uid=body.uid,
-                            stl_path=str(stl_path),
-                            kinematics=body.kinematics,
-                            group_id=body.group_id,
-                            translation=body.translation,
-                            rotation_degrees=body.rotation_degrees,
-                            rotation_centre=body.rotation_centre,
-                            reference_area=body.reference_area,
-                        )
-                self.panel_solver.initialize(force=True)
-                masked_bodies = [
-                    body for body in bodies if getattr(body, "diffusion_mask", None) is not None
-                ]
-                if len(masked_bodies) > 1:
-                    raise NotImplementedError(
-                        "Grid diffusion currently supports one declarative panel-body mask"
-                    )
-                if masked_bodies:
-                    body_setup = masked_bodies[0]
-                    panel_body = next(
-                        (
-                            item
-                            for item in self.panel_solver.lattice.bodies
-                            if item.uid == body_setup.uid
-                        ),
-                        None,
-                    )
-                    if panel_body is None:
-                        raise RuntimeError(
-                            f"No panel geometry was loaded for diffusion mask {body_setup.uid!r}"
-                        )
-                    start = panel_body.start_idx
-                    stop = start + panel_body.count
-                    vertices = self.panel_solver.lattice.vertex_position.to_numpy()[start:stop]
-                    flat = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
-                    bounds = np.column_stack((flat.min(axis=0), flat.max(axis=0))).reshape(-1)
-                    mask = body_setup.diffusion_mask
-                    if mask == "box":
-                        self.physics.configure_body_box(bounds)
-                    else:
-                        self.physics.configure_body_cylinder(bounds, axis=mask[-1])
-                    Logging.record(
-                        "diffusion body mask",
-                        ("body", body_setup.uid),
-                        ("geometry", mask),
-                    )
-                scope = getattr(self.panel_solver, "coupling_scope", "full")
-                self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity
-                self._body_induced_fn = lambda points, _stage_time: (
-                    self.panel_solver.compute_induced_velocity(points)
-                )
-                if scope in ("full", "fvm_vpm"):
-                    # Transport-enabled scopes deflect particle trajectories
-                    # at every RK stage, so give it the device-resident hook.
-                    self.physics.body_velocity_field = (
-                        self.panel_solver.accumulate_induced_velocity_on_field
-                    )
-                    # The device velocity hook and host target-query path use
-                    # the same panel operator. Its centered Jacobian supplies
-                    # the external stretching contribution without adding a
-                    # second panel velocity to the RK stage.
-                    self.physics.body_velocity_gradient = (
-                        self.panel_solver.compute_induced_velocity_gradient
-                    )
-                    # Target-query diagnostics still use _body_induced_fn, but
-                    # the stage provider must not add the same panel velocity a
-                    # second time through its host callback.
-                    self.physics.body_velocity = None
-                else:
-                    self.physics.body_velocity = None
-                    self.physics.body_velocity_field = None
-                    self.physics.body_velocity_gradient = None
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize panel solver: {e}") from e
-
+        """Initialize the optional VLM solver with error handling."""
         if final_setup.vlm is None:
             self.vlm_solver = None
         else:
@@ -1608,49 +1523,6 @@ class VPMSolver:
             include_body=True,
         )
 
-    def _fvm_vpm_panel_source_gradient(self, points: np.ndarray) -> np.ndarray | None:
-        """Return the analytical source-panel Jacobian when it owns the body field.
-
-        The ``fvm_vpm`` panel scope installs its direct source-panel velocity as
-        the body correction. Its Jacobian is available as a host-side f64
-        operator, so target gradients do not need to differentiate a Metal f32
-        kernel by finite differences.
-        """
-        panel = self.panel_solver
-        if (
-            panel is None
-            or panel.coupling_scope != "fvm_vpm"
-            or self._body_induced_fn is None
-            or self._pressure_body_induced_fn != panel.compute_induced_velocity
-        ):
-            return None
-        gradient = np.asarray(
-            panel.compute_induced_velocity_gradient(points, time=self.time), dtype=np.float64
-        )
-        expected_shape = (len(points), 3, 3)
-        if gradient.shape != expected_shape:
-            raise RuntimeError(
-                "Panel source-gradient evaluation returned an invalid shape: "
-                f"expected {expected_shape}, got {gradient.shape}"
-            )
-        if not np.all(np.isfinite(gradient)):
-            raise RuntimeError("Panel source-gradient evaluation returned non-finite data")
-        return gradient
-
-    def _nonpanel_target_velocity(self, evaluation_position: np.ndarray) -> np.ndarray:
-        """Return nonparticle target velocity with the analytical panel field removed."""
-        points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
-        panel = self.panel_solver
-        if panel is None:
-            raise RuntimeError("Cannot remove a panel field without a panel solver")
-        complete = self._add_target_velocity_corrections(
-            points,
-            np.zeros((len(points), 3), dtype=self.np_dtype),
-            include_body=True,
-        )
-        panel_velocity = panel.compute_induced_velocity(points)
-        return np.asarray(complete, dtype=np.float64) - np.asarray(panel_velocity, dtype=np.float64)
-
     def set_body_induced_velocity(
         self,
         fn: Callable[[np.ndarray, float], np.ndarray] | None,
@@ -1696,35 +1568,6 @@ class VPMSolver:
             # Never leave the device hook installed for a disabled body.
             self.physics.body_velocity_field = None
             self.physics.body_velocity_gradient_field = None
-
-    def refresh_boundary_element_solution(self) -> None:
-        """Make a synchronized panel solution consistent with current particles.
-
-        A ``vpm_boundary_condition`` panel does not participate in particle
-        evolution, and a ``full`` panel was last solved against the particle
-        state at the top of the VPM step. External couplers may replace the
-        particle cloud at fixed physical time, so the panel's harmonic/body
-        correction must be re-solved against the replaced state before the
-        next boundary trace or advection step evaluates it.
-
-        Notes
-        -----
-        This is a synchronization operation, not a particle update. It may
-        mutate panel strengths/coefficients and solver-owned boundary caches.
-        """
-        panel = self.panel_solver
-        if panel is None or getattr(panel, "coupling_scope", "full") not in (
-            "full",
-            "vpm_boundary_condition",
-            "fvm_vpm",
-        ):
-            return
-        panel.refresh_coupled_solution(
-            particles=self.particles,
-            physics=self.physics,
-            freestream_velocity=self.freestream_velocity,
-            time=self.time,
-        )
 
     def set_surface_sources(
         self, position: np.ndarray, vortex_strength: np.ndarray, core_radius: np.ndarray
@@ -1809,30 +1652,18 @@ class VPMSolver:
     def _add_nonparticle_target_gradient(
         self, points: np.ndarray, particle_gradient: np.ndarray, *, particle_spacing: float
     ) -> np.ndarray:
-        """Add analytical panel and finite-difference nonparticle target gradients."""
+        """Add finite-difference nonparticle target gradients."""
         gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
         has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
         if len(points) == 0:
             return gradient
 
-        panel_gradient = self._fvm_vpm_panel_source_gradient(points)
-        if panel_gradient is not None:
-            gradient += panel_gradient
-
-        needs_finite_difference = (
-            self.n_sources > 0
-            or has_vlm
-            or (self._body_induced_fn is not None and panel_gradient is None)
-        )
+        needs_finite_difference = self.n_sources > 0 or has_vlm or self._body_induced_fn is not None
         if not needs_finite_difference:
             return gradient
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
-        velocity_at = (
-            self._nonpanel_target_velocity
-            if panel_gradient is not None
-            else self._nonparticle_target_velocity
-        )
+        velocity_at = self._nonparticle_target_velocity
         for axis in range(3):
             offset = np.zeros(3, dtype=np.float64)
             offset[axis] = step
@@ -1889,10 +1720,9 @@ class VPMSolver:
 
         The mixed FVM boundary condition does not consume the full nine-component
         Jacobian. Particle induction is still evaluated by the configured fused
-        target operation. The ``fvm_vpm`` source-panel field contributes its
-        analytical f64 derivative; other source/body terms use only the two
-        centred samples along each face normal instead of three coordinate-direction
-        pairs.
+        target operation. Auxiliary source, VLM, and body-callback terms use
+        only two centred samples along each face normal instead of three
+        coordinate-direction pairs.
 
         Parameters
         ----------
@@ -1932,23 +1762,11 @@ class VPMSolver:
         normal_velocity_gradient = np.einsum(
             "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
         )
-        panel_gradient = self._fvm_vpm_panel_source_gradient(points)
-        if panel_gradient is not None:
-            normal_velocity_gradient += np.einsum("fij,fj->fi", panel_gradient, unit_normals)
-
         has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
-        needs_finite_difference = (
-            self.n_sources > 0
-            or has_vlm
-            or (self._body_induced_fn is not None and panel_gradient is None)
-        )
+        needs_finite_difference = self.n_sources > 0 or has_vlm or self._body_induced_fn is not None
         if needs_finite_difference:
             step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
-            velocity_at = (
-                self._nonpanel_target_velocity
-                if panel_gradient is not None
-                else self._nonparticle_target_velocity
-            )
+            velocity_at = self._nonparticle_target_velocity
             plus = velocity_at(points + step * unit_normals)
             minus = velocity_at(points - step * unit_normals)
             if plus.shape != points.shape or minus.shape != points.shape:
@@ -2646,30 +2464,20 @@ class VPMSolver:
         self,
         filename: str | Path,
         *,
-        include_panels: bool = True,
         include_particles: bool = True,
-        format: str = "vtp",
-        compression: bool = True,
     ) -> None:
-        """Export particle/panel state for visualization or post-processing.
+        """Export particle state for visualization or post-processing.
 
         Parameters
         ----------
         filename : str or pathlib.Path
-            Destination path. The suffix and ``format`` determine the writer.
-        include_panels, include_particles : bool, default=True
-            Select boundary-element and particle records.
-        format : str, default="vtp"
-            Output format supported by :class:`SolverIO`.
-        compression : bool, default=True
-            Request writer compression where supported.
+            Destination path prefix.
+        include_particles : bool, default=True
+            Select whether particle records are written.
         """
         self.io.export_state(
             filename,
-            include_panels=include_panels,
             include_particles=include_particles,
-            format=format,
-            compression=compression,
         )
 
     # Particle updates

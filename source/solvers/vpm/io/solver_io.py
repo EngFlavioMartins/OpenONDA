@@ -15,7 +15,6 @@ from source.solution_layout import component_directory
 
 from .backup import _BackupIO
 from .logging import Logging
-from .sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
@@ -270,23 +269,9 @@ class SolverIO:
     def export_state(
         self,
         filename: str | Path,
-        include_panels: bool = True,
         include_particles: bool = True,
-        format: str = "vtp",
-        compression: bool = True,
     ) -> None:
         """Export solver state for visualization and post-processing."""
-        # Export panels
-        if (
-            include_panels
-            and self.solver.panel_solver is not None
-            and getattr(self.solver.panel_solver, "lattice", None) is not None
-        ):
-            from .vtk_export import export_panels_vtk
-
-            panel_file = f"{filename}_panels.{format}"
-            export_panels_vtk(self.solver, panel_file, compression)
-
         if include_particles and self.solver.particles.n_particles_total > 0:
             self.solver.particles.save_vortex_particles(
                 f"{filename}_particles.vtp",
@@ -294,53 +279,6 @@ class SolverIO:
             )
 
         # Field export is not yet implemented; particles are handled above.
-
-    def _export_panel_loads(self, time_val: float):
-        """Export panel solver aerodynamic loads to CSV."""
-        panel_solver = getattr(self.solver, "panel_solver", None)
-        if panel_solver is None:
-            return
-        lattice = getattr(panel_solver, "lattice", None)
-        if lattice is None or lattice.n_panels == 0:
-            return
-
-        # Compute forces using the cached panel_force field
-        forces = panel_solver.compute_forces_coefficients(
-            density=panel_solver.density,
-            reference_velocity=panel_solver.freestream_velocity,
-        )
-
-        import pandas as pd
-
-        samples_dir = resolve_samples_dir(
-            self.solver.case_dir,
-            self.solver.case.samplers.directory,
-        )
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"
-
-        row = {
-            "time": time_val,
-            "lift_coefficient": forces.get("lift_coefficient", 0.0),
-            "drag_coefficient": forces.get("drag_coefficient", 0.0),
-            "side_force_coefficient": forces.get("side_force_coefficient", 0.0),
-            "force_x": forces.get("force_x", 0.0),
-            "force_y": forces.get("force_y", 0.0),
-            "force_z": forces.get("force_z", 0.0),
-            "moment_x": forces.get("moment_x", 0.0),
-            "moment_y": forces.get("moment_y", 0.0),
-            "moment_z": forces.get("moment_z", 0.0),
-            "lift": forces.get("lift", 0.0),
-            "drag": forces.get("drag", 0.0),
-            "dynamic_pressure": forces.get("dynamic_pressure", 0.0),
-            "reference_area": forces.get("reference_area", 0.0),
-        }
-
-        df = pd.DataFrame([row])
-        if not csv_path.exists():
-            df.to_csv(csv_path, index=False)
-        else:
-            df.to_csv(csv_path, mode="a", header=False, index=False)
 
 
 __all__ = ["SolverIO"]

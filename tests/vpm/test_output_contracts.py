@@ -558,7 +558,6 @@ def test_scheduled_backup_does_not_dispatch_scientific_output(tmp_path, monkeypa
         lambda *_args, **_kwargs: calls.append("backup"),
     )
     monkeypatch.setattr(io, "export_state", lambda *_args, **_kwargs: calls.append("state"))
-    monkeypatch.setattr(io, "_export_panel_loads", lambda *_args: calls.append("panel"))
 
     io.write_backup()
 

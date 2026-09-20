@@ -58,7 +58,6 @@ def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
         profiler=_Profiler(),
         stabilization=_Stabilization(),
         vlm_solver=None,
-        panel_solver=None,
         setup=SimpleNamespace(diagnostics=SimpleNamespace(validate_stages=False)),
         physics=SimpleNamespace(velocity_override=None),
         flow_model="POTENTIAL",

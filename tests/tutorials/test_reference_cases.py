@@ -9,9 +9,8 @@ from openonda.tutorial_runner import load_case_module
 from openonda.tutorials import materialize_tutorial
 
 
-@pytest.mark.parametrize("name", ["cube_flow", "cylinder_shedding_flow"])
-def test_reference_case_owns_geometry_and_refines_requested_sizes(tmp_path, monkeypatch, name):
-    case = materialize_tutorial(f"coupled_fvm_vpm/{name}/reference_flow", tmp_path)
+def test_cylinder_reference_owns_geometry_and_refines_requested_sizes(tmp_path, monkeypatch):
+    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow/reference_flow", tmp_path)
     # Move the case away from every parent tutorial directory.
     standalone = tmp_path / "standalone"
     case.rename(standalone)
@@ -40,55 +39,52 @@ def test_reference_case_owns_geometry_and_refines_requested_sizes(tmp_path, monk
     np.testing.assert_allclose(np.array(sizes[0]) / sizes[1], 2)
 
 
-def test_reference_restart_reuses_cached_native_mesh(tmp_path, monkeypatch):
-    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow/reference_flow", tmp_path)
-    module = load_case_module(case)
-    captured = []
+def test_cube_reference_owns_geometry_and_uses_explicit_spacing(tmp_path, monkeypatch):
+    case = materialize_tutorial("coupled_fvm_vpm/cube_flow/reference_flow", tmp_path)
+    standalone = tmp_path / "standalone"
+    case.rename(standalone)
+    module = load_case_module(standalone)
+    captured = {}
 
     def capture(config, **kwargs):
-        captured.append(kwargs)
+        captured.update(config=config, **kwargs)
         return SimpleNamespace()
 
     monkeypatch.setattr(module.fvm, "create_fvm_solver", capture)
-    cached_mesh = case / "solution" / "restart" / "fvm" / "mesh.npz"
-    cached_mesh.parent.mkdir(parents=True)
-    cached_mesh.touch()
+    module.create_solver("grid_h0045", 0.045)
 
-    module.create_solver("restart", 0.04, restart_from=case / "solution" / "restart" / "backup")
+    mesh = captured["mesh"]
+    assert mesh.surfaces[0].path.is_file()
+    assert mesh.surfaces[0].path.is_relative_to(standalone)
+    assert captured["solution_dir"] == standalone / "solution/grid_h0045"
+    assert captured["samples_dir"] == standalone / "samples/grid_h0045"
+    assert mesh.patch_refinements[0].cell_size == pytest.approx(0.045)
 
-    assert captured[-1]["mesh"] == cached_mesh
 
-
-def test_cylinder_coupled_mesh_has_four_direct_resolution_levels(tmp_path):
-    """The compact coupled FVM preserves four direct Cartesian sizes."""
+def test_cylinder_coupled_mesh_is_uniform_at_the_reference_fine_spacing(tmp_path):
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
     mesh = module.FVM_MESH
     assert isinstance(mesh, module.msh.CartesianMesher)
-    assert len(mesh.refinements) == 1
-    assert mesh.refinements[0].name == "nearBody"
-    assert len(mesh.patch_refinements) == 1
-    assert mesh.patch_refinements[0].patch == "cylinder"
-    assert mesh.max_cell_size == pytest.approx(16.0 * module.CELL_SIZE)
-    assert mesh.background_cell_size == pytest.approx(16.0 * module.CELL_SIZE)
+    assert pytest.approx(0.04) == module.CELL_SIZE
+    assert mesh.max_cell_size == pytest.approx(module.CELL_SIZE)
+    assert mesh.background_cell_size == pytest.approx(module.CELL_SIZE)
+    assert mesh.boundary_cell_size == pytest.approx(module.CELL_SIZE)
     assert mesh.cell_size_anchor == pytest.approx(module.CELL_SIZE)
-    requested_levels = tuple(module.CELL_SIZE * 2**level for level in range(4))
-    assert tuple(
-        sorted({mesh.effective_cell_size(requested) for requested in requested_levels})
-    ) == pytest.approx(requested_levels)
-    generated = mesh.build(stop_after="templateGeneration")
-    assert tuple(
-        np.unique(np.round(np.asarray(generated["cell_sizes"], dtype=np.float64), 12))
-    ) == pytest.approx(requested_levels)
+    assert mesh.refinements == ()
+    assert mesh.patch_refinements == ()
+    assert mesh.effective_cell_size(module.CELL_SIZE) == pytest.approx(module.CELL_SIZE)
     assert mesh.requested_domain.bounds == module.FVM_BOX
-    assert mesh.domain.bounds == pytest.approx((-1.8, 1.8, -1.8, 1.8, -0.6, 0.6))
+    assert mesh.domain.bounds == pytest.approx(module.FVM_BOX)
+    assert pytest.approx((-1.48, 1.48, -1.48, 1.48, -0.48, 0.48)) == module.FVM_BOX
+    assert pytest.approx(24) == module.FVM_RESOLVED_SPAN / module.CELL_SIZE
 
 
 def test_cylinder_transfer_region_fits_boundary_face_centres(tmp_path):
     """Keep exchange support inside the face-centre box used by the coupler."""
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
-    half_span = module.FVM_HALF_SPAN - 0.5 * module.SPANWISE_CELL_SIZE
+    half_span = module.FVM_HALF_SPAN - 0.5 * module.CELL_SIZE
     face_centre_box = np.asarray((*module.FVM_BOX[:4], -half_span, half_span))
     module.COUPLER_SETUP.validate_transfer_region_box(face_centre_box)
 
@@ -111,6 +107,4 @@ def test_cylinder_gbd_grid_is_aligned_and_within_gpu_budget(tmp_path):
     grid_bytes = int(np.prod(dimensions)) * 32
     assert dimensions == (411, 211, 275)
     assert grid_bytes < 1 << 30
-    assert module.VPM_CASE.numerics.bodies[0].diffusion_mask == "cylinder_z"
     assert module.REFERENCE_AREA == module.DIAMETER * module.FVM_RESOLVED_SPAN
-    assert module.PANEL_REFERENCE_AREA == module.DIAMETER * module.CYLINDER_LENGTH

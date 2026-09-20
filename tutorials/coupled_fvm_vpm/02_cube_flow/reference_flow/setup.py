@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Body-fitted cube flow at Re=1000.
-
-Usage:
-    python -u setup.py --name DIRECTORY_NAME --dx WALL_SIZE_TARGET
-
-Example:
-    python -u setup.py --name coarse --dx 0.125
-"""
+"""Body-fitted cube flow at Re = 1000."""
 
 import argparse
 from pathlib import Path
@@ -14,121 +7,66 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
+# Physical problem
+CUBE_SIDE = 1.0
+FREESTREAM_VELOCITY = 1.0
+DENSITY = 1.0
+REYNOLDS_NUMBER = 1000.0
+KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * CUBE_SIDE / REYNOLDS_NUMBER
 
-def create_solver(
-    directory_name: str,
-    dx: float,
-    *,
-    campaign: bool = False,
-    output_root: Path | None = None,
-    cores: int = 4,
-    end_time: float = 30.0,
-    max_dt: float = 0.04,
-    courant: float = 0.9,
-    lean: bool = False,
-    output_interval: float | None = None,
-    backup_interval: float | None = None,
-    restart_from: Path | None = None,
-    mesh: Path | None = None,
-) -> fvm.FVMSolver:
-    """Construct the Re=1000 cube with wall spacing ``dx`` in metres.
+# Domain and mesh refinement
+DOMAIN = (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48)
+BACKGROUND_CELL_SIZE_RATIO = 8.0
+WAKE_CELL_SIZE_RATIO = 2.0
+NEAR_BODY = (-1.5, 3.0, -1.5, 1.5, -1.5, 1.5)
+WAKE = (-2.0, 8.0, -2.0, 2.0, -2.0, 2.0)
 
-    ``campaign`` selects the fixed-domain geometric family. ``max_dt`` is the
-    timestep ceiling in seconds and ``courant`` is its CFL limit. ``lean`` saves
-    initial/final fields and five-second checkpoints. ``output_interval`` and
-    ``backup_interval`` independently override those schedules in seconds.
-    Visualization frames remain a series; checkpoints retain the two latest
-    committed states. Force and profile sampling keep their own schedules.
-    An explicit native mesh
-    avoids remeshing; restart always uses the case's own saved mesh. The FVM
-    factory owns mesh construction, parallel execution and output validation.
-    """
-    case_dir = Path(__file__).resolve().parent
-    domain = (
-        (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48) if campaign else (-6.5, 13.0, -6.5, 6.5, -6.5, 6.5)
-    )
-    output_root = case_dir if output_root is None else Path(output_root).resolve()
-    native_mesh = (
-        output_root / "solution" / directory_name / "fvm" / "mesh.npz"
-        if restart_from is not None
-        else mesh
-    )
-    velocity = [1.0, 0.0, 0.0]
-    patches = msh.BoxPatches(
-        xmin="inlet",
-        xmax="outlet",
-        ymin="ymin",
-        ymax="ymax",
-        zmin="zmin",
-        zmax="zmax",
-    )
-    generated_mesh = msh.CartesianMesher(
-        domain=msh.BoxDomain(bounds=domain, patches=patches),
-        surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
-        max_cell_size=(8 if campaign else 12) * dx,
-        cell_size_anchor=dx,
+# Time, output and sampling
+CORES = 4
+END_TIME = 30.0
+TIME_STEP_SIZE = 0.005
+MAX_COURANT_NUMBER = 0.5
+OUTPUT_INTERVAL = 0.25
+FORCE_SAMPLE_INTERVAL = 0.05
+PROFILE_SAMPLE_INTERVAL = 0.25
+PROFILE_SPACING = 0.06
+
+CASE_DIR = Path(__file__).resolve().parent
+VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
+
+
+def create_solver(name: str, h: float) -> fvm.FVMSolver:
+    mesh = msh.CartesianMesher(
+        domain=msh.BoxDomain(
+            bounds=DOMAIN,
+            patches=msh.BoxPatches(
+                xmin="inlet",
+                xmax="outlet",
+                ymin="ymin",
+                ymax="ymax",
+                zmin="zmin",
+                zmax="zmax",
+            ),
+        ),
+        surfaces=(msh.STLSurface(CASE_DIR / "assets/cube.stl", patch="cube"),),
+        max_cell_size=BACKGROUND_CELL_SIZE_RATIO * h,
+        cell_size_anchor=h,
         refinements=(
-            # cfMesh treats box cell sizes as strict upper bounds.
-            msh.BoxRefinement(
-                "nearBody",
-                (-1.5, 3.0, -1.5, 1.5, -1.5, 1.5),
-                dx,
-            ),
-            msh.BoxRefinement(
-                "wake",
-                (-2.0, 8.0, -2.0, 2.0, -2.0, 2.0),
-                2.0 * dx,
-            ),
+            msh.BoxRefinement("nearBody", NEAR_BODY, h),
+            msh.BoxRefinement("wake", WAKE, WAKE_CELL_SIZE_RATIO * h),
         ),
-        patch_refinements=(msh.PatchRefinement("cube", dx),),
+        patch_refinements=(msh.PatchRefinement("cube", h),),
     )
-
-    force_schedule = fvm.RunSchedule(every_time=0.05)
-    line_schedule = fvm.RunSchedule(every_time=0.25)
-    solution_schedule = (
-        fvm.RunSchedule(final_only=True) if lean else fvm.RunSchedule(every_time=0.5)
-    )
-    if output_interval is not None:
-        solution_schedule = fvm.RunSchedule(every_time=output_interval)
-    backup_schedule = fvm.RunSchedule(
-        every_time=backup_interval if backup_interval is not None else (5.0 if lean else 0.5)
-    )
-    sample_spacing = 0.06 if campaign else min(0.125, 2.0 * dx)
-    solver_setup = fvm.FVMSetup(
-        case_name=directory_name,
-        cores=cores,
-        mesh=fvm.MeshQualityConfig(
-            max_non_orthogonality_deg=70.0,
-            max_skewness=1.0,
-        ),
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        output=fvm.OutputConfig(
-            compression="lz4",
-            asynchronous=False,
-            ghost_layers=0,
-        ),
-        logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.25)),
-        acceptance=fvm.RunAcceptanceLimits(
-            max_continuity_error_warning=1.0e-4,
-            max_continuity_error_abort=1.0e-2,
-            max_equation_residual_warning=1.0e-4,
-            max_equation_residual_abort=1.0e-2,
-            max_courant_number_warning=0.9,
-            max_courant_number_abort=1.5,
-            max_velocity_magnitude_warning=4.0,
-            max_velocity_magnitude_abort=6.0,
-        ),
-        backup=fvm.BackupConfig(
-            schedule=backup_schedule,
-            write_at_end=True,
-        ),
+    setup = fvm.FVMSetup(
+        case_name=name,
+        cores=CORES,
         time=fvm.TimeConfig(
-            time_step_size=min(0.01, max_dt),
-            end_time=end_time,
-            output_schedule=solution_schedule,
+            time_step_size=TIME_STEP_SIZE,
+            end_time=END_TIME,
+            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=courant,
-                maximum_time_step_size=max_dt,
+                maximum=MAX_COURANT_NUMBER,
+                maximum_time_step_size=TIME_STEP_SIZE,
             ),
         ),
         schemes=fvm.DiscretizationConfig(
@@ -153,40 +91,40 @@ def create_solver(
         samplers=(
             fvm.ForceSampler(
                 patch_names=["cube"],
-                reference_velocity=1.0,
-                reference_area=1.0,
-                reference_length=1.0,
-                schedule=force_schedule,
+                reference_velocity=FREESTREAM_VELOCITY,
+                reference_area=CUBE_SIDE**2,
+                reference_length=CUBE_SIDE,
+                schedule=fvm.RunSchedule(every_time=FORCE_SAMPLE_INTERVAL),
             ),
             fvm.LineSampler(
-                start=[domain[0], 0.0, 0.0],
-                end=[domain[1], 0.0, 0.0],
-                spacing=sample_spacing,
+                start=[DOMAIN[0], 0.0, 0.0],
+                end=[DOMAIN[1], 0.0, 0.0],
+                spacing=PROFILE_SPACING,
                 k=12,
                 reconstruction="affine",
                 file_name="centreline",
-                schedule=line_schedule,
+                schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
             ),
             fvm.LineSampler(
-                start=[domain[0], 0.75, 0.0],
-                end=[domain[1], 0.75, 0.0],
-                spacing=sample_spacing,
+                start=[DOMAIN[0], 0.75, 0.0],
+                end=[DOMAIN[1], 0.75, 0.0],
+                spacing=PROFILE_SPACING,
                 k=12,
                 reconstruction="affine",
                 file_name="offaxis_y075",
-                schedule=line_schedule,
+                schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
             ),
         ),
         transport=fvm.TransportConfig(
-            density=1.0,
-            kinematic_viscosity=1.0 / 1000.0,
+            density=DENSITY,
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
         ),
         turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
             subgrid_kinetic_energy_coefficient=0.094,
             subgrid_dissipation_coefficient=1.048,
         ),
         boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", velocity),
+            fvm.BoundaryConfig.inlet("inlet", VELOCITY),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
@@ -194,49 +132,31 @@ def create_solver(
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cube"),
         ],
-        initial_velocity=velocity,
+        initial_velocity=VELOCITY,
     )
     return fvm.create_fvm_solver(
-        solver_setup,
-        case_dir=case_dir,
-        solution_dir=output_root / "solution" / directory_name,
-        samples_dir=output_root / "samples" / directory_name,
-        mesh=native_mesh if native_mesh is not None else generated_mesh,
-        require_empty_output=restart_from is None,
+        setup,
+        case_dir=CASE_DIR,
+        solution_dir=CASE_DIR / "solution" / name,
+        samples_dir=CASE_DIR / "samples" / name,
+        mesh=mesh,
     )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--name", default="grid_h0045")
+    parser.add_argument("-h", type=float, default=0.045)
+    arguments = parser.parse_args()
+
+    with create_solver(arguments.name, arguments.h) as solver:
+        solver.run()
+        fvm.update_grid_study(
+            solver,
+            arguments.h,
+            profiles=("centreline", "offaxis_y075"),
+        )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", dest="directory_name", default="fine")
-    parser.add_argument("--dx", default=0.06, type=float)
-    parser.add_argument(
-        "--campaign", action="store_true", help="Use the fixed-domain geometric family"
-    )
-    parser.add_argument("--output-root", type=Path)
-    parser.add_argument("--cores", type=int, default=4)
-    parser.add_argument("--end-time", type=float, default=30.0)
-    parser.add_argument("--max-dt", type=float, default=0.04)
-    parser.add_argument("--courant", type=float, default=0.9)
-    parser.add_argument(
-        "--lean", action="store_true", help="Initial/final fields and rolling 5 s backups"
-    )
-    parser.add_argument(
-        "--output-interval", type=float, help="Visualization interval in seconds; overrides --lean"
-    )
-    parser.add_argument(
-        "--backup-interval", type=float, help="Rolling checkpoint interval in seconds"
-    )
-    parser.add_argument("--restart-from", type=Path)
-    parser.add_argument("--mesh", type=Path, help="Reuse this exact native mesh for a fresh run")
-    arguments = vars(parser.parse_args())
-    if arguments["campaign"]:
-        from studies.panel_removal.cube_reference_campaign import run_campaign_level
-
-        run_campaign_level(create_solver, case_dir=Path(__file__).resolve().parent, **arguments)
-    else:
-        with create_solver(**arguments) as solver:
-            if arguments["restart_from"]:
-                solver.load_state(arguments["restart_from"])
-            solver.run()
-            fvm.update_grid_study(solver, arguments["dx"], profiles=("centreline", "offaxis_y075"))
+    main()

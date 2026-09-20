@@ -141,14 +141,6 @@ Only the TRANSPOSED form conserves total particle strength ΣΓ exactly — prov
   → `boundary_elements/vlm/solver/kernels.py:shed_wake_particles_kernel`,
   pinned by `tests/vpm/test_audit_2026_08_regressions.py`
 
-## Panel / boundary-element methods
-
-- **[Hess1967]** Hess, J. L. & Smith, A. M. O. (1967). Calculation of potential
-  flow about arbitrary bodies. *Prog. Aerosp. Sci.* 8, 1–138.
-- **[KP2001]** as above, ch. 10–11, for the source/doublet formulation and the
-  inside/outside convention.
-  → `boundary_elements/panels/`
-
 ## Divergence control and stabilization
 
 - **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos,

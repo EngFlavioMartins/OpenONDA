@@ -214,10 +214,9 @@ the local validation reports are outside the current guaranteed contract.
 
 Manufactured-field transfer checks, unsteady FVM boundary tests and induction
 checks against independent fields isolate different error sources. These
-component checks cannot establish agreement of complete cylinder runs.
-A finite-span 3D cylinder and a quasi-2D reference also solve different physical
-problems. The [panel-removal study](../studies/panel_removal/README.md) separates
-its cube comparison from the matched planar cylinder experiment.
+component checks cannot establish agreement of complete cylinder runs. A
+finite-span 3D cylinder and a quasi-2D reference also solve different physical
+problems.
 
 Buffered renewal uses fluid-domain membership and native wall geometry
 independently of distance to the nearest FVM cell centre, so anisotropic donor

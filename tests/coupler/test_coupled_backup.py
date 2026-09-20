@@ -56,26 +56,6 @@ class _CouplerSetup(_MappingSetup):
         self.freestream_velocity = [1.0, 0.0, 0.0]
 
 
-class _Panel:
-    def __init__(self, coupling_scope: str):
-        self.max_n_panels = 128
-        self.float_dtype = "f32"
-        self.linear_solver_name = "SCIPY"
-        self.force_config = SimpleNamespace(method="BERNOULLI")
-        self.boundary_condition_type = "NEUMANN"
-        self.density = 1.0
-        self.freestream_velocity = np.array([1.0, 0.0, 0.0])
-        self.coupling_scope = coupling_scope
-        self.raise_on_non_convergence = True
-        self.residual_tolerance = None
-        self.far_field_acceptance = 5.0
-        self.far_field_min_panels = 256
-        self.reuse_constrained_factorization = True
-
-    def induced_velocity_diagnostic_is_due(self) -> bool:
-        return False
-
-
 class _FVM:
     def __init__(self):
         self.parallel = SimpleNamespace(is_partitioned=False)
@@ -97,7 +77,6 @@ class _VPM:
         self,
         *,
         gbd_threshold: float,
-        panel_scope: str,
         backup_directory: str,
         velocity: np.ndarray,
         pressure_gradient: np.ndarray,
@@ -119,7 +98,6 @@ class _VPM:
                 },
             }
         )
-        self.panel_solver = _Panel(panel_scope)
         self.particles = SimpleNamespace(n_particles_total=0)
         self.step = 1
         self.time = 0.1
@@ -157,9 +135,6 @@ class _VPM:
     def _load_backup_from(self, filename: str) -> None:
         assert Path(filename).is_file()
 
-    def refresh_boundary_element_solution(self) -> None:
-        return None
-
     def compute_velocity_at_points(self, points: np.ndarray, **_kwargs) -> np.ndarray:
         assert len(points) == len(self.current_velocity)
         return self.current_velocity.copy()
@@ -189,7 +164,6 @@ class _VPM:
 def _make_coupler(
     *,
     gbd_threshold: float = 1.0e-5,
-    panel_scope: str = "vpm_boundary_condition",
     transfer_method: str = "common_lattice",
     backup_directory: str = "original-output",
 ):
@@ -197,7 +171,6 @@ def _make_coupler(
     previous_pressure_gradient = np.array([[0.2, -0.1, 0.0], [0.3, -0.2, 0.0]])
     vpm = _VPM(
         gbd_threshold=gbd_threshold,
-        panel_scope=panel_scope,
         backup_directory=backup_directory,
         velocity=previous_velocity,
         pressure_gradient=np.array([[0.4, 0.2, 0.0], [0.5, 0.1, 0.0]]),
@@ -451,7 +424,6 @@ def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path
     ("path", "changed"),
     [
         ("vpm.viscous.gbd_threshold", {"gbd_threshold": 2.0e-5}),
-        ("panel.coupling_scope", {"panel_scope": "full"}),
         ("coupler.transfer_method", {"transfer_method": "buffered_m4_renewal"}),
     ],
 )

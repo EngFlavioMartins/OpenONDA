@@ -48,41 +48,12 @@ def _vpm_numerical_config(vpm_setup: Numerics) -> dict:
     return numerical_configuration(vpm_setup)
 
 
-def _panel_numerical_config(panel_solver) -> dict | None:
-    """Serialize the constructor-level panel choices, excluding diagnostics."""
-    if panel_solver is None:
-        return None
-    force_config = getattr(panel_solver, "force_config", None)
-    freestream_velocity = getattr(panel_solver, "freestream_velocity", None)
-    return {
-        "type": f"{type(panel_solver).__module__}.{type(panel_solver).__qualname__}",
-        "max_n_panels": int(panel_solver.max_n_panels),
-        "float_dtype": panel_solver.float_dtype,
-        "linear_solver": panel_solver.linear_solver_name,
-        "force_method": None if force_config is None else force_config.method,
-        "boundary_condition_type": panel_solver.boundary_condition_type,
-        "density": float(panel_solver.density),
-        "freestream_velocity": (
-            None
-            if freestream_velocity is None
-            else np.asarray(freestream_velocity, dtype=np.float64).tolist()
-        ),
-        "coupling_scope": panel_solver.coupling_scope,
-        "raise_on_non_convergence": bool(panel_solver.raise_on_non_convergence),
-        "residual_tolerance": panel_solver.residual_tolerance,
-        "far_field_acceptance": float(panel_solver.far_field_acceptance),
-        "far_field_min_panels": int(panel_solver.far_field_min_panels),
-        "reuse_constrained_factorization": bool(panel_solver.reuse_constrained_factorization),
-    }
-
-
 def _backup_config(coupler) -> dict:
     """Build the strict restart identity for all coupled numerical components."""
     if coupler.vpm_solver is None:
         raise RuntimeError("Initialize the coupler before backuping configuration")
     config = dict(coupler.setup.to_dict())
     config["vpm"] = _vpm_numerical_config(coupler.vpm_solver.setup)
-    config["panel"] = _panel_numerical_config(coupler.vpm_solver.panel_solver)
     return config
 
 

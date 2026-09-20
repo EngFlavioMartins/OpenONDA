@@ -1,10 +1,19 @@
 # state file generated using paraview version 6.1.0
+from pathlib import Path
+
 import paraview
 
 paraview.compatibility.major = 6
 paraview.compatibility.minor = 1
 
 from paraview.simple import *
+
+
+# Resolve inputs from the tutorial rather than the machine where this state
+# file was generated.  ParaView accepts ``Path`` values only inconsistently
+# across releases, so keep the public reader arguments as strings.
+CASE_DIR = Path(__file__).resolve().parent.parent
+SOLUTION_DIR = CASE_DIR / "solution"
 
 # Keep the saved camera when displaying the first source.
 paraview.simple._DisableFirstRenderCameraReset()
@@ -59,7 +68,7 @@ appendSelections = CreateSelection(
 
 vpmpvd = PVDReader(
     registrationName="vpm.pvd",
-    FileName="/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm.pvd",
+    FileName=str(SOLUTION_DIR / "vpm.pvd"),
 )
 vpmpvd.PointArrays = [
     "core_radius",
@@ -93,14 +102,12 @@ clip1.HyperTreeGridClipper.Origin = [
 
 cubestl = STLReader(
     registrationName="cube.stl",
-    FileNames=[
-        "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl"
-    ],
+    FileNames=[str(CASE_DIR / "assets" / "cube.stl")],
 )
 
 fvmpvd = PVDReader(
     registrationName="fvm.pvd",
-    FileName="/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm.pvd",
+    FileName=str(SOLUTION_DIR / "fvm.pvd"),
 )
 fvmpvd.CellArrays = [
     "velocity",

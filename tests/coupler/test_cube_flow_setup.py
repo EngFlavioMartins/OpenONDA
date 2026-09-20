@@ -48,17 +48,14 @@ def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     assert setup.FVM_MESH.cell_size_anchor == pytest.approx(0.045)
     assert setup.FVM_MESH.background_cell_size == pytest.approx(0.045)
     assert setup.FVM_MESH.requested_domain.bounds == setup.FVM_BOX
-    snapped_half_width = np.ceil(1.5 / 0.045) * 0.045
-    assert setup.FVM_MESH.domain.bounds == pytest.approx(
-        (-snapped_half_width, snapped_half_width) * 3
-    )
+    assert setup.FVM_MESH.domain.bounds == pytest.approx(setup.FVM_BOX)
     assert setup.FVM_MESH.boundary_cell_size == pytest.approx(0.045)
     assert setup.FVM_MESH.refinements == ()
     assert setup.FVM_MESH.effective_cell_size(0.045) == pytest.approx(0.045)
     assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.045)
-    assert setup.FVM_BOX == (-1.5, 1.5) * 3
+    assert setup.FVM_BOX == (-1.485, 1.485) * 3
     assert setup.TRANSFER_REGION_BOX == (-1.45, 1.45) * 3
-    assert setup.FVM_MESH.patch_refinements[0].cell_size == pytest.approx(0.045)
+    assert setup.FVM_MESH.patch_refinements == ()
     assert setup.COUPLER_SETUP.interface_iterations == 3
     assert setup.COUPLER_SETUP.fvm_consistency_width == 0
     assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.045)
@@ -66,7 +63,6 @@ def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
     assert pytest.approx(0.003) == setup.GBD_VORTICITY_FLOOR
     assert setup.COUPLER_SETUP.boundary_condition_mode == "vorticity_mixed"
-    assert setup.VPM_PANEL_SOLVER.coupling_scope == "fvm_vpm"
     assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
     assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.FMMInduction)
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
@@ -385,8 +381,7 @@ def test_cube_reference_gate_uses_spatial_mean_profile_error(tmp_path, monkeypat
         )
 
 
-def test_reference_flow_declares_its_sampling_and_backup_cadence(monkeypatch):
-    coupled = _load_setup(CASE_DIR / "setup.py", "coupled_flow_reference_test")
+def test_reference_flow_declares_its_sampling_cadence(monkeypatch):
     reference = _load_setup(
         CASE_DIR / "reference_flow" / "setup.py",
         "reference_flow_setup_test",
@@ -398,15 +393,15 @@ def test_reference_flow_declares_its_sampling_and_backup_cadence(monkeypatch):
         return object()
 
     monkeypatch.setattr(reference.fvm, "create_fvm_solver", create)
-    reference.create_solver("coarse", 0.125)
+    reference.create_solver("grid_h0045", 0.045)
     config = captured["config"]
 
-    assert config.time.time_step_size == pytest.approx(coupled.FVM_TIME_STEP_SIZE)
+    assert config.time.time_step_size == pytest.approx(0.005)
     schedules = {sampler.name: sampler.schedule.every_time for sampler in config.samplers}
     assert schedules == {
         "forces_history": 0.05,
         "centreline": 0.25,
         "offaxis_y075": 0.25,
     }
-    assert config.time.output_schedule.every_time == 0.5
-    assert config.backup.schedule.every_time == 0.5
+    assert config.time.output_schedule.every_time == 0.25
+    assert config.backup.schedule is None

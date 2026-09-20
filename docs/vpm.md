@@ -1,7 +1,7 @@
 # Vortex-particle solver guide
 
 This page is the reader-facing contract for OpenONDA's vortex-particle method (VPM)
-and its optional vortex-lattice/panel components. The public construction objects are
+and its optional vortex-lattice component. The public construction objects are
 available from [`openonda.vpm`](../source/solvers/vpm/__init__.py). The implementation
 uses Taichi fields for the active particle prefix and keeps the accepted physical clock
 in `VPMSolver`.
@@ -165,11 +165,11 @@ replace the entire particle cloud, including positions, strengths, radii, volume
 viscosities, and IDs; the replacement is an accepted-state mutation and invalidates
 all source caches.
 
-External stage providers (freestream, VLM, panel, or coupling callbacks) receive the
+External stage providers (freestream, VLM, or coupling callbacks) receive the
 temporary stage state and may add velocity, a gradient, or an explicit strength rate.
-They must not read an older accepted state through the stage protocol. The VLM/panel
-boundary solve may be lagged to the accepted coupling phase while its velocity is
-evaluated at the exact temporary particle positions.
+They must not read an older accepted state through the stage protocol. The VLM solve
+may be lagged to the accepted coupling phase while its velocity is evaluated at the
+exact temporary particle positions.
 
 ## Initial conditions and particle mutation
 
@@ -260,13 +260,13 @@ This reserves more storage while retaining the saved state and physical settings
 Smaller allocations and capacity changes with either adaptive operator enabled
 still require an exact capacity match.
 
-## VLM and panel coupling
+## VLM coupling
 
 `Numerics.vlm` attaches a vortex-lattice solver whose bound-vortex field is solved in
-the accepted coupling phase and added to particle RK stages. `PanelSolver`/`PanelBodySetup`
-attach surface panels and body kinematics. Both paths have geometry/provenance and
-viscosity consistency checks. Use [`docs/coupling.md`](coupling.md) for the coupled
-FVM/VPM driver, transfer regions, and boundary-trace semantics.
+the accepted coupling phase and added to particle RK stages. The VLM path applies
+geometry/provenance and viscosity consistency checks. Use
+[`docs/coupling.md`](coupling.md) for the coupled FVM/VPM driver, transfer regions,
+and boundary-trace semantics.
 
 For a coupled particle wake, `VLMSetup(wake_core_overlap=2.5)` sets the initial
 core radius to 2.5 times the larger of the local span spacing and wake-row

@@ -537,37 +537,6 @@ class Logging:
         return [("status", "not initialized")]
 
     @staticmethod
-    def _format_panel_data_lines(ps) -> list:
-        """Return the rows for an active panel solver with geometry data."""
-        lattice = getattr(ps, "lattice", None)
-        n_panels = lattice.n_panels if lattice is not None else 0
-        rows: list[log_style.Row] = [
-            ("status", "active"),
-            ("panels", f"{n_panels:,}"),
-            ("panels, max", f"{ps.max_n_panels:,}"),
-            ("precision", str(ps.float_dtype)),
-        ]
-        if hasattr(ps, "agglomerator") and ps.agglomerator is not None:
-            rows.append(("agglomeration", f"enabled, target {ps.agglomeration_target}"))
-        else:
-            rows.append(("agglomeration", "disabled"))
-        if hasattr(ps, "kutta") and ps.kutta is not None:
-            rows.append(("kutta condition", f"enabled, {ps.kutta.n_te_panels} TE pairs"))
-        else:
-            rows.append(("kutta condition", "disabled"))
-        return rows
-
-    @staticmethod
-    def _format_panel_solver(system) -> list:
-        """Return the panel-solver rows."""
-        if hasattr(system, "panel_solver") and system.panel_solver is not None:
-            ps = system.panel_solver
-            if getattr(ps, "lattice", None) is not None:
-                return Logging._format_panel_data_lines(ps)
-            return [("status", "initialized, no geometry")]
-        return [("status", "not initialized")]
-
-    @staticmethod
     def _format_stabilization_config(system) -> list:
         """Return the solution-check, stabilization, and particle-retention rows."""
         rows: list[log_style.Row] = []
@@ -643,8 +612,6 @@ class Logging:
         ]
         if getattr(system, "vlm_solver", None) is not None:
             sections.append(("VORTEX-LATTICE METHOD", Logging._format_vlm_solver(system)))
-        if getattr(system, "panel_solver", None) is not None:
-            sections.append(("PANEL METHOD", Logging._format_panel_solver(system)))
         return log_style.block_report("VPM SOLVER CONFIGURATION", sections)
 
     @staticmethod

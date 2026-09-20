@@ -1,7 +1,7 @@
 """Internal, deterministic identities for VPM numerical configurations.
 
 This module deliberately produces a restart identity, not a user-facing case
-serialization format.  Live output handlers, panel objects, VLM surfaces, and
+serialization format. Live output handlers, VLM surfaces, and
 kinematics are not reconstructible configuration data and must never be
 silently represented as such.
 """

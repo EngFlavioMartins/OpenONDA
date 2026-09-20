@@ -21,7 +21,6 @@ from .health import (
     ResourceLimitError,
     ResourceLimits,
 )
-from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
 from .viscous import ViscousConfig
@@ -34,7 +33,6 @@ __all__ = [
     "FiniteStateCheck",
     "FilamentRefinementConfig",
     "Numerics",
-    "PanelBodySetup",
     "GrowthLimit",
     "HealthError",
     "HealthLimits",

@@ -517,20 +517,6 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
     return {name: np.asarray(rows[name]) for name in names}
 
 
-def load_vpm_forces() -> dict[str, np.ndarray] | None:
-    """Load the panel-body force history written by the coupled VPM solver."""
-    path = SAMPLES / "vpm_forces.csv"
-    if not path.exists():
-        return None
-    rows = np.atleast_1d(
-        np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
-    )
-    names = rows.dtype.names
-    if names is None:
-        raise ValueError(f"{path} does not contain a named CSV table")
-    return {name: np.asarray(rows[name]) for name in names} if rows.size else None
-
-
 def common_times(*series: np.ndarray, tol: float = TIME_ATOL) -> np.ndarray:
     """Accepted physical times present in every supplied sampler series."""
     if not series or any(np.asarray(values).size == 0 for values in series):

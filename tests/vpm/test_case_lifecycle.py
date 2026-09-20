@@ -207,7 +207,6 @@ def test_requested_vlm_initialization_failure_is_fatal(monkeypatch) -> None:
     solver._stage_providers = []
     solver._setup_vlm_solver = fail_setup.__get__(solver, VPMSolver)
     setup = SimpleNamespace(
-        panel_solver=None,
         vlm=SimpleNamespace(kinematic_viscosity=0.0),
         viscous=SimpleNamespace(scheme="NONE"),
     )

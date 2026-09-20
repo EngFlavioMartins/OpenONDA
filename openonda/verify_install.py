@@ -249,7 +249,11 @@ def _verify_direct_tutorial_scripts() -> int:
             "assets/plot_merging_snapshots.py",
         ),
         "vpm/vortex_ring": ("setup.py", "assets/postprocess.py"),
-        "vpm/vortex_interactions": ("setup.py", "setup_les.py", "assets/study.py"),
+        "vpm/vortex_interactions": (
+            "setup.py",
+            "assets/plot_core_sections.py",
+            "assets/plot_core_trajectories.py",
+        ),
         "coupled_fvm_vpm/cube_flow": ("assets/validate_results.py",),
     }
     checked = 0

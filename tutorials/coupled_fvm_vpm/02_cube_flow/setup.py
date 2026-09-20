@@ -37,7 +37,7 @@ FVM_CORES = 4
 PIMPLE_CORRECTORS = 2
 
 CELL_SIZE = 0.045
-FVM_BOX = (-1.50, 1.50, -1.50, 1.50, -1.50, 1.50)
+FVM_BOX = (-1.485, 1.485, -1.485, 1.485, -1.485, 1.485)
 TRANSFER_REGION_BOX = (-1.45, 1.45, -1.45, 1.45, -1.45, 1.45)
 
 # VPM domain and resolution
@@ -75,7 +75,6 @@ TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = round(0.5 / VPM_TIME_STEP_SIZE)
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
-BODY_STL = str(CUBE_STL)
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
@@ -96,8 +95,6 @@ FVM_MESH = msh.CartesianMesher(
     surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=CELL_SIZE,
     cell_size_anchor=CELL_SIZE,
-    boundary_cell_size=CELL_SIZE,
-    patch_refinements=(msh.PatchRefinement("cube", CELL_SIZE),),
 )
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
@@ -248,15 +245,6 @@ VPM_SAMPLERS = (
     ),
 )
 
-VPM_PANEL_SOLVER = vpm.PanelSolver(
-    max_n_panels=128,
-    float_dtype="f32",
-    linear_solver="SCIPY",
-    boundary_condition_type="NEUMANN",
-    density=DENSITY,
-    freestream_velocity=np.asarray(FREESTREAM_VELOCITY),
-    coupling_scope="fvm_vpm",
-)
 VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     numerics=vpm.Numerics(
@@ -282,8 +270,6 @@ VPM_CASE = vpm.VPMCase(
         max_evaluation_points=PARTICLE_LIMIT,
         domain_bounds=VPM_DOMAIN,
         write_precision="f32",
-        panel_solver=VPM_PANEL_SOLVER,
-        bodies=(vpm.PanelBodySetup(stl=BODY_STL, uid="body", reference_area=CUBE_SIDE**2),),
     ),
     # Coupled runs use the atomic FVM+VPM restart save owned by COUPLER_SETUP.
     backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),

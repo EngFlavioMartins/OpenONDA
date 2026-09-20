@@ -2,9 +2,8 @@
 """Coupled FVM–VPM flow past a spanwise cylinder section at Re = 150.
 
 The body-fitted FVM resolves the cylinder and a compact near-body box. The
-VPM carries vorticity through the outer domain.  The FVM force is normalized
-by its resolved one-diameter span; the longer panel body supplies the harmonic
-body field without introducing panel wake shedding.
+VPM carries vorticity through the outer domain. The FVM force is normalized
+by the resolved span.
 
 Usage:
     ./allrun.sh
@@ -23,30 +22,23 @@ from openonda.vpm import Backup, Samplers
 # Physical problem
 CASE_NAME = "coupled_cylinder_flow"
 DIAMETER = 1.0
-CYLINDER_LENGTH = 12.0
-FVM_RESOLVED_SPAN = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
 REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
-REFERENCE_AREA = DIAMETER * FVM_RESOLVED_SPAN
-PANEL_REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 
 # FVM domain and mesh
 FVM_CORES = 4
 PIMPLE_CORRECTORS = 2
-
-# The reference-flow fine mesh realizes its --dx 0.050 request as 0.0375 m
-# near the cylinder. The compact coupled FVM uses that spacing as the finest
-# level and retains four realized dyadic levels through its background region.
-CELL_SIZE = 0.0375
-SPANWISE_CELL_SIZE = CELL_SIZE
+CELL_SIZE = 0.04
+FVM_RESOLVED_SPAN = 0.96
+REFERENCE_AREA = DIAMETER * FVM_RESOLVED_SPAN
 FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
 FVM_BOX = (
-    -1.5,
-    1.5,
-    -1.5,
-    1.5,
+    -1.48,
+    1.48,
+    -1.48,
+    1.48,
     -FVM_HALF_SPAN,
     FVM_HALF_SPAN,
 )
@@ -55,15 +47,13 @@ TRANSFER_REGION_BOX = (
     1.25,
     -1.25,
     1.25,
-    -FVM_HALF_SPAN + 0.5 * SPANWISE_CELL_SIZE,
-    FVM_HALF_SPAN - 0.5 * SPANWISE_CELL_SIZE,
+    -FVM_HALF_SPAN + 0.5 * CELL_SIZE,
+    FVM_HALF_SPAN - 0.5 * CELL_SIZE,
 )
 
 # VPM domain and resolution
 VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -6.60, 6.60)
-# Keep stable renewal and GBD on one lattice.  A split 0.0375/0.05 lattice
-# remeshed every coupled step and added cost/dissipation without resolving more
-# VPM physics than the diffusion grid could retain.
+# Keep renewal and grid-based diffusion on one VPM lattice.
 VPM_PARTICLE_SPACING = 0.05
 GBD_GRID_SPACING = VPM_PARTICLE_SPACING
 SAMPLE_SPACING = 2.0 * CELL_SIZE
@@ -114,26 +104,8 @@ FVM_PATCHES = msh.BoxPatches(
 FVM_MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(bounds=FVM_BOX, patches=FVM_PATCHES),
     surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
-    # The reference fine mesh has a 0.60 m outer scale. The compact span and
-    # boundary closure realize the four fluid levels below it as 0.30 m,
-    # 0.15 m, 0.075 m, and 0.0375 m.
-    max_cell_size=16.0 * CELL_SIZE,
+    max_cell_size=CELL_SIZE,
     cell_size_anchor=CELL_SIZE,
-    refinements=(
-        msh.BoxRefinement(
-            name="nearBody",
-            bounds=(
-                -1.0,
-                FVM_BOX[1] - 2.0 * CELL_SIZE,
-                -1.0,
-                1.0,
-                FVM_BOX[4],
-                FVM_BOX[5],
-            ),
-            cell_size=2.0 * CELL_SIZE,
-        ),
-    ),
-    patch_refinements=(msh.PatchRefinement("cylinder", CELL_SIZE),),
     surface_may_cross_domain_boundary=True,
 )
 
@@ -160,8 +132,8 @@ FVM_SAMPLERS = (
         schedule=FVM_SAMPLING_SCHEDULE,
     ),
     fvm.LineSampler(
-        start=[1.0, -1.5, 0.0],
-        end=[1.0, 1.5, 0.0],
+        start=[1.0, FVM_BOX[2], 0.0],
+        end=[1.0, FVM_BOX[3], 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_transverse_x1",
         schedule=FVM_SAMPLING_SCHEDULE,
@@ -246,8 +218,8 @@ COUPLER_SETUP = coupling.CouplerSetup(
 )
 
 VPM_SAMPLERS = (
-    # Panel-source gradients are undefined on the cylinder surface. Keep VPM
-    # diagnostics on exterior transverse lines; FVM owns the body centreline.
+    # Keep VPM diagnostics on exterior transverse lines; FVM owns the body
+    # centreline.
     vpm.LineSampler(
         start=[1.0, -3.0, 0.0],
         end=[1.0, 3.0, 0.0],
@@ -269,16 +241,6 @@ VPM_SAMPLERS = (
         file_name="vpm_transverse_x4",
         schedule=VPM_SAMPLING_SCHEDULE,
     ),
-)
-
-VPM_PANEL_SOLVER = vpm.PanelSolver(
-    max_n_panels=2048,
-    float_dtype="f32",
-    linear_solver="SCIPY",
-    boundary_condition_type="NEUMANN",
-    density=DENSITY,
-    freestream_velocity=np.asarray(FREESTREAM_VELOCITY),
-    coupling_scope="fvm_vpm",
 )
 
 VPM_CASE = vpm.VPMCase(
@@ -307,15 +269,6 @@ VPM_CASE = vpm.VPMCase(
         max_evaluation_points=PARTICLE_LIMIT,
         domain_bounds=VPM_DOMAIN,
         write_precision="f32",
-        panel_solver=VPM_PANEL_SOLVER,
-        bodies=(
-            vpm.PanelBodySetup(
-                stl=str(CYLINDER_STL),
-                uid="cylinder",
-                reference_area=PANEL_REFERENCE_AREA,
-                diffusion_mask="cylinder_z",
-            ),
-        ),
     ),
     # Coupler backups contain the FVM state, VPM state, and boundary history
     # atomically; independent native backups would not be restart-consistent.

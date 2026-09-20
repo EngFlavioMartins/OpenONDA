@@ -1,12 +1,12 @@
-"""Regression coverage for the cylinder reference grid-study postprocessor."""
+"""Force post-processing for the cylinder reference grids."""
 
 import csv
 import importlib.util
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = (
@@ -19,81 +19,47 @@ SCRIPT = (
 )
 
 
-def _load_postprocessor():
-    spec = importlib.util.spec_from_file_location("cylinder_grid_postprocess_test", SCRIPT)
-    assert spec is not None and spec.loader is not None
+def load_postprocessor():
+    spec = importlib.util.spec_from_file_location("cylinder_force_postprocess", SCRIPT)
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-def _write_case(samples: Path, name: str, spacing: float, cells: int) -> None:
+def write_grid(samples: Path, name: str, h: float, cells: int) -> None:
     directory = samples / name
     directory.mkdir(parents=True)
     time = np.linspace(0.0, 20.0, 401)
-    with (directory / "forces_history.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (directory / "forces_history.csv").open("w", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(("time", "drag_coefficient", "lift_coefficient", "side_force_coefficient"))
         for value in time:
             writer.writerow(
                 (
                     value,
-                    1.0 + spacing**2,
-                    0.2 * np.sin(2.0 * np.pi * 0.2 * value) + spacing**2,
-                    0.1 * np.cos(2.0 * np.pi * 0.2 * value) + spacing**2,
+                    1.0 + h**2 + 0.01 * np.sin(4.0 * np.pi * 0.2 * value),
+                    0.2 * np.sin(2.0 * np.pi * 0.2 * value),
+                    0.0,
                 )
             )
-    with (directory / "centreline.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(("time", "position_x", "position_y", "position_z", "velocity_x"))
-        for value in time[::4]:
-            for position in np.linspace(-2.0, 8.0, 21):
-                writer.writerow((value, position, 0.0, 0.0, np.tanh(position) + spacing**2))
     (directory / "grid_run.json").write_text(
-        json.dumps(
-            {
-                "schema": "openonda-fvm-grid-run/1",
-                "case": name,
-                "cell_size": spacing,
-                "cell_count": cells,
-                "end_time": 20.0,
-                "profiles": ["centreline"],
-            }
-        ),
-        encoding="utf-8",
+        json.dumps({"case": name, "cell_size": h, "cell_count": cells})
     )
 
 
-def test_cylinder_postprocessor_compares_completed_grids_without_mutating_inputs(
-    tmp_path, monkeypatch
-):
-    module = _load_postprocessor()
-    for function in ("_plot_force_metrics", "_plot_by_cells", "_plot_histories", "_plot_profiles"):
-        monkeypatch.setattr(module, function, lambda *args, **kwargs: None)
+def test_force_postprocessor_reports_grid_convergence(tmp_path, monkeypatch):
+    module = load_postprocessor()
     samples = tmp_path / "samples"
-    for name, spacing, cells in (
-        ("very_coarse", 0.16, 500),
-        ("coarse", 0.08, 2_000),
-        ("medium", 0.04, 8_000),
-        ("fine", 0.02, 32_000),
-    ):
-        _write_case(samples, name, spacing, cells)
-    original = (samples / "fine" / "forces_history.csv").read_text(encoding="utf-8")
+    spacings = (0.08, 0.08 / np.sqrt(2.0), 0.04, 0.04 / np.sqrt(2.0))
+    for index, h in enumerate(spacings):
+        write_grid(samples, f"grid_h{index}", h, 1000 * 2**index)
+    monkeypatch.setattr(module, "plot_forces", lambda *args: None)
 
-    report = module.analyse_grid_convergence(samples, tmp_path / "solution", formats=("png",))
+    output = tmp_path / "figures"
+    report = module.analyse_forces(samples, output, start=0.0, end=20.0)
 
-    assert report["reference_case"] == "fine"
-    assert [grid["case"] for grid in report["grids"]] == [
-        "very_coarse",
-        "coarse",
-        "medium",
-        "fine",
-    ]
-    assert report["convergence"]["mean_drag"]["available"]
-    assert report["profiles"]["centreline"]["available"]
-    assert report["profiles"]["centreline"]["comparisons"]["coarse"]["relative_l2"] > 0.0
-    assert (samples / "fine" / "forces_history.csv").read_text(encoding="utf-8") == original
-    assert (tmp_path / "solution/auxiliary/grid_convergence.json").is_file()
-    assert (tmp_path / "solution/auxiliary/grid_convergence.csv").is_file()
-    assert (tmp_path / "solution/auxiliary/grid_convergence.md").is_file()
+    assert [grid["h"] for grid in report["grids"]] == pytest.approx(spacings)
+    assert report["grids"][-1]["strouhal"] == pytest.approx(0.2, abs=0.01)
+    assert report["convergence"]["mean_drag"]["order"] == pytest.approx(2.0)
+    assert (output / "grid_forces.json").is_file()
+    assert (output / "grid_forces.csv").is_file()
