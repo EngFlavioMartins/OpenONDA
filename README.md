@@ -28,7 +28,8 @@ Use Python **3.11–3.13** on Linux or Apple Silicon macOS; Intel macOS requires
 Python **3.11**. A virtual environment is recommended.
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/EngFlavioMartins/OpenONDA.git
+GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --branch development \
+  https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 python install.py
 ```
@@ -62,10 +63,10 @@ openonda tutorial list
 openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
-The clone command above downloads source without Git LFS datasets. To retrieve
-archived datasets when LFS access is available, install Git LFS and run
-`git lfs pull` in the checkout. Keep newly generated samples and complete restart
-checkpoints with your simulation archives; they are not uploaded automatically.
+Generated samples and restart checkpoints are kept with simulation archives,
+outside Git. The clone command above downloads source with shallow history and
+skips optional Git LFS reference documents. Run `git lfs pull` to retrieve those
+documents when LFS access is available.
 
 Each case includes its own instructions and input assets. See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 

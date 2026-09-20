@@ -6,6 +6,12 @@ Python 3.11 is the common supported version across Linux x86-64, Apple Silicon,
 and Intel macOS. Package metadata allows 3.11–3.13; Intel macOS uses the older
 Taichi 1.7.1 wheel and requires 3.11. Windows is not currently qualified.
 
+The [README clone command](../README.md#installation) uses shallow Git history
+and skips Git LFS downloads to reduce local storage. To retrieve the full
+`development` history later, run `git fetch --unshallow origin`. Generated
+`samples/` and `solution/` directories are not tracked; archive them separately
+with their meshes, restart configuration and matching source revision.
+
 ## Normal installation
 
 From a cloned checkout, optionally create a virtual environment first:
