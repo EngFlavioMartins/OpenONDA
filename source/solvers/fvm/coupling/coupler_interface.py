@@ -275,7 +275,7 @@ class CouplerInterfaceMixin:
             raise ValueError(error)
         return np.ascontiguousarray(parallel.comm.scatter(payloads, root=0))
 
-    # ── patch lookup ─────────────────────────────────────────────────────────
+    # Patch lookup.
     def _patch(self, patch_name):
         """Look up a boundary patch dict by name.
 
@@ -313,7 +313,7 @@ class CouplerInterfaceMixin:
         start, nf = b["start_face"], b["n_faces"]
         return b, slice(start, start + nf)
 
-    # ── getters: cell fields ─────────────────────────────────────────────────
+    # Getters: cell fields.
     def get_wall_surface_triangles(self):
         """Collect body-fitted wall triangles on root, empty on other ranks.
 
@@ -498,7 +498,7 @@ class CouplerInterfaceMixin:
             np.copyto(arr, values)
         return arr
 
-    # ── getters: boundary-face geometry (per patch) ──────────────────────────
+    # Getters: boundary-face geometry (per patch).
     def get_boundary_face_centre_coordinates(self, patch_name):
         """Return face-centre coordinates ``(nFaces, 3)`` for a patch.
 
@@ -578,7 +578,7 @@ class CouplerInterfaceMixin:
         """Number of ranks participating in the native FVM solve."""
         return int(getattr(getattr(self, "parallel", None), "size", 1))
 
-    # ── setters: registered volume fields (fvOptions source inputs) ──────────
+    # Setters: registered volume fields (fvOptions source inputs).
     def set_cell_scalar_field(self, name, values):
         """Register a cell-centred scalar field (e.g. an fvOption source).
 
@@ -619,7 +619,7 @@ class CouplerInterfaceMixin:
             )
         self.registered_fields[name] = field
 
-    # ── setters: scalar parameters ───────────────────────────────────────────
+    # Setters: scalar parameters.
     def set_time_step(self, time_step_size):
         """Reject post-construction changes to the FVM time-step contract.
 
@@ -651,7 +651,7 @@ class CouplerInterfaceMixin:
         if invalidate is not None:
             invalidate()
 
-    # ── setters: velocity boundary conditions ────────────────────────────────
+    # Setters: velocity boundary conditions.
     def set_dirichlet_velocity_boundary_condition_vec(self, prescribed_velocity, patch_name):
         """Impose a Dirichlet velocity from an ``(N, 3)`` boundary array."""
         field = self._scatter_patch_values(patch_name, prescribed_velocity, trailing_shape=(3,))
@@ -925,7 +925,7 @@ class CouplerInterfaceMixin:
         if invalidate is not None:
             invalidate()
 
-    # ── helper ───────────────────────────────────────────────────────────────
+    # Helper.
     def _write_patch_ghosts(self, boundary, field):
         """Write a boundary-face-centred field into the velocity ghost layer.
 

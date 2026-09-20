@@ -18,11 +18,12 @@ from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
 @pytest.fixture
 def solver(tmp_path):
     mesh = box_mesh_3d(np.linspace(-1, 1, 5), np.linspace(-1, 1, 4), np.linspace(-1, 1, 3))
-    mesh["vertex_position"] = mesh["vertex_position"] @ np.array(
-        [[1, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]
-    ).T
+    mesh["vertex_position"] = (
+        mesh["vertex_position"] @ np.array([[1, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]).T
+    )
     setup = FVMSetup(
-        case_name="mixed_boundary_state", time=TimeConfig(time_step_size=0.01, end_time=0.02),
+        case_name="mixed_boundary_state",
+        time=TimeConfig(time_step_size=0.01, end_time=0.02),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         transport=TransportConfig(density=1, kinematic_viscosity=0.01),
         boundaries=[BoundaryConfig.inlet(p["name"], [0.2, 0.3, -0.1]) for p in mesh["boundary"]],
@@ -61,8 +62,12 @@ def test_initial_field_setters_refresh_mixed_faces_and_histories(solver, setter)
     np.testing.assert_allclose(solver.velocity[ghosts], expected, rtol=0, atol=2e-14)
     np.testing.assert_array_equal(solver.velocity_old, solver.velocity)
     np.testing.assert_array_equal(solver.velocity_older, solver.velocity)
-    np.testing.assert_allclose(solver.volumetric_face_flux[faces],
-                               un * solver.geo_data["face_area"][faces], rtol=0, atol=2e-14)
+    np.testing.assert_allclose(
+        solver.volumetric_face_flux[faces],
+        un * solver.geo_data["face_area"][faces],
+        rtol=0,
+        atol=2e-14,
+    )
     np.testing.assert_array_equal(solver.volumetric_face_flux_old, solver.volumetric_face_flux)
     np.testing.assert_array_equal(solver.volumetric_face_flux_older, solver.volumetric_face_flux)
 
@@ -73,8 +78,9 @@ def test_mixed_trace_setter_invalidates_cached_gradient_and_publishes_state(solv
     revision = solver._state_revision
     solver.set_normal_velocity_tangential_gradient_boundary_condition(un, gt, "inlet")
     actual = solver.get_velocity_gradient_field()
-    expected = _resolve_gradient_fn(solver.geo_data)(solver.velocity, solver.mesh_data,
-                                                    solver.geo_data)[:solver.mesh_data["n_cells"]]
+    expected = _resolve_gradient_fn(solver.geo_data)(
+        solver.velocity, solver.mesh_data, solver.geo_data
+    )[: solver.mesh_data["n_cells"]]
     assert np.linalg.norm(expected - previous) > 0.1
     np.testing.assert_allclose(actual, expected, rtol=0, atol=2e-14)
     assert solver._state_revision == revision + 1

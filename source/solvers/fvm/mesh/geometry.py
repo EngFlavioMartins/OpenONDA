@@ -308,10 +308,7 @@ def compute_geometry(
         sink=logger,
     )
 
-    # --- Process Secondary Face Geometry ---
-    # Interior faces.  These operations used to be two Python face loops and
-    # dominate geometry setup for structured meshes; every expression below is
-    # the same owner/neighbour formula evaluated in bulk.
+    # Evaluate interior-face owner/neighbour geometry in bounded vectorized blocks.
     secondary_chunk = 200_000
     for start in range(0, n_interior_faces, secondary_chunk):
         stop = min(start + secondary_chunk, n_interior_faces)

@@ -1,7 +1,5 @@
 # Project tooling
 
-Follow [AGENTS.md](../AGENTS.md) when changing tooling or runtime behavior.
-
 `python install.py` at the repository root installs with pip and verifies the
 result outside the checkout; `--dev` selects an editable installation.
 These optional Conda files help

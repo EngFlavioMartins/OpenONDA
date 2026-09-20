@@ -603,6 +603,27 @@ class EvolutionStepper:
                 if n_part > 0
                 else 0.0
             )
+        if getattr(self.solver.induction, "planar_span", None) is not None:
+            from ..physics.diffusion.planar import planar_gbd
+
+            backend = self.solver.induction
+            result, substeps = planar_gbd(
+                self.particles,
+                vc,
+                backend,
+                dt=time_step_size,
+                anchor=getattr(backend, "lattice_anchor", None),
+                core_radius_ratio=vc.core_radius_ratio,
+                max_particles=self.solver.max_n_particles
+                if hasattr(self.solver, "max_n_particles")
+                else self.setup.max_n_particles,
+                solid_at=getattr(backend, "solid_at", None),
+            )
+            self.physics._last_gbd_diffusion_substeps = substeps
+            self.physics._last_gbd_moment_recovery = getattr(
+                backend, "last_gbd_moment_recovery", self.physics._empty_gbd_moment_recovery()
+            )
+            return result
         if self.viscous_scheme == "DVH":
             # DVH currently has a scalar, source-independent heat-kernel
             # contract. Pass the actual effective-viscosity field so both

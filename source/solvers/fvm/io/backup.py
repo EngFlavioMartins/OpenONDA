@@ -422,14 +422,22 @@ def capture_restart_payload(solver) -> RestartPayload:
     """
     if solver._step_phase != "accepted":
         raise RuntimeError("A coupling snapshot requires an accepted FVM state")
-    names = ("velocity", "kinematic_pressure", "volumetric_face_flux",
-             "volumetric_face_flux_old", "volumetric_face_flux_older",
-             "velocity_old", "velocity_older")
+    names = (
+        "velocity",
+        "kinematic_pressure",
+        "volumetric_face_flux",
+        "volumetric_face_flux_old",
+        "volumetric_face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    )
     return RestartPayload(
         fields={name: getattr(solver, name).copy() for name in names},
-        eddy_viscosity=(np.empty(0) if solver.eddy_viscosity is None
-                        else solver.eddy_viscosity.copy()),
-        time=solver.time, step=solver.step,
+        eddy_viscosity=(
+            np.empty(0) if solver.eddy_viscosity is None else solver.eddy_viscosity.copy()
+        ),
+        time=solver.time,
+        step=solver.step,
         n_committed_time_steps=solver._n_committed_time_steps,
         time_step_size=solver.time_step_size,
         accepted_time_step_size=solver._accepted_time_step_size,

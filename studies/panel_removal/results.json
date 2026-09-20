@@ -1,0 +1,683 @@
+{
+  "scope": "Offline reconstruction and frozen-state replay; no trajectory/force validation",
+  "velocity_error_normalization": "U_inf = 1 m/s",
+  "reference_sampling": "12-neighbour affine fit; 320 cylinder or 216 cube targets",
+  "sources": [
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py",
+      "sha256_with_pieces": "95c14f47f6da709b74714feaeadf6a47edb43a874f72387ecb857ff98a6dc087"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/setup.py",
+      "sha256_with_pieces": "d1aa3d93f84d03db6328a25f6b5cb0b1fd963db6258e344697c8acf31857e538"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fvm_metadata.json",
+      "sha256_with_pieces": "57af0cd82e08f7ec0c64f261b407215086f5c72a18372d9fef855ad4579b5685"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fvm/fvm_023855.pvtu",
+      "sha256_with_pieces": "7e9e41f74955828940ce31aa6b2ac0ec7daacecf35a90543c4215e3367fe4a09"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fvm/fvm_026855.pvtu",
+      "sha256_with_pieces": "524f642a02593e088690b88b4af3500246780ec54b804dc2a52010b4c90cccef"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/solution/fine/fvm/fvm_029855.pvtu",
+      "sha256_with_pieces": "1131847917692725516561e6485c796ac16fb0aa1b2b92a213709d1d469e3905"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_long.stl",
+      "sha256_with_pieces": "44cc2807e523fe632720b73156b1eb456d84a0fbcaf0d4f14ce89cd594e91f3b"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+      "sha256_with_pieces": "e05f5f436544bfb273f1f9a5d485db76815355e184e62457b1d1d3844822eea4"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/setup.py",
+      "sha256_with_pieces": "403c31cb7f9ced35b1dfd96632f55e14da94cc04e00bad65c729632c1c1a653d"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fvm_metadata.json",
+      "sha256_with_pieces": "1dfc18981f8e05ac9126512ca6fc8808bd9c4f17ac41e90adf42213d1e21b506"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl",
+      "sha256_with_pieces": "77dc96e2c01a31193760ad9b6b5bf9ad90342c2e2255fdb890de0f1634e7aebb"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_000509.pvtu",
+      "sha256_with_pieces": "a670dbbca20d4a1b4570bc622c45cfea7235a65983bf322ece88e026c11b5577"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm/vpm_000100.h5",
+      "sha256_with_pieces": "530c1f50e57551a792934fb7883fca1ecc9db6cc8b9784492e9ab7cb2e66024b"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_001009.pvtu",
+      "sha256_with_pieces": "69066066dbbc4e72d3f7d51c807ed08caa6f66b6eee5bbb1404241e2985bdc16"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm/vpm_000200.h5",
+      "sha256_with_pieces": "4c57f81da4c5e7503840be17370c54a1fd91c6c2dfab04d66a09781c25fc58d7"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/fine/fine_002009.pvtu",
+      "sha256_with_pieces": "c275fcf1c40b69610f1a5fb97cad77917241e35a39ac2f0b0fdec5611a81eb4d"
+    },
+    {
+      "path": "tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm/vpm_000400.h5",
+      "sha256_with_pieces": "69bc000cfe58d6e8ae65ddc2b924d86251255695b7ee502e83da1e967e2b7ac1"
+    }
+  ],
+  "study_code": [
+    {
+      "path": "studies/panel_removal/diagnose.py",
+      "sha256_with_pieces": "c70e4cd1ffc7b08b301807bcb0e8793974bbf3b2fa0a298f643e78104c37e86f"
+    },
+    {
+      "path": "studies/panel_removal/operators.py",
+      "sha256_with_pieces": "d40bb82f6895ced2bb74e37af461f260825c2cc8c66142d4e338327acc5793c9"
+    }
+  ],
+  "cylinder": {
+    "reconstruction": [
+      {
+        "time": 80.0,
+        "crop": "full",
+        "span": 1.0,
+        "rms": 0.15855470810508882,
+        "maximum": 0.46870301896904043
+      },
+      {
+        "time": 80.0,
+        "crop": "full",
+        "span": 12.0,
+        "rms": 0.0033505412957943862,
+        "maximum": 0.00982719674443655
+      },
+      {
+        "time": 80.0,
+        "crop": "full",
+        "span": -1.0,
+        "rms": 0.010186825156934797,
+        "maximum": 0.018985139949998068
+      },
+      {
+        "time": 80.0,
+        "crop": "vpm_domain",
+        "span": -1.0,
+        "rms": 0.016743829151821973,
+        "maximum": 0.026770049672814374
+      },
+      {
+        "time": 80.0,
+        "crop": "transfer_box",
+        "span": -1.0,
+        "rms": 0.2334071075830499,
+        "maximum": 0.8901366984732098
+      },
+      {
+        "time": 90.0,
+        "crop": "full",
+        "span": 1.0,
+        "rms": 0.15309538409430104,
+        "maximum": 0.4581830428298277
+      },
+      {
+        "time": 90.0,
+        "crop": "full",
+        "span": 12.0,
+        "rms": 0.003569247306807228,
+        "maximum": 0.009162960574407322
+      },
+      {
+        "time": 90.0,
+        "crop": "full",
+        "span": -1.0,
+        "rms": 0.01031745530282388,
+        "maximum": 0.019979784675123263
+      },
+      {
+        "time": 90.0,
+        "crop": "vpm_domain",
+        "span": -1.0,
+        "rms": 0.017043868251980517,
+        "maximum": 0.025924344862467714
+      },
+      {
+        "time": 90.0,
+        "crop": "transfer_box",
+        "span": -1.0,
+        "rms": 0.24542982462914414,
+        "maximum": 0.9161474635630017
+      },
+      {
+        "time": 100.0,
+        "crop": "full",
+        "span": 1.0,
+        "rms": 0.14598277995300757,
+        "maximum": 0.4362034321609189
+      },
+      {
+        "time": 100.0,
+        "crop": "full",
+        "span": 12.0,
+        "rms": 0.003377173537420204,
+        "maximum": 0.011221296947752375
+      },
+      {
+        "time": 100.0,
+        "crop": "full",
+        "span": -1.0,
+        "rms": 0.009812397776426151,
+        "maximum": 0.020316090500452515
+      },
+      {
+        "time": 100.0,
+        "crop": "vpm_domain",
+        "span": -1.0,
+        "rms": 0.013516273651452821,
+        "maximum": 0.023650485699046216
+      },
+      {
+        "time": 100.0,
+        "crop": "transfer_box",
+        "span": -1.0,
+        "rms": 0.23761688067562037,
+        "maximum": 0.9136284490294588
+      }
+    ],
+    "quadrature": [
+      {
+        "order": 4,
+        "rms": 0.009812433813466779,
+        "maximum": 0.02031610899489624
+      },
+      {
+        "order": 8,
+        "rms": 0.009812397776426151,
+        "maximum": 0.020316090500452515
+      },
+      {
+        "order": 16,
+        "rms": 0.00981231476797655,
+        "maximum": 0.020316089288691414
+      }
+    ],
+    "potential_rings": [
+      {
+        "radius": 0.55,
+        "rms": 0.008214848501402982,
+        "maximum": 0.009178459795945617
+      },
+      {
+        "radius": 0.75,
+        "rms": 0.004477900999332701,
+        "maximum": 0.005414922319305293
+      },
+      {
+        "radius": 1.0,
+        "rms": 0.0037628419433062836,
+        "maximum": 0.004484165881442181
+      },
+      {
+        "radius": 1.5,
+        "rms": 0.0033831411767368765,
+        "maximum": 0.0036184871044995237
+      },
+      {
+        "radius": 2.0,
+        "rms": 0.0031236502566478865,
+        "maximum": 0.003175525227355156
+      },
+      {
+        "radius": 4.0,
+        "rms": 0.002148237779593826,
+        "maximum": 0.002685343194197381
+      }
+    ],
+    "uniform_panel_diagnostic": {
+      "step": 0,
+      "time": 0.0,
+      "n_panels": 1280,
+      "linear_solver": "ConstrainedLeastSquares(SciPy)",
+      "requested_linear_solver": "SCIPY",
+      "factorization_reused": true,
+      "factorization_cache_bytes": 39290880,
+      "active_aic_bytes": 13107200,
+      "allocated_aic_bytes": 13107200,
+      "aic_rebuilt": false,
+      "timings_seconds": {
+        "aic_assembly": 0.0,
+        "rhs_assembly": 0.00024345796555280685,
+        "device_to_host": 0.001191876013763249,
+        "constraint_factorization": 0.0,
+        "constrained_rhs_solve": 0.0007200419786386192,
+        "constrained_diagnostics": 0.0,
+        "host_to_device": 6.795796798542142e-05,
+        "surface_evaluation": 0.07493325002724305,
+        "far_field_refresh": 0.00024229194968938828,
+        "total_solve": 0.07843150000553578
+      },
+      "linear_solver_success": true,
+      "residual": 2.261836809655692e-15,
+      "algebraic_residual": 2.261836809655692e-15,
+      "discrete_equation_residual": 2.261836809655692e-15,
+      "algebraic_residual_absolute": 5.1179524673436355e-14,
+      "right_hand_side_norm": 22.62741699796952,
+      "iterations": null,
+      "refresh_count": 0,
+      "force_method": "BERNOULLI",
+      "boundary_condition_type": "NEUMANN",
+      "precision": "f64",
+      "residual_tolerance": 1e-10,
+      "relative_residual_vs_tolerance": null,
+      "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+      "convergence_residual": 1.2985442181987403e-16,
+      "convergence_residual_vs_tolerance": 1.2985442181987402e-06,
+      "no_penetration_residual": 2.6740247851167075e-14,
+      "no_penetration_max_residual": 8.956897723511048e-14,
+      "no_penetration_reference_speed": 1.0,
+      "relative_no_penetration_residual": 2.6740247851167075e-14,
+      "net_source_flux": {
+        "body": -1.024313704676463e-14
+      },
+      "constraint_residual": 1.024313704676463e-14,
+      "relative_constraint_residual": 1.2985442181987403e-16,
+      "projected_optimality_residual": 1.6532954237293647e-18,
+      "projected_optimality_residual_absolute": 2.5036178730626e-14,
+      "far_field_target_fraction": 0.0
+    },
+    "f32_cpu_potential_ring": {
+      "radius": 1.5,
+      "rms": 0.0033830200337387037,
+      "maximum": 0.0036172726088214155,
+      "panel_diagnostic": {
+        "step": 0,
+        "time": 0.0,
+        "n_panels": 1280,
+        "linear_solver": "ConstrainedLeastSquares(SciPy)",
+        "requested_linear_solver": "SCIPY",
+        "factorization_reused": false,
+        "factorization_cache_bytes": 19650556,
+        "active_aic_bytes": 6553600,
+        "allocated_aic_bytes": 6553600,
+        "aic_rebuilt": false,
+        "timings_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 0.09120870899641886,
+          "device_to_host": 0.06189470901153982,
+          "constraint_factorization": 0.13142645900370553,
+          "constrained_rhs_solve": 0.00043404201278463006,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 0.020225125015713274,
+          "surface_evaluation": 0.26292608299991116,
+          "far_field_refresh": 0.044978082994930446,
+          "total_solve": 0.6365657920250669
+        },
+        "linear_solver_success": true,
+        "residual": 1.0309020779554876e-06,
+        "algebraic_residual": 1.0309020779554876e-06,
+        "discrete_equation_residual": 1.0309020779554876e-06,
+        "algebraic_residual_absolute": 2.3326651274971724e-05,
+        "right_hand_side_norm": 22.627417068780925,
+        "iterations": null,
+        "refresh_count": 0,
+        "force_method": "BERNOULLI",
+        "boundary_condition_type": "NEUMANN",
+        "precision": "f32",
+        "residual_tolerance": 0.0001,
+        "relative_residual_vs_tolerance": null,
+        "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+        "convergence_residual": 1.4678257575178545e-08,
+        "convergence_residual_vs_tolerance": 0.00014678257575178545,
+        "no_penetration_residual": 7.693834959354717e-06,
+        "no_penetration_max_residual": 2.2701919078826904e-05,
+        "no_penetration_reference_speed": 1.0,
+        "relative_no_penetration_residual": 7.693834959354717e-06,
+        "net_source_flux": {
+          "body": 1.2013248351649963e-06
+        },
+        "constraint_residual": 1.1578348989293996e-06,
+        "relative_constraint_residual": 1.4678257575178545e-08,
+        "projected_optimality_residual": 7.88088575957947e-10,
+        "projected_optimality_residual_absolute": 1.193405402347065e-05,
+        "far_field_target_fraction": 0.0
+      }
+    },
+    "slab_replay": {
+      "without_panel": {
+        "rms": 0.14469534907927512,
+        "maximum": 0.4258381235368954
+      },
+      "with_panel": {
+        "rms": 0.10840944874260099,
+        "maximum": 0.3273197392601404
+      },
+      "panel_diagnostic": {
+        "step": 0,
+        "time": 100.0,
+        "n_panels": 1280,
+        "linear_solver": "ConstrainedLeastSquares(SciPy)",
+        "requested_linear_solver": "SCIPY",
+        "factorization_reused": true,
+        "factorization_cache_bytes": 39290880,
+        "active_aic_bytes": 13107200,
+        "allocated_aic_bytes": 13107200,
+        "aic_rebuilt": false,
+        "timings_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 0.023594415979459882,
+          "device_to_host": 0.0013551670126616955,
+          "constraint_factorization": 0.0,
+          "constrained_rhs_solve": 0.0011109589831903577,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 7.516698678955436e-05,
+          "surface_evaluation": 0.07225745799951255,
+          "far_field_refresh": 0.00026958301896229386,
+          "total_solve": 0.09984466701280326
+        },
+        "linear_solver_success": true,
+        "residual": 1.2278894061738177e-07,
+        "algebraic_residual": 1.2278894061738177e-07,
+        "discrete_equation_residual": 1.2278894061738177e-07,
+        "algebraic_residual_absolute": 2.6641885033522346e-06,
+        "right_hand_side_norm": 21.697300179940612,
+        "iterations": null,
+        "refresh_count": 0,
+        "force_method": "BERNOULLI",
+        "boundary_condition_type": "NEUMANN",
+        "precision": "f64",
+        "residual_tolerance": 1e-10,
+        "relative_residual_vs_tolerance": null,
+        "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+        "convergence_residual": 1.488675877685805e-16,
+        "convergence_residual_vs_tolerance": 1.488675877685805e-06,
+        "no_penetration_residual": 7.446633251371112e-08,
+        "no_penetration_max_residual": 8.421074595976741e-08,
+        "no_penetration_reference_speed": 0.970983415657794,
+        "relative_no_penetration_residual": 7.669166261018352e-08,
+        "net_source_flux": {
+          "body": -1.1548054179577605e-14
+        },
+        "constraint_residual": 1.1548054179577605e-14,
+        "relative_constraint_residual": 1.488675877685805e-16,
+        "projected_optimality_residual": 1.7272756380737904e-18,
+        "projected_optimality_residual_absolute": 2.5096151448938482e-14,
+        "far_field_target_fraction": 0.0
+      }
+    },
+    "geometry": {
+      "panels": 1280,
+      "max_edge_ratio": 122.24741660243569,
+      "collocation_points_in_resolved_span": 0
+    }
+  },
+  "cube": {
+    "reference_reconstruction": [
+      {
+        "time": 5.0,
+        "sigma_over_h": 0.25,
+        "rms": 0.0016066069449351401,
+        "maximum": 0.005998432169685026
+      },
+      {
+        "time": 5.0,
+        "sigma_over_h": 0.5,
+        "rms": 0.0015132404912578733,
+        "maximum": 0.005324149992559435
+      },
+      {
+        "time": 5.0,
+        "sigma_over_h": 1.0,
+        "rms": 0.002997017004268167,
+        "maximum": 0.0198605094179356
+      },
+      {
+        "time": 10.0,
+        "sigma_over_h": 0.25,
+        "rms": 0.001980443947405245,
+        "maximum": 0.005622536931160204
+      },
+      {
+        "time": 10.0,
+        "sigma_over_h": 0.5,
+        "rms": 0.0019347616838204192,
+        "maximum": 0.0035918777450511166
+      },
+      {
+        "time": 10.0,
+        "sigma_over_h": 1.0,
+        "rms": 0.005188312045795785,
+        "maximum": 0.024880993565450864
+      },
+      {
+        "time": 20.0,
+        "sigma_over_h": 0.25,
+        "rms": 0.0029328394923344254,
+        "maximum": 0.005599777087771912
+      },
+      {
+        "time": 20.0,
+        "sigma_over_h": 0.5,
+        "rms": 0.003214396116700744,
+        "maximum": 0.010368330353709196
+      },
+      {
+        "time": 20.0,
+        "sigma_over_h": 1.0,
+        "rms": 0.006589167235100536,
+        "maximum": 0.03559201452809028
+      }
+    ],
+    "saved_particle_replay": [
+      {
+        "time": 5.0,
+        "particles": 148051,
+        "without_panel": {
+          "rms": 0.01270258581805116,
+          "maximum": 0.09076732896291673
+        },
+        "with_panel": {
+          "rms": 0.012566738420577239,
+          "maximum": 0.08973710100143342
+        },
+        "panel_correction": {
+          "rms": 0.00041835732523702964,
+          "maximum": 0.0013383563356145567
+        },
+        "panel_diagnostic": {
+          "step": 0,
+          "time": 5.0,
+          "n_panels": 108,
+          "linear_solver": "ConstrainedLeastSquares(SciPy)",
+          "requested_linear_solver": "SCIPY",
+          "factorization_reused": false,
+          "factorization_cache_bytes": 277344,
+          "active_aic_bytes": 93312,
+          "allocated_aic_bytes": 93312,
+          "aic_rebuilt": false,
+          "timings_seconds": {
+            "aic_assembly": 0.0,
+            "rhs_assembly": 0.09014995797770098,
+            "device_to_host": 0.05938770907232538,
+            "constraint_factorization": 0.0009445830364711583,
+            "constrained_rhs_solve": 3.329198807477951e-05,
+            "constrained_diagnostics": 0.0,
+            "host_to_device": 0.020954000006895512,
+            "surface_evaluation": 0.23722004203591496,
+            "far_field_refresh": 0.020114167011342943,
+            "total_solve": 0.42903245898196474
+          },
+          "linear_solver_success": true,
+          "residual": 0.2320632373095007,
+          "algebraic_residual": 0.2320632373095007,
+          "discrete_equation_residual": 0.2320632373095007,
+          "algebraic_residual_absolute": 0.05522398798199864,
+          "right_hand_side_norm": 0.23796956649513118,
+          "iterations": null,
+          "refresh_count": 0,
+          "force_method": "BERNOULLI",
+          "boundary_condition_type": "NEUMANN",
+          "precision": "f64",
+          "residual_tolerance": 1e-10,
+          "relative_residual_vs_tolerance": null,
+          "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+          "convergence_residual": 6.789289001866427e-18,
+          "convergence_residual_vs_tolerance": 6.789289001866426e-08,
+          "no_penetration_residual": 0.005313930721188595,
+          "no_penetration_max_residual": 0.006037829020713382,
+          "no_penetration_reference_speed": 0.08762411600879948,
+          "relative_no_penetration_residual": 0.06064461432803446,
+          "net_source_flux": {
+            "body": 4.229820947832277e-19
+          },
+          "constraint_residual": 4.229820947832277e-19,
+          "relative_constraint_residual": 5.971966775561589e-19,
+          "projected_optimality_residual": 6.789289001866427e-18,
+          "projected_optimality_residual_absolute": 1.195355390304797e-16,
+          "far_field_target_fraction": 0.0
+        }
+      },
+      {
+        "time": 10.0,
+        "particles": 311827,
+        "without_panel": {
+          "rms": 0.013434735285672187,
+          "maximum": 0.053057242089003025
+        },
+        "with_panel": {
+          "rms": 0.01320030357052549,
+          "maximum": 0.052470923139295585
+        },
+        "panel_correction": {
+          "rms": 0.0005324645714156592,
+          "maximum": 0.0018304781710928616
+        },
+        "panel_diagnostic": {
+          "step": 0,
+          "time": 10.0,
+          "n_panels": 108,
+          "linear_solver": "ConstrainedLeastSquares(SciPy)",
+          "requested_linear_solver": "SCIPY",
+          "factorization_reused": true,
+          "factorization_cache_bytes": 277344,
+          "active_aic_bytes": 93312,
+          "allocated_aic_bytes": 93312,
+          "aic_rebuilt": false,
+          "timings_seconds": {
+            "aic_assembly": 0.0,
+            "rhs_assembly": 0.02367370796855539,
+            "device_to_host": 0.00017200096044689417,
+            "constraint_factorization": 0.0,
+            "constrained_rhs_solve": 5.441601388156414e-05,
+            "constrained_diagnostics": 0.0,
+            "host_to_device": 5.570898065343499e-05,
+            "surface_evaluation": 0.0525397079763934,
+            "far_field_refresh": 0.00020229199435561895,
+            "total_solve": 0.07686904101865366
+          },
+          "linear_solver_success": true,
+          "residual": 0.23991769816945277,
+          "algebraic_residual": 0.23991769816945277,
+          "discrete_equation_residual": 0.23991769816945277,
+          "algebraic_residual_absolute": 0.05672017292584141,
+          "right_hand_side_norm": 0.23641512634795375,
+          "iterations": null,
+          "refresh_count": 0,
+          "force_method": "BERNOULLI",
+          "boundary_condition_type": "NEUMANN",
+          "precision": "f64",
+          "residual_tolerance": 1e-10,
+          "relative_residual_vs_tolerance": null,
+          "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+          "convergence_residual": 7.052446615961455e-18,
+          "convergence_residual_vs_tolerance": 7.052446615961454e-08,
+          "no_penetration_residual": 0.005457901184536111,
+          "no_penetration_max_residual": 0.0062014120795325645,
+          "no_penetration_reference_speed": 0.08605706020844865,
+          "relative_no_penetration_residual": 0.06342188742348279,
+          "net_source_flux": {
+            "body": -3.14400157662663e-18
+          },
+          "constraint_residual": 3.14400157662663e-18,
+          "relative_constraint_residual": 4.822660439509071e-18,
+          "projected_optimality_residual": 7.052446615961455e-18,
+          "projected_optimality_residual_absolute": 1.2666748411803098e-16,
+          "far_field_target_fraction": 0.0
+        }
+      },
+      {
+        "time": 20.0,
+        "particles": 496694,
+        "without_panel": {
+          "rms": 0.0579749139521444,
+          "maximum": 0.36510744230906106
+        },
+        "with_panel": {
+          "rms": 0.05778648846384335,
+          "maximum": 0.364131483017594
+        },
+        "panel_correction": {
+          "rms": 0.0004513301534815782,
+          "maximum": 0.0015282551418770367
+        },
+        "panel_diagnostic": {
+          "step": 0,
+          "time": 20.0,
+          "n_panels": 108,
+          "linear_solver": "ConstrainedLeastSquares(SciPy)",
+          "requested_linear_solver": "SCIPY",
+          "factorization_reused": true,
+          "factorization_cache_bytes": 277344,
+          "active_aic_bytes": 93312,
+          "allocated_aic_bytes": 93312,
+          "aic_rebuilt": false,
+          "timings_seconds": {
+            "aic_assembly": 0.0,
+            "rhs_assembly": 0.02307766699232161,
+            "device_to_host": 0.00019108300330117345,
+            "constraint_factorization": 0.0,
+            "constrained_rhs_solve": 6.104202475398779e-05,
+            "constrained_diagnostics": 0.0,
+            "host_to_device": 6.287504220381379e-05,
+            "surface_evaluation": 0.051972833985928446,
+            "far_field_refresh": 0.00018912501400336623,
+            "total_solve": 0.07572762499330565
+          },
+          "linear_solver_success": true,
+          "residual": 0.2441305971470594,
+          "algebraic_residual": 0.2441305971470594,
+          "discrete_equation_residual": 0.2441305971470594,
+          "algebraic_residual_absolute": 0.0536901887207977,
+          "right_hand_side_norm": 0.21992404617949549,
+          "iterations": null,
+          "refresh_count": 0,
+          "force_method": "BERNOULLI",
+          "boundary_condition_type": "NEUMANN",
+          "precision": "f64",
+          "residual_tolerance": 1e-10,
+          "relative_residual_vs_tolerance": null,
+          "convergence_metric": "projected_kkt_optimality_and_relative_flux",
+          "convergence_residual": 6.988686880517256e-18,
+          "convergence_residual_vs_tolerance": 6.988686880517256e-08,
+          "no_penetration_residual": 0.005166340818465727,
+          "no_penetration_max_residual": 0.005870133458881678,
+          "no_penetration_reference_speed": 0.08077080637786244,
+          "relative_no_penetration_residual": 0.0639629718972536,
+          "net_source_flux": {
+            "body": -2.3866904774909882e-18
+          },
+          "constraint_residual": 2.3866904774909882e-18,
+          "relative_constraint_residual": 3.7676181898523464e-18,
+          "projected_optimality_residual": 6.988686880517256e-18,
+          "projected_optimality_residual_absolute": 1.1531345149852083e-16,
+          "far_field_target_fraction": 0.0
+        }
+      }
+    ]
+  }
+}

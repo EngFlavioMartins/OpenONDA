@@ -461,6 +461,7 @@ class _GridDiffusionMixin:
         # Body-aware diffusion settings (optional; enabled when body STL is configured).
         self._body_mask_active: bool = False
         self._body_box_bounds: np.ndarray | None = None
+        self._body_cylinder: tuple[int, np.ndarray, float, float, float] | None = None
 
         # Maximum number of grid cells per spatial dimension.
         self._max_cells_per_dimension: int = 2000
@@ -514,7 +515,7 @@ class _GridDiffusionMixin:
         """Field that will receive the updated vorticity (destination)."""
         return self._grid_b if self._ping else self._grid_a
 
-    # ---- Internal: grid management ----
+    # Internal: grid management
 
     def _compute_grid_bounds(
         self,
@@ -860,38 +861,101 @@ class _GridDiffusionMixin:
         if np.any(b[1::2] <= b[::2]):
             raise ValueError("body box upper bounds must exceed lower bounds")
         self._body_box_bounds = b.copy()
+        self._body_cylinder = None
+        self._body_mask_active = True
+
+    def configure_body_cylinder(self, bounds, axis: int | str = 2) -> None:
+        """Configure an exact axis-aligned circular-cylinder diffusion mask.
+
+        ``bounds`` are the cylinder's Cartesian extrema.  The two transverse
+        extents must define one circular diameter; the axial extrema bound the
+        finite cylinder.  Surface nodes remain fluid, matching the box-mask
+        convention and leaving wall vorticity on the fluid side.
+        """
+        b = np.asarray(bounds, dtype=np.float32).reshape(-1)
+        if b.shape != (6,) or not np.all(np.isfinite(b)):
+            raise ValueError("body cylinder bounds must contain six finite values")
+        if np.any(b[1::2] <= b[::2]):
+            raise ValueError("body cylinder upper bounds must exceed lower bounds")
+        if isinstance(axis, str):
+            try:
+                axis_index = {"x": 0, "y": 1, "z": 2}[axis.lower()]
+            except KeyError as error:
+                raise ValueError("body cylinder axis must be x, y, z, 0, 1, or 2") from error
+        elif isinstance(axis, int | np.integer) and not isinstance(axis, bool):
+            axis_index = int(axis)
+        else:
+            raise TypeError("body cylinder axis must be a coordinate name or integer")
+        if axis_index not in (0, 1, 2):
+            raise ValueError("body cylinder axis must be x, y, z, 0, 1, or 2")
+
+        transverse = [candidate for candidate in range(3) if candidate != axis_index]
+        extents = b[1::2] - b[::2]
+        diameters = extents[transverse]
+        diameter_scale = float(np.max(diameters))
+        if not np.isclose(diameters[0], diameters[1], rtol=1.0e-4, atol=1.0e-7):
+            raise ValueError("body cylinder transverse bounds must define one circular diameter")
+        centre = 0.5 * (b[::2] + b[1::2])
+        radius = 0.25 * float(diameters.sum())
+        if not np.isfinite(radius) or radius <= 0.0 or diameter_scale <= 0.0:
+            raise ValueError("body cylinder radius must be positive")
+        self._body_box_bounds = None
+        self._body_cylinder = (
+            axis_index,
+            centre.astype(np.float32),
+            radius,
+            float(b[2 * axis_index]),
+            float(b[2 * axis_index + 1]),
+        )
         self._body_mask_active = True
 
     def _prepare_body_mask_current_grid(
         self, grid_min: np.ndarray, particle_spacing: float, nx: int, ny: int, nz: int
     ) -> None:
         """Populate the active grid's solid-node mask."""
-        if (
-            not self._body_mask_active
-            or self._body_box_bounds is None
-            or self._body_mask_grid is None
-        ):
+        if not self._body_mask_active or self._body_mask_grid is None:
             return
         g = np.asarray(grid_min, dtype=np.float32).reshape(3)
-        b = self._body_box_bounds
-        self._fill_box_body_mask_kernel(
-            self._body_mask_grid,
-            float(g[0]),
-            float(g[1]),
-            float(g[2]),
-            float(particle_spacing),
-            float(b[0]),
-            float(b[1]),
-            float(b[2]),
-            float(b[3]),
-            float(b[4]),
-            float(b[5]),
-            nx,
-            ny,
-            nz,
-        )
+        if self._body_box_bounds is not None:
+            b = self._body_box_bounds
+            self._fill_box_body_mask_kernel(
+                self._body_mask_grid,
+                float(g[0]),
+                float(g[1]),
+                float(g[2]),
+                float(particle_spacing),
+                float(b[0]),
+                float(b[1]),
+                float(b[2]),
+                float(b[3]),
+                float(b[4]),
+                float(b[5]),
+                nx,
+                ny,
+                nz,
+            )
+            return
+        if self._body_cylinder is not None:
+            axis, centre, radius, axial_min, axial_max = self._body_cylinder
+            self._fill_cylinder_body_mask_kernel(
+                self._body_mask_grid,
+                float(g[0]),
+                float(g[1]),
+                float(g[2]),
+                float(particle_spacing),
+                int(axis),
+                float(centre[0]),
+                float(centre[1]),
+                float(centre[2]),
+                float(radius),
+                float(axial_min),
+                float(axial_max),
+                nx,
+                ny,
+                nz,
+            )
 
-    # ---- Grid-diffusion orchestration ----
+    # Grid-diffusion orchestration
 
     def _apply_body_mask_current_grid(self, nx: int, ny: int, nz: int) -> None:
         """Zero vorticity inside masked (solid) cells on the active grid."""
@@ -2871,7 +2935,7 @@ class _GridDiffusionMixin:
             max_nodes=max_nodes,
         )
 
-    # ---- Taichi Kernels ----
+    # Taichi Kernels
 
     @ti.func
     def _lagrange6_weights_ti(self, fraction: ti.f32):
@@ -3120,6 +3184,42 @@ class _GridDiffusionMixin:
             y = gmin_y + ti.cast(j, ti.f32) * particle_spacing
             z = gmin_z + ti.cast(k, ti.f32) * particle_spacing
             inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
+            body_mask[i, j, k] = 1 if inside else 0
+
+    @ti.kernel
+    def _fill_cylinder_body_mask_kernel(
+        self,
+        body_mask: ti.template(),
+        gmin_x: ti.f32,
+        gmin_y: ti.f32,
+        gmin_z: ti.f32,
+        particle_spacing: ti.f32,
+        axis: ti.i32,
+        centre_x: ti.f32,
+        centre_y: ti.f32,
+        centre_z: ti.f32,
+        radius: ti.f32,
+        axial_min: ti.f32,
+        axial_max: ti.f32,
+        nx: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+    ):
+        """Mark open-interior cylinder nodes as solid."""
+        radius_squared = radius * radius
+        for i, j, k in ti.ndrange(nx, ny, nz):
+            x = gmin_x + ti.cast(i, ti.f32) * particle_spacing
+            y = gmin_y + ti.cast(j, ti.f32) * particle_spacing
+            z = gmin_z + ti.cast(k, ti.f32) * particle_spacing
+            axial = z
+            radial_squared = (x - centre_x) ** 2 + (y - centre_y) ** 2
+            if axis == 0:
+                axial = x
+                radial_squared = (y - centre_y) ** 2 + (z - centre_z) ** 2
+            elif axis == 1:
+                axial = y
+                radial_squared = (x - centre_x) ** 2 + (z - centre_z) ** 2
+            inside = axial_min < axial and axial < axial_max and radial_squared < radius_squared
             body_mask[i, j, k] = 1 if inside else 0
 
     @ti.kernel

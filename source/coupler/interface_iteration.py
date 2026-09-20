@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from time import perf_counter
 
@@ -76,6 +77,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     candidate = _read_trace(coupler, velocity=next_velocity)
     fvm_seconds = transfer_seconds = 0.0
     records = []
+    previous_candidate = None
     for sweep in range(1, coupler.setup.interface_iterations + 1):
         if sweep > 1:
             started = perf_counter()
@@ -109,6 +111,25 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                     and gradient <= coupler.setup.interface_gradient_tolerance
                 ),
             }
+            if getattr(getattr(vpm, "induction", None), "planar_span", None) is not None:
+                position = np.ascontiguousarray(vpm.particles.position_cpu())
+                row["particle_count"] = int(vpm.particles.n_particles_total)
+                row["particle_support_digest"] = hashlib.sha256(position.tobytes()).hexdigest()[:16]
+                if previous_candidate is not None:
+                    row["two_sweep_normal_residual_rms"] = float(
+                        np.sqrt(
+                            np.average((post[1] - previous_candidate[1]) ** 2, weights=geometry[2])
+                        )
+                    )
+                    row["two_sweep_gradient_residual_rms"] = float(
+                        np.sqrt(
+                            np.average(
+                                np.sum((post[2] - previous_candidate[2]) ** 2, axis=1),
+                                weights=geometry[2],
+                            )
+                        )
+                    )
+                previous_candidate = candidate
             candidate = post
         if fvm.parallel.is_parallel:
             row = fvm.parallel.comm.bcast(row, root=0)

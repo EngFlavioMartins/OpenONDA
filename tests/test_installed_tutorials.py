@@ -318,6 +318,9 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         case.mkdir()
         launcher = case / "allrun.sh"
         shutil.copy2(original, launcher)
+        cleans_output = "./allclean.sh" in original.read_text().splitlines()
+        if cleans_output:
+            shutil.copy2(original.with_name("allclean.sh"), case / "allclean.sh")
         output = case / "solution"
         output.mkdir()
         (output / "existing.txt").write_text("keep")
@@ -329,13 +332,16 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
             capture_output=True,
             text=True,
         )
+        assert result.returncode == (23 if fail_first else 0), (original, result.stderr)
         calls = [json.loads(line) for line in calls_file.read_text().splitlines()]
         expected_count = sum(
             line.startswith("python ") for line in original.read_text().splitlines()
         )
-        assert result.returncode == (23 if fail_first else 0), (original, result.stderr)
         assert len(calls) == (1 if fail_first else expected_count), original
-        assert (output / "existing.txt").read_text() == "keep"
+        if cleans_output:
+            assert not output.exists(), original
+        else:
+            assert (output / "existing.txt").read_text() == "keep"
         if original.parent.name == "01_lamb_oseen_vortex" and not fail_first:
             assert [call[:3] for call in calls] == [
                 arguments

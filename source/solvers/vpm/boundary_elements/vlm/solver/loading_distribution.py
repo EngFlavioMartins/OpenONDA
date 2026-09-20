@@ -182,7 +182,7 @@ class VLMLoadingDistribution:
         if not vlm_solver._solved:
             return {"spanwise": pd.DataFrame(), "chordwise": pd.DataFrame()}
 
-        # ---- per-panel data (no recompute) ----
+        # per-panel data (no recompute)
         panel_force = vlm_solver.lattice.get_forces()  # (N,3)
         unsteady_force = vlm_solver.lattice.unsteady_panel_force.to_numpy()[
             : vlm_solver.lattice.n_panels

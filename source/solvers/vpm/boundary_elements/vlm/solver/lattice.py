@@ -350,7 +350,7 @@ class VLMLattice:
         """Return active pressure coefficients, shape ``(N,)`` dimensionless."""
         return self.pressure_coefficient.to_numpy()[: self.n_panels]
 
-    # --- NumPy-based geometry update (avoids Taichi field dimension bugs) -----
+    # NumPy-based geometry update (avoids Taichi field dimension bugs)
     def translate_panels(self, displacement: np.ndarray, start_idx: int = 0, end_idx: int = None):
         """Translate a contiguous panel range on the CPU.
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Coupled FVM–VPM flow past a finite circular cylinder at Re = 150.
+"""Coupled FVM–VPM flow past a spanwise cylinder section at Re = 150.
 
 The body-fitted FVM resolves the cylinder and a compact near-body box. The
-VPM carries vorticity through the outer domain. The supplied body is 12D long,
-so this remains a three-dimensional calculation even though the midspan flow
-is compared with the quasi-two-dimensional FVM reference.
+VPM carries vorticity through the outer domain.  The FVM force is normalized
+by its resolved one-diameter span; the longer panel body supplies the harmonic
+body field without introducing panel wake shedding.
 
 Usage:
     ./allrun.sh
@@ -24,19 +24,24 @@ from openonda.vpm import Backup, Samplers
 CASE_NAME = "coupled_cylinder_flow"
 DIAMETER = 1.0
 CYLINDER_LENGTH = 12.0
+FVM_RESOLVED_SPAN = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
 REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
-REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
+REFERENCE_AREA = DIAMETER * FVM_RESOLVED_SPAN
+PANEL_REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 
 # FVM domain and mesh
 FVM_CORES = 4
 PIMPLE_CORRECTORS = 2
 
-CELL_SIZE = 0.03
-SPANWISE_CELL_SIZE = 1.0 / 9.0
-FVM_HALF_SPAN = 0.5
+# The reference-flow fine mesh realizes its --dx 0.050 request as 0.0375 m
+# near the cylinder. The compact coupled FVM uses that spacing as the finest
+# level and retains four realized dyadic levels through its background region.
+CELL_SIZE = 0.0375
+SPANWISE_CELL_SIZE = CELL_SIZE
+FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
 FVM_BOX = (
     -1.5,
     1.5,
@@ -44,19 +49,23 @@ FVM_BOX = (
     1.5,
     -FVM_HALF_SPAN,
     FVM_HALF_SPAN,
-)  # We need a sensitivity analysis of this value.
+)
 TRANSFER_REGION_BOX = (
     -1.25,
     1.25,
     -1.25,
     1.25,
-    -FVM_HALF_SPAN,
-    FVM_HALF_SPAN,
-)  # We need a sensitivity analysis of this value with respect to the one above.
+    -FVM_HALF_SPAN + 0.5 * SPANWISE_CELL_SIZE,
+    FVM_HALF_SPAN - 0.5 * SPANWISE_CELL_SIZE,
+)
 
 # VPM domain and resolution
 VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -6.60, 6.60)
-VPM_PARTICLE_SPACING = CELL_SIZE
+# Keep stable renewal and GBD on one lattice.  A split 0.0375/0.05 lattice
+# remeshed every coupled step and added cost/dissipation without resolving more
+# VPM physics than the diffusion grid could retain.
+VPM_PARTICLE_SPACING = 0.05
+GBD_GRID_SPACING = VPM_PARTICLE_SPACING
 SAMPLE_SPACING = 2.0 * CELL_SIZE
 PARTICLE_LIMIT = 1_000_000
 
@@ -66,25 +75,29 @@ TRANSFER_METHOD = "buffered_m4_renewal"
 TRANSFER_VORTICITY_CUTOFF = 0.05
 TRANSFER_AMPLIFICATION_CAP = 1.8
 FVM_CONSISTENCY_WIDTH = 0.0
-INTERFACE_ITERATIONS = 5  # We need a sensitivity analysis of this value.
+INTERFACE_ITERATIONS = 3
+INTERFACE_TOLERANCE = 1.0e-5
 
 # Time and output
 FVM_TIME_STEP_SIZE = 0.004
-VPM_TIME_STEP_MULTIPLIER = 5
+VPM_TIME_STEP_MULTIPLIER = 10
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
-END_TIME = 60.0
-SAMPLING_INTERVAL_TIME = 0.1
-SLICE_INTERVAL_TIME = 0.5
-WRITE_SOLUTION_BACKUP = 2.5
+END_TIME = 100.0
+SAMPLING_INTERVAL_TIME = 0.2
+SLICE_INTERVAL_TIME = 0.24
+OUTPUT_INTERVAL_TIME = 0.24
+# Every schedule must land on a 0.04 s accepted coupling boundary while
+# interface iteration is active.
+BACKUP_INTERVAL_TIME = 0.24
 GBD_VORTICITY_FLOOR = 0.01
 
-FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / FVM_TIME_STEP_SIZE)
-VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS = round(WRITE_SOLUTION_BACKUP / VPM_TIME_STEP_SIZE)
+FVM_OUTPUT_INTERVAL_STEPS = round(OUTPUT_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
+COUPLED_BACKUP_INTERVAL_STEPS = round(BACKUP_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 FVM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 FVM_SLICE_INTERVAL_STEPS = round(SLICE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_SLICE_INTERVAL_STEPS = round(SLICE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
-TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = round(2.4 / VPM_TIME_STEP_SIZE)
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -98,39 +111,30 @@ FVM_PATCHES = msh.BoxPatches(
     zmin="zmin",
     zmax="zmax",
 )
-FVM_SOURCE_BOX = (*FVM_BOX[:4], -16.0 * CELL_SIZE, 16.0 * CELL_SIZE)
-FVM_SPAN_LEVELS = tuple(
-    np.linspace(
-        FVM_BOX[4],
-        FVM_BOX[5],
-        round((FVM_BOX[5] - FVM_BOX[4]) / SPANWISE_CELL_SIZE) + 1,
-    )
-)
-FVM_MESH = msh.ExtrudedCartesianMesher(
-    source=msh.CartesianMesher(
-        domain=msh.BoxDomain(bounds=FVM_SOURCE_BOX, patches=FVM_PATCHES),
-        surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
-        max_cell_size=8.0 * CELL_SIZE,
-        cell_size_anchor=CELL_SIZE,
-        refinements=(
-            msh.BoxRefinement(
-                name="nearBody",
-                bounds=(
-                    -1.0,
-                    FVM_BOX[1] - 2.0 * CELL_SIZE,
-                    -1.0,
-                    1.0,
-                    FVM_SOURCE_BOX[4],
-                    FVM_SOURCE_BOX[5],
-                ),
-                cell_size=2.0 * CELL_SIZE,
-            ),
-        ),
-        patch_refinements=(msh.PatchRefinement("cylinder", CELL_SIZE),),
-        surface_may_cross_domain_boundary=True,
-    ),
+FVM_MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(bounds=FVM_BOX, patches=FVM_PATCHES),
-    levels=FVM_SPAN_LEVELS,
+    surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
+    # The reference fine mesh has a 0.60 m outer scale. The compact span and
+    # boundary closure realize the four fluid levels below it as 0.30 m,
+    # 0.15 m, 0.075 m, and 0.0375 m.
+    max_cell_size=16.0 * CELL_SIZE,
+    cell_size_anchor=CELL_SIZE,
+    refinements=(
+        msh.BoxRefinement(
+            name="nearBody",
+            bounds=(
+                -1.0,
+                FVM_BOX[1] - 2.0 * CELL_SIZE,
+                -1.0,
+                1.0,
+                FVM_BOX[4],
+                FVM_BOX[5],
+            ),
+            cell_size=2.0 * CELL_SIZE,
+        ),
+    ),
+    patch_refinements=(msh.PatchRefinement("cylinder", CELL_SIZE),),
+    surface_may_cross_domain_boundary=True,
 )
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
@@ -182,7 +186,8 @@ FVM_SETUP = fvm.FVMSetup(
     time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
         end_time=END_TIME,
-        output_schedule=fvm.RunSchedule(every_n_steps=FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS),
+        # Retained fields and the coupled checkpoint use the same accepted times.
+        output_schedule=fvm.RunSchedule(every_n_steps=FVM_OUTPUT_INTERVAL_STEPS),
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
@@ -227,10 +232,12 @@ COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_method=TRANSFER_METHOD,
     transfer_region_bounds=TRANSFER_REGION_BOX,
-    backup_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+    backup_interval_steps=COUPLED_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
     interface_iterations=INTERFACE_ITERATIONS,
+    interface_normal_tolerance=INTERFACE_TOLERANCE,
+    interface_gradient_tolerance=INTERFACE_TOLERANCE,
     eta_blend_width=6.0 * VPM_PARTICLE_SPACING,
     vpm_only_width=2.0 * VPM_PARTICLE_SPACING,
     transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
@@ -239,13 +246,8 @@ COUPLER_SETUP = coupling.CouplerSetup(
 )
 
 VPM_SAMPLERS = (
-    vpm.LineSampler(
-        start=[VPM_DOMAIN[0], 0.0, 0.0],
-        end=[VPM_DOMAIN[1], 0.0, 0.0],
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_centreline",
-        schedule=VPM_SAMPLING_SCHEDULE,
-    ),
+    # Panel-source gradients are undefined on the cylinder surface. Keep VPM
+    # diagnostics on exterior transverse lines; FVM owns the body centreline.
     vpm.LineSampler(
         start=[1.0, -3.0, 0.0],
         end=[1.0, 3.0, 0.0],
@@ -267,15 +269,6 @@ VPM_SAMPLERS = (
         file_name="vpm_transverse_x4",
         schedule=VPM_SAMPLING_SCHEDULE,
     ),
-    vpm.SurfaceSampler(
-        point=[0.0, 0.0, 0.0],
-        normal=[0.0, 0.0, 1.0],
-        bounds=[VPM_DOMAIN[0], VPM_DOMAIN[1], -3.0, 3.0],
-        spacing=SAMPLE_SPACING,
-        file_name="vpm_midspan",
-        include_derivatives=False,
-        schedule=VPM_SLICE_SCHEDULE,
-    ),
 )
 
 VPM_PANEL_SOLVER = vpm.PanelSolver(
@@ -295,6 +288,7 @@ VPM_CASE = vpm.VPMCase(
         freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
+            gbd_grid_spacing=GBD_GRID_SPACING,
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
@@ -318,10 +312,13 @@ VPM_CASE = vpm.VPMCase(
             vpm.PanelBodySetup(
                 stl=str(CYLINDER_STL),
                 uid="cylinder",
-                reference_area=REFERENCE_AREA,
+                reference_area=PANEL_REFERENCE_AREA,
+                diffusion_mask="cylinder_z",
             ),
         ),
     ),
+    # Coupler backups contain the FVM state, VPM state, and boundary history
+    # atomically; independent native backups would not be restart-consistent.
     backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),
     samplers=Samplers(samples=VPM_SAMPLERS),
     run=vpm.RunPlan(steps=round(END_TIME / VPM_TIME_STEP_SIZE)),

@@ -46,10 +46,9 @@ does not conserve energy exactly or replace core redistribution.
 The viscosity model follows Winckelmans (1995), Eq. (26), positive-production
 version, approximating the vorticity direction with particle strength and using
 h=V^(1/3). The configured coefficient 0.5 corresponds to C_w=0.5 because
-C=2 C_w². It adds diffusion where stretching produces enstrophy. New scripts,
-metadata, backups, diagnostics and figures use **Selective eddy viscosity**
-and `selective_eddy_viscosity_*` keys. Historical persisted keys are converted
-by a read-only migration; the live configuration uses only canonical names.
+C=2 C_w². It adds diffusion where stretching produces enstrophy. Scripts, metadata, backups, diagnostics and figures use
+**Selective eddy viscosity** and `selective_eddy_viscosity_*` keys. Restart
+requires the current numerical schema and matching configuration.
 The optional OpenONDA feedback extension
 is disabled here. The Pedrizzetti variant adds an OpenONDA correction that
 restores global vector strength and impulses after alignment.
@@ -63,19 +62,21 @@ Fig. 5 calculation explicitly excludes flow instability. Every case requests
 2400 steps (physical t=9, or nondimensional T=t Γ0/R0²≈28.3), subject to
 native particle, memory, and numerical-health limits. The shared particle
 capacity is 600,000: Gaussian remeshing exceeded the earlier 120,000-particle
-cap around steps 1380–1440 while retaining the 0.003 tail budget. A stopped
-method does not prevent later commands in `allrun.sh` from running.
+cap around steps 1380–1440 while retaining the 0.003 tail budget. The launcher
+stops if a command exits with an error; inspect its log before starting the
+remaining methods separately.
 
 Each run starts at t=0 and writes to matching
 `solution/<method>/` and `samples/<method>/`
-directories. `allclean.sh` removes them before a full rerun. For one method
-run directly, clear that method's old output directories first; the solver
-appends samples and rejects duplicate initial times.
+directories. Preserve any results you need, then run `allclean.sh` explicitly
+for a full fresh comparison. For one method, clear only that method's old
+output directories after preserving its evidence; the solver appends samples
+and rejects duplicate initial times.
 The old 120,000-particle CS/LES checkpoints cannot be loaded with this CS/DNS
 configuration: the solver checks the closure, remeshing limit, and capacity as part of its
 restart identity. Start a new run after retaining any failed-run output you
-want to inspect. `allrun.sh` deletes the old output directories before it runs.
-The new group-preserving transfer also changes restart identity: old remeshed
+want to inspect. `allrun.sh` does not delete existing outputs.
+Group-preserving transfer is part of restart identity: old remeshed
 checkpoints cannot recover lost ancestry by relabelling. Start the updated
 comparison at t=0. The pre-audit dataset is preserved locally in
 `artifacts/vpm_ring_audit_20260915/original` at the repository root.
@@ -88,7 +89,7 @@ of the transfer-only remesh have not yet been established. The three added
 stabilization cases are numerical-method comparisons, not settings used in the
 paper.
 
-The updated cases remesh each `(group_id, zone_id)` contribution separately
+The cases remesh each `(group_id, zone_id)` contribution separately
 and correct its moments separately. Overlapping groups can therefore have
 coincident particles with different labels. This costs additional particles;
 the tail budget is respected for each group and capacity applies to their total.

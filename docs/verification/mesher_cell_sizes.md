@@ -93,11 +93,10 @@ The mesh backup and solver visualization now share these cell fields:
 The fields survive synchronous and asynchronous output, partition
 localization, owned-only pieces, ghost-cell pieces, and the PVTU collection.
 Geometry arrays remain cell data when flow fields are interpolated to points.
-A partition indexing defect found during testing was also corrected: a
-localized mesh containing all global cells as owned cells plus halos still
+A localized mesh containing all global cells as owned cells plus halos still
 needs local indices for its compact visualization mesh.
 
-`GenerationReport.sizes` now uses strict box conversion and inclusive
+`GenerationReport.sizes` uses strict box conversion and inclusive
 patch/boundary conversion. Its `level` counts additional levels from `H`,
 unlike the absolute per-cell `refinement_level`.
 `mesher.effective_cell_size(target, strict=True)` previews a box request;

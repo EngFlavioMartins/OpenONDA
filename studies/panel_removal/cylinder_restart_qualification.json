@@ -1,0 +1,19 @@
+{
+  "restart_from_time": 2.0,
+  "latest_accepted_time": 2.2,
+  "accepted_steps": 55,
+  "all_interface_steps_converged": true,
+  "first_corrected_span_time": 2.2000000000000015,
+  "span_component_ranges": [
+    3.3299377276141406e-06,
+    6.808567939980276e-06,
+    4.115764009458688e-06
+  ],
+  "span_threshold": 0.001,
+  "span_passed": true,
+  "sampler": {
+    "k": 1,
+    "reconstruction": "idw"
+  },
+  "completion_status": "waiting"
+}

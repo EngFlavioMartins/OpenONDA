@@ -3,7 +3,9 @@
 import csv
 from importlib.util import module_from_spec, spec_from_file_location
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 
 import numpy as np
@@ -19,6 +21,38 @@ SCRIPT = (
     / "postprocess_grid_study.py"
 )
 ALLRUN = SCRIPT.with_name("allrun.sh")
+
+
+def test_cube_launcher_declares_geometric_levels_and_identical_temporal_mesh(tmp_path):
+    stub = tmp_path / "python"
+    stub.write_text(
+        f"#!{sys.executable}\nimport json, os, sys\n"
+        "with open(os.environ['CALLS'], 'a') as out: out.write(json.dumps(sys.argv[1:])+'\\n')\n"
+    )
+    stub.chmod(0o755)
+    calls = tmp_path / "calls.jsonl"
+    env = dict(os.environ, PATH=str(tmp_path) + os.pathsep + os.environ["PATH"], CALLS=str(calls))
+    subprocess.run(
+        ["/bin/bash", str(ALLRUN)], cwd=tmp_path, env=env, check=True, capture_output=True
+    )
+    commands = [json.loads(line) for line in calls.read_text().splitlines()]
+    spacings = [float(c[c.index("--dx") + 1]) for c in commands[:4]]
+    np.testing.assert_allclose(np.array(spacings[:-1]) / spacings[1:], 1.5)
+    fine, temporal = commands[2], commands[4]
+    assert (
+        temporal[temporal.index("--mesh") + 1]
+        == "campaigns/geometric_r15_30s_fine/solution/grid_h0045/fvm/mesh.npz"
+    )
+    assert (
+        float(temporal[temporal.index("--max-dt") + 1])
+        == float(fine[fine.index("--max-dt") + 1]) / 2
+    )
+    assert [float(c[c.index("--end-time") + 1]) for c in commands] == [120, 120, 30, 120, 120]
+    assert float(fine[fine.index("--output-interval") + 1]) == 0.25
+    assert float(fine[fine.index("--backup-interval") + 1]) == 0.25
+    for command in (commands[0], commands[1], commands[3], temporal):
+        assert "--output-interval" not in command
+        assert "--backup-interval" not in command
 
 
 def _load_postprocessor():
@@ -151,9 +185,9 @@ def test_cube_postprocessor_compares_every_completed_grid_without_mutating_sampl
         encoding="utf-8"
     ) == original_force
     for name in (
-        "grid_convergence.json",
-        "grid_convergence.csv",
-        "grid_convergence.md",
+        "auxiliary/grid_convergence.json",
+        "auxiliary/grid_convergence.csv",
+        "auxiliary/grid_convergence.md",
         "grid_convergence.png",
         "grid_convergence_by_cells.png",
         "grid_convergence_profiles.png",
@@ -161,20 +195,181 @@ def test_cube_postprocessor_compares_every_completed_grid_without_mutating_sampl
         assert (output / name).stat().st_size > 0
 
 
-def test_cube_grid_runner_matches_the_declarative_cylinder_style():
-    script = ALLRUN.read_text(encoding="utf-8")
+def test_cube_campaign_realizes_geometric_spacings_on_identical_domains(monkeypatch):
+    spec = spec_from_file_location("cube_campaign_setup_test", SCRIPT.with_name("setup.py"))
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    captured = []
+    monkeypatch.setattr(
+        module.fvm, "create_fvm_solver", lambda setup, **kwargs: captured.append((setup, kwargs))
+    )
+    spacings = [0.10125, 0.0675, 0.045, 0.03]
+    for h in spacings:
+        module.create_solver(
+            "case", h, campaign=True, lean=True, cores=2, end_time=120, max_dt=0.005
+        )
+    for (setup, kwargs), h in zip(captured, spacings, strict=True):
+        assert kwargs["mesh"].cell_size_anchor == h
+        np.testing.assert_allclose(
+            kwargs["mesh"].domain.bounds,
+            [-6.48, 12.96, -6.48, 6.48, -6.48, 6.48],
+            rtol=0,
+            atol=1e-12,
+        )
+        assert setup.time.output_schedule.final_only
+        assert setup.backup.schedule.every_time == 5
+    np.testing.assert_allclose(np.array(spacings[:-1]) / spacings[1:], 1.5)
+    assert "./allclean.sh" not in ALLRUN.read_text()
 
-    assert "./allclean.sh" not in script
-    assert "postprocess_grid_study.py" not in script
-    assert "run_case" not in script
-    for name, spacing in (
-        ("very_coarse", "0.12"),
-        ("coarse", "0.10"),
-        ("medium", "0.08"),
-        ("fine", "0.06"),
-    ):
-        assert f"python setup.py --name {name}" in script
-        assert f"--dx {spacing}" in script
+
+def test_temporal_configuration_reuses_source_and_restart_owns_its_mesh(tmp_path):
+    from studies.panel_removal.cube_reference_campaign import campaign_mesh
+
+    root = tmp_path / "campaign"
+    with pytest.raises(FileNotFoundError, match="Run the spatial fine stage"):
+        campaign_mesh(root / "temporal", "time_h0045_dt_half", None, None)
+    fine = root / "solution/grid_h0045/fvm/mesh.npz"
+    fine.parent.mkdir(parents=True)
+    fine.write_bytes(b"original native mesh")
+    assert campaign_mesh(root / "temporal", "time_h0045_dt_half", None, None) == fine
+    assert campaign_mesh(root / "temporal", "explicit_control", fine, None) == fine
+    own = root / "temporal/solution/time_h0045_dt_half/fvm/mesh.npz"
+    own.parent.mkdir(parents=True)
+    own.write_bytes(fine.read_bytes())
+    fine.unlink()
+    assert (
+        campaign_mesh(root / "temporal", "time_h0045_dt_half", fine, own.parent.parent / "backup")
+        == own
+    )
+    assert own.read_bytes() == b"original native mesh"
+
+
+@pytest.mark.parametrize(
+    "output_interval,backup_interval,expected_output,expected_backup",
+    [(0.25, 0.25, 0.25, 0.25), (0.25, None, 0.25, 5.0), (None, 0.25, None, 0.25)],
+)
+def test_fine_output_and_checkpoint_schedules_are_independent(
+    monkeypatch, output_interval, backup_interval, expected_output, expected_backup
+):
+    spec = spec_from_file_location("cube_output_schedule_test", SCRIPT.with_name("setup.py"))
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    captured = []
+    monkeypatch.setattr(
+        module.fvm, "create_fvm_solver", lambda setup, **kwargs: captured.append(setup)
+    )
+    module.create_solver(
+        "grid_h0045",
+        0.045,
+        campaign=True,
+        lean=True,
+        end_time=30,
+        max_dt=0.005,
+        output_interval=output_interval,
+        backup_interval=backup_interval,
+    )
+    setup = captured[0]
+    assert setup.time.end_time == 30
+    assert setup.time.output_schedule.every_time == expected_output
+    assert setup.time.output_schedule.final_only == (expected_output is None)
+    assert setup.backup.schedule.every_time == expected_backup
+    assert setup.backup.write_at_end
+    assert [sampler.schedule.every_time for sampler in setup.samplers] == [0.05, 0.25, 0.25]
+    assert setup.time.adjustment.maximum_time_step_size == 0.005
+    assert setup.transport.kinematic_viscosity == 0.001
+
+
+@pytest.mark.parametrize("state", ["active", "complete", "reused_command", "reused_time", "gone"])
+def test_campaign_admission_checks_live_process_identity(tmp_path, state):
+    import psutil
+
+    from studies.panel_removal import cube_reference_campaign as module
+
+    directory = tmp_path / "studies/panel_removal/runs/cube"
+    directory.mkdir(parents=True)
+    record = directory / "process.json"
+    record.write_text(
+        json.dumps(
+            {
+                "pid": 123,
+                "command": [
+                    "python",
+                    "-m",
+                    "studies.panel_removal.run_cube",
+                    "--output",
+                    str(directory),
+                ],
+            }
+        )
+    )
+
+    class Process:
+        def __init__(self, pid):
+            assert pid == 123
+            if state == "gone":
+                raise psutil.NoSuchProcess(pid)
+
+        def is_running(self):
+            return state != "complete"
+
+        def status(self):
+            return "running"
+
+        def create_time(self):
+            return record.stat().st_mtime + (3600 if state == "reused_time" else 0)
+
+        def cmdline(self):
+            return [
+                "prterun",
+                "-n",
+                "4",
+                "python",
+                str(tmp_path / "studies/panel_removal/run_cube.py"),
+                "--output",
+                str(directory if state != "reused_command" else tmp_path / "other"),
+            ]
+
+    assert module._recorded_experiment_is_active(record, tmp_path, Process) == (state == "active")
+
+
+def test_campaign_admission_waits_then_releases_and_respects_bypass(tmp_path, monkeypatch):
+    from studies.panel_removal import cube_reference_campaign as module
+
+    fake_setup = tmp_path / "studies/panel_removal/cube_reference_campaign.py"
+    monkeypatch.setattr(module, "__file__", str(fake_setup))
+    record = tmp_path / "studies/panel_removal/runs/cube/process.json"
+    record.parent.mkdir(parents=True)
+    record.write_text("{}")
+    states = iter([True, False])
+    monkeypatch.setattr(module, "_recorded_experiment_is_active", lambda *args: next(states))
+    sleeps = []
+    monkeypatch.setattr(module.time, "sleep", sleeps.append)
+    module.wait_for_coupled_experiments(True, 0.045, output_root=tmp_path)
+    assert sleeps == [30]
+    monkeypatch.setattr(
+        module,
+        "_recorded_experiment_is_active",
+        lambda *args: pytest.fail("bypass inspected processes"),
+    )
+    module.wait_for_coupled_experiments(False, 0.045, output_root=tmp_path)
+    module.wait_for_coupled_experiments(True, 0.10125, output_root=tmp_path)
+    monkeypatch.setenv("CUBE_WAIT_FOR_COUPLED", "0")
+    module.wait_for_coupled_experiments(True, 0.03, output_root=tmp_path)
+
+
+def test_four_grid_asymptotic_check_is_independent_of_finest_triplet():
+    module = _load_postprocessor()
+    grids = [
+        {"case": str(i), "wall_cell_size": h, "force_statistics": {"mean_drag": 1 + h * h}}
+        for i, h in enumerate([0.10125, 0.0675, 0.045, 0.03])
+    ]
+    result = module._convergence_statistics(grids, "mean_drag", None)["richardson"]
+    assert result["observed_order"] == pytest.approx(2)
+    assert result["asymptotic_check"]["observed_to_predicted"] == pytest.approx(1)
+    grids[-1]["force_statistics"]["mean_drag"] += 0.0002
+    result = module._convergence_statistics(grids, "mean_drag", None)["richardson"]
+    assert result["available"]
+    assert not result["asymptotic_check"]["within_ten_percent"]
 
 
 def test_frequency_screen_rejects_window_drift_and_short_periodic_record():

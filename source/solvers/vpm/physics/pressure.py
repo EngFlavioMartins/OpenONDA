@@ -902,10 +902,8 @@ class PressurePhysics(PhysicsBase):
                         # r × Γ
                         r_cross_vortex_strength = r_vec.cross(vortex_strength_i)
 
-                        # ---------------------------------------------------------
                         # MOTION CONTRIBUTION: -(∇uᵢ)·vᵢ
                         # Build velocity gradient and multiply by -v_i in one step
-                        # ---------------------------------------------------------
                         # Skew matrix contribution: velocity_gradient[a,b] from cross product terms
                         # velocity_gradient[0,1] = -Γz * term1,  velocity_gradient[0,2] = Γy * term1
                         # velocity_gradient[1,0] = Γz * term1,   velocity_gradient[1,2] = -Γx * term1
@@ -937,11 +935,9 @@ class PressurePhysics(PhysicsBase):
 
                         du_dt -= motion  # Negative sign: -(∇u)·v
 
-                        # ---------------------------------------------------------
                         # STRETCHING CONTRIBUTION: K(x, xᵢ, dGammaᵢ/dt)
                         # Biot-Savart velocity using stretching rate as strength
                         # u_stretch = -q/r³ * (r × dGamma/dt)
-                        # ---------------------------------------------------------
                         r_cross_dalpha = r_vec.cross(dalpha_i)
                         du_dt -= (q_val / r_mag_cubed) * r_cross_dalpha
 

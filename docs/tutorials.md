@@ -33,12 +33,17 @@ actions:
 ./allclean.sh  # Remove generated output when you choose to.
 ```
 
-Most run scripts leave existing outputs in place. A case that requires fresh
-outputs, such as vortex interactions, calls `allclean.sh` explicitly at the
-start of `allrun.sh`. Running does not invoke plotting or result validation.
-Every setup has a default case. The reference defaults are the cylinder's
-medium grid (`dx=0.04`) and the cube's fine grid (`dx=0.06`). Variant and grid
-arguments remain available for comparisons. Every shell launcher resolves its
+Most run scripts leave existing outputs in place. The coupled cube and cylinder
+launchers call `allclean.sh` before running, removing their local generated
+outputs. Preserve results you need before invoking those launchers or running
+`allclean.sh` yourself. The separate reference campaign launchers retain existing
+outputs. Running does not invoke plotting or result validation.
+Every setup has a default case. Direct reference `python setup.py` commands
+select cylinder `medium` with requested `dx=0.04` m and cube `fine` with
+`dx=0.06` m. The geometric campaign launchers explicitly select different
+families: their fine levels are cylinder `xy_fine` with requested `dx=0.04` m
+(nominal body lattice 0.03 m) and cube `grid_h0045` with wall spacing 0.045 m.
+Variant and grid arguments remain available for comparisons. Every shell launcher resolves its
 own case directory, so it also works when invoked from elsewhere.
 No interpreter variables or module-runner commands are required.
 
@@ -92,9 +97,8 @@ Validators are explicit, for example `python assets/postprocess.py --available`
 in the ring case. They and the plotters read the solvers' `vpm_metadata.json`
 or `fvm_metadata.json`, rather than a second tutorial metadata file.
 
-Follow the [repository guidelines](../AGENTS.md#9-tutorials-and-user-facing-scripts)
-when adding a case; the same document defines the
-[figure requirements](../AGENTS.md#10-figures-mandatory-defaults-and-visual-verification).
+Tutorial plotting uses `openonda.plotting` for shared figure dimensions, fonts,
+colours and export handling.
 
 ## VPM induction and stretching
 
@@ -144,5 +148,4 @@ repository `docs/` directory.
 Core installation does not include external OpenFOAM/cfMesh executables,
 OpenVSP, or ParaView. See [optional tool requirements](installation.md).
 The [FVM qualification report](validation/fvm_qualification.md) records the
-current executable contract and verification limits. Follow the
-[repository guidelines](../AGENTS.md) for development conventions and terminology.
+current executable contract and verification limits.

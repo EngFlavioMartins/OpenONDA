@@ -9,9 +9,7 @@ import pytest
 
 from openonda.tutorial_runner import load_case_module
 
-CASE_DIR = (
-    Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions_PENDING"
-)
+CASE_DIR = Path(__file__).resolve().parents[2] / "tutorials" / "vpm" / "03_vortex_interactions"
 
 
 def _load_setup():

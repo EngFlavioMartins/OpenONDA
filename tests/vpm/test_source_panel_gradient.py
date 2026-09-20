@@ -100,9 +100,7 @@ def test_fvm_vpm_panel_gradient_avoids_an_f64_taichi_target_kernel():
         np.broadcast_to(particle_jacobian, (len(points), 3, 3)),
         particle_spacing=0.06,
     )
-    np.testing.assert_allclose(
-        complete, np.broadcast_to(expected_jacobian, (len(points), 3, 3))
-    )
+    np.testing.assert_allclose(complete, np.broadcast_to(expected_jacobian, (len(points), 3, 3)))
 
     _, tangential = solver.compute_velocity_and_tangential_normal_gradient_at_points(
         points, normals, particle_spacing=0.06
@@ -110,7 +108,7 @@ def test_fvm_vpm_panel_gradient_avoids_an_f64_taichi_target_kernel():
     normal_gradient = np.einsum(
         "fij,fj->fi", np.broadcast_to(expected_jacobian, (len(points), 3, 3)), normals
     )
-    expected_tangential = normal_gradient - np.einsum(
-        "fi,fi->f", normal_gradient, normals
-    )[:, None] * normals
+    expected_tangential = (
+        normal_gradient - np.einsum("fi,fi->f", normal_gradient, normals)[:, None] * normals
+    )
     np.testing.assert_allclose(tangential, expected_tangential)

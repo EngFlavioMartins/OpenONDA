@@ -105,12 +105,12 @@ def semi_infinite_vortex_velocity(target, p, d, circulation: float, epsilon: flo
     xmpdotd = xmp.dot(d)
     p0 = p + xmpdotd * d
 
-    # ---- Bound Vortex Section (from p to p0) ----
+    # Bound Vortex Section (from p to p0)
     p0mp = p0 - p
     if p0mp.dot(p0mp) > epsilon * epsilon:  # Check there is a bound section
         vel = vel + bound_vortex_velocity(target, p, p0, circulation, epsilon)
 
-    # ---- Semi-Infinite Vortex Section (from p0 to infinity) ----
+    # Semi-Infinite Vortex Section (from p0 to infinity)
     # Velocity = (Γ/4π) * (d × h) / (|h|² + ε²)
     # where h = target - p0
     h = target - p0

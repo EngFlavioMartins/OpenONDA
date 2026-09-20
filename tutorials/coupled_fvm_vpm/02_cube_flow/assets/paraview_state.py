@@ -4,17 +4,13 @@ import paraview
 paraview.compatibility.major = 6
 paraview.compatibility.minor = 1
 
-#### import the simple module from the paraview
 from paraview.simple import *
 
-#### disable automatic camera reset on 'Show'
+# Keep the saved camera when displaying the first source.
 paraview.simple._DisableFirstRenderCameraReset()
 
-# ----------------------------------------------------------------
 # setup views used in the visualization
-# ----------------------------------------------------------------
 
-# Create a new 'Render View'
 renderView1 = CreateView("RenderView")
 renderView1.Set(
     ViewSize=[1920, 1080],
@@ -32,25 +28,17 @@ renderView1.Set(
 
 SetActiveView(None)
 
-# ----------------------------------------------------------------
 # setup view layouts
-# ----------------------------------------------------------------
 
-# create new layout object 'Layout #1'
 layout1 = CreateLayout(name="Layout #1")
 layout1.AssignView(0, renderView1)
 layout1.SetSize(1920, 1080)
 
-# ----------------------------------------------------------------
-# restore active view
 SetActiveView(renderView1)
-# ----------------------------------------------------------------
 
-# ----------------------------------------------------------------
+
 # setup the selections
-# ----------------------------------------------------------------
 
-# create a new 'ID Selection Source'
 selectionSource0 = CreateSelection(
     proxyname="IDSelectionSource",
     registrationname="SelectionSource0",
@@ -58,7 +46,6 @@ selectionSource0 = CreateSelection(
     IDs=[0, 2655],
 )
 
-# create a new 'Append Selections'
 appendSelections = CreateSelection(
     proxyname="AppendSelections",
     registrationname="AppendSelections",
@@ -68,11 +55,8 @@ appendSelections = CreateSelection(
     SelectionNames=["s0"],
 )
 
-# ----------------------------------------------------------------
 # setup the data processing pipelines
-# ----------------------------------------------------------------
 
-# create a new 'PVD Reader'
 vpmpvd = PVDReader(
     registrationName="vpm.pvd",
     FileName="/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm.pvd",
@@ -90,27 +74,23 @@ vpmpvd.PointArrays = [
     "zone_id",
 ]
 
-# create a new 'Clip'
 clip1 = Clip(registrationName="Clip1", Input=vpmpvd)
 clip1.Set(
     ClipType="Box",
     Invert=0,
 )
 
-# init the 'Box' selected for 'ClipType'
 clip1.ClipType.Set(
     Position=[-1.5, -2.5, -0.05],
     Length=[3.0, 2.3850001096725464, 1.5],
 )
 
-# init the 'Plane' selected for 'HyperTreeGridClipper'
 clip1.HyperTreeGridClipper.Origin = [
     5.647500157356262,
     -5.960464477539063e-08,
     -5.960464477539063e-08,
 ]
 
-# create a new 'STL Reader'
 cubestl = STLReader(
     registrationName="cube.stl",
     FileNames=[
@@ -118,7 +98,6 @@ cubestl = STLReader(
     ],
 )
 
-# create a new 'PVD Reader'
 fvmpvd = PVDReader(
     registrationName="fvm.pvd",
     FileName="/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm.pvd",
@@ -136,33 +115,25 @@ fvmpvd.CellArrays = [
     "global_cell_id",
 ]
 
-# create a new 'Cell Data to Point Data'
 cellDatatoPointData1 = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=fvmpvd)
 
-# create a new 'Slice'
 slice1 = Slice(registrationName="Slice1", Input=cellDatatoPointData1)
 slice1.SliceOffsetValues = [0.0]
 
-# init the 'Plane' selected for 'SliceType'
 slice1.SliceType.Set(
     Origin=[1.125, 0.0, 0.0],
     Normal=[0.0, 0.0, 1.0],
 )
 
-# init the 'Plane' selected for 'HyperTreeGridSlicer'
 slice1.HyperTreeGridSlicer.Origin = [1.125, 0.0, 0.0]
 
 appendSelections.SetSelectionId(slice1.GetGlobalID())
 appendSelections.SetSelectionPort(0)
 
-# ----------------------------------------------------------------
 # setup the visualization in view 'renderView1'
-# ----------------------------------------------------------------
 
-# show data from fvmpvd
 fvmpvdDisplay = Show(fvmpvd, renderView1, "UnstructuredGridRepresentation")
 
-# trace defaults for the display properties.
 fvmpvdDisplay.Set(
     Representation="Outline",
     ColorArrayName=["POINTS", ""],
@@ -170,10 +141,8 @@ fvmpvdDisplay.Set(
     RenderLinesAsTubes=1,
 )
 
-# show data from slice1
 slice1Display = Show(slice1, renderView1, "GeometryRepresentation")
 
-# get color transfer function/color map for 'velocity'
 velocityLUT = GetColorTransferFunction("velocity")
 velocityLUT.Set(
     RGBPoints=[
@@ -251,7 +220,6 @@ velocityLUT.Set(
     ScalarRangeInitialized=1.0,
 )
 
-# trace defaults for the display properties.
 slice1Display.Set(
     Representation="Surface",
     ColorArrayName=["POINTS", "velocity"],
@@ -259,16 +227,12 @@ slice1Display.Set(
     EdgeColor=[0.9176470637321472, 0.9176470637321472, 0.9176470637321472],
 )
 
-# init the 'Piecewise Function' selected for 'ScaleTransferFunction'
 slice1Display.ScaleTransferFunction.Points = [-1.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0]
 
-# init the 'Piecewise Function' selected for 'OpacityTransferFunction'
 slice1Display.OpacityTransferFunction.Points = [-1.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0]
 
-# show data from cubestl
 cubestlDisplay = Show(cubestl, renderView1, "GeometryRepresentation")
 
-# get color transfer function/color map for 'STLSolidLabeling'
 sTLSolidLabelingLUT = GetColorTransferFunction("STLSolidLabeling")
 sTLSolidLabelingLUT.Set(
     RGBPoints=GenerateRGBPoints(
@@ -278,7 +242,6 @@ sTLSolidLabelingLUT.Set(
     ScalarRangeInitialized=1.0,
 )
 
-# trace defaults for the display properties.
 cubestlDisplay.Set(
     Representation="Surface",
     ColorArrayName=["POINTS", ""],
@@ -289,10 +252,8 @@ cubestlDisplay.Set(
     Metallic=0.04,
 )
 
-# show data from clip1
 clip1Display = Show(clip1, renderView1, "UnstructuredGridRepresentation")
 
-# get color transfer function/color map for 'vorticity'
 vorticityLUT = GetColorTransferFunction("vorticity")
 vorticityLUT.Set(
     AutomaticRescaleRangeMode="Never",
@@ -305,7 +266,6 @@ vorticityLUT.Set(
     ScalarRangeInitialized=1.0,
 )
 
-# trace defaults for the display properties.
 clip1Display.Set(
     Representation="Point Gaussian",
     ColorArrayName=["POINTS", "vorticity"],
@@ -323,23 +283,18 @@ clip1Display.Set(
     OpacityArrayComponent="Magnitude",
 )
 
-# init the 'Piecewise Function' selected for 'ScaleTransferFunction'
 clip1Display.ScaleTransferFunction.Points = [0.000133218, 0.0, 0.5, 0.0, 5.0, 1.0, 0.5, 0.0]
 
-# init the 'Piecewise Function' selected for 'OpacityTransferFunction'
 clip1Display.OpacityTransferFunction.Points = [0.000133218, 0.0, 0.5, 0.0, 5.0, 1.0, 0.5, 0.0]
 
-# show data from vpmpvd
 vpmpvdDisplay = Show(vpmpvd, renderView1, "UnstructuredGridRepresentation")
 
-# trace defaults for the display properties.
 vpmpvdDisplay.Set(
     Representation="Point Gaussian",
     ColorArrayName=[None, ""],
     GaussianRadius=0.1269000029563904,
 )
 
-# init the 'Piecewise Function' selected for 'ScaleTransferFunction'
 vpmpvdDisplay.ScaleTransferFunction.Points = [
     0.04724999889731407,
     0.0,
@@ -351,7 +306,6 @@ vpmpvdDisplay.ScaleTransferFunction.Points = [
     0.0,
 ]
 
-# init the 'Piecewise Function' selected for 'OpacityTransferFunction'
 vpmpvdDisplay.OpacityTransferFunction.Points = [
     0.04724999889731407,
     0.0,
@@ -365,65 +319,49 @@ vpmpvdDisplay.OpacityTransferFunction.Points = [
 
 # setup the color legend parameters for each legend in this view
 
-# get color legend/bar for vorticityLUT in view renderView1
 vorticityLUTColorBar = GetScalarBar(vorticityLUT, renderView1)
 vorticityLUTColorBar.Set(
     Title="vorticity",
     ComponentTitle="Magnitude",
 )
 
-# set color bar visibility
 vorticityLUTColorBar.Visibility = 0
 
-# hide data in view
 Hide(vpmpvd, renderView1)
 
-# ----------------------------------------------------------------
 # setup color maps and opacity maps used in the visualization
 # note: the Get..() functions create a new object, if needed
-# ----------------------------------------------------------------
 
-# get opacity transfer function/opacity map for 'velocity'
 velocityPWF = GetOpacityTransferFunction("velocity")
 velocityPWF.Set(
     Points=[0.0016831935004858933, 0.0, 0.5, 0.0, 1.2312556715839478, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
-# get opacity transfer function/opacity map for 'STLSolidLabeling'
 sTLSolidLabelingPWF = GetOpacityTransferFunction("STLSolidLabeling")
 sTLSolidLabelingPWF.Set(
     Points=[0.0, 0.0, 0.5, 0.0, 1.1757813367477812e-38, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
-# get opacity transfer function/opacity map for 'vorticity'
 vorticityPWF = GetOpacityTransferFunction("vorticity")
 vorticityPWF.Set(
     Points=[0.0, 0.0, 0.5, 0.0, 5.0, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
-# ----------------------------------------------------------------
 # setup animation scene, tracks and keyframes
 # note: the Get..() functions create a new object, if needed
-# ----------------------------------------------------------------
 
-# get the time-keeper
 timeKeeper1 = GetTimeKeeper()
 
-# initialize the timekeeper
 timeKeeper1.SuppressedTimeSources = [fvmpvd, cubestl]
 
-# get time animation track
 timeAnimationCue1 = GetTimeTrack()
 
-# initialize the animation track
 
-# get animation scene
 animationScene1 = GetAnimationScene()
 
-# initialize the animation scene
 animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
@@ -433,35 +371,5 @@ animationScene1.Set(
     PlayMode="Snap To TimeSteps",
 )
 
-# initialize the animation scene
 
-# ----------------------------------------------------------------
-# restore active source
 SetActiveSource(fvmpvd)
-# ----------------------------------------------------------------
-
-
-##--------------------------------------------
-## You may need to add some code at the end of this python script depending on your usage, eg:
-#
-## Render all views to see them appears
-# RenderAllViews()
-#
-## Interact with the view, usefull when running from pvpython
-# Interact()
-#
-## Save a screenshot of the active view
-# SaveScreenshot("path/to/screenshot.png")
-#
-## Save a screenshot of a layout (multiple splitted view)
-# SaveScreenshot("path/to/screenshot.png", GetLayout())
-#
-## Save all "Extractors" from the pipeline browser
-# SaveExtracts()
-#
-## Save a animation of the current active view
-# SaveAnimation()
-#
-## Please refer to the documentation of paraview.simple
-## https://www.paraview.org/paraview-docs/nightly/python/
-##--------------------------------------------

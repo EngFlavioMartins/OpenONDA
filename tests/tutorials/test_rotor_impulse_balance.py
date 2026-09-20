@@ -8,7 +8,9 @@ import pytest
 
 from openonda.tutorial_runner import load_case_module
 
-rotor = load_case_module(Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING", "assets._common")
+rotor = load_case_module(
+    Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING", "assets._common"
+)
 
 
 def histories():

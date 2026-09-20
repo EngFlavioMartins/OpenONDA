@@ -416,7 +416,7 @@ class Logging:
             return
         self._emit(log_style.block_section(title, items), flush=flush)
 
-    # -- Per-step diagnostics --------------------------------------------------
+    # Per-step diagnostics.
 
     def step_begin(self, step: int, time: float, time_step_size: float) -> None:
         """Open a trial record; discard an interrupted predecessor without publishing it."""
@@ -659,7 +659,7 @@ class Logging:
         """Return the routine step report: the quantities watched every step."""
         return self._render_step_block(record, detailed=False)
 
-    # -- Startup and shutdown reports ------------------------------------------
+    # Startup and shutdown reports.
 
     @staticmethod
     def solver_info(solver: Any, initialization_time: float) -> str:

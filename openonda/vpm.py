@@ -32,6 +32,7 @@ from source.solvers.vpm import (
     ParticleCoreCompensation,
     ParticleDistribution,
     ParticleStrengthLimit,
+    PlanarInduction,
     RectangularDistribution,
     ResourceLimitError,
     ResourceLimits,
@@ -70,6 +71,7 @@ from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 
 __all__ = [
     "DirectInduction",
+    "PlanarInduction",
     "FMMInduction",
     "Backup",
     "DivergenceRelaxationConfig",

@@ -190,23 +190,31 @@ def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_p
     from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
     from source.solvers.vpm.io.sampling import EverySteps
 
-    line = LineSampler([0, 0, 0], [1, 0, 0], .5, file_name="line",
-                       include_derivatives=False, schedule=EverySteps(1))
+    line = LineSampler(
+        [0, 0, 0],
+        [1, 0, 0],
+        0.5,
+        file_name="line",
+        include_derivatives=False,
+        schedule=EverySteps(1),
+    )
     solver = _SamplerSolver()
     solver.case_dir = tmp_path
-    solver.time_step_size = .1
-    solver.case = SimpleNamespace(backup=Backup(interval_steps=0),
-                                 samplers=Samplers(samples=(line,), directory="audit"))
+    solver.time_step_size = 0.1
+    solver.case = SimpleNamespace(
+        backup=Backup(interval_steps=0), samplers=Samplers(samples=(line,), directory="audit")
+    )
     for step in (1, 2, 3):
-        solver.step, solver.time = step, round(step*.1, 12)
-        # Recreate the manager to exercise native-file restart append behavior.
+        solver.step, solver.time = step, round(step * 0.1, 12)
+        # A rebuilt manager appends only after an explicit numerical restart.
+        solver._restart_loaded = step > 1
         OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
     path = tmp_path / "samples/audit/line.csv"
     data = pd.read_csv(path)
-    np.testing.assert_array_equal(data.time.unique(), [.1, .2, .3])
+    np.testing.assert_array_equal(data.time.unique(), [0.1, 0.2, 0.3])
     assert data.groupby("time").size().tolist() == [3, 3, 3]
     np.testing.assert_allclose(data.velocity_x, data.position_x)
-    np.testing.assert_allclose(data.velocity_z, 1.)
+    np.testing.assert_allclose(data.velocity_z, 1.0)
     original = path.read_bytes()
     with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
         OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
@@ -214,7 +222,7 @@ def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_p
     # A legacy single-snapshot file cannot silently become malformed history.
     legacy = "# time=0.3\nposition_x,position_y\n0,0\n"
     path.write_text(legacy)
-    solver.step, solver.time = 4, .4
+    solver.step, solver.time = 4, 0.4
     with pytest.raises(RuntimeError, match="CSV schema mismatch"):
         OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
     assert path.read_text() == legacy

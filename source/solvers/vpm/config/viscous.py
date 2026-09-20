@@ -24,9 +24,9 @@ class ViscousConfig:
         Hydrodynamics, or Grid-Based Diffusion. Names are normalized uppercase.
     core_radius_ratio : float, default=2.5
         Positive dimensionless regenerated-particle ratio ``sigma/h``.
-    dvh_grid_spacing, gbd_grid_spacing : float or None
-        Positive regeneration-grid spacings ``h`` in m. Factory methods default
-        these to ``particle_spacing``.
+    dvh_grid_spacing : float or None
+        Positive DVH regeneration-grid spacing ``h`` in m. The factory defaults
+        it to ``particle_spacing``.
     dvh_domain_padding, gbd_domain_padding : float, default=3.0
         Number of grid cells padded beyond the active particle bounds.
     dvh_threshold, gbd_threshold : float, default=0.01
@@ -49,6 +49,10 @@ class ViscousConfig:
     particle_spacing : float or None
         Positive representative particle spacing in m, used for accuracy and
         regeneration defaults.
+    gbd_grid_spacing : float or None
+        Independent GBD regeneration-grid spacing in m. The factory defaults
+        this to ``particle_spacing``; set it explicitly when a fixed GPU grid
+        over the full VPM domain would exceed the device diffusion budget.
 
     Raises
     ------
@@ -287,6 +291,7 @@ class ViscousConfig:
         max_nodes: int | None = None,
         core_radius_ratio: float = 2.5,
         remeshing_kernel: str = "M4_PRIME",
+        gbd_grid_spacing: float | None = None,
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration.
 
@@ -296,11 +301,18 @@ class ViscousConfig:
         it is not positivity-preserving and still requires refinement.
         The molecular Laplacian and viscosity coefficient are unchanged.
         M4' remains the default. LAGRANGE6 needs at least four padding cells.
+
+        ``gbd_grid_spacing`` defaults to ``particle_spacing``. A larger
+        explicit spacing is a numerical-memory control for GPU runs: it
+        changes the regeneration-grid resolution while leaving the
+        representative particle spacing used by VPM accuracy checks unchanged.
         """
+        if gbd_grid_spacing is None:
+            gbd_grid_spacing = particle_spacing
         return ViscousConfig(
             scheme="GBD",
             particle_spacing=particle_spacing,
-            gbd_grid_spacing=particle_spacing,
+            gbd_grid_spacing=gbd_grid_spacing,
             gbd_domain_padding=padding,
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,

@@ -168,16 +168,12 @@ class TaichiTreecode:
             raise ValueError("max_evaluation_points must be positive")
         self.max_evaluation_points = evaluation_capacity
 
-        # -------------------------------------------------------------
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
-        # -------------------------------------------------------------
         self.position = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
         self.vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
         self.core_radius = ti.field(dtype=ti.f32, shape=max_n_particles)
 
-        # -------------------------------------------------------------
         # TREE STRUCTURE (binary LBVH)
-        # -------------------------------------------------------------
         # Node properties (centre/half_size computed from AABB)
         self.node_centre = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
@@ -222,9 +218,7 @@ class TaichiTreecode:
         # Particle-to-leaf mapping (contiguous sorted indices)
         self.leaf_particles = ti.field(dtype=ti.i32, shape=max_n_particles)
 
-        # -------------------------------------------------------------
         # LBVH BUILD FIELDS
-        # -------------------------------------------------------------
         self.morton_codes = ti.field(dtype=ti.u32, shape=max_n_particles)
         self.sorted_indices = ti.field(dtype=ti.i32, shape=max_n_particles)
         # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
@@ -253,21 +247,15 @@ class TaichiTreecode:
         self._node_aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self._node_aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
 
-        # -------------------------------------------------------------
         # OUTPUT VELOCITIES
-        # -------------------------------------------------------------
         particle_output_capacity = 1 if self.hierarchy_only else max_n_particles
         self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=particle_output_capacity)
 
-        # -------------------------------------------------------------
         # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
-        # -------------------------------------------------------------
         self.velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
         self.strain_rate = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
 
-        # -------------------------------------------------------------
         # TARGET POINT FIELDS
-        # -------------------------------------------------------------
         target_field_capacity = 1 if self.hierarchy_only else evaluation_capacity
         self.target_position = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
         self.target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
@@ -280,17 +268,13 @@ class TaichiTreecode:
         self.multipole_order = ti.field(dtype=ti.i32, shape=())
         self.sort_particle_targets = ti.field(dtype=ti.i32, shape=())
 
-        # -------------------------------------------------------------
         # TREE TRAVERSAL STACK
-        # -------------------------------------------------------------
         self.max_stack_depth = 48
         particle_stack_capacity = 1 if self.hierarchy_only else max_n_particles
         self.traversal_stack = ti.field(dtype=ti.i32, shape=(particle_stack_capacity, 48))
         self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(evaluation_capacity, 48))
 
-        # -------------------------------------------------------------
         # COUNTERS
-        # -------------------------------------------------------------
         self.n_particles_total = ti.field(dtype=ti.i32, shape=())
         self.n_nodes = ti.field(dtype=ti.i32, shape=())
         self._root = ti.field(dtype=ti.i32, shape=())
@@ -391,7 +375,7 @@ class TaichiTreecode:
 
            Copies from Taichi fields directly — **no CPU round-trip**.
 
-        2. NumPy arrays (backward compat)::
+        2. NumPy arrays::
             tree.build(pos_np, strg_np, rad_np)
 
         When called with the same *N* (and no *force*) repeatedly, the build
@@ -835,7 +819,7 @@ class TaichiTreecode:
                 if not self._sort_validated:
                     # One-time correctness gate: catch a backend whose
                     # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
-                    # back permanently to the proven CPU argsort.
+                    # back permanently to CPU argsort.
                     keys = self._download_u32_field(self._sort_keys, N)
                     if N > 1 and bool(np.any(np.diff(keys.astype(np.int64)) < 0)):
                         self._gpu_sort = False

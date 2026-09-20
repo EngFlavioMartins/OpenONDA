@@ -313,9 +313,7 @@ class ImmersedBody:
         inside = np.minimum(np.maximum(planar, axial), 0.0)
         return outside + inside
 
-    # ------------------------------------------------------------------ #
-    # Factories
-    # ------------------------------------------------------------------ #
+    # Factories.
 
     @classmethod
     def cylinder_z(

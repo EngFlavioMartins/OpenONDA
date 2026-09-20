@@ -249,7 +249,7 @@ class Particles:
                 f"solver with max_n_particles={new_capacity} instead of resizing it."
             )
 
-    # ---- Prefix-extraction helpers (GPU → CPU, only active prefix) ----
+    # Prefix-extraction helpers (GPU → CPU, only active prefix)
 
     def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
         """Return a field-specific fixed-shape external-array staging buffer.
@@ -460,7 +460,7 @@ class Particles:
         for i in range(count):
             dest[start_idx + i] = src[i]
 
-    # ---- Prefix extraction kernels (avoid full MAX_N_PARTICLES to_numpy()) ----
+    # Prefix extraction kernels (avoid full MAX_N_PARTICLES to_numpy())
 
     @ti.kernel
     def _extract_scalar_prefix(
@@ -552,100 +552,12 @@ class Particles:
         self._accumulate_prefix_vortex_strength(n)
         return self._subset_vortex_strength[None].to_numpy()
 
-    @ti.kernel
-    def _tag_particles_in_bounds_kernel(
-        self,
-        position: ti.template(),
-        tags: ti.template(),
-        xmin: ti.f32,
-        xmax: ti.f32,
-        ymin: ti.f32,
-        ymax: ti.f32,
-        zmin: ti.f32,
-        zmax: ti.f32,
-        n: ti.i32,
-    ):  # type: ignore
-        """
-        Tag particles inside a bounding box for removal (GPU kernel).
-
-        Sets tags[i] = 1 if particle i is inside bounds, 0 otherwise.
-        This avoids transferring all position to CPU for simple bound checks.
-        """
-        for i in range(n):
-            p = position[i]
-            in_bounds = (
-                (xmin <= p[0])
-                and (p[0] <= xmax)
-                and (ymin <= p[1])
-                and (p[1] <= ymax)
-                and (zmin <= p[2])
-                and (p[2] <= zmax)
-            )
-            tags[i] = 1 if in_bounds else 0
-
-    @ti.kernel
-    def _count_tagged(self, tags: ti.template(), n: ti.i32) -> ti.i32:  # type: ignore
-        """Count particles tagged for removal."""
-        count = 0
-        for i in range(n):
-            if tags[i] == 1:
-                count += 1
-        return count
-
-    @ti.kernel
-    def _compact_particles_kernel(
-        self,
-        position: ti.template(),
-        velocity: ti.template(),
-        vortex_strength: ti.template(),
-        vorticity: ti.template(),
-        core_radius: ti.template(),
-        particle_volume: ti.template(),
-        kinematic_viscosity: ti.template(),
-        viscosities_t: ti.template(),
-        viscosities_eff: ti.template(),
-        group_id: ti.template(),
-        zone_id: ti.template(),
-        velocity_gradient: ti.template(),
-        strain_rate: ti.template(),
-        tags: ti.template(),
-        n: ti.i32,
-        new_count: ti.template(),
-    ):  # type: ignore
-        """
-        Compact particles by removing tagged ones (GPU kernel).
-
-        Uses serial compaction (sequential write) which is correct but not
-        optimal. For large N, consider a parallel prefix sum approach.
-        """
-        write_idx = 0
-        for i in range(n):
-            if tags[i] == 0:  # Keep this particle
-                if write_idx != i:  # Only copy if indices differ
-                    position[write_idx] = position[i]
-                    velocity[write_idx] = velocity[i]
-                    vortex_strength[write_idx] = vortex_strength[i]
-                    vorticity[write_idx] = vorticity[i]
-                    core_radius[write_idx] = core_radius[i]
-                    particle_volume[write_idx] = particle_volume[i]
-                    kinematic_viscosity[write_idx] = kinematic_viscosity[i]
-                    viscosities_t[write_idx] = viscosities_t[i]
-                    viscosities_eff[write_idx] = viscosities_eff[i]
-                    group_id[write_idx] = group_id[i]
-                    zone_id[write_idx] = zone_id[i]
-                    for j in ti.static(range(3)):
-                        for k in ti.static(range(3)):
-                            velocity_gradient[write_idx][j, k] = velocity_gradient[i][j, k]
-                            strain_rate[write_idx][j, k] = strain_rate[i][j, k]
-                write_idx += 1
-        new_count[None] = write_idx
-
     def remove_particles_by_bounds(self, bounds: list, invert_selection: bool = False) -> int:
         """
         Remove particles based on their position relative to a bounding box.
 
-        Uses GPU kernel for tagging (fast for large N), then CPU-based numpy
-        operations for safe compaction (avoids data race in GPU compaction).
+        Classifies the downloaded positions on the host and compacts retained
+        fields together, preserving particle order without GPU write races.
 
         Args:
             bounds: [xmin, xmax, ymin, ymax, zmin, zmax] defining the reference box.
@@ -672,16 +584,8 @@ class Particles:
 
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
 
-        # Classify on the host from the same position array used for compaction.
-        #
-        # This used to run through ``_tag_particles_in_bounds_kernel`` and then
-        # download an integer tag field.  On long Vulkan runs that tag dispatch
-        # could sporadically return an all-zero field after GBD replacement,
-        # causing every in-domain particle to be deleted.  Removal already has
-        # to download all retained fields for race-free compaction, so the GPU
-        # tag pass saved no material transfer when anything was removed.  The
-        # host mask is deterministic and also lets us reuse the downloaded
-        # position below.
+        # Reuse the positions required by host compaction. This avoids a separate
+        # device tag dispatch and keeps classification consistent with copied fields.
         position = self._extract_vector(self.position, n)
         inside = (
             (float(xmin) <= position[:, 0])
@@ -1244,7 +1148,7 @@ class Particles:
         tensors to zero, and increments the source-state revision.
         """
 
-        # ---- INPUT VALIDATION: NaN/Inf CHECKS ----
+        # INPUT VALIDATION: NaN/Inf CHECKS
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
         _validate_finite_array(vortex_strength, "vortex_strength")
@@ -1257,7 +1161,7 @@ class Particles:
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
 
-        # ---- CONTINUE WITH NORMAL PROCESSING ----
+        # CONTINUE WITH NORMAL PROCESSING
         # Honor the configured float precision: the Taichi fields are created
         # with self._taichi_dtype, so feeding them self._np_float_dtype arrays
         # keeps the transfer exact (no f32←f64 / f64←f32 precision warnings)
@@ -1472,7 +1376,7 @@ class Particles:
         self.touch_state()
         self._log_particles_replaced(previous)
 
-    # ---- GPU-TO-GPU DATA TRANSFER ----
+    # GPU-TO-GPU DATA TRANSFER
 
     def add_vortex_particles_from_fields(
         self,

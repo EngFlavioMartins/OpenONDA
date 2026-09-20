@@ -1,0 +1,10 @@
+{
+  "panel": false,
+  "mesh": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/constant/mesh.npz",
+  "cores": 4,
+  "end_time": 20.0,
+  "interface_iterations": 6,
+  "start": "fresh",
+  "purpose": "Clean cube panel-removal trajectory; unchanged equations and tolerances, optional higher interface sweep cap",
+  "body_mask": "cube mask inferred by the coupler from native wall geometry"
+}

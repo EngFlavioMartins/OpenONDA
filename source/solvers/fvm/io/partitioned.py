@@ -6,6 +6,7 @@ from html import escape
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from uuid import uuid4
 
@@ -19,6 +20,26 @@ from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
 PARTITIONED_BACKUP_VERSION = 8
+
+
+def _prune_partitioned_generations(target: Path, current: dict, previous: dict | None) -> None:
+    """Keep current and previous committed generations after manifest publication.
+
+    Only this writer's UUID-named rank archives are eligible; unrelated files,
+    temporary writes, symlinks, and legacy backups remain untouched.
+    """
+    keep = set(current["files"])
+    if previous is not None:
+        keep.update(previous["files"])
+        atomic_write_text(target / "manifest.previous.json", json.dumps(previous, indent=2) + "\n")
+    for path in target.iterdir():
+        if (
+            re.fullmatch(r"rank-[0-9]{5}-[0-9a-f]{32}\.npz", path.name)
+            and path.name not in keep
+            and path.is_file()
+            and not path.is_symlink()
+        ):
+            path.unlink()
 
 
 def _resolve_backup_file(target: Path, name: str) -> Path:
@@ -77,11 +98,18 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
     from .backup import _solver_setup, config_hash
 
     target = Path(directory)
+    previous_manifest = None
     preparation_error = None
     if solver.parallel.is_root:
         try:
             target.mkdir(parents=True, exist_ok=True)
-        except OSError as error:
+            if (target / "manifest.json").is_file():
+                previous_manifest = json.loads((target / "manifest.json").read_text())
+                # Fail before writing if an existing manifest is not a usable
+                # identity; guessing which old archives to retain is unsafe.
+                for name in previous_manifest["files"]:
+                    _resolve_backup_file(target, name)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             preparation_error = _error_payload(error, rank=solver.parallel.rank)
     preparation_error = solver.parallel.bcast(preparation_error, root=0)
     if preparation_error is not None:
@@ -186,6 +214,15 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
     manifest_error = solver.parallel.bcast(manifest_error, root=0)
     if manifest_error is not None:
         _raise_collective_backup_error(manifest_error)
+    cleanup_error = None
+    if solver.parallel.is_root:
+        try:
+            _prune_partitioned_generations(target, manifest, previous_manifest)
+        except OSError as error:
+            cleanup_error = _error_payload(error, rank=solver.parallel.rank)
+    cleanup_error = solver.parallel.bcast(cleanup_error, root=0)
+    if cleanup_error is not None:
+        _raise_collective_backup_error(cleanup_error)
     return target
 
 

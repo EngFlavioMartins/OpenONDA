@@ -244,8 +244,14 @@ def write_run_metadata(
             "kinematic_viscosity": coupler.kinematic_viscosity,
             "density": coupler.density,
             "fvm_time_step_size": coupler.fvm_time_step_size,
+            "vpm_time_step_size": coupler.vpm_time_step_size,
             "end_time": coupler.end_time,
             "backup_interval_steps": coupler.setup.backup_interval_steps,
+            "backup_interval_time": (
+                None
+                if coupler.setup.backup_interval_steps == 0
+                else coupler.setup.backup_interval_steps * coupler.vpm_time_step_size
+            ),
         },
         "fvm_solver": {
             "coupling_patch": coupler.setup.coupling_patch,
@@ -622,7 +628,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             ]
             if not all(np.isfinite(value) for value in numeric_recovery):
                 raise FloatingPointError("non-finite GBD moment-recovery diagnostic")
-    return {
+    diagnostics = {
         "vpm_boundary_condition_flux": boundary_flux,
         "fvm_boundary_trace": boundary_trace,
         "transfer": transfer,
@@ -632,6 +638,13 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
     }
+    spanwise = getattr(coupler.vorticity_transfer, "last_spanwise_metrics", None)
+    if spanwise:
+        values = {str(name): float(value) for name, value in spanwise.items()}
+        if not all(np.isfinite(value) for value in values.values()):
+            raise FloatingPointError("non-finite planar spanwise-consistency diagnostic")
+        diagnostics["planar_spanwise_consistency"] = values
+    return diagnostics
 
 
 def record_step(
@@ -714,7 +727,18 @@ def record_step(
         coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
     )
     if backup_due:
-        coupler.save_backup(coupler.solution_dir / BACKUP_DIRECTORY, coupling_step=step)
+        backup_directory = coupler.solution_dir / BACKUP_DIRECTORY
+        coupler.save_backup(backup_directory, coupling_step=step)
+        if coupler._is_master:
+            logger.info(
+                format_coupler_log(
+                    "coupled backup",
+                    ("coupling step", step),
+                    ("flow time", coupler.vpm_time_step_size * step, "s"),
+                    ("directory", str(backup_directory)),
+                )
+            )
+            flush_log(logger)
 
 
 __all__ = [

@@ -338,12 +338,12 @@ def _case_context(case: GridCase, solution_root: Path) -> dict[str, Any]:
     else:
         result["warnings"].append("native settings unavailable; matching physics is unverified")
 
-    mesh_path = directory / "mesh.npz"
+    mesh_path = directory / "fvm" / "mesh.npz"
     if mesh_path.exists():
         with np.load(mesh_path, allow_pickle=False) as mesh:
             points = mesh["vertex_position"]
             result["domain_bounds"] = (
-                np.column_stack((points.min(axis=0), points.max(axis=0))).ravel().tolist()
+                np.column_stack((points.min(axis=0), points.max(axis=0))).ravel().round(12).tolist()
             )
             result["global_cell_count"] = len(mesh["cell_sizes"])
             generation = json.loads(str(mesh["metadata"]))["mesh_generation"]
@@ -692,6 +692,12 @@ def _difference(
     }
 
 
+def _realized_spacing(grid: dict[str, Any]) -> float:
+    """Prefer recorded realized patch spacing over the authored upper bound."""
+    recorded = grid.get("context", {}).get("realized_wall_cell_size")
+    return float(recorded if recorded is not None else grid["wall_cell_size"])
+
+
 def _distinct_levels(
     grids: list[dict[str, Any]],
     metric: str,
@@ -702,11 +708,11 @@ def _distinct_levels(
     for grid in grids:
         if grid["force_statistics"].get(metric) is None:
             continue
-        spacing = float(grid["wall_cell_size"])
+        spacing = _realized_spacing(grid)
         grouped.setdefault(spacing, []).append(grid)
     duplicate_spacings = [spacing for spacing, items in grouped.items() if len(items) > 1]
     levels = [items[0] for spacing, items in grouped.items() if spacing not in duplicate_spacings]
-    levels.sort(key=lambda grid: -float(grid["wall_cell_size"]))
+    levels.sort(key=lambda grid: -_realized_spacing(grid))
     return levels, sorted(duplicate_spacings, reverse=True)
 
 
@@ -729,6 +735,10 @@ def _convergence_statistics(
             "observed_order": None,
             "extrapolated": None,
             "fine_grid_gci": None,
+            "asymptotic_check": {
+                "available": False,
+                "reason": "four distinct levels required for an independent asymptotic check",
+            },
         },
     }
     if len(levels) >= 2:
@@ -753,9 +763,9 @@ def _convergence_statistics(
     if len(levels) < 3:
         return result
     coarse, medium, fine = levels[-3:]
-    h_coarse = float(coarse["wall_cell_size"])
-    h_medium = float(medium["wall_cell_size"])
-    h_fine = float(fine["wall_cell_size"])
+    h_coarse = _realized_spacing(coarse)
+    h_medium = _realized_spacing(medium)
+    h_fine = _realized_spacing(fine)
     ratio_coarse = h_coarse / h_medium
     ratio_fine = h_medium / h_fine
     richardson = result["richardson"]
@@ -794,6 +804,34 @@ def _convergence_statistics(
             "fine_grid_gci": 1.25 * abs(extrapolated - fine_value) / scale,
         }
     )
+    if len(levels) >= 4:
+        extra = levels[-4]
+        extra_ratio = _realized_spacing(extra) / h_coarse
+        extra_delta = coarse_value - float(extra["force_statistics"][metric])
+        check = richardson["asymptotic_check"]
+        if (
+            np.isclose(extra_ratio, ratio_fine, rtol=5e-3)
+            and extra_delta * delta_coarse > 0
+            and abs(extra_delta) > VALUE_FLOOR
+        ):
+            coarse_order = math.log(abs(extra_delta / delta_coarse)) / math.log(ratio_fine)
+            if coarse_order > 0:
+                # The coarser triple predicts the fourth-level difference;
+                # unlike a three-level GCI ratio using its fitted p, this is
+                # not algebraically constrained to equal one.
+                predicted_difference = abs(delta_coarse) / ratio_fine**coarse_order
+                observed_to_predicted = abs(delta_fine) / predicted_difference
+                check.update(
+                    available=True,
+                    reason=None,
+                    coarse_observed_order=coarse_order,
+                    observed_to_predicted=observed_to_predicted,
+                    within_ten_percent=bool(abs(observed_to_predicted - 1) <= 0.1),
+                )
+            else:
+                check["reason"] = "coarser triple has non-positive observed order"
+        else:
+            check["reason"] = "four-grid ratios or monotonicity are inconsistent"
     return result
 
 
@@ -1047,8 +1085,8 @@ def _write_markdown(report: dict[str, Any], destination: Path) -> None:
             "",
             "## Finest-pair and Richardson diagnostics",
             "",
-            "| Metric | Finest-pair change | Observed order | Fine-grid GCI |",
-            "|---|---:|---:|---:|",
+            "| Metric | Finest-pair change | Observed order | Fine-grid GCI | Four-grid ratio (target 1) |",
+            "|---|---:|---:|---:|---:|",
         ]
     )
     for metric in METRICS:
@@ -1058,7 +1096,8 @@ def _write_markdown(report: dict[str, Any], destination: Path) -> None:
         lines.append(
             f"| {metric} | {_display_percent(pair.get('relative_change'))} | "
             f"{_display_number(richardson['observed_order'])} | "
-            f"{_display_percent(richardson['fine_grid_gci'])} |"
+            f"{_display_percent(richardson['fine_grid_gci'])} | "
+            f"{_display_number(richardson.get('asymptotic_check', {}).get('observed_to_predicted'))} |"
         )
 
     largest = report["assessment"].get("largest_finest_pair_relative_change")
@@ -1327,7 +1366,8 @@ def analyse_grid_convergence(
 
     The function only reads the registered case directories below
     ``samples_root``.  It creates or replaces the named report files in
-    ``output_dir``; it never changes individual grid outputs.
+    ``output_dir``; tables and manifests go in its ``auxiliary`` subdirectory.
+    It never changes individual grid outputs.
     """
 
     samples_root = Path(samples_root)
@@ -1506,12 +1546,14 @@ def analyse_grid_convergence(
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "grid_convergence.json").write_text(
+    auxiliary = output_dir / "auxiliary"
+    auxiliary.mkdir(parents=True, exist_ok=True)
+    (auxiliary / "grid_convergence.json").write_text(
         json.dumps(report, indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
     )
-    _write_csv(report, output_dir / "grid_convergence.csv")
-    _write_markdown(report, output_dir / "grid_convergence.md")
+    _write_csv(report, auxiliary / "grid_convergence.csv")
+    _write_markdown(report, auxiliary / "grid_convergence.md")
     _plot_force_metrics(report, output_dir / "grid_convergence.png", formats=formats)
     _plot_force_metrics(
         report, output_dir / "grid_convergence_by_cells.png", by_cells=True, formats=formats
@@ -1526,11 +1568,11 @@ def analyse_grid_convergence(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples-root", type=Path, default=CASE_DIR / "samples")
-    parser.add_argument("--output-dir", type=Path, default=CASE_DIR / "solution")
+    parser.add_argument("--output-dir", type=Path, default=CASE_DIR / "figures")
     parser.add_argument(
         "--solution-root", type=Path, help="Native solution root; defaults beside samples-root"
     )
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     parser.add_argument("--statistics-start", type=float)
     parser.add_argument("--statistics-end", type=float)
     parser.add_argument("--reference-case")
@@ -1557,6 +1599,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Keep Matplotlib's cache outside a source checkout when this script is
-    # launched directly from a tutorial directory.
     main()

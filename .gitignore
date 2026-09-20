@@ -1,6 +1,4 @@
-# ===============================
 # Python build, cache, and eggs
-# ===============================
 __pycache__/
 .taichi_cache/
 .opencode
@@ -25,48 +23,43 @@ __pycache__/
 dist/
 build/
 
-# ===============================
 # Jupyter Notebooks
-# ===============================
 .ipynb_checkpoints/
 *.ipynb
 
-# ===============================
 # IDE/editor files
-# ===============================
 .vscode/
 .idea/
 *.swp
 *.swo
 *.suo
 
-# ===============================
 # OS-specific files
-# ===============================
 .DS_Store
 Thumbs.db
 
-# ===============================
 # Virtual environments
-# ===============================
 .env/
 .venv/
 venv/
 
-# ===============================
 # Logs and temporary files
-# ===============================
 tmp/
 *.log
 *.jsonl
 *.tmp
 *.bak
 **/.openonda_run.lock
-**/.openonda_run.lock
+**/.cylinder_comparison.lock
+**/.running/
 
-# ===============================
+# Local process and live-monitor records
+studies/**/runs/**/process.json
+studies/**/runs/**/*_process.json
+studies/**/runs/**/mature_comparison/status.json
+tutorials/**/reference_flow/campaigns/**/process.json
+
 # Build artifacts
-# ===============================
 source/solvers/**/*.html
 *.obj
 *.exe
@@ -74,16 +67,14 @@ source/solvers/**/*.html
 *.lib
 *.a
 **/Make/linux64Gcc*/
-# ===============================
 # CFD and simulation outputs
-# ===============================
 # Decomposed parallel data is regenerated and never committed.
 processor*/
 
 # ParaView marker files and exported scenes (regenerated on demand)
 **/VTK/
 
-# Solution and data directories (results are never committed)
+# Volume solutions and raw data; sampled outputs are versioned below.
 **/solution/
 **/Solution/
 # Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
@@ -98,9 +89,7 @@ postProcessing/
 log.*
 *.log
 
-# ===============================
 # Data, results, and scientific formats
-# ===============================
 # Large binary data files
 *.h5
 *.hdf5
@@ -137,6 +126,9 @@ log.*
 *.dat
 *.csv
 
+# Native tutorial regression inputs
+!tests/tutorials/fixtures/*.csv
+
 # Digitized literature reference curves plotted against sampled results
 !tutorials/vpm/01_lamb_oseen_vortex/assets/references/*.csv
 
@@ -146,10 +138,8 @@ log.*
 # VPM JSON outputs
 vpm*.json
 
-# ===============================
 # Keep visualization outputs in git
-# ===============================
-# Images and plots are small and should be versioned
+# Figures and plots
 !**/*.png
 !**/*.pdf
 !**/*.jpg
@@ -160,27 +150,16 @@ vpm*.json
 tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.gif
 tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.json
 
-# ===============================
 # Specific tutorial data management
-# ===============================
-# Keep small reference text files but ignore large data
+# Tutorial sources and documentation
 !tutorials/**/README*.md
 !tutorials/**/README*.txt
 !tutorials/**/*.py
 !tutorials/**/*.sh
 tests/**/reference_flow/**
 
-# Processed sampler output is durable cross-device post-processing data.
-# Version every samples/ tree, including samples produced by grid studies.
-!**/samples/
-!**/samples/**
-
-# Restart/checkpoint formats never belong in Git, even if accidentally written
-# below samples/. The pre-commit size gate provides an additional safeguard.
-**/samples/**/*.h5
-**/samples/**/*.hdf5
-**/samples/**/*.xdmf
-**/samples/**/*.npz
+# Generated sampler output is archived with simulation runs.
+**/samples/
 
 # direnv
 .envrc

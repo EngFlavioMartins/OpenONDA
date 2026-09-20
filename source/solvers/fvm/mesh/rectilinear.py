@@ -314,7 +314,7 @@ def box_mesh_3d(
         (OUTER_PATCH_NAMES[5], oriented_block(q_z1, ez), o_z1),
     ]
 
-    # ── Optional body: carve the hole and expose its faces as a wall patch ──
+    # Optional body: carve the hole and expose its faces as a wall patch.
     wall_quads = np.empty((0, 4), dtype=np.int32)
     wall_owners = np.empty(0, dtype=np.int64)
     keep = np.ones(nx * ny * nz, dtype=bool)
@@ -427,11 +427,9 @@ def box_mesh_3d(
     owners = new_id[owners]
     neighbours = new_id[interior_neighbours]
 
-    # A rectilinear mesh has fixed-width quad faces and hex cells.  Keeping
-    # that information as contiguous arrays is materially cheaper than a
-    # Python list containing one tiny ndarray per face (the reference cube
-    # case has several million faces).  ``faces`` remains indexable exactly
-    # as before, so generic FVM operators and mesh readers stay compatible.
+    # Store fixed-width quad faces and hex cells as contiguous arrays to avoid
+    # per-face Python allocations. The arrays retain the indexing contract
+    # used by FVM operators and mesh readers.
     cell_ids = np.flatnonzero(keep)
     cell_i = cell_ids % nx
     cell_j = (cell_ids // nx) % ny

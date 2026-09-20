@@ -1,0 +1,126 @@
+{
+  "time": 2,
+  "n_cells": 71016,
+  "duplicate_ghost_max_difference": 0.0,
+  "full_stack_max_vector_deviation": 1.3681355510965533e-05,
+  "full_max_w": 1.294719458683652e-05,
+  "saved_probe_range": [
+    0.0024013987297650807,
+    6.276526483999997e-06,
+    1.2837017451583953e-05
+  ],
+  "offline_reproduction_max_error": 7.269575566515307e-17,
+  "affine_probe_range_on_exactly_planar_field": [
+    0.0024014700484696894,
+    1.481018738746457e-06,
+    7.996469486040894e-09
+  ],
+  "nearest_probe_range": [
+    2.662889503901589e-07,
+    6.9554459685775005e-06,
+    1.477394194948481e-05
+  ],
+  "nearest_probe_selected_centres": [
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      -0.37499999999999994
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      -0.37499999999999994
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      -0.12499999999999999
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      -0.12499999999999999
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      0.12499999999999997
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      0.12499999999999997
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      0.12499999999999997
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      0.37499999999999994
+    ],
+    [
+      1.5053180286508003,
+      0.014451461733933024,
+      0.37499999999999994
+    ]
+  ],
+  "raw_nearest_stack_range": [
+    3.6840116490743924e-07,
+    4.460208619869177e-06,
+    1.5189291713084894e-05
+  ],
+  "raw_nearest_stack_centres": [
+    [
+      1.5053180286508008,
+      -0.014451461733963743,
+      -0.37500000000000006
+    ],
+    [
+      1.5053180286508008,
+      -0.014451461733963743,
+      -0.12500000000000003
+    ],
+    [
+      1.5053180286508008,
+      -0.014451461733963743,
+      0.12500000000000003
+    ],
+    [
+      1.5053180286508008,
+      -0.014451461733963743,
+      0.37500000000000006
+    ]
+  ],
+  "raw_nearest_stack_velocity": [
+    [
+      0.33359218483125536,
+      0.01828125801311361,
+      -7.5085253184458315e-06
+    ],
+    [
+      0.33359181643009045,
+      0.018278499010791056,
+      -6.20642054108443e-06
+    ],
+    [
+      0.3335919584561066,
+      0.01828102080573919,
+      6.5691162482638025e-06
+    ],
+    [
+      0.33359214452927505,
+      0.018282959219410925,
+      7.680766394639062e-06
+    ]
+  ],
+  "case": "runs/cylinder_no_panel_converged",
+  "checkpoint": "solution/backups/fvm_000050",
+  "checkpoint_artifact_sha256": "3b79b432f28909ca4e2cfd286b422a5c7728613e4b0920b83829e23760c75877",
+  "native_mesh_array_sha256": "0831a9273cd66463352e4d260da81d603bb87e1b60b6fdb17971741ee2d9ee0f",
+  "method": "Read-only reconstruction of native geometry and decoded partitioned checkpoint; exact-planar control replaces each four-cell XY stack by its span average only in the offline diagnostic, not in the solver.",
+  "interpretation": "The original affine stencil manufactures an O(0.0024) streamwise span variation even on exactly planar input. Raw cells have O(1e-5) span variation. The corrected k1/idw diagnostic samples one XY stack at all four layers and retains the unchanged 1e-3 threshold.",
+  "mpi_owned_gather_order_verified": true
+}

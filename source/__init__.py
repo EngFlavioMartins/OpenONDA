@@ -1,19 +1,7 @@
-# OpenONDA/__init__.py
-"""
-OpenONDA: Native FVM and vortex-method CFD
-===========================================
+"""Native finite-volume, vortex-particle, and vortex-lattice solver internals.
 
-OpenONDA provides native finite-volume, vortex-particle, and vortex-lattice
-solvers with a conservative FVM-VPM coupling layer.
-
-Available modules:
-- solvers.FVM: Pure-Python finite-volume solver
-- solvers.VPM: Taichi-accelerated vortex-particle and vortex-lattice solvers
-- coupler: Conservative native FVM-VPM coupling
-
-Usage:
-    from source.solvers.fvm import Solver
-    from source.solvers.vpm import Solver as VPMSolver
+Use ``openonda.fvm``, ``openonda.vpm``, and ``openonda.coupler`` to configure
+and run simulations.
 """
 
 from . import solvers

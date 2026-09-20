@@ -20,8 +20,6 @@ from .sampling import resolve_samples_dir
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
 
-# =========================================================
-
 
 class SolverIO:
     """

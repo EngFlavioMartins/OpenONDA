@@ -14,10 +14,12 @@ def assembly(owner, normal, distance, un, gt, flux, component):
     boundary = reconstruct_normal_velocity_tangential_gradient(owner, normal, distance, un, gt)
     field = np.concatenate((owner[:, component], boundary[:, component]))
     return assemble_convection_term_boundary(
-        field, flux,
+        field,
+        flux,
         {"start_face": 0, "n_faces": faces, "velocity_type": "normalValueTangentialGradient"},
         {"n_cells": faces, "n_interior_faces": 0, "owners": np.arange(faces)},
-        {"face_area_vector": normal}, component=component,
+        {"face_area_vector": normal},
+        component=component,
     )
 
 
@@ -46,11 +48,15 @@ def test_matrix_flux_matches_the_boundary_condition_after_cell_velocity_changes(
             changed, normal, distance, un, gt
         )
         predicted_flux = terms["flux_cf"] * changed[:, component] + terms["flux_vf"]
-        np.testing.assert_allclose(predicted_flux, flux * physical_face[:, component],
-                                   rtol=2e-14, atol=2e-16)
-        original_face = reconstruct_normal_velocity_tangential_gradient(owner, normal, distance, un, gt)
-        np.testing.assert_allclose(terms["flux_tf"], flux * original_face[:, component],
-                                   rtol=2e-14, atol=2e-16)
+        np.testing.assert_allclose(
+            predicted_flux, flux * physical_face[:, component], rtol=2e-14, atol=2e-16
+        )
+        original_face = reconstruct_normal_velocity_tangential_gradient(
+            owner, normal, distance, un, gt
+        )
+        np.testing.assert_allclose(
+            terms["flux_tf"], flux * original_face[:, component], rtol=2e-14, atol=2e-16
+        )
 
 
 def test_implicit_tangential_outflow_obeys_backward_euler_momentum_balance():
@@ -70,14 +76,17 @@ def test_implicit_tangential_outflow_obeys_backward_euler_momentum_balance():
         assert actual == pytest.approx(expected, rel=2e-15)
         # The old explicit boundary was a forward-Euler outflow contribution
         # inside an otherwise backward-Euler momentum equation.
-        old_explicit = owner[0, component] + dt / volume * (incoming - flux[0] * owner[0, component])
+        old_explicit = owner[0, component] + dt / volume * (
+            incoming - flux[0] * owner[0, component]
+        )
         assert abs(old_explicit - expected) > 0.1
 
 
 def test_mixed_convection_requires_the_velocity_component():
     with pytest.raises(ValueError, match="component index"):
         assemble_convection_term_boundary(
-            np.ones(2), np.ones(1),
+            np.ones(2),
+            np.ones(1),
             {"start_face": 0, "n_faces": 1, "velocity_type": "normalValueTangentialGradient"},
             {"n_cells": 1, "n_interior_faces": 0, "owners": np.array([0])},
             {"face_area_vector": np.array([[1.0, 0.0, 0.0]])},

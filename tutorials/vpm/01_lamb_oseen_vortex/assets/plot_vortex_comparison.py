@@ -69,10 +69,7 @@ else:
 
 from matplotlib.ticker import FormatStrFormatter
 
-
-# =============================================================
 # Plot
-# =============================================================
 
 
 def plot_vortex_case(args) -> int:

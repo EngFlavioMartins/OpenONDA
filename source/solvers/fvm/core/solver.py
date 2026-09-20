@@ -447,11 +447,9 @@ class FVMSolver(CouplerInterfaceMixin):
             raise TypeError("FVMSolver requires an FVMSetup or FVMCase")
         validate_fvm_setup(setup)
 
-        # Keep the historical ``solver.setup`` identity for coupled callers,
-        # but never let a mutable caller-owned setup alter an admitted run.
-        # All numerical, output, and compatibility decisions below use this
-        # detached snapshot; ``setup`` remains an informational compatibility
-        # attribute only.
+        # Preserve the caller-owned ``solver.setup`` for inspection. Numerical,
+        # output and compatibility decisions use a detached snapshot so nested
+        # caller mutations cannot alter an admitted run.
         self.setup = setup
         self._resolved_setup = deepcopy(setup)
         resolved_setup = self._resolved_setup
@@ -694,11 +692,9 @@ class FVMSolver(CouplerInterfaceMixin):
                 assert (
                     global_mesh is not None and global_geo is not None and global_hash is not None
                 )
-                # Send worker partitions first and build rank zero last.  More
-                # importantly, drop each sent payload before constructing the
-                # next one.  Keeping the previous payload alive during the
-                # following localization made rank zero hold the global mesh
-                # plus two complete local partitions at once.
+                # Send worker partitions first and build rank zero last. Drop
+                # each sent payload before localizing the next partition so
+                # rank zero holds at most one local payload beside the global mesh.
                 rank_order = [*range(1, self.parallel.size), 0]
                 delivered: set[int] = set()
                 for rank in rank_order:

@@ -13,8 +13,6 @@ from vtk.util import numpy_support
 
 from source.vtk_output import write_vtk_dataset
 
-# =========================================================
-
 
 def export_panels_vtk(solver, filename: str, compression: bool = True):
     """

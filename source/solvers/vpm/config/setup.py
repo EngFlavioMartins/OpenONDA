@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,10 @@ class PanelBodySetup:
         Rotation pivot in Cartesian metres.
     reference_area : float or None, optional
         Positive force-coefficient reference area in m².
+    diffusion_mask : {'box', 'cylinder_x', 'cylinder_y', 'cylinder_z'} or None
+        Optional exact primitive used to exclude solid nodes from DVH/GBD
+        diffusion.  Panel geometry alone is not a safe diffusion mask: a
+        curved body cannot be replaced by its axis-aligned bounding box.
 
     Notes
     -----
@@ -42,6 +47,7 @@ class PanelBodySetup:
     rotation_degrees: tuple[float, float, float] | None = None
     rotation_centre: tuple[float, float, float] | None = None
     reference_area: float | None = None
+    diffusion_mask: Literal["box", "cylinder_x", "cylinder_y", "cylinder_z"] | None = None
 
     def __post_init__(self) -> None:
         if not str(self.stl).strip():
@@ -58,6 +64,14 @@ class PanelBodySetup:
             raise ValueError("Panel body group_id must be non-negative")
         if self.reference_area is not None and self.reference_area <= 0.0:
             raise ValueError("Panel body reference_area must be positive when provided")
+        if self.diffusion_mask not in {
+            None,
+            "box",
+            "cylinder_x",
+            "cylinder_y",
+            "cylinder_z",
+        }:
+            raise ValueError("diffusion_mask must be None, 'box', or an axis-aligned cylinder")
 
 
 __all__ = ["PanelBodySetup"]

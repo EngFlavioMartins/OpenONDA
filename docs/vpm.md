@@ -197,8 +197,8 @@ GBD applies the componentwise operator `div(nu_eff grad(omega))`, using
 conservative arithmetic-face viscosities. With variable viscosity this differs
 from `curl(div(2 nu_eff S))`, the complete incompressible stress source used by
 FVM. Matching SGS constants alone does not establish FVM–VPM model equivalence;
-the [fully 3D coupling study](../studies/coupler_accuracy/cube-3d-findings.md)
-separates this difference from transfer and boundary errors.
+a coupled comparison must distinguish this model difference from transfer
+and boundary errors.
 The solver validates the relevant `nu`, spacing, kernel, grid, and time-step criteria
 at case construction/runtime boundaries.
 

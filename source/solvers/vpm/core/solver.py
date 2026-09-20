@@ -447,7 +447,7 @@ class VPMSolver:
         vpm_bounds = final_setup.domain_bounds
         vc = getattr(final_setup, "viscous", None)
         scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
-        is_grid_diffusion = scheme in {"DVH", "GBD"}
+        is_grid_diffusion = scheme in {"DVH", "GBD"} and not hasattr(self.induction, "planar_span")
         fixed_grid_required = (
             self.compute_device in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
         )
@@ -499,6 +499,9 @@ class VPMSolver:
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
             event_observer=LoggingPhysicsEventObserver(),
+        )
+        self.field_diagnostics.planar_induction = (
+            self.induction if hasattr(self.induction, "planar_span") else None
         )
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
@@ -613,6 +616,42 @@ class VPMSolver:
                             reference_area=body.reference_area,
                         )
                 self.panel_solver.initialize(force=True)
+                masked_bodies = [
+                    body for body in bodies if getattr(body, "diffusion_mask", None) is not None
+                ]
+                if len(masked_bodies) > 1:
+                    raise NotImplementedError(
+                        "Grid diffusion currently supports one declarative panel-body mask"
+                    )
+                if masked_bodies:
+                    body_setup = masked_bodies[0]
+                    panel_body = next(
+                        (
+                            item
+                            for item in self.panel_solver.lattice.bodies
+                            if item.uid == body_setup.uid
+                        ),
+                        None,
+                    )
+                    if panel_body is None:
+                        raise RuntimeError(
+                            f"No panel geometry was loaded for diffusion mask {body_setup.uid!r}"
+                        )
+                    start = panel_body.start_idx
+                    stop = start + panel_body.count
+                    vertices = self.panel_solver.lattice.vertex_position.to_numpy()[start:stop]
+                    flat = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+                    bounds = np.column_stack((flat.min(axis=0), flat.max(axis=0))).reshape(-1)
+                    mask = body_setup.diffusion_mask
+                    if mask == "box":
+                        self.physics.configure_body_box(bounds)
+                    else:
+                        self.physics.configure_body_cylinder(bounds, axis=mask[-1])
+                    Logging.record(
+                        "diffusion body mask",
+                        ("body", body_setup.uid),
+                        ("geometry", mask),
+                    )
                 scope = getattr(self.panel_solver, "coupling_scope", "full")
                 self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity
                 self._body_induced_fn = lambda points, _stage_time: (
@@ -1981,6 +2020,10 @@ class VPMSolver:
         ValueError
             If the temporal method or its required inputs are inconsistent.
         """
+        if hasattr(self.induction, "planar_span"):
+            raise NotImplementedError(
+                "Planar pressure reconstruction is not implemented; use FVM pressure and vorticity_mixed coupling"
+            )
         if kinematic_viscosity is None:
             kinematic_viscosity = (
                 float(np.mean(self.particle_kinematic_viscosity))
@@ -2179,6 +2222,8 @@ class VPMSolver:
         Appends and copies the batch into device fields, resets axisymmetric
         orbit validation, and updates stabilization lineage/reference totals.
         """
+        if hasattr(self.induction, "planar_span"):
+            self.induction.validate_source_arrays(position, vortex_strength)
         if kinematic_viscosity is None:
             kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
             if kinematic_viscosity is not None and kinematic_viscosity > 0:
@@ -2261,6 +2306,8 @@ class VPMSolver:
         Clears/repopulates active device fields, invalidates caches, resets
         axisymmetric validation, and notifies stabilization of replacement.
         """
+        if hasattr(self.induction, "planar_span"):
+            self.induction.validate_source_arrays(position, vortex_strength)
         if report_removal:
             vortex_strength_removed = (
                 self.particles.net_vortex_strength()
@@ -2325,9 +2372,6 @@ class VPMSolver:
         """Schedule VPM-owned GBD regeneration before the next evolution step."""
         if self.viscous_scheme == "GBD":
             self._is_particle_regeneration_pending = True
-
-    def _print_time_step_validation_summary(self, results: dict) -> None:
-        Logging.time_step_validation_summary(results)
 
     def load_particle_field(
         self, particle_file_name: str, remove_current_particles: bool = False

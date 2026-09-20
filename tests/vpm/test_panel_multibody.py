@@ -112,9 +112,17 @@ def test_mutual_influence_changes_two_body_solution(tmp_path):
 
 
 def test_declarative_bodies_reject_duplicate_uids_without_partial_serialization():
-    body = PanelBodySetup(stl="body.stl", uid="body", translation=(1, 2, 3))
+    body = PanelBodySetup(
+        stl="body.stl",
+        uid="body",
+        translation=(1, 2, 3),
+        diffusion_mask="cylinder_z",
+    )
     case = VPMCase(numerics=Numerics(bodies=(body,)))
     assert case.numerics.bodies == (body,)
+    assert body.diffusion_mask == "cylinder_z"
     assert not hasattr(VPMCase, "to_dict")
     with pytest.raises(ValueError, match="Duplicate panel body uid"):
         Numerics(bodies=(body, body))
+    with pytest.raises(ValueError, match="diffusion_mask"):
+        PanelBodySetup(stl="body.stl", uid="invalid", diffusion_mask="sphere")

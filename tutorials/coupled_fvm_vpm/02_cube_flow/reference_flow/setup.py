@@ -15,9 +15,44 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
 
-def create_solver(directory_name: str, dx: float):
+def create_solver(
+    directory_name: str,
+    dx: float,
+    *,
+    campaign: bool = False,
+    output_root: Path | None = None,
+    cores: int = 4,
+    end_time: float = 30.0,
+    max_dt: float = 0.04,
+    courant: float = 0.9,
+    lean: bool = False,
+    output_interval: float | None = None,
+    backup_interval: float | None = None,
+    restart_from: Path | None = None,
+    mesh: Path | None = None,
+) -> fvm.FVMSolver:
+    """Construct the Re=1000 cube with wall spacing ``dx`` in metres.
+
+    ``campaign`` selects the fixed-domain geometric family. ``max_dt`` is the
+    timestep ceiling in seconds and ``courant`` is its CFL limit. ``lean`` saves
+    initial/final fields and five-second checkpoints. ``output_interval`` and
+    ``backup_interval`` independently override those schedules in seconds.
+    Visualization frames remain a series; checkpoints retain the two latest
+    committed states. Force and profile sampling keep their own schedules.
+    An explicit native mesh
+    avoids remeshing; restart always uses the case's own saved mesh. The FVM
+    factory owns mesh construction, parallel execution and output validation.
+    """
     case_dir = Path(__file__).resolve().parent
-    domain = (-6.5, 13.0, -6.5, 6.5, -6.5, 6.5)
+    domain = (
+        (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48) if campaign else (-6.5, 13.0, -6.5, 6.5, -6.5, 6.5)
+    )
+    output_root = case_dir if output_root is None else Path(output_root).resolve()
+    native_mesh = (
+        output_root / "solution" / directory_name / "fvm" / "mesh.npz"
+        if restart_from is not None
+        else mesh
+    )
     velocity = [1.0, 0.0, 0.0]
     patches = msh.BoxPatches(
         xmin="inlet",
@@ -27,10 +62,10 @@ def create_solver(directory_name: str, dx: float):
         zmin="zmin",
         zmax="zmax",
     )
-    mesh = msh.CartesianMesher(
+    generated_mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
-        max_cell_size=12 * dx,
+        max_cell_size=(8 if campaign else 12) * dx,
         cell_size_anchor=dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.
@@ -50,11 +85,18 @@ def create_solver(directory_name: str, dx: float):
 
     force_schedule = fvm.RunSchedule(every_time=0.05)
     line_schedule = fvm.RunSchedule(every_time=0.25)
-    solution_schedule = fvm.RunSchedule(every_time=0.5)
-    sample_spacing = min(0.125, 2.0 * dx)
+    solution_schedule = (
+        fvm.RunSchedule(final_only=True) if lean else fvm.RunSchedule(every_time=0.5)
+    )
+    if output_interval is not None:
+        solution_schedule = fvm.RunSchedule(every_time=output_interval)
+    backup_schedule = fvm.RunSchedule(
+        every_time=backup_interval if backup_interval is not None else (5.0 if lean else 0.5)
+    )
+    sample_spacing = 0.06 if campaign else min(0.125, 2.0 * dx)
     solver_setup = fvm.FVMSetup(
         case_name=directory_name,
-        cores=4,
+        cores=cores,
         mesh=fvm.MeshQualityConfig(
             max_non_orthogonality_deg=70.0,
             max_skewness=1.0,
@@ -77,16 +119,16 @@ def create_solver(directory_name: str, dx: float):
             max_velocity_magnitude_abort=6.0,
         ),
         backup=fvm.BackupConfig(
-            schedule=solution_schedule,
+            schedule=backup_schedule,
             write_at_end=True,
         ),
         time=fvm.TimeConfig(
-            time_step_size=0.01,
-            end_time=30.0,
+            time_step_size=min(0.01, max_dt),
+            end_time=end_time,
             output_schedule=solution_schedule,
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=0.9,
-                maximum_time_step_size=0.04,
+                maximum=courant,
+                maximum_time_step_size=max_dt,
             ),
         ),
         schemes=fvm.DiscretizationConfig(
@@ -157,21 +199,44 @@ def create_solver(directory_name: str, dx: float):
     return fvm.create_fvm_solver(
         solver_setup,
         case_dir=case_dir,
-        solution_dir=case_dir / "solution" / directory_name,
-        samples_dir=case_dir / "samples" / directory_name,
-        mesh=mesh,
+        solution_dir=output_root / "solution" / directory_name,
+        samples_dir=output_root / "samples" / directory_name,
+        mesh=native_mesh if native_mesh is not None else generated_mesh,
+        require_empty_output=restart_from is None,
     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", default="fine")
+    parser.add_argument("--name", dest="directory_name", default="fine")
     parser.add_argument("--dx", default=0.06, type=float)
-    arguments = parser.parse_args()
-    with create_solver(arguments.name, arguments.dx) as solver:
-        solver.run()
-        fvm.update_grid_study(
-            solver,
-            arguments.dx,
-            profiles=("centreline", "offaxis_y075"),
-        )
+    parser.add_argument(
+        "--campaign", action="store_true", help="Use the fixed-domain geometric family"
+    )
+    parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--cores", type=int, default=4)
+    parser.add_argument("--end-time", type=float, default=30.0)
+    parser.add_argument("--max-dt", type=float, default=0.04)
+    parser.add_argument("--courant", type=float, default=0.9)
+    parser.add_argument(
+        "--lean", action="store_true", help="Initial/final fields and rolling 5 s backups"
+    )
+    parser.add_argument(
+        "--output-interval", type=float, help="Visualization interval in seconds; overrides --lean"
+    )
+    parser.add_argument(
+        "--backup-interval", type=float, help="Rolling checkpoint interval in seconds"
+    )
+    parser.add_argument("--restart-from", type=Path)
+    parser.add_argument("--mesh", type=Path, help="Reuse this exact native mesh for a fresh run")
+    arguments = vars(parser.parse_args())
+    if arguments["campaign"]:
+        from studies.panel_removal.cube_reference_campaign import run_campaign_level
+
+        run_campaign_level(create_solver, case_dir=Path(__file__).resolve().parent, **arguments)
+    else:
+        with create_solver(**arguments) as solver:
+            if arguments["restart_from"]:
+                solver.load_state(arguments["restart_from"])
+            solver.run()
+            fvm.update_grid_study(solver, arguments["dx"], profiles=("centreline", "offaxis_y075"))

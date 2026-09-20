@@ -1,12 +1,7 @@
-"""One writing style for every VTK XML file OpenONDA publishes.
+"""Write VTK XML files with appended binary payloads.
 
-Payloads are appended and raw. Appended-raw is what ParaView's own writers
-produce, and it is the only mode that does not spend four bytes on every three
-of a payload the compressor has already shrunk; the base64 that VTK's inline
-mode and PyVista's ``save`` emit costs a third of the file for nothing.
-
-Files are published atomically: a reader opening a path during a write sees
-either the previous file or the new one, never a truncated one.
+Raw payloads avoid base64 encoding overhead. Atomic replacement keeps readers
+from opening a partially written file.
 """
 
 from __future__ import annotations

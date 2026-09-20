@@ -1051,12 +1051,9 @@ def insert_surface_layers(
     bounds = np.asarray(domain_bounds, dtype=np.float64)
     all_points = np.asarray(registry.points, dtype=np.float64)
 
-    # Every layer cell is assembled from a collection of polygons that may
-    # have come from several clipped STL fragments.  Use an orientation-
-    # independent reference point for each cell while assigning faces.  The
-    # old implementation selected the first winding found for a shared face
-    # and tried to repair it later, which could orient both sides of a radial
-    # face outwards from the same cell and violate discrete area closure.
+    # Layer-cell polygons can come from several clipped STL fragments. Use
+    # an orientation-independent cell reference when assigning faces so
+    # shared radial faces have opposite winding and satisfy discrete area closure.
     layer_cell_reference = np.empty((len(layer_cells), 3), dtype=np.float64)
     for local_cell, entries in enumerate(layer_cells):
         vertex_ids = np.unique(

@@ -118,9 +118,7 @@ def unwrap_pair_orientation(angle_radians: np.ndarray) -> np.ndarray:
     return result
 
 
-# =============================================================
 # Solver metadata / sampled-field readers
-# =============================================================
 
 
 def _flatten_solver_metadata(metadata: dict) -> dict:
@@ -354,9 +352,7 @@ def read_surface_field(path: Path) -> dict:
     return field
 
 
-# =============================================================
 # Vortex properties from the 2D field
-# =============================================================
 
 
 def _subgrid_peak_centre(
@@ -931,15 +927,7 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
         print(f"  [field] {case_name}: wrote field_diagnostics.csv ({len(rows)} samples)")
 
 
-# =============================================================
-# CLI entry point
-# =============================================================
-
-
-# =============================================================
-# Plotting utilities (absorbed from plot_style.py)
-# =============================================================
-
+# Plotting utilities
 
 _THEME_MODULE = None
 
@@ -1025,9 +1013,7 @@ def build_arg_parser(description: str):
     return p
 
 
-# =============================================================
 # Plot-ready data products
-# =============================================================
 
 MERGING_NORMALIZED_END_TIME = 3.0
 THETA_REFERENCE = REF_DIR / "theta_vs_tau.csv"
@@ -2238,10 +2224,7 @@ EXPECTED_END_TIME = CONFIGURED_TOTAL_TIME
 EXPECTED_DT = TIME_STEP_SIZE
 INITIAL_PARTICLE_COUNT = {"vortex": 2077, "dipole": 3618, "merging": 3618}
 
-
-# =============================================================
 # Validation helpers
-# =============================================================
 
 
 def _read_csv(
@@ -2991,9 +2974,7 @@ def validate(
     return 0
 
 
-# =============================================================
 # CLI
-# =============================================================
 
 
 def main() -> int:

@@ -114,7 +114,7 @@ def accumulate_source_panel_velocity_with_far_field_on_field(
     body_dipole: ti.types.ndarray(ndim=2),
     n_bodies: ti.i32,
     n_targets: ti.i32,
-    acceptance: ti.f64,
+    acceptance: ti.template(),
     min_panels: ti.i32,
 ) -> ti.i32:
     """Accumulate source-panel velocity, expanding accepted body ranges."""
@@ -179,7 +179,7 @@ def compute_source_panel_velocity_with_far_field(
     body_monopole: ti.types.ndarray(ndim=1),
     body_dipole: ti.types.ndarray(ndim=2),
     n_bodies: ti.i32,
-    acceptance: ti.f64,
+    acceptance: ti.template(),
     min_panels: ti.i32,
 ) -> ti.i32:
     """Numpy-target counterpart of the device-resident evaluator."""

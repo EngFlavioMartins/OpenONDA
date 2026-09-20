@@ -1,29 +1,15 @@
 """Shared plotting style and figure helpers for installed OpenONDA tutorials."""
 
-# =================================================
-# Standard library imports
-# =================================================
 from collections.abc import Iterable
 from pathlib import Path
 import shutil
 
 from matplotlib.axes import Axes
-
-# =================================================
-# Third-party library imports
-# =================================================
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
 import numpy as np
 
 from source.solution_layout import collection_path
-
-# =================================================
-# OpenONDA project-specific imports moved to functions
-# =================================================
-
-
-# ==================================================
 
 
 def read_vlm_surface(surface_record: dict, geometry_directory: str | Path) -> dict:
@@ -139,7 +125,7 @@ def theoretical_ring_trajectory(
     return theoretical_ring_position, theoretical_ring_velocity
 
 
-# -- Plot style ---------------------------------------------------------------
+# Plot style.
 # All tutorial plot presentation lives here: palette, font sizes, figure sizes,
 # markers, line widths, reference styles, and export defaults.
 CM = 1 / 2.54
@@ -177,9 +163,8 @@ MARK_EVERY = {
     "trajectory": 5,
 }
 
-# Match Thesis/thesis.tex (the rendered document is authoritative where the
-# older thesis_visuals/styles/colors.py differs). Keep legacy palette names
-# for compatibility: "orange" is the thesis's FVMorange aubergine.
+# Match the rendered Thesis/thesis.tex palette; "orange" denotes the
+# thesis's FVMorange aubergine.
 PALETTE = {
     "dark": "#0C2340",
     "teal": "#0E8A85",
@@ -290,7 +275,7 @@ VORTEX_RING_VARIANT_STYLE = {
     "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
     "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
     "les_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
-    # Schema-2 compatibility while users replace the earlier two-case campaign.
+    # Saved schema-2 case names use the corresponding transposed styles.
     "dns_treecode": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
     "les_treecode": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
 }

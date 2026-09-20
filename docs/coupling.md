@@ -212,11 +212,12 @@ the local validation reports are outside the current guaranteed contract.
 
 ## Small-domain accuracy qualification
 
-The [coupler accuracy study](../studies/coupler_accuracy/README.md) records
-independent manufactured-field checks, an exact unsteady FVM boundary test,
-and induction experiments using a saved cylinder reference snapshot. It also
-distinguishes the finite 3D coupled cylinder from the quasi-2D reference.
-These component results do not establish agreement of complete cylinder runs.
+Manufactured-field transfer checks, unsteady FVM boundary tests and induction
+checks against independent fields isolate different error sources. These
+component checks cannot establish agreement of complete cylinder runs.
+A finite-span 3D cylinder and a quasi-2D reference also solve different physical
+problems. The [panel-removal study](../studies/panel_removal/README.md) separates
+its cube comparison from the matched planar cylinder experiment.
 
 Buffered renewal uses fluid-domain membership and native wall geometry
 independently of distance to the nearest FVM cell centre, so anisotropic donor

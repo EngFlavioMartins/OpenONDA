@@ -86,6 +86,10 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     seed_backup = tmp_path / "seed_backup"
     shutil.copytree(first_backup, seed_backup)
     first_metadata = json.loads((tmp_path / "solution" / "run_metadata.json").read_text())
+    assert first_metadata["physics"]["vpm_time_step_size"] == pytest.approx(VPM_TIME_STEP_SIZE)
+    assert first_metadata["physics"]["backup_interval_time"] == pytest.approx(
+        2 * VPM_TIME_STEP_SIZE
+    )
     assert first_metadata["execution"] == {
         "start_coupling_step": 0,
         "stop_coupling_step": 1,
@@ -129,6 +133,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert " RUN" in coupler_log
     assert coupler_log.count("INTERFACE TRANSFER") == 3
     assert "substeps per coupling step" in coupler_log.lower()
+    assert "coupled backup interval" in coupler_log.lower()
+    assert "COUPLED BACKUP" in coupler_log
     backup = sol / "backups"
     manifest = json.loads((backup / "manifest.json").read_text())
     assert manifest["format_version"] == 11

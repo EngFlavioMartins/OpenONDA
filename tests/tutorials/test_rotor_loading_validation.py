@@ -133,11 +133,8 @@ def test_shared_vlm_window_rejects_missing_step_station_key():
 
 
 def _native_chordwise_first_step():
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "tutorials/vpm/06_rotor_flow_PENDING/samples/rotor/vlm_chordwise_blade_0.csv"
-    )
-    return pd.read_csv(path, nrows=132)
+    path = Path(__file__).with_name("fixtures") / "rotor_chordwise_first_step.csv"
+    return pd.read_csv(path)
 
 
 def test_native_chordwise_fixture_has_six_panels_per_station():

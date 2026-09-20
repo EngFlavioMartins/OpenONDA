@@ -235,9 +235,8 @@ def validate_geometry(mesh_data, geo_data):
     # wall-distance failures that can make boundary diffusion singular.
     quality_face_mask = np.ones(n_faces, dtype=bool)
 
-    # Mesh validation used to allocate all quality vectors for all faces at
-    # once, briefly adding several hundred megabytes to rank zero's global
-    # geometry.  Accumulate extrema and sums in blocks instead.
+    # Accumulate quality extrema and sums in blocks to bound temporary
+    # storage alongside rank zero's global geometry.
     _require(np.all(np.isfinite(volumes)), "Mesh cell volumes contain non-finite values")
     _require(np.all(np.isfinite(cell_centre)), "Mesh cell cell_centre contain non-finite values")
     _require(np.all(volumes > 0.0), "Mesh contains non-positive cell volumes")

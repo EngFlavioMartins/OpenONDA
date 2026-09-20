@@ -22,8 +22,10 @@ explicit OpenMP team sizing allows auxiliary-centre races despite
 `OMP_NUM_THREADS=1`; those centres are discarded after this single pass.
 Forcing `OMP_THREAD_LIMIT=1` is unsafe in this native build.
 
-The full capture context and remaining acceptance gates are documented in
-[`REPORT.md`](../../../docs/verification/cartesian_mesher/progress_2026-09-06/REPORT.md).
+The original capture report was identified as
+`docs/verification/cartesian_mesher/progress_2026-09-06/REPORT.md`; it is not
+present in this checkout. The hashes and capture details below are the retained
+provenance. These fixtures do not establish the report's broader acceptance gates.
 
 ## Volume decomposition details
 

@@ -1,8 +1,7 @@
 {
   "schema_version": 1,
   "status": "superseded_do_not_execute",
-  "superseding_scope": "Only decide delete versus retain using physical justification and existing evidence. Default to retain; report the absence of a matched independent reference as the limit on case-specific accuracy claims. The gates below are historical and no longer apply to this narrowed task.",
-  "original_plan": "/Users/flaviomartins/.codex/attachments/30e21763-ba1c-4a09-a12a-a8447116e5e1/pasted-text.txt",
+  "superseding_scope": "Inactive proposed benchmark. Retain particles under normal transport; existing short-run evidence lacks a matched independent reference for contact-deletion accuracy.",
   "plan": "vlm_vpm_completion_plan.md",
   "scope": "Qualified inviscid attached VLM–VPM wake–surface interaction, with explicit validity limits",
   "targets_note": "Proposed engineering accuracy targets for the frozen resolved benchmark; not universal physical constants. Freeze reference, normalizations and benchmark before acceptance runs. Never loosen targets retrospectively to relabel a failure.",
@@ -68,21 +67,53 @@
     "elapsed_time_alone_can_pass_encounter_coverage": false
   },
   "required_gates": [
-    {"id": "G0", "name": "Evidence validator rejects incomplete or stale campaigns"},
-    {"id": "G1", "name": "Complete stage/newborn matrix, RHS, velocity and Jacobian verification"},
-    {"id": "G2", "name": "Stage identity, diagnostic purity and accepted exchange ownership"},
-    {"id": "G3", "name": "Consistent initialization and independent temporal-order verification"},
-    {"id": "G4", "name": "Actual approach, encounter and departure for required cases"},
-    {"id": "G5", "name": "Receiving-wing feedback distinguishable from numerical uncertainty"},
-    {"id": "G6", "name": "Interior leakage and unexplained-crossing targets with spatial refinement"},
-    {"id": "G7", "name": "Converged trajectories and encounter loads with justified surface representation"},
-    {"id": "G8", "name": "Vector exchange and correctly derived impulse/force balances"},
-    {"id": "G9", "name": "Full encounter restart, safe refinement and applicable rollback verification"},
-    {"id": "G10", "name": "Final-source regression, installed encounter, preserved evidence and section 9 report"}
+    {
+      "id": "G0",
+      "name": "Evidence validator rejects incomplete or stale campaigns"
+    },
+    {
+      "id": "G1",
+      "name": "Complete stage/newborn matrix, RHS, velocity and Jacobian verification"
+    },
+    {
+      "id": "G2",
+      "name": "Stage identity, diagnostic purity and accepted exchange ownership"
+    },
+    {
+      "id": "G3",
+      "name": "Consistent initialization and independent temporal-order verification"
+    },
+    {
+      "id": "G4",
+      "name": "Actual approach, encounter and departure for required cases"
+    },
+    {
+      "id": "G5",
+      "name": "Receiving-wing feedback distinguishable from numerical uncertainty"
+    },
+    {
+      "id": "G6",
+      "name": "Interior leakage and unexplained-crossing targets with spatial refinement"
+    },
+    {
+      "id": "G7",
+      "name": "Converged trajectories and encounter loads with justified surface representation"
+    },
+    {
+      "id": "G8",
+      "name": "Vector exchange and correctly derived impulse/force balances"
+    },
+    {
+      "id": "G9",
+      "name": "Full encounter restart, safe refinement and applicable rollback verification"
+    },
+    {
+      "id": "G10",
+      "name": "Final-source regression, installed encounter and preserved numerical evidence"
+    }
   ],
   "completion": {
     "all_required_gates_must_pass": true,
-    "all_original_plan_acceptance_requirements_must_be_mapped": true,
     "conditional_inapplicability_requires_measured_justification": true,
     "unresolved_mandatory_gates_allowed": 0,
     "uncommitted_sources_require_content_hashes": true,

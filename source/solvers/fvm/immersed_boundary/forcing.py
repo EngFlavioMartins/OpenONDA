@@ -165,7 +165,7 @@ class IBMForcing:
         if not np.isfinite(self.grid_spacing) or self.grid_spacing <= 0.0:
             raise ValueError("Inferred IBM grid spacing is not finite and positive")
 
-        # --- Support search + kernel evaluation --------------------------- #
+        # Support search and kernel evaluation.
         # Kernel support is 1.5h per active axis; search a bounding sphere.
         support_radius = 1.5 * self.grid_spacing * np.sqrt(ndim) * 1.001
         supports = tree.query_ball_point(self.marker_position, r=support_radius)
@@ -254,9 +254,7 @@ class IBMForcing:
             body.name: np.zeros(3, dtype=np.float64) for body in self.bodies
         }
 
-    # ------------------------------------------------------------------ #
-    # Operators
-    # ------------------------------------------------------------------ #
+    # Operators.
 
     def interpolate(self, velocity: np.ndarray) -> np.ndarray:
         """Interpolate a cell field to the marker positions."""
@@ -390,9 +388,7 @@ class IBMForcing:
             )
         return out
 
-    # ------------------------------------------------------------------ #
-    # Diagnostics
-    # ------------------------------------------------------------------ #
+    # Diagnostics.
 
     def diagnostics(self) -> dict:
         """Return setup-quality metrics for marker spacing and quadrature."""

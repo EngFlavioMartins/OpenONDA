@@ -22,14 +22,10 @@ from ..config.constants import EPSILON
 from ..io.logging import Logging
 from ..physics.evaluation import ParticleFieldEvaluation
 
-# =========================================================
 # Taichi Kernel Functions (copied from physics module for standalone operation)
-# =========================================================
 
 # Constants for Abramowitz and Stegun approximation of erf
-# =========================================================
 # Helper Classes
-# =========================================================
 
 
 @dataclass

@@ -52,7 +52,7 @@ _PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
 
 
 def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
-    """C1 Hermite ramp used by the proven solid and mesh confidence tapers."""
+    """C1 Hermite ramp for the solid and mesh confidence tapers."""
     span = float(upper) - float(lower)
     if abs(span) < np.finfo(np.float64).tiny:
         return np.where(np.asarray(values, dtype=np.float64) >= upper, 1.0, 0.0)
@@ -786,7 +786,7 @@ def apply_projected_gbd_renewal(
     particle_spacing: float,
     kinematic_viscosity: float,
 ) -> TransferResult:
-    """Apply one certified absolute projection to the current post-GBD cloud.
+    """Apply one absolute projection to the current post-GBD cloud.
 
     The projection has already classified the current geometry and subtracted
     the complete preserved Gaussian field.  This mutation therefore updates
@@ -1653,10 +1653,21 @@ class VorticityTransfer:
         if not np.isfinite(coupler.vpm_particle_spacing):
             raise RuntimeError("VorticityTransfer requires the resolved VPM particle spacing")
         self.particle_spacing = float(coupler.vpm_particle_spacing)
+        induction = getattr(candidate_vpm, "induction", None)
+        self._planar_span = getattr(induction, "planar_span", None)
+        self._planar_induction = induction if self._planar_span is not None else None
+        if self._planar_span is not None and "pressure_gradient" in str(
+            cfg.boundary_condition_mode
+        ):
+            raise ValueError("Planar coupling requires FVM-owned pressure; use vorticity_mixed")
+        if self._planar_span is not None and self.transfer_method != "buffered_m4_renewal":
+            raise ValueError("Planar coupling requires buffered_m4_renewal")
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.vpm_only_width = float(cfg.vpm_only_width)
         self.transfer_prune_threshold_abs = (
-            float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
+            float(cfg.transfer_vorticity_cutoff)
+            * self.particle_spacing**2
+            * (self.particle_spacing if self._planar_span is None else self._planar_span)
         )
         self.transfer_release_prune_threshold_abs = self.transfer_prune_threshold_abs
         if self.transfer_method == "buffered_m4_renewal" and candidate_vpm is not None:
@@ -2020,6 +2031,20 @@ class VorticityTransfer:
                 def interior_at_node(points: np.ndarray) -> np.ndarray:
                     return self._points_in_solid(points, include_boundary=False)
 
+                if self._planar_induction is not None:
+                    _, self._planar_groups, self._planar_group_counts = np.unique(
+                        np.round(self._cell_centre[:, :2], 11),
+                        axis=0,
+                        return_inverse=True,
+                        return_counts=True,
+                    )
+                    if np.any(self._planar_group_counts < 2):
+                        raise ValueError(
+                            "Planar coupling requires complete extruded FVM cell stacks"
+                        )
+                    self.last_spanwise_metrics = {}
+                    self._planar_induction.lattice_anchor = self._lattice_anchor.copy()
+                    self._planar_induction.solid_at = interior_at_node if has_solid else None
                 self._stable_renewal_lattice = build_stable_renewal_lattice(
                     self._box,
                     self.particle_spacing,
@@ -2030,6 +2055,8 @@ class VorticityTransfer:
                     mesh_weight_at_node=mesh_weight_at_node,
                     fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
                     interior_at_node=interior_at_node if has_solid else None,
+                    planar_span=self._planar_span,
+                    plane_z=getattr(self._planar_induction, "plane_z", 0.0),
                 )
             else:
                 renewal_bounds = self._box.copy()
@@ -2865,6 +2892,32 @@ class VorticityTransfer:
         """Run the recovered synchronized velocity-trace whole-belt renewal."""
         if self._stable_renewal_lattice is None or self._velocity_trace is None:
             raise RuntimeError("buffered M4' renewal lattice was not initialized")
+        if self._planar_induction is not None:
+            groups = self._planar_groups
+            counts = self._planar_group_counts
+            mean = np.column_stack(
+                [
+                    np.bincount(groups, weights=fvm_velocity[:, axis], minlength=len(counts))
+                    / counts
+                    for axis in range(3)
+                ]
+            )
+            variation = float(np.max(np.abs(fvm_velocity - mean[groups]), initial=0))
+            span_velocity = float(np.max(np.abs(fvm_velocity[:, 2]), initial=0))
+            scale = max(
+                float(np.linalg.norm(self.config.freestream_velocity_vector)),
+                float(np.linalg.norm(mean, axis=1).max(initial=0)),
+                1e-12,
+            )
+            self.last_spanwise_metrics = {
+                "span_velocity_max": span_velocity,
+                "span_variation_max": variation,
+                "velocity_scale": scale,
+            }
+            if max(variation, span_velocity) > self._planar_induction.spanwise_tolerance * scale:
+                raise RuntimeError(
+                    f"Planar FVM donor state lost spanwise invariance: {self.last_spanwise_metrics}"
+                )
         has_solid = bool(self._solid_bodies) or self._body_bounds is not None
 
         def fluid_weight(points: np.ndarray) -> np.ndarray:
@@ -2897,6 +2950,7 @@ class VorticityTransfer:
                 points,
                 self.particle_spacing,
                 velocity_at,
+                planar_span=self._planar_span,
             )
 
         return replace_particles_from_buffered_m4_renewal(

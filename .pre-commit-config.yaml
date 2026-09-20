@@ -1,32 +1,14 @@
 default_language_version:
   python: python3
 
-# ─────────────────────────────────────────────────────────────────────────────
-# REPORT-ONLY pre-commit.
-#
-# No hook here rewrites files during a commit. That removes the "unstaged files
-# stashed → hook reformats → rolling back fixes" deadlock that happens when a
-# file is partially staged: with nothing to auto-fix, pre-commit never stashes,
-# so it can never roll back. Hooks *flag* problems and block the commit; you fix
-# them yourself with one command and re-commit:
-#
-#     ruff check --fix source tests      # apply lint fixes
-#     ruff format source tests           # apply formatting
-#
-# (or `pre-commit run --all-files` to see everything at once.)
-# ─────────────────────────────────────────────────────────────────────────────
-
 repos:
-  # ── Lint & format (report only — never modifies files) ───────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.10
     hooks:
-      - id: ruff                # lint: E/F/W/I/N/UP/B/C4/SIM (see pyproject.toml)
-        # No --fix: report violations, do not rewrite. Run `ruff check --fix` yourself.
-      - id: ruff-format         # verify formatting only; --check never rewrites.
+      - id: ruff
+      - id: ruff-format
         args: [--check]
 
-  # ── Local repository checks (report only) ────────────────────────────────────
   - repo: local
     hooks:
       - id: vulture
@@ -38,7 +20,6 @@ repos:
         pass_filenames: false
         args: [source/solvers/fvm, source/solvers/vpm, --min-confidence, "90"]
 
-  # ── Security audit (report only) ─────────────────────────────────────────────
   - repo: local
     hooks:
       - id: bandit
@@ -56,17 +37,14 @@ repos:
           - B101       # assert_used (fine in tests and physics kernels)
           - -ll        # report only medium/high severity
 
-  # ── Structural checks (all read-only — none of these modify files) ───────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
-      - id: debug-statements       # catches stray breakpoint() / pdb.set_trace()
+      - id: debug-statements
       - id: check-added-large-files
-        # Processed profiles can be a few MiB; raw states remain excluded.
+        # Files managed by Git LFS are exempt from this size check.
         args: [--maxkb=10240]
-        # Tutorial figures are committed at their generated size. Preserve the
-        # long-standing animation assets that also exceed this size gate.
         exclude: "^tutorials/(.*/figures/|vpm/0[56]_(rotor_flow|quadcopter)/assets/(animation/)?.*\\.gif$)"

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from source.coupler.boundary import apply_fvm_boundary, tangential_normal_velocity_gradient
 from source.coupler.config.types import CouplerSetup
 from source.coupler.geometry import TriangulatedWall
 from source.coupler.stable_renewal import (
@@ -14,8 +15,157 @@ from source.coupler.stable_renewal import (
     vortex_strength_from_velocity_trace,
 )
 from source.coupler.vorticity_transfer import VorticityTransfer
+from source.solvers.fvm import (
+    BoundaryConfig,
+    DiscretizationConfig,
+    FVMSetup,
+    LinearSolverConfig,
+    PimpleControl,
+    RunSchedule,
+    TimeConfig,
+    TransportConfig,
+    create_fvm_solver,
+)
 from source.solvers.fvm.coupling.coupler_interface import CouplerInterfaceMixin
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
+from source.solvers.fvm.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
+
+
+def _taylor_green_fields(position, time, viscosity=0.01):
+    """Return an advected, decaying Taylor--Green velocity, Jacobian and pressure.
+
+    Positions have shape (N, 3) in metres and time is in seconds. The uniform
+    flow is (1, 0, 0) m/s; the wavelength is 2 m. The Jacobian uses J[i,j] =
+    du_i/dx_j, and pressure is kinematic pressure in m²/s². The field is
+    invariant in z and solves the unforced incompressible Navier--Stokes
+    equations for kinematic viscosity in m²/s.
+    """
+    x, y, _ = np.asarray(position).T
+    k = np.pi
+    x = k * (x - time)
+    y = k * y
+    decay = np.exp(-2.0 * viscosity * k**2 * time)
+    velocity = np.column_stack(
+        (1.0 - decay * np.cos(x) * np.sin(y), decay * np.sin(x) * np.cos(y), np.zeros(len(x)))
+    )
+    jacobian = np.zeros((len(x), 3, 3))
+    jacobian[:, 0, 0] = k * decay * np.sin(x) * np.sin(y)
+    jacobian[:, 0, 1] = -k * decay * np.cos(x) * np.cos(y)
+    jacobian[:, 1, 0] = k * decay * np.cos(x) * np.cos(y)
+    jacobian[:, 1, 1] = -k * decay * np.sin(x) * np.sin(y)
+    pressure = -0.25 * decay**2 * (np.cos(2 * x) + np.cos(2 * y))
+    return velocity, jacobian, pressure
+
+
+def _taylor_green_pressure_gradient(position, time, viscosity=0.01):
+    """Return the analytic kinematic-pressure gradient, shape (N, 3), in m/s²."""
+    x, y, _ = np.asarray(position).T
+    k = np.pi
+    decay_squared = np.exp(-4.0 * viscosity * k**2 * time)
+    return (
+        0.5
+        * k
+        * decay_squared
+        * np.column_stack((np.sin(2 * k * (x - time)), np.sin(2 * k * y), np.zeros(len(x))))
+    )
+
+
+def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
+    """Advance an n×n FVM mesh through 0.05 s using exact endpoint boundary data.
+
+    Refinement holds dt fixed and measures combined space/time/boundary error.
+    Direct linear solves isolate discretization error from iterative tolerance.
+    The empty span has one cell of width 0.25 m. There is no body or VPM error.
+    """
+    axis = np.linspace(-1, 1, n + 1)
+    mesh = coupling_box_mesh(
+        (-1, 1, -1, 1, -0.125, 0.125),
+        2 / n,
+        nodes=(axis, axis, np.array([-0.125, 0.125])),
+        empty_spanwise=True,
+    )
+    setup = FVMSetup(
+        case_name=f"oracle_{mode}_{n}",
+        time=TimeConfig(
+            time_step_size=dt,
+            end_time=steps * dt,
+            output_schedule=RunSchedule(every_n_steps=100000),
+        ),
+        schemes=DiscretizationConfig(
+            convection_scheme="linear", gradient_scheme="lsq", time_scheme="backward"
+        ),
+        linear=LinearSolverConfig(
+            linear_solver="spsolve",
+            pressure_solver="spsolve",
+            pressure_tolerance=1e-12,
+            momentum_tolerance=1e-12,
+            pressure_relative_tolerance=0.0,
+            momentum_relative_tolerance=0.0,
+        ),
+        pimple=PimpleControl(
+            n_outer_correctors=3, n_correctors=2, velocity_relaxation=1.0, pressure_relaxation=1.0
+        ),
+        transport=TransportConfig(kinematic_viscosity=0.01),
+        boundaries=[
+            BoundaryConfig(
+                name="numericalBoundary",
+                velocity_type="fixedValue",
+                velocity_value=[1, 0, 0],
+                pressure_type="fixedFluxPressure",
+            ),
+            BoundaryConfig.empty("zmin"),
+            BoundaryConfig.empty("zmax"),
+        ],
+        initial_velocity=[1, 0, 0],
+    )
+    with create_fvm_solver(setup, case_dir=output / f"{mode}_{n}", mesh=mesh) as solver:
+        coupler = SimpleNamespace(
+            fvm_solver=solver, setup=CouplerSetup(boundary_condition_mode=mode)
+        )
+        centre = solver.get_cell_centre_coordinates()
+        face = solver.get_boundary_face_centre_coordinates("numericalBoundary")
+        normal = solver.get_boundary_face_normal("numericalBoundary")
+        initial, _, pressure = _taylor_green_fields(centre, 0)
+        velocity, jacobian, _ = _taylor_green_fields(face, 0)
+        if mode in {"vorticity_mixed", "vorticity_mixed_pressure_gradient"}:
+            solver.set_normal_velocity_tangential_gradient_boundary_condition(
+                np.einsum("ij,ij->i", velocity, normal),
+                tangential_normal_velocity_gradient(jacobian, normal),
+                "numericalBoundary",
+            )
+        else:
+            solver.set_dirichlet_velocity_boundary_condition_vec(velocity, "numericalBoundary")
+        if mode == "vorticity_mixed_pressure_gradient":
+            solver.set_neumann_pressure_boundary_condition(
+                _taylor_green_pressure_gradient(face, 0), "numericalBoundary"
+            )
+        solver.kinematic_pressure[: len(centre)] = pressure
+        solver.set_initial_velocity(initial)
+        for step in range(1, steps + 1):
+            velocity, jacobian, _ = _taylor_green_fields(face, step * dt)
+            apply_fvm_boundary(
+                coupler,
+                "numericalBoundary",
+                velocity,
+                normal_velocity=np.einsum("ij,ij->i", velocity, normal),
+                tangential_gradient=tangential_normal_velocity_gradient(jacobian, normal),
+                pressure_gradient=_taylor_green_pressure_gradient(face, step * dt),
+            )
+        assert solver.step == steps
+        assert solver.time == pytest.approx(steps * dt, rel=0.0, abs=1e-14)
+        expected, _, _ = _taylor_green_fields(centre, solver.time)
+        error = solver.get_velocity_field() - expected
+        volumes = solver.get_cell_volume()
+        rms = np.sqrt(np.sum(volumes * np.sum(error**2, axis=1)) / volumes.sum())
+        return {
+            "n": n,
+            "h": 2 / n,
+            "mode": mode,
+            "dt": dt,
+            "steps": steps,
+            "time": solver.time,
+            "velocity_rms_error_over_Uinf": float(rms),
+            "velocity_max_error_over_Uinf": float(np.linalg.norm(error, axis=1).max()),
+        }
 
 
 @pytest.mark.parametrize("strength_scale", [1.0e-18, 1.0, 1.0e18])
@@ -38,9 +188,10 @@ def test_invariant_recovery_resolves_small_and_large_circulation(strength_scale)
 def test_exact_unsteady_boundary_data_converges_under_fvm_refinement(
     tmp_path, mode, record_property
 ):
-    from studies.coupler_accuracy.boundary_oracle import solve
-
-    errors = [solve(n, mode, tmp_path)["velocity_rms_error_over_Uinf"] for n in (8, 16, 32)]
+    errors = [
+        _solve_boundary_refinement(n, mode, tmp_path)["velocity_rms_error_over_Uinf"]
+        for n in (8, 16, 32)
+    ]
     orders = np.log2(np.asarray(errors[:-1]) / np.asarray(errors[1:]))
     for n, error in zip((8, 16, 32), errors, strict=True):
         record_property(f"n{n}_velocity_rms_error", error)

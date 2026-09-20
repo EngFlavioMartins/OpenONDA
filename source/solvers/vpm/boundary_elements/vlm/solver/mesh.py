@@ -462,9 +462,7 @@ def _mirror_vertices(a, b, c, d, symmetry_plane: int) -> tuple[np.ndarray, ...]:
     return a, b, c, d
 
 
-# =========================================================
 # TAICHI KERNELS FOR TRAILING DIRECTION UPDATES
-# =========================================================
 
 
 @ti.kernel

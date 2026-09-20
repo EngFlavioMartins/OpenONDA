@@ -136,9 +136,13 @@ def test_periodic_and_final_backups_pair_exact_moving_surface_states(tmp_path):
             "vpm_000002",
             "vpm_000003",
         ]
-        assert sorted(p.stem for p in solution.glob("vlm_*.vtp")) == ["vlm_000002", "vlm_000003"]
+        assert sorted(p.stem for p in (solution / "vlm").glob("vlm_*.vtp")) == [
+            "vlm_000002",
+            "vlm_000003",
+        ]
+        assert pv.get_reader(solution / "vlm.pvd").time_values == [0.02, 0.03]
         for step in (2, 3):
-            surface = pv.read(solution / f"vlm_{step:06d}.vtp")
+            surface = pv.read(solution / "vlm" / f"vlm_{step:06d}.vtp")
             with h5py.File(solution / "vpm" / f"vpm_{step:06d}.h5") as archive:
                 assert surface.field_data["TimeValue"][0] == archive["solver"].attrs["time"]
                 np.testing.assert_array_equal(

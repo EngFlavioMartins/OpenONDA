@@ -39,9 +39,14 @@ def test_interior_only_partition_still_enters_boundary_flux_reductions(monkeypat
 
         def __init__(self):
             self.sum_calls = 0
+            self.max_values = []
 
         def global_sum(self, value):
             self.sum_calls += 1
+            return value
+
+        def global_max(self, value):
+            self.max_values.append(value)
             return value
 
         def global_all(self, value):
@@ -80,3 +85,4 @@ def test_interior_only_partition_still_enters_boundary_flux_reductions(monkeypat
     )
 
     assert parallel.sum_calls == 2
+    assert parallel.max_values == [0]

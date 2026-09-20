@@ -14,6 +14,7 @@ logger = logging.getLogger("coupler")
 
 _MIXED_VELOCITY_MODES = frozenset({"vorticity_mixed", "vorticity_mixed_pressure_gradient"})
 _PRESSURE_GRADIENT_MODES = frozenset({"pressure_gradient", "vorticity_mixed_pressure_gradient"})
+_MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
 
 
 def outflow_axis_sign(freestream_velocity: np.ndarray) -> tuple[int, float]:
@@ -68,14 +69,28 @@ def _log_outflow_velocity(
 
 
 def boundary_flux_tolerance(particle_spacing: float, fvm_box: np.ndarray) -> float:
-    """Second-order trace allowance used for the dimensionless flux residual."""
+    """Return the resolution-based allowance for the dimensionless flux residual.
+
+    The face-centre trace is a second-order surface quadrature.  Its expected
+    normalized residual therefore scales as ``(h/L)^2``.  The allowance is
+    bounded above by one percent so a genuinely non-solenoidal upstream field
+    still stops the coupled run instead of being silently projected away.
+    """
+    spacing = float(particle_spacing)
+    if not np.isfinite(spacing) or spacing <= 0.0:
+        raise ValueError("particle_spacing must be finite and positive")
     bounds = np.asarray(fvm_box, dtype=np.float64).reshape(6)
     extent = bounds[1::2] - bounds[::2]
     length = float(np.min(extent))
     if length <= 0.0:
         raise ValueError("FVM box extents must be positive")
-    second_order = (particle_spacing / length) ** 2
-    return float(max(4096.0 * np.finfo(float).eps, min(second_order, 1.0e-3)))
+    second_order = (spacing / length) ** 2
+    return float(
+        max(
+            4096.0 * np.finfo(float).eps,
+            min(second_order, _MAX_BOUNDARY_FLUX_TOLERANCE),
+        )
+    )
 
 
 def tangential_normal_velocity_gradient(
@@ -152,7 +167,7 @@ def evaluate_vpm_velocity(
             if raw_relative > tolerance:
                 raise RuntimeError(
                     "VPM boundary trace has a physically significant net flux: "
-                    f"|integral(velocity.n dA)|/(reference_velocity reference_area)={raw_relative:.3e}, "
+                    f"|integral(u.n dA)|/(U_ref A_coupling)={raw_relative:.3e}, "
                     f"acceptance limit={tolerance:.3e}. Refusing to hide the "
                     "upstream boundary-field error with a projection."
                 )

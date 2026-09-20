@@ -1,21 +1,14 @@
 #!/usr/bin/env python3
-"""Analyse completed cylinder reference-flow grids without changing raw output.
+"""Assess cylinder-grid convergence from completed force and velocity records.
 
-The launcher runs each grid independently.  This script is deliberately a
-separate post-processing step: it discovers only cases with a completed
-``grid_run.json`` and force history, uses their common final-half time window,
-and writes derived ``grid_convergence.*`` files below ``solution/``.
+Use a common physical-time window and inspect observed order, Richardson/GCI
+estimates, force fluctuations and mean wake profiles. Nominal realized XY
+spacing, span resolution and statistical uncertainty are reported separately.
 
 Examples
 --------
-Run after the campaign has completed::
-
-    python -u postprocess_grid_study.py
-
-Use a fixed common window and export only a PNG::
-
-    python -u postprocess_grid_study.py --statistics-start 30 --statistics-end 60 \
-        --format png
+    python postprocess_grid_study.py --statistics-start 50 --statistics-end 100
+    python postprocess_grid_study.py --format pdf --output-dir figures
 """
 
 from __future__ import annotations
@@ -141,6 +134,7 @@ def _window(
 
 
 def _mean(time: np.ndarray, values: np.ndarray) -> float:
+    """Return the trapezoidal time mean, preserving the input quantity units."""
     return float(np.trapezoid(values, time) / (time[-1] - time[0]))
 
 
@@ -196,6 +190,19 @@ def _force_statistics(table: dict[str, np.ndarray], start: float, end: float) ->
     result["drag_drift_relative"] = abs(second_mean - first_mean) / max(
         abs(result["mean_drag"]), VALUE_FLOOR
     )
+    # Four long contiguous batches expose correlated oscillations and slow drift.
+    edges = np.linspace(start, end, 5)
+    batch_means = []
+    for left, right in zip(edges[:-1], edges[1:]):
+        bt, bv = _window(time, table["drag_coefficient"], left, right)
+        batch_means.append(_mean(bt, bv))
+    result["drag_batch_means"] = batch_means
+    result["drag_batch_standard_error"] = float(np.std(batch_means, ddof=1) / 2.0)
+    result["drag_batch_95_half_width"] = 3.182446305 * result["drag_batch_standard_error"]
+    result["sampling_uncertainty_note"] = (
+        "Student-t interval from four contiguous batches; diagnostic only until each "
+        "batch contains several shedding cycles and residual batch correlation is negligible."
+    )
     return result
 
 
@@ -232,6 +239,7 @@ def _read_profile(path: Path, start: float, end: float) -> tuple[np.ndarray, np.
 
 
 def _difference(value: float | None, reference: float | None) -> float | None:
+    """Return absolute relative error; missing values remain unavailable."""
     if value is None or reference is None:
         return None
     return abs(float(value) - float(reference)) / max(abs(float(reference)), VALUE_FLOOR)
@@ -244,7 +252,7 @@ def _convergence(grids: list[dict[str, Any]], metric: str) -> dict[str, Any]:
     if len(grids) < 3 or any(value is None for value in values[-3:]):
         return {"available": False, "reason": "fewer than three levels with this metric"}
     coarse, medium, fine = (float(value) for value in values[-3:])
-    spacings = [grid["cell_size"] for grid in grids[-3:]]
+    spacings = [grid.get("effective_cell_size", grid["cell_size"]) for grid in grids[-3:]]
     ratio_a = spacings[0] / spacings[1]
     ratio_b = spacings[1] / spacings[2]
     result: dict[str, Any] = {
@@ -253,6 +261,9 @@ def _convergence(grids: list[dict[str, Any]], metric: str) -> dict[str, Any]:
         "medium_to_fine_ratio": ratio_b,
         "finest_pair_relative_change": _difference(medium, fine),
     }
+    if min(ratio_a, ratio_b) < 1.1:
+        result["reason"] = "refinement ratios below 1.1 cannot resolve grid error reliably"
+        return result
     if not np.isclose(ratio_a, ratio_b, rtol=5.0e-3, atol=1.0e-12):
         result["reason"] = "the three finest refinement ratios are not equal"
         return result
@@ -265,13 +276,35 @@ def _convergence(grids: list[dict[str, Any]], metric: str) -> dict[str, Any]:
     if not math.isfinite(order) or order <= 0.0:
         result["reason"] = "the observed order is not positive and finite"
         return result
+    if order > 4.0:
+        result["reason"] = "observed order exceeds four; possible cancellation or sampling noise"
+        result["observed_order"] = order
+        return result
+    if metric == "mean_drag":
+        uncertainty = sum(
+            grid["statistics"].get("drag_batch_95_half_width", 0.0) for grid in grids[-2:]
+        )
+        result["combined_sampling_half_width"] = uncertainty
+        if uncertainty >= abs(delta_fine):
+            result["reason"] = (
+                "finest-grid difference is not resolved above batch sampling uncertainty"
+            )
+            return result
     extrapolated = fine + delta_fine / (ratio_b**order - 1.0)
     result.update(
         available=True,
         reason=None,
         observed_order=order,
         richardson_extrapolated=extrapolated,
-        fine_grid_gci=1.25 * abs(extrapolated - fine) / max(abs(extrapolated), VALUE_FLOOR),
+        fine_grid_gci=1.25 * abs(extrapolated - fine) / max(abs(fine), VALUE_FLOOR),
+        coarse_grid_gci=1.25
+        * abs(delta_coarse)
+        / ((ratio_a**order - 1.0) * max(abs(medium), VALUE_FLOOR)),
+        asymptotic_ratio=abs(delta_coarse / delta_fine)
+        / ratio_b**order
+        * abs(fine)
+        / max(abs(medium), VALUE_FLOOR),
+        qualification="Three-grid asymptotic ratio is algebraically dependent on fitted order; compare adjacent triplets and temporal/span controls before accepting.",
     )
     return result
 
@@ -288,12 +321,29 @@ def _context(case: dict[str, Any], solution_root: Path) -> dict[str, Any]:
     lifecycle = metadata.get("lifecycle", {})
     if lifecycle.get("status") != "complete":
         raise ValueError(f"{metadata_path} does not mark the run complete")
+    mesh_path = metadata_path.parent / "fvm" / "mesh.npz"
+    if mesh_path.is_file():
+        with np.load(mesh_path, allow_pickle=False) as mesh:
+            provenance = json.loads(str(mesh["metadata"]))
+            generation = provenance.get("mesh_generation", {})
+            levels = generation.get("extrusion_levels", [])
+            nominal = generation.get("resolved_surface_patch_sizes", {}).get("cylinder")
+            context["mesh_realization"] = {
+                "effective_wall_lattice": nominal,
+                "domain": generation.get("domain"),
+                "span_layers": len(levels) - 1 if levels else None,
+                "span": levels[-1] - levels[0] if levels else None,
+                "section_cells": generation.get("section_cells"),
+                "global_cells": provenance.get("n_cells"),
+                "definition": "nominal octree cylinder size before projection, not all physical cell edges",
+            }
     context["metadata"] = metadata
     context["metadata_path"] = str(metadata_path.resolve())
     return context
 
 
 def _styles(grids: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Assign named thesis colours and distinct markers to the ordered grids."""
     from openonda import plotting as theme
 
     names = ("RefGray", "FVMorange", "VPMpurple", "TUDdark", "TUDcyan")
@@ -309,6 +359,7 @@ def _styles(grids: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 
 def _save_plot(figure: Any, destination: Path, formats: tuple[str, ...]) -> None:
+    """Validate fixed thesis dimensions and save each requested format without cropping."""
     from openonda import plotting as theme
 
     theme.fit_thesis_y_label_margins(figure, figure.axes)
@@ -329,6 +380,7 @@ def _save_plot(figure: Any, destination: Path, formats: tuple[str, ...]) -> None
 def _plot_force_metrics(
     report: dict[str, Any], destination: Path, formats: tuple[str, ...]
 ) -> None:
+    """Plot mean drag and transverse force RMS versus requested spacing divided by D."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -340,8 +392,8 @@ def _plot_force_metrics(
     theme.set_thesis_style()
     grids = report["grids"]
     x = np.asarray([grid["cell_size"] for grid in grids])
-    figure, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 8.3 / 2.54), sharex=True)
-    figure.subplots_adjust(left=0.2, right=0.8, bottom=0.22, top=0.96, hspace=0.35)
+    figure, axes = plt.subplots(2, 1, figsize=(12.5 * theme.CM, 8.3 * theme.CM), sharex=True)
+    theme.centered_subplots_adjust(figure, outer=0.2, bottom=0.22, top=0.96, hspace=0.35)
     for axis, metrics, ylabel in zip(
         axes,
         (("mean_drag",), ("rms_lift", "rms_side")),
@@ -368,6 +420,7 @@ def _plot_force_metrics(
 
 
 def _plot_by_cells(report: dict[str, Any], destination: Path, formats: tuple[str, ...]) -> None:
+    """Plot force statistics versus global fluid-cell count."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -378,8 +431,8 @@ def _plot_by_cells(report: dict[str, Any], destination: Path, formats: tuple[str
     theme.set_thesis_style()
     grids = report["grids"]
     x = np.asarray([grid["cell_count"] / 1000.0 for grid in grids])
-    figure, axis = plt.subplots(figsize=(12.5 / 2.54, 7.0 / 2.54))
-    figure.subplots_adjust(left=0.2, right=0.8, bottom=0.23, top=0.95)
+    figure, axis = plt.subplots(figsize=(12.5 * theme.CM, 7.0 * theme.CM))
+    theme.centered_subplots_adjust(figure, outer=0.2, bottom=0.23, top=0.95)
     for metric, label, color, marker in (
         ("mean_drag", r"$\overline{C_D}$", "TUDdark", "o"),
         ("rms_lift", r"$\sigma(C_L)$", "VPMpurple", "s"),
@@ -403,6 +456,7 @@ def _plot_histories(
     destination: Path,
     formats: tuple[str, ...],
 ) -> None:
+    """Plot unshifted drag and lift histories over the common interval in seconds."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -412,8 +466,8 @@ def _plot_histories(
 
     theme.set_thesis_style()
     start, end = report["statistics_window"]
-    figure, axes = plt.subplots(2, 1, figsize=(12.5 / 2.54, 8.3 / 2.54), sharex=True)
-    figure.subplots_adjust(left=0.2, right=0.8, bottom=0.22, top=0.93, hspace=0.3)
+    figure, axes = plt.subplots(2, 1, figsize=(12.5 * theme.CM, 10.5 * theme.CM), sharex=True)
+    theme.centered_subplots_adjust(figure, outer=0.2, bottom=0.17, top=0.70, hspace=0.32)
     styles = _styles(report["grids"])
     for grid in report["grids"]:
         table = tables[grid["case"]]
@@ -429,7 +483,16 @@ def _plot_histories(
     axes[0].set_ylabel(r"$C_D$")
     axes[1].set_ylabel(r"$C_L$")
     axes[1].set_xlabel(r"$t$ [s]")
-    axes[0].legend(frameon=False, ncol=2)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(
+        handles,
+        labels,
+        frameon=False,
+        ncol=2,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
+        handlelength=1.5,
+    )
     _save_plot(figure, destination, formats)
 
 
@@ -439,6 +502,7 @@ def _plot_profiles(
     destination: Path,
     formats: tuple[str, ...],
 ) -> None:
+    """Plot time-mean streamwise velocity divided by U against centreline x/D."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -447,19 +511,28 @@ def _plot_profiles(
     from openonda import plotting as theme
 
     theme.set_thesis_style()
-    figure, axis = plt.subplots(figsize=(12.5 / 2.54, 7.0 / 2.54))
-    figure.subplots_adjust(left=0.2, right=0.8, bottom=0.24, top=0.92)
+    figure, axis = plt.subplots(figsize=(12.5 * theme.CM, 7.0 * theme.CM))
+    theme.centered_subplots_adjust(figure, outer=0.2, bottom=0.24, top=0.92)
     styles = _styles(report["grids"])
     for grid in report["grids"]:
         profile = profiles.get(grid["case"])
         if profile is not None:
-            axis.plot(
-                profile["position"],
-                profile["velocity"],
-                **styles[grid["case"]],
-                markersize=3,
-                markevery=12,
-            )
+            # Cell interpolation inside the solid is not a fluid velocity.
+            for index, fluid in enumerate((profile["position"] < -0.5, profile["position"] > 0.5)):
+                style = dict(styles[grid["case"]])
+                if index:
+                    style["label"] = "_nolegend_"
+                axis.plot(
+                    profile["position"][fluid],
+                    profile["velocity"][fluid],
+                    **style,
+                    markersize=3,
+                    markevery=12,
+                )
+    from matplotlib.ticker import MaxNLocator
+
+    # Keep corner tick labels apart at the prescribed thesis font size.
+    axis.xaxis.set_major_locator(MaxNLocator(4, prune="lower"))
     axis.set_xlabel(r"$x/D$")
     axis.set_ylabel(r"$\overline{u_x}/U_\infty$")
     axis.legend(frameon=False, ncol=2)
@@ -467,6 +540,7 @@ def _plot_profiles(
 
 
 def _write_csv(report: dict[str, Any], destination: Path) -> None:
+    """Write per-grid spacing, force statistics and profile errors as a derived table."""
     fields = (
         "case",
         "cell_size",
@@ -497,6 +571,7 @@ def _write_csv(report: dict[str, Any], destination: Path) -> None:
 
 
 def _write_markdown(report: dict[str, Any], destination: Path) -> None:
+    """Write the statistics window, grid comparison and qualification limits."""
     start, end = report["statistics_window"]
     lines = [
         "# Cylinder grid-convergence report",
@@ -540,10 +615,36 @@ def analyse_grid_convergence(
     *,
     statistics_start: float | None = None,
     statistics_end: float | None = None,
-    formats: tuple[str, ...] = ("png", "pdf"),
+    formats: tuple[str, ...] = ("png",),
     solution_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Analyse completed cylinder grids and write derived reports and figures."""
+    """Compare completed grids over one common physical-time interval.
+
+    Parameters
+    ----------
+    samples_root : str or pathlib.Path
+        Directory containing registered per-grid force and line samples.
+    output_dir : str or pathlib.Path
+        Figure directory; tables and provenance are written under auxiliary/.
+    statistics_start, statistics_end : float or None
+        Averaging limits in s. None selects the final half of the common record.
+    formats : tuple of str
+        Figure formats, png and/or pdf. PNG is the default.
+    solution_root : str or pathlib.Path or None
+        Native solver records. None uses the samples root's sibling solution/.
+
+    Returns
+    -------
+    dict
+        Force statistics, mean-profile errors, convergence estimates, coverage
+        exclusions and source hashes. Input records are not modified.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two completed grids are usable, the averaging window is
+        unsupported, or a requested figure format is invalid.
+    """
 
     samples_root = Path(samples_root)
     output_dir = Path(output_dir)
@@ -561,6 +662,9 @@ def analyse_grid_convergence(
             if not np.isclose(table["time"][-1], case["end_time"], atol=TIME_TOLERANCE, rtol=0.0):
                 raise ValueError("force history does not reach registered end_time")
             case["context"] = _context(case, solution_root)
+            effective = case["context"].get("mesh_realization", {}).get("effective_wall_lattice")
+            if effective is not None:
+                case["effective_cell_size"] = float(effective)
         except (ValueError, json.JSONDecodeError) as error:
             excluded.append({"directory": case["directory"].name, "reason": str(error)})
             continue
@@ -656,6 +760,7 @@ def analyse_grid_convergence(
                 "case": grid["case"],
                 "cell_size": grid["cell_size"],
                 "cell_count": grid["cell_count"],
+                "effective_cell_size": grid.get("effective_cell_size"),
                 "end_time": grid["end_time"],
                 "statistics": grid["statistics"],
                 "difference_to_reference": grid["difference_to_reference"],
@@ -667,6 +772,16 @@ def analyse_grid_convergence(
             metric: _convergence(grids, metric)
             for metric in ("mean_drag", "rms_drag", "rms_lift", "rms_side")
         },
+        "overlapping_triplets": [
+            {
+                "cases": [grid["case"] for grid in grids[index : index + 3]],
+                "convergence": {
+                    metric: _convergence(grids[index : index + 3], metric)
+                    for metric in ("mean_drag", "rms_drag", "rms_lift")
+                },
+            }
+            for index in range(max(0, len(grids) - 2))
+        ],
         "profiles": {"centreline": profile_report},
         "excluded_cases": excluded,
         "assessment": "Grid independence is not established by these statistics alone; inspect the finest-pair changes, averaging drift, and the separate time-step convergence requirement.",
@@ -685,11 +800,13 @@ def analyse_grid_convergence(
         },
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "grid_convergence.json").write_text(
+    auxiliary = output_dir / "auxiliary"
+    auxiliary.mkdir(exist_ok=True)
+    (auxiliary / "grid_convergence.json").write_text(
         json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
-    _write_csv(report, output_dir / "grid_convergence.csv")
-    _write_markdown(report, output_dir / "grid_convergence.md")
+    _write_csv(report, auxiliary / "grid_convergence.csv")
+    _write_markdown(report, auxiliary / "grid_convergence.md")
     _plot_force_metrics(report, output_dir / "grid_convergence.png", formats)
     _plot_by_cells(report, output_dir / "grid_convergence_by_cells.png", formats)
     _plot_histories(report, tables, output_dir / "grid_convergence_histories.png", formats)
@@ -698,13 +815,14 @@ def analyse_grid_convergence(
 
 
 def main() -> None:
+    """Parse a common statistics window and write the convergence assessment."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples-root", type=Path, default=CASE_DIR / "samples")
     parser.add_argument("--solution-root", type=Path)
-    parser.add_argument("--output-dir", type=Path, default=CASE_DIR / "solution")
+    parser.add_argument("--output-dir", type=Path, default=CASE_DIR / "figures")
     parser.add_argument("--statistics-start", type=float)
     parser.add_argument("--statistics-end", type=float)
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     arguments = parser.parse_args()
     formats = ("png", "pdf") if arguments.format == "both" else (arguments.format,)
     report = analyse_grid_convergence(
@@ -716,9 +834,15 @@ def main() -> None:
         solution_root=arguments.solution_root,
     )
     print(
-        f"Analysed {len(report['grids'])} completed cylinder grids over t = {report['statistics_window'][0]:g} to {report['statistics_window'][1]:g} s."
+        json.dumps(
+            {
+                "reference_case": report["reference_case"],
+                "statistics_window": report["statistics_window"],
+                "output_dir": str(arguments.output_dir),
+            },
+            indent=2,
+        )
     )
-    print(f"Reference grid: {report['reference_case']}. Reports written to {arguments.output_dir}.")
 
 
 if __name__ == "__main__":

@@ -98,3 +98,14 @@ def test_translating_gaussian_excess_diffusion_is_reduced():
 def test_wide_stencil_requires_room_for_diffusion_halo():
     with pytest.raises(ValueError, match="four grid cells"):
         ViscousConfig.gbd(particle_spacing=0.04, padding=3, remeshing_kernel="LAGRANGE6")
+
+
+def test_gbd_factory_can_separate_particle_and_grid_spacing():
+    config = ViscousConfig.gbd(
+        particle_spacing=0.0375,
+        gbd_grid_spacing=0.05,
+        kinematic_viscosity=1.0e-2,
+    )
+    assert config.particle_spacing == pytest.approx(0.0375)
+    assert config.gbd_grid_spacing == pytest.approx(0.05)
+    assert ViscousConfig.gbd(particle_spacing=0.05).gbd_grid_spacing == pytest.approx(0.05)

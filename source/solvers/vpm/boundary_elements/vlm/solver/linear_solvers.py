@@ -24,9 +24,7 @@ from ....config.constants import (
     TI_FLOAT,
 )
 
-# =========================================================
 # Linear Solver Base Class
-# =========================================================
 
 
 class VLMLinearSolver(ABC):
@@ -71,9 +69,7 @@ class VLMLinearSolver(ABC):
         pass
 
 
-# =========================================================
 # Scipy Solver (CPU, Direct)
-# =========================================================
 
 
 class ScipySolver(VLMLinearSolver):
@@ -193,9 +189,7 @@ class ScipySolver(VLMLinearSolver):
         return 0  # Direct solver, no iterations
 
 
-# =========================================================
 # Taichi BiCGSTAB Solver (GPU, Iterative, Non-Symmetric)
-# =========================================================
 
 
 class TaichiBiCGSTABSolver(VLMLinearSolver):
@@ -363,9 +357,7 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         return iterations
 
 
-# =========================================================
 # Shared iterative linear algebra kernels
-# =========================================================
 
 
 @ti.kernel
@@ -567,9 +559,7 @@ def _bicgstab_update_p(p, r, v, beta: float, omega: float, n: int):
     _bicgstab_update_p_kernel(p, r, v, beta, omega, n)
 
 
-# =========================================================
 # Solver Factory
-# =========================================================
 
 _SOLVER_REGISTRY = {
     "SCIPY": ScipySolver,

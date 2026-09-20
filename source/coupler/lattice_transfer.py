@@ -347,7 +347,7 @@ def evaluate_gaussian_vorticity(
 
     This deterministic reference uses OpenONDA's Gaussian convention,
     ``pi**(-3/2) exp(-(r/sigma)**2) / sigma**3``. It is intended for focused
-    certification and diagnostics, not the cube's per-step production path.
+    numerical verification and diagnostics rather than per-step transfer.
     """
     targets = np.ascontiguousarray(np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3))
     position = np.ascontiguousarray(np.asarray(particle_position, dtype=np.float64).reshape(-1, 3))

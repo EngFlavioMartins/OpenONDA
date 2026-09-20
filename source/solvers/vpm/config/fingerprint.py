@@ -25,6 +25,9 @@ def _canonical_value(value: Any) -> Any:
         if hasattr(value, "method"):
             result["method"] = str(value.method)
         for name in (
+            "planar_span",
+            "spanwise_tolerance",
+            "plane_z",
             "theta",
             "tolerance",
             "multipole_order",

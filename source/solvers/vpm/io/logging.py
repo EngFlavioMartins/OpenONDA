@@ -809,61 +809,6 @@ class Logging:
             ("strain rate, max", f"{max_strain_rate:.3e}", "1/s"),
         )
 
-    def time_step_validation_summary(self: dict):
-        """Print the time-step sizing validation report."""
-        rows: list[log_style.Row] = [
-            ("particle system:", ""),
-            ("  particles", f"{int(self['n_particles_total']):,}"),
-            ("  particle spacing, min", f"{self['min_particle_spacing']:.3e}", "m"),
-            ("  particle spacing, mean", f"{self['mean_particle_spacing']:.3e}", "m"),
-            ("  particle spacing, max", f"{self['max_particle_spacing']:.3e}", "m"),
-            ("  spacing ratio, min over max", f"{self['particle_spacing_ratio']:.3f}"),
-            ("flow:", ""),
-            ("  velocity, max", f"{self['max_velocity_magnitude']:.3e}", "m/s"),
-            ("  velocity, mean", f"{self['mean_velocity_magnitude']:.3e}", "m/s"),
-            (
-                "  velocity gradient, max",
-                f"{self['max_velocity_gradient_magnitude']:.3e}",
-                "1/s",
-            ),
-            ("  reynolds number", f"{self['reynolds_number']:.3e}"),
-            ("viscosity:", ""),
-            ("  molecular kinematic", f"{self['max_kinematic_viscosity']:.3e}", "m^2/s"),
-            ("  eddy, max", f"{self['max_eddy_viscosity']:.3e}", "m^2/s"),
-            ("  effective, max", f"{self['max_effective_viscosity']:.3e}", "m^2/s"),
-            ("configuration:", ""),
-            ("  scheme", self["viscous_scheme"]),
-            ("  time step", f"{self['time_step_size']:.3e}", "s"),
-            ("time step limits, safety factor 0.8:", ""),
-        ]
-
-        for scheme_name in ("CS", "RWM", "NONE"):
-            scheme_data = self["schemes"][scheme_name]
-            status = scheme_data["status"]
-            rows.append(
-                (f"  {scheme_name}, limit", f"{scheme_data['time_step_size_limit']:.3e}", "s")
-            )
-            rows.append(
-                (f"  {scheme_name}, limiting factor", scheme_data.get("limiting_component", "n/a"))
-            )
-            rows.append((f"  {scheme_name}, status", status))
-
-        current = self["schemes"][self["viscous_scheme"]]
-        rows.append((f"component limits, scheme {self['viscous_scheme']}:", ""))
-        rows.append(("  advection", f"{current['advection_time_step_size_limit']:.3e}", "s"))
-        if "diffusion_time_step_size_limit" in current:
-            rows.append(("  diffusion", f"{current['diffusion_time_step_size_limit']:.3e}", "s"))
-        if "stretching_time_step_size_limit" in current:
-            rows.append(("  stretching", f"{current['stretching_time_step_size_limit']:.3e}", "s"))
-
-        if self["issues"]:
-            rows.append(("issues:", ""))
-            rows.extend((f"  ({index + 1})", issue) for index, issue in enumerate(self["issues"]))
-        else:
-            rows.append(("issues", "none detected"))
-
-        Logging.message(log_style.record("vpm", "time step sizing validation", *rows), flush=True)
-
     @staticmethod
     def setup_output_redirection(solver: Any) -> None:
         """Configure process-global VPM output redirection.

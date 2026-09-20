@@ -125,16 +125,17 @@ def _write_surface_samples(path: Path, start_step: int, end_step: int) -> None:
 
 
 def _write_owner_companions(solution: Path, steps: list[int]) -> None:
+    (solution / "vlm").mkdir(parents=True, exist_ok=True)
     for step in steps:
         time = step * 0.0025
-        _write_backup(solution / f"vpm_{step:06d}.h5", step, time)
-        write_vtu_time_frame(solution / f"vpm_{step:06d}.vtu", time)
+        _write_backup(solution / "vpm" / f"vpm_{step:06d}.h5", step, time)
+        write_vtu_time_frame(solution / "vpm" / f"vpm_{step:06d}.vtu", time)
         surface = pv.PolyData(np.zeros((4, 3)))
         surface.field_data["time"] = np.array([time])
         surface.field_data["TimeValue"] = np.array([time])
-        surface.save(solution / f"vlm_{step:06d}.vtp")
+        surface.save(solution / "vlm" / f"vlm_{step:06d}.vtp")
     rows = "".join(
-        f'<DataSet timestep="{step * 0.0025}" file="vlm_{step:06d}.vtp"/>' for step in steps
+        f'<DataSet timestep="{step * 0.0025}" file="vlm/vlm_{step:06d}.vtp"/>' for step in steps
     )
     (solution / "vlm.pvd").write_text(
         f"<VTKFile><Collection>{rows}</Collection></VTKFile>", encoding="utf-8"
@@ -288,8 +289,8 @@ def _write_segment_samples(
 def _write_resume_manifest(
     case: Path, *, continuation_status: str, continuation_end: int | None
 ) -> Path:
-    root_checkpoint = case / "solution/vpm_000310.h5"
-    continuation_checkpoint = case / "solution/continuation_from_000310/vpm_004000.h5"
+    root_checkpoint = case / "solution/vpm/vpm_000310.h5"
+    continuation_checkpoint = case / "solution/continuation_from_000310/vpm/vpm_004000.h5"
     continuation = {
         "id": "continuation_from_000310",
         "status": continuation_status,
@@ -305,7 +306,7 @@ def _write_resume_manifest(
         "boundary_checkpoints": [
             {
                 "role": "start",
-                "path": "solution/vpm_000310.h5",
+                "path": "solution/vpm/vpm_000310.h5",
                 "sha256": _sha256(root_checkpoint),
                 "step": 310,
                 "time": 310 * 0.0025,
@@ -316,7 +317,7 @@ def _write_resume_manifest(
         continuation["boundary_checkpoints"].append(
             {
                 "role": "end",
-                "path": "solution/continuation_from_000310/vpm_004000.h5",
+                "path": "solution/continuation_from_000310/vpm/vpm_004000.h5",
                 "sha256": _sha256(continuation_checkpoint),
                 "step": continuation_end,
                 "time": continuation_end * 0.0025,
@@ -347,7 +348,7 @@ def _write_resume_manifest(
                 "boundary_checkpoints": [
                     {
                         "role": "end",
-                        "path": "solution/vpm_000310.h5",
+                        "path": "solution/vpm/vpm_000310.h5",
                         "sha256": _sha256(root_checkpoint),
                         "step": 310,
                         "time": 310 * 0.0025,
@@ -370,9 +371,9 @@ def _write_resume_fixture(tmp_path: Path) -> tuple[Path, Path]:
     (case / "solution/continuation_from_000310").mkdir(parents=True)
     (case / "samples/delta_wing_continuation_from_000310").mkdir(parents=True)
 
-    _write_backup(case / "solution/vpm_000310.h5", 310, 310 * 0.0025)
+    _write_backup(case / "solution/vpm/vpm_000310.h5", 310, 310 * 0.0025)
     _write_backup(
-        case / "solution/continuation_from_000310/vpm_004000.h5",
+        case / "solution/continuation_from_000310/vpm/vpm_004000.h5",
         4000,
         4000 * 0.0025,
     )
@@ -453,8 +454,8 @@ def test_fresh_prefix_and_checkpoint_continuation_lineage_fixture(tmp_path):
         "fresh_prefix",
         "continuation_from_000310",
     ]
-    assert _clock(case / "solution/vpm_000310.h5") == (310, 0.775)
-    assert _clock(case / "solution/continuation_from_000310/vpm_004000.h5") == (
+    assert _clock(case / "solution/vpm/vpm_000310.h5") == (310, 0.775)
+    assert _clock(case / "solution/continuation_from_000310/vpm/vpm_004000.h5") == (
         4000,
         10.0,
     )
@@ -593,7 +594,7 @@ def test_public_finalizer_rejects_invalid_predecessor_boundary_atomically(tmp_pa
 
 def test_public_finalizer_rejects_native_identity_mismatch_atomically(tmp_path):
     case, manifest = _write_complete_resume_fixture(tmp_path)
-    with h5py.File(case / "solution/continuation_from_000310/vpm_004000.h5", "r+") as archive:
+    with h5py.File(case / "solution/continuation_from_000310/vpm/vpm_004000.h5", "r+") as archive:
         archive["solver/vlm"].attrs["physics_identity"] = "wrong-physics"
     before = manifest.read_bytes()
 
@@ -646,11 +647,11 @@ def test_public_finalizer_rejects_non_numeric_physical_column_atomically(tmp_pat
 def test_public_finalizer_ties_boundaries_to_selected_owner_namespace(tmp_path):
     case, manifest = _write_complete_resume_fixture(tmp_path)
     alternate = case / "solution/alternate"
-    _write_backup(alternate / "vpm_000310.h5", 310, 0.775)
+    _write_backup(alternate / "vpm/vpm_000310.h5", 310, 0.775)
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     alternate_boundary = {
-        "path": "solution/alternate/vpm_000310.h5",
-        "sha256": _sha256(alternate / "vpm_000310.h5"),
+        "path": "solution/alternate/vpm/vpm_000310.h5",
+        "sha256": _sha256(alternate / "vpm/vpm_000310.h5"),
         "step": 310,
         "time": 0.775,
     }

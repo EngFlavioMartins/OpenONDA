@@ -9,7 +9,8 @@ from source.coupler import CouplerSetup
 from source.coupler import interface_iteration as iteration
 
 
-def test_fixed_predictor_map_does_not_accumulate_time_or_particles(monkeypatch):
+@pytest.mark.parametrize("planar", [False, True])
+def test_fixed_predictor_map_does_not_accumulate_time_or_particles(monkeypatch, planar):
     cfg = CouplerSetup(
         transfer_method="buffered_m4_renewal",
         boundary_condition_mode="vorticity_mixed",
@@ -21,6 +22,12 @@ def test_fixed_predictor_map_does_not_accumulate_time_or_particles(monkeypatch):
     fvm = SimpleNamespace(step=10, time=0.5, parallel=SimpleNamespace(is_parallel=False))
     fvm.write_accepted_step_output = lambda: written.append((fvm.step, fvm.time))
     vpm = SimpleNamespace(strength=3.0, step=11, time=0.55)
+    if planar:
+        vpm.induction = SimpleNamespace(planar_span=1.0)
+        vpm.particles = SimpleNamespace(
+            n_particles_total=2,
+            position_cpu=lambda: np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+        )
     transfer = SimpleNamespace(step=4)
     c = SimpleNamespace(
         setup=cfg, fvm_solver=fvm, vpm_solver=vpm, vorticity_transfer=transfer, _is_master=True
@@ -69,6 +76,18 @@ def test_fixed_predictor_map_does_not_accumulate_time_or_particles(monkeypatch):
     assert (fvm.step, vpm.step, transfer.step, vpm.strength) == (15, 11, 5, 5.0)
     assert written == [(15, 0.55)]
     assert c._last_interface_iteration_diagnostics["converged"]
+    rows = c._last_interface_iteration_diagnostics["residuals"]
+    if planar:
+        assert all(row["particle_count"] == 2 for row in rows)
+        assert len({row["particle_support_digest"] for row in rows}) == 1
+        # For x[k+1] = .2 x[k], the two-sweep distance is six times
+        # the one-sweep distance. This distinguishes contraction from cycling.
+        for row in rows[1:]:
+            assert row["two_sweep_normal_residual_rms"] == pytest.approx(
+                6 * row["normal_residual_rms"]
+            )
+    else:
+        assert all("particle_support_digest" not in row for row in rows)
 
 
 def test_iteration_rejects_output_inside_provisional_interval():

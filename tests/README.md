@@ -1,8 +1,7 @@
 # Test suite index
 
-Development rules, evidence requirements and verification commands are in
-[AGENTS.md](../AGENTS.md#12-verification-commands-and-evidence).
-This index describes where the current tests live.
+This index describes the current test coverage, runtime requirements and
+commands for selecting checks.
 
 | Location | Coverage |
 | --- | --- |

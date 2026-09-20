@@ -43,29 +43,32 @@ def test_cube_flow_schedules_share_physical_time():
 
 def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_recommended")
-    assert setup.CELL_SIZE == 0.06
-    assert setup.FVM_MESH.max_cell_size == pytest.approx(0.06)
-    assert setup.FVM_MESH.cell_size_anchor == pytest.approx(0.06)
-    assert setup.FVM_MESH.background_cell_size == pytest.approx(0.06)
+    assert setup.CELL_SIZE == 0.045
+    assert setup.FVM_MESH.max_cell_size == pytest.approx(0.045)
+    assert setup.FVM_MESH.cell_size_anchor == pytest.approx(0.045)
+    assert setup.FVM_MESH.background_cell_size == pytest.approx(0.045)
     assert setup.FVM_MESH.requested_domain.bounds == setup.FVM_BOX
-    assert setup.FVM_MESH.domain.bounds == pytest.approx((-1.5, 2.04, -1.5, 1.5, -1.5, 1.5))
-    assert setup.FVM_MESH.boundary_cell_size == pytest.approx(0.06)
+    snapped_half_width = np.ceil(1.5 / 0.045) * 0.045
+    assert setup.FVM_MESH.domain.bounds == pytest.approx(
+        (-snapped_half_width, snapped_half_width) * 3
+    )
+    assert setup.FVM_MESH.boundary_cell_size == pytest.approx(0.045)
     assert setup.FVM_MESH.refinements == ()
-    assert setup.FVM_MESH.effective_cell_size(0.06) == pytest.approx(0.06)
-    assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.06)
-    assert setup.FVM_BOX == (-1.5, 2.0, -1.5, 1.5, -1.5, 1.5)
-    assert setup.TRANSFER_REGION_BOX == (-1.25, 1.75, -1.25, 1.25, -1.25, 1.25)
-    assert setup.FVM_MESH.patch_refinements[0].cell_size == pytest.approx(0.06)
-    assert setup.COUPLER_SETUP.interface_iterations == 12
+    assert setup.FVM_MESH.effective_cell_size(0.045) == pytest.approx(0.045)
+    assert setup.VPM_CASE.numerics.viscous.particle_spacing == pytest.approx(0.045)
+    assert setup.FVM_BOX == (-1.5, 1.5) * 3
+    assert setup.TRANSFER_REGION_BOX == (-1.45, 1.45) * 3
+    assert setup.FVM_MESH.patch_refinements[0].cell_size == pytest.approx(0.045)
+    assert setup.COUPLER_SETUP.interface_iterations == 3
     assert setup.COUPLER_SETUP.fvm_consistency_width == 0
-    assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.06)
-    assert setup.COUPLER_SETUP.vpm_only_width == pytest.approx(2.0 * 0.06)
+    assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.045)
+    assert setup.COUPLER_SETUP.vpm_only_width == pytest.approx(2.0 * 0.045)
     assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
-    assert pytest.approx(0.002) == setup.GBD_VORTICITY_FLOOR
+    assert pytest.approx(0.003) == setup.GBD_VORTICITY_FLOOR
     assert setup.COUPLER_SETUP.boundary_condition_mode == "vorticity_mixed"
     assert setup.VPM_PANEL_SOLVER.coupling_scope == "fvm_vpm"
     assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
-    assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.TreecodeInduction)
+    assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.FMMInduction)
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"
 
 

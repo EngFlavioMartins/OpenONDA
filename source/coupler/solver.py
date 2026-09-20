@@ -287,6 +287,7 @@ class FVMVPMCoupler:
         self.density: float | None = None
         self.fvm_box: np.ndarray | None = None
         self.vpm_particle_spacing = float("nan")
+        self.vpm_diffusion_grid_spacing = float("nan")
         self.vpm_core_radius_ratio = float("nan")
         self.n_fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
@@ -533,19 +534,37 @@ class FVMVPMCoupler:
 
         assert self.fvm_time_step_size is not None
         vpm_particle_spacing = self.fvm_time_step_size
+        vpm_diffusion_grid_spacing = vpm_particle_spacing
         vpm_core_radius_ratio = 1.0
         if self._is_master:
             assert self.vpm_solver is not None
             viscous = self.vpm_solver.setup.viscous
             assert viscous.particle_spacing is not None
             vpm_particle_spacing = float(viscous.particle_spacing)
+            if viscous.scheme == "GBD" and viscous.gbd_grid_spacing is not None:
+                vpm_diffusion_grid_spacing = float(viscous.gbd_grid_spacing)
+            elif viscous.scheme == "DVH" and viscous.dvh_grid_spacing is not None:
+                vpm_diffusion_grid_spacing = float(viscous.dvh_grid_spacing)
+            else:
+                vpm_diffusion_grid_spacing = vpm_particle_spacing
             vpm_core_radius_ratio = float(viscous.core_radius_ratio)
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
-            vpm_particle_spacing, vpm_core_radius_ratio = _mpi4py_comm.bcast(
-                (vpm_particle_spacing, vpm_core_radius_ratio) if self._is_master else None,
+            (
+                vpm_particle_spacing,
+                vpm_diffusion_grid_spacing,
+                vpm_core_radius_ratio,
+            ) = _mpi4py_comm.bcast(
+                (
+                    vpm_particle_spacing,
+                    vpm_diffusion_grid_spacing,
+                    vpm_core_radius_ratio,
+                )
+                if self._is_master
+                else None,
                 root=0,
             )
         self.vpm_particle_spacing = float(vpm_particle_spacing)
+        self.vpm_diffusion_grid_spacing = float(vpm_diffusion_grid_spacing)
         self.vpm_core_radius_ratio = float(vpm_core_radius_ratio)
 
         vpm_time_step_size = self.fvm_time_step_size
@@ -566,12 +585,20 @@ class FVMVPMCoupler:
 
             validate_output_schedules(self)
         if self._is_master:
+            backup_interval_steps = self.setup.backup_interval_steps
+            backup_interval_time = (
+                None
+                if backup_interval_steps == 0
+                else backup_interval_steps * self.vpm_time_step_size
+            )
             logger.info(
                 format_coupler_log(
                     "time stepping",
                     ("fvm time step", f"{self.fvm_time_step_size:.4e}", "s"),
                     ("vpm time step", f"{self.vpm_time_step_size:.4e}", "s"),
                     ("fvm substeps per coupling step", self.n_fvm_substeps),
+                    ("coupled backup interval", backup_interval_steps, "coupling steps"),
+                    ("coupled backup physical interval", backup_interval_time, "s"),
                 )
             )
 
@@ -610,7 +637,7 @@ class FVMVPMCoupler:
                 if anchor is not None:
                     assert self.vpm_solver is not None
                     self.vpm_solver.physics.configure_grid_lattice_anchor(
-                        anchor, self.vpm_particle_spacing
+                        anchor, self.vpm_diffusion_grid_spacing
                     )
                     anchor_text = ", ".join(
                         f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
@@ -619,7 +646,7 @@ class FVMVPMCoupler:
                         format_coupler_log(
                             "vpm diffusion lattice",
                             ("anchor", f"[{anchor_text}]", "m"),
-                            ("spacing", f"{self.vpm_particle_spacing:.6g}", "m"),
+                            ("spacing", f"{self.vpm_diffusion_grid_spacing:.6g}", "m"),
                         )
                     )
 
@@ -906,6 +933,10 @@ class FVMVPMCoupler:
                     ("end time", f"{self.end_time:.6g}", "s"),
                     ("boundary mode", self.setup.boundary_condition_mode),
                     ("coupling patch", patch),
+                    (
+                        "coupled backup directory",
+                        str(self.solution_dir / BACKUP_DIRECTORY),
+                    ),
                 )
             )
 

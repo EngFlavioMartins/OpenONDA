@@ -1,13 +1,9 @@
-"""Stable fixed-lattice FVM-to-VPM renewal used by the long cube-flow runs.
+"""Buffered fixed-lattice FVM-to-VPM renewal compatible with GBD diffusion.
 
-This module preserves the numerical mechanism that existed immediately before
-commit ``34828ccc`` while presenting it as a small, side-effect-free API.  It
-does not mutate a VPM solver and is therefore safe to certify before wiring it
-into the production coupler.
-
-The renewal is deliberately compatible with grid-based diffusion (GBD): every
-renewed particle is placed on the fixed lattice with the base core radius.
-There is no core-spreading/particle-age transport in this implementation.
+Operators return renewed particle arrays without mutating a solver. Interior
+particles receive FVM vorticity while the release buffer preserves the VPM
+wake. Renewed particles use the fixed lattice and base core radius. Planar
+renewal preserves circulation and in-plane first moments using scalar strengths.
 """
 
 from __future__ import annotations
@@ -34,7 +30,7 @@ def required_buffer_length(
     particle_spacing: float,
     safety_factor: float = 1.5,
 ) -> float:
-    """Return the historical advection buffer plus complete M4' support."""
+    """Return the advection buffer plus complete M4' support, in metres."""
     spacing = _positive_finite("particle_spacing", particle_spacing)
     safety = _positive_finite("safety_factor", safety_factor)
     speed = _nonnegative_finite("freestream_speed", abs(float(freestream_speed)))
@@ -108,17 +104,47 @@ def vortex_strength_from_velocity_trace(
     positions: np.ndarray,
     particle_spacing: float,
     velocity_at: ArrayFunction,
+    *,
+    planar_span: float | None = None,
 ) -> np.ndarray:
-    """Integrate ``n x u`` on the six faces of each particle control cell.
+    """Integrate the velocity circulation of a cubic or planar control cell.
 
-    ``velocity_at`` is the hook used by the stable coupler to sample the
-    synchronized FVM velocity (and its local reconstruction) at face centres.
+    Parameters
+    ----------
+    positions : array_like, shape (N, 3)
+        World-frame control-cell centres in m.
+    particle_spacing : float
+        Positive cell width h in m.
+    velocity_at : callable
+        Maps query points (N,3) in m to synchronized fluid velocities (N,3)
+        in m/s. The coupler supplies the FVM reconstruction.
+    planar_span : float or None, default=None
+        Positive represented span L in m. None integrates six cubic faces;
+        a span integrates four XY edges and multiplies circulation by L.
+
+    Returns
+    -------
+    numpy.ndarray, shape (N, 3)
+        Independent float64 strengths Gamma in m³/s. The planar result
+        has only z strength and represents omega_z*h²*L. Cubic strengths
+        represent omega*h³.
+
+    Raises
+    ------
+    ValueError
+        If positions/velocities are invalid, lengths differ, or spacing/span
+        is nonpositive or nonfinite. Inputs are not mutated.
+
+    Notes
+    -----
+    Face/edge midpoint quadrature uses outward normals and n cross u.
+    The caller must verify span invariance before selecting the planar form.
     """
     position = _vectors("positions", positions)
     spacing = _positive_finite("particle_spacing", particle_spacing)
     strength = np.zeros_like(position)
     offset = np.zeros(3, dtype=np.float64)
-    for axis in range(3):
+    for axis in range(3 if planar_span is None else 2):
         offset.fill(0.0)
         offset[axis] = 0.5 * spacing
         upper_velocity = _vectors("velocity_at", velocity_at(position + offset))
@@ -128,6 +154,9 @@ def vortex_strength_from_velocity_trace(
         normal = np.zeros(3, dtype=np.float64)
         normal[axis] = 1.0
         strength += spacing**2 * np.cross(normal, upper_velocity - lower_velocity)
+    if planar_span is not None:
+        strength[:, :2] = 0.0
+        strength *= _positive_finite("planar_span", planar_span) / spacing
     return strength
 
 
@@ -136,11 +165,18 @@ def inward_cosine_authority(
     transfer_box: np.ndarray | list[float] | tuple[float, ...],
     ramp_width: float,
     vpm_dead_zone: float = 0.0,
+    *,
+    planar: bool = False,
 ) -> np.ndarray:
-    """Return the historical FVM authority: one inside, zero at/outside faces.
+    """Return the dimensionless FVM authority at each world-frame point.
 
-    The authority is zero through ``vpm_dead_zone`` measured inward from the
-    transfer surface, rises with a cosine, and reaches one at ``ramp_width``.
+    Positions have shape (N,3), and transfer_box contains
+    (xmin,xmax,ymin,ymax,zmin,zmax), all in m. The authority is zero through
+    vpm_dead_zone measured inward from each face, rises with a cosine and
+    reaches one at ramp_width (both nonnegative, in m). A zero ramp gives a
+    sharp interior mask. With planar=True, z faces do not limit authority.
+    The returned independent float64 array has shape (N,) and values in [0,1].
+    Invalid bounds, vectors or widths raise ValueError; inputs are unchanged.
     """
     position = _vectors("positions", positions)
     bounds = _bounds(transfer_box)
@@ -155,8 +191,8 @@ def inward_cosine_authority(
             bounds[1] - position[:, 0],
             position[:, 1] - bounds[2],
             bounds[3] - position[:, 1],
-            position[:, 2] - bounds[4],
-            bounds[5] - position[:, 2],
+            np.full(len(position), np.inf) if planar else position[:, 2] - bounds[4],
+            np.full(len(position), np.inf) if planar else bounds[5] - position[:, 2],
         ]
     )
     authority = np.zeros(len(position), dtype=np.float64)
@@ -281,9 +317,131 @@ def recover_vortex_invariants(
     return corrected
 
 
+def recover_planar_vortex_invariants(
+    positions: np.ndarray,
+    vortex_strength: np.ndarray,
+    target: VortexInvariants,
+    *,
+    volumes: np.ndarray,
+) -> np.ndarray:
+    """Recover planar circulation/impulse with only z-strength unknowns.
+
+    A three-dimensional recovery can introduce transverse strength at roundoff
+    when subtracting a weighted non-binary z coordinate. The planar problem
+    instead has exactly three constraints: total z strength and its x/y first
+    moments. The correction metric is proportional to retained strength, so
+    a particle born at a continuous pruning threshold receives a correction
+    that tends to zero with its strength. Equal volume weights would give a
+    newborn particle a finite share of the global deficit. Reject non-planar
+    inputs rather than projecting them away.
+
+    Parameters
+    ----------
+    positions, vortex_strength : array_like, shape (N, 3)
+        Source coordinates in m and z-only strengths in m³/s. Sources must
+        lie within 1e-6 m of one common z plane.
+    target : VortexInvariants
+        Desired total strength (m³/s) and linear impulse per density (m⁴/s).
+        Angular impulse is not a constraint of this three-moment recovery.
+    volumes : array_like, shape (N,)
+        Positive represented volumes in m³. These physical volumes are
+        read only; strength magnitude weights modify only the correction metric.
+
+    Returns
+    -------
+    numpy.ndarray, shape (N, 3)
+        Independent float64 corrected strengths in m³/s, with exact zero
+        transverse components. Input arrays are unchanged.
+
+    Raises
+    ------
+    ValueError
+        If inputs are nonfinite, inconsistent or nonplanar, or nonzero target
+        invariants have no retained strength support.
+    numpy.linalg.LinAlgError
+        If the weighted three-constraint system has condition number above 1e12.
+    """
+    position = _vectors("positions", positions)
+    strength = _vectors("vortex_strength", vortex_strength)
+    volume = np.asarray(volumes, dtype=np.float64).reshape(-1)
+    count = len(position)
+    if len(strength) != count or volume.shape != (count,):
+        raise ValueError("positions, vortex_strength, and volumes must have one common length")
+    if np.any(~np.isfinite(volume)) or np.any(volume <= 0):
+        raise ValueError("volumes must be finite and positive")
+    target_strength = np.asarray(target.total_vortex_strength, dtype=np.float64).reshape(3)
+    target_impulse = np.asarray(target.linear_impulse, dtype=np.float64).reshape(3)
+    if np.any(strength[:, :2] != 0) or np.any(target_strength[:2] != 0) or target_impulse[2] != 0:
+        raise ValueError("planar invariant recovery requires only z vortex strength")
+    if not np.all(np.isfinite(np.concatenate((target_strength, target_impulse)))):
+        raise ValueError("target invariants must be finite")
+    if not count:
+        if np.any(target_strength != 0) or np.any(target_impulse != 0):
+            raise ValueError("cannot recover non-zero invariants without particles")
+        return strength.copy()
+    # The preserved wake can retain an f32 plane while the renewal lattice
+    # uses its f64 declaration; use the same geometric tolerance as the
+    # planar source contract, without changing any coordinates.
+    if np.max(np.abs(position[:, 2] - position[0, 2])) > 1e-6:
+        raise ValueError("planar invariant recovery requires one common source plane")
+
+    magnitude = np.abs(strength[:, 2])
+    maximum = float(magnitude.max())
+    if maximum == 0:
+        if np.any(target_strength != 0) or np.any(target_impulse != 0):
+            raise ValueError("cannot recover non-zero planar invariants without retained strength")
+        return strength.copy()
+    correction_weight = volume * (magnitude / maximum)
+    reference = np.average(position[:, :2], weights=correction_weight, axis=0)
+    relative = position[:, :2] - reference
+    scale = max(float(np.linalg.norm(relative, axis=1).max()), np.finfo(float).tiny)
+    constraints = np.vstack((np.ones(count), relative.T / scale))
+    desired = np.array(
+        [
+            target_strength[2],
+            (-2 * target_impulse[1] - reference[0] * target_strength[2]) / scale,
+            (2 * target_impulse[0] - reference[1] * target_strength[2]) / scale,
+        ]
+    )
+    corrected = strength.copy()
+    residual = desired - constraints @ corrected[:, 2]
+    roundoff = (
+        8
+        * np.finfo(float).eps
+        * max(
+            float(np.abs(strength[:, 2]).sum()),
+            float(np.linalg.norm(desired)),
+            np.finfo(float).tiny,
+        )
+    )
+    if np.linalg.norm(residual) <= roundoff:
+        return corrected
+    matrix = (constraints * correction_weight) @ constraints.T
+    condition = float(np.linalg.cond(matrix))
+    if not np.isfinite(condition) or condition > 1e12:
+        raise np.linalg.LinAlgError(
+            f"planar invariant recovery matrix is ill-conditioned ({condition:.3e})"
+        )
+    for _ in range(3):
+        multiplier = np.linalg.solve(matrix, residual)
+        corrected[:, 2] += correction_weight * (constraints.T @ multiplier)
+        residual = desired - constraints @ corrected[:, 2]
+        if np.linalg.norm(residual) <= roundoff:
+            break
+    return corrected
+
+
 @dataclass(frozen=True)
 class StableRenewalLattice:
-    """Fixed buffered lattice and its time-independent transfer masks."""
+    """Fixed Cartesian renewal geometry and dimensionless transfer weights.
+
+    Lengths, bounds and positions are in m. ``shape`` is (nx,ny,nz), with
+    positions flattened in C order. mesh_weight, fluid_weight, fvm_authority
+    and solid_interior each have one entry per node. ``planar_span=None``
+    selects cubic particles; a positive span L uses one z plane and volume h²L.
+    The frozen dataclass prevents attribute reassignment but does not make its
+    NumPy arrays immutable; callers must treat these shared arrays as read only.
+    """
 
     transfer_box: np.ndarray
     renewal_bounds: np.ndarray
@@ -297,18 +455,20 @@ class StableRenewalLattice:
     fluid_weight: np.ndarray
     solid_interior: np.ndarray
     fvm_authority: np.ndarray
+    planar_span: float | None = None
 
     @property
     def particle_volume(self) -> float:
-        """Return the fixed cubic volume represented by one lattice particle.
+        """Return the represented volume of each renewal particle in m³.
 
-        Returns
-        -------
-        float
-            ``particle_spacing**3`` in m³.  The lattice is uniform, so this
-            value applies to every active renewal particle.
+        The uniform volume is h³ for cubic particles and h²*planar_span for
+        infinite-span filaments, where h is particle_spacing in m.
         """
-        return self.particle_spacing**3
+        return (
+            self.particle_spacing**3
+            if self.planar_span is None
+            else self.particle_spacing**2 * self.planar_span
+        )
 
 
 def build_stable_renewal_lattice(
@@ -322,12 +482,49 @@ def build_stable_renewal_lattice(
     mesh_weight_at_node: ArrayFunction | None = None,
     fluid_weight_at_node: ArrayFunction | None = None,
     interior_at_node: ArrayFunction | None = None,
+    planar_span: float | None = None,
+    plane_z: float = 0.0,
 ) -> StableRenewalLattice:
-    """Build the reusable lattice for a whole-belt stable renewal.
+    """Build fixed renewal nodes and transfer weights around the FVM region.
 
-    The physical renewal belt is ``transfer_box + buffer_length``.  The
-    returned lattice has another two cells on every side so every donor in the
-    closed belt owns its complete 4x4x4 M4' stencil.
+    Parameters
+    ----------
+    transfer_box : array_like, shape (6,)
+        (xmin,xmax,ymin,ymax,zmin,zmax) in m, with increasing bounds.
+    particle_spacing : float
+        Positive uniform node spacing h in m.
+    buffer_length, authority_ramp_width, vpm_dead_zone : float
+        Nonnegative lengths in m. The dead zone must be narrower than a
+        nonzero authority ramp.
+    lattice_anchor : array_like, shape (3,), optional
+        Fixed lattice phase in m. Nodes align to this phase when provided.
+    mesh_weight_at_node, fluid_weight_at_node : callable, optional
+        Maps world points (N,3) in m to dimensionless scalar weights (N,).
+    interior_at_node : callable, optional
+        Maps world points (N,3) in m to the solid-interior mask (N,).
+    planar_span : float or None, default=None
+        Positive represented span L in m. None builds a cubic lattice;
+        otherwise nz=1 and no authority taper is applied at artificial z ends.
+    plane_z : float, default=0.0
+        Planar source height in m, within transfer_box's z bounds. Ignored
+        for the cubic lattice.
+
+    Returns
+    -------
+    StableRenewalLattice
+        Geometry and masks for repeated renewal. Newly allocated arrays
+        remain mutable despite the frozen container and must be treated as read only.
+
+    Raises
+    ------
+    ValueError
+        If lengths, bounds, lattice phase, planar height or mask shapes are invalid.
+
+    Notes
+    -----
+    The physical belt expands transfer_box by buffer_length. Two additional
+    nodes on every active axis retain each donor's complete M4-prime support:
+    4-by-4-by-4 in 3D, or 4-by-4 in the XY formulation.
     """
     bounds = _bounds(transfer_box)
     spacing = _positive_finite("particle_spacing", particle_spacing)
@@ -353,6 +550,12 @@ def build_stable_renewal_lattice(
         int(np.ceil((upper[1] - lower[1]) / spacing)) + 1,
         int(np.ceil((upper[2] - lower[2]) / spacing)) + 1,
     )
+    if planar_span is not None:
+        _positive_finite("planar_span", planar_span)
+        if not bounds[4] <= plane_z <= bounds[5]:
+            raise ValueError("Planar plane must lie inside transfer span")
+        lower[2] = plane_z
+        shape = (shape[0], shape[1], 1)
     positions = _regular_grid_positions(lower, spacing, shape)
     count = len(positions)
 
@@ -365,7 +568,10 @@ def build_stable_renewal_lattice(
     )
     if solid_interior.shape != (count,):
         raise ValueError(f"interior_at_node returned {solid_interior.shape}, expected ({count},)")
-    authority = inward_cosine_authority(positions, bounds, width, dead_zone) * mesh_weight
+    authority = (
+        inward_cosine_authority(positions, bounds, width, dead_zone, planar=planar_span is not None)
+        * mesh_weight
+    )
     return StableRenewalLattice(
         transfer_box=bounds,
         renewal_bounds=renewal_bounds,
@@ -379,6 +585,7 @@ def build_stable_renewal_lattice(
         fluid_weight=fluid_weight,
         solid_interior=solid_interior,
         fvm_authority=authority,
+        planar_span=planar_span,
     )
 
 
@@ -398,6 +605,18 @@ def scatter_m4_prime_to_lattice(
         position > lattice.renewal_bounds[1::2]
     ):
         raise ValueError("M4' donors must lie inside the physical renewal belt")
+
+    if lattice.planar_span is not None:
+        from source.solvers.vpm.physics.diffusion.planar import scatter_planar
+
+        return scatter_planar(
+            position,
+            strength,
+            lattice.origin,
+            lattice.particle_spacing,
+            lattice.shape[0],
+            lattice.shape[1],
+        ).reshape(-1, 3)
 
     relative = (position - lattice.origin) / lattice.particle_spacing
     nearest = np.rint(relative).astype(np.int64)
@@ -430,12 +649,21 @@ def gaussian_represented_vortex_strength(
     particle_spacing: float,
     *,
     core_radius: float,
+    dimensions: int = 3,
 ) -> np.ndarray:
-    r"""Sample the physical Gaussian field, multiplied by cell volume.
+    """Sample the represented Gaussian strength on a Cartesian lattice.
 
-    A particle represents ``Gamma exp(-r²/sigma²)/(pi**1.5 sigma³)``.
-    Normalizing the discrete filter changes that kernel; its samples need
-    not sum to one. Truncate only beyond six core radii.
+    lattice_vortex_strength has shape (prod(shape),3), in m³/s; shape is
+    (nx,ny,nz), particle_spacing is h in m, and core_radius is sigma in m.
+    The returned independent float64 array has the same shape and units.
+
+    For dimensions=3, a source represents Gamma*exp(-r²/sigma²)/(pi**1.5*sigma³).
+    For dimensions=2, convolve only XY with nz=1; Gamma includes the represented
+    span, and the result is the planar vorticity times volume h²L. Callers select
+    one of these two supported physical dimensions.
+    The sampled Gaussian weights are not renormalized: doing so would change
+    the represented kernel. Truncation occurs beyond six core radii.
+    Invalid spacing, radius or lattice length raises ValueError. Inputs are read only.
     """
     spacing = _positive_finite("particle_spacing", particle_spacing)
     radius = _positive_finite("core_radius", core_radius)
@@ -447,7 +675,7 @@ def gaussian_represented_vortex_strength(
     distance = np.arange(-half_width, half_width + 1, dtype=np.float64) * spacing
     weight = spacing / (np.sqrt(np.pi) * radius) * np.exp(-((distance / radius) ** 2))
     represented = strength.reshape(*shape, 3)
-    for axis in range(3):
+    for axis in range(dimensions):
         represented = convolve1d(represented, weight, axis=axis, mode="constant", cval=0.0)
     return represented.reshape(-1, 3)
 
@@ -475,8 +703,15 @@ def blend_represented_state(
     amplification_cap: float = DEFAULT_AMPLIFICATION_CAP,
     output_weight: np.ndarray | None = None,
     compute_final_representation: bool = True,
+    dimensions: int = 3,
 ) -> RepresentedStateBlend:
-    """Blend the Gaussian represented VPM state and apply one local correction."""
+    """Blend the Gaussian represented VPM state and apply one local correction.
+
+    The strength arrays contain volume-integrated Gamma in m³/s. Select
+    dimensions=2 only for an XY lattice with nz=1 and span-integrated
+    strength; dimensions=3 uses cubic Gaussian convolution. This option
+    changes the represented kernel, not the stored strength units.
+    """
     cap = float(amplification_cap)
     if not np.isfinite(cap) or cap < 1.0:
         raise ValueError("amplification_cap must be finite and at least one")
@@ -496,6 +731,7 @@ def blend_represented_state(
         shape,
         particle_spacing,
         core_radius=core_radius,
+        dimensions=dimensions,
     )
     physical_target = represented_vpm + authority[:, None] * (fvm_strength - represented_vpm)
 
@@ -505,6 +741,7 @@ def blend_represented_state(
         shape,
         particle_spacing,
         core_radius=core_radius,
+        dimensions=dimensions,
     )
     residual = physical_target - represented_blend
     denominator = float(np.linalg.norm(physical_target)) + 1.0e-30
@@ -527,6 +764,7 @@ def blend_represented_state(
             shape,
             particle_spacing,
             core_radius=core_radius,
+            dimensions=dimensions,
         )
         residual_after = (
             float(np.linalg.norm(physical_target - represented_corrected)) / denominator
@@ -545,7 +783,7 @@ def soft_prune_vortex_strength(
     vortex_strength: np.ndarray,
     threshold: float | np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Apply the historical continuous non-negative-garrote shrinkage."""
+    """Apply continuous non-negative-garrote shrinkage."""
     strength = _vectors("vortex_strength", vortex_strength)
     threshold_array = np.broadcast_to(np.asarray(threshold, dtype=np.float64), (len(strength),))
     if np.any(~np.isfinite(threshold_array)) or np.any(threshold_array < 0.0):
@@ -671,6 +909,11 @@ def renew_stable_overlap(
     if len(position) != len(strength):
         raise ValueError("positions and vortex_strength must have the same length")
     spacing = lattice.particle_spacing
+    invariant_recovery = (
+        recover_vortex_invariants
+        if lattice.planar_span is None
+        else recover_planar_vortex_invariants
+    )
     ratio = _positive_finite("core_radius_ratio", core_radius_ratio)
     threshold = _nonnegative_finite("prune_threshold", prune_threshold)
     release_threshold = (
@@ -734,6 +977,7 @@ def renew_stable_overlap(
         amplification_cap=amplification_cap,
         output_weight=lattice.fluid_weight,
         compute_final_representation=compute_diagnostics,
+        dimensions=2 if lattice.planar_span is not None else 3,
     )
     comparison_weight = lattice.fluid_weight * lattice.mesh_weight
     residual_before_prune: float | None = None
@@ -759,11 +1003,19 @@ def renew_stable_overlap(
     # VPM is the sole owner, so pruning must fall to its own resolved GBD floor.
     local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_authority
     shrunk, removed = soft_prune_vortex_strength(blend.vortex_strength, local_threshold)
-    redistributed = redistribute_pruned_vortex_strength_locally(
-        removed,
-        shrunk,
-        lattice.shape,
-    )
+    if lattice.planar_span is None:
+        redistributed = redistribute_pruned_vortex_strength_locally(
+            removed,
+            shrunk,
+            lattice.shape,
+        )
+    else:
+        # Binary neighbour eligibility transfers a finite amount to a node
+        # as soon as its garrote strength becomes positive. That jump can
+        # create a two-cycle in the coupled interface fixed point. Planar
+        # recovery instead redistributes the deficit continuously through
+        # the retained-strength metric, preserving circulation and impulse.
+        redistributed = shrunk.copy()
     redistributed[lattice.solid_interior] = 0.0
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
     pruned = (magnitude_before > 0.0) & ~keep
@@ -773,14 +1025,14 @@ def renew_stable_overlap(
     renewed_position = lattice.positions[keep]
     raw_renewed_strength = redistributed[keep]
     renewed_strength = raw_renewed_strength
-    renewed_volume = np.full(len(renewed_position), spacing**3, dtype=np.float64)
+    renewed_volume = np.full(len(renewed_position), lattice.particle_volume, dtype=np.float64)
     raw_invariants = vortex_invariants(renewed_position, raw_renewed_strength)
     conservation_raw_mismatch = _invariant_residual(pre_prune_invariants, raw_invariants)
     conservation_target_invariants = pre_prune_invariants
     conservation_raw_invariants = raw_invariants
     conservation_reference_strength_l1 = active_l1
     if len(renewed_position) > 1:
-        renewed_strength = recover_vortex_invariants(
+        renewed_strength = invariant_recovery(
             renewed_position,
             raw_renewed_strength,
             pre_prune_invariants,
@@ -806,6 +1058,7 @@ def renew_stable_overlap(
             lattice.shape,
             spacing,
             core_radius=base_core_radius,
+            dimensions=2 if lattice.planar_span is not None else 3,
         )
         denominator = (
             float(np.linalg.norm(blend.physical_target * comparison_weight[:, None])) + 1.0e-30
@@ -905,7 +1158,11 @@ def renew_stable_overlap(
         output_volume = np.concatenate(
             (
                 renewed_volume,
-                np.full(np.count_nonzero(preserved_for_append), spacing**3, dtype=np.float64),
+                np.full(
+                    np.count_nonzero(preserved_for_append),
+                    lattice.particle_volume,
+                    dtype=np.float64,
+                ),
             )
         )
         output_radius = np.concatenate(
@@ -995,7 +1252,7 @@ def renew_stable_overlap(
             combined_invariants,
             raw_population_invariants,
         )
-        output_strength = recover_vortex_invariants(
+        output_strength = invariant_recovery(
             output_position,
             raw_population_strength,
             combined_invariants,

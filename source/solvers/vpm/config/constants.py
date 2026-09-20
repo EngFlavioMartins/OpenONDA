@@ -10,9 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 
-# =========================================================
 # NUMERICAL CONSTANTS
-# =========================================================
 
 # Numerical epsilon for stability and convergence checks
 EPSILON = 1e-12
@@ -36,9 +34,7 @@ ONE_OVER_TWO_PI_POW_1p05 = 1.0 / ((2.0 * PI) ** 0.5)
 INV_PI32 = 1.0 / (PI**1.5)
 TWO_OVER_SQRT_PI = 2.0 / SQRT_PI
 
-# =========================================================
 # GLOBAL FLOATING POINT PRECISION
-# =========================================================
 # These constants enforce consistent float32 precision across the codebase.
 # Using f32 provides good accuracy for VPM while enabling faster SIMD and GPU operations.
 
@@ -47,16 +43,12 @@ import taichi as ti
 NP_FLOAT = np.float32  # NumPy float type (for all numpy arrays)
 TI_FLOAT = ti.f32  # Taichi float type (for all Taichi fields)
 
-# =========================================================
 # PERIODIC BOX PROPERTIES
-# =========================================================
 BOX_SIZE = 2 * PI
 BOX_MAX = 2 * PI
 BOX_MIN = 0.0
 
-# =========================================================
 # SYSTEM LIMITS AND CAPACITIES
-# =========================================================
 # Under-relaxation factor for iterative methods
 ALPHA = 0.4
 
@@ -72,9 +64,7 @@ MAX_ITERATIONS = 5
 # Default buffer size for dynamic arrays
 DEFAULT_BUFFER_SIZE = 1024
 
-# =========================================================
 # SOLVER DEFAULT PARAMETERS
-# =========================================================
 
 # DVH truncation-error parameter β ≈ 0.077 (Durante et al. 2024, Eq. 14-15).
 # Controls the Gaussian width of the heat-kernel scatter: 4nu·Δt_d = β·R_d².
@@ -104,9 +94,7 @@ GAUSSIAN_Q_SERIES_CROSSOVER = 1.0
 # both read this, so the two cannot drift apart.
 TREECODE_SUPPORTED_KERNELS = ("GAUSSIAN", "WINCKELMANS")
 
-# =========================================================
 # TURBULENCE MODEL CONSTANTS
-# =========================================================
 
 # Default VPM Smagorinsky constant C_s.  The vortex-ring stability calibration
 # qualified C_s=0.20 for the transposed VPM LES formulation; callers may still
@@ -114,9 +102,7 @@ TREECODE_SUPPORTED_KERNELS = ("GAUSSIAN", "WINCKELMANS")
 # model converts it to C_k via C_k = (C_s² √C_e)^(2/3).
 SMAGORINSKY_CONSTANT = 0.20
 
-# =========================================================
 # FILE I/O CONSTANTS
-# =========================================================
 
 # Default logging frequency (every N time steps)
 DEFAULT_LOGGING_TIME_INTERVAL = 1
@@ -125,9 +111,7 @@ DEFAULT_LOGGING_TIME_INTERVAL = 1
 # Maximum filename length
 MAX_FILENAME_LENGTH = 255
 
-# =========================================================
 # CONVERGENCE AND TOLERANCE SETTINGS
-# =========================================================
 
 # Default convergence tolerance for iterative methods
 DEFAULT_TOLERANCE = 1e-6
@@ -138,9 +122,7 @@ RELATIVE_TOLERANCE = 1e-3
 # Absolute tolerance for floating point comparisons
 ABSOLUTE_TOLERANCE = 1e-4
 
-# =========================================================
 # VLM (VORTEX LATTICE METHOD) CONSTANTS
-# =========================================================
 
 # Biot-Savart regularization parameter (prevents singularity at vortex core)
 VLM_EPSILON = 1e-8
@@ -161,16 +143,12 @@ VLM_CORE_OVERLAP = 2.0
 # Small velocity threshold for VLM computations
 VLM_SMALL_VELOCITY = 1e-10
 
-# =========================================================
 # DOMAIN AND BOUNDARY CONDITIONS
-# =========================================================
 
 # Large domain size for unbounded problems
 LARGE_DOMAIN_SIZE = 1e6
 
-# =========================================================
 # PERFORMANCE AND OPTIMIZATION
-# =========================================================
 
 # Number of threads for CPU parallelization
 DEFAULT_NUM_THREADS = 8
@@ -183,18 +161,14 @@ DEFAULT_CACHE_SIZE = 1000
 
 THREADS_PER_BLOCK = 256
 
-# =========================================================
 # PERIODIC KERNEL PARAMETERS
-# =========================================================
 # Default box width for periodic boundary conditions
 BOX_WIDTH = BOX_SIZE  # Must match DEFAULT_DOMAIN_BOUNDS
 
 # Number of periodic images considered in calculations
 MAX_IMAGES = 3
 
-# =========================================================
 # DEBUGGING AND DEVELOPMENT
-# =========================================================
 
 # Debug mode flag (can be overridden)
 DEBUG_MODE = True
@@ -205,9 +179,7 @@ VERBOSE_OUTPUT = False
 # Profile performance flag
 PROFILE_PERFORMANCE = False
 
-# =========================================================
 # VERSION INFORMATION
-# =========================================================
 
 # VPM module version
 VPM_VERSION = "0.0.2"
@@ -215,9 +187,7 @@ VPM_VERSION = "0.0.2"
 # Minimum required Taichi version
 MIN_TAICHI_VERSION = "1.6.0"
 
-# =========================================================
 # RUNTIME STATE (Set during initialization)
-# =========================================================
 
 # Taichi backend name (set by initialize_taichi_backend)
 TAICHI_BACKEND = None
@@ -229,9 +199,7 @@ TAICHI_DEVICE_NAME = None
 # None when the backend manages its own pool (CPU, Metal).
 TAICHI_POOL_BYTES = None
 
-# =========================================================
 # UTILITY FUNCTIONS FOR CONSTANTS
-# =========================================================
 
 
 def get_all_constants():
@@ -259,9 +227,7 @@ def print_constants():
     Logging.section("VPM constants", *sorted(get_all_constants().items()), flush=True)
 
 
-# =========================================================
 # MODULE INITIALIZATION
-# =========================================================
 
 # Print constants if module is run directly
 if __name__ == "__main__":

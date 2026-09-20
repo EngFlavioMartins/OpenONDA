@@ -1480,8 +1480,7 @@ def _correct_boundary_fluxes(
         elif strategy is BoundaryStrategy.CYCLIC:
             paired = boundary.get("_paired_cells")
             if paired is None:
-                # The mesh-level array is not part of this helper's historical
-                # signature; cyclic setup stores the same view on each patch.
+                # Cyclic setup stores the paired-cell view on each patch.
                 raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
             volumetric_face_flux[idx] += geo_diff_b * (
                 kinematic_pressure_correction[own] - kinematic_pressure_correction[paired]
@@ -1606,9 +1605,8 @@ def _apply_slip_bc(velocity, boundary, owners, geo_data, n_cells, n_interior):
     idx = n_cells + (start - n_interior)
     own = owners[start : start + nf]
     face_area_vector = geo_data["face_area_vector"][start : start + nf]
-    # This is deliberately the same array expression as the predictor's
-    # empty-boundary update.  In particular, a degenerate face retains the
-    # owner value as the old scalar helper did.
+    # Match the predictor's empty-boundary projection; a degenerate face
+    # retains its owner velocity.
     owner_velocity = velocity[own]
     magnitudes = np.linalg.norm(face_area_vector, axis=1)
     valid = magnitudes > 1e-10

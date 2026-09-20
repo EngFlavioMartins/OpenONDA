@@ -53,7 +53,7 @@ def _write_manifest_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     }
     for name, clocks in source_steps.items():
         for step, time in clocks:
-            _write_backup(case / "solution" / name / f"vpm_{step:06d}.h5", step, time)
+            _write_backup(case / "solution" / name / "vpm" / f"vpm_{step:06d}.h5", step, time)
         force_rows = [
             {"time": time, "step": step, "surface": "front_wing", "force_z": float(step)}
             for step, time in clocks
@@ -117,8 +117,8 @@ def _write_manifest_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
                 "boundary_checkpoints": [
                     {
                         "role": "end",
-                        "path": "solution/original/vpm_000002.h5",
-                        "sha256": _sha256(case / "solution/original/vpm_000002.h5"),
+                        "path": "solution/original/vpm/vpm_000002.h5",
+                        "sha256": _sha256(case / "solution/original/vpm/vpm_000002.h5"),
                         "step": 2,
                         "time": 0.2,
                     }
@@ -138,8 +138,8 @@ def _write_manifest_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
                 "boundary_checkpoints": [
                     {
                         "role": "end",
-                        "path": "solution/continuation/vpm_000004.h5",
-                        "sha256": _sha256(case / "solution/continuation/vpm_000004.h5"),
+                        "path": "solution/continuation/vpm/vpm_000004.h5",
+                        "sha256": _sha256(case / "solution/continuation/vpm/vpm_000004.h5"),
                         "step": 4,
                         "time": 0.4,
                     }
@@ -159,8 +159,8 @@ def _write_manifest_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
                 "boundary_checkpoints": [
                     {
                         "role": "start",
-                        "path": "solution/continuation/vpm_000004.h5",
-                        "sha256": _sha256(case / "solution/continuation/vpm_000004.h5"),
+                        "path": "solution/continuation/vpm/vpm_000004.h5",
+                        "sha256": _sha256(case / "solution/continuation/vpm/vpm_000004.h5"),
                         "step": 4,
                         "time": 0.4,
                     }
@@ -224,8 +224,8 @@ def _finalize_fixture(case: Path, manifest: Path) -> None:
     active["boundary_checkpoints"].append(
         {
             "role": "end",
-            "path": "solution/active/vpm_000006.h5",
-            "sha256": _sha256(case / "solution/active/vpm_000006.h5"),
+            "path": "solution/active/vpm/vpm_000006.h5",
+            "sha256": _sha256(case / "solution/active/vpm/vpm_000006.h5"),
             "step": 6,
             "time": 0.6,
         }

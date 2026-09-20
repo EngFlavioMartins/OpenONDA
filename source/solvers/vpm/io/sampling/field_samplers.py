@@ -80,9 +80,6 @@ def _validated_sample_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]
     return data
 
 
-# =========================================================
-
-
 def _sample_velocity_vorticity_gradient(solver, points, spacing):
     """Evaluate velocity and define vorticity by the compatible velocity curl."""
     if hasattr(solver, "compute_velocity_and_gradient_at_points"):

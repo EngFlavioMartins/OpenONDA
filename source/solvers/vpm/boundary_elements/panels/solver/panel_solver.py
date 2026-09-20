@@ -356,8 +356,7 @@ class PanelSolver:
         self.panel_force = None
         self.surface_velocity_absolute = None
         self.surface_velocity_relative = None
-        # Compatibility alias for callers that historically consumed the
-        # absolute/inertial surface velocity.
+        # Public surface_velocity denotes absolute velocity in the inertial frame.
         self.surface_velocity = None
 
         self.results = {
@@ -1292,11 +1291,8 @@ class PanelSolver:
 
         scalar_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
         numpy_dtype = np.float32 if self.float_dtype == "f32" else np.float64
-        # Keep a single field representation for the total incident flow.
-        # A Taichi vector argument and an otherwise identical vector field
-        # follow distinct compilation paths and used to produce f64 results
-        # that differed by about one f32 ulp.  The surface solution must be
-        # independent of whether uniform flow came from VPM or freestream.
+        # Use one field representation so uniform incident flow follows the same
+        # Taichi compilation path whether supplied by VPM or the freestream.
         total_incident = self._wake_velocity_numpy(wake_velocity, n) + np.asarray(
             freestream_velocity, dtype=np.float64
         )
@@ -1361,10 +1357,8 @@ class PanelSolver:
         if wake_velocity is None:
             wake_velocity = self._resolve_wake_field()
 
-        # Surface velocity comes from the shared source-doublet evaluation.  The
-        # doublet-only kernel used here previously omitted the source panels
-        # entirely, which under NEUMANN — where the solve fills source_strength
-        # and leaves doublet_strength at zero — dropped the whole body contribution.
+        # Include both source and doublet contributions. NEUMANN stores the body
+        # solution in source_strength with zero doublet_strength.
         self._update_surface_velocity(freestream_velocity, wake_velocity)
 
         if self.force_config.method == "BERNOULLI":
@@ -1478,7 +1472,7 @@ class PanelSolver:
                     body_monopole,
                     body_dipole,
                     len(self._far_field_bodies),
-                    self.far_field_acceptance,
+                    dtype(self.far_field_acceptance),
                     self.far_field_min_panels,
                 )
                 self._record_far_field_fraction(
@@ -1865,6 +1859,7 @@ class PanelSolver:
         n_panels = self.lattice.n_panels
         if n_panels == 0:
             return
+        dtype = np.float32 if self.float_dtype == "f32" else np.float64
 
         if self.boundary_condition_type == "NEUMANN":
             eligible = any(
@@ -1905,7 +1900,7 @@ class PanelSolver:
                     body_dipole,
                     len(self._far_field_bodies),
                     n_targets,
-                    self.far_field_acceptance,
+                    dtype(self.far_field_acceptance),
                     self.far_field_min_panels,
                 )
                 n_eligible = sum(

@@ -37,8 +37,9 @@ class CouplerSetup:
         requires ``0 < vpm_only_width < eta_blend_width``.
     transfer_vorticity_cutoff : float, default=0.05
         Interior soft-pruning threshold in 1/s. The stable-renewal path
-        converts this to particle strength with ``h**3`` and blends it to the
-        VPM GBD vorticity floor at the release surface.
+        converts this to particle strength with volume ``h**3`` in 3D or
+        ``h**2 * L`` for planar span ``L``, and blends it to the VPM GBD
+        vorticity floor at the release surface.
     transfer_amplification_cap : float, default=1.8
         Dimensionless upper gain, at least one, for represented-state
         corrections in stable renewal.
@@ -99,18 +100,18 @@ class CouplerSetup:
     ... )
     """
 
-    # ---- FLOW STATE ----
+    # FLOW STATE
     freestream_velocity: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     """Freestream velocity (u, v, w) in m/s; must be a finite three-component vector."""
 
-    # ---- VORTICITY TRANSFER (FVM -> VPM) ----
+    # VORTICITY TRANSFER (FVM -> VPM)
     transfer_method: Literal[
         "buffered_m4_renewal",
         "common_lattice",
         "projected_renewal",
     ] = "common_lattice"
     """FVM-to-VPM state transfer. ``buffered_m4_renewal`` is the whole-belt
-    M4' method proven by the historical 20-second GBD cube run.
+    M4' renewal method with a VPM-owned release buffer.
     ``projected_renewal`` and ``common_lattice`` remain experimental paths."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
@@ -139,7 +140,7 @@ class CouplerSetup:
     renewal_solver_tolerance: float = 1.0e-9
     """Relative LSMR tolerance for the sparse absolute-strength solve."""
 
-    # ---- VPM BOUNDARY-CONDITION TRACE ON THE FVM ----
+    # VPM BOUNDARY-CONDITION TRACE ON THE FVM
     coupling_patch: str = "numericalBoundary"
     """Name of the FVM patch on which the VPM boundary condition is imposed."""
     boundary_condition_mode: Literal[
@@ -164,7 +165,7 @@ class CouplerSetup:
     """Area-weighted RMS normal-velocity residual tolerance in m/s."""
     interface_gradient_tolerance: float = 1.0e-6
     """Area-weighted RMS tangential-gradient residual tolerance in 1/s."""
-    # ---- RUN-LEVEL OPERATIONAL ----
+    # RUN-LEVEL OPERATIONAL
     backup_interval_steps: int = 1
     """Coupling steps between automatic backups; non-negative (0 disables backups)."""
 

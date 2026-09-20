@@ -28,7 +28,7 @@ Use Python **3.11–3.13** on Linux or Apple Silicon macOS; Intel macOS requires
 Python **3.11**. A virtual environment is recommended.
 
 ```bash
-git clone https://github.com/EngFlavioMartins/OpenONDA.git
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 python install.py
 ```
@@ -44,7 +44,7 @@ and verifies the result outside the checkout. Use `python install.py --dev`
 to work on the source without reinstalling after edits. Ordinary
 `python -m pip install .` is also supported.
 
-One of the goals of this project is to make simulation setup easy to understand and quick to start using. To run a case:
+To run a case:
 
 ```bash
 cd tutorials/vpm/01_lamb_oseen_vortex
@@ -62,6 +62,11 @@ openonda tutorial list
 openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
+The clone command above downloads source without Git LFS datasets. To retrieve
+archived datasets when LFS access is available, install Git LFS and run
+`git lfs pull` in the checkout. Keep newly generated samples and complete restart
+checkpoints with your simulation archives; they are not uploaded automatically.
+
 Each case includes its own instructions and input assets. See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 
 ## Documentation
@@ -75,14 +80,19 @@ Each case includes its own instructions and input assets. See the [tutorial guid
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)
 - [Installation and optional tools](docs/installation.md)
-- [Contributor and AI-agent guidelines](AGENTS.md)
 - Command-line help: `openonda --help` and `openonda api fvm.FVMCase`
 
 ## Development and contributing
 
-Install with `python -m pip install -e ".[dev]"`, then follow the
-[repository guidelines](AGENTS.md) and [test index](tests/README.md).
+Install with `python -m pip install -e ".[dev]"`. See the
+[test index](tests/README.md) for verification commands.
 Report problems through [GitHub issues](https://github.com/EngFlavioMartins/OpenONDA/issues).
+
+## AI assistance
+
+Human maintainers direct the physics, numerical methods, and base architecture.
+AI tools assist with code implementation, docstrings, documentation, and code
+review. Human maintainers are responsible for final review and publication.
 
 OpenONDA is licensed under [GPL-3.0-or-later](license).
 For research use, see [citation.cff](citation.cff).

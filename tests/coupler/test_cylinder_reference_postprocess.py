@@ -94,6 +94,6 @@ def test_cylinder_postprocessor_compares_completed_grids_without_mutating_inputs
     assert report["profiles"]["centreline"]["available"]
     assert report["profiles"]["centreline"]["comparisons"]["coarse"]["relative_l2"] > 0.0
     assert (samples / "fine" / "forces_history.csv").read_text(encoding="utf-8") == original
-    assert (tmp_path / "solution/grid_convergence.json").is_file()
-    assert (tmp_path / "solution/grid_convergence.csv").is_file()
-    assert (tmp_path / "solution/grid_convergence.md").is_file()
+    assert (tmp_path / "solution/auxiliary/grid_convergence.json").is_file()
+    assert (tmp_path / "solution/auxiliary/grid_convergence.csv").is_file()
+    assert (tmp_path / "solution/auxiliary/grid_convergence.md").is_file()

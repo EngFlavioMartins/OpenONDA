@@ -1,0 +1,89 @@
+{
+  "tested_time": 1.48,
+  "shared_experiment_field_differences": {},
+  "native_mesh_identity": {
+    "source": "studies/panel_removal/runs/cylinder_no_panel_planar/solution/fvm/mesh.npz",
+    "replay": "studies/panel_removal/runs/cylinder_no_panel_converged/solution/fvm/mesh.npz",
+    "arrays_compared": 10,
+    "different_arrays": [],
+    "source_array_sha256": "0831a9273cd66463352e4d260da81d603bb87e1b60b6fdb17971741ee2d9ee0f",
+    "exact_arrays_equal": true
+  },
+  "old_interface": {
+    "sweeps": 6,
+    "converged": false,
+    "residuals": [
+      {
+        "sweep": 1,
+        "normal_residual_rms": 0.0010731124166049844,
+        "gradient_residual_rms": 0.0007194164629368967,
+        "converged": false
+      },
+      {
+        "sweep": 2,
+        "normal_residual_rms": 2.2019831920600835e-05,
+        "gradient_residual_rms": 2.078033985974298e-05,
+        "converged": false
+      },
+      {
+        "sweep": 3,
+        "normal_residual_rms": 1.2165352211626261e-05,
+        "gradient_residual_rms": 1.697188214423322e-05,
+        "converged": false
+      },
+      {
+        "sweep": 4,
+        "normal_residual_rms": 1.211604310208707e-05,
+        "gradient_residual_rms": 1.6966799269814467e-05,
+        "converged": false
+      },
+      {
+        "sweep": 5,
+        "normal_residual_rms": 1.2114885745110695e-05,
+        "gradient_residual_rms": 1.6966291318013054e-05,
+        "converged": false
+      },
+      {
+        "sweep": 6,
+        "normal_residual_rms": 1.211488583927863e-05,
+        "gradient_residual_rms": 1.6966284937168325e-05,
+        "converged": false
+      }
+    ]
+  },
+  "corrected_interface": {
+    "sweeps": 3,
+    "converged": true,
+    "residuals": [
+      {
+        "sweep": 1,
+        "normal_residual_rms": 0.0010668074379275878,
+        "gradient_residual_rms": 0.0007203821273468732,
+        "converged": false,
+        "particle_count": 914,
+        "particle_support_digest": "a0ca18f2451f3d72"
+      },
+      {
+        "sweep": 2,
+        "normal_residual_rms": 1.606611814974628e-05,
+        "gradient_residual_rms": 1.0775599939328686e-05,
+        "converged": false,
+        "particle_count": 915,
+        "particle_support_digest": "9215d7e6b12482f8",
+        "two_sweep_normal_residual_rms": 0.0010534048249248203,
+        "two_sweep_gradient_residual_rms": 0.0007105418908981327
+      },
+      {
+        "sweep": 3,
+        "normal_residual_rms": 2.8246249457328735e-07,
+        "gradient_residual_rms": 1.8770890489455748e-07,
+        "converged": true,
+        "particle_count": 915,
+        "particle_support_digest": "9215d7e6b12482f8",
+        "two_sweep_normal_residual_rms": 1.5786051361108188e-05,
+        "two_sweep_gradient_residual_rms": 1.0588624486725372e-05
+      }
+    ]
+  },
+  "interpretation": "The recorded same-time failure is removed in the exact-mesh replay with unchanged cutoff/time-step/tolerance settings. A separate bounded assay demonstrates the removed support-birth discontinuity; trajectories before1.48 differ slightly because the corrected operator is used from startup."
+}

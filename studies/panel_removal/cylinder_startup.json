@@ -1,0 +1,811 @@
+{
+  "status": "provisional_insufficient_cycles",
+  "mature_gate_passed": false,
+  "criteria": {
+    "requested_statistics_window_covered": true,
+    "complete_force_cadence": true,
+    "complete_profile_cadence": true,
+    "complete_vpm_profile_evidence": true,
+    "vpm_mean_profiles_within_3pct_Uinf": true,
+    "vpm_exterior_centreline_within_3pct_Uinf": true,
+    "verified_panel_free_planar_experiment": true,
+    "at_least_eight_shedding_cycles": false,
+    "mean_drag_within_2pct": true,
+    "rms_lift_within_5pct": false,
+    "cycle_frequency_qualified": false,
+    "strouhal_within_3pct": false,
+    "mean_profiles_within_3pct_Uinf": true,
+    "drag_half_window_drift_below_1pct": false,
+    "complete_interface_cadence": true,
+    "all_interfaces_converged": true,
+    "complete_full_donor_span_evidence": true,
+    "full_donor_spanwise_invariance_below_1e_3_scaled": true,
+    "complete_span_probe_evidence": true,
+    "span_velocity_variation_below_1e_3": false
+  },
+  "forces": {
+    "window": [
+      0.2,
+      2.0
+    ],
+    "common_samples": 46,
+    "trial": {
+      "samples": 46,
+      "mean_drag": 1.3881616088773272,
+      "rms_drag": 0.05666008515180196,
+      "strouhal_drag": null,
+      "mean_lift": 9.991494061983787e-05,
+      "rms_lift": 0.00041239271850372167,
+      "strouhal_lift": null,
+      "mean_side": -8.158944340952217e-08,
+      "rms_side": 5.1077220310853414e-08,
+      "strouhal_side": null,
+      "drag_half_means": [
+        1.3487585731988547,
+        1.4275646445557992
+      ],
+      "drag_drift_relative": 0.05677009856271616,
+      "drag_batch_means": [
+        1.342251028436447,
+        1.3552661179612624,
+        1.4286276347037967,
+        1.4265016544078022
+      ],
+      "drag_batch_standard_error": 0.022908064548856338,
+      "drag_batch_95_half_width": 0.07290368537820935,
+      "sampling_uncertainty_note": "Student-t interval from four contiguous batches; diagnostic only until each batch contains several shedding cycles and residual batch correlation is negligible.",
+      "cycle_frequency_lift": {
+        "qualified": false,
+        "frequency": null,
+        "complete_periods": 0,
+        "reasons": [
+          "no complete positive shedding period"
+        ],
+        "method": "time-mean-centered upward zero crossings",
+        "fft_peak_frequency": 0.5434782608695651,
+        "fft_bin_width": 0.5434782608695651,
+        "fft_relative_bin_width": 1.0
+      }
+    },
+    "reference": {
+      "samples": 46,
+      "mean_drag": 1.4083017179442714,
+      "rms_drag": 0.05748695234158118,
+      "strouhal_drag": null,
+      "mean_lift": -4.326922057925149e-05,
+      "rms_lift": 1.4931871399844594e-05,
+      "strouhal_lift": null,
+      "mean_side": -1.929864379914832e-06,
+      "rms_side": 5.465548043202624e-07,
+      "strouhal_side": null,
+      "drag_half_means": [
+        1.3712963837744312,
+        1.4453070521141111
+      ],
+      "drag_drift_relative": 0.05255313360528661,
+      "drag_batch_means": [
+        1.3693708275221945,
+        1.3732219400266679,
+        1.4463112095398873,
+        1.444302894688335
+      ],
+      "drag_batch_standard_error": 0.02138342665500286,
+      "drag_batch_95_half_width": 0.06805160714645236,
+      "sampling_uncertainty_note": "Student-t interval from four contiguous batches; diagnostic only until each batch contains several shedding cycles and residual batch correlation is negligible.",
+      "cycle_frequency_lift": {
+        "qualified": false,
+        "frequency": null,
+        "complete_periods": 0,
+        "reasons": [
+          "no complete positive shedding period"
+        ],
+        "method": "time-mean-centered upward zero crossings",
+        "fft_peak_frequency": 0.5434782608695651,
+        "fft_bin_width": 0.5434782608695651,
+        "fft_relative_bin_width": 1.0
+      }
+    },
+    "relative_changes": {
+      "mean_drag": 0.014300990199985798,
+      "rms_drag": 0.01438356281032377,
+      "rms_lift": 26.618287585038654,
+      "strouhal_lift": null,
+      "strouhal_lift_fft_bin": null
+    },
+    "frequency_comparison": {
+      "qualified": false,
+      "cycle_relative_change": null,
+      "combined_relative_half_width": null,
+      "conservative_relative_difference_bound": null,
+      "fft_note": "Matching raw FFT bins does not resolve a 3% frequency comparison with only 8\u201316 cycles."
+    },
+    "instantaneous_cd_difference_rms": 0.020921569428803806
+  },
+  "profiles": {
+    "centreline": {
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.72,
+      "trial_points": 101,
+      "compared_points": 86,
+      "points_excluded": 15,
+      "points_excluded_solid": 13,
+      "points_excluded_outside_reference_support": 2,
+      "coverage": [
+        {
+          "segment": "upstream",
+          "reference_fluid_extent_D": [
+            -2.0,
+            -0.6000000000000001
+          ],
+          "trial_fluid_extent_D": [
+            -2.0,
+            -0.56
+          ],
+          "compared_extent_D": [
+            -2.0,
+            -0.6399999999999999
+          ],
+          "covered_length_D": 1.36,
+          "trial_points": 19,
+          "compared_points": 18,
+          "points_excluded_outside_reference_support": 1,
+          "roundoff_snapped_points": 0
+        },
+        {
+          "segment": "downstream",
+          "reference_fluid_extent_D": [
+            0.6000000000000001,
+            12.0
+          ],
+          "trial_fluid_extent_D": [
+            0.56,
+            6.0
+          ],
+          "compared_extent_D": [
+            0.6400000000000001,
+            6.0
+          ],
+          "covered_length_D": 5.359999999999999,
+          "trial_points": 69,
+          "compared_points": 68,
+          "points_excluded_outside_reference_support": 1,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.003690376120116572,
+      "mean_velocity_rms_Uinf": 0.0031734915254256063
+    },
+    "transverse_x1": {
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.004864769767095163,
+      "mean_velocity_rms_Uinf": 0.004915479867489267
+    },
+    "transverse_x2": {
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.003873584739218321,
+      "mean_velocity_rms_Uinf": 0.003775786318205732
+    },
+    "transverse_x4": {
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.003340460390200568,
+      "mean_velocity_rms_Uinf": 0.003295169381969219
+    }
+  },
+  "vpm_profiles": {
+    "centreline": {
+      "available": true,
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 11.4,
+      "trial_points": 144,
+      "compared_points": 144,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "downstream",
+          "reference_fluid_extent_D": [
+            0.6000000000000001,
+            12.0
+          ],
+          "trial_fluid_extent_D": [
+            0.6,
+            12.0
+          ],
+          "compared_extent_D": [
+            0.6,
+            12.0
+          ],
+          "covered_length_D": 11.4,
+          "trial_points": 144,
+          "compared_points": 144,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 1
+        }
+      ],
+      "roundoff_snapped_points": 1,
+      "mean_velocity_relative_l2": 0.003485303878945388,
+      "mean_velocity_rms_Uinf": 0.0032808006834934966
+    },
+    "transverse_x1": {
+      "available": true,
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.005586053575208385,
+      "mean_velocity_rms_Uinf": 0.005644282299296448
+    },
+    "transverse_x2": {
+      "available": true,
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.004142592956085923,
+      "mean_velocity_rms_Uinf": 0.004038002743935012
+    },
+    "transverse_x4": {
+      "available": true,
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": null,
+      "covered_length_D": 6.0,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "transverse",
+          "reference_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "trial_fluid_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "compared_extent_D": [
+            -3.0,
+            3.0
+          ],
+          "covered_length_D": 6.0,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.0033900905169848695,
+      "mean_velocity_rms_Uinf": 0.003344126607965026
+    },
+    "centreline_exterior": {
+      "available": true,
+      "common_times": 10,
+      "time_window": [
+        0.2,
+        2.0
+      ],
+      "time_average": "trapezoidal over common physical times",
+      "minimum_coordinate_exclusive": 6.0,
+      "covered_length_D": 5.979021,
+      "trial_points": 76,
+      "compared_points": 76,
+      "points_excluded": 0,
+      "points_excluded_solid": 0,
+      "points_excluded_outside_reference_support": 0,
+      "coverage": [
+        {
+          "segment": "downstream",
+          "reference_fluid_extent_D": [
+            0.6000000000000001,
+            12.0
+          ],
+          "trial_fluid_extent_D": [
+            6.020979,
+            12.0
+          ],
+          "compared_extent_D": [
+            6.020979,
+            12.0
+          ],
+          "covered_length_D": 5.979021,
+          "trial_points": 76,
+          "compared_points": 76,
+          "points_excluded_outside_reference_support": 0,
+          "roundoff_snapped_points": 0
+        }
+      ],
+      "roundoff_snapped_points": 0,
+      "mean_velocity_relative_l2": 0.0023981260251186177,
+      "mean_velocity_rms_Uinf": 0.002389903828538411
+    }
+  },
+  "shedding_cycles": 0,
+  "max_span_velocity_variation": 0.0024013987297650807,
+  "full_donor_spanwise_consistency": {
+    "complete": true,
+    "cadence": 0.04,
+    "expected_samples": 46,
+    "present_expected_samples": 46,
+    "missing_samples": 0,
+    "first_missing_times": [],
+    "expected_window": [
+      0.2,
+      2.0
+    ],
+    "invalid_records": 0,
+    "first_invalid_times": [],
+    "max_normalized_span_velocity": 1.2053814315944217e-05,
+    "max_normalized_span_variation": 1.2048955043967686e-05,
+    "normalized_threshold": 0.001,
+    "within_tolerance": true
+  },
+  "reference_samples": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/fine",
+  "experiment_identity": {
+    "verified": true,
+    "path": "studies/panel_removal/runs/cylinder_no_panel_converged/experiment.json",
+    "reason": null,
+    "declared_geometry": "span-invariant cylinder Re150",
+    "declared_panel": false,
+    "declared_strength_measure": "omega_z*h^2*span",
+    "coupling_dt": 0.04,
+    "transfer_downstream": 6.0
+  },
+  "evidence_coverage": {
+    "forces": {
+      "complete": true,
+      "cadence": 0.04,
+      "expected_samples": 46,
+      "present_expected_samples": 46,
+      "missing_samples": 0,
+      "first_missing_times": [],
+      "expected_window": [
+        0.2,
+        2.0
+      ]
+    },
+    "profiles": {
+      "centreline": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ]
+      },
+      "transverse_x1": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ]
+      },
+      "transverse_x2": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ]
+      },
+      "transverse_x4": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ]
+      }
+    },
+    "vpm_profiles": {
+      "centreline": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ],
+        "expected_points_per_frame": 144,
+        "expected_start": [
+          0.6000000238418579,
+          0.0,
+          0.0
+        ],
+        "expected_end": [
+          12.0,
+          0.0,
+          0.0
+        ],
+        "invalid_spatial_frames": 0,
+        "first_invalid_frame_times": [],
+        "spatial_complete": true,
+        "reference_support_complete": true
+      },
+      "transverse_x1": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ],
+        "expected_points_per_frame": 76,
+        "expected_start": [
+          1.0,
+          -3.0,
+          0.0
+        ],
+        "expected_end": [
+          1.0,
+          3.0,
+          0.0
+        ],
+        "invalid_spatial_frames": 0,
+        "first_invalid_frame_times": [],
+        "spatial_complete": true,
+        "reference_support_complete": true
+      },
+      "transverse_x2": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ],
+        "expected_points_per_frame": 76,
+        "expected_start": [
+          2.0,
+          -3.0,
+          0.0
+        ],
+        "expected_end": [
+          2.0,
+          3.0,
+          0.0
+        ],
+        "invalid_spatial_frames": 0,
+        "first_invalid_frame_times": [],
+        "spatial_complete": true,
+        "reference_support_complete": true
+      },
+      "transverse_x4": {
+        "complete": true,
+        "cadence": 0.2,
+        "expected_samples": 10,
+        "present_expected_samples": 10,
+        "missing_samples": 0,
+        "first_missing_times": [],
+        "expected_window": [
+          0.2,
+          2.0
+        ],
+        "expected_points_per_frame": 76,
+        "expected_start": [
+          4.0,
+          -3.0,
+          0.0
+        ],
+        "expected_end": [
+          4.0,
+          3.0,
+          0.0
+        ],
+        "invalid_spatial_frames": 0,
+        "first_invalid_frame_times": [],
+        "spatial_complete": true,
+        "reference_support_complete": true
+      },
+      "centreline_exterior": {
+        "complete": true,
+        "spatial_complete": true,
+        "expected_points_per_frame": 76,
+        "reference_support_complete": true,
+        "transfer_downstream": 6.0
+      }
+    },
+    "interfaces": {
+      "complete": true,
+      "cadence": 0.04,
+      "expected_samples": 46,
+      "present_expected_samples": 46,
+      "missing_samples": 0,
+      "first_missing_times": [],
+      "expected_window": [
+        0.2,
+        2.0
+      ]
+    },
+    "full_donor_span": {
+      "complete": true,
+      "cadence": 0.04,
+      "expected_samples": 46,
+      "present_expected_samples": 46,
+      "missing_samples": 0,
+      "first_missing_times": [],
+      "expected_window": [
+        0.2,
+        2.0
+      ],
+      "invalid_records": 0,
+      "first_invalid_times": [],
+      "max_normalized_span_velocity": 1.2053814315944217e-05,
+      "max_normalized_span_variation": 1.2048955043967686e-05,
+      "normalized_threshold": 0.001,
+      "within_tolerance": true
+    },
+    "span": {
+      "complete": true,
+      "cadence": 0.2,
+      "expected_samples": 10,
+      "present_expected_samples": 10,
+      "missing_samples": 0,
+      "first_missing_times": [],
+      "expected_window": [
+        0.2,
+        2.0
+      ],
+      "invalid_spatial_frames": 0,
+      "first_invalid_frame_times": []
+    }
+  },
+  "phase_adjustment": false,
+  "limitation": "Engineering admission only; independent grid, VPM spacing, coupling-step and box-size sensitivity remain required. Short startup cannot establish shedding accuracy.",
+  "plot": {
+    "path": "/Users/flaviomartins/OpenONDA/studies/panel_removal/cylinder_startup.png",
+    "startup": true,
+    "component": "FVM",
+    "visible_force_window": [
+      0.04,
+      2.0
+    ],
+    "snapshot_time": 2.0,
+    "requested_snapshot_time": 2.0,
+    "available_profiles": {
+      "centreline": true,
+      "transverse_x1": true,
+      "transverse_x2": true,
+      "transverse_x4": true
+    },
+    "time_interpolation": false,
+    "phase_adjustment": false,
+    "qualification_changed": false
+  },
+  "vpm_plot": {
+    "path": "/Users/flaviomartins/OpenONDA/studies/panel_removal/cylinder_startup_vpm.png",
+    "startup": true,
+    "component": "VPM",
+    "visible_force_window": [
+      0.04,
+      2.0
+    ],
+    "snapshot_time": 2.0,
+    "requested_snapshot_time": 2.0,
+    "available_profiles": {
+      "centreline": true,
+      "transverse_x1": true,
+      "transverse_x2": true,
+      "transverse_x4": true
+    },
+    "time_interpolation": false,
+    "phase_adjustment": false,
+    "qualification_changed": false
+  }
+}

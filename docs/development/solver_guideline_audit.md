@@ -1,8 +1,8 @@
 # Solver audit verification
 
-Inspected 15 September 2026. [AGENTS.md](../../AGENTS.md) is the single
-contributor and AI-agent instruction document. This report records verification,
-not additional development rules.
+This report records verification performed on 15 September 2026. Its test
+counts and case limits describe that inspection, rather than a qualification
+of subsequent source changes.
 
 ## Numerical and lifecycle contracts
 
@@ -58,13 +58,13 @@ Copied tutorial checks exercise installed imports outside the checkout.
   the installed OpenONDA environment uses these repairs without reinstallation.
 - Repository Pyrefly checking reports 165 errors on unchanged source lines;
   the complete type-check scope is not green.
-- The collection-wide tutorial-style check still fails on validation/control
+- At that inspection, the collection-wide tutorial-style check failed on validation/control
   flow in the separately maintained rotor setup. That setup was not rewritten
   as part of these repairs.
 
 ## Case readiness limits
 
-Delta-wing's moving-surface observer now avoids heap arrays inside its native
+Delta-wing's moving-surface observer avoids heap arrays inside its native
 parallel collision loop. The coordinated investigation found matching event
 selections and differences no greater than 2.22e-16 on captured inputs. Its checks
 cover 550 frozen-input calls, 20 observer/collision tests, a 40-step CPU/f32/FMM
