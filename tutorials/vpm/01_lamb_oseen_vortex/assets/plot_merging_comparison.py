@@ -22,40 +22,21 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-if __package__:
-    from .postprocess import (
-        MERGING_NORMALIZED_END_TIME,
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        extract_merging_timeseries,
-        figure_size,
-        load_merging_references,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
-else:
-    from .postprocess import (
-        MERGING_NORMALIZED_END_TIME,
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        extract_merging_timeseries,
-        figure_size,
-        load_merging_references,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
+from .postprocess import (
+    MERGING_NORMALIZED_END_TIME,
+    SCHEME_DRAW_ORDER,
+    build_arg_parser,
+    build_style_map,
+    centered_subplots_adjust,
+    extract_merging_timeseries,
+    figure_size,
+    load_merging_references,
+    load_theme,
+    resolve_runtime_physics,
+    save_fig,
+    scheme_zorder,
+    validate_thesis_figure,
+)
 
 
 def plot_merging_case(args) -> int:

@@ -35,7 +35,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, cg
 
-from ..numerics.fourier_integrals import gaussian_fourier_integrals
+from ..numerics.fourier_integrals import _m4_prime, gaussian_fourier_integrals
 from .filament_refinement import gaussian_particle_moments, particle_moments
 
 
@@ -95,16 +95,6 @@ class DivergenceRelaxationResult:
     total_helicity_spectral_error: float
     grid_divergence_before: float
     grid_divergence_after: float
-
-
-def _m4_prime(distance: np.ndarray) -> np.ndarray:
-    distance = np.abs(np.asarray(distance))
-    weight = np.zeros_like(distance, dtype=np.result_type(distance, np.float64))
-    inner = distance <= 1.0
-    outer = (distance > 1.0) & (distance <= 2.0)
-    weight[inner] = 1.0 - 2.5 * distance[inner] ** 2 + 1.5 * distance[inner] ** 3
-    weight[outer] = 0.5 * (2.0 - distance[outer]) ** 2 * (1.0 - distance[outer])
-    return weight
 
 
 def _wave_numbers(

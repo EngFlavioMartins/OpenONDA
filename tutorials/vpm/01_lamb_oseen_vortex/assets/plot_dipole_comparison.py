@@ -32,42 +32,23 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-if __package__:
-    from .postprocess import (
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        connected_core_aspect,
-        diffusion_only_dipole_features,
-        load_dipole_feature_frame,
-        load_theme,
-        read_surface_field,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        theoretical_dipole_trajectory,
-        validate_thesis_figure,
-    )
-else:
-    from .postprocess import (
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        connected_core_aspect,
-        diffusion_only_dipole_features,
-        load_dipole_feature_frame,
-        load_theme,
-        read_surface_field,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        theoretical_dipole_trajectory,
-        validate_thesis_figure,
-    )
+from .postprocess import (
+    SCHEME_DRAW_ORDER,
+    SCHEMES,
+    build_arg_parser,
+    build_style_map,
+    centered_subplots_adjust,
+    connected_core_aspect,
+    diffusion_only_dipole_features,
+    load_dipole_feature_frame,
+    load_theme,
+    read_surface_field,
+    resolve_runtime_physics,
+    save_fig,
+    scheme_zorder,
+    theoretical_dipole_trajectory,
+    validate_thesis_figure,
+)
 
 # Plot
 

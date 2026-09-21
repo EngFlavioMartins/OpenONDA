@@ -1,6 +1,5 @@
 """Export the sample-based numerical evidence used in the thesis subsection."""
 
-from pathlib import Path
 import json
 import numpy as np
 import pandas as pd

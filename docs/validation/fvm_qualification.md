@@ -1,40 +1,40 @@
-# FVM qualification evidence map
+# FVM tests and limitations
 
-This checkout does not certify an FVM release level. `source/solvers/fvm/capabilities.json`
-therefore uses `evidence-gated` status: a capability is advertised as supported only
-when a reproducible command, test path, backend, rank count, mesh/time resolution, and
-measured tolerance are recorded here or in a linked machine-readable report.
+Run the FVM, coupling, and public-API checks from the repository root:
 
-## Maintained contract gate
-
-Run from the repository root:
-
-```sh
-python -m pytest -q tests/fvm tests/coupler tests/test_public_api.py
+```bash
+python -m pytest tests/fvm tests/coupler tests/test_public_api.py
 ```
 
-This gate checks configuration admission, public exports, serial lifecycle behavior,
-restart staging and history reconciliation, VTK/PVD ownership, coupling smoke behavior,
-and the local non-orthogonal-correction contract. It is not evidence of spatial or
-temporal order, nonlinear convergence, MPI invariance, or performance qualification.
+Some tests need MPI/PETSc or optional meshing tools. See the
+[test guide](../../tests/README.md) for test selection and prerequisites.
 
-Focused reproductions are available in:
+## Focused checks
 
-- `tests/fvm/test_restart_and_diagnostics.py`
-- `tests/fvm/test_time_step_control.py`
-- `tests/fvm/test_logging.py`
-- `tests/fvm/test_nonorthogonal_pressure_correction.py`
+| Question | Test file |
+| --- | --- |
+| Does a saved state restart with the same fields and time history? | `tests/fvm/test_restart_and_diagnostics.py` |
+| Does time-step adjustment respect CFL and output times? | `tests/fvm/test_time_step_control.py` |
+| Are gradients accurate on manufactured fields? | `tests/fvm/test_manufactured_gradient_qualification.py` |
+| Is curl evaluated with the correct component convention? | `tests/fvm/test_vorticity_analytic.py` |
+| Are non-orthogonal pressure corrections applied consistently? | `tests/fvm/test_nonorthogonal_pressure_correction.py` |
+| Does FVM-to-VPM interpolation preserve affine fields and converge under refinement? | `tests/coupler/test_interpolation_qualification.py` |
+| Do renewal and pruning preserve their circulation and impulse budgets? | `tests/coupler/test_stable_renewal.py` |
+| Do interface sweeps restore the predictor without advancing time twice? | `tests/coupler/test_interface_iteration.py` |
 
-## Numerical gates still required
+These checks exercise components and small cases. A new flow still needs its
+own grid/time-step study, convergence of iterative solves, and an appropriate
+analytical, experimental, or independently computed reference. Passing the
+test suite alone does not establish those results.
 
-The following gates are specified in `fvm_audit.md` §15 but do not have measured
-reports in this checkout: flux identities, manufactured spatial convergence,
-controlled temporal order, Taylor–Green decay, steady SIMPLE convergence, nonlinear
-outer convergence, restart trajectory equivalence across BDF1/BDF2, and serial versus
-partitioned owned-row invariance. Each future report must state the exact source
-revision, Python/dependency versions, precision, backend, rank count, mesh family and
-resolution, time-step sequence, tolerance, measured error/order, and pass/fail result.
+## Current limits
 
-Until those reports exist, broad statements such as “three-level”, “qualified”,
-“one/two/four-rank”, or numerical performance limits remain experimental and must not
-be promoted by editing the capability label alone.
+The default FVM path is CPU, float64, with NumPy/SciPy. Alternative operator
+backends are not necessarily faster; benchmark the complete case. MPI/PETSc
+supports replicated and partitioned meshes, but periodic patches currently
+need the replicated layout. All ranks must enter collective solves, field
+queries, output, and restart calls in the same order.
+
+Dynamic/ALE meshes, moving immersed bodies, compressible flow, and multiphase
+flow are not implemented. GPU acceleration of VPM does not imply GPU FVM.
+See the [solver guide](../fvm.md) for the configuration and field conventions.

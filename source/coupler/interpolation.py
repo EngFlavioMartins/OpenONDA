@@ -8,6 +8,28 @@ import hashlib
 import numpy as np
 from scipy.spatial import cKDTree
 
+from source._numba import cacheable_njit as njit
+
+
+@njit(cache=True, fastmath=False)
+def _sample_velocity(position, cell_centre, velocity, gradient, indices, weights, sampled):
+    """Accumulate donor Taylor values without materializing gathered gradients."""
+    for row in range(len(position)):
+        for component in range(3):
+            value = 0.0
+            for neighbour in range(indices.shape[1]):
+                weight = weights[row, neighbour]
+                if weight == 0.0:
+                    continue
+                donor = indices[row, neighbour]
+                increment = 0.0
+                for axis in range(3):
+                    increment += (position[row, axis] - cell_centre[donor, axis]) * gradient[
+                        donor, axis, component
+                    ]
+                value += weight * (velocity[donor, component] + increment)
+            sampled[row, component] = value
+
 
 class FVMVelocityInterpolator:
     """Second-order local Taylor interpolation on arbitrary cell centres.
@@ -196,18 +218,21 @@ class FVMVelocityInterpolator:
         )
         velocity = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         gradient = np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3)
+        if len(velocity) != len(self.cell_centre) or len(gradient) != len(self.cell_centre):
+            raise ValueError("Velocity and gradient must have one row per FVM donor cell")
         indices, weights = self._stencil(evaluation_position)
         sampled = np.empty((len(evaluation_position), 3), dtype=np.float64)
 
         for start in range(0, len(evaluation_position), chunk_size):
             stop = min(start + chunk_size, len(evaluation_position))
-            local_indices = indices[start:stop]
-            delta = evaluation_position[start:stop, None, :] - self.cell_centre[local_indices]
-            reconstructed = velocity[local_indices] + np.einsum(
-                "mki,mkij->mkj", delta, gradient[local_indices], optimize=True
-            )
-            sampled[start:stop] = np.einsum(
-                "mk,mkj->mj", weights[start:stop], reconstructed, optimize=True
+            _sample_velocity(
+                evaluation_position[start:stop],
+                self.cell_centre,
+                velocity,
+                gradient,
+                indices[start:stop],
+                weights[start:stop],
+                sampled[start:stop],
             )
         return sampled
 

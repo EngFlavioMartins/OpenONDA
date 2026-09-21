@@ -34,27 +34,72 @@ cd OpenONDA
 python install.py
 ```
 
-The installed package works from any directory:
-
-```python
-from openonda import fvm, vpm, coupler
-```
-
 The installer installs dependencies into the Python environment you are using
 and verifies the result outside the checkout. Use `python install.py --dev`
 to work on the source without reinstalling after edits. Ordinary
 `python -m pip install .` is also supported.
 
-To run a case:
-
-```bash
-cd tutorials/vpm/01_lamb_oseen_vortex
-python setup.py vortex CS
-python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
-```
-
 See [installation details](docs/installation.md) for environment setup,
 optional mesh import and MPI/PETSc support.
+
+## Two small examples
+
+Run either snippet as a Python script from any writable directory. These are
+coarse, short examples to illustrate the API; all inputs use SI units.
+
+### FVM: uniform flow in a periodic box
+
+```python
+from openonda import fvm
+
+case = fvm.FVMCase(
+    name="uniform-flow",
+    directory="fvm-example",
+    mesh=fvm.mesher.periodic_square_mesh(16),
+    numerics=fvm.Numerics(
+        transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+    ),
+    boundaries=(
+        fvm.BoundaryConfig.cyclic("xmin", "xmax"),
+        fvm.BoundaryConfig.cyclic("xmax", "xmin"),
+        fvm.BoundaryConfig.cyclic("ymin", "ymax"),
+        fvm.BoundaryConfig.cyclic("ymax", "ymin"),
+        fvm.BoundaryConfig.empty("zmin"),
+        fvm.BoundaryConfig.empty("zmax"),
+    ),
+    initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+    run=fvm.RunPlan(end_time=0.05, time_step_size=0.01),
+)
+with fvm.FVMSolver(case) as solver:
+    solver.run()
+```
+
+### VPM: a viscous vortex ring
+
+```python
+from openonda import vpm
+
+ring = vpm.VortexRing(
+    radius=1.0, vortex_core_radius=0.2, circulation=1.0,
+    kinematic_viscosity=0.001,
+    distribution=vpm.ToroidalDistribution(
+        ring_radius=1.0, tube_radius=0.4, spacing=0.2, core_radius_ratio=1.5,
+    ),
+)
+case = vpm.VPMCase(
+    directory="vpm-example",
+    numerics=vpm.Numerics(
+        time_step_size=0.01, compute_device="CPU", max_n_particles=5000,
+    ),
+    initial_conditions=(ring,),
+    run=vpm.RunPlan(steps=5),
+)
+vpm.VPMSolver(case).run()
+```
+
+Open `fvm-example/solution/fvm.pvd` or `vpm-example/solution/vpm.pvd`
+in ParaView. See the solver guides below for boundary conditions, sampling,
+GPU induction, and restart.
 
 ## Tutorials
 
@@ -76,8 +121,7 @@ Each case includes its own instructions and input assets. See the [tutorial guid
 - [VPM solver guide](docs/vpm.md)
 - [FVM--VPM coupling guide](docs/coupling.md)
 - [Solution-output layout](docs/solution_layout.md)
-- [Visualization style and colour maps](docs/visualization.md)
-- [FVM package/API notes](source/solvers/fvm/README.md)
+- [Plotting and ParaView](docs/visualization.md)
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)
 - [Installation and optional tools](docs/installation.md)
@@ -91,9 +135,7 @@ Report problems through [GitHub issues](https://github.com/EngFlavioMartins/Open
 
 ## AI assistance
 
-Human maintainers direct the physics, numerical methods, and base architecture.
-AI tools assist with code implementation, docstrings, documentation, and code
-review. Human maintainers are responsible for final review and publication.
+Human maintainers wrote the physics, numerical methods, and base architecture. AI tools assist with docstrings, documentation, code review and debugging. Human maintainers are responsible for final review and publication. All code in this repository were reviewed by a human.
 
 OpenONDA is licensed under [GPL-3.0-or-later](license).
 For research use, see [citation.cff](citation.cff).

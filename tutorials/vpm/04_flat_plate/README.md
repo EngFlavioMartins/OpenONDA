@@ -66,5 +66,5 @@ attached-flow reference, not a stall, separation or skin-friction model.
 Historical native states and sampled scientific evidence remain available;
 obsolete VLM visualization exports have been deleted. Every retained VLM
 surface now has a matching native VPM backup at the same physical time.
-Broader VLM validity limits and the separate rotor evidence are described in the
-[VLM production audit](../../../docs/development/vlm_production_audit.md).
+See the [VPM guide](../../../docs/vpm.md#vlm-coupling) for VLM assumptions
+and the remaining limitations of rotor calculations.

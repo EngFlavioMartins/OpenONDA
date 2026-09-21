@@ -26,7 +26,6 @@ from ..assets.ring_metrics import (
     VARIANT_STYLE,
     build_arg_parser,
     centered_subplots_adjust,
-    figure_size,
     load_sampled_ring_speed,
     load_theme,
     plot_variants,

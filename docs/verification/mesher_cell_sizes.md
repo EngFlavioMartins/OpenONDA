@@ -69,9 +69,9 @@ current `setup.py` or the directory names.
 Thus the saved `coarse` case has fewer cells and a coarser nominal cube
 lattice despite its smaller requested cube size. The background and domain
 were also changed, so these two outputs do not form a controlled refinement
-study. Their stored nominal sizes and geometry are inspectable in the
-[very-coarse mesh](../../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/very_coarse/mesh.vtu)
-and [coarse mesh](../../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/solution/coarse/mesh.vtu).
+study. These were local output files, not files shipped with the repository.
+The measurements describe the September 13 inputs, not the current grid family;
+see the [current reference setup](../../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/README.md).
 
 The old `coarse` metadata incorrectly reported `nearBody=0.6` and `wake=1.2`.
 Their strict box conversions are actually `0.3` and `0.6`. The repaired

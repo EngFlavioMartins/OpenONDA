@@ -2926,26 +2926,37 @@ class VorticityTransfer:
 
         def velocity_at(points: np.ndarray) -> np.ndarray:
             query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-            sampled = self._velocity_trace.sample(
-                query,
-                fvm_velocity,
-                fvm_velocity_gradient,
+            wall_weight = (
+                _smoothstep(self._signed_solid_distance(query), 0.0, self.particle_spacing)
+                if has_solid
+                else np.ones(len(query))
             )
-            if has_solid:
-                sampled *= _smoothstep(
-                    self._signed_solid_distance(query),
-                    0.0,
-                    self.particle_spacing,
-                )[:, None]
+            # The no-slip extension is identically zero inside the solid.
+            fluid = wall_weight > 0.0
+            sampled = np.zeros_like(query)
+            sampled[fluid] = (
+                self._velocity_trace.sample(
+                    query[fluid],
+                    fvm_velocity,
+                    fvm_velocity_gradient,
+                )
+                * wall_weight[fluid, None]
+            )
             return sampled
 
         def target_at_node(points: np.ndarray) -> np.ndarray:
-            return vortex_strength_from_velocity_trace(
-                points,
+            lattice = self._stable_renewal_lattice
+            # Outside the donor mesh the FVM target has zero weight. Keep
+            # solid nodes as well for the excluded-circulation diagnostic.
+            needed = (lattice.mesh_weight > 0.0) | (lattice.fluid_weight < 1.0)
+            target = np.zeros_like(points)
+            target[needed] = vortex_strength_from_velocity_trace(
+                points[needed],
                 self.particle_spacing,
                 velocity_at,
                 planar_span=self._planar_span,
             )
+            return target
 
         return replace_particles_from_buffered_m4_renewal(
             vpm,

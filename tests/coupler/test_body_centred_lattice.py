@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
+from source.coupler import vorticity_transfer as transfer_module
 from source.coupler.config.types import CouplerSetup
 from source.coupler.stable_renewal import vortex_strength_from_velocity_trace
 from source.coupler.vorticity_transfer import VorticityTransfer
@@ -103,3 +104,55 @@ def test_no_fluid_bearing_control_cell_has_a_discarded_solid_centre(spacing):
 
     circulation = vortex_strength_from_velocity_trace(lattice.positions, spacing, velocity_at)
     assert np.linalg.norm(circulation[lattice.solid_interior], axis=1).max() < 1e-14
+
+
+@pytest.mark.parametrize("has_solid", [False, True])
+@pytest.mark.parametrize("spacing", [0.18, 0.2])
+def test_selective_trace_keeps_weighted_target_and_excluded_circulation(
+    monkeypatch, has_solid, spacing
+):
+    transfer = box_transfer(spacing, np.zeros(3))
+    if not has_solid:
+        transfer._body_bounds = None
+    lattice = transfer._stable_renewal_lattice
+    centres = transfer._cell_centre
+    velocity = centres**2 + np.roll(centres, 1, axis=1)
+    gradient = np.zeros((len(centres), 3, 3))
+    gradient[:, range(3), range(3)] = 2 * centres
+    gradient[:, [2, 0, 1], [0, 1, 2]] = 1.0
+    sample = transfer._velocity_trace.sample
+
+    def full_velocity(points):
+        result = sample(points, velocity, gradient)
+        if has_solid:
+            result *= transfer_module._smoothstep(
+                transfer._signed_solid_distance(points), 0.0, spacing
+            )[:, None]
+        return result
+
+    expected = vortex_strength_from_velocity_trace(lattice.positions, spacing, full_velocity)
+    sampled_points = []
+
+    def counted_sample(points, *args):
+        sampled_points.append(points.copy())
+        return sample(points, *args)
+
+    monkeypatch.setattr(transfer._velocity_trace, "sample", counted_sample)
+    monkeypatch.setattr(
+        transfer_module,
+        "replace_particles_from_buffered_m4_renewal",
+        lambda vpm, **kwargs: kwargs["fvm_vortex_strength_at_node"](lattice.positions),
+    )
+    actual = transfer._transfer_buffered_m4_renewal(
+        None, fvm_velocity=velocity, fvm_velocity_gradient=gradient
+    )
+    weight = (lattice.fluid_weight * lattice.mesh_weight)[:, None]
+    np.testing.assert_array_equal(actual * weight, expected * weight)
+    np.testing.assert_array_equal(
+        actual * (1 - lattice.fluid_weight)[:, None],
+        expected * (1 - lattice.fluid_weight)[:, None],
+    )
+    assert len(sampled_points) == 6
+    assert sum(map(len, sampled_points)) < 6 * len(lattice.positions)
+    if has_solid:
+        assert all(np.all(transfer._signed_solid_distance(points) > 0) for points in sampled_points)

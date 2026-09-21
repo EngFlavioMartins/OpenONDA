@@ -34,40 +34,22 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-if __package__:
-    from .postprocess import (
-        ENERGY_CASES,
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        figure_size,
-        load_theme,
-        prepend_initial_point,
-        read_flow_integrals,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
-else:
-    from .postprocess import (
-        ENERGY_CASES,
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        figure_size,
-        load_theme,
-        prepend_initial_point,
-        read_flow_integrals,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
+from .postprocess import (
+    ENERGY_CASES,
+    SCHEME_DRAW_ORDER,
+    SCHEMES,
+    build_arg_parser,
+    build_style_map,
+    centered_subplots_adjust,
+    figure_size,
+    load_theme,
+    prepend_initial_point,
+    read_flow_integrals,
+    resolve_runtime_physics,
+    save_fig,
+    scheme_zorder,
+    validate_thesis_figure,
+)
 
 # Plot
 

@@ -79,10 +79,8 @@ def main():
         failures.append("non-finite or duplicate force samples")
     try:
         raw_force_interval = config["numerics"]["vlm"]["logging_interval_steps"]
-        force_interval_steps = int(raw_force_interval)
-    except (KeyError, TypeError, ValueError, OverflowError):
+    except (KeyError, TypeError):
         raw_force_interval = None
-        force_interval_steps = 0
     if isinstance(raw_force_interval, bool) or raw_force_interval != 1:
         failures.append("coupled rotor force/loading history is not on every accepted owner step")
     cadence = p.time_step_size

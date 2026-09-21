@@ -45,28 +45,14 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
-if __package__:
-    from .postprocess import (
-        SCHEMES,
-        build_arg_parser,
-        figure_size,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        surface_plot_tiles,
-        validate_thesis_figure,
-    )
-else:
-    from .postprocess import (
-        SCHEMES,
-        build_arg_parser,
-        figure_size,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        surface_plot_tiles,
-        validate_thesis_figure,
-    )
+from .postprocess import (
+    build_arg_parser,
+    load_theme,
+    resolve_runtime_physics,
+    save_fig,
+    surface_plot_tiles,
+    validate_thesis_figure,
+)
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),

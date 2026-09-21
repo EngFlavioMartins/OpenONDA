@@ -1,11 +1,7 @@
 # VPM solver — source references
 
-Citation keys used from source docstrings and comments. Keep entries short; put
-the derivation in the code comment, the provenance here.
-
-PDFs available under `docs/literature/` are marked **[local]**.
-
----
+References for the numerical methods, with pointers to their implementations.
+Paths below are relative to this directory unless prefixed with `tests/`.
 
 ## Particle approximation, consistency, overlap
 
@@ -15,7 +11,7 @@ PDFs available under `docs/literature/` are marked **[local]**.
   §5.3 on the 3-D vortex-method instability driven by ∇·ω ≠ 0.
   → `diagnostics/resolution.py` (`mean_overlap_ratio`, `vorticity_divergence_error`)
 
-- **[Beale1985]** Beale, J. T. (1986). A convergent 3-D vortex method with
+- **[Beale1986]** Beale, J. T. (1986). A convergent 3-D vortex method with
   grid-free stretching. *Math. Comp.* 46(174), 401–424.
   Convergence and the (h/σ)^m error estimate underlying the overlap diagnostic.
 
@@ -28,15 +24,15 @@ PDFs available under `docs/literature/` are marked **[local]**.
   the DIRECT / TRANSPOSED / MIXED stretching forms.
   → `kernels/winckelmans.py`, `numerics/kernels_common.py:_stretching_contribution`
 
-- **[AS1964]** Abramowitz, M. & Stegun, I. A. (1964). *Handbook of Mathematical
-  Functions*, eq. 7.1.26.
-  The erf approximation used by the Gaussian q and g. **Max absolute error
-  1.39e-7** — adequate for f32, and the binding accuracy limit if the solver is
-  ever run in f64.
-  → `kernels/gaussian.py:err_func`, `physics/induction/treecode/lbvh.py:_erf_approx`
+- **[DLMF7.6]** NIST Digital Library of Mathematical Functions,
+  [§7.6, error-function series](https://dlmf.nist.gov/7.6).
+  The Gaussian kernel uses a small-radius series and a Cephes rational
+  approximation away from the origin. It no longer uses the old
+  Abramowitz–Stegun approximation with its approximately 1e-7 error floor.
+  → `kernels/gaussian.py`, [coefficient attribution](kernels/THIRD_PARTY_NOTICES.md)
 
 Verified in-repo (see `tests/vpm/test_kernels_math.py` and
-`tests/vpm/test_audit_2026_08_regressions.py`): both production kernels
+`tests/vpm/test_audit_2026_08_regressions.py`): the Gaussian and Winckelmans kernels
 normalize to 1 and have second moment m₂ = 3/2, which is the value the
 angular-impulse correction assumes.
 
@@ -77,7 +73,7 @@ Only the TRANSPOSED form conserves total particle strength ΣΓ exactly — prov
   **For an algebraic kernel core spreading is a model, not a discretization** —
   the diffused algebraic blob is not an algebraic blob, so a calibrated constant
   is defensible there provided it is labelled as one.
-  → `physics/diffusion.py:core_spreading_diffusion`
+  → `physics/diffusion/schemes.py:core_spreading_diffusion`
 
 - **[Chorin1973]** Chorin, A. J. (1973). Numerical study of slightly viscous
   flow. *J. Fluid Mech.* 57(4), 785–796. Random-walk method, Δx ~ N(0, 2νΔt).
@@ -86,28 +82,23 @@ Only the TRANSPOSED form conserves total particle strength ΣΓ exactly — prov
 - **[Degond1989]** Degond, P. & Mas-Gallic, S. (1989). The weighted particle
   method for convection-diffusion equations. *Math. Comp.* 53(188), 485–526. PSE.
 
-- **[Durante2024]** Durante, D. et al. (2024). **[local]**
-  `docs/literature/durante2024.pdf`, eq. 14–15.
+- **[Durante2024]** Durante, D. et al. (2024).
+  [Numerical simulation of 3D vorticity dynamics with the Diffused Vortex Hydrodynamics method](https://doi.org/10.1016/j.matcom.2024.06.003).
+  *Mathematics and Computers in Simulation* 225, 528–544, eq. 14–15.
   Diffused Vortex Hydrodynamics truncation parameter β ≈ 0.077 and the fixed
   viscous step Δt_d = β R_d²/(4ν), under the matched-step assumptions of that
   method.  Production DVH uses the accepted physical interval and computes the
   heat width 4ν_effΔt; this fixed-step relation remains a reference estimate,
   not a hidden solver clock.
-  → `physics/diffusion.py:_DVH_BETA`
+  → `config/constants.py:_DVH_BETA`, `physics/diffusion/grid.py`
 
 - **[Rossi2005]** Rossi, L. F. (2005). Achieving high-order convergence rates
   with deforming basis functions. *SIAM J. Sci. Comput.* 26(3), 885–906.
   Background for particle regeneration in DVH.
 
-> **RESOLVED 2026-08-07.** The Winckelmans core-spreading constant is the
-> derived `4ν` (= 6/m₂, m₂ = 3/2) for the normalized second-moment model used
-> here.  The often-copied `256/45ν` value is not the value specified by eq. 13
-> of the cited paper; that equation gives `256/45` for a different convention.
-> Three other matching principles give 9.625ν (enstrophy dissipation), 11ν
-> (L²/Galerkin), and 14ν (origin curvature), so the choice must be stated as a
-> model assumption rather than attributed to that citation.  The change is
-> result-affecting: dσ²/dt drops 29.7 %.
-> See `docs/reviews/2026-08-vpm-audit.md` finding N-4.
+For Winckelmans core spreading, OpenONDA uses the second-moment model
+`dσ²/dt = 4ν`, not an exact algebraic-kernel heat solution. Comparisons using
+another matching principle must account for that model choice.
 
 ## LES / subgrid modelling
 
@@ -168,9 +159,6 @@ Only the TRANSPOSED form conserves total particle strength ΣΓ exactly — prov
   The Gaussian core remap uses a separate convolution/redistribution approach.
   → `stabilization/filament_refinement.py`, `stabilization/remeshing.py`
 
-The integration and publication audit, including diagnostic cache corrections,
-is recorded in `docs/reviews/2026-09-vpm-stabilization.md`.
-
 - **[WL1993]**, **[CK2000 §5.3]** — the discrete vorticity field is not
   solenoidal and stretching amplifies its divergent part; this motivates the
   projection.
@@ -182,11 +170,3 @@ is recorded in `docs/reviews/2026-09-vpm-stabilization.md`.
   vortex strength and impulse is reported rather than gated.
   → `config/types.py:StabilizationConfig.pedrizzetti_relaxation`,
   `stabilization/manager.py:StabilizationManager.apply_relaxation`
-
-## Local literature not yet linked from source
-
-`docs/literature/` also holds Constant2016, Cooper2009, Meunier2005,
-billuart2023, builland2024, carretelli2003, cottet2014,
-kornev2019, rention2025, themas2025, way2024, zeng2024. Where these back a
-specific implementation choice, add the citation key above and reference it from
-the relevant docstring rather than restating the argument in the source file.

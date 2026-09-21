@@ -17,15 +17,8 @@ import numpy as np
 import taichi as ti
 
 from ..config.constants import EPSILON
-
-# Use VPM logger
 from ..io.logging import Logging
 from ..physics.evaluation import ParticleFieldEvaluation
-
-# Taichi Kernel Functions (copied from physics module for standalone operation)
-
-# Constants for Abramowitz and Stegun approximation of erf
-# Helper Classes
 
 
 @dataclass
@@ -231,9 +224,6 @@ class OfflineFlowDiagnostics:
             n_particles_total=n,
         )
 
-    # Precision choice: f32 is the default throughout OpenONDA. Precision should
-    # be selected at the Solver class constructor and propagated consistently.
-    # Ensure no other code uses f64 as default.
     def compute_all(self, verbose: bool = True) -> None:
         """
         Compute flow integrals for all timesteps.
@@ -241,7 +231,7 @@ class OfflineFlowDiagnostics:
         Args:
             verbose: If True, print progress to console.
         """
-        # Initialize evaluator (reuse across steps to maintain energy history for dE/dt)
+        # Reuse the evaluator's energy history for dE/dt.
         self.evaluator = ParticleFieldEvaluation(
             particle_kernel="GAUSSIAN",
             max_n_particles=self._estimate_max_particles(),
@@ -268,17 +258,12 @@ class OfflineFlowDiagnostics:
             )
 
     def _estimate_max_particles(self) -> int:
-        """Estimate maximum number of particles across all files (lightweight check)."""
-        # Just use a heuristic or check the last file which usually has most particles
-        if not self.h5_files:
-            return 1000
-        # Check last file
-        try:
-            with h5py.File(self.h5_files[-1], "r") as f:
-                attrs = f["solver"].attrs
-                return int(attrs["n_particles_total"]) * 2  # Safety factor
-        except Exception:
-            return 10000
+        """Read the largest saved population; pruning can make later frames smaller."""
+        maximum = 0
+        for path in self.h5_files:
+            with h5py.File(path, "r") as archive:
+                maximum = max(maximum, int(archive["solver"].attrs["n_particles_total"]))
+        return max(1, maximum)
 
     def _compute_energy_dissipation_rate(self) -> np.ndarray:
         """Return only rates formed from one consistent direct-energy measure."""

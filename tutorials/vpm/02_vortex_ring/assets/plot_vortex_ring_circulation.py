@@ -20,7 +20,6 @@ from ..assets.ring_metrics import (
     VARIANT_STYLE,
     build_arg_parser,
     centered_subplots_adjust,
-    figure_size,
     load_sampled_ring_circulation,
     load_sampled_vector_circulation_error,
     load_theme,

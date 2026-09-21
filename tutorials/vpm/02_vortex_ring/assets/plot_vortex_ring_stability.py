@@ -20,7 +20,6 @@ from ..assets.ring_metrics import (
     load_stability_results,
     load_theme,
     save_fig,
-    with_sample_gaps,
     validate_thesis_figure,
 )
 

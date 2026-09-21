@@ -1,14 +1,11 @@
 # Wind-turbine wake
 
-Production status: **unqualified**. The September 2026 VLM audit found concrete
-backup/sampling defects and repaired them, but the retained rotor run still
-fails its timestep health check and does not establish converged induction.
-See [the production audit](../../../docs/development/vlm_production_audit.md)
-for the measured blockers and test evidence.
-The [implementation follow-up](../../../docs/development/vlm_production_repair_results.md)
-records the repaired row closure, kernel precision, observer performance,
-CPU/Metal agreement and downstream-wake diagnosis. These repairs do not yet
-qualify the full rotor's stability, CT/CP or developed induction fields.
+This is an **unfinished study**, not a validated turbine reference. The
+previous long run failed its strain-based time-step check at 7.68 s; a
+smaller time step alone has not been shown to cure the downstream wake growth.
+Rotor loads and induction still need independent spatial, temporal, and
+particle-core convergence checks. See the [VPM guide](../../../docs/vpm.md#vlm-coupling)
+for the lifting-surface model and its limitations.
 
 The setup now also samples four streamwise lines at design `r/R = 0, 0.25,
 0.65, 1.1`, from `x/D = -1` to `3`, every `0.06 s`. Their native

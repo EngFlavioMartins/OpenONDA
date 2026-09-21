@@ -1,15 +1,13 @@
 # Vortex-particle solver guide
 
-This page is the reader-facing contract for OpenONDA's vortex-particle method (VPM)
-and its optional vortex-lattice component. The public construction objects are
-available from [`openonda.vpm`](../source/solvers/vpm/__init__.py). The implementation
-uses Taichi fields for the active particle prefix and keeps the accepted physical clock
-in `VPMSolver`.
+OpenONDA evolves vortex particles using regularized Biot–Savart induction,
+vortex stretching, and viscous diffusion. A vortex-lattice model can supply
+lifting surfaces and their shed wakes. Import both through
+[`openonda.vpm`](../openonda/vpm.py).
 
 ## Start here
 
-Build a case from immutable numerical controls, one or more declarative initial
-conditions, output policy, and a finite run plan:
+Specify the particle distribution, initial vortex, time step, and run length:
 
 ```python
 from openonda import vpm
@@ -24,6 +22,8 @@ case = vpm.VPMCase(
     numerics=vpm.Numerics(
         time_step_size=1.0e-2,
         precision="f32",
+        compute_device="CPU",
+        max_n_particles=5000,
         induction=vpm.DirectInduction(stretching_scheme="TRANSPOSED"),
     ),
     initial_conditions=(
@@ -42,8 +42,8 @@ solver.run()  # run() writes terminal output and closes owned resources
 ```
 
 For interactive or coupled control, construct the solver, call `advance()` or the
-explicit sampling methods, and call `close()` in a `finally` block. `run()` is a
-single-owner lifecycle and may be called only once. Initial-condition builders are
+explicit sampling methods, and call `close()` in a `finally` block. `run()`
+may be called only once. Initial-condition builders are
 evaluated exactly once, immediately before the first requested evolution or run event.
 
 ## Terminology and units
@@ -293,7 +293,7 @@ the bound midpoint; integrated moments and per-surface torque/power include it.
 independently of `VLMSampler` geometry output and `Backup` cadence.
 The pressure term does not provide separation, stall or viscous skin friction.
 
-### Surface interaction contract
+### Bound-surface and particle interaction
 
 The coupled VLM field is a global, all-surface bound horseshoe solve.  Internal
 horseshoe legs terminate at the strip trailing edge; the VPM owner supplies the
@@ -331,16 +331,16 @@ The VLM boundary solve changes the coupled field and forces but has no
 particle/wall collision law. Near-wing wake accuracy therefore needs a separate
 resolution and model-validation study.
 
-The current qualification evidence is the reproducible real-ring/two-surface
-tutorial and its generated `studies/` tables on direct/f64/CPU, plus an f32
-CPU comparison.  Those tables establish implementation self-consistency,
-stage/restart equivalence, and the declared refinement trends for the tested
-case; they are not external validation or a universal qualification of every
-mesh, wake topology, GPU backend, precision, or viscous scheme.  The
-implementation does not model no-slip, viscous wall vorticity, boundary
+The implementation does not model no-slip, viscous wall vorticity, boundary
 layers, stall, separated delta-wing leading-edge vortices, or a general
 viscous impingement treatment. The coupled force and wake outputs alone do not
 establish particle clearance from the wings.
+
+The [rotor tutorial](../tutorials/vpm/06_rotor_flow_PENDING/README.md) remains
+unfinished: its previous long run developed excessive wake stretching, and
+converged rotor loads and induction have not been established. Short startup
+or restart tests do not resolve that limitation. The particle RK order also
+does not by itself establish the order of the coupled VLM–VPM calculation.
 
 ## Practical limits
 

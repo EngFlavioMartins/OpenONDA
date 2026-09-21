@@ -31,7 +31,6 @@ from ..assets.ring_metrics import (
     REFERENCE_VELOCITY,
     VARIANT_LABEL,
     load_ring_data,
-    load_ring_speed,
     load_sampled_ring_speed,
     load_sampled_ring_data,
     load_metadata,

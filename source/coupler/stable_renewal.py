@@ -16,6 +16,8 @@ from scipy.ndimage import convolve1d
 
 from source._numba import cacheable_njit as njit
 
+from .lattice_transfer import _m4_prime_scalar, m4_prime
+
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 CORE_RADIUS_RATIO = 1.0
@@ -52,27 +54,6 @@ def maximum_stable_time_step(
     if speed < np.finfo(np.float64).tiny:
         return float("inf")
     return float(max(buffer - M4_PRIME_SUPPORT_CELLS * spacing, 0.0) / (safety * speed))
-
-
-def m4_prime(distance: np.ndarray | float) -> np.ndarray:
-    """Evaluate the interpolating M4' kernel on dimensionless distances."""
-    q = np.abs(np.asarray(distance, dtype=np.float64))
-    weight = np.zeros_like(q)
-    inner = q < 1.0
-    outer = (q >= 1.0) & (q < 2.0)
-    weight[inner] = 1.0 - 2.5 * q[inner] ** 2 + 1.5 * q[inner] ** 3
-    weight[outer] = 0.5 * (1.0 - q[outer]) * (2.0 - q[outer]) ** 2
-    return weight
-
-
-@njit(cache=True, fastmath=False)
-def _m4_prime_scalar(distance: float) -> float:
-    q = abs(distance)
-    if q < 1.0:
-        return 1.0 - 2.5 * q * q + 1.5 * q * q * q
-    if q < 2.0:
-        return 0.5 * (1.0 - q) * (2.0 - q) * (2.0 - q)
-    return 0.0
 
 
 @njit(cache=True, fastmath=False)

@@ -48,3 +48,48 @@ def test_untied_stencil_keeps_original_inverse_distance_taylor_value():
     trace = FVMVelocityInterpolator(positions, tree, neighbour_count=4)
     np.testing.assert_allclose(trace.sample(points, velocity, gradient), expected, atol=1e-14)
     np.testing.assert_array_equal(trace.sample(positions, velocity, gradient), velocity)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("chunk_size", [1, 17, 100_000])
+def test_fused_reconstruction_matches_vectorized_taylor_sum(dtype, chunk_size):
+    rng = np.random.default_rng(427)
+    axis = np.linspace(-1.0, 1.0, 5)
+    positions = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
+    # Include exact donors, four/eight-way ties and generic off-grid queries.
+    points = np.concatenate((positions[::11], positions[::13] + 0.25, rng.normal(size=(19, 3))))
+    velocity = rng.normal(size=(len(positions), 3)).astype(dtype)
+    gradient = rng.normal(size=(len(positions), 3, 3)).astype(dtype).transpose(0, 2, 1)
+    trace = FVMVelocityInterpolator(positions, cKDTree(positions))
+    indices, weights = trace._stencil(points)
+    expected = np.einsum(
+        "nk,nkj->nj",
+        weights,
+        velocity.astype(float)[indices]
+        + np.einsum(
+            "nki,nkij->nkj",
+            points[:, None] - positions[indices],
+            gradient.astype(float)[indices],
+            optimize=True,
+        ),
+        optimize=True,
+    )
+    np.testing.assert_allclose(
+        trace.sample(points, velocity, gradient, chunk_size=chunk_size),
+        expected,
+        rtol=2e-15,
+        atol=2e-15,
+    )
+    assert trace.sample(np.empty((0, 3)), velocity, gradient).shape == (0, 3)
+
+
+@pytest.mark.parametrize("velocity_count,gradient_count", [(3, 4), (4, 3)])
+def test_reconstruction_rejects_mismatched_donor_fields(velocity_count, gradient_count):
+    positions = np.arange(12, dtype=float).reshape(4, 3)
+    trace = FVMVelocityInterpolator(positions, cKDTree(positions))
+    with pytest.raises(ValueError, match="one row per FVM donor cell"):
+        trace.sample(
+            positions,
+            np.zeros((velocity_count, 3)),
+            np.zeros((gradient_count, 3, 3)),
+        )

@@ -70,6 +70,21 @@ class VLMKinematics(ABC):
         self.current_position = np.zeros(3)
         self.current_orientation = np.eye(3)
 
+    def _rotation_matrix(self, angular_velocity: np.ndarray, time_step_size: float) -> np.ndarray:
+        """Integrate constant angular velocity over one step using Rodrigues' formula."""
+        angle = np.linalg.norm(angular_velocity) * time_step_size
+        if angle < 1e-12:
+            return np.eye(3)
+        axis = angular_velocity / np.linalg.norm(angular_velocity)
+        skew_symmetric_matrix = np.array(
+            [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
+        )
+        return (
+            np.eye(3)
+            + np.sin(angle) * skew_symmetric_matrix
+            + (1 - np.cos(angle)) * skew_symmetric_matrix @ skew_symmetric_matrix
+        )
+
     @abstractmethod
     def update(
         self,
@@ -349,25 +364,6 @@ class ManeuverVLM(VLMKinematics):
     def get_angular_velocity(self, time: float) -> np.ndarray:
         """Evaluate and return a ``float64`` angular velocity in rad/s."""
         return np.array(self.angular_velocity_function(time), dtype=np.float64)
-
-    def _rotation_matrix(self, angular_velocity: np.ndarray, time_step_size: float) -> np.ndarray:
-        """Create rotation matrix from angular velocity and time step."""
-        angle = np.linalg.norm(angular_velocity) * time_step_size
-        if angle < 1e-12:
-            return np.eye(3)
-
-        axis = angular_velocity / np.linalg.norm(angular_velocity)
-        skew_symmetric_matrix = np.array(
-            [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
-        )
-
-        identity_matrix = np.eye(3)
-        rotation_matrix = (
-            identity_matrix
-            + np.sin(angle) * skew_symmetric_matrix
-            + (1 - np.cos(angle)) * skew_symmetric_matrix @ skew_symmetric_matrix
-        )
-        return rotation_matrix
 
     def update(
         self,
@@ -688,25 +684,6 @@ class CompositeVLM(VLMKinematics):
         for kinematics in self.kinematics_components:
             total_angular_velocity += kinematics.get_angular_velocity(time)
         return total_angular_velocity
-
-    def _rotation_matrix(self, angular_velocity: np.ndarray, time_step_size: float) -> np.ndarray:
-        """Create rotation matrix from angular velocity and time step."""
-        angle = np.linalg.norm(angular_velocity) * time_step_size
-        if angle < 1e-12:
-            return np.eye(3)
-
-        axis = angular_velocity / np.linalg.norm(angular_velocity)
-        skew_symmetric_matrix = np.array(
-            [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
-        )
-
-        identity_matrix = np.eye(3)
-        rotation_matrix = (
-            identity_matrix
-            + np.sin(angle) * skew_symmetric_matrix
-            + (1 - np.cos(angle)) * skew_symmetric_matrix @ skew_symmetric_matrix
-        )
-        return rotation_matrix
 
     def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
         """

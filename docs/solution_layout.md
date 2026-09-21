@@ -30,6 +30,7 @@ executed configuration and clock. ParaView should open the root `.pvd`
 collections; the VPM collection references `.vtu` frames because ParaView's
 PVD reader does not accept XDMF collection members.
 
-The layout intentionally does not reserve a restart directory. Restart
-persistence is separate from visualization, and an explicit restart target is
-preferred over treating a user-facing solution folder as a checkpoint dump.
+Standalone VPM restart uses an explicit `.h5` file. FVM backup locations are
+set by `BackupConfig`; coupled runs keep a manifest and both solver states in
+their configured backup directory (normally `solution/backups/`). Keep those
+files together. Visualization files alone cannot restart a coupled run.

@@ -9,9 +9,6 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import numpy as np
 

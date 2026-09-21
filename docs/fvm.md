@@ -1,15 +1,13 @@
 # Finite-volume solver guide
 
-This page is the reader-facing contract for OpenONDA's incompressible finite-volume
-(FVM) solver. It describes the data layout, units, numerical choices, lifecycle, and
-output behavior that are easy to miss when reading individual modules. The maintained
-Python symbols are exported from [`openonda.fvm`](../source/solvers/fvm/__init__.py).
+OpenONDA solves constant-density, incompressible flow on static meshes using
+SIMPLE, PISO, or PIMPLE. Import the solver and configuration from
+[`openonda.fvm`](../openonda/fvm/__init__.py).
 
 ## Start here
 
-The preferred construction boundary is `FVMCase`. It keeps mesh provenance, numerical
-controls, boundary conditions, initial fields, output, restart, and run policy in one
-immutable object. `FVMSolver` owns the mutable solution and the accepted clock.
+Define the mesh, fluid properties, boundary conditions, and run duration in
+`FVMCase`, then pass it to `FVMSolver`:
 
 ```python
 from openonda import fvm
@@ -28,7 +26,14 @@ case = fvm.FVMCase(
         ),
         coupling=fvm.PimpleControl(algorithm="PISO", n_correctors=2),
     ),
-    boundaries=(),
+    boundaries=(
+        fvm.BoundaryConfig.cyclic("xmin", "xmax"),
+        fvm.BoundaryConfig.cyclic("xmax", "xmin"),
+        fvm.BoundaryConfig.cyclic("ymin", "ymax"),
+        fvm.BoundaryConfig.cyclic("ymax", "ymin"),
+        fvm.BoundaryConfig.empty("zmin"),
+        fvm.BoundaryConfig.empty("zmax"),
+    ),
     initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
     run=fvm.RunPlan(
         start_time=0.0,
@@ -51,7 +56,7 @@ The older `FVMSetup` plus `create_fvm_solver` path remains supported for tutoria
 the coupler. It is the low-level execution configuration, not a second numerical
 model. New standalone applications should use `FVMCase`.
 
-## Units and array contracts
+## Units and field arrays
 
 OpenONDA uses SI units. The solver is constant-density and stores kinematic pressure.
 
@@ -66,7 +71,7 @@ OpenONDA uses SI units. The solver is constant-density and stores kinematic pres
 | `velocity` | `(n_cells + n_boundary_faces, 3)` | m/s | Cell-centred velocity plus boundary ghost rows. |
 | `kinematic_pressure` | `(n_cells + n_boundary_faces,)` | m²/s² | `p/ρ`, including ghost rows. |
 | `volumetric_face_flux` | `(n_faces,)` | m³/s | `phi = U_f · Sf`; positive owner-to-neighbour. |
-| `velocity_gradient` | `(n_cells, 3, 3)` | 1/s | `J_ij = ∂U_i/∂x_j`. |
+| `velocity_gradient` | `(n_cells, 3, 3)` | 1/s | `G_ij = ∂U_j/∂x_i` (derivative index first). |
 | `vorticity` | `(n_cells, 3)` | 1/s | `curl(U)`. |
 | `courant_number` | `(n_cells,)` | 1 | Local face-flux Courant number. |
 
@@ -77,7 +82,7 @@ fluid volume. In partitioned PETSc execution the local prefix and halo layout is
 rank-dependent; use `solver.parallel.n_owned` and the topology view instead of assuming
 that every local row is globally owned.
 
-Mesh connectivity has one authoritative convention:
+Mesh connectivity uses these conventions:
 
 * `owners[f]` is the cell on the owner side of face `f`.
 * `neighbours[f]` is defined for the first `n_interior_faces` and is the other cell.
@@ -156,7 +161,8 @@ The low-level strings are OpenFOAM-style (`fixedValue`, `zeroGradient`, `inletOu
 not merely a label: the solver reconstructs ghost velocity and scalar values and uses
 the patch type during flux, gradient, pressure, and turbulence assembly.
 
-`cyclic` requires a reciprocal `neighbour_patch` and is currently serial-only. `empty`
+`cyclic` requires a reciprocal `neighbour_patch`; parallel periodic cases use
+replicated meshes because partitioned periodic adjacency is not implemented. `empty`
 is for an extruded two-dimensional mesh and requires compatible topology. A missing
 boundary patch or inconsistent cyclic pairing fails during construction rather than
 being silently treated as a wall.
@@ -210,9 +216,9 @@ feature controls, and optional boundary-layer controls. `build()` returns the na
 face-based dictionary, validates topology/geometry/quality, and records a
 `GenerationReport` in `mesh_generation`.
 
-The cfMesh octree uses spacings `H / 2**level`, where `H = max_cell_size`.
+The Cartesian octree uses spacings `H / 2**level`, where `H = max_cell_size`.
 Boundary/patch requests select the first spacing at or below the target.
-Box requests use a strict upper bound (including cfMesh's small floating-point
+Box requests use a strict upper bound (including a small floating-point
 tolerance): equality triggers another level. For example, a box target `H/4`
 resolves to `H/8`, while a patch target `H/4` resolves to `H/4`. Changing `H`
 changes every available spacing and can move fixed targets across a level
@@ -222,10 +228,10 @@ control sizes, before overlaps, 2:1 balancing, projection, and wrapper layers.
 Report levels are additional levels relative to `H`; per-cell refinement
 levels count from the root cube.
 
-Mesh quality limits are construction gates, not post-processing hints. Non-positive
-cell volume, invalid face closure, unsupported cell topology, a failed surface
-conformance check, or a configured quality limit raises before a solver can use the
-mesh. `save_native_mesh()` preserves the lossless native representation; `export_vtk`
+Mesh validation rejects non-positive
+cell volumes, invalid face closure, unsupported cell topology, failed surface
+conformance checks, and meshes exceeding configured quality limits.
+`save_native_mesh()` preserves the lossless native representation; `export_vtk`
 and `export_openfoam` are interchange/output representations and should not be used as
 the restart authority.
 
@@ -268,7 +274,7 @@ to `mesher.log`. That file is stored directly in the resolved solution directory
 is flushed after every stage or refinement-pass event, and records failures before
 they are propagated to the caller.
 
-For a slow Cartesian build, compare the `seconds=` values on its `DONE` lines to
+For a slow Cartesian build, compare the elapsed times for completed stages to
 find the expensive stage. The built-in mesher uses NumPy and Numba on the CPU;
 `ComputeConfig`'s Taichi backend applies to solver operators after meshing, not
 to mesh generation. The mesher needs no additional pip or conda package.

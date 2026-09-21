@@ -10,7 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import numpy as np
-from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import load_surface, save_surface
+from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
 
 from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
 

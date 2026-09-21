@@ -26,8 +26,6 @@ import argparse
 import math
 from pathlib import Path
 
-import numpy as np
-
 import openonda.vpm as vpm
 from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers

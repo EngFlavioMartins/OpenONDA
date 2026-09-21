@@ -28,44 +28,22 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-if __package__:
-    from .postprocess import (
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        TOTAL_TIME,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        figure_size,
-        lamb_oseen_gradient,
-        lamb_oseen_profile,
-        latest_common_time,
-        load_profile,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
-else:
-    from .postprocess import (
-        SCHEME_DRAW_ORDER,
-        SCHEMES,
-        TOTAL_TIME,
-        build_arg_parser,
-        build_style_map,
-        centered_subplots_adjust,
-        figure_size,
-        lamb_oseen_gradient,
-        lamb_oseen_profile,
-        latest_common_time,
-        load_profile,
-        load_theme,
-        resolve_runtime_physics,
-        save_fig,
-        scheme_zorder,
-        validate_thesis_figure,
-    )
+from .postprocess import (
+    SCHEMES,
+    TOTAL_TIME,
+    build_arg_parser,
+    build_style_map,
+    centered_subplots_adjust,
+    figure_size,
+    lamb_oseen_profile,
+    latest_common_time,
+    load_profile,
+    load_theme,
+    resolve_runtime_physics,
+    save_fig,
+    scheme_zorder,
+    validate_thesis_figure,
+)
 
 from matplotlib.ticker import FormatStrFormatter
 

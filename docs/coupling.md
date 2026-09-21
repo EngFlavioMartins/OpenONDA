@@ -5,7 +5,7 @@ representation. It is a time-synchronized state-transfer driver, not an additive
 model. The public entry points are `CouplerSetup`, `FVMVPMCoupler`, and
 `create_coupler` from [`openonda.coupler`](../source/coupler/__init__.py).
 
-## Ownership and construction
+## Creating a coupled run
 
 The coupler receives already constructed solvers:
 
@@ -61,6 +61,14 @@ accepted FVM clock advances only in `advance_time()`. The transfer then replaces
 inner VPM representation while retaining the outer wake. The next coupling interval
 starts from the synchronized accepted state.
 
+When `interface_iterations > 1`, the driver repeats the FVM substeps and
+particle renewal at that same coupling time. Each sweep restores the FVM
+starting state and the VPM predictor; it does not advance the solution by
+another physical interval. Updated boundary traces are used for the next
+sweep. `interface_normal_tolerance` and `interface_gradient_tolerance` control
+early convergence; diagnostics record every sweep and whether the configured
+iteration limit was reached. Change that limit only with a sensitivity study.
+
 `run(start_step=..., restart_from=...)` supports a complete run or a bounded segment.
 `max_coupling_steps` is an execution limit, not a physical configuration change.
 `save_backup` writes both solver states and coupling history; `load_backup` restores
@@ -82,6 +90,9 @@ is m³/s. The transfer uses the following logical arrays:
 | FVM vorticity | `(M, 3)` | FVM | Curl of the FVM gradient in the coupler's declared layout. |
 | VPM position | `(N, 3)` | VPM | Active particle positions. |
 | VPM vortex strength | `(N, 3)` | VPM | Particle-strength vector retained/replaced by transfer. |
+
+FVM gradients use `G[i,j] = ∂U_j/∂x_i`; VPM field evaluations use
+`J[i,j] = ∂U_i/∂x_j`. Transpose when exchanging these gradient representations.
 
 The FVM donor count `M` must match cell centres, cell volumes, velocity, and gradient.
 The VPM active count `N` can change during renewal; all particle fields remain aligned.
@@ -180,7 +191,7 @@ vorticity error. In particular:
 * velocity/pressure boundary mismatches measure interface consistency, not global
   conservation.
 
-Use the recorded `TransferResult` and `coupling_diagnostics` together with mesh/particle
+Use the recorded `TransferResult` and `coupler_diagnostics.jsonl` together with mesh/particle
 resolution studies. A run completing without an exception is not evidence that transfer
 errors are below a physical accuracy target.
 
@@ -225,7 +236,7 @@ kernel without discrete normalization. Generic body-fitted walls provide
 oriented native surface triangles through a collective FVM getter; this
 geometry is assumed static.
 
-The cylinder tutorial's `allplot.sh` now adds common-time reference overlays
-and a numerical comparison report. Set `REFERENCE_GRID=medium` to choose the
-reference, or run `assets/compare_reference.py --reference medium` directly
-for short histories. The comparison does not fit a phase shift or force scale.
+The cylinder tutorial's `allplot.sh` plots coupled forces and available
+reference forces/profiles. Each `reference_flow/postprocess_grid_study.py`
+compares the standalone FVM grids. See the
+[tutorial guide](tutorials.md#reference-grid-studies) for the run commands.
