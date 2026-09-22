@@ -160,6 +160,7 @@ tests/**/reference_flow/**
 
 # Generated sampler output is archived with simulation runs.
 **/samples/
+**/study_results/
 
 # direnv
 .envrc

@@ -13,7 +13,6 @@ Usage:
     ./allcontinue.sh
 """
 
-import argparse
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +24,8 @@ import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "coupled_cube_flow"
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
@@ -279,22 +280,12 @@ VPM_CASE = vpm.VPMCase(
 )
 
 
-def main(restart_from: Path | None = None) -> int:
+def main() -> int:
     mesh = msh.CachedMesh(FVM_MESH, CASE_DIR / "constant" / "mesh.npz")
     with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=mesh) as solver:
-        if restart_from is None:
-            solver.run()
-        else:
-            solver.run(restart_from=restart_from)
+        solver.run(start_from=START_FROM)
     return 0
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--restart-from",
-        type=Path,
-        help="Restore the latest committed coupled backup from this directory before continuing.",
-    )
-    arguments = parser.parse_args()
-    main(arguments.restart_from)
+    main()

@@ -13,6 +13,8 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_DIR = Path(__file__).resolve().parent
 OBJECT_STL = CASE_DIR / "assets" / "object.stl"
 
@@ -48,6 +50,7 @@ def create_mesher() -> msh.CartesianMesher:
 def create_fvm_setup() -> fvm.FVMSetup:
     """Return the physics configuration independently of mesh construction."""
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=20), write_at_end=True),
         case_name="cartesian_mesher",
         time=fvm.TimeConfig(
             time_step_size=0.01,
@@ -79,7 +82,7 @@ def main() -> None:
         case_dir=CASE_DIR,
         mesh=mesher,
     )
-    solver.run()
+    solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

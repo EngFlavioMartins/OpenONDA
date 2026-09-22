@@ -20,6 +20,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 import pandas as pd
 
 from ._plot_theme import FIG_DIR, SAMPLES_DIR, centered_subplots_adjust, cm, color, save_fig
@@ -64,7 +65,7 @@ df_ll = spanwise_reference(
 cl_ll = df_ll["section_lift_coefficient"].to_numpy()
 y_ll_over_b = df_ll["span_coordinate_normalized"].to_numpy()
 
-CL_ll = float(np.trapezoid(cl_ll * CHORD, y_theory) / (SPAN * CHORD))
+CL_ll = float(trapezoid(cl_ll * CHORD, y_theory) / (SPAN * CHORD))
 
 df_ell = spanwise_reference(
     "elliptic",

@@ -1,6 +1,8 @@
 #!/bin/bash -e
 cd -- "$(dirname -- "$0")"
 
+./allclean.sh
+
 python setup.py --case coarse
 python setup.py --case time_refined
 python setup.py --case mesh_refined

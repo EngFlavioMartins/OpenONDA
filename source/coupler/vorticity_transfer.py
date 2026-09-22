@@ -37,7 +37,6 @@ from source.coupler.stable_renewal import (
     VortexInvariants,
     build_stable_renewal_lattice,
     renew_stable_overlap,
-    vortex_strength_from_velocity_trace,
 )
 from source.solvers.vpm.diagnostics.resolution import discretization_health
 
@@ -1655,6 +1654,12 @@ class VorticityTransfer:
         self.particle_spacing = float(coupler.vpm_particle_spacing)
         induction = getattr(candidate_vpm, "induction", None)
         self._planar_span = getattr(induction, "planar_span", None)
+        self._slip_slab = getattr(induction, "method", None) == "SLIP_SLAB"
+        self._slip_z = (
+            (float(induction.z_min), float(induction.z_max))
+            if self._slip_slab and induction is not None
+            else None
+        )
         self._planar_induction = induction if self._planar_span is not None else None
         if self._planar_span is not None and "pressure_gradient" in str(
             cfg.boundary_condition_mode
@@ -1662,6 +1667,8 @@ class VorticityTransfer:
             raise ValueError("Planar coupling requires FVM-owned pressure; use vorticity_mixed")
         if self._planar_span is not None and self.transfer_method != "buffered_m4_renewal":
             raise ValueError("Planar coupling requires buffered_m4_renewal")
+        if self._slip_slab and self.transfer_method != "buffered_m4_renewal":
+            raise ValueError("Slip-slab coupling requires buffered_m4_renewal")
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.vpm_only_width = float(cfg.vpm_only_width)
         self.transfer_prune_threshold_abs = (
@@ -1708,6 +1715,7 @@ class VorticityTransfer:
         self._cell_centre: np.ndarray | None = None
         self._cell_volume: np.ndarray | None = None
         self._velocity_trace: FVMVelocityInterpolator | None = None
+        self._buffered_trace_stencils: list | None = None
         self._fvm_solid_mask: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
@@ -1897,9 +1905,14 @@ class VorticityTransfer:
         transfer metadata and interpolation caches; it does not modify FVM
         fields, VPM particles, or either accepted clock.
         """
+        self._buffered_trace_stencils = None
         self._box = np.asarray(
             self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
         )
+        if self._slip_z is not None and not np.allclose(
+            self._box[4:6], self._slip_z, rtol=0.0, atol=1e-8
+        ):
+            raise ValueError("slip-slab transfer z faces must match induction planes")
         self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64).reshape(
             -1, 3
         )
@@ -2003,6 +2016,10 @@ class VorticityTransfer:
                 raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
             if self._lattice_anchor is None:
                 self._lattice_anchor = self._cell_centre[0].copy()
+            if self._slip_z is not None:
+                # Keep both physical slip planes halfway between VPM nodes.
+                # The FVM cell-centre z phase need not match the particle h.
+                self._lattice_anchor[2] = self._slip_z[0] + 0.5 * self.particle_spacing
 
             if self.transfer_method == "buffered_m4_renewal":
                 if self._cell_tree is None:
@@ -2056,6 +2073,7 @@ class VorticityTransfer:
                     fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
                     interior_at_node=interior_at_node if has_solid else None,
                     planar_span=self._planar_span,
+                    slip_slab=self._slip_slab,
                     plane_z=getattr(self._planar_induction, "plane_z", 0.0),
                 )
             else:
@@ -2924,38 +2942,73 @@ class VorticityTransfer:
         def in_solid(points: np.ndarray) -> np.ndarray:
             return self._points_in_solid(points, include_boundary=False)
 
-        def velocity_at(points: np.ndarray) -> np.ndarray:
-            query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-            wall_weight = (
-                _smoothstep(self._signed_solid_distance(query), 0.0, self.particle_spacing)
-                if has_solid
-                else np.ones(len(query))
+        lattice = self._stable_renewal_lattice
+        slab_box = self._box if self._slip_slab else None
+        if self._slip_slab and slab_box is None:
+            raise RuntimeError("slip-slab renewal requires resolved FVM bounds")
+        # Only geometry is pinned: every interface sweep supplies fresh fields.
+        needed = (lattice.mesh_weight > 0.0) | (lattice.fluid_weight < 1.0)
+        if slab_box is not None:
+            needed &= (lattice.positions[:, 2] >= slab_box[4] - 1e-10) & (
+                lattice.positions[:, 2] <= slab_box[5] + 1e-10
             )
-            # The no-slip extension is identically zero inside the solid.
-            fluid = wall_weight > 0.0
-            sampled = np.zeros_like(query)
-            sampled[fluid] = (
-                self._velocity_trace.sample(
-                    query[fluid],
-                    fvm_velocity,
-                    fvm_velocity_gradient,
-                )
-                * wall_weight[fluid, None]
-            )
-            return sampled
+        if self._buffered_trace_stencils is None:
+            stencils = []
+            positions = lattice.positions[needed]
+            for axis in range(3 if self._planar_span is None else 2):
+                for sign in (1.0, -1.0):
+                    query = positions.copy()
+                    query[:, axis] += sign * 0.5 * self.particle_spacing
+                    reflected = np.zeros(len(query), dtype=bool)
+                    if slab_box is not None:
+                        below = query[:, 2] < slab_box[4]
+                        above = query[:, 2] > slab_box[5]
+                        query[below, 2] = 2.0 * slab_box[4] - query[below, 2]
+                        query[above, 2] = 2.0 * slab_box[5] - query[above, 2]
+                        reflected = below | above
+                        if np.any((query[:, 2] < slab_box[4]) | (query[:, 2] > slab_box[5])):
+                            raise RuntimeError("renewal trace needs more than one slab reflection")
+                    wall_weight = (
+                        _smoothstep(self._signed_solid_distance(query), 0.0, self.particle_spacing)
+                        if has_solid
+                        else np.ones(len(query))
+                    )
+                    fluid = wall_weight > 0.0
+                    stencil = self._velocity_trace.prepare(query[fluid])
+                    stencils.append((axis, sign, fluid, wall_weight[fluid], reflected, stencil))
+            self._buffered_trace_stencils = stencils
 
         def target_at_node(points: np.ndarray) -> np.ndarray:
-            lattice = self._stable_renewal_lattice
-            # Outside the donor mesh the FVM target has zero weight. Keep
-            # solid nodes as well for the excluded-circulation diagnostic.
-            needed = (lattice.mesh_weight > 0.0) | (lattice.fluid_weight < 1.0)
+            # Integrate n cross u on the same six midpoint faces as the
+            # uncached velocity-trace formula. In-solid velocity remains zero.
+            strength = np.zeros((np.count_nonzero(needed), 3), dtype=np.float64)
+            for start in range(0, len(self._buffered_trace_stencils), 2):
+                velocities = []
+                axis = self._buffered_trace_stencils[start][0]
+                for (
+                    _axis,
+                    _sign,
+                    fluid,
+                    weight,
+                    reflected,
+                    stencil,
+                ) in self._buffered_trace_stencils[start : start + 2]:
+                    velocity = np.zeros_like(strength)
+                    velocity[fluid] = (
+                        stencil.sample(fvm_velocity, fvm_velocity_gradient) * weight[:, None]
+                    )
+                    velocity[reflected, 2] *= -1.0
+                    velocities.append(velocity)
+                normal = np.zeros(3)
+                normal[axis] = 1.0
+                strength += self.particle_spacing**2 * np.cross(
+                    normal, velocities[0] - velocities[1]
+                )
+            if self._planar_span is not None:
+                strength[:, :2] = 0.0
+                strength *= self._planar_span / self.particle_spacing
             target = np.zeros_like(points)
-            target[needed] = vortex_strength_from_velocity_trace(
-                points[needed],
-                self.particle_spacing,
-                velocity_at,
-                planar_span=self._planar_span,
-            )
+            target[needed] = strength
             return target
 
         return replace_particles_from_buffered_m4_renewal(

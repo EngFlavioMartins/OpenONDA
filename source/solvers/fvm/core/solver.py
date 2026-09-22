@@ -1964,8 +1964,43 @@ class FVMSolver(CouplerInterfaceMixin):
             self.write_run_manifest(status=self.run_status)
         return self.steady_converged
 
-    def run(self) -> None:
+    def start_from(self, selection="latest") -> bool:
+        """Restore the configured backup, or start a clean case at zero.
+
+        ``latest`` discovers the serial file or committed MPI manifest at
+        ``BackupConfig.path``. An explicit path uses the same strict reader.
+        Return whether a backup was loaded. Call before initial output or a
+        custom time loop; user initial fields may be set before this call.
+        """
+        from source.restart import select_backup
+
+        selected = None
+        error = None
+        if self.parallel.is_root:
+            try:
+                selected = select_backup(
+                    selection,
+                    directory=self.solution_dir,
+                    kind="fvm",
+                    backup_path=self._backup_config.path,
+                )
+            except Exception as exc:
+                error = exc
+        self._collective_io_failure(error, "restart selection")
+        selected = self.parallel.bcast(selected, root=0)
+        if selected is not None:
+            self.load_state(selected)
+            self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
+            return True
+        return False
+
+    def run(self, *, start_from=None) -> None:
         """Run from the current clock to the configured end time.
+
+        ``start_from="latest"`` restores the configured native backup when
+        present and starts at zero otherwise. A path selects an explicit
+        backup; ``"initial"`` requires a clean output directory. ``None``
+        preserves the current in-memory state.
 
         The finite lifecycle writes initial output, executes steady SIMPLE or
         transient accepted steps, writes final output/backups, refreshes solver
@@ -1988,18 +2023,23 @@ class FVMSolver(CouplerInterfaceMixin):
         self.run_failure: BaseException | None = None
         primary_failure: BaseException | None = None
         try:
+            if start_from is not None:
+                self.start_from(start_from)
             self._ensure_evolution_usable()
-            if self.auto_write and self._initial_output_enabled:
+            restored = getattr(self, "_restart_loaded", False)
+            if self.auto_write and self._initial_output_enabled and not restored:
                 self.write_vtk()
-            if self._initial_output_enabled:
+            if self._initial_output_enabled and not restored:
                 self._execute_sampler_event("initial")
+            if start_from is not None and not restored:
+                self._save_automatic_backup()
             if self._resolved_setup.pimple.algorithm == "SIMPLE":
                 converged = self.solve_steady()
                 if self.auto_write and self._final_output_enabled:
                     self.write_vtk()
                 if self._final_output_enabled:
                     self._execute_sampler_event("final")
-                if self._backup_config.write_at_end:
+                if self._backup_config.write_at_end or start_from is not None:
                     self._save_automatic_backup()
                 self.run_status = "complete" if converged else "not_converged"
             else:
@@ -2016,7 +2056,9 @@ class FVMSolver(CouplerInterfaceMixin):
                     self.write_vtk()
                 if self._final_output_enabled:
                     self._execute_sampler_event("final")
-                if self._backup_config.write_at_end and self._step_phase == "accepted":
+                if (
+                    self._backup_config.write_at_end or start_from is not None
+                ) and self._step_phase == "accepted":
                     self._save_automatic_backup()
                 self.run_status = "complete"
         except BaseException as error:
@@ -2347,6 +2389,10 @@ class FVMSolver(CouplerInterfaceMixin):
         manifest_error = None
         if self.parallel.is_root:
             try:
+                if status == "created":
+                    from source.restart import archive_run_metadata
+
+                    archive_run_metadata(destination)
                 written = write_manifest(self, destination, status=status)
             except BaseException as error:
                 manifest_error = error
@@ -2405,6 +2451,14 @@ class FVMSolver(CouplerInterfaceMixin):
                 f"{rewind_error['type']}: {rewind_error['message']}"
             )
         self.parallel.barrier()
+        self._restart_loaded = True
+        configured = Path(self._backup_config.path)
+        if not configured.is_absolute():
+            configured = Path(self.solution_dir) / configured
+        if Path(path).resolve() == configured.resolve():
+            self._automatic_backup_state = (
+                self.step, self.time, self._state_revision, str(configured)
+            )
 
     def write_vtk(self, filename: str | None = None) -> None:
         """Collectively publish the current accepted state as VTK output.
@@ -2638,6 +2692,35 @@ class FVMSolver(CouplerInterfaceMixin):
         from ..io.analysis import write_csv
 
         write_csv(self, filename, rows, columns=columns, append=append)
+
+    def reconcile_history(self, filename) -> bool:
+        """Rewind a tutorial-owned CSV history to this accepted clock.
+
+        Use after ``start_from`` in custom time loops, before appending rows.
+        Return whether the history already contains this accepted time.
+        Relative paths resolve in the solution directory. Superseded rows are
+        archived just like native sampler histories. Collective under MPI.
+        """
+        error = None
+        current = False
+        if self.parallel.is_root:
+            try:
+                path = Path(filename)
+                if not path.is_absolute():
+                    path = Path(self.solution_dir) / path
+                self.io._rewind_csv(path, self.time)
+                if path.is_file():
+                    import csv
+
+                    with path.open(newline="", encoding="utf-8") as stream:
+                        current = any(
+                            abs(float(row["time"]) - self.time) <= 1e-12
+                            for row in csv.DictReader(stream)
+                        )
+            except Exception as exc:
+                error = exc
+        self._collective_io_failure(error, "application history reconciliation")
+        return self.parallel.bcast(current, root=0)
 
     def info(self) -> None:
         """Print a summary of the current solver state.

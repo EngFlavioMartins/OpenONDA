@@ -144,10 +144,6 @@ class Particles:
         self._host_scalar_chunks = {}
         self._host_matrix_chunks = {}
         self._host_int_chunks = {}
-        self._native_vector_uploads = {}
-        self._native_scalar_uploads = {}
-        self._native_matrix_uploads = {}
-        self._native_int_uploads = {}
         # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
@@ -344,52 +340,15 @@ class Particles:
             out[lo : lo + count] = buf[:count]
         return out
 
-    def _replace_field_native(self, family: str, field, values: np.ndarray, count: int) -> None:
-        """Replace live entries with bounded uploads; retain Vulkan's native path.
-
-        The custom templated prefix kernels are efficient for incremental
-        uploads, but long Vulkan runs have shown cross-field external-array
-        binding corruption during full cloud replacement.  Native
-        ``from_numpy`` is the backend-supported path; persistent per-field
-        arrays keep its external allocation shape and identity fixed.
-        """
-        if ti.lang.impl.current_cfg().arch != ti.vulkan:
-            # The native fallback uploads the entire configured capacity. On
-            # Metal, renewal may replace only 10k live particles in a 1.5M-slot
-            # cloud. Use the same fixed-shape prefix transfers as appending.
-            copy = {
-                "vector": self._copy_vectors_chunked,
-                "scalar": self._copy_scalars_chunked,
-                "matrix": self._copy_matrices_chunked,
-                "int": self._copy_ints_chunked,
-            }[family]
-            copy(values, field, 0, count)
-            return
-        key = id(field)
-        if family == "vector":
-            buffers = self._native_vector_uploads
-            shape = (self._max_particles, 3)
-            dtype = self._np_float_dtype
-        elif family == "scalar":
-            buffers = self._native_scalar_uploads
-            shape = (self._max_particles,)
-            dtype = self._np_float_dtype
-        elif family == "matrix":
-            buffers = self._native_matrix_uploads
-            shape = (self._max_particles, 3, 3)
-            dtype = self._np_float_dtype
-        elif family == "int":
-            buffers = self._native_int_uploads
-            shape = (self._max_particles,)
-            dtype = np.int32
-        else:
-            raise ValueError(f"Unknown native replacement buffer family {family!r}")
-        if key not in buffers:
-            buffers[key] = np.empty(shape, dtype=dtype)
-        buffer = buffers[key]
-        buffer[:count] = values[:count]
-        field.from_numpy(buffer)
-        ti.sync()
+    def _replace_field_chunked(self, family: str, field, values: np.ndarray, count: int) -> None:
+        """Replace the active prefix through bounded, field-specific uploads."""
+        copy = {
+            "vector": self._copy_vectors_chunked,
+            "scalar": self._copy_scalars_chunked,
+            "matrix": self._copy_matrices_chunked,
+            "int": self._copy_ints_chunked,
+        }[family]
+        copy(values, field, 0, count)
 
     def _extract_cpu_data(self, n_particles_total):
         """Extract current data as NumPy arrays (only active prefix)."""
@@ -782,21 +741,20 @@ class Particles:
         )
         strain_rate = self._validate_numpy_input(strain_rate, (3, 3), "strain_rate")
 
-        # Replacement uses bounded prefix transfers, with a native fixed-shape
-        # fallback on Vulkan. Appending always uses the chunked path above.
-        self._replace_field_native("vector", self.position, position, count)
-        self._replace_field_native("vector", self.velocity, velocity, count)
-        self._replace_field_native("vector", self.vortex_strength, vortex_strength, count)
-        self._replace_field_native("vector", self.vorticity, vorticity, count)
-        self._replace_field_native("scalar", self.core_radius, core_radius, count)
-        self._replace_field_native("scalar", self.particle_volume, particle_volume, count)
-        self._replace_field_native("scalar", self.kinematic_viscosity, kinematic_viscosity, count)
-        self._replace_field_native("scalar", self.eddy_viscosity, eddy_viscosity, count)
-        self._replace_field_native("scalar", self.effective_viscosity, effective_viscosity, count)
-        self._replace_field_native("int", self.group_id, group_id, count)
-        self._replace_field_native("int", self.zone_id, zone_id, count)
-        self._replace_field_native("matrix", self.velocity_gradient, velocity_gradient, count)
-        self._replace_field_native("matrix", self.strain_rate, strain_rate, count)
+        # Replacement and appending use the same bounded, field-specific transfers.
+        self._replace_field_chunked("vector", self.position, position, count)
+        self._replace_field_chunked("vector", self.velocity, velocity, count)
+        self._replace_field_chunked("vector", self.vortex_strength, vortex_strength, count)
+        self._replace_field_chunked("vector", self.vorticity, vorticity, count)
+        self._replace_field_chunked("scalar", self.core_radius, core_radius, count)
+        self._replace_field_chunked("scalar", self.particle_volume, particle_volume, count)
+        self._replace_field_chunked("scalar", self.kinematic_viscosity, kinematic_viscosity, count)
+        self._replace_field_chunked("scalar", self.eddy_viscosity, eddy_viscosity, count)
+        self._replace_field_chunked("scalar", self.effective_viscosity, effective_viscosity, count)
+        self._replace_field_chunked("int", self.group_id, group_id, count)
+        self._replace_field_chunked("int", self.zone_id, zone_id, count)
+        self._replace_field_chunked("matrix", self.velocity_gradient, velocity_gradient, count)
+        self._replace_field_chunked("matrix", self.strain_rate, strain_rate, count)
 
         self.n_particles_total = count
 

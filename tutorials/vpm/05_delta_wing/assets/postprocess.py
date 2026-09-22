@@ -23,6 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 import pandas as pd
 import pyvista as pv
 from defusedxml import ElementTree
@@ -937,7 +938,7 @@ def _wake_average(collections, end, period):
             )
             fields[index] = fields[index] + fraction * (fields[neighbour] - fields[index])
             selected_times[index] = boundary
-        mean = np.trapezoid(fields, selected_times, axis=0) / period
+        mean = trapezoid(fields, selected_times, axis=0) / period
         records.append((points, mean))
     return records
 

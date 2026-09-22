@@ -369,6 +369,12 @@ class VPMSolver:
         self.write_precision = validate_write_precision(
             getattr(final_setup, "write_precision", DEFAULT_WRITE_PRECISION)
         )
+        workspace_estimate = getattr(self.induction, "estimated_workspace_bytes", None)
+        minimum_pool_bytes = (
+            workspace_estimate(final_setup.max_n_particles) + (1 << 30)
+            if workspace_estimate is not None
+            else 0
+        )
         self.compute_device = initialize_taichi_backend(
             self.compute_device,
             debug_mode,
@@ -376,6 +382,7 @@ class VPMSolver:
             device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
             random_seed=final_setup.random_seed,
             supported_devices=getattr(self.induction, "supported_devices", None),
+            minimum_pool_bytes=minimum_pool_bytes,
         )
         # Keep the resolved backend identity independent of the process-global
         # Taichi constant.  ``close()`` releases that global runtime before a
@@ -452,9 +459,18 @@ class VPMSolver:
         fixed_grid_required = (
             self.compute_device in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
         )
+        # The slip-slab image stencil fixes the z-plane phase even on CPU.
+        # CPU may still grow the workspace; only its lattice origin is fixed.
+        slip_slab_grid = (
+            scheme == "GBD"
+            and hasattr(self.induction, "z_min")
+            and hasattr(self.induction, "z_max")
+        )
         if fixed_grid_required and hasattr(self.physics, "require_fixed_grid_allocation"):
             self.physics.require_fixed_grid_allocation(True)
-        if fixed_grid_required and hasattr(self.physics, "configure_max_grid_extent"):
+        if (fixed_grid_required or slip_slab_grid) and hasattr(
+            self.physics, "configure_max_grid_extent"
+        ):
             if scheme == "DVH":
                 _grid_h = getattr(vc, "dvh_grid_spacing", None)
                 _grid_pad = getattr(vc, "dvh_domain_padding", 3.0)
@@ -464,12 +480,12 @@ class VPMSolver:
 
             if vpm_bounds is None:
                 raise ValueError(
-                    "GPU DVH/GBD requires domain_bounds so the diffusion "
+                    "Fixed-lattice DVH/GBD requires domain_bounds so the diffusion "
                     "grid can be allocated once."
                 )
             if _grid_h is None or _grid_h <= 0:
                 raise ValueError(
-                    "GPU DVH/GBD requires a positive grid spacing so the "
+                    "Fixed-lattice DVH/GBD requires a positive grid spacing so the "
                     "fixed diffusion grid can be pre-allocated."
                 )
 
@@ -766,8 +782,29 @@ class VPMSolver:
             self._update_all_flow_integrals()
         self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
-    def run(self) -> None:
+    def start_from(self, selection="latest") -> bool:
+        """Restore a native VPM/VLM checkpoint and target ``RunPlan.steps``.
+
+        The target is an absolute accepted-step count. Repeating a completed
+        tutorial therefore does not add another run's worth of steps. ``None``
+        in :meth:`run` preserves the low-level in-memory segment API.
+        """
+        from source.restart import select_backup
+
+        path = select_backup(selection, directory=self._backup_path, kind="vpm")
+        if path is not None:
+            self.load_backup(path)
+            Logging.info(f"Continuing from {path}: step {self.step}, time {self.time:.17g}")
+        self._run_to_step = self.case.run.steps
+        return path is not None
+
+    def run(self, *, start_from=None) -> None:
         """Execute the complete framework-owned lifecycle for this case.
+
+        With ``start_from="latest"``, discover a native checkpoint and treat
+        ``RunPlan.steps`` as the total destination step. A path selects an
+        explicit checkpoint and ``"initial"`` requires a clean case. With
+        ``None``, preserve the in-memory state and run that many more steps.
 
         The lifecycle has one owner: it constructs declarative initial
         conditions, dispatches initial/accepted/final output events, records an
@@ -796,12 +833,19 @@ class VPMSolver:
         """
         if self._run_started:
             raise RuntimeError("VPMSolver.run() may be called only once")
+        try:
+            if start_from is not None:
+                self.start_from(start_from)
+        except BaseException:
+            self.close()
+            raise
         self._run_started = True
         self._run_wall_started_at = perf_counter()
         self._run_wall_finished_at = None
         self._run_initial_step = self.step
         self._run_initial_time = self.time
-        self._run_final_step = self.step + self.case.run.steps
+        self._run_final_step = getattr(self, "_run_to_step", self.step + self.case.run.steps)
+        remaining_steps = max(0, self._run_final_step - self.step)
         status = "failed"
         failure: BaseException | None = None
         limit = self.case.run.wall_time_limit_seconds
@@ -810,6 +854,8 @@ class VPMSolver:
         primary_failure: BaseException | None = None
         try:
             self._build_initial_conditions()
+            if start_from is not None and not getattr(self, "_restart_loaded", False):
+                self.save_backup()
             self.run_status = "running"
             self._write_run_manifest(self.run_status, None)
             self._log_configuration_once()
@@ -831,10 +877,12 @@ class VPMSolver:
                 status = "resource_limit"
                 failure = resource_limit_failure
             else:
-                if self.case.run.initial_samples:
+                if getattr(self, "_restart_loaded", False):
+                    self.output_manager.resume()
+                if self.case.run.initial_samples and not getattr(self, "_restart_loaded", False):
                     self._refresh_diagnostics_for_output()
                     self.output_manager.dispatch(OutputEvent.INITIAL)
-                for _ in range(self.case.run.steps):
+                for _ in range(remaining_steps):
                     if deadline is not None and perf_counter() >= deadline:
                         budget_exhausted = True
                         break
@@ -959,6 +1007,10 @@ class VPMSolver:
         ``failure`` remains part of the lifecycle-finalizer callback contract,
         but exception details are intentionally excluded from solver metadata.
         """
+        if status == "created":
+            from source.restart import archive_run_metadata
+
+            archive_run_metadata(self._backup_path / "vpm_metadata.json")
         write_manifest(
             self,
             self._backup_path / "vpm_metadata.json",
@@ -2373,11 +2425,26 @@ class VPMSolver:
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(self, path, time_step_size=time_step_size)
         self._restart_loaded = True
+        self._restart_output_time = self.time
         # A numerical restart replaces the complete particle state. Declarative
         # initial conditions must never be rebuilt by the next advance/run.
         self._initial_conditions_built = True
         self._sync_restart_state()
         self.output_manager.rewind_histories(self.time)
+        from source.restart import rewind_vpm_frames
+
+        rewind_vpm_frames(self._backup_path, self.step, self.time)
+        # Loading is read-only for numerical state. Repair any visualization
+        # companions interrupted after the HDF5 commit without resaving it.
+        if Path(path).parent == self.io.export_dir:
+            if not Path(path).with_suffix(".vtu").exists():
+                _BackupIO._write_vtu(self, str(Path(path).with_suffix(".vtu")), self.time)
+            _BackupIO.write_pvd(self._backup_path)
+            if self.vlm_solver is not None:
+                from ..io.vlm_backup import export_vlm_backup
+
+                export_vlm_backup(path)
+        self._last_backup_state = (self.step, self.time, self.particles.state_revision)
         # A growth limit compares adjacent accepted states.  A loaded restart
         # begins a new in-memory history, so its first accepted state becomes
         # the baseline rather than being compared to a discarded cloud.

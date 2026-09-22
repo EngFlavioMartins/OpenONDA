@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -29,6 +30,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 SAMPLES = CASE_DIR / "samples"
 REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples" / "fine"
+_DEFAULT_REFERENCE_SAMPLES = REFERENCE_SAMPLES
 FIGURES = CASE_DIR / "figures"
 AUXILIARY = FIGURES / "auxiliary"
 
@@ -75,6 +77,14 @@ PREPARATION_METHOD = "native-centres-affine-k12-v1"
 
 class ComparisonNotReady(RuntimeError):
     """The runs have not saved the common states needed for comparison."""
+
+
+@dataclass(frozen=True)
+class ReferenceRun:
+    name: str
+    solution: Path
+    samples: Path
+    target_spacing: float | None
 
 
 def _pvd_frames(pvd: Path) -> list[tuple[float, Path]]:
@@ -129,6 +139,48 @@ def _fvm_artifacts(solution_directory: Path) -> tuple[Path, Path]:
         if pvd.is_file() and mesh.is_file():
             return pvd, mesh
     raise FileNotFoundError(candidates[0][0])
+
+
+def reference_run() -> ReferenceRun:
+    """Use the registered fine run, or the finest complete grid-study run."""
+    root = CASE_DIR / "reference_flow"
+    samples_root = root / "samples"
+    solution_root = root / "solution"
+    required_samples = ("forces_history.csv", "centreline.csv", "offaxis_y075.csv")
+
+    def complete(name: str) -> bool:
+        solution = solution_root / name
+        samples = samples_root / name
+        if not all((samples / filename).is_file() for filename in required_samples):
+            return False
+        try:
+            _fvm_artifacts(solution)
+        except (FileNotFoundError, ValueError):
+            return False
+        return True
+
+    if complete("fine"):
+        return ReferenceRun("fine", solution_root / "fine", samples_root / "fine", None)
+
+    candidates = []
+    for solution in solution_root.glob("grid_h*"):
+        match = re.fullmatch(r"grid_h(0\d+)", solution.name)
+        if not solution.is_dir() or match is None or not complete(solution.name):
+            continue
+        digits = match.group(1)
+        spacing = float(f"{digits[0]}.{digits[1:]}")
+        candidates.append(
+            ReferenceRun(solution.name, solution, samples_root / solution.name, spacing)
+        )
+    if candidates:
+        return min(candidates, key=lambda item: (item.target_spacing, item.name))
+
+    if (solution_root / "fine").exists() or (samples_root / "fine").exists():
+        return ReferenceRun("fine", solution_root / "fine", samples_root / "fine", None)
+    raise FileNotFoundError(
+        f"No complete reference under {root}: expected solution and samples for "
+        "the registered fine run or a matching grid_h* run."
+    )
 
 
 def _frame_at_time(items: list[tuple[float, Path]], time: float) -> Path | None:
@@ -201,7 +253,14 @@ def colour(source: str) -> str:
 
 def _path(source: str, name: str, suffix: str) -> Path:
     entry = SOURCES[source]
-    return entry["dir"] / f"{entry['prefix']}{name}{suffix}"
+    return _source_directory(source) / f"{entry['prefix']}{name}{suffix}"
+
+
+def _source_directory(source: str) -> Path:
+    configured = SOURCES[source]["dir"]
+    if source == "reference" and configured == _DEFAULT_REFERENCE_SAMPLES:
+        return reference_run().samples
+    return Path(configured)
 
 
 def metadata() -> dict:
@@ -496,8 +555,13 @@ def load_slice(
 
 
 def load_forces(source: str) -> dict[str, np.ndarray] | None:
-    """Load raw cube forces, rejecting ambiguous or nonmonotonic histories."""
-    path = SOURCES[source]["dir"] / "forces_history.csv"
+    """Load raw cube forces, rejecting ambiguous or nonmonotonic histories.
+
+    A resumed run can repeat a byte-identical saved row. Removing that copy
+    in memory leaves every measured value unchanged; differing rows at the
+    same time remain an error.
+    """
+    path = _source_directory(source) / "forces_history.csv"
     if not path.exists():
         return None
     rows = np.atleast_1d(
@@ -508,6 +572,8 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
     names = rows.dtype.names
     if names is None:
         raise ValueError(f"{path} does not contain a named CSV table")
+    keep = np.r_[True, rows[1:] != rows[:-1]]
+    rows = rows[keep]
     if "patch" in names and np.any(rows["patch"] != "cube"):
         raise ValueError(f"Unexpected force patch in {path}")
     if np.any(~np.isfinite(rows["time"])) or np.any(np.diff(rows["time"]) <= 0):
@@ -603,9 +669,9 @@ def _pimple_configurations_match(coupled: dict, reference: dict) -> bool:
 
 
 def comparison_configurations() -> tuple[dict, dict]:
-    reference = json.loads(
-        (CASE_DIR / "reference_flow" / "solution" / "fine" / "fvm_metadata.json").read_text()
-    )["configuration"]
+    reference = json.loads((reference_run().solution / "fvm_metadata.json").read_text())[
+        "configuration"
+    ]
     coupled = json.loads((SOLUTION / "fvm_metadata.json").read_text())["configuration"]
     for key in (
         "transport",
@@ -615,9 +681,11 @@ def comparison_configurations() -> tuple[dict, dict]:
         "turbulence",
     ):
         if coupled[key] != reference[key]:
-            raise ValueError(f"Coupled/fine configurations differ in {key}; review the comparison")
+            raise ValueError(
+                f"Coupled/reference configurations differ in {key}; review the comparison"
+            )
     if not _pimple_configurations_match(coupled["pimple"], reference["pimple"]):
-        raise ValueError("Coupled/fine configurations differ in pimple; review the comparison")
+        raise ValueError("Coupled/reference configurations differ in pimple; review the comparison")
     for key in (
         "momentum_tolerance",
         "pressure_tolerance",
@@ -627,7 +695,7 @@ def comparison_configurations() -> tuple[dict, dict]:
         "pressure_final_relative_tolerance",
     ):
         if coupled["linear"][key] != reference["linear"][key]:
-            raise ValueError(f"Coupled/fine linear tolerances differ: {key}")
+            raise ValueError(f"Coupled/reference linear tolerances differ: {key}")
 
     def force_definition(config):
         samplers = [s for s in config["samplers"] if s["type"] == "ForceSampler"]
@@ -652,7 +720,7 @@ def comparison_configurations() -> tuple[dict, dict]:
 
 def prepare_comparison_fields() -> int:
     """Prepare exactly coincident FVM fields on the native comparison lattice."""
-    reference_solution = CASE_DIR / "reference_flow" / "solution" / "fine"
+    reference_solution = reference_run().solution
     reference_config = reference_solution / "fvm_metadata.json"
     coupled_config = SOLUTION / "fvm_metadata.json"
     coupled_pvd, coupled_mesh = _fvm_artifacts(SOLUTION)
@@ -792,6 +860,7 @@ def mesh_summary(path):
 def build_comparison_report():
     limits = validate_plot_inputs()
     coupled, reference = comparison_configurations()
+    selected_reference = reference_run()
     end = min(limits.values())
     forces = load_forces("reference")
     selected = (forces["time"] >= 1) & (forces["time"] <= end + TIME_ATOL)
@@ -811,7 +880,7 @@ def build_comparison_report():
         )
     pressure = []
     peak_step = records[0]["step"]
-    with (CASE_DIR / "reference_flow/solution/fine/diagnostics.jsonl").open() as stream:
+    with (selected_reference.solution / "diagnostics.jsonl").open() as stream:
         for line in stream:
             row = json.loads(line)
             if row["step"] in (peak_step - 1, peak_step, peak_step + 1):
@@ -831,10 +900,10 @@ def build_comparison_report():
                 )
     meshes = {
         "coupled": mesh_summary(_fvm_artifacts(SOLUTION)[1]),
-        "fine": mesh_summary(_fvm_artifacts(CASE_DIR / "reference_flow" / "solution" / "fine")[1]),
+        "reference": mesh_summary(_fvm_artifacts(selected_reference.solution)[1]),
     }
     coupled_spacing = meshes["coupled"]["cube_adjacent_cartesian_spacings"]
-    reference_spacing = meshes["fine"]["cube_adjacent_cartesian_spacings"]
+    reference_spacing = meshes["reference"]["cube_adjacent_cartesian_spacings"]
     spacing_matches = len(coupled_spacing) == len(reference_spacing) and np.allclose(
         coupled_spacing, reference_spacing, rtol=0, atol=1e-8
     )
@@ -864,8 +933,9 @@ def build_comparison_report():
                     if np.isclose(float(row["time"]), end, rtol=0, atol=TIME_ATOL)
                 )
     return {
-        "reference_samples": str(REFERENCE_SAMPLES),
-        "reference_grid": "fine",
+        "reference_samples": str(selected_reference.samples),
+        "reference_grid": selected_reference.name,
+        "reference_target_spacing": selected_reference.target_spacing,
         "comparison_end_time": end,
         "meshes": meshes,
         "cube_adjacent_spacing_matches": bool(spacing_matches),
@@ -934,11 +1004,10 @@ def write_comparison_report(report):
                 f"{float(row['sampled_max_percent']):.3f} | {float(row['covered_area_D2']):.4f} |\n"
             )
     coupled_spacing = mesh["coupled"]["cube_adjacent_cartesian_spacings"]
-    reference_spacing = mesh["fine"]["cube_adjacent_cartesian_spacings"]
+    reference_spacing = mesh["reference"]["cube_adjacent_cartesian_spacings"]
     if report["cube_adjacent_spacing_matches"]:
         mesh_resolution = (
-            "- Both meshes have cube-adjacent Cartesian spacing "
-            f"{reference_spacing[0]:.6g} m (requested fine target: 0.06 m)."
+            f"- Both meshes have cube-adjacent Cartesian spacing {reference_spacing[0]:.6g} m."
         )
     else:
         mesh_resolution = (
@@ -949,7 +1018,8 @@ def write_comparison_report(report):
         )
     text = f"""# Cube comparison report
 
-Reference: reference_flow/samples/fine/ and reference_flow/solution/fine/.
+Reference: reference_flow/samples/{report["reference_grid"]}/ and
+reference_flow/solution/{report["reference_grid"]}/.
 Comparison ends at t={report["comparison_end_time"]:g} s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
@@ -961,14 +1031,13 @@ this time are not used in the figures. No simulation was advanced by plotting.
 {mesh_resolution}
   The coupled mesh has {mesh["coupled"]["cells"]:,} cells and
   {mesh["coupled"]["cube_faces"]:,} cube faces; the reference has
-  {mesh["fine"]["cells"]:,} cells and {mesh["fine"]["cube_faces"]:,} cube faces.
+  {mesh["reference"]["cells"]:,} cells and {mesh["reference"]["cube_faces"]:,} cube faces.
   Their fitted wall cells and outer boundaries are not identical.
 - Both FVM velocity fields use the existing 3D affine reconstruction with 12
   native volume-centroid neighbours and its documented IDW fallback. MPI
   global cell IDs are checked for complete, unique coverage.
 - Only coincident saved physical states are used (absolute tolerance 1e-9 s).
-  The reference saves full fields at 1 s intervals, so matched profile/field
-  figures use that cadence. No interpolation between times is performed.
+  No interpolation between times is performed.
   The original force histories retain their 0.05 s sampling.
 - Forces are the raw pressure-plus-viscous cube-wall forces, normalized by
   0.5 rho U_inf^2 D^2, with rho=1, U_inf=1 and D=1. No smoothing, outlier removal
@@ -997,7 +1066,8 @@ Contours cannot recover structures absent from those samples. No nearest-point
 extrapolation or 95th-percentile colour clipping is used. Colour ranges are
 shared between the two velocity panels of each figure and may change with time.
 
-reference_fvm_coupled_fvm_fields_* compares the primary near-body solution with fine FVM.
+reference_fvm_coupled_fvm_fields_* compares the primary near-body solution with
+the selected reference FVM.
 reference_fvm_vpm_fields_* and coupled_fvm_vpm_fields_* diagnose VPM in the overlap
 region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
@@ -1022,9 +1092,9 @@ diagnosis of the pressure/timestep algorithm.
 The diagnostic flags simultaneous pressure-span growth and timestep reduction
 above a factor of ten; this is a screening rule, not a convergence criterion,
 and it never filters the plotted data. Hiding suspect points would invalidate
-the comparison. The fine run uses adaptive timesteps and the coupled FVM uses fixed
+the comparison. The reference run uses adaptive timesteps and the coupled FVM uses fixed
 0.01 s steps, so temporal error is not isolated even though the schemes match.
-The saved fine grid alone supplies no mesh/time convergence or statistical
+The saved reference grid alone supplies no mesh/time convergence or statistical
 uncertainty estimate. These figures can document the comparison and anomaly;
 they do not yet support a claim of validated hybrid accuracy.
 

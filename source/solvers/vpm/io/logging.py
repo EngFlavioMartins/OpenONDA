@@ -815,7 +815,7 @@ class Logging:
         solver.log_file_path = os.path.join(log_directory, log_basename)  # type: ignore[attr-defined]
         file_handle = open(  # noqa: SIM115
             solver.log_file_path,
-            "w",
+            "a",
             buffering=1,
             encoding="utf-8",
         )

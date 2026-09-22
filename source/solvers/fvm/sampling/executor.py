@@ -80,6 +80,15 @@ class FVMSamplerExecutor:
                 )
             if not due:
                 continue
+            if event == "final" and getattr(solver, "_restart_loaded", False):
+                from source.restart import output_has_time
+
+                name = getattr(sampler, "file_name", None) or sampler.name
+                exists = output_has_time(samples_dir, name, solver.time) if parallel.is_root else None
+                if parallel.is_partitioned:
+                    exists = parallel.bcast(exists, root=0)
+                if exists:
+                    continue
             if isinstance(sampler, ForceSampler):
                 forces = sampler.sample(solver)
                 solver.last_forces = forces

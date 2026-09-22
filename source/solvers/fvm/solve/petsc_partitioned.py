@@ -188,13 +188,26 @@ class PartitionedLinearWorkspace:
         self.rhs = None
         self.solution = None
         self.residual = None
+        self._operator_guess = None
+        self._reference = None
+        self._uniform = None
         self.ksp = None
         self.nullspace = None
         self._signature = None
         self._preconditioner_data = None
 
     def _destroy_objects(self) -> None:
-        for name in ("ksp", "residual", "solution", "rhs", "matrix", "nullspace"):
+        for name in (
+            "ksp",
+            "residual",
+            "_operator_guess",
+            "_reference",
+            "_uniform",
+            "solution",
+            "rhs",
+            "matrix",
+            "nullspace",
+        ):
             value = getattr(self, name)
             if value is not None:
                 value.destroy()
@@ -261,6 +274,9 @@ class PartitionedLinearWorkspace:
         self.rhs = PETSc.Vec().createMPI(system.global_size, comm=PETSc.COMM_WORLD)
         self.solution = self.rhs.duplicate()
         self.residual = self.rhs.duplicate()
+        self._operator_guess = self.rhs.duplicate()
+        self._reference = self.rhs.duplicate()
+        self._uniform = self.rhs.duplicate()
         if constant_nullspace:
             self.nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
             matrix.setNullSpace(self.nullspace)
@@ -366,17 +382,23 @@ class PartitionedLinearWorkspace:
         initial_residual_norm = rhs_norm_pre
         norm_factor = rhs_norm_pre
         if initial_guess is not None:
-            self.matrix.mult(self.solution, self.residual)
+            # Keep A*x0 for both residual and deviation norms. These norms
+            # describe the same current equation and initial guess, so a
+            # second sparse matrix-vector product is redundant.
+            operator_guess = self._operator_guess
+            reference = self._reference
+            uniform = self._uniform
+            assert operator_guess is not None and reference is not None and uniform is not None
+            self.matrix.mult(self.solution, operator_guess)
+            operator_guess.copy(self.residual)
             self.residual.axpy(-1.0, self.rhs)
             initial_residual_norm = float(self.residual.norm())
             n_global = float(system.global_size)
             x_mean = float(self.solution.sum()) / max(n_global, 1.0)
-            reference = self.rhs.duplicate()
-            uniform = self.rhs.duplicate()
             uniform.set(x_mean)
             self.matrix.mult(uniform, reference)
             reference_norm = float(reference.norm())
-            self.matrix.mult(self.solution, self.residual)
+            operator_guess.copy(self.residual)
             self.residual.axpy(-1.0, reference)
             deviation = float(self.residual.norm())
             reference.aypx(-1.0, self.rhs)  # reference := b - A(x_mean)
@@ -387,8 +409,6 @@ class PartitionedLinearWorkspace:
                 deviation + float(reference.norm()),
                 1e-12 * max(rhs_norm_pre, reference_norm, 1.0),
             )
-            reference.destroy()
-            uniform.destroy()
         initial_residual = initial_residual_norm / norm_factor
         residual_target = max(float(tolerance), float(relative_tolerance) * initial_residual)
         rtol_eff = float(

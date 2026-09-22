@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 from source.coupler.reporting import compute_diagnostics
 from source.coupler.vorticity_transfer import TransferResult, _transfer_log_record
 
@@ -72,6 +74,7 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
         vorticity_transfer=None,
         vpm_solver=SimpleNamespace(
             physics=SimpleNamespace(
+                induction=SimpleNamespace(last_tail={"shell": 16, "relative": 2.5e-5}),
                 last_gbd_moment_recovery={
                     "applied": True,
                     "nonzero_node_count": 120,
@@ -82,7 +85,20 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
                     "normalized_vortex_strength_residual": 1.0e-8,
                     "normalized_linear_impulse_residual": 2.0e-8,
                     "normalized_angular_impulse_residual": 3.0e-8,
-                }
+                },
+                last_solid_projection={
+                    "stage_count": 2,
+                    "accepted_count": 1,
+                    "stage_displacement_l1": 0.004,
+                    "accepted_displacement_l1": 0.001,
+                    "stage_impulse_change": np.array([1.0e-5, 0.0, 0.0]),
+                    "accepted_impulse_change": np.array([0.0, 2.0e-5, 0.0]),
+                },
+                last_gbd_wall_transfer={
+                    "wall_adjacent_particles": 6,
+                    "excluded_signed_weight_l1": 0.03,
+                    "fluid_correction_l1": 0.04,
+                },
             )
         ),
         n_fvm_substeps=2,
@@ -114,3 +130,7 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
         "normalized_linear_impulse_residual": 2.0e-8,
         "normalized_angular_impulse_residual": 3.0e-8,
     }
+    assert diagnostics["last_induction_image_call"] == {"shell": 16.0, "relative": 2.5e-5}
+    assert diagnostics["solid_projection"]["stage_count"] == 2
+    assert diagnostics["solid_projection"]["accepted_impulse_change"] == [0.0, 2.0e-5, 0.0]
+    assert diagnostics["gbd_wall_transfer"]["wall_adjacent_particles"] == 6

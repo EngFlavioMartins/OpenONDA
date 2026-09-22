@@ -8,6 +8,8 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
 # Physical problem
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = 1.0
 DENSITY = 1.0
@@ -58,6 +60,7 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         patch_refinements=(msh.PatchRefinement("cube", h),),
     )
     setup = fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True),
         case_name=name,
         cores=CORES,
         time=fvm.TimeConfig(
@@ -150,7 +153,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     with create_solver(arguments.name, arguments.h) as solver:
-        solver.run()
+        solver.run(start_from=START_FROM)
         fvm.update_grid_study(
             solver,
             arguments.h,

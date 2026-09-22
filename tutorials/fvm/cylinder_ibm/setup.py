@@ -18,6 +18,8 @@ __package__ = case_package(Path(__file__).parent)
 from .assets.mesh_rectilinear import cylinder_ibm_mesh
 
 # Case definition
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "cylinder_ibm"
 DIAMETER = 1.0  # cylinder diameter [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
@@ -58,6 +60,7 @@ def create_fvm_setup(
     )
 
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=time_step_size,
@@ -120,7 +123,7 @@ def main() -> None:
             body.position,
             columns=("position_x", "position_y", "position_z"),
         )
-        solver.run()
+        solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

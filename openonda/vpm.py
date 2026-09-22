@@ -38,6 +38,7 @@ from source.solvers.vpm import (
     RingDiagnosticsSampler,
     RunPlan,
     Samplers,
+    SlipSlabInduction,
     StabilizationConfig,
     TaylorGreenVortex,
     ToroidalDistribution,
@@ -70,6 +71,7 @@ from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 __all__ = [
     "DirectInduction",
     "PlanarInduction",
+    "SlipSlabInduction",
     "FMMInduction",
     "Backup",
     "DivergenceRelaxationConfig",

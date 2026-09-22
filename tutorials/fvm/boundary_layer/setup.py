@@ -19,6 +19,8 @@ from .assets.mesh_plate import flat_plate_mesh
 from .assets.profiles import write_profiles
 
 # Case definition
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "boundary_layer"
 PLATE_LENGTH = 1.0  # plate length [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
@@ -65,6 +67,7 @@ def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
     ]
 
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
@@ -107,7 +110,7 @@ def main() -> None:
     solver = fvm.create_fvm_solver(
         create_fvm_setup(kinematic_viscosity), case_dir=case_dir, mesh=mesh
     )
-    solver.run()
+    solver.run(start_from=START_FROM)
     solver.evaluate(
         write_profiles, case_dir / "solution", kinematic_viscosity, FREESTREAM_VELOCITY, STATIONS
     )

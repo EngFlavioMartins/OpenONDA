@@ -1,0 +1,48 @@
+{
+  "purpose": "Matched f32 CPU comparison of former atomic image accumulation with per-target reduction; this does not estimate coupled cylinder runtime",
+  "script": "studies/benchmark_slip_slab_accumulation.py",
+  "date": "2026-09-22",
+  "runtime": {
+    "taichi": "1.7.4",
+    "precision": "f32",
+    "cpu_threads": 4,
+    "offline_cache": false,
+    "measurement": "same process, same fields and source/target cloud; medians exclude compilation and first calls; 20 accumulation calls and 3 full slab calls per implementation"
+  },
+  "accumulator": {
+    "points": 2000,
+    "images": 32,
+    "old_median_seconds": 0.024726918505621143,
+    "new_median_seconds": 0.001022638491122052,
+    "ratio": 24.17953042085327,
+    "max_velocity_delta": 7.62939453125e-06,
+    "max_gradient_delta": 5.7220458984375e-06
+  },
+  "full_slab_targets": {
+    "sources": 1000,
+    "targets": 1000,
+    "old_median_seconds": 0.3326191719970666,
+    "new_median_seconds": 0.3018338160181884,
+    "ratio": 1.10199439010844,
+    "max_velocity_delta": 8.940696716308594e-08,
+    "max_gradient_delta": 7.152557373046875e-07,
+    "old_tail": {
+      "shell": 16,
+      "block_start": 9,
+      "relative": 1.350931870547356e-05,
+      "velocity": 1.350931870547356e-05,
+      "gradient": 1.1473293852759525e-06,
+      "target_evaluations": 65000,
+      "target_batches": 6
+    },
+    "new_tail": {
+      "shell": 16,
+      "block_start": 9,
+      "relative": 1.350931870547356e-05,
+      "velocity": 1.350931870547356e-05,
+      "gradient": 1.1473292715891148e-06,
+      "target_evaluations": 65000,
+      "target_batches": 6
+    }
+  }
+}

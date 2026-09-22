@@ -19,6 +19,8 @@ import numpy as np
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "rotor"
 
 FREESTREAM_SPEED = 7.0  # [m/s]
@@ -191,7 +193,7 @@ def build_case(
 
 
 def run(output_tag: str | None = None) -> None:
-    """Run one ordinary fresh rotor case in an explicit output namespace."""
+    """Run or continue one rotor case in an explicit output namespace."""
     solution_directory = Path("solution") if output_tag is None else Path("solution") / output_tag
     sample_directory = Path("samples") / CASE_NAME
     if output_tag is not None:
@@ -202,7 +204,7 @@ def run(output_tag: str | None = None) -> None:
             sample_directory=sample_directory,
         )
     )
-    solver.run()
+    solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":
@@ -210,8 +212,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-tag",
         help=(
-            "fresh-run namespace under solution/ and samples/rotor/; required to avoid "
-            "overwriting an existing native result"
+            "case namespace under solution/ and samples/rotor/ (resumes its latest backup)"
         ),
     )
     run(parser.parse_args().output_tag)

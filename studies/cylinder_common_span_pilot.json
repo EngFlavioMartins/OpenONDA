@@ -1,0 +1,476 @@
+{
+  "schema": "openonda-cylinder-common-span-pilot/1",
+  "configuration": {
+    "hxy": 0.1,
+    "span": 0.96,
+    "particle_spacing": 0.12,
+    "mpi_ranks": 4,
+    "backend": "VULKAN Intel Iris Xe",
+    "particle_capacity": 1000000,
+    "target_capacity": 32768,
+    "exchange_dt": 0.04,
+    "physical_end_time": 100
+  },
+  "qualification": "Vulkan fails budget; CPU warm restart passes the 17.28 second per interval startup budget. Neither is a developed-wake runtime or grid-independence certificate.",
+  "intervals": [
+    {
+      "step": 1,
+      "time": 0.04,
+      "n_transfer_particles": 824,
+      "timing_seconds": {
+        "vpm": 53.54864246600482,
+        "vpm_boundary_condition": 14.19194692900055,
+        "fvm": 2.8086035110172816,
+        "transfer": 60.01351339700341,
+        "total": 130.56270630302606,
+        "last_sweep_donor_gather": 0.0013091069995425642
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 5.582955395766476e-07,
+        "velocity": 3.9713171418043203e-07,
+        "gradient": 5.582955395766476e-07,
+        "target_evaluations": 211768.0,
+        "target_batches": 12.0,
+        "seconds": 13.185597679999773
+      },
+      "solid_projection": {
+        "stage_count": 0,
+        "accepted_count": 8,
+        "stage_displacement_l1": 0.0,
+        "accepted_displacement_l1": 0.001926326622627788,
+        "stage_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "accepted_impulse_change": [
+          -4.998877410645648e-08,
+          8.831327667766778e-07,
+          1.3807375369779727e-10
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 660,
+        "excluded_signed_weight_l1": 0.4915271633300521,
+        "fluid_correction_l1": 0.5745597551581906
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.042665699553615995,
+            "gradient_residual_rms": 0.05134635453642443,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.005836146309978413,
+            "gradient_residual_rms": 0.007105862411339172,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 0.0007994208550048222,
+            "gradient_residual_rms": 0.0009744249962824108,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 5.65396605800197,
+          "state_restore": 0.1615585350082256,
+          "boundary_refresh": 42.51181224900938,
+          "accepted_output": 0.000826426999992691
+        }
+      }
+    },
+    {
+      "step": 2,
+      "time": 0.08,
+      "n_transfer_particles": 953,
+      "timing_seconds": {
+        "vpm": 24.11325818298792,
+        "vpm_boundary_condition": 18.910145711997757,
+        "fvm": 2.704020485005458,
+        "transfer": 85.40189096498943,
+        "total": 131.12931534498057,
+        "last_sweep_donor_gather": 0.001364123003440909
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 6.53731362376675e-08,
+        "velocity": 6.170512989456256e-08,
+        "gradient": 6.53731362376675e-08,
+        "target_evaluations": 244921.0,
+        "target_batches": 12.0,
+        "seconds": 13.499704360991018
+      },
+      "solid_projection": {
+        "stage_count": 0,
+        "accepted_count": 0,
+        "stage_displacement_l1": 0.0,
+        "accepted_displacement_l1": 0.0,
+        "stage_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "accepted_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 666,
+        "excluded_signed_weight_l1": 0.7728514784212829,
+        "fluid_correction_l1": 0.6877872273393996
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.003494162463469777,
+            "gradient_residual_rms": 0.004472739152930972,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.00040419294779433064,
+            "gradient_residual_rms": 0.000493147550683503,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 5.5212979939620564e-05,
+            "gradient_residual_rms": 6.720706766638924e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 5.520718483996461,
+          "state_restore": 0.2113255120057147,
+          "boundary_refresh": 64.23699195600057,
+          "accepted_output": 0.0008042249974096194
+        }
+      }
+    },
+    {
+      "step": 3,
+      "time": 0.12,
+      "n_transfer_particles": 1090,
+      "timing_seconds": {
+        "vpm": 27.098083183998824,
+        "vpm_boundary_condition": 16.092677783002728,
+        "fvm": 2.5946068149933126,
+        "transfer": 55.05144728900632,
+        "total": 100.83681507100118,
+        "last_sweep_donor_gather": 0.001295665992074646
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 2.742473839134618e-07,
+        "velocity": 2.096553970432069e-07,
+        "gradient": 2.742473839134618e-07,
+        "target_evaluations": 280130.0,
+        "target_batches": 15.0,
+        "seconds": 0.14880369999445975
+      },
+      "solid_projection": {
+        "stage_count": 0,
+        "accepted_count": 0,
+        "stage_displacement_l1": 0.0,
+        "accepted_displacement_l1": 0.0,
+        "stage_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "accepted_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 672,
+        "excluded_signed_weight_l1": 0.7283318893523199,
+        "fluid_correction_l1": 0.6515271312742785
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.003089977060222066,
+            "gradient_residual_rms": 0.004102697420108071,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.000341481235193874,
+            "gradient_residual_rms": 0.00041760038849891014,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 4.6515808892952095e-05,
+            "gradient_residual_rms": 5.6704165270329036e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.014103872003033757,
+          "state_restore": 4.125352107017534,
+          "boundary_refresh": 35.87383215899172,
+          "accepted_output": 0.0007845069922041148
+        }
+      }
+    },
+    {
+      "step": 4,
+      "time": 0.16,
+      "n_transfer_particles": 1195,
+      "timing_seconds": {
+        "vpm": 51.634458436994464,
+        "vpm_boundary_condition": 24.668097109009977,
+        "fvm": 2.8032869650050998,
+        "transfer": 83.17169199799537,
+        "total": 162.2775345090049,
+        "last_sweep_donor_gather": 0.0014728379901498556
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 6.008735908835661e-07,
+        "velocity": 5.239667757450661e-07,
+        "gradient": 6.008735908835661e-07,
+        "target_evaluations": 307115.0,
+        "target_batches": 15.0,
+        "seconds": 9.941895622003358
+      },
+      "solid_projection": {
+        "stage_count": 0,
+        "accepted_count": 0,
+        "stage_displacement_l1": 0.0,
+        "accepted_displacement_l1": 0.0,
+        "stage_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "accepted_impulse_change": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 670,
+        "excluded_signed_weight_l1": 0.6824329419337587,
+        "fluid_correction_l1": 0.6154035624022096
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0028555844003093304,
+            "gradient_residual_rms": 0.003885917722108422,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.0003031709472170296,
+            "gradient_residual_rms": 0.00037162820149148906,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 4.1094570774140743e-05,
+            "gradient_residual_rms": 5.019242239028718e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 5.646444241006975,
+          "state_restore": 1.2170022679929389,
+          "boundary_refresh": 58.87332020101894,
+          "accepted_output": 0.000836103004985489
+        }
+      }
+    }
+  ],
+  "native_restart": {
+    "from_step": 3,
+    "accepted_step": 4,
+    "accepted_time": 0.16,
+    "exit_code": 0
+  },
+  "paired_cpu_restart": {
+    "backend": "CPU",
+    "threads": 4,
+    "initial_state": "same frozen step3 native backup as Vulkan step4",
+    "exit_code": 0,
+    "qualification": "Warm startup timing only, not developed-wake forecast. Full same-step CPU fields not saved, so diagnostics agreement is not a field-norm comparison.",
+    "intervals": [
+      {
+        "step": 4,
+        "time": 0.16,
+        "n_transfer_particles": 1195,
+        "timing_seconds": {
+          "vpm": 25.338647917989874,
+          "vpm_boundary_condition": 4.100361849006731,
+          "fvm": 2.8994205220224103,
+          "transfer": 2.551313397998456,
+          "total": 34.88974368701747,
+          "last_sweep_donor_gather": 0.0012720300001092255
+        },
+        "last_induction_image_call": {
+          "shell": 64.0,
+          "block_start": 33.0,
+          "relative": 6.008844479765685e-07,
+          "velocity": 5.239767233433668e-07,
+          "gradient": 6.008844479765685e-07,
+          "target_evaluations": 307115.0,
+          "target_batches": 15.0,
+          "seconds": 0.39457001599657815
+        },
+        "solid_projection": {
+          "stage_count": 0,
+          "accepted_count": 0,
+          "stage_displacement_l1": 0.0,
+          "accepted_displacement_l1": 0.0,
+          "stage_impulse_change": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "accepted_impulse_change": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "gbd_wall_transfer": {
+          "wall_adjacent_particles": 670,
+          "excluded_signed_weight_l1": 0.6824328778443707,
+          "fluid_correction_l1": 0.6154034954957358
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": false,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.002855578774138842,
+              "gradient_residual_rms": 0.0038859438993282132,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 0.0003031724944441658,
+              "gradient_residual_rms": 0.00037162845704426033,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 4.109735299566206e-05,
+              "gradient_residual_rms": 5.01925599383712e-05,
+              "converged": false
+            }
+          ],
+          "phase_seconds": {
+            "state_capture": 0.5148662550054723,
+            "state_restore": 0.004676437994930893,
+            "boundary_refresh": 1.8371451220009476,
+            "accepted_output": 0.0008890370081644505
+          }
+        }
+      },
+      {
+        "step": 5,
+        "time": 0.2,
+        "n_transfer_particles": 1261,
+        "timing_seconds": {
+          "vpm": 1.0747575920104282,
+          "vpm_boundary_condition": 0.6026554750133073,
+          "fvm": 2.7638226189883426,
+          "transfer": 2.0106698210001923,
+          "total": 6.45190550701227,
+          "last_sweep_donor_gather": 0.0012273070024093613
+        },
+        "last_induction_image_call": {
+          "shell": 64.0,
+          "block_start": 33.0,
+          "relative": 3.1379297524836147e-06,
+          "velocity": 3.1379297524836147e-06,
+          "gradient": 8.714984005564475e-07,
+          "target_evaluations": 7967.0,
+          "target_batches": 9.0,
+          "seconds": 0.012597164997714572
+        },
+        "solid_projection": {
+          "stage_count": 0,
+          "accepted_count": 0,
+          "stage_displacement_l1": 0.0,
+          "accepted_displacement_l1": 0.0,
+          "stage_impulse_change": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "accepted_impulse_change": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "gbd_wall_transfer": {
+          "wall_adjacent_particles": 672,
+          "excluded_signed_weight_l1": 0.6402503105237068,
+          "fluid_correction_l1": 0.5839831992845967
+        },
+        "interface_iteration": {
+          "sweeps": 3,
+          "converged": false,
+          "residuals": [
+            {
+              "sweep": 1,
+              "normal_residual_rms": 0.0022363788970971863,
+              "gradient_residual_rms": 0.0035511845151439576,
+              "converged": false
+            },
+            {
+              "sweep": 2,
+              "normal_residual_rms": 0.00017612447112601987,
+              "gradient_residual_rms": 0.00021823122339984096,
+              "converged": false
+            },
+            {
+              "sweep": 3,
+              "normal_residual_rms": 2.3678733052706287e-05,
+              "gradient_residual_rms": 2.8998224992210568e-05,
+              "converged": false
+            }
+          ],
+          "phase_seconds": {
+            "state_capture": 0.0019530389981810004,
+            "state_restore": 0.005409814009908587,
+            "boundary_refresh": 1.9182587429968407,
+            "accepted_output": 0.02057879099447746
+          }
+        }
+      }
+    ]
+  }
+}

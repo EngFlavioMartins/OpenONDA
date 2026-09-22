@@ -11,6 +11,7 @@ near list, while analytic local derivatives supply the complete velocity
 gradient. Expansion and traversal settings are not part of the public API.
 """
 
+from contextlib import contextmanager
 import math
 import time
 from typing import Self
@@ -21,7 +22,7 @@ import taichi as ti
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ..base import _STRETCHING_MODES, normalize_stretching_scheme
 from ..stretching import stretching_rate
-from ..treecode.lbvh import TaichiTreecode
+from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode
 from .diagnostics import FMMDiagnostics
 
 _EXPANSION_ORDER = 3
@@ -217,6 +218,7 @@ class FMMDeviceWorkspace:
         self.target_batch_capacity = min(
             self.max_n_particles,
             max(1, int(max_evaluation_points)),
+            _TRAVERSAL_BATCH_SIZE,
         )
         self.tree = TaichiTreecode(
             max_n_particles=self.max_n_particles,
@@ -227,7 +229,7 @@ class FMMDeviceWorkspace:
             multipole_order=1,
             sort_particle_targets=False,
             traversal_block_dim=0,
-            device_sort_only=True,
+            device_sort_only=False,
             hierarchy_only=True,
             max_evaluation_points=self.target_batch_capacity,
         )
@@ -977,6 +979,7 @@ class FMMDeviceWorkspace:
         target_count: int,
         source_count: int,
         background_velocity,
+        reuse_source_tree: bool = False,
     ) -> None:
         """Evaluate arbitrary targets without transferring particle fields to the host.
 
@@ -1016,12 +1019,13 @@ class FMMDeviceWorkspace:
             )
             return
 
-        self.tree.build(
-            source_position,
-            source_vortex_strength,
-            source_core_radius,
-            source_count,
-        )
+        if not reuse_source_tree:
+            self.tree.build(
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                source_count,
+            )
         self.tree.compute_external_target_fields(
             target_position,
             velocity_output,
@@ -1192,7 +1196,7 @@ class FMMInduction:
             evaluation_capacity = int(max_evaluation_points)
         if evaluation_capacity < 1:
             raise ValueError("max_evaluation_points must be positive")
-        evaluation_capacity = min(capacity, evaluation_capacity)
+        evaluation_capacity = min(capacity, evaluation_capacity, _TRAVERSAL_BATCH_SIZE)
         node_count = 2 * capacity
         max_pairs = _PAIR_CAPACITY_FACTOR * capacity
         coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
@@ -1204,7 +1208,8 @@ class FMMInduction:
         # one-element stubs, so they are intentionally not capacity-scaled.
         source_particle_bytes = capacity * (3 + 3 + 1) * 4
         node_metadata_bytes = node_count * (3 + 1 + 3 + 3 + 3 + 6 + 2 + 6) * 4
-        sort_and_leaf_bytes = capacity * (1 + 7) * 4
+        sort_capacity = 1 << (capacity - 1).bit_length()
+        sort_and_leaf_bytes = capacity * (1 + 7) * 4 + (sort_capacity - capacity) * 2 * 4
         target_stack_depth = (
             self.workspace.tree.max_stack_depth if self.workspace is not None else 48
         )
@@ -1286,6 +1291,7 @@ class FMMInduction:
         self.workspace.evaluate(
             position, vortex_strength, core_radius, count, self._stretching_mode
         )
+        self._last_tree_key = (position, vortex_strength, core_radius, count)
         self.physics._copy_vec3(self.workspace.velocity, velocity_out, count)
         if velocity_gradient_out is not None:
             self.physics._copy_mat3(self.workspace.gradient, velocity_gradient_out, count)
@@ -1327,6 +1333,33 @@ class FMMInduction:
             self.diagnostics.last_downward_pass_seconds = phase["downward"]
             self.diagnostics.last_near_field_seconds = phase["near_field"]
             self.diagnostics.last_strength_rate_seconds = phase["strength_rate"]
+
+    @contextmanager
+    def fixed_source_targets(self, position, strength, radius, count, *, reuse_current_tree=False):
+        """Reuse one LBVH for target batches while source fields are immutable.
+
+        The caller owns a short evaluation scope and must not mutate any of the
+        three source fields inside it. The scope ends before the next RK stage.
+        """
+        if self.workspace is None:
+            raise RuntimeError("FMMInduction must be bound before fixed-source targets")
+        if getattr(self, "_fixed_source_key", None) is not None:
+            raise RuntimeError("nested fixed-source target scopes are unsupported")
+        key = (position, strength, radius, int(count))
+        previous = getattr(self, "_last_tree_key", None)
+        same_tree = (
+            previous is not None
+            and all(previous[i] is key[i] for i in range(3))
+            and previous[3] == key[3]
+        )
+        if not reuse_current_tree or not same_tree:
+            self.workspace.tree.build(*key)
+        self._last_tree_key = key
+        self._fixed_source_key = key
+        try:
+            yield
+        finally:
+            self._fixed_source_key = None
 
     def evaluate_targets(
         self,
@@ -1379,6 +1412,7 @@ class FMMInduction:
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
         if self.kernel.name not in {"GAUSSIAN", "WINCKELMANS"}:
+            self._last_tree_key = None
             if target_velocity is not None:
                 self.physics.compute_target_velocity_kernel(
                     target_position,
@@ -1401,6 +1435,14 @@ class FMMInduction:
                     int(source_count),
                 )
             return
+        fixed = getattr(self, "_fixed_source_key", None)
+        if fixed is not None and not (
+            fixed[0] is source_position
+            and fixed[1] is source_vortex_strength
+            and fixed[2] is source_core_radius
+            and fixed[3] == int(source_count)
+        ):
+            raise RuntimeError("fixed-source target scope received different source fields")
         self.workspace.evaluate_targets(
             target_position,
             source_position,
@@ -1411,7 +1453,15 @@ class FMMInduction:
             int(target_count),
             int(source_count),
             background_velocity if include_freestream else self.physics._zero_velocity,
+            reuse_source_tree=fixed is not None,
         )
+        if fixed is None:
+            self._last_tree_key = (
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                int(source_count),
+            )
 
     def _estimate_memory_bytes(self) -> int:
         """Return the current capacity-based workspace estimate in bytes."""

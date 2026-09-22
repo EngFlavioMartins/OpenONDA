@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from scipy.integrate import trapezoid
 from scipy.optimize import brentq
 
 
@@ -154,7 +155,7 @@ def solve_blade_element_momentum(
 
     def integrate(values):
         return float(
-            np.trapezoid(values, r)
+            trapezoid(values, r)
             if radial_widths is None
             else np.sum(values * np.asarray(radial_widths))
         )

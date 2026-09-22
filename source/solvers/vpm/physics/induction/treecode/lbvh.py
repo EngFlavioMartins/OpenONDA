@@ -7,7 +7,7 @@ binary-tree traversal using Taichi for GPU acceleration.
 The tree is built on-device via:
   1. AABB computation (parallel min/max reduction)
   2. Morton-code encoding (30-bit, 10 bits/axis)
-  3. On-device Morton sort (ti.algorithms.parallel_sort; CPU argsort fallback)
+  3. Active-prefix on-device Morton sort (CPU argsort fallback)
   4. GPU Karras radix tree (O(N), fully parallel — one thread per internal node)
   5. Level-synchronous bottom-up multipole moments (one kernel per tree level)
 
@@ -18,10 +18,9 @@ node solved independently (no serial stack, no shared scratch, Vulkan-portable):
     exponential/binary search
   - internal node 0 is the root (covers [0, N-1])
 
-All phases are GPU-resident: the sort runs on-device (parallel_sort), the level
-bound is derived from N (no device→host scalar read), and results stay on the GPU
-(field→field copies).  The CPU argsort remains only as a one-time-validated
-fallback for any backend whose parallel_sort misbehaves.
+On CUDA the Morton sort uses an active-prefix odd-even network on device; other
+backends use a deterministic active-key CPU argsort unless device sorting was
+explicitly required. The level bound is derived from N.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -33,7 +32,6 @@ import time
 
 import numpy as np
 import taichi as ti
-import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 
 from ....config.constants import TREECODE_SUPPORTED_KERNELS
 from ....kernels.base import make_vortex_kernel
@@ -220,10 +218,14 @@ class TaichiTreecode:
 
         # LBVH BUILD FIELDS
         self.morton_codes = ti.field(dtype=ti.u32, shape=max_n_particles)
-        self.sorted_indices = ti.field(dtype=ti.i32, shape=max_n_particles)
+        # The sort network needs a power-of-two prefix. Pad these two scratch
+        # fields once, instead of sorting the entire particle capacity for
+        # every small active cloud (or allocating a field per active count).
+        self._sort_capacity = 1 << (max_n_particles - 1).bit_length()
+        self.sorted_indices = ti.field(dtype=ti.i32, shape=self._sort_capacity)
         # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
         # run on-device, removing the per-build CPU argsort host round-trip.
-        self._sort_keys = ti.field(dtype=ti.u32, shape=max_n_particles)
+        self._sort_keys = ti.field(dtype=ti.u32, shape=self._sort_capacity)
         # Taichi 1.7's Vulkan parallel_sort can fail only for particular active
         # lengths even after an earlier invocation validated successfully.  A
         # bad permutation creates malformed Karras parent links; the subsequent
@@ -781,13 +783,13 @@ class TaichiTreecode:
                 self._root[None] = N  # internal node 0 is the root
 
     @ti.kernel
-    def _init_sort_pairs_kernel(self, N: ti.i32):
+    def _init_sort_pairs_kernel(self, N: ti.i32, prefix: ti.i32):
         """Seed (key, payload) pairs for the on-device Morton sort.
 
         Real particles get their Morton key + their own index; the unused tail is
         keyed 0xFFFFFFFF so it sorts after all 30-bit real keys, leaving the first
         N slots as the Morton-ordered permutation."""
-        for i in range(self.max_n_particles):
+        for i in range(prefix):
             if i < N:
                 self._sort_keys[i] = self.morton_codes[i]
                 self.sorted_indices[i] = i
@@ -795,24 +797,51 @@ class TaichiTreecode:
                 self._sort_keys[i] = ti.u32(0xFFFFFFFF)
                 self.sorted_indices[i] = i
 
+    @ti.kernel
+    def _sort_prefix_stage_kernel(self, prefix: ti.i32, p: ti.i32, k: ti.i32, invocations: ti.i32):
+        """Taichi 1.7 odd-even merge stage restricted to the initialized prefix."""
+        for inv in range(invocations):
+            j = k % p + inv * 2 * k
+            for i in range(0, ti.min(k, prefix - j - k)):
+                a = i + j
+                b = a + k
+                if int(a / (p * 2)) == int(b / (p * 2)):  # noqa: SIM102 - Taichi kernel
+                    if self._sort_keys[a] > self._sort_keys[b]:
+                        key = self._sort_keys[a]
+                        self._sort_keys[a] = self._sort_keys[b]
+                        self._sort_keys[b] = key
+                        index = self.sorted_indices[a]
+                        self.sorted_indices[a] = self.sorted_indices[b]
+                        self.sorted_indices[b] = index
+
+    def _sort_active_prefix(self, N: int) -> None:
+        """Sort active keys and maximal sentinels without touching unused capacity."""
+        prefix = 1 << (N - 1).bit_length()
+        self._init_sort_pairs_kernel(N, prefix)
+        p = 1
+        while p < prefix:
+            k = p
+            while k >= 1:
+                invocations = int((prefix - k - k % p) / (2 * k)) + 1
+                self._sort_prefix_stage_kernel(prefix, p, k, invocations)
+                ti.sync()
+                k //= 2
+            p *= 2
+
     def _cpu_argsort(self, N):
         """CPU fallback: argsort Morton keys → sorted_indices (host round-trip)."""
         morton_np = self._download_u32_field(self.morton_codes, N)
         sorted_idx = np.argsort(morton_np, kind="mergesort")
-        padded = np.full(self.max_n_particles, -1, dtype=np.int32)
-        padded[:N] = sorted_idx.astype(np.int32)
-        self._upload_i32_array(padded, self.sorted_indices, self.max_n_particles)
+        self._upload_i32_array(sorted_idx.astype(np.int32), self.sorted_indices, N)
 
     def _sort_morton(self, N):
         """Morton sort → sorted_indices, on-device when the backend supports it."""
         if self.device_sort_only:
-            self._init_sort_pairs_kernel(N)
-            ti.algorithms.parallel_sort(keys=self._sort_keys, values=self.sorted_indices)
+            self._sort_active_prefix(N)
             return
         if self._gpu_sort:
             try:
-                self._init_sort_pairs_kernel(N)
-                ti.algorithms.parallel_sort(keys=self._sort_keys, values=self.sorted_indices)
+                self._sort_active_prefix(N)
             except Exception:
                 self._gpu_sort = False
             else:
@@ -2271,8 +2300,9 @@ class TaichiTreecode:
         if batch_capacity < 1 or batch_capacity > self.max_evaluation_points:
             raise ValueError("batch_capacity must fit the allocated target stack")
         self._reset_external_target_traversal_error()
-        for target_start in range(0, target_count, batch_capacity):
-            count = min(batch_capacity, target_count - target_start)
+        dispatch_size = min(batch_capacity, _TRAVERSAL_BATCH_SIZE)
+        for target_start in range(0, target_count, dispatch_size):
+            count = min(dispatch_size, target_count - target_start)
             self.compute_external_target_fields_kernel(
                 target_position,
                 target_velocity,

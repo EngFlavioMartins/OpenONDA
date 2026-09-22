@@ -26,14 +26,14 @@ def main() -> None:
     arguments = parser.parse_args()
 
     coupled = data.history(data.CASE_DIR / "samples" / "forces_history.csv", FORCE_COLUMNS)
-    reference = data.history(data.REFERENCE / "forces_history.csv", FORCE_COLUMNS)
+    reference = data.history(data.reference_directory() / "forces_history.csv", FORCE_COLUMNS)
     time, coupled_values, reference_values, errors = data.common_history(
         coupled, reference, FORCE_COLUMNS
     )
     data.write_json(
         "reference_force_errors.json",
         {
-            "reference": "fine",
+            "reference": data.reference_directory().name,
             "time_interval": [float(time[0]), float(time[-1])],
             "errors": errors,
         },

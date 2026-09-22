@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from dataclasses import replace
 from importlib import resources
 import io
 import json
@@ -34,6 +35,7 @@ from openonda.fvm import (
 import openonda.fvm.mesher as msh
 from openonda.tutorials import TUTORIALS, materialize_tutorial
 import openonda.vpm
+from source.solution_layout import vpm_backup_files
 
 
 def _verify_package_location(require_site_packages: bool) -> Path:
@@ -127,7 +129,7 @@ def _verify_native_fvm() -> dict[str, float | int]:
             output_schedule=RunSchedule(every_n_steps=100),
         ),
         schemes=DiscretizationConfig(convection_scheme="upwind"),
-        linear=LinearSolverConfig(linear_solver="spsolve"),
+        linear=LinearSolverConfig(linear_solver="bicgstab", pressure_solver="amg"),
         pimple=PimpleControl(n_correctors=1, n_outer_correctors=1),
         transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
@@ -168,6 +170,75 @@ def _verify_native_fvm() -> dict[str, float | int]:
         "max_velocity_magnitude": float(np.max(np.linalg.norm(velocity, axis=1))),
         "max_absolute_kinematic_pressure": float(np.max(np.abs(pressure))),
     }
+
+
+def _verify_native_vpm() -> dict[str, object]:
+    """Advance particles, write native output, and resume from an installed wheel."""
+    import h5py
+    import pyvista as pv
+
+    from openonda import vpm
+
+    with (
+        tempfile.TemporaryDirectory(prefix="openonda-installed-vpm-") as directory,
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        case = vpm.VPMCase(
+            directory=Path(directory) / "original",
+            numerics=vpm.Numerics(
+                compute_device="CPU",
+                max_n_particles=8,
+                max_evaluation_points=8,
+                time_step_size=0.01,
+                viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2),
+                verbose=False,
+            ),
+            backup=vpm.Backup(interval_steps=1),
+            run=vpm.RunPlan(steps=1, initial_samples=False),
+        )
+        solver = vpm.VPMSolver(case)
+        try:
+            solver.add_vortex_particles(
+                position=np.array([[-0.25, 0.0, 0.0], [0.25, 0.0, 0.0]]),
+                velocity=np.zeros((2, 3)),
+                vortex_strength=np.array([[0.0, 0.1, 0.0], [0.0, -0.1, 0.0]]),
+                core_radius=np.full(2, 0.2),
+                particle_volume=np.full(2, 0.2**3),
+                kinematic_viscosity=np.full(2, 0.01),
+            )
+            solver.run()
+            if solver.run_status != "completed":
+                raise RuntimeError(f"VPM installation smoke stopped: {solver.run_status}")
+        finally:
+            solver.close()
+
+        solution = Path(case.directory) / "solution"
+        checkpoints = vpm_backup_files(solution)
+        if len(checkpoints) != 1:
+            raise RuntimeError(f"VPM installation smoke expected one checkpoint: {checkpoints}")
+        checkpoint = checkpoints[0]
+        with h5py.File(checkpoint, "r") as archive:
+            positions = archive["particles/position"][:]
+            step = int(archive["solver"].attrs["step"])
+            time = float(archive["solver"].attrs["time"])
+        if step != 1 or not np.isclose(time, 0.01) or not np.isfinite(positions).all():
+            raise RuntimeError("VPM installation smoke saved an invalid state")
+        reader = pv.get_reader(solution / "vpm.pvd")
+        if reader.read()[0].n_points != 2:
+            raise RuntimeError("VPM installation smoke has invalid ParaView output")
+
+        resumed = vpm.VPMSolver(replace(case, directory=Path(directory) / "resumed"))
+        try:
+            resumed.load_backup(checkpoint)
+            if resumed.step != step or resumed.time != time:
+                raise RuntimeError("VPM restart did not preserve the accepted clock")
+            np.testing.assert_array_equal(resumed.particle_position, positions)
+            resumed.advance()
+            if resumed.step != 2 or not np.isfinite(resumed.particle_position).all():
+                raise RuntimeError("VPM restarted step produced an invalid state")
+        finally:
+            resumed.close()
+    return {"n_particles": 2, "steps": 1, "restart_step": 2, "backend": "CPU"}
 
 
 def _verify_distribution_resources() -> dict[str, object]:
@@ -287,8 +358,8 @@ def main() -> int:
     """Run the command-line installation verification suite.
 
     The check validates that the imported package, distribution resources, direct
-    tutorial entry points, Cartesian meshing, Taichi runtime, and native FVM
-    extension are usable from an installed environment.  It deliberately removes
+    tutorial entry points, Cartesian meshing, FVM iterative solves, and VPM
+    stepping/output/restart are usable from an installed environment. It removes
     ``PYTHONPATH`` while exercising tutorial scripts so a source checkout cannot
     mask packaging errors.
 
@@ -340,6 +411,7 @@ def main() -> int:
             "taichi_version": taichi_version,
             "taichi_arch": taichi_arch,
             "native_fvm": _verify_native_fvm(),
+            "native_vpm": _verify_native_vpm(),
         }
     )
     numba.config.reload_config()

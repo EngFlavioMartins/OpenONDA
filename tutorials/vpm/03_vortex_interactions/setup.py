@@ -8,6 +8,8 @@ from pathlib import Path
 import numpy as np
 import openonda.vpm as vpm
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 RING_RADIUS = 1.0
 RING_CIRCULATION = np.pi
 REYNOLDS_NUMBER = 3000.0
@@ -182,4 +184,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("method", nargs="?", default="baseline", choices=CASES)
     case = build_case(parser.parse_args().method)
-    vpm.VPMSolver(case).run()
+    vpm.VPMSolver(case).run(start_from=START_FROM)

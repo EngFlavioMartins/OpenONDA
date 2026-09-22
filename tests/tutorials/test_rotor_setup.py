@@ -174,8 +174,8 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
     assert matched_pair._steps_to_endpoint(7.5, 9.0, setup.TIME_STEP_SIZE) == 250
 
 
-def test_allrun_keeps_literal_completion_launcher() -> None:
+def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:
     launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/allrun.sh"
     assert launcher.read_text() == (
-        '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\npython setup.py --output-tag completion\n'
+        '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\n./allclean.sh\n\npython setup.py "$@"\n'
     )

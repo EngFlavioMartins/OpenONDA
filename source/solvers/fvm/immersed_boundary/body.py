@@ -12,6 +12,8 @@ al. 2010; Constant et al. Table 1), which the factory methods enforce.
 from __future__ import annotations
 
 from collections.abc import Sequence
+import hashlib
+import json
 
 import numpy as np
 
@@ -157,6 +159,25 @@ class ImmersedBody:
     def has_solid_geometry(self) -> bool:
         """Whether this marker cloud also carries an exact interior test."""
         return self._geometry is not None
+
+    @property
+    def revision(self) -> str:
+        """Stable identity of current solid metadata and marker geometry."""
+
+        def serializable(value):
+            if isinstance(value, np.ndarray):
+                return value.tolist()
+            if isinstance(value, np.generic):
+                return value.item()
+            raise TypeError(f"Unsupported immersed geometry value: {type(value).__name__}")
+
+        payload = json.dumps(
+            self._geometry, sort_keys=True, default=serializable, separators=(",", ":")
+        ).encode()
+        digest = hashlib.blake2b(digest_size=16)
+        digest.update(payload)
+        digest.update(np.ascontiguousarray(self.position, dtype=np.float64).tobytes())
+        return digest.hexdigest()
 
     @property
     def solid_bounds(self) -> np.ndarray | None:

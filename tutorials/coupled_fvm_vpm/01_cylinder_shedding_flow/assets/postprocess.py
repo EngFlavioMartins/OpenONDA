@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 import pandas as pd
 
 from openonda.plotting import DEFAULT_DPI, validate_thesis_figure
@@ -14,8 +15,33 @@ from openonda.plotting import DEFAULT_DPI, validate_thesis_figure
 CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
 AUXILIARY = FIGURES / "auxiliary"
-REFERENCE = CASE_DIR / "reference_flow" / "samples" / "fine"
+REFERENCE_ROOT = CASE_DIR / "reference_flow"
 VELOCITY_COLUMNS = tuple(f"velocity_{axis}" for axis in "xyz")
+
+
+def reference_directory(root: Path = REFERENCE_ROOT) -> Path:
+    """Resolve the reference from the post-processed selection metadata."""
+    selection_path = root / "reference_selection.json"
+    if not selection_path.is_file():
+        raise FileNotFoundError(
+            f"reference selection is missing: run the complete reference campaign ({selection_path})"
+        )
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    if selection.get("force_grid_qualified") is not True:
+        raise ValueError("selected reference has not passed its force-grid qualification")
+    relative = Path(str(selection["samples_relative"]))
+    candidate = (root / relative).resolve()
+    if candidate.parent != (root / "samples").resolve() or not candidate.is_dir():
+        raise ValueError(
+            f"reference selection escapes the reference samples directory: {candidate}"
+        )
+    metadata = candidate / "grid_run.json"
+    if (
+        not metadata.is_file()
+        or json.loads(metadata.read_text(encoding="utf-8")).get("case") != candidate.name
+    ):
+        raise ValueError(f"reference selection does not identify a valid grid run: {candidate}")
+    return candidate
 
 
 def history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
@@ -54,7 +80,7 @@ def common_history(
     for index, column in enumerate(columns):
         difference = left[:, index] - right[:, index]
         errors[column] = {
-            "rms": float(np.sqrt(np.trapezoid(difference**2, times) / (end - start))),
+            "rms": float(np.sqrt(trapezoid(difference**2, times) / (end - start))),
             "maximum": float(np.abs(difference).max()),
         }
     return times, left, right, errors

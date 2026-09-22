@@ -76,7 +76,7 @@ def test_cylinder_coupled_mesh_is_uniform_at_the_reference_fine_spacing(tmp_path
     assert mesh.effective_cell_size(module.CELL_SIZE) == pytest.approx(module.CELL_SIZE)
     assert mesh.requested_domain.bounds == module.FVM_BOX
     assert mesh.domain.bounds == pytest.approx(module.FVM_BOX)
-    assert pytest.approx((-1.48, 1.48, -1.48, 1.48, -0.48, 0.48)) == module.FVM_BOX
+    assert pytest.approx((-1.6, 1.6, -1.6, 1.6, -0.48, 0.48)) == module.FVM_BOX
     assert pytest.approx(24) == module.FVM_RESOLVED_SPAN / module.CELL_SIZE
 
 
@@ -84,8 +84,7 @@ def test_cylinder_transfer_region_fits_boundary_face_centres(tmp_path):
     """Keep exchange support inside the face-centre box used by the coupler."""
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
-    half_span = module.FVM_HALF_SPAN - 0.5 * module.CELL_SIZE
-    face_centre_box = np.asarray((*module.FVM_BOX[:4], -half_span, half_span))
+    face_centre_box = np.asarray((*module.FVM_BOX[:4], -module.FVM_HALF_SPAN, module.FVM_HALF_SPAN))
     module.COUPLER_SETUP.validate_transfer_region_box(face_centre_box)
 
 
@@ -105,6 +104,6 @@ def test_cylinder_gbd_grid_is_aligned_and_within_gpu_budget(tmp_path):
         for lower, upper in zip(domain[::2], domain[1::2], strict=True)
     )
     grid_bytes = int(np.prod(dimensions)) * 32
-    assert dimensions == (411, 211, 275)
+    assert dimensions == (428, 220, 31)
     assert grid_bytes < 1 << 30
     assert module.REFERENCE_AREA == module.DIAMETER * module.FVM_RESOLVED_SPAN

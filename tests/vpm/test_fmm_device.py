@@ -1,6 +1,7 @@
 """Device-hierarchy and covariance tests for production VPM FMM."""
 
 import math
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -19,6 +20,10 @@ from source.solvers.vpm.physics.induction.fmm.device import (
     _MULTI_INDICES,
     _translation_tables,
 )
+from source.solvers.vpm.physics.induction.treecode.lbvh import (
+    _TRAVERSAL_BATCH_SIZE,
+    TaichiTreecode,
+)
 
 
 def _ensure_taichi_cpu() -> None:
@@ -31,13 +36,55 @@ def _add_p2p_diagnostic(workspace: ti.template(), particle_pairs: ti.i32):
     workspace._record_p2p_particle_count(particle_pairs)
 
 
-def test_fmm_workspace_estimate_is_linear_in_capacity():
+def test_fmm_workspace_estimate_accounts_for_padded_sort_capacity():
     induction = FMMInduction()
-    estimates = [induction.estimated_workspace_bytes(capacity) for capacity in (1, 10, 100)]
+    estimates = [induction.estimated_workspace_bytes(capacity) for capacity in (1, 2, 4)]
     assert estimates[1] > estimates[0]
     assert estimates[2] > estimates[1]
-    assert estimates[2] - estimates[1] == 10 * (estimates[1] - estimates[0])
-    assert induction.estimated_workspace_bytes(100, max_evaluation_points=10) < estimates[2]
+    assert estimates[2] - estimates[1] == 2 * (estimates[1] - estimates[0])
+    sizes = [induction.estimated_workspace_bytes(capacity) for capacity in (7, 8, 9)]
+    assert sizes[2] - sizes[1] == sizes[1] - sizes[0] + 8 * 2 * 4
+    assert induction.estimated_workspace_bytes(
+        100, max_evaluation_points=10
+    ) < induction.estimated_workspace_bytes(100)
+    assert induction.estimated_workspace_bytes(
+        100_000, max_evaluation_points=100_000
+    ) == induction.estimated_workspace_bytes(100_000, max_evaluation_points=_TRAVERSAL_BATCH_SIZE)
+
+
+def test_fmm_does_not_force_the_unqualified_vulkan_sort():
+    harness = _DeviceFMMHarness(capacity=8)
+    assert harness.induction.workspace.tree.device_sort_only is False
+
+
+def test_external_target_traversal_is_bounded_per_gpu_dispatch():
+    calls = []
+    target_count = 2 * _TRAVERSAL_BATCH_SIZE + 17
+    tree = SimpleNamespace(
+        max_evaluation_points=target_count,
+        theta_sq=0.01,
+        _external_target_traversal_error={None: 0},
+        _reset_external_target_traversal_error=lambda: None,
+        compute_external_target_fields_kernel=lambda *args: calls.append((args[5], args[6])),
+    )
+
+    TaichiTreecode.compute_external_target_fields(
+        tree,
+        None,
+        None,
+        None,
+        None,
+        target_count,
+        target_count,
+        write_velocity=True,
+        write_gradient=False,
+    )
+
+    assert calls == [
+        (0, _TRAVERSAL_BATCH_SIZE),
+        (_TRAVERSAL_BATCH_SIZE, _TRAVERSAL_BATCH_SIZE),
+        (2 * _TRAVERSAL_BATCH_SIZE, 17),
+    ]
 
 
 def test_particle_capacity_warning_is_emitted_at_eighty_percent(monkeypatch):

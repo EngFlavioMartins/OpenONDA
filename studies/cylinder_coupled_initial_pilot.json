@@ -1,0 +1,142 @@
+{
+  "schema": "openonda-cylinder-coupled-pilot/1",
+  "backend": "Intel Iris Xe Vulkan",
+  "mpi_ranks": 2,
+  "hxy": 0.08,
+  "span": 0.48,
+  "hp": 0.08,
+  "particle_capacity": 100000,
+  "implementation": "Before doubling-block image batching; historical integration pilot, not a controlled A/B benchmark",
+  "backup_manifest_written": true,
+  "steps": [
+    {
+      "step": 1,
+      "time": 0.04,
+      "particles": 1170,
+      "timing_seconds": {
+        "vpm": 49.86872240700177,
+        "vpm_boundary_condition": 29.061773031004122,
+        "fvm": 4.358292407996487,
+        "transfer": 91.32359995598381,
+        "total": 174.6123878019862,
+        "last_sweep_donor_gather": 0.0011322540085529909
+      },
+      "interface": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.04256798044243103,
+            "gradient_residual_rms": 0.05055482735281881,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.005550613850555803,
+            "gradient_residual_rms": 0.006608769188907487,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 0.0007245818230379329,
+            "gradient_residual_rms": 0.0008622736615573284,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 2.1829281249956694,
+          "state_restore": 0.20664532198861707,
+          "boundary_refresh": 79.27685236599064,
+          "accepted_output": 0.0007167080038925633
+        }
+      }
+    },
+    {
+      "step": 2,
+      "time": 0.08,
+      "particles": 1329,
+      "timing_seconds": {
+        "vpm": 71.86081177000597,
+        "vpm_boundary_condition": 58.128244123989134,
+        "fvm": 4.679418377010734,
+        "transfer": 214.4361892650195,
+        "total": 349.1046635360253,
+        "last_sweep_donor_gather": 0.0011213889956707135
+      },
+      "interface": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0022350167932163397,
+            "gradient_residual_rms": 0.003160827565309925,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.0006991514032198286,
+            "gradient_residual_rms": 0.0016293197937291316,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 3.390393853322232e-05,
+            "gradient_residual_rms": 4.060526836245294e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.22607030101062264,
+          "state_restore": 0.944528800988337,
+          "boundary_refresh": 203.05755959800445,
+          "accepted_output": 0.0007280930003616959
+        }
+      }
+    },
+    {
+      "step": 3,
+      "time": 0.12,
+      "particles": 1389,
+      "timing_seconds": {
+        "vpm": 43.838095315993996,
+        "vpm_boundary_condition": 34.198702127003344,
+        "fvm": 4.304218787001446,
+        "transfer": 168.25999774900265,
+        "total": 250.60101397900144,
+        "last_sweep_donor_gather": 0.0009981939947465435
+      },
+      "interface": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.001786026329292754,
+            "gradient_residual_rms": 0.002641573014001347,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.00016636609671971905,
+            "gradient_residual_rms": 0.00019900274033872754,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 2.114267322872006e-05,
+            "gradient_residual_rms": 2.5245391274154115e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.011568190006073564,
+          "state_restore": 0.01796274201478809,
+          "boundary_refresh": 157.8928057479934,
+          "accepted_output": 0.01992952500586398
+        }
+      }
+    }
+  ]
+}

@@ -9,6 +9,34 @@ from types import SimpleNamespace
 import pytest
 
 
+def test_serial_public_apis_do_not_import_optional_mpi(tmp_path):
+    script = """
+import sys
+class RejectMPI:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'mpi4py', 'petsc4py'}:
+            raise AssertionError('serial import attempted optional runtime: ' + fullname)
+sys.meta_path.insert(0, RejectMPI())
+import openonda.fvm
+import openonda.vpm
+import openonda.coupler
+import openonda.verify_install
+from source.solvers.fvm.core.parallel import ParallelContext
+assert ParallelContext.create(openonda.fvm.ComputeConfig()).comm is None
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_mpi_runtime_limits_loaded_pools_and_preserves_particle_worker_budget(tmp_path):
     script = """
 import numpy as np

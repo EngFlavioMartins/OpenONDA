@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import taichi as ti
 
 from ..config.constants import MAX_N_PARTICLES
@@ -56,6 +58,9 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
         self._event_observer = event_observer or NullPhysicsEventObserver()
         self._init_grid_diffusion()
+        # Reset by the coupler before each accepted VPM advance when a solid
+        # numerical-exclusion guard is installed.
+        self.last_solid_projection: dict[str, Any] | None = None
 
         # External stage providers may use either a device callback or a host
         # callback.  They are consumed by StageRHS, never by the RK engine.

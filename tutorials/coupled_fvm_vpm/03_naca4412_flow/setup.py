@@ -26,6 +26,8 @@ from openonda.vpm import Backup, Samplers
 __package__ = case_package(Path(__file__).parent)
 from .assets.airfoil_geometry import naca4_vertices
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_DIR = Path(__file__).resolve().parent
 # Physical parameters
 NACA_CODE = "4412"
@@ -196,7 +198,7 @@ def main() -> None:
         immersed_bodies=AIRFOIL,
         grid_spacing=SPACING,
     ) as solver:
-        solver.run()
+        solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

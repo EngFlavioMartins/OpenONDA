@@ -1,0 +1,27 @@
+{
+  "purpose": "Bounded image-batched full-3D slip-slab FMM timing, not a coupled case runtime prediction",
+  "date": "2026-09-22",
+  "script": "studies/benchmark_slip_slab_induction.py",
+  "runtime": {
+    "taichi": "1.7.4",
+    "precision": "f32",
+    "cpu_threads": 4,
+    "vulkan_device": "Intel Iris Xe (Mesa)",
+    "offline_cache": false,
+    "particle_cloud": "seed 101; 3D uniform x,y in [-1,1], z in [-0.42,0.42]; zero-mean random strengths",
+    "slab_planes": [-0.48, 0.48],
+    "tail_tolerance": 0.0001,
+    "max_shells": 129,
+    "includes": "one physical target evaluation and converged reflected velocity plus full gradient",
+    "samples": "one cold and one warm call per separate process; warm measurements are indicative, not stable medians"
+  },
+  "measurements": [
+    {"backend": "cpu", "sources": 1000, "targets": 1000, "max_evaluation_points": 131072, "cold_seconds": 9.9374, "warm_seconds": 0.2498, "warm_image_seconds": 0.2171, "last_shell": 16, "image_target_evaluations": 65000, "image_batches": 6, "relative_tail": 0.00001656803},
+    {"backend": "vulkan", "sources": 1000, "targets": 1000, "max_evaluation_points": 131072, "cold_seconds": 22.5268, "warm_seconds": 0.1254, "warm_image_seconds": 0.1059, "last_shell": 16, "image_target_evaluations": 65000, "image_batches": 6, "relative_tail": 0.00001656804},
+    {"backend": "cpu", "sources": 2000, "targets": 2000, "max_evaluation_points": 32768, "cold_seconds": 12.7740, "warm_seconds": 0.5468, "warm_image_seconds": 0.4552, "last_shell": 16, "image_target_evaluations": 130000, "image_batches": 7, "relative_tail": 0.00001603101},
+    {"backend": "cpu", "sources": 2000, "targets": 2000, "max_evaluation_points": 131072, "cold_seconds": 19.3800, "warm_seconds": 0.5879, "warm_image_seconds": 0.4879, "last_shell": 16, "image_target_evaluations": 130000, "image_batches": 6, "relative_tail": 0.00001603101},
+    {"backend": "vulkan", "sources": 2000, "targets": 2000, "max_evaluation_points": 32768, "cold_seconds": 16.4898, "warm_seconds": 5.1790, "warm_image_seconds": 5.1479, "last_shell": 16, "image_target_evaluations": 130000, "image_batches": 7, "relative_tail": 0.00001603098},
+    {"backend": "vulkan", "sources": 2000, "targets": 2000, "max_evaluation_points": 131072, "cold_seconds": 17.0599, "warm_seconds": 2.2212, "warm_image_seconds": 0.5431, "last_shell": 16, "image_target_evaluations": 130000, "image_batches": 6, "relative_tail": 0.00001603099}
+  ],
+  "qualification": "The 2,000-particle Vulkan runs vary far more than the one-batch difference explains; repeat on an idle machine and measure coupled boundary and transfer calls before selecting a default backend. FMM target-only diagnostics did not provide a meaningful device-memory estimate."
+}

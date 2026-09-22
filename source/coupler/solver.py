@@ -6,20 +6,13 @@ from collections.abc import Collection, Mapping
 from contextlib import ExitStack
 import logging
 from numbers import Integral
-import os
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING
 
-try:
-    from mpi4py import MPI as _MPI
-
-    _mpi4py_comm = _MPI.COMM_WORLD
-except ImportError:
-    _mpi4py_comm = None
-
 import numpy as np
 
+from openonda.runtime import detected_world_size
 from source.coupler.backup import (
     BACKUP_DIRECTORY,
     load_coupled_backup,
@@ -51,6 +44,37 @@ if TYPE_CHECKING:
     from source.solvers.vpm import VPMSolver
 
 logger = logging.getLogger("coupler")
+
+
+def _project_inside_verified_cylinder(
+    positions: np.ndarray,
+    invalid: np.ndarray,
+    cylinder: tuple,
+    particle_spacing: float,
+    interior_tolerance: float,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Move shallow strictly interior positions to the fluid side of a verified wall."""
+    cx, cy, radius, _fit_tolerance = cylinder
+    displaced = np.asarray(positions[invalid], dtype=np.float64)
+    radial = displaced[:, :2] - [cx, cy]
+    length = np.linalg.norm(radial, axis=1)
+    penetration = radius - length
+    maximum = float(np.max(penetration))
+    if np.any(length <= 0.0) or maximum > 0.25 * particle_spacing:
+        raise RuntimeError(
+            "VPM particle crossed too deeply into the verified cylinder: "
+            f"count={len(displaced)}, max_penetration={maximum:.6e} m, "
+            f"limit={0.25 * particle_spacing:.6e} m"
+        )
+    margin = max(
+        4.0 * interior_tolerance,
+        32.0 * np.finfo(np.float32).eps * radius,
+    )
+    corrected = np.asarray(positions).copy()
+    projected = displaced.copy()
+    projected[:, :2] = [cx, cy] + radial * ((radius + margin) / length)[:, None]
+    corrected[invalid] = projected.astype(corrected.dtype)
+    return corrected, projected - displaced, maximum
 
 
 def _validate_gbd_moment_recovery(
@@ -103,23 +127,6 @@ def _validate_gbd_moment_recovery(
             f"fraction={values['correction_fraction']:.6e}, "
             f"limit={float(correction_limit):.6e}"
         )
-
-
-def _world_rank() -> int:
-    """Return the launcher rank for OpenMPI, MPICH/PMI, or MVAPICH."""
-    for name in (
-        "OMPI_COMM_WORLD_RANK",
-        "PMI_RANK",
-        "PMIX_RANK",
-        "MV2_COMM_WORLD_RANK",
-        "SLURM_PROCID",
-    ):
-        value = os.environ.get(name)
-        if value is not None:
-            return int(value)
-    if _mpi4py_comm is not None:
-        return int(_mpi4py_comm.Get_rank())
-    return 0
 
 
 class FVMVPMCoupler:
@@ -233,7 +240,9 @@ class FVMVPMCoupler:
         self._injected_fvm = fvm_solver
         self._injected_vpm = vpm_solver
 
-        self._mpi_rank = _world_rank()
+        parallel = getattr(fvm_solver, "parallel", None)
+        self._comm = getattr(parallel, "comm", None)
+        self._mpi_rank = int(getattr(parallel, "rank", 0))
         self._is_master = self._mpi_rank == 0
 
         self.solution_dir = self.case_dir / "solution"
@@ -333,13 +342,18 @@ class FVMVPMCoupler:
             )
         dom = vpm.setup.domain_bounds
         if dom is not None:
+            # Native projected wall vertices can move an outer face by a few
+            # picometres; the VPM domain is specified at the intended plane.
+            containment_tolerance = 1.0e-9 * max(
+                1.0, float(np.max(np.abs(np.asarray(box, dtype=np.float64))))
+            )
             contains = (
-                dom[0] <= box[0]
-                and dom[1] >= box[1]
-                and dom[2] <= box[2]
-                and dom[3] >= box[3]
-                and dom[4] <= box[4]
-                and dom[5] >= box[5]
+                dom[0] <= box[0] + containment_tolerance
+                and dom[1] >= box[1] - containment_tolerance
+                and dom[2] <= box[2] + containment_tolerance
+                and dom[3] >= box[3] - containment_tolerance
+                and dom[4] <= box[4] + containment_tolerance
+                and dom[5] >= box[5] - containment_tolerance
             )
             if not contains:
                 raise ValueError(
@@ -420,9 +434,20 @@ class FVMVPMCoupler:
             self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.coupling_patch),
             dtype=np.float64,
         ).reshape(-1, 3)
+        resolved_setup = getattr(self.fvm_solver, "_resolved_setup", self.fvm_solver.setup)
+        outer_faces = [fc]
+        for boundary in resolved_setup.boundaries:
+            if boundary.name == self.setup.coupling_patch or boundary.mesh_type == "wall":
+                continue
+            outer_faces.append(
+                np.asarray(
+                    self.fvm_solver.get_boundary_face_centre_coordinates(boundary.name),
+                    dtype=np.float64,
+                ).reshape(-1, 3)
+            )
         box = None
         error = None
-        collective = _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1
+        collective = self._comm is not None and self._comm.Get_size() > 1
         if self._is_master or not collective:
             if fc.shape[0] == 0:
                 error = (
@@ -430,18 +455,20 @@ class FVMVPMCoupler:
                     "injected Eulerian solver."
                 )
             else:
+                all_outer_faces = np.concatenate(outer_faces)
                 box = np.array(
                     [
-                        fc[:, 0].min(),
-                        fc[:, 0].max(),
-                        fc[:, 1].min(),
-                        fc[:, 1].max(),
-                        fc[:, 2].min(),
-                        fc[:, 2].max(),
+                        all_outer_faces[:, 0].min(),
+                        all_outer_faces[:, 0].max(),
+                        all_outer_faces[:, 1].min(),
+                        all_outer_faces[:, 1].max(),
+                        all_outer_faces[:, 2].min(),
+                        all_outer_faces[:, 2].max(),
                     ]
                 )
         if collective:
-            error, box = _mpi4py_comm.bcast((error, box) if self._is_master else None, root=0)
+            assert self._comm is not None
+            error, box = self._comm.bcast((error, box) if self._is_master else None, root=0)
         if error is not None:
             raise ValueError(error)
         return np.asarray(box, dtype=np.float64)
@@ -505,11 +532,7 @@ class FVMVPMCoupler:
 
         self.fvm_solver = self._injected_fvm
 
-        world_size = 1
-        if _mpi4py_comm is not None:
-            world_size = int(_mpi4py_comm.Get_size())
-        else:
-            world_size = int(os.environ.get("OMPI_COMM_WORLD_SIZE", "1"))
+        world_size = int(self._comm.Get_size()) if self._comm is not None else detected_world_size()
         if world_size > 1 and int(self.fvm_solver.n_procs()) == 1:
             raise RuntimeError(
                 f"Launched under MPI (world size {world_size}) but the injected "
@@ -522,7 +545,7 @@ class FVMVPMCoupler:
         candidate_vpm = self._injected_vpm
         inactive_rank = bool(getattr(candidate_vpm, "_openonda_inactive_rank", False))
         self.vpm_solver = candidate_vpm if self._is_master and not inactive_rank else None
-        with collective_phase(_mpi4py_comm, "VPM configuration validation"):
+        with collective_phase(self._comm, "VPM configuration validation"):
             if self._is_master:
                 if self.vpm_solver is None:
                     raise ValueError(
@@ -548,12 +571,12 @@ class FVMVPMCoupler:
             else:
                 vpm_diffusion_grid_spacing = vpm_particle_spacing
             vpm_core_radius_ratio = float(viscous.core_radius_ratio)
-        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+        if self._comm is not None and self._comm.Get_size() > 1:
             (
                 vpm_particle_spacing,
                 vpm_diffusion_grid_spacing,
                 vpm_core_radius_ratio,
-            ) = _mpi4py_comm.bcast(
+            ) = self._comm.bcast(
                 (
                     vpm_particle_spacing,
                     vpm_diffusion_grid_spacing,
@@ -571,9 +594,9 @@ class FVMVPMCoupler:
         if self._is_master:
             assert self.vpm_solver is not None
             vpm_time_step_size = float(self.vpm_solver.time_step_size)
-        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+        if self._comm is not None and self._comm.Get_size() > 1:
             vpm_time_step_size = float(
-                _mpi4py_comm.bcast(vpm_time_step_size if self._is_master else None, root=0)
+                self._comm.bcast(vpm_time_step_size if self._is_master else None, root=0)
             )
 
         self.vpm_time_step_size = vpm_time_step_size
@@ -612,8 +635,58 @@ class FVMVPMCoupler:
                 coupling_time_step_size=self.vpm_time_step_size,
                 fvm_box=self.fvm_box,
             )
-        with collective_phase(_mpi4py_comm, "VPM grid configuration"):
-            if self._is_master and self.vorticity_transfer._body_bounds is not None:
+        with collective_phase(self._comm, "VPM grid configuration"):
+            revision = ()
+            if self._is_master and self.vorticity_transfer._solid_bodies:
+                assert self.vpm_solver is not None
+                bodies = self.vorticity_transfer._solid_bodies
+                revision = tuple(getattr(body, "revision", id(body)) for body in bodies)
+                body_bounds = [
+                    getattr(body, "surface_bounds", None)
+                    if getattr(body, "surface_bounds", None) is not None
+                    else getattr(body, "solid_bounds", None)
+                    for body in bodies
+                ]
+                query_bounds = None
+                if all(bounds is not None for bounds in body_bounds):
+                    stacked_bounds = np.stack(
+                        [
+                            np.asarray(bounds, dtype=np.float64)
+                            for bounds in body_bounds
+                            if bounds is not None
+                        ]
+                    )
+                    query_bounds = np.empty(6, dtype=np.float64)
+                    query_bounds[::2] = stacked_bounds[:, ::2].min(axis=0)
+                    query_bounds[1::2] = stacked_bounds[:, 1::2].max(axis=0)
+                    if any(
+                        getattr(body, "verified_cylinder_z", None) is not None for body in bodies
+                    ):
+                        domain = self.vpm_solver.setup.domain_bounds
+                        if domain is not None:
+                            query_bounds[4:6] = np.asarray(domain, dtype=np.float64)[4:6]
+                transfer = self.vorticity_transfer
+                self.vpm_solver.physics.configure_body_classifier(
+                    lambda points: transfer._points_in_solid(points, include_boundary=False),
+                    revision=revision,
+                    query_bounds=query_bounds,
+                )
+                logger.info(
+                    format_coupler_log(
+                        "vpm diffusion grid",
+                        ("solid mask", "FVM wall classifier"),
+                        ("geometry revision", repr(revision)),
+                        (
+                            "verified cylinder z",
+                            repr([getattr(body, "verified_cylinder_z", None) for body in bodies]),
+                        ),
+                        (
+                            "interior tolerance",
+                            repr([getattr(body, "interior_tolerance", None) for body in bodies]),
+                        ),
+                    )
+                )
+            elif self._is_master and self.vorticity_transfer._body_bounds is not None:
                 assert self.vpm_solver is not None
                 self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
                 bounds = np.asarray(self.vorticity_transfer._body_bounds, dtype=np.float64)
@@ -624,6 +697,89 @@ class FVMVPMCoupler:
                         ("bounds, x", f"[{bounds[0]:.6g}, {bounds[1]:.6g}]", "m"),
                         ("bounds, y", f"[{bounds[2]:.6g}, {bounds[3]:.6g}]", "m"),
                         ("bounds, z", f"[{bounds[4]:.6g}, {bounds[5]:.6g}]", "m"),
+                    )
+                )
+            if self._is_master and (
+                self.vorticity_transfer._solid_bodies
+                or self.vorticity_transfer._body_bounds is not None
+            ):
+                assert self.vpm_solver is not None
+
+                cylinder = None
+                if len(self.vorticity_transfer._solid_bodies) == 1:
+                    cylinder = getattr(
+                        self.vorticity_transfer._solid_bodies[0], "verified_cylinder_z", None
+                    )
+
+                def project_or_reject(field, strength_field, count, *, accepted, stage=None):
+                    if count == 0:
+                        return
+                    physics = self.vpm_solver.physics
+                    positions = physics._download_vector_field(field, count)
+                    invalid = self.vorticity_transfer._points_in_solid(
+                        positions, include_boundary=False
+                    )
+                    if not np.any(invalid):
+                        return
+                    strengths = physics._download_vector_field(strength_field, count)
+                    invalid_count = int(np.count_nonzero(invalid))
+                    invalid_l1 = float(np.linalg.norm(strengths[invalid], axis=1).sum())
+                    if cylinder is None:
+                        raise RuntimeError(
+                            "VPM particle entered an unprojectable FVM solid before induction: "
+                            f"count={invalid_count}, vortex_strength_l1={invalid_l1:.6e}"
+                        )
+                    body = self.vorticity_transfer._solid_bodies[0]
+                    corrected, delta, maximum = _project_inside_verified_cylinder(
+                        positions,
+                        invalid,
+                        cylinder,
+                        self.vpm_particle_spacing,
+                        float(body.interior_tolerance),
+                    )
+                    physics._upload_vector_array(corrected, field, count)
+                    impulse_change = np.cross(delta, strengths[invalid]).sum(axis=0)
+                    budget = getattr(physics, "last_solid_projection", None)
+                    if budget is None:
+                        budget = {
+                            "stage_count": 0,
+                            "accepted_count": 0,
+                            "stage_displacement_l1": 0.0,
+                            "accepted_displacement_l1": 0.0,
+                            "stage_impulse_change": np.zeros(3),
+                            "accepted_impulse_change": np.zeros(3),
+                        }
+                        physics.last_solid_projection = budget
+                    kind = "accepted" if accepted else "stage"
+                    budget[f"{kind}_count"] += invalid_count
+                    budget[f"{kind}_displacement_l1"] += float(np.linalg.norm(delta, axis=1).sum())
+                    budget[f"{kind}_impulse_change"] += impulse_change
+                    logger.warning(
+                        "Cylinder numerical exclusion projected %d %s particles; "
+                        "max penetration %.3e m, |Gamma| L1 %.3e, impulse change %s",
+                        invalid_count,
+                        kind,
+                        maximum,
+                        invalid_l1,
+                        impulse_change,
+                    )
+
+                def guard_solid_rk_stage(stage_state):
+                    current_revision = tuple(body.revision for body in transfer._solid_bodies)
+                    if current_revision != revision:
+                        raise RuntimeError("Solid geometry changed after the GBD mask was built")
+                    project_or_reject(
+                        stage_state.position,
+                        stage_state.vortex_strength,
+                        int(stage_state.count),
+                        accepted=False,
+                        stage=getattr(stage_state, "stage_index", None),
+                    )
+
+                self.vpm_solver.stage_rhs.position_guard = guard_solid_rk_stage
+                self.vpm_solver.stage_rhs.accepted_position_projector = (
+                    lambda position, strength, count: project_or_reject(
+                        position, strength, count, accepted=True
                     )
                 )
             if self._is_master:
@@ -670,17 +826,18 @@ class FVMVPMCoupler:
         FVM field queries belong outside the callback. The result is shared.
         """
         result = None
-        with collective_phase(_mpi4py_comm, "VPM application callback"):
+        with collective_phase(self._comm, "VPM application callback"):
             if self._is_master:
                 vpm = self.vpm_solver if self.vpm_solver is not None else self._injected_vpm
                 result = callback(vpm, *args, **kwargs)
-        return _mpi4py_comm.bcast(result, root=0) if _mpi4py_comm is not None else result
+        return self._comm.bcast(result, root=0) if self._comm is not None else result
 
     def run(
         self,
         start_step: int = 0,
         restart_from: str | Path | None = None,
         *,
+        start_from: str | Path | None = None,
         restart_allowed_config_differences: Collection[str] = (),
         max_coupling_steps: int | None = None,
         backup_at_stop: bool = False,
@@ -696,6 +853,10 @@ class FVMVPMCoupler:
         restart_from : str, pathlib.Path, or None, default=None
             Coupled-backup directory to restore before solving. It is mutually
             exclusive with a non-zero ``start_step``.
+        start_from : {"latest", "initial"}, path, or None, default=None
+            Discover the committed coupled bundle in the case solution root,
+            start a clean case, or select an explicit bundle. It is mutually
+            exclusive with ``restart_from`` and a non-zero ``start_step``.
         restart_allowed_config_differences : collection[str], default=()
             Exact dotted configuration paths permitted to differ from the
             backup manifest. This is accepted only with ``restart_from``;
@@ -732,6 +893,20 @@ class FVMVPMCoupler:
         """
         if self.vorticity_transfer is None:
             self.initialize()
+        if start_from is not None:
+            if restart_from is not None or start_step:
+                raise ValueError("start_from cannot be combined with restart_from or start_step")
+            from source.restart import select_backup
+
+            with collective_phase(self._comm, "coupled restart selection"):
+                selected = (
+                    select_backup(start_from, directory=self.solution_dir, kind="coupled")
+                    if self._is_master
+                    else None
+                )
+            if self._comm is not None:
+                selected = self._comm.bcast(selected, root=0)
+            restart_from = selected
         if restart_from is not None:
             if start_step:
                 raise ValueError("start_step and restart_from are mutually exclusive")
@@ -750,7 +925,8 @@ class FVMVPMCoupler:
         return self.solve(
             start_step=start_step,
             max_coupling_steps=max_coupling_steps,
-            backup_at_stop=backup_at_stop,
+            backup_at_stop=backup_at_stop or start_from is not None,
+            backup_at_start=start_from is not None and restart_from is None,
         )
 
     @staticmethod
@@ -792,6 +968,7 @@ class FVMVPMCoupler:
         *,
         max_coupling_steps: int | None = None,
         backup_at_stop: bool = False,
+        backup_at_start: bool = False,
     ) -> int:
         """Advance an initialized coupled state through accepted macro-steps.
 
@@ -832,14 +1009,12 @@ class FVMVPMCoupler:
         collectively and in the same order.
         """
         face_geometry, n_steps = self._prepare_run()
-        with collective_phase(_mpi4py_comm, "coupled start state"):
+        with collective_phase(self._comm, "coupled start state"):
             start_step = self._validate_start_step(start_step, n_steps)
         step_limit = self._validate_step_limit(max_coupling_steps)
-        if step_limit is not None and start_step == n_steps:
-            raise ValueError("No configured coupling steps remain after start_step")
         stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
         self._n_steps = stop_step
-        with collective_phase(_mpi4py_comm, "coupled run metadata"):
+        with collective_phase(self._comm, "coupled run metadata"):
             if self._is_master:
                 write_run_metadata(self, start_step=start_step, stop_step=stop_step)
                 if stop_step < n_steps:
@@ -852,7 +1027,7 @@ class FVMVPMCoupler:
                             ("backup at stop", "enabled" if backup_at_stop else "disabled"),
                         )
                     )
-        if start_step == 0:
+        if start_step == 0 and not getattr(self, "_restart_loaded", False):
             # Every VPM interval must start from the FVM state at the same
             # physical time. This first synchronization also supports non-zero
             # user-supplied initial FVM vorticity while preserving any outer
@@ -860,6 +1035,8 @@ class FVMVPMCoupler:
             initial_result, _ = self._transfer_vorticity_to_vpm(*face_geometry)
             self._last_transfer_result = initial_result
         initialize_vpm_boundary_history(self, *face_geometry)
+        if backup_at_start and start_step == 0:
+            self.save_backup(self.solution_dir / BACKUP_DIRECTORY, coupling_step=0)
         assert self.vpm_time_step_size is not None
         self._log_stop_step = stop_step
         for step in range(1 + start_step, stop_step + 1):
@@ -880,7 +1057,7 @@ class FVMVPMCoupler:
                 )
                 transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
                 update_boundary_history_after_replacement(self, *face_geometry)
-            with collective_phase(_mpi4py_comm, "VPM health check and output"):
+            with collective_phase(self._comm, "VPM health check and output"):
                 if self._is_master:
                     assert self.vpm_solver is not None
                     self.vpm_solver.execute_scheduled_samplers()
@@ -892,7 +1069,7 @@ class FVMVPMCoupler:
                 (vpm_time, boundary_time, fvm_time, transfer_time),
                 transfer_result,
                 logger=logger,
-                comm=_mpi4py_comm,
+                comm=self._comm,
             )
         backup_was_scheduled = (
             self.setup.backup_interval_steps > 0
@@ -954,9 +1131,17 @@ class FVMVPMCoupler:
 
     def _advance_vpm(self, step: int, time_end: float) -> float:
         t0 = time.perf_counter()
-        with collective_phase(_mpi4py_comm, "VPM advance"):
+        with collective_phase(self._comm, "VPM advance"):
             if self._is_master:
                 assert self.vpm_solver is not None
+                self.vpm_solver.physics.last_solid_projection = {
+                    "stage_count": 0,
+                    "accepted_count": 0,
+                    "stage_displacement_l1": 0.0,
+                    "accepted_displacement_l1": 0.0,
+                    "stage_impulse_change": np.zeros(3),
+                    "accepted_impulse_change": np.zeros(3),
+                }
                 with self.vpm_redirector:
                     self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
                 begin_coupling_step(logger, step, self._n_steps, time_end)
@@ -985,8 +1170,9 @@ class FVMVPMCoupler:
         t_transfer = time.perf_counter()
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()
+        gather_seconds = time.perf_counter() - t_transfer
         transfer_result = None
-        with collective_phase(_mpi4py_comm, "vorticity transfer"):
+        with collective_phase(self._comm, "vorticity transfer"):
             if self._is_master:
                 assert self.vpm_solver is not None
                 assert self.vorticity_transfer is not None
@@ -1015,6 +1201,7 @@ class FVMVPMCoupler:
                     "sum_before": sum_before,
                     "sum_after": sum_after,
                     "face_count": len(face_centre),
+                    "donor_gather_seconds": gather_seconds,
                 }
         return transfer_result, time.perf_counter() - t_transfer
 
@@ -1121,9 +1308,11 @@ class FVMVPMCoupler:
         clock, and all stored VPM boundary-condition history. In partitioned
         execution every rank must participate collectively.
         """
-        return load_coupled_backup(
+        step = load_coupled_backup(
             self,
             directory,
-            comm=_mpi4py_comm,
+            comm=self._comm,
             allowed_config_differences=allowed_config_differences,
         )
+        self._restart_loaded = True
+        return step

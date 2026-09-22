@@ -26,6 +26,8 @@ from openonda.vpm import Backup, Samplers
 __package__ = case_package(Path(__file__).parent)
 from .assets.generate_blade import create_rotor_blade, save_blade
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "quadcopter"
 
 # Rotor and flow
@@ -171,7 +173,7 @@ def run() -> None:
         ),
         directory=TUTORIAL_DIR,
     )
-    vpm.VPMSolver(case).run()
+    vpm.VPMSolver(case).run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

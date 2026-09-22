@@ -476,6 +476,11 @@ class EvolutionStepper:
             time_step_size=time_step_size,
             right_hand_side=self.solver.stage_rhs,
         )
+        accepted_projector = getattr(self.solver.stage_rhs, "accepted_position_projector", None)
+        if accepted_projector is not None:
+            accepted_projector(
+                self.particles.position, self.particles.vortex_strength, len(self.particles)
+            )
         ti.sync()
         # RK writes source fields directly on the device.  Invalidate cached
         # host snapshots/tree keys before any post-RK consumer can inspect the

@@ -14,7 +14,7 @@ From this case directory, with the installed OpenONDA environment active:
 ./allplot.sh
 ```
 
-`allrun.sh` lists the simulations only. Use `python setup.py vortex CS` to run
+`allrun.sh` cleans the case and runs the listed simulations. `allcontinue.sh` runs the same cases and RWM ensembles from their latest backups. Use `python setup.py vortex CS` to run
 one physical/method variant. `./allclean.sh` explicitly removes generated
 outputs before a fresh comparison when desired.
 

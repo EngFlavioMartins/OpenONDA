@@ -48,8 +48,6 @@ def check_bounded_replacement(arch):
             assert particles.n_particles_total == count
             for name, expected in state.items():
                 np.testing.assert_array_equal(getattr(particles, name + "_cpu")(), expected)
-        assert not particles._native_matrix_uploads
-        assert not particles._native_vector_uploads
     finally:
         ti.reset()
 

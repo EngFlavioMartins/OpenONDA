@@ -1,0 +1,292 @@
+{
+  "schema": "openonda-cylinder-finest-cpu-parity-fixed-pilot/1",
+  "qualification": "Three early-wake accepted intervals only; developed-wake runtime, shedding statistics, force convergence, and grid independence remain untested.",
+  "numerical_change": "Slip-slab renewal Gaussian strength correction now preserves axial-vector mirror parity; active GBD slab retains physical planes and diffusion halo.",
+  "run_directory": "/tmp/openonda-cylinder-finest-cpu-parity-fixed",
+  "trial_record": "/tmp/openonda-cylinder-finest-cpu-parity-fixed-trial/trial.json",
+  "configuration": {
+    "boundary_condition_mode": "vorticity_mixed",
+    "compute_device": "CPU",
+    "cores": 4,
+    "dz": 0.064,
+    "end_time": 100.0,
+    "exchange_dt": 0.04,
+    "fvm_bounds": [
+      -1.6,
+      1.6,
+      -1.6,
+      1.6,
+      -0.48,
+      0.48
+    ],
+    "fvm_time_step": 0.004,
+    "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+    "hp": 0.08,
+    "hxy": 0.064,
+    "interface_iterations": 3,
+    "kind": "coupled",
+    "overrides": {
+      "compute_device": "CPU",
+      "cores": 4,
+      "hxy": 0.064
+    },
+    "particle_limit": 1000000,
+    "software_fingerprint": {
+      "digest": "000f69a6843cddba16d114bcc055220af33fbafefe90bdeef9724ef902658f2f",
+      "python": "3.11.15",
+      "schema": "openonda-software-fingerprint/1",
+      "source_digest": "c3a1ae89429c4c03acdc21a381692ceee243185455927724fb813ed0ad17eff0",
+      "versions": {
+        "gmsh": "4.15.2",
+        "h5py": "3.16.0",
+        "mpi4py": "4.1.2",
+        "numba": "0.66.0",
+        "numpy": "2.4.6",
+        "openonda": "0.1.1",
+        "scipy": "1.17.1",
+        "taichi": "1.7.4",
+        "vtk": "9.6.2"
+      }
+    },
+    "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819",
+    "span": 0.96,
+    "transfer_bounds": [
+      -1.25,
+      1.25,
+      -1.25,
+      1.25,
+      -0.48,
+      0.48
+    ],
+    "transfer_method": "buffered_m4_renewal",
+    "transfer_region_bounds": [
+      -1.25,
+      1.25,
+      -1.25,
+      1.25,
+      -0.48,
+      0.48
+    ],
+    "vpm_bounds": [
+      -5.0,
+      15.0,
+      -5.0,
+      5.0,
+      -0.48,
+      0.48
+    ]
+  },
+  "mesh": {
+    "cells": 36555,
+    "faces": 114052,
+    "actual_outer_bounds": [
+      -1.6,
+      1.6,
+      -1.6,
+      1.6,
+      -0.48,
+      0.48
+    ]
+  },
+  "trial": {
+    "returncode": 0,
+    "wall_seconds": 227.28317409699957,
+    "peak_process_tree_rss_bytes": 5872181248,
+    "peak_process_tree_rss_gib": 5.468894958496094
+  },
+  "accepted_steps": [
+    {
+      "step": 1,
+      "time": 0.04,
+      "timing_seconds": {
+        "vpm": 33.301679256997886,
+        "vpm_boundary_condition": 0.9557237650005845,
+        "fvm": 9.332329717013636,
+        "transfer": 4.5036420240066946,
+        "total": 48.0933747630188,
+        "last_sweep_donor_gather": 0.003886302001774311
+      },
+      "transfer_particles": 1933,
+      "solid_projection": {
+        "stage_count": 24,
+        "accepted_count": 24,
+        "stage_displacement_l1": 0.2112273966921667,
+        "accepted_displacement_l1": 0.21706670182553922,
+        "stage_impulse_change": [
+          -0.00019710311404979618,
+          -6.20783754252927e-05,
+          -4.4480914072136984e-08
+        ],
+        "accepted_impulse_change": [
+          -0.0001994170288562858,
+          -6.370153242741634e-05,
+          -4.58332700316512e-08
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1388,
+        "excluded_signed_weight_l1": 0.6538849386034838,
+        "fluid_correction_l1": 0.7837702240250145
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.03521910708906652,
+            "gradient_residual_rms": 0.04019218748599757,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.0043199517265815265,
+            "gradient_residual_rms": 0.004889966711865489,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 0.00046353593764541216,
+            "gradient_residual_rms": 0.0005300473299149647,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.4874091759993462,
+          "state_restore": 0.006362521002301946,
+          "boundary_refresh": 3.789413197999238,
+          "accepted_output": 0.0008923779969336465
+        }
+      }
+    },
+    {
+      "step": 2,
+      "time": 0.08,
+      "timing_seconds": {
+        "vpm": 1.6638634459959576,
+        "vpm_boundary_condition": 1.3698979670007247,
+        "fvm": 9.039923293996253,
+        "transfer": 4.344106819014996,
+        "total": 16.41779152600793,
+        "last_sweep_donor_gather": 0.003703501002746634
+      },
+      "transfer_particles": 2147,
+      "solid_projection": {
+        "stage_count": 12,
+        "accepted_count": 12,
+        "stage_displacement_l1": 0.039831422168150644,
+        "accepted_displacement_l1": 0.04077763862919394,
+        "stage_impulse_change": [
+          -0.0003521313246560997,
+          -2.7596794153471186e-05,
+          -8.10440424590531e-09
+        ],
+        "accepted_impulse_change": [
+          -0.00036054819566958246,
+          -2.830659978443436e-05,
+          -8.269388061503458e-09
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1392,
+        "excluded_signed_weight_l1": 1.0130547294768988,
+        "fluid_correction_l1": 0.9625174681496219
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0021208791892925205,
+            "gradient_residual_rms": 0.003097524409194986,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.00016768125180135706,
+            "gradient_residual_rms": 0.0001922162900767736,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 1.8194691371013552e-05,
+            "gradient_residual_rms": 2.0782825502054482e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.002565753005910665,
+          "state_restore": 0.006171538989292458,
+          "boundary_refresh": 4.129502343988861,
+          "accepted_output": 0.0008334490121342242
+        }
+      }
+    },
+    {
+      "step": 3,
+      "time": 0.12,
+      "timing_seconds": {
+        "vpm": 2.0285049219965003,
+        "vpm_boundary_condition": 1.438437446995522,
+        "fvm": 9.062031179026235,
+        "transfer": 4.54862958798185,
+        "total": 17.077603136000107,
+        "last_sweep_donor_gather": 0.004612860007910058
+      },
+      "transfer_particles": 2324,
+      "solid_projection": {
+        "stage_count": 12,
+        "accepted_count": 12,
+        "stage_displacement_l1": 0.02765158288050389,
+        "accepted_displacement_l1": 0.02741220870427547,
+        "stage_impulse_change": [
+          -0.00020911570840590645,
+          -1.738275310414875e-05,
+          -3.6768418966649398e-09
+        ],
+        "accepted_impulse_change": [
+          -0.0002073366419207014,
+          -1.7246991792412148e-05,
+          -3.6419955348532607e-09
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1392,
+        "excluded_signed_weight_l1": 0.9026873115013272,
+        "fluid_correction_l1": 0.8578631732604843
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0021037574569881135,
+            "gradient_residual_rms": 0.002924886425174245,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.00017529855350475245,
+            "gradient_residual_rms": 0.00020099656530274415,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 1.897943693617249e-05,
+            "gradient_residual_rms": 2.1712257246424816e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.002355795993935317,
+          "state_restore": 0.006457390991272405,
+          "boundary_refresh": 4.317013248000876,
+          "accepted_output": 0.000863516004756093
+        }
+      }
+    }
+  ],
+  "pre_fix_comparison": "Pre-fix CPU4 and CPU6 records in cylinder_finest_cpu_pilot.json are historical and numerically unmatched after the parity correction."
+}

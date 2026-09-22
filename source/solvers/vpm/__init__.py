@@ -63,6 +63,7 @@ from .numerics.rk_tableaux import RK2, RK4, SSPRK3
 from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
 from .physics.induction.planar import PlanarInduction
+from .physics.induction.slip_slab import SlipSlabInduction
 from .physics.induction.treecode import TreecodeInduction
 from .stabilization import (
     DivergenceRelaxationError,
@@ -74,6 +75,7 @@ from .stabilization import (
 __all__ = [
     "DirectInduction",
     "PlanarInduction",
+    "SlipSlabInduction",
     "FMMInduction",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",

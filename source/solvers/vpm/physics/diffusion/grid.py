@@ -12,6 +12,7 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import math
 
@@ -437,6 +438,11 @@ class _GridDiffusionMixin:
         self._grid_realloc_count: int = 0
         self._last_gbd_diffusion_substeps: int = 1
         self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
+        self._last_gbd_wall_transfer = {
+            "wall_adjacent_particles": 0,
+            "excluded_signed_weight_l1": 0.0,
+            "fluid_correction_l1": 0.0,
+        }
 
         # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).
         self.core_radius_ratio: float = _REGEN_RADIUS_RATIO
@@ -462,6 +468,11 @@ class _GridDiffusionMixin:
         self._body_mask_active: bool = False
         self._body_box_bounds: np.ndarray | None = None
         self._body_cylinder: tuple[int, np.ndarray, float, float, float] | None = None
+        self._body_classifier: Callable[[np.ndarray], np.ndarray] | None = None
+        self._body_geometry_revision: object | None = None
+        self._body_mask_cache_key: tuple | None = None
+        self._body_mask_host: np.ndarray | None = None
+        self._body_query_bounds: np.ndarray | None = None
 
         # Maximum number of grid cells per spatial dimension.
         self._max_cells_per_dimension: int = 2000
@@ -509,6 +520,11 @@ class _GridDiffusionMixin:
                 self._empty_gbd_moment_recovery(),
             )
         )
+
+    @property
+    def last_gbd_wall_transfer(self) -> dict[str, int | float]:
+        """Return the signed near-wall M4 scatter budget for the latest GBD step."""
+        return dict(self._last_gbd_wall_transfer)
 
     @property
     def _other_grid(self):
@@ -586,6 +602,7 @@ class _GridDiffusionMixin:
         padding: float,
         *,
         include_halo_sources: bool = False,
+        required_z_bounds: tuple[float, float] | None = None,
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
         """Active sub-box covering the cloud, with the origin on the fixed lattice.
 
@@ -595,6 +612,8 @@ class _GridDiffusionMixin:
         shrinks to the occupied region.  Clamped to stay inside the allocation.
         DVH includes sources in the allocation's padding halo: regenerated
         particles there still require their complete heat-kernel support.
+        ``required_z_bounds`` keeps the physical slip planes and their mirror
+        support inside the active box even when the particle cloud retreats.
         """
         anchor = np.asarray(self._fixed_grid_min, dtype=np.float64).reshape(3)
         cap = np.asarray(self._max_grid_dims, dtype=np.int64)
@@ -616,6 +635,9 @@ class _GridDiffusionMixin:
         margin = float(padding) * float(particle_spacing)
         lo = pts.min(axis=0) - margin
         hi = pts.max(axis=0) + margin
+        if required_z_bounds is not None:
+            lo[2] = min(lo[2], required_z_bounds[0])
+            hi[2] = max(hi[2], required_z_bounds[1])
 
         first = np.floor((lo - anchor) / particle_spacing).astype(np.int64)
         last = np.ceil((hi - anchor) / particle_spacing).astype(np.int64)
@@ -623,6 +645,18 @@ class _GridDiffusionMixin:
         last = np.clip(last, first + 4, cap - 1)
         grid_min = anchor + first * particle_spacing
         ext = last - first + 1
+        if required_z_bounds is not None:
+            active_hi = grid_min[2] + (int(ext[2]) - 1) * particle_spacing
+            tolerance = 2.0e-5 * particle_spacing
+            if (
+                grid_min[2] > required_z_bounds[0] + tolerance
+                or active_hi < required_z_bounds[1] - tolerance
+            ):
+                raise ValueError(
+                    "configured GBD z extent cannot retain the slip-plane mirror/diffusion halo "
+                    f"[{required_z_bounds[0]:.6g}, {required_z_bounds[1]:.6g}]; "
+                    "increase GBD domain padding or reduce the diffusion interval"
+                )
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
     @staticmethod
@@ -764,6 +798,15 @@ class _GridDiffusionMixin:
         """
         import math
 
+        slab = getattr(self, "_slip_slab_bounds", None)
+        if slab is not None:
+            if not np.allclose(np.asarray(domain_bounds)[4:6], slab, rtol=0.0, atol=1e-7):
+                raise ValueError("slip-slab GBD domain z bounds must match induction planes")
+            if padding < 3.0:
+                raise ValueError("slip-slab GBD requires at least three grid cells of z halo")
+            if (slab[1] - slab[0]) / particle_spacing < 6.0:
+                raise ValueError("slip-slab GBD requires at least six resolved z intervals")
+
         margin = padding * particle_spacing
         nx = max(
             5, math.ceil((domain_bounds[1] - domain_bounds[0] + 2 * margin) / particle_spacing) + 1
@@ -774,6 +817,10 @@ class _GridDiffusionMixin:
         nz = max(
             5, math.ceil((domain_bounds[5] - domain_bounds[4] + 2 * margin) / particle_spacing) + 1
         )
+        if slab is not None:
+            # Rephasing the z grid to half-node slip planes can move its fixed
+            # origin down by half a cell. Retain the full upper support halo.
+            nz += 1
         self._max_grid_dims = (nx, ny, nz)
         self._grid_domain_bounds = np.asarray(domain_bounds, dtype=np.float64)
 
@@ -861,7 +908,11 @@ class _GridDiffusionMixin:
         if np.any(b[1::2] <= b[::2]):
             raise ValueError("body box upper bounds must exceed lower bounds")
         self._body_box_bounds = b.copy()
+        self._body_query_bounds = b.astype(np.float64)
         self._body_cylinder = None
+        self._body_classifier = None
+        self._body_mask_cache_key = None
+        self._body_mask_host = None
         self._body_mask_active = True
 
     def configure_body_cylinder(self, bounds, axis: int | str = 2) -> None:
@@ -908,6 +959,42 @@ class _GridDiffusionMixin:
             float(b[2 * axis_index + 1]),
         )
         self._body_mask_active = True
+        self._body_query_bounds = b.astype(np.float64)
+        self._body_classifier = None
+        self._body_mask_cache_key = None
+        self._body_mask_host = None
+
+    def configure_body_classifier(
+        self,
+        contains_interior: Callable[[np.ndarray], np.ndarray],
+        *,
+        revision: object,
+        query_bounds: np.ndarray | None = None,
+    ) -> None:
+        """Use the transfer body's strict-interior classifier on the GBD lattice.
+
+        ``revision`` identifies an immutable body configuration. Changing it
+        invalidates the resident device mask. Queries are bounded in size and
+        only repeated if the lattice origin, spacing, shape, or body changes.
+        """
+        if not callable(contains_interior):
+            raise TypeError("body classifier must be callable")
+        if revision is None:
+            raise ValueError("body geometry revision must be supplied")
+        self._body_box_bounds = None
+        self._body_cylinder = None
+        self._body_classifier = contains_interior
+        self._body_geometry_revision = revision
+        if query_bounds is not None:
+            bounds = np.asarray(query_bounds, dtype=np.float64).reshape(6)
+            if not np.all(np.isfinite(bounds)) or np.any(bounds[1::2] <= bounds[::2]):
+                raise ValueError("body query bounds must be finite and increasing")
+            self._body_query_bounds = bounds.copy()
+        else:
+            self._body_query_bounds = None
+        self._body_mask_active = True
+        self._body_mask_cache_key = None
+        self._body_mask_host = None
 
     def _prepare_body_mask_current_grid(
         self, grid_min: np.ndarray, particle_spacing: float, nx: int, ny: int, nz: int
@@ -916,6 +1003,58 @@ class _GridDiffusionMixin:
         if not self._body_mask_active or self._body_mask_grid is None:
             return
         g = np.asarray(grid_min, dtype=np.float32).reshape(3)
+        key = (
+            id(self._body_mask_grid),
+            self._body_geometry_revision,
+            tuple(float(value) for value in g),
+            float(np.float32(particle_spacing)),
+            int(nx),
+            int(ny),
+            int(nz),
+            tuple(float(value) for value in self._slip_slab_bounds)
+            if getattr(self, "_slip_slab_bounds", None) is not None
+            else None,
+        )
+        if key == self._body_mask_cache_key:
+            return
+        if (
+            self._body_classifier is not None
+            or getattr(self, "_slip_slab_bounds", None) is not None
+        ):
+            total = int(nx) * int(ny) * int(nz)
+            host_mask = np.empty(total, dtype=bool)
+            buffer = self._grid_transfer_buffer("scalar", self._body_mask_grid, "upload")
+            for start in range(0, total, _GRID_TRANSFER_CHUNK):
+                stop = min(start + _GRID_TRANSFER_CHUNK, total)
+                linear = np.arange(start, stop, dtype=np.int64)
+                points = np.column_stack(
+                    (
+                        g[0] + (linear // (ny * nz)) * particle_spacing,
+                        g[1] + ((linear // nz) % ny) * particle_spacing,
+                        g[2] + (linear % nz) * particle_spacing,
+                    )
+                )
+                try:
+                    values = self._body_interior_at_particles(
+                        points.astype(np.float32).astype(np.float64)
+                    )
+                except RuntimeError as error:
+                    if "one flag per particle" not in str(error):
+                        raise
+                    raise RuntimeError(
+                        "body classifier must return one flag per GBD node"
+                    ) from error
+                if len(values) != stop - start:
+                    raise RuntimeError("body classifier must return one flag per GBD node")
+                host_mask[start:stop] = values
+                buffer[: stop - start] = values
+                self._upload_scalar_chunk_kernel(
+                    self._body_mask_grid, buffer, start, stop - start, ny, nz
+                )
+            ti.sync()
+            self._body_mask_host = host_mask.reshape(nx, ny, nz)
+            self._body_mask_cache_key = key
+            return
         if self._body_box_bounds is not None:
             b = self._body_box_bounds
             self._fill_box_body_mask_kernel(
@@ -934,6 +1073,7 @@ class _GridDiffusionMixin:
                 ny,
                 nz,
             )
+            self._body_mask_cache_key = key
             return
         if self._body_cylinder is not None:
             axis, centre, radius, axial_min, axial_max = self._body_cylinder
@@ -954,6 +1094,210 @@ class _GridDiffusionMixin:
                 ny,
                 nz,
             )
+            self._body_mask_cache_key = key
+
+    def _fold_slab_exterior_z(self, positions: np.ndarray) -> np.ndarray:
+        """Map ghost z to its physical mirror, leaving in-slab coordinates exact."""
+        points = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+        slab = getattr(self, "_slip_slab_bounds", None)
+        if slab is None or len(points) == 0:
+            return points
+        lower, upper = map(float, slab)
+        length = upper - lower
+        if length <= 0.0:
+            raise ValueError("slip-slab planes must be increasing")
+        exterior = (points[:, 2] < lower) | (points[:, 2] > upper)
+        if not np.any(exterior):
+            return points
+        folded = points.copy()
+        phase = np.mod(points[exterior, 2] - lower, 2.0 * length)
+        folded[exterior, 2] = lower + length - np.abs(phase - length)
+        return folded
+
+    def _body_interior_at_particles(self, positions: np.ndarray) -> np.ndarray:
+        """Classify strict solid interior before a remesh can erase input."""
+        points = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+        if not getattr(self, "_body_mask_active", False):
+            return np.zeros(len(points), dtype=bool)
+        points = self._fold_slab_exterior_z(points)
+        if self._body_classifier is not None:
+            result = np.asarray(self._body_classifier(points), dtype=bool).reshape(-1)
+            if len(result) != len(points):
+                raise RuntimeError("body classifier must return one flag per particle")
+            return result
+        if self._body_box_bounds is not None:
+            bounds = self._body_box_bounds.astype(np.float64)
+            return np.all((points > bounds[::2]) & (points < bounds[1::2]), axis=1)
+        if self._body_cylinder is not None:
+            axis, centre, radius, axial_min, axial_max = self._body_cylinder
+            transverse = [candidate for candidate in range(3) if candidate != axis]
+            radial = points[:, transverse] - centre[transverse]
+            return (
+                (points[:, axis] > axial_min)
+                & (points[:, axis] < axial_max)
+                & (np.einsum("ij,ij->i", radial, radial) < radius * radius)
+            )
+        return np.zeros(len(points), dtype=bool)
+
+    def _m4_wall_corrections(
+        self,
+        positions: np.ndarray,
+        strengths: np.ndarray,
+        origin: np.ndarray,
+        spacing: float,
+        shape: tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray, dict[str, float | int]]:
+        """Restore each wall-adjacent M4 deposit on local fluid support.
+
+        Signed M4 weights are retained. A minimum-norm correction on fluid
+        nodes enforces each source's zeroth and three first spatial moments.
+        Failed/under-resolved support is rejected, never globally compensated.
+        """
+        points = np.asarray(positions, dtype=np.float64)
+        gamma = np.asarray(strengths, dtype=np.float64)
+        bounds = self._body_query_bounds
+        if bounds is None:
+            candidates = np.arange(len(points))
+        else:
+            pad = 2.0 * float(spacing)
+            candidates = np.flatnonzero(
+                np.all((points >= bounds[::2] - pad) & (points <= bounds[1::2] + pad), axis=1)
+            )
+        offsets = np.stack(
+            np.meshgrid(np.arange(-1, 3), np.arange(-1, 3), np.arange(-1, 3), indexing="ij"),
+            axis=-1,
+        ).reshape(-1, 3)
+        node_chunks = []
+        value_chunks = []
+        touched = 0
+        excluded_l1 = 0.0
+        correction_l1 = 0.0
+        grid_min = np.asarray(origin, dtype=np.float64)
+        dimensions = np.asarray(shape)
+        cached_mask = self._body_mask_host
+        cached_key = self._body_mask_cache_key
+        if (
+            cached_mask is None
+            or cached_key is None
+            or cached_mask.shape != shape
+            or cached_key[2]
+            != tuple(float(value) for value in np.asarray(origin, dtype=np.float32))
+            or cached_key[3] != float(np.float32(spacing))
+        ):
+            cached_mask = None
+        for start in range(0, len(candidates), 512):
+            particle_ids = candidates[start : start + 512]
+            fractions = (points[particle_ids] - grid_min) / float(spacing)
+            index_batch = np.floor(fractions).astype(np.int64)[:, None, :] + offsets
+            valid_batch = np.all((index_batch >= 0) & (index_batch < dimensions), axis=2)
+            safe_indices = np.clip(index_batch, 0, dimensions - 1)
+            if cached_mask is not None:
+                solid_batch = (
+                    cached_mask[safe_indices[:, :, 0], safe_indices[:, :, 1], safe_indices[:, :, 2]]
+                    & valid_batch
+                )
+            else:
+                node_batch = grid_min + index_batch * float(spacing)
+                solid_batch = (
+                    self._body_interior_at_particles(node_batch.reshape(-1, 3)).reshape(
+                        len(particle_ids), 64
+                    )
+                    & valid_batch
+                )
+            for row in np.flatnonzero(np.any(solid_batch, axis=1)):
+                particle = particle_ids[row]
+                indices = index_batch[row]
+                if not np.all(valid_batch[row]):
+                    raise RuntimeError("GBD M4 support leaves the diffusion lattice near a solid")
+                nodes = grid_min + indices * float(spacing)
+                solid = solid_batch[row]
+                touched += 1
+                weights = np.prod(_m4_prime_1d(fractions[row] - indices), axis=1)
+                fluid = ~solid
+                relative = (nodes[fluid] - points[particle]) / float(spacing)
+                constraints = np.vstack((np.ones(fluid.sum()), relative.T))
+                gram = constraints @ constraints.T
+                if np.linalg.cond(gram) > 1.0e10:
+                    raise RuntimeError("GBD wall-adjacent M4 fluid support has deficient moments")
+                target = np.array([1.0, 0.0, 0.0, 0.0])
+                defect = target - constraints @ weights[fluid]
+                correction = constraints.T @ np.linalg.solve(gram, defect)
+                corrected = weights[fluid] + correction
+                if not np.all(np.isfinite(corrected)) or np.sum(np.abs(corrected)) > 2.0:
+                    raise RuntimeError("GBD wall-adjacent M4 correction amplifies local support")
+                if np.max(np.abs(constraints @ corrected - target)) > 1.0e-10:
+                    raise RuntimeError("GBD wall-adjacent M4 moment constraints were not met")
+                node_chunks.append(indices[fluid].astype(np.int32))
+                value_chunks.append((correction[:, None] * gamma[particle]).astype(np.float32))
+                magnitude = float(np.linalg.norm(gamma[particle]))
+                excluded_l1 += float(np.sum(np.abs(weights[solid]))) * magnitude
+                correction_l1 += float(np.sum(np.abs(correction))) * magnitude
+        diagnostics = {
+            "wall_adjacent_particles": touched,
+            "excluded_signed_weight_l1": excluded_l1,
+            "fluid_correction_l1": correction_l1,
+        }
+        if not node_chunks:
+            return np.empty((0, 3), dtype=np.int32), np.empty((0, 3), dtype=np.float32), diagnostics
+        return np.concatenate(node_chunks), np.concatenate(value_chunks), diagnostics
+
+    @staticmethod
+    def _reflect_sparse_wall_corrections(
+        nodes: np.ndarray,
+        values: np.ndarray,
+        origin_z: float,
+        spacing: float,
+        nz: int,
+        planes: tuple[float, float],
+    ) -> tuple[np.ndarray, np.ndarray, dict[str, float | int]]:
+        """Mirror physical M4 corrections into the active slab halo."""
+        node_parts = [nodes]
+        value_parts = [values]
+        mirrored_count = 0
+        mirrored_l1 = 0.0
+        axial_parity = np.array([-1.0, -1.0, 1.0], dtype=np.float32)
+        for plane in planes:
+            twice_plane_index = 2.0 * (plane - origin_z) / spacing
+            plane_index = int(round(twice_plane_index))
+            if abs(twice_plane_index - plane_index) > 1.0e-5:
+                raise ValueError("slip plane must align to grid nodes or half nodes")
+            image_nodes = nodes.copy()
+            image_nodes[:, 2] = plane_index - image_nodes[:, 2]
+            valid = (image_nodes[:, 2] >= 0) & (image_nodes[:, 2] < nz)
+            image_nodes = image_nodes[valid]
+            image_values = values[valid] * axial_parity
+            node_parts.append(image_nodes)
+            value_parts.append(image_values)
+            mirrored_count += len(image_nodes)
+            mirrored_l1 += float(np.linalg.norm(image_values.astype(np.float64), axis=1).sum())
+        return (
+            np.concatenate(node_parts),
+            np.concatenate(value_parts),
+            {
+                "mirrored_sparse_correction_nodes": mirrored_count,
+                "mirrored_sparse_correction_l1": mirrored_l1,
+            },
+        )
+
+    @staticmethod
+    def _weight_slip_slab_endpoint_nodes(
+        grid: np.ndarray,
+        origin_z: float,
+        spacing: float,
+        planes: tuple[float, float],
+    ) -> None:
+        """Assign half volume to physical nodes on node-aligned slip planes.
+
+        The axial image of a normal source on a plane coincides with its
+        physical source. Its grid deposit is doubled, so full-volume
+        regeneration would double circulation on every zero-viscosity remesh.
+        Half-node planes contain no endpoint node and need no weighting.
+        """
+        for plane in planes:
+            index_float = (plane - origin_z) / spacing
+            index = int(round(index_float))
+            if abs(index_float - index) < 1.0e-5 and 0 <= index < grid.shape[2]:
+                grid[:, :, index, :] *= 0.5
 
     # Grid-diffusion orchestration
 
@@ -1943,6 +2287,7 @@ class _GridDiffusionMixin:
         group_winner_grid: np.ndarray,
         eddy_viscosity_grid: np.ndarray | None = None,
         regenerated_core_radius: float | None = None,
+        slab_endpoint_volume: bool = False,
     ) -> dict:
         """Assemble the new-particle dict from the diffused grid (3-D)."""
         M = len(ix)
@@ -1966,11 +2311,19 @@ class _GridDiffusionMixin:
             eddy_viscosity = eddy_viscosity_grid[ix, iy, iz].astype(np.float32)
         else:
             eddy_viscosity = np.zeros(M, dtype=np.float32)
+        volumes = np.full(M, vol, dtype=np.float32)
+        slab = getattr(self, "_slip_slab_bounds", None) if slab_endpoint_volume else None
+        if slab is not None:
+            for plane in slab:
+                plane_index = (plane - float(grid_min_np[2])) / particle_spacing
+                nearest = int(round(plane_index))
+                if abs(plane_index - nearest) < 1.0e-5:
+                    volumes[iz == nearest] *= 0.5
         return {
             "position": new_pos,
             "vortex_strength": grid_np[ix, iy, iz].astype(np.float32),
             "velocity": np.zeros((M, 3), dtype=np.float32),
-            "particle_volume": np.full(M, vol, dtype=np.float32),
+            "particle_volume": volumes,
             "core_radius": np.full(M, r, dtype=np.float32),
             "kinematic_viscosity": np.full(M, kinematic_viscosity, dtype=np.float32),
             "eddy_viscosity": eddy_viscosity,
@@ -2163,6 +2516,11 @@ class _GridDiffusionMixin:
         if remeshing_kernel == "LAGRANGE6" and domain_padding < 4:
             raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
         self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
+        self._last_gbd_wall_transfer = {
+            "wall_adjacent_particles": 0,
+            "excluded_signed_weight_l1": 0.0,
+            "fluid_correction_l1": 0.0,
+        }
         N = particles.n_particles_total
         if N == 0:
             return None
@@ -2176,6 +2534,27 @@ class _GridDiffusionMixin:
 
         pos_np = particles.position_cpu()
         vortex_strength = particles.vortex_strength_cpu()
+        slab_bounds = getattr(self, "_slip_slab_bounds", None)
+        if slab_bounds is not None:
+            z_min, z_max = slab_bounds
+            if np.any((pos_np[:, 2] < z_min - 1e-7) | (pos_np[:, 2] > z_max + 1e-7)):
+                raise RuntimeError("GBD received a physical particle outside the slip slab")
+            if remeshing_kernel != "M4_PRIME":
+                raise ValueError("slip-slab GBD currently requires M4_PRIME remeshing")
+            if effective_viscosity is not None:
+                raise ValueError(
+                    "slip-slab GBD currently requires uniform viscosity; "
+                    "variable eddy viscosity needs mirrored scalar support"
+                )
+
+        invalid = self._body_interior_at_particles(pos_np)
+        if np.any(invalid):
+            invalid_strength = vortex_strength[invalid]
+            raise RuntimeError(
+                "GBD received particles strictly inside the solid before scatter: "
+                f"count={int(np.count_nonzero(invalid))}, "
+                f"vortex_strength_l1={float(np.linalg.norm(invalid_strength, axis=1).sum()):.6e}"
+            )
 
         # -- LES: per-particle ν_t to carry through regen  -------------
         # The scattered ν_t is inherited by regenerated particles so that ν_t
@@ -2187,9 +2566,29 @@ class _GridDiffusionMixin:
         # -- Grid setup --------------------------------------------------------
         # Use a fixed grid origin when the domain was pre-configured, to avoid
         # the asymmetric flat-end artefact (see _fixed_grid_min docstring).
+        required_z_bounds = None
+        if slab_bounds is not None:
+            if self._fixed_grid_min is None or self._max_grid_dims is None:
+                raise RuntimeError("slip-slab GBD requires a configured fixed grid extent")
+            substeps = self.gbd_diffusion_substep_count(
+                kinematic_viscosity, time_step_size, particle_spacing
+            )
+            if substeps + 2 >= (slab_bounds[1] - slab_bounds[0]) / particle_spacing:
+                raise ValueError(
+                    "slip-slab GBD diffusion reaches beyond the first mirror pair; "
+                    "reduce the diffusion interval or increase the physical slab span"
+                )
+            halo_cells = max(3, substeps + 1)
+            required_z_bounds = (
+                slab_bounds[0] - halo_cells * particle_spacing,
+                slab_bounds[1] + halo_cells * particle_spacing,
+            )
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
             grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
-                pos_np, particle_spacing, domain_padding
+                pos_np,
+                particle_spacing,
+                domain_padding,
+                required_z_bounds=required_z_bounds,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
@@ -2200,11 +2599,21 @@ class _GridDiffusionMixin:
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+        if slab_bounds is not None:
+            phase = 2.0 * (np.asarray(slab_bounds) - grid_min_np[2]) / particle_spacing
+            if np.max(np.abs(phase - np.rint(phase))) > 1e-4:
+                raise ValueError(
+                    "slip planes must align to grid nodes or half nodes: "
+                    f"phase={phase.tolist()}, grid_min_z={grid_min_np[2]:.9g}, "
+                    f"spacing={particle_spacing:.9g}, fixed_grid_min="
+                    f"{None if self._fixed_grid_min is None else float(self._fixed_grid_min[2])}"
+                )
         node_mapping = _nearest_node_mapping(
             pos_np, vortex_strength, grid_min_np, particle_spacing, nx, ny, nz
         )
 
         # -- M4' scatter (GPU) -------------------------------------------------
+        self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
         self._zero_grid_kernel(self._current_grid, nx, ny, nz)
         gmin = grid_min_np.astype(float)
         scatter = (
@@ -2230,7 +2639,84 @@ class _GridDiffusionMixin:
                 count,
             )
             ti.sync()
-        self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
+        if slab_bounds is not None:
+            for plane in slab_bounds:
+                for start in range(0, N, batch_size):
+                    count = min(batch_size, N - start)
+                    self._m4_scatter_slip_image_kernel(
+                        particles.position,
+                        particles.vortex_strength,
+                        self._current_grid,
+                        gmin[0],
+                        gmin[1],
+                        gmin[2],
+                        float(particle_spacing),
+                        nx,
+                        ny,
+                        nz,
+                        start,
+                        count,
+                        float(plane),
+                    )
+                    ti.sync()
+        if getattr(self, "_body_mask_active", False):
+            if remeshing_kernel != "M4_PRIME":
+                raise RuntimeError("solid-wall GBD redistribution requires M4_PRIME")
+            correction_nodes, correction_values, wall_budget = self._m4_wall_corrections(
+                pos_np,
+                vortex_strength,
+                grid_min_np,
+                particle_spacing,
+                (nx, ny, nz),
+            )
+            if slab_bounds is not None:
+                # Reflect the physical sparse M4 moment correction. The M4
+                # kernel, wall mask, and minimum-norm moment system are
+                # equivariant under this orthogonal reflection. The mirrored
+                # source's full stencil may exceed the three-cell active halo;
+                # clip only its sparse deposits, as the image scatter does.
+                correction_nodes, correction_values, image_budget = (
+                    self._reflect_sparse_wall_corrections(
+                        correction_nodes,
+                        correction_values,
+                        float(grid_min_np[2]),
+                        particle_spacing,
+                        nz,
+                        slab_bounds,
+                    )
+                )
+                wall_budget.update(image_budget)
+            self._last_gbd_wall_transfer = wall_budget
+            if len(correction_nodes):
+                linear = (
+                    correction_nodes[:, 0].astype(np.int64) * (ny * nz)
+                    + correction_nodes[:, 1].astype(np.int64) * nz
+                    + correction_nodes[:, 2]
+                )
+                unique, inverse = np.unique(linear, return_inverse=True)
+                correction_values = np.column_stack(
+                    [
+                        np.bincount(
+                            inverse,
+                            weights=correction_values[:, component],
+                            minlength=len(unique),
+                        )
+                        for component in range(3)
+                    ]
+                ).astype(np.float32)
+                correction_nodes = np.column_stack(
+                    (unique // (ny * nz), (unique // nz) % ny, unique % nz)
+                ).astype(np.int32)
+            for start in range(0, len(correction_nodes), _GRID_TRANSFER_CHUNK):
+                stop = min(start + _GRID_TRANSFER_CHUNK, len(correction_nodes))
+                self._add_sparse_wall_corrections_kernel(
+                    self._current_grid,
+                    np.ascontiguousarray(correction_nodes[start:stop].reshape(-1)),
+                    np.ascontiguousarray(correction_values[start:stop]),
+                    stop - start,
+                )
+            if len(correction_nodes):
+                ti.sync()
         self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- Explicit Laplacian diffusion (GPU) --------------------------------
@@ -2297,6 +2783,17 @@ class _GridDiffusionMixin:
 
         # -- Threshold pruning (CPU — read diffused grid back once) ------------
         grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
+
+        if slab_bounds is not None:
+            z_nodes = grid_min_np[2] + particle_spacing * np.arange(nz)
+            outside = (z_nodes < slab_bounds[0] - 1e-7) | (z_nodes > slab_bounds[1] + 1e-7)
+            grid_np[:, :, outside, :] = 0.0
+            self._weight_slip_slab_endpoint_nodes(
+                grid_np,
+                float(grid_min_np[2]),
+                particle_spacing,
+                slab_bounds,
+            )
 
         vortex_strength_magnitude = np.linalg.norm(grid_np, axis=-1)
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
@@ -2465,6 +2962,7 @@ class _GridDiffusionMixin:
             zone_winner_grid,
             group_winner_grid,
             eddy_viscosity_grid=eddy_viscosity_grid,
+            slab_endpoint_volume=slab_bounds is not None,
         )
         self._ping = True
         return result
@@ -2983,6 +3481,45 @@ class _GridDiffusionMixin:
                         )
 
     @ti.kernel
+    def _m4_scatter_slip_image_kernel(
+        self,
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        grid: ti.template(),
+        gmin_x: ti.f32,
+        gmin_y: ti.f32,
+        gmin_z: ti.f32,
+        particle_spacing: ti.f32,
+        nx: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+        start_particle: ti.i32,
+        count: ti.i32,
+        plane_z: ti.f32,
+    ):
+        """Deposit the axial-vector mirror across one physical slip plane."""
+        for local_particle in range(count):
+            p = start_particle + local_particle
+            pos = position[p]
+            gamma = vortex_strength[p]
+            fx = (pos[0] - gmin_x) / particle_spacing
+            fy = (pos[1] - gmin_y) / particle_spacing
+            fz = (2.0 * plane_z - pos[2] - gmin_z) / particle_spacing
+            ix0 = int(ti.floor(fx))
+            iy0 = int(ti.floor(fy))
+            iz0 = int(ti.floor(fz))
+            for di, dj, dk in ti.ndrange((-1, 3), (-1, 3), (-1, 3)):
+                ii, jj, kk = ix0 + di, iy0 + dj, iz0 + dk
+                if 0 <= ii < nx and 0 <= jj < ny and 0 <= kk < nz:
+                    wx = _m4_prime_1d_ti(ti.abs(fx - ti.cast(ii, ti.f32)))
+                    wy = _m4_prime_1d_ti(ti.abs(fy - ti.cast(jj, ti.f32)))
+                    wz = _m4_prime_1d_ti(ti.abs(fz - ti.cast(kk, ti.f32)))
+                    weight = wx * wy * wz
+                    ti.atomic_add(grid[ii, jj, kk][0], -weight * gamma[0])
+                    ti.atomic_add(grid[ii, jj, kk][1], -weight * gamma[1])
+                    ti.atomic_add(grid[ii, jj, kk][2], weight * gamma[2])
+
+    @ti.kernel
     def _m4_scatter_gpu_kernel(
         self,
         position: ti.template(),
@@ -3041,6 +3578,21 @@ class _GridDiffusionMixin:
                             ti.atomic_add(grid[ii, jj, kk][0], w * particle_vortex_strength[0])
                             ti.atomic_add(grid[ii, jj, kk][1], w * particle_vortex_strength[1])
                             ti.atomic_add(grid[ii, jj, kk][2], w * particle_vortex_strength[2])
+
+    @ti.kernel
+    def _add_sparse_wall_corrections_kernel(
+        self,
+        grid: ti.template(),
+        indices: ti.types.ndarray(),
+        corrections: ti.types.ndarray(),
+        count: ti.i32,
+    ):
+        """Add host-reduced corrections; input nodes are unique."""
+        for item in range(count):
+            i, j, k = indices[3 * item], indices[3 * item + 1], indices[3 * item + 2]
+            grid[i, j, k] += ti.Vector(
+                [corrections[item, 0], corrections[item, 1], corrections[item, 2]]
+            )
 
     @ti.kernel
     def _laplacian_step_gpu_kernel(

@@ -160,11 +160,17 @@ def _query_vulkan_budget() -> tuple[int, int] | None:
     Returns *None* when the information cannot be determined.
     """
     try:
+        # Memory probing needs no window surface. A stale DISPLAY (common in
+        # SSH, batch jobs and desktop sandboxes) makes vulkaninfo abort before
+        # reporting otherwise usable compute devices.
+        probe_environment = os.environ.copy()
+        probe_environment.pop("DISPLAY", None)
         proc = subprocess.run(
             ["vulkaninfo"],
             capture_output=True,
             text=True,
             timeout=10,
+            env=probe_environment,
         )
         if proc.returncode != 0:
             return None
@@ -216,6 +222,7 @@ _INTEGRATED_GPU_POOL_BYTES: int = 1536 * (1 << 20)  # 1.5 GiB
 def _safe_device_memory_for_init(
     desired_fraction: float,
     backend: str = "VULKAN",
+    minimum_pool_bytes: int = 0,
 ) -> dict[str, float]:
     """Return ``ti.init()`` memory kwargs appropriate for the current GPU.
 
@@ -234,6 +241,9 @@ def _safe_device_memory_for_init(
 
     Returns a dict with either ``{"device_memory_fraction": ...}`` or
     ``{"device_memory_GB": ...}``.
+
+    ``minimum_pool_bytes`` sizes an integrated-GPU pool for a known fixed
+    workspace, subject to the driver's current memory budget.
     """
     # -- Metal (macOS) path --------------------------------------------------
     if platform.system() == "Darwin" or backend == "METAL":
@@ -268,11 +278,13 @@ def _safe_device_memory_for_init(
         is_integrated = _is_likely_integrated_gpu()
 
     if is_integrated:
-        pool = _INTEGRATED_GPU_POOL_BYTES
-        # Never use more than 50 % of the current Vulkan budget.
+        pool = max(_INTEGRATED_GPU_POOL_BYTES, minimum_pool_bytes)
+        # Large fixed workspaces need more than the default pool, while leaving
+        # room in the device budget for external-array transfers.
         if budget_info is not None:
             _, heap_budget = budget_info
-            pool = min(pool, int(heap_budget * 0.5))
+            budget_share = 0.7 if minimum_pool_bytes > _INTEGRATED_GPU_POOL_BYTES else 0.5
+            pool = min(pool, int(heap_budget * budget_share))
         pool_mb = pool / (1 << 20)
         pool_gb = pool / (1 << 30)
         budget_mb = budget_info[1] / (1 << 20) if budget_info else -1
@@ -499,6 +511,7 @@ def initialize_taichi_backend(
     device_memory_fraction: float = 0.5,
     random_seed: int = 42,
     supported_devices: set[str] | frozenset[str] | None = None,
+    minimum_pool_bytes: int = 0,
 ) -> str:
     """
     Initialize Taichi with user-specified backend and precision settings.
@@ -525,6 +538,8 @@ def initialize_taichi_backend(
               numerical method. ``AUTO`` considers only GPU backends in this
               set, so (for example) an FMM case does not resolve to CUDA before
               discovering that its qualified devices are Vulkan and Metal.
+          minimum_pool_bytes: Fixed workspace plus headroom requested on an
+              integrated GPU; ignored on CPU and discrete GPU backends.
 
     Returns:
           str: Name of the successfully initialised backend
@@ -584,7 +599,9 @@ def initialize_taichi_backend(
         elif name == "METAL":
             memory_kwargs = {}  # Metal does not accept device_memory_* kwargs
         else:
-            memory_kwargs = _safe_device_memory_for_init(device_memory_fraction, name)
+            memory_kwargs = _safe_device_memory_for_init(
+                device_memory_fraction, name, minimum_pool_bytes
+            )
 
         # Metal does not accept advanced_optimization / random_seed — keep its
         # init kwargs minimal.

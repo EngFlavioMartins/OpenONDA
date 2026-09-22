@@ -9,6 +9,8 @@ from pathlib import Path
 import shutil
 import tempfile
 
+import numpy as np
+
 from source.solution_layout import collection_path
 
 from .storage import append_line_recoverably
@@ -92,6 +94,14 @@ class SolverIO:
         solution = Path(self.solution_dir)
 
         samplers = list(getattr(self.solver, "_samplers", ()) or ())
+        samplers.extend(
+            sampler
+            for sampler in (
+                getattr(self.solver, "_default_yplus_sampler", None),
+                getattr(self.solver, "_default_ibm_sampler", None),
+            )
+            if sampler is not None
+        )
         owned_stems = {
             str(getattr(sampler, "file_name", None) or sampler.name)
             for sampler in samplers
@@ -153,12 +163,21 @@ class SolverIO:
                 os.unlink(temporary)
             raise
 
+    @staticmethod
+    def _archive_superseded(path: Path) -> None:
+        """Retain the pre-rewind stream without matching active-output names."""
+        branch_root = path.parent / "restart-branches"
+        branch_root.mkdir(parents=True, exist_ok=True)
+        branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
+        shutil.copy2(path, branch / f"{path.name}.superseded")
+
     @classmethod
     def _rewind_csv(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
         with path.open(newline="", encoding="utf-8") as stream:
             rows = list(csv.reader(stream))
+        has_terminal_newline = path.read_bytes().endswith((b"\n", b"\r"))
         if not rows:
             return
         time_column = next(
@@ -168,10 +187,27 @@ class SolverIO:
         if time_column is None:
             return
         kept = [rows[0]]
-        for row in rows[1:]:
-            if row and float(row[time_column]) <= time + 1e-12:
+        needs_rewrite = False
+        for index, row in enumerate(rows[1:], start=1):
+            if len(row) != len(rows[0]):
+                if index == len(rows) - 1 and not has_terminal_newline:
+                    needs_rewrite = True
+                    break
+                raise ValueError(f"CSV solver output {path} has an invalid row")
+            try:
+                row_time = float(row[time_column])
+            except ValueError as error:
+                raise ValueError(f"CSV solver output {path} has an invalid time") from error
+            if not np.isfinite(row_time):
+                raise ValueError(f"CSV solver output {path} has a non-finite time")
+            if row_time <= time + 1e-12:
                 kept.append(row)
-        if len(kept) != len(rows):
+                if index == len(rows) - 1 and not has_terminal_newline:
+                    needs_rewrite = True
+            else:
+                needs_rewrite = True
+        if needs_rewrite or len(kept) != len(rows):
+            cls._archive_superseded(path)
             cls._replace_csv(path, kept)
 
     @classmethod
@@ -209,14 +245,13 @@ class SolverIO:
         if not future and len(kept) == len(datasets):
             return
 
-        # Preserve the superseded collection index before publishing the
-        # resumed branch.  Snapshot files themselves are intentionally left in
-        # place, so this operation is recoverable even without copying large
-        # VTU/VTS payloads.
+        # Preserve the superseded index and its future frame payloads before
+        # replay can overwrite the same step-named files.
         branch_root = path.parent / "restart-branches"
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(path, branch / path.name)
+        cls._archive_pvd_frames(path, future, branch)
 
         collection.clear()
         collection.extend(
@@ -229,11 +264,69 @@ class SolverIO:
         xml = XmlElementTree.tostring(tree.getroot(), encoding="unicode") + "\n"
         cls._replace(path, [xml])
 
+    @staticmethod
+    def _archive_pvd_frames(path: Path, future: list, branch: Path) -> None:
+        """Move superseded VTK payloads with their original relative layout."""
+        from defusedxml import ElementTree as SafeElementTree
+
+        seen: set[Path] = set()
+        for dataset in future:
+            filename = dataset.attrib.get("file", "")
+            relative = Path(filename)
+            if not filename or relative.is_absolute() or ".." in relative.parts:
+                raise ValueError(f"Unsafe PVD frame path {filename!r} in {path}")
+            frame = path.parent / relative
+            candidates = [frame]
+            if frame.suffix == ".pvtu" and frame.is_file():
+                for piece in SafeElementTree.parse(frame).findall(".//Piece"):
+                    name = piece.attrib.get("Source", "")
+                    piece_path = Path(name)
+                    if not name or piece_path.is_absolute() or ".." in piece_path.parts:
+                        raise ValueError(f"Unsafe PVTU piece path {name!r} in {frame}")
+                    candidates.append(frame.parent / piece_path)
+            for source in candidates:
+                if source in seen or not source.is_file():
+                    continue
+                if source.is_symlink():
+                    raise ValueError(f"Refusing symlinked PVD frame {source}")
+                seen.add(source)
+                destination = branch / source.relative_to(path.parent)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(source, destination)
+
     @classmethod
     def _rewind_jsonl(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-        kept = [line for line in lines if float(json.loads(line)["time"]) <= time + 1e-12]
-        if len(kept) != len(lines):
+        kept = []
+        needs_rewrite = False
+        for index, line in enumerate(lines):
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as error:
+                # A process killed during append can leave one incomplete final
+                # line. Preserve it in the branch archive and recover the valid
+                # prefix; malformed interior records remain a hard error.
+                if index == len(lines) - 1 and not line.endswith(("\n", "\r")):
+                    needs_rewrite = True
+                    break
+                raise ValueError(f"JSONL solver output {path} has an invalid record") from error
+            if not isinstance(record, dict):
+                raise ValueError(f"JSONL solver output {path} has an invalid record")
+            try:
+                row_time = float(record["time"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(f"JSONL solver output {path} has an invalid record") from error
+            if not np.isfinite(row_time):
+                raise ValueError(f"JSONL solver output {path} has a non-finite time")
+            if row_time <= time + 1e-12:
+                if not line.endswith(("\n", "\r")):
+                    line += "\n"
+                    needs_rewrite = True
+                kept.append(line)
+            else:
+                needs_rewrite = True
+        if needs_rewrite:
+            cls._archive_superseded(path)
             cls._replace(path, kept)

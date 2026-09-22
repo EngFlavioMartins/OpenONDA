@@ -114,7 +114,8 @@ def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
             events.append("enter")
             return self
 
-        def run(self):
+        def run(self, *, start_from):
+            assert start_from == "latest"
             events.append("run")
 
         def __exit__(self, *args):
@@ -404,4 +405,5 @@ def test_reference_flow_declares_its_sampling_cadence(monkeypatch):
         "offaxis_y075": 0.25,
     }
     assert config.time.output_schedule.every_time == 0.25
-    assert config.backup.schedule is None
+    assert config.backup.schedule == config.time.output_schedule
+    assert config.backup.write_at_end

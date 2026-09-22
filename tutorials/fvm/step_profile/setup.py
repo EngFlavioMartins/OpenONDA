@@ -18,9 +18,11 @@ from openonda.tutorial_runner import case_package
 
 __package__ = case_package(Path(__file__).parent)
 from .assets.mesh_step import backward_facing_step_mesh
-from .assets.reattachment import reattachment_location, write_solution_tables
+from .assets.reattachment import history_row, write_solution_tables
 
 # Case definition
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "step_profile"
 STEP_HEIGHT = 1.0  # step height h [m]
 MEAN_VELOCITY = 1.0  # bulk inlet velocity [m/s]
@@ -85,6 +87,7 @@ def create_fvm_setup(
     )
 
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
@@ -129,24 +132,24 @@ def main() -> None:
         fvm_solver.set_initial_velocity(
             initial_velocity(fvm_solver.geo_data, fvm_solver.mesh_data["n_cells"])
         )
-        fvm_solver.write_vtk()
+        restored = fvm_solver.start_from(START_FROM)
+        recorded = fvm_solver.reconcile_history("reattachment_history.csv")
+        if not restored:
+            fvm_solver.save_state(solution_dir / "backup")
+            fvm_solver.write_vtk()
+        columns = ("time", "reattachment_position_over_height", "min_near_wall_velocity",
+                   "max_continuity_error", "max_courant_number")
+        def record_history():
+            row = fvm_solver.evaluate(history_row, STEP_HEIGHT)
+            fvm_solver.write_csv("reattachment_history.csv", [row], columns=columns, append=True)
 
-        history = []
+        if restored and not recorded and fvm_solver.step > 0:
+            record_history()
         while fvm_solver.time < fvm_setup.time.end_time:
             fvm_solver.advance()
-            x_re, min_u = fvm_solver.evaluate(reattachment_location, STEP_HEIGHT)
-            diagnostics = fvm_solver.last_diagnostics
-            history.append(
-                [
-                    fvm_solver.time,
-                    x_re,
-                    min_u,
-                    diagnostics.max_continuity_error,
-                    diagnostics.max_courant_number,
-                ]
-            )
+            record_history()
 
-        fvm_solver.evaluate(write_solution_tables, solution_dir, history, STEP_HEIGHT)
+        fvm_solver.evaluate(write_solution_tables, solution_dir, None, STEP_HEIGHT)
 
 
 if __name__ == "__main__":

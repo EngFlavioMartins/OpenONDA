@@ -5,6 +5,7 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 
 from openonda.plotting import (
     CM,
@@ -22,7 +23,7 @@ FORCE_COLUMNS = ("drag_coefficient", "lift_coefficient")
 
 def time_mean(time: np.ndarray, values: np.ndarray) -> float:
     """Return the trapezoidal mean over the sampled time interval."""
-    return float(np.trapezoid(values, time) / (time[-1] - time[0]))
+    return float(trapezoid(values, time) / (time[-1] - time[0]))
 
 
 def main() -> None:

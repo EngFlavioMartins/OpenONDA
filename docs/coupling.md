@@ -69,7 +69,22 @@ sweep. `interface_normal_tolerance` and `interface_gradient_tolerance` control
 early convergence; diagnostics record every sweep and whether the configured
 iteration limit was reached. Change that limit only with a sensitivity study.
 
+`interface_acceleration="aitken"` enables experimental, safeguarded mixing of
+the velocity and tangential-gradient traces; the default is `"none"`.
+It requires at least three sweeps, uses two ordinary residuals before proposing
+a bounded mixing factor, and retains the same convergence tolerances. If either
+residual grows or becomes nonfinite, the previous coherent endpoint is restored;
+the rejected trial still consumes a sweep. Diagnostics distinguish attempted
+sweeps from `accepted_sweep`. No acceleration history crosses an interval or
+needs additional restart state. With the cylinder's three-sweep limit this can
+improve the final residual, but cannot reduce the number of sweeps. Qualify it
+against the ordinary iteration before using it in a production study.
+
 `run(start_step=..., restart_from=...)` supports a complete run or a bounded segment.
+Tutorials use `run(start_from="latest")` to discover the committed bundle,
+including its FVM and VPM states and boundary history. A fresh run creates a
+time-zero bundle; a completed run does not advance again. See
+[continuation](continuation.md) for output reconciliation and launcher behavior.
 `max_coupling_steps` is an execution limit, not a physical configuration change.
 `save_backup` writes both solver states and coupling history; `load_backup` restores
 both clocks, fields, and boundary-history arrays. A bounded stop can write a restart
@@ -209,6 +224,53 @@ Restart state is not a visualization product, and this layout does not prescribe
 restart location. It remains independent of the component directories above.
 
 ## Failure modes and limitations
+
+For a resolved free-slip span, configure the installed `openonda.vpm.SlipSlabInduction`
+around a full-3D target-capable induction backend, for example
+`SlipSlabInduction(FMMInduction(), z_min=-0.48, z_max=0.48)`. The FVM slip faces,
+VPM domain z bounds, and transfer-region z faces must be the same physical
+planes. The slab path supports laminar GBD or inviscid (`NONE`) diffusion;
+configuration rejects core spreading, random-walk diffusion, DVH and LES.
+Variable eddy viscosity requires reflected scalar support that is not yet implemented.
+Set the GBD spacing so both planes fall on grid nodes or half nodes;
+for a 0.96 m span, `h=0.96/20` m is one choice. GBD requires M4-prime
+remeshing and at least three grid cells of domain padding. The wrapper uses
+full three-component velocity, vorticity, and stretching. Images have axial
+vorticity parity `(-Gamma_x,-Gamma_y,Gamma_z)` and are temporary induction,
+diffusion, and renewal support; they are never counted as physical particles
+or included in the force reference area.
+
+The image sum checks velocity and gradient changes over consecutive doubling
+blocks. `tail_tolerance`, `max_shells`, `velocity_scale`, and `gradient_scale`
+control this check; an unconverged sum raises an error. The block difference
+is an empirical convergence diagnostic, so certify the selected tolerances
+against a longer image sum on representative developed-wake states. The
+solver also rejects physical particles that escape the slab. The FVM-owned
+renewal ramp acts on x/y exchange faces and retains full authority through the
+slip span.
+
+Stationary triangulated walls share one classifier between renewal and GBD.
+The lattice mask is cached by wall revision and lattice geometry. A circular
+z-aligned cylinder receives an analytic fast path only after its wall vertices,
+normals and axial extent have been verified; a bounding box is insufficient.
+Masked M4-prime scatter uses bounded local moment constraints, and the masked
+diffusion stencil excludes solid flux. Physical wall-vorticity production
+remains the responsibility of the no-slip FVM solve. Ghost-node solid queries
+reflect into the physical span. Sparse wall corrections are computed for
+physical particles once and reflected with axial parity; image corrections
+have separate diagnostics. Node-aligned slip-plane particles use half
+control-volume strength and volume to avoid doubling normal circulation on
+repeated remeshing; half-node lattices need no endpoint weight.
+
+For that verified cylinder, shallow RK and accepted-step particle penetrations
+are projected to the fluid side before induction. Penetrations exceeding a
+quarter of the particle spacing are rejected. Projection preserves circulation
+but changes impulse; `solid_projection` in coupled diagnostics separates
+temporary RK corrections from accepted-state corrections. `gbd_wall_transfer`
+records the remeshing budget. General walls retain a strict crossing error
+until a suitable fluid-side projection has been qualified. These numerical
+exclusion checks do not establish near-wall accuracy; use refinement and
+matched-reference comparisons for that qualification.
 
 Construction/initialization rejects missing injected solvers, mismatched viscosity,
 invalid donor bounds, incompatible step ratios, missing VPM particle spacing, invalid

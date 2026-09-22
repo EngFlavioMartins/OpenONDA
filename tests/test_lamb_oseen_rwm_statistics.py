@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
 import h5py
 import numpy as np
 import pytest
+from scipy.integrate import trapezoid
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "tutorials" / "vpm" / "01_lamb_oseen_vortex" / "assets"
@@ -19,6 +21,36 @@ def _load(name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def test_rwm_members_discover_solver_component_backups(tmp_path):
+    statistics = _load("postprocess")
+    solution = tmp_path / "solution with spaces"
+    for index in range(4):
+        member = solution / f"vortex_rwm_{index:03d}"
+        frames = member / "vpm"
+        frames.mkdir(parents=True)
+        (member / "vpm_metadata.json").write_text(
+            json.dumps(
+                {
+                    "solver": "VPM",
+                    "lifecycle": {"status": "completed"},
+                    "configuration": {"numerics": {"random_seed": 42000 + index}},
+                }
+            )
+        )
+        for step in (0, 18, 1000000):
+            (frames / f"vpm_{step:06d}.h5").touch()
+        # Stale files at the root must not enter the canonical series.
+        (member / "vpm_000009.h5").touch()
+
+    members = statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm", 4)
+    assert [member.seed for member in members] == list(range(42000, 42004))
+    assert all(list(member.backups) == [0, 18, 1000000] for member in members)
+    assert all(path.parent.name == "vpm" for member in members for path in member.backups.values())
+    (solution / "vortex_rwm_002/vpm/vpm_000018.h5").unlink()
+    with pytest.raises(ValueError, match="backup steps differ"):
+        statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm", 4)
 
 
 def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
@@ -43,9 +75,7 @@ def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
     relative_error = np.linalg.norm(field["vorticity_z"] - exact_vorticity) / np.linalg.norm(
         exact_vorticity
     )
-    represented_circulation = np.trapezoid(
-        np.trapezoid(field["vorticity_z"], axis, axis=1), axis, axis=0
-    )
+    represented_circulation = trapezoid(trapezoid(field["vorticity_z"], axis, axis=1), axis, axis=0)
 
     assert relative_error < 0.02
     np.testing.assert_allclose(represented_circulation, 1.0, rtol=2.0e-3)

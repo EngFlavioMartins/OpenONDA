@@ -18,6 +18,8 @@ from defusedxml import ElementTree
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import numpy as np
+
+from source.solution_layout import vpm_backup_files
 from PIL import Image
 import pyvista as pv
 
@@ -27,7 +29,7 @@ DEFAULT_OUTPUT = CASE_DIR / "assets" / "animation" / "rotor_30fps.gif"
 
 
 def _run_directories() -> tuple[Path, Path]:
-    tag = os.environ.get("ROTOR_OUTPUT_TAG", "completion")
+    tag = os.environ.get("ROTOR_OUTPUT_TAG", "")
     solution = CASE_DIR / "solution" / tag if tag else CASE_DIR / "solution"
     samples = CASE_DIR / "samples" / "rotor" / tag if tag else CASE_DIR / "samples" / "rotor"
     return solution, samples
@@ -62,7 +64,7 @@ def _read_backup_clock(path: Path) -> tuple[int, float]:
 
 def _coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
     """Return strictly ordered VPM-owned backups containing attached VLM state."""
-    paths = sorted(solution_dir.glob("vpm_*.h5"), key=_backup_step)
+    paths = vpm_backup_files(solution_dir)
     if not paths:
         raise FileNotFoundError(f"no coupled VPM backups found under {solution_dir}")
     records = [(time, path) for path in paths for _, time in [_read_backup_clock(path)]]

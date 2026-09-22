@@ -37,8 +37,9 @@ openonda tutorial run fvm/taylor_green --workspace ./first-flow
 ```
 
 The verifier checks installed resources, a rendered figure, a refined Cartesian
-mesh using the compiled octree, CPU Taichi initialization, Numba runtime
-compatibility and a real native FVM step. It creates temporary output and
+mesh using the compiled octree, Numba runtime compatibility, a native FVM step
+with iterative/AMG solves, and a CPU VPM step with HDF5/ParaView output and
+checkpoint restart. It creates temporary output and
 returns a nonzero status on failure. `--require-site-packages` distinguishes a
 normal installation from an editable checkout; omit it for editable installs.
 
@@ -78,7 +79,9 @@ For only the test runner, use `.[test]`. See [the test guide](../tests/README.md
 
 NumPy, SciPy, Numba, Taichi and PyAMG supply the numerical runtime. HDF5,
 VTK/PyVista, pandas and Matplotlib provide storage, output and plotting.
-These packages are installed automatically. The Markdown documentation needs
+These packages are installed automatically. SciPy 1.12 or newer is required
+for the iterative solvers’ `rtol` API. Post-processing uses SciPy’s trapezoidal
+integration so the declared NumPy 1.26 minimum remains supported. The Markdown documentation needs
 no separate build tools.
 
 Solver factories configure CPU use internally. MPI runs limit BLAS and Numba

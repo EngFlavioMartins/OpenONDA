@@ -1,0 +1,301 @@
+{
+  "schema": "openonda-cylinder-exchange-dt-short-screen/1",
+  "qualification": "Pre-M4-image-prefilter-fix execution and cost evidence only. Independent audit showed mirrored sources beyond finite candidate z bounds can omit near-wall redistribution. These transient t=0.8 force/profile differences do not qualify stationary shedding or timestep independence. The dt=0.02 run used two bounded timeout resumes from native checkpoints; its raw diagnostics include replayed steps 37\u201338, which are deduplicated by final saved step for interval summaries.",
+  "run_directory": "/tmp/openonda-cylinder-dt-screen-parity-fixed",
+  "common_physical_end_time": 0.8,
+  "cases": {
+    "baseline": {
+      "status": {
+        "trial_returncode": 0,
+        "accepted_steps": 20,
+        "raw_diagnostic_records": 20,
+        "replayed_diagnostic_steps": [],
+        "final_physical_time": 0.8,
+        "attempts": [
+          {
+            "returncode": 0,
+            "timed_out": false,
+            "wall_seconds": 566.2308515990007,
+            "peak_process_tree_rss_bytes": 5737222144
+          }
+        ]
+      },
+      "resolved": {
+        "hxy": 0.08,
+        "hp": 0.08,
+        "dz": 0.08,
+        "span": 0.96,
+        "exchange_dt": 0.04,
+        "fvm_time_step": 0.004,
+        "interface_iterations": 3,
+        "cores": 4,
+        "compute_device": "CPU",
+        "particle_limit": 1000000,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819"
+      },
+      "source_digest": "c3a1ae89429c4c03acdc21a381692ceee243185455927724fb813ed0ad17eff0",
+      "cost": {
+        "cumulative_wall_seconds": 566.2308515990007,
+        "cumulative_wall_seconds_per_physical_second": 707.7885644987509,
+        "all_recorded_interval_seconds_sum": 377.7934127841436,
+        "accepted_interval_seconds_sum": 377.7934127841436,
+        "accepted_interval_seconds_per_physical_second": 472.2417659801795,
+        "late_last_three_interval_seconds": [
+          24.01200546299515,
+          25.101017963024788,
+          26.142323886990198
+        ],
+        "late_last_three_mean_seconds": 25.085115771003377,
+        "peak_process_tree_rss_bytes": 5737222144,
+        "peak_transfer_particles": 7166
+      },
+      "budgets": {
+        "max_logged_projection_penetration_m": 0.00243,
+        "max_accepted_step_projection_impulse_norm": 0.0001519020060765391,
+        "max_final_sweep_normal_rms": 0.0004862618398378135,
+        "max_final_sweep_gradient_rms": 0.0005484263081784559,
+        "last_final_sweep_residual": {
+          "sweep": 3,
+          "normal_residual_rms": 3.4206890223597674e-06,
+          "gradient_residual_rms": 3.901748059085984e-06,
+          "converged": true
+        },
+        "nonconverged_accepted_steps": 8,
+        "max_gbd_fluid_correction_l1": 0.9866847898845276
+      },
+      "transient_force_at_t_0_8": {
+        "drag_coefficient": 1.5427548744258628,
+        "lift_coefficient": -0.009277493119639003,
+        "side_force_coefficient": 3.151856113933773e-05
+      }
+    },
+    "exchange_dt-0.02": {
+      "status": {
+        "trial_returncode": 0,
+        "accepted_steps": 40,
+        "raw_diagnostic_records": 42,
+        "replayed_diagnostic_steps": [
+          37,
+          38
+        ],
+        "final_physical_time": 0.8,
+        "attempts": [
+          {
+            "returncode": 124,
+            "timed_out": true,
+            "wall_seconds": 900.316980884003,
+            "peak_process_tree_rss_bytes": 5758271488
+          },
+          {
+            "returncode": 124,
+            "timed_out": true,
+            "wall_seconds": 240.31640150900057,
+            "peak_process_tree_rss_bytes": 5714919424
+          },
+          {
+            "returncode": 0,
+            "timed_out": false,
+            "wall_seconds": 304.0785798900033,
+            "peak_process_tree_rss_bytes": 5726892032
+          }
+        ]
+      },
+      "resolved": {
+        "hxy": 0.08,
+        "hp": 0.08,
+        "dz": 0.08,
+        "span": 0.96,
+        "exchange_dt": 0.02,
+        "fvm_time_step": 0.004,
+        "interface_iterations": 3,
+        "cores": 4,
+        "compute_device": "CPU",
+        "particle_limit": 1000000,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819"
+      },
+      "source_digest": "c3a1ae89429c4c03acdc21a381692ceee243185455927724fb813ed0ad17eff0",
+      "cost": {
+        "cumulative_wall_seconds": 1444.7119622830069,
+        "cumulative_wall_seconds_per_physical_second": 1805.8899528537586,
+        "all_recorded_interval_seconds_sum": 853.5426877457794,
+        "accepted_interval_seconds_sum": 767.4532123657409,
+        "accepted_interval_seconds_per_physical_second": 959.3165154571761,
+        "late_last_three_interval_seconds": [
+          28.942490740984795,
+          29.431183394000982,
+          30.038409490982303
+        ],
+        "late_last_three_mean_seconds": 29.47069454198936,
+        "peak_process_tree_rss_bytes": 5758271488,
+        "peak_transfer_particles": 8326
+      },
+      "budgets": {
+        "max_logged_projection_penetration_m": null,
+        "max_accepted_step_projection_impulse_norm": 0.0,
+        "max_final_sweep_normal_rms": 0.0004617136865946149,
+        "max_final_sweep_gradient_rms": 0.0005218404523048318,
+        "last_final_sweep_residual": {
+          "sweep": 3,
+          "normal_residual_rms": 5.737354133406548e-06,
+          "gradient_residual_rms": 6.492642502771492e-06,
+          "converged": true
+        },
+        "nonconverged_accepted_steps": 3,
+        "max_gbd_fluid_correction_l1": 0.526110014050001
+      },
+      "transient_force_at_t_0_8": {
+        "drag_coefficient": 1.793211910366068,
+        "lift_coefficient": -0.010428956863601839,
+        "side_force_coefficient": 3.136726127540605e-05
+      },
+      "transient_force_difference_from_baseline_at_t_0_8": {
+        "drag_coefficient": 0.2504570359402052,
+        "lift_coefficient": -0.001151463743962836,
+        "side_force_coefficient": -1.5129986393168517e-07
+      },
+      "transient_profiles_vs_baseline_at_t_0_8": {
+        "fvm_transverse_x1.csv": {
+          "points": 21,
+          "velocity_rms_difference": 0.043443867637378036,
+          "velocity_max_difference": 0.06058514611328636
+        },
+        "span_lower.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.038088169706838315,
+          "velocity_max_difference": 0.044325329849980014
+        },
+        "span_middle.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.03805548522962063,
+          "velocity_max_difference": 0.04432810272661393
+        },
+        "span_upper.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.03807087562798428,
+          "velocity_max_difference": 0.04431304554002607
+        }
+      }
+    },
+    "exchange_dt-0.08": {
+      "status": {
+        "trial_returncode": 0,
+        "accepted_steps": 10,
+        "raw_diagnostic_records": 10,
+        "replayed_diagnostic_steps": [],
+        "final_physical_time": 0.8,
+        "attempts": [
+          {
+            "returncode": 0,
+            "timed_out": false,
+            "wall_seconds": 378.78375788600533,
+            "peak_process_tree_rss_bytes": 5764276224
+          }
+        ]
+      },
+      "resolved": {
+        "hxy": 0.08,
+        "hp": 0.08,
+        "dz": 0.08,
+        "span": 0.96,
+        "exchange_dt": 0.08,
+        "fvm_time_step": 0.004,
+        "interface_iterations": 3,
+        "cores": 4,
+        "compute_device": "CPU",
+        "particle_limit": 1000000,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819"
+      },
+      "source_digest": "c3a1ae89429c4c03acdc21a381692ceee243185455927724fb813ed0ad17eff0",
+      "cost": {
+        "cumulative_wall_seconds": 378.78375788600533,
+        "cumulative_wall_seconds_per_physical_second": 473.47969735750667,
+        "all_recorded_interval_seconds_sum": 231.21889002599346,
+        "accepted_interval_seconds_sum": 231.21889002599346,
+        "accepted_interval_seconds_per_physical_second": 289.0236125324918,
+        "late_last_three_interval_seconds": [
+          22.294338404972223,
+          24.26294184596918,
+          25.28263829900243
+        ],
+        "late_last_three_mean_seconds": 23.946639516647945,
+        "peak_process_tree_rss_bytes": 5764276224,
+        "peak_transfer_particles": 5601
+      },
+      "budgets": {
+        "max_logged_projection_penetration_m": 0.01449,
+        "max_accepted_step_projection_impulse_norm": 0.0022023569612895613,
+        "max_final_sweep_normal_rms": 0.0004534987802566444,
+        "max_final_sweep_gradient_rms": 0.0005144772877435433,
+        "last_final_sweep_residual": {
+          "sweep": 3,
+          "normal_residual_rms": 1.5419744107020114e-05,
+          "gradient_residual_rms": 1.7664521664279972e-05,
+          "converged": false
+        },
+        "nonconverged_accepted_steps": 10,
+        "max_gbd_fluid_correction_l1": 1.4958497408172284
+      },
+      "transient_force_at_t_0_8": {
+        "drag_coefficient": 1.4435592672401374,
+        "lift_coefficient": -0.003163021460717657,
+        "side_force_coefficient": 3.415390172195138e-05
+      },
+      "transient_force_difference_from_baseline_at_t_0_8": {
+        "drag_coefficient": -0.0991956071857254,
+        "lift_coefficient": 0.006114471658921346,
+        "side_force_coefficient": 2.63534058261365e-06
+      },
+      "transient_profiles_vs_baseline_at_t_0_8": {
+        "fvm_transverse_x1.csv": {
+          "points": 21,
+          "velocity_rms_difference": 0.013206998052852395,
+          "velocity_max_difference": 0.018760479035774984
+        },
+        "span_lower.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.011895425264535435,
+          "velocity_max_difference": 0.013118392530295984
+        },
+        "span_middle.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.01192211591402674,
+          "velocity_max_difference": 0.013173449894989598
+        },
+        "span_upper.csv": {
+          "points": 13,
+          "velocity_rms_difference": 0.011857608774719376,
+          "velocity_max_difference": 0.013090438401535742
+        }
+      }
+    }
+  },
+  "initial_timeout_report": "/tmp/openonda-cylinder-dt-screen-parity-fixed/sensitivity_initial_timeout.json",
+  "initial_orchestrator_report_status": "Nonzero because dt=0.02 reached t=0.72 at its first 900-second limit; separate native resumes later completed t=0.8. See cumulative trial attempts."
+}

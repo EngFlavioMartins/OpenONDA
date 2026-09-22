@@ -8,6 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 
 CASE_DIR = Path(__file__).resolve().parent
 SAMPLES_DIR = CASE_DIR / "samples"
@@ -24,7 +25,7 @@ METRICS = ("mean_drag", "rms_drag", "rms_lift", "rms_side", "strouhal")
 
 
 def time_mean(time: np.ndarray, values: np.ndarray) -> float:
-    return float(np.trapezoid(values, time) / (time[-1] - time[0]))
+    return float(trapezoid(values, time) / (time[-1] - time[0]))
 
 
 def force_statistics(path: Path, start: float, end: float) -> dict[str, float]:
@@ -32,10 +33,7 @@ def force_statistics(path: Path, start: float, end: float) -> dict[str, float]:
     time = np.asarray(data["time"], dtype=float)
     selected = (time >= start) & (time <= end)
     time = time[selected]
-    values = {
-        name: np.asarray(data[name], dtype=float)[selected]
-        for name in FORCE_COLUMNS
-    }
+    values = {name: np.asarray(data[name], dtype=float)[selected] for name in FORCE_COLUMNS}
 
     means = {name: time_mean(time, value) for name, value in values.items()}
     rms = {
@@ -158,7 +156,9 @@ def analyse_forces(
 
 
 def print_report(report: dict) -> None:
-    print("case                 h [m]       cells       mean Cd       Cd rms       Cl rms       Cs rms       St")
+    print(
+        "case                 h [m]       cells       mean Cd       Cd rms       Cl rms       Cs rms       St"
+    )
     for grid in report["grids"]:
         print(
             f"{grid['name']:<18} {grid['h']:>9.5f} {grid['cells']:>11d} "

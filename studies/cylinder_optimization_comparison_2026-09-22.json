@@ -1,0 +1,924 @@
+{
+  "schema": "openonda-cylinder-optimization-short-comparison/1",
+  "qualification": "One run per case over ten short transient steps through t=0.4. Timing ratios carry single-run uncertainty from host load and startup effects; no confidence interval or repeatability claim is available. This is an execution and local comparison, not a 12-hour runtime, developed shedding, or grid-independence certificate.",
+  "root": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison",
+  "raw_case_directories": {
+    "baseline": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/baseline_repeat",
+    "optimized": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/optimized",
+    "aitken": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/aitken"
+  },
+  "provenance": {
+    "baseline": "Preserved pre-optimization build/lib; source and openonda differ from current only in these five files (excluding caches).",
+    "source_sha256": {
+      "baseline": {
+        "source/coupler/config/types.py": "0b245c7a5c41bd3328a4eafa42c07c834732dc95726fe9d1651c59fa1760e735",
+        "source/coupler/interface_iteration.py": "5c0e9fba49bd90919cb52e6673eb2ae9834680e9c39375007f8764acf37155cb",
+        "source/solvers/fvm/solve/petsc_partitioned.py": "618ee67cd88bb19254b698707bac162e9513f13b4692f5bd6aff9e2cf03d1b6a",
+        "source/solvers/vpm/physics/induction/slip_slab.py": "51373dfb8fe9babeb05a2a066d34c1b780684658efe810b2c917c9bb5db0fd72",
+        "openonda/cylinder_case.py": "321b3914eddb300c1f22902d3c5b3245fc747323635e6e3a2977b40a82045346"
+      },
+      "optimized": {
+        "source/coupler/config/types.py": "188eebb6a8a5dc81f61b9b2e89c6460cca35d8b03af0b50f312a7ee6f7f54a34",
+        "source/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
+        "source/solvers/fvm/solve/petsc_partitioned.py": "6a0fb3579fa20e7bc0a44653b70330b9315f4ee5e8316a7e1dc676975f6914f2",
+        "source/solvers/vpm/physics/induction/slip_slab.py": "f37501bbb58bc86821180b0065eef733aad5515437fde109a1c9782930644d20",
+        "openonda/cylinder_case.py": "64c195b949986e62f9725c917697dd90064988de83511dc9f3b8ba48225e85dd"
+      }
+    },
+    "note": "Final optimized hashes include Python 3.11-compatible typing and invariant narrowing; numerical algorithms unchanged by those typing corrections."
+  },
+  "cases": {
+    "baseline": {
+      "raw_directory": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/baseline_repeat",
+      "command": [
+        "/usr/bin/env",
+        "PYTHONPATH=/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/baseline_package",
+        "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/baseline_package/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/run_campaign.py",
+        "--kind",
+        "coupled",
+        "--run-dir",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/baseline_repeat",
+        "--end-time",
+        "0.4",
+        "--override",
+        "hxy=0.08",
+        "--override",
+        "cores=4",
+        "--override",
+        "compute_device=CPU",
+        "--override",
+        "particle_spacing_ratio=1.0"
+      ],
+      "wall_seconds": 249.11480296000013,
+      "peak_process_tree_rss_bytes": 5777780736,
+      "source_digest": "d15cce3cd745a46cff5ab25b9e989030bfad59de6247e38bc87e1efc5e4623a0",
+      "resolved": {
+        "boundary_condition_mode": "vorticity_mixed",
+        "compute_device": "CPU",
+        "cores": 4,
+        "dz": 0.08,
+        "end_time": 0.4,
+        "exchange_dt": 0.04,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "fvm_time_step": 0.004,
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "hp": 0.08,
+        "hxy": 0.08,
+        "interface_iterations": 3,
+        "kind": "coupled",
+        "overrides": {
+          "compute_device": "CPU",
+          "cores": 4,
+          "hxy": 0.08,
+          "particle_spacing_ratio": 1
+        },
+        "particle_limit": 1000000,
+        "software_fingerprint": {
+          "digest": "c46d0668dbd0713628ba43b161a78caa847dbf2f1d0cc71c69db84c03a33deff",
+          "python": "3.11.15",
+          "schema": "openonda-software-fingerprint/1",
+          "source_digest": "d15cce3cd745a46cff5ab25b9e989030bfad59de6247e38bc87e1efc5e4623a0",
+          "versions": {
+            "gmsh": "4.15.2",
+            "h5py": "3.16.0",
+            "mpi4py": "4.1.2",
+            "numba": "0.66.0",
+            "numpy": "2.4.6",
+            "openonda": "0.1.1",
+            "scipy": "1.17.1",
+            "taichi": "1.7.4",
+            "vtk": "9.6.2"
+          }
+        },
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819",
+        "span": 0.96,
+        "transfer_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "transfer_method": "buffered_m4_renewal",
+        "transfer_region_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "vpm_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.48,
+          0.48
+        ],
+        "interface_acceleration": "none"
+      },
+      "interval_seconds": {
+        "all": {
+          "mean": 14.177623270800108,
+          "maximum": 36.72191796300035,
+          "final": 13.228386196000201
+        },
+        "warm_4_to_10": {
+          "mean": 12.206248349000166,
+          "maximum": 13.68869597300045,
+          "final": 13.228386196000201
+        }
+      },
+      "phases": {
+        "vpm": {
+          "all_seconds": 53.720413204000124,
+          "warm_4_to_10": {
+            "mean": 3.0549893700000603,
+            "maximum": 3.9577745020001203,
+            "final": 3.8749562950001746
+          }
+        },
+        "vpm_boundary_condition": {
+          "all_seconds": 10.532993834000308,
+          "warm_4_to_10": {
+            "mean": 1.1699960652857888,
+            "maximum": 1.3075195150001946,
+            "final": 1.2548444779999954
+          }
+        },
+        "fvm": {
+          "all_seconds": 43.23595239100041,
+          "warm_4_to_10": {
+            "mean": 4.3217937868571425,
+            "maximum": 4.555927292999968,
+            "final": 4.006306244999905
+          }
+        },
+        "transfer": {
+          "all_seconds": 34.28687327900025,
+          "warm_4_to_10": {
+            "mean": 3.659469126857175,
+            "maximum": 4.109590170000047,
+            "final": 4.092279178000126
+          }
+        },
+        "total": {
+          "all_seconds": 141.7762327080011,
+          "warm_4_to_10": {
+            "mean": 12.206248349000166,
+            "maximum": 13.68869597300045,
+            "final": 13.228386196000201
+          }
+        }
+      },
+      "particle_count": {
+        "mean": 3184.0,
+        "maximum": 4228,
+        "final": 4228
+      },
+      "image_tail": {
+        "shell": {
+          "mean": 64.0,
+          "maximum": 64.0,
+          "final": 64.0
+        },
+        "relative": {
+          "mean": 2.354161075857064e-07,
+          "maximum": 7.789271307956369e-07,
+          "final": 7.789271307956369e-07
+        },
+        "target_evaluations": {
+          "mean": 633145.2,
+          "maximum": 1033911.0,
+          "final": 10023.0
+        }
+      },
+      "interface": {
+        "accepted_normal_rms": {
+          "mean": 5.9826667589331905e-05,
+          "maximum": 0.00048623830855170464,
+          "final": 1.0258222713672232e-05
+        },
+        "accepted_gradient_rms": {
+          "mean": 6.770792048609617e-05,
+          "maximum": 0.0005484000460906427,
+          "final": 1.1708411503505882e-05
+        },
+        "converged_steps": 2,
+        "acceleration_rejected_trials": 0,
+        "acceleration_accepted_trials": 0,
+        "proposed_factors": []
+      },
+      "conservation_flux": {
+        "max_abs_raw_flux_mismatch": 0.0018137132373582943,
+        "max_abs_corrected_flux_mismatch": 4.440892098500626e-16,
+        "max_raw_relative_flux_mismatch": 0.0001486406324602352,
+        "all_raw_flux_within_acceptance_limit": true,
+        "max_abs_renewal_conservation_error": 1.135126954704483e-08,
+        "all_renewal_within_tolerance": true
+      },
+      "force_at_t_0_4": {
+        "drag_coefficient": 1.538193222885444,
+        "lift_coefficient": -0.005246004214398319,
+        "side_force_coefficient": 8.370679477212934e-05
+      }
+    },
+    "optimized": {
+      "raw_directory": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/optimized",
+      "command": [
+        "/usr/bin/env",
+        "PYTHONPATH=/home/flavio-martins/Projects/OpenONDA",
+        "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/run_campaign.py",
+        "--kind",
+        "coupled",
+        "--run-dir",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/optimized",
+        "--end-time",
+        "0.4",
+        "--override",
+        "hxy=0.08",
+        "--override",
+        "cores=4",
+        "--override",
+        "compute_device=CPU",
+        "--override",
+        "particle_spacing_ratio=1.0",
+        "--override",
+        "interface_acceleration=none"
+      ],
+      "wall_seconds": 222.72786815899997,
+      "peak_process_tree_rss_bytes": 5760335872,
+      "source_digest": "dac8396fa71d11ae217d613ee247010f2e9140eb0286710f5d86bf7aa016c405",
+      "resolved": {
+        "boundary_condition_mode": "vorticity_mixed",
+        "compute_device": "CPU",
+        "cores": 4,
+        "dz": 0.08,
+        "end_time": 0.4,
+        "exchange_dt": 0.04,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "fvm_time_step": 0.004,
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "hp": 0.08,
+        "hxy": 0.08,
+        "interface_acceleration": "none",
+        "interface_iterations": 3,
+        "kind": "coupled",
+        "overrides": {
+          "compute_device": "CPU",
+          "cores": 4,
+          "hxy": 0.08,
+          "interface_acceleration": "none",
+          "particle_spacing_ratio": 1
+        },
+        "particle_limit": 1000000,
+        "software_fingerprint": {
+          "digest": "24323fe88abce1118b3578464988837a79fdac82cea42ffa15162eb5cdc126db",
+          "python": "3.11.15",
+          "schema": "openonda-software-fingerprint/1",
+          "source_digest": "4d8106fe4e62a7d96e7216e85f0cb9f1962c3d6ffdfbb78ea94bcfff81336a83",
+          "versions": {
+            "gmsh": "4.15.2",
+            "h5py": "3.16.0",
+            "mpi4py": "4.1.2",
+            "numba": "0.66.0",
+            "numpy": "2.4.6",
+            "openonda": "0.1.1",
+            "scipy": "1.17.1",
+            "taichi": "1.7.4",
+            "vtk": "9.6.2"
+          }
+        },
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819",
+        "span": 0.96,
+        "transfer_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "transfer_method": "buffered_m4_renewal",
+        "transfer_region_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "vpm_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.48,
+          0.48
+        ]
+      },
+      "interval_seconds": {
+        "all": {
+          "mean": 11.90031520359994,
+          "maximum": 30.583075357999746,
+          "final": 12.970494518999999
+        },
+        "warm_4_to_10": {
+          "mean": 10.415530267999932,
+          "maximum": 12.970494518999999,
+          "final": 12.970494518999999
+        }
+      },
+      "phases": {
+        "vpm": {
+          "all_seconds": 45.146575805999646,
+          "warm_4_to_10": {
+            "mean": 2.6174035684285366,
+            "maximum": 3.9167009310000367,
+            "final": 3.9167009310000367
+          }
+        },
+        "vpm_boundary_condition": {
+          "all_seconds": 8.236635108000087,
+          "warm_4_to_10": {
+            "mean": 0.9356812924285772,
+            "maximum": 1.1937020599999641,
+            "final": 1.1937020599999641
+          }
+        },
+        "fvm": {
+          "all_seconds": 38.44902871000022,
+          "warm_4_to_10": {
+            "mean": 3.863316689000044,
+            "maximum": 4.086635711999975,
+            "final": 4.086372987000118
+          }
+        },
+        "transfer": {
+          "all_seconds": 27.17091241199944,
+          "warm_4_to_10": {
+            "mean": 2.999128718142775,
+            "maximum": 3.77371854099988,
+            "final": 3.77371854099988
+          }
+        },
+        "total": {
+          "all_seconds": 119.00315203599939,
+          "warm_4_to_10": {
+            "mean": 10.415530267999932,
+            "maximum": 12.970494518999999,
+            "final": 12.970494518999999
+          }
+        }
+      },
+      "particle_count": {
+        "mean": 3184.0,
+        "maximum": 4228,
+        "final": 4228
+      },
+      "image_tail": {
+        "shell": {
+          "mean": 64.0,
+          "maximum": 64.0,
+          "final": 64.0
+        },
+        "relative": {
+          "mean": 2.3541289024819888e-07,
+          "maximum": 7.789269602653803e-07,
+          "final": 7.789269602653803e-07
+        },
+        "target_evaluations": {
+          "mean": 633145.2,
+          "maximum": 1033911.0,
+          "final": 10023.0
+        }
+      },
+      "interface": {
+        "accepted_normal_rms": {
+          "mean": 5.982696248324418e-05,
+          "maximum": 0.0004862365815918665,
+          "final": 1.0260215103883854e-05
+        },
+        "accepted_gradient_rms": {
+          "mean": 6.770822561569088e-05,
+          "maximum": 0.0005484000708373706,
+          "final": 1.170910778999332e-05
+        },
+        "converged_steps": 2,
+        "acceleration_rejected_trials": 0,
+        "acceleration_accepted_trials": 0,
+        "proposed_factors": []
+      },
+      "conservation_flux": {
+        "max_abs_raw_flux_mismatch": 0.0018137113509480995,
+        "max_abs_corrected_flux_mismatch": 4.440892098500626e-16,
+        "max_raw_relative_flux_mismatch": 0.0001486404784576437,
+        "all_raw_flux_within_acceptance_limit": true,
+        "max_abs_renewal_conservation_error": 1.3343397589732335e-08,
+        "all_renewal_within_tolerance": true
+      },
+      "force_at_t_0_4": {
+        "drag_coefficient": 1.538193244973654,
+        "lift_coefficient": -0.005246875107105272,
+        "side_force_coefficient": 8.370700207973422e-05
+      }
+    },
+    "aitken": {
+      "raw_directory": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/aitken",
+      "command": [
+        "/usr/bin/env",
+        "PYTHONPATH=/home/flavio-martins/Projects/OpenONDA",
+        "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/run_campaign.py",
+        "--kind",
+        "coupled",
+        "--run-dir",
+        "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/optimization_comparison/aitken",
+        "--end-time",
+        "0.4",
+        "--override",
+        "hxy=0.08",
+        "--override",
+        "cores=4",
+        "--override",
+        "compute_device=CPU",
+        "--override",
+        "particle_spacing_ratio=1.0",
+        "--override",
+        "interface_acceleration=aitken"
+      ],
+      "wall_seconds": 228.6499096020001,
+      "peak_process_tree_rss_bytes": 5760811008,
+      "source_digest": "2165eb468a0c3687a66335684be42aa796f90aee08cfa2ba49a70f538c65a881",
+      "resolved": {
+        "boundary_condition_mode": "vorticity_mixed",
+        "compute_device": "CPU",
+        "cores": 4,
+        "dz": 0.08,
+        "end_time": 0.4,
+        "exchange_dt": 0.04,
+        "fvm_bounds": [
+          -1.6,
+          1.6,
+          -1.6,
+          1.6,
+          -0.48,
+          0.48
+        ],
+        "fvm_time_step": 0.004,
+        "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+        "hp": 0.08,
+        "hxy": 0.08,
+        "interface_acceleration": "aitken",
+        "interface_iterations": 3,
+        "kind": "coupled",
+        "overrides": {
+          "compute_device": "CPU",
+          "cores": 4,
+          "hxy": 0.08,
+          "interface_acceleration": "aitken",
+          "particle_spacing_ratio": 1
+        },
+        "particle_limit": 1000000,
+        "software_fingerprint": {
+          "digest": "1ebd4735732477d91b7637ab9b52f81deb37b5e7fc62c5954d8a9fafed426708",
+          "python": "3.11.15",
+          "schema": "openonda-software-fingerprint/1",
+          "source_digest": "dac8396fa71d11ae217d613ee247010f2e9140eb0286710f5d86bf7aa016c405",
+          "versions": {
+            "gmsh": "4.15.2",
+            "h5py": "3.16.0",
+            "mpi4py": "4.1.2",
+            "numba": "0.66.0",
+            "numpy": "2.4.6",
+            "openonda": "0.1.1",
+            "scipy": "1.17.1",
+            "taichi": "1.7.4",
+            "vtk": "9.6.2"
+          }
+        },
+        "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819",
+        "span": 0.96,
+        "transfer_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "transfer_method": "buffered_m4_renewal",
+        "transfer_region_bounds": [
+          -1.25,
+          1.25,
+          -1.25,
+          1.25,
+          -0.48,
+          0.48
+        ],
+        "vpm_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.48,
+          0.48
+        ]
+      },
+      "interval_seconds": {
+        "all": {
+          "mean": 12.293162395399952,
+          "maximum": 32.996483776000105,
+          "final": 13.149455039999111
+        },
+        "warm_4_to_10": {
+          "mean": 10.451438826285587,
+          "maximum": 13.149455039999111,
+          "final": 13.149455039999111
+        }
+      },
+      "phases": {
+        "vpm": {
+          "all_seconds": 47.49115282699995,
+          "warm_4_to_10": {
+            "mean": 2.5943244072857072,
+            "maximum": 3.8902624639999885,
+            "final": 3.8902624639999885
+          }
+        },
+        "vpm_boundary_condition": {
+          "all_seconds": 8.218932618000053,
+          "warm_4_to_10": {
+            "mean": 0.9208296091428565,
+            "maximum": 1.1468701139999666,
+            "final": 1.1468701139999666
+          }
+        },
+        "fvm": {
+          "all_seconds": 39.89553114099965,
+          "warm_4_to_10": {
+            "mean": 3.98791067328565,
+            "maximum": 4.3077963599996565,
+            "final": 4.3077963599996565
+          }
+        },
+        "transfer": {
+          "all_seconds": 27.326007367999864,
+          "warm_4_to_10": {
+            "mean": 2.948374136571374,
+            "maximum": 3.8045261019994996,
+            "final": 3.8045261019994996
+          }
+        },
+        "total": {
+          "all_seconds": 122.93162395399952,
+          "warm_4_to_10": {
+            "mean": 10.451438826285587,
+            "maximum": 13.149455039999111,
+            "final": 13.149455039999111
+          }
+        }
+      },
+      "particle_count": {
+        "mean": 3184.3,
+        "maximum": 4230,
+        "final": 4230
+      },
+      "image_tail": {
+        "shell": {
+          "mean": 64.0,
+          "maximum": 64.0,
+          "final": 64.0
+        },
+        "relative": {
+          "mean": 2.3377364612997554e-07,
+          "maximum": 7.674211701669265e-07,
+          "final": 7.674211701669265e-07
+        },
+        "target_evaluations": {
+          "mean": 633145.2,
+          "maximum": 1033911.0,
+          "final": 10023.0
+        }
+      },
+      "interface": {
+        "accepted_normal_rms": {
+          "mean": 6.626371921462532e-06,
+          "maximum": 7.949912680385489e-06,
+          "final": 7.949912680385489e-06
+        },
+        "accepted_gradient_rms": {
+          "mean": 7.945479853872318e-06,
+          "maximum": 9.128468415228986e-06,
+          "final": 9.032515352606023e-06
+        },
+        "converged_steps": 10,
+        "acceleration_rejected_trials": 0,
+        "acceleration_accepted_trials": 10,
+        "proposed_factors": [
+          0.8979427559268046,
+          0.9241536097139786,
+          0.9653673385239616,
+          0.9576220791643896,
+          0.9738109661656709,
+          0.9731774088268995,
+          0.9713762949918732,
+          0.9752309934441732,
+          0.9659061551686688,
+          0.9774028198413564
+        ]
+      },
+      "conservation_flux": {
+        "max_abs_raw_flux_mismatch": 0.0018123841027438137,
+        "max_abs_corrected_flux_mismatch": 4.163336342344337e-16,
+        "max_raw_relative_flux_mismatch": 0.00014853269311085709,
+        "all_raw_flux_within_acceptance_limit": true,
+        "max_abs_renewal_conservation_error": 1.118024485227129e-08,
+        "all_renewal_within_tolerance": true
+      },
+      "force_at_t_0_4": {
+        "drag_coefficient": 1.5376291139604334,
+        "lift_coefficient": -0.005394313583024388,
+        "side_force_coefficient": 8.371166063370872e-05
+      }
+    }
+  },
+  "comparisons": {
+    "optimized": {
+      "sampled_fields_vs_baseline": {
+        "fvm_centreline.csv": {
+          "aligned_rows": 42,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.4643068278600603e-07,
+              "relative_l2": 1.405262985667837e-07
+            },
+            "vorticity": {
+              "max_abs": 1.4289940968303938e-06,
+              "relative_l2": 3.094722250839033e-07
+            },
+            "pressure": {
+              "max_abs": 4.412035876921738e-07,
+              "relative_l2": 3.5934605118588585e-07
+            }
+          }
+        },
+        "fvm_transverse_x1.csv": {
+          "aligned_rows": 42,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.7712207767139887e-07,
+              "relative_l2": 1.1953346839798231e-07
+            },
+            "vorticity": {
+              "max_abs": 1.4486004950350212e-07,
+              "relative_l2": 5.055731710482109e-06
+            },
+            "pressure": {
+              "max_abs": 6.311778201553708e-07,
+              "relative_l2": 4.300248158774426e-06
+            }
+          }
+        },
+        "span_lower.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.0999459587601734e-07,
+              "relative_l2": 9.960649025950584e-08
+            },
+            "vorticity": {
+              "max_abs": 9.964234798376381e-09,
+              "relative_l2": 3.654875188012809e-07
+            },
+            "pressure": {
+              "max_abs": 4.920057304069747e-07,
+              "relative_l2": 3.8065209479541853e-06
+            }
+          }
+        },
+        "span_middle.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.1059855409278896e-07,
+              "relative_l2": 1.0028588467630626e-07
+            },
+            "vorticity": {
+              "max_abs": 1.0761742830212029e-08,
+              "relative_l2": 3.555408742983624e-07
+            },
+            "pressure": {
+              "max_abs": 5.026694401555343e-07,
+              "relative_l2": 3.797761351488976e-06
+            }
+          }
+        },
+        "span_upper.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.1242631137164949e-07,
+              "relative_l2": 1.010943180078069e-07
+            },
+            "vorticity": {
+              "max_abs": 1.1712575954253568e-08,
+              "relative_l2": 3.694988013772073e-07
+            },
+            "pressure": {
+              "max_abs": 5.149711605756391e-07,
+              "relative_l2": 3.8105859703811616e-06
+            }
+          }
+        },
+        "vpm_transverse_x1.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.299999999870849e-06,
+              "relative_l2": 3.904445662939392e-07
+            },
+            "vorticity": {
+              "max_abs": 1.9669532775878906e-06,
+              "relative_l2": 4.863396369359195e-05
+            }
+          }
+        },
+        "vpm_transverse_x2.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 8.000000000230045e-07,
+              "relative_l2": 3.113029174787737e-07
+            },
+            "vorticity": {
+              "max_abs": 3.3527612686157227e-07,
+              "relative_l2": 0.0016229845720118086
+            }
+          }
+        },
+        "vpm_transverse_x4.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 5.399999999378124e-07,
+              "relative_l2": 2.0939989087205073e-07
+            },
+            "vorticity": {
+              "max_abs": 1.4901161193847656e-08,
+              "relative_l2": 0.0011079118062831451
+            }
+          }
+        }
+      },
+      "interpretation": "Matched short-transient field difference; no equivalence threshold is implied."
+    },
+    "aitken": {
+      "sampled_fields_vs_baseline": {
+        "fvm_centreline.csv": {
+          "aligned_rows": 42,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.4999365332940898e-05,
+              "relative_l2": 1.5319738962084866e-05
+            },
+            "vorticity": {
+              "max_abs": 0.0002888937781655443,
+              "relative_l2": 4.3686305010518654e-05
+            },
+            "pressure": {
+              "max_abs": 0.0002858286412409372,
+              "relative_l2": 0.0004469487410615892
+            }
+          }
+        },
+        "fvm_transverse_x1.csv": {
+          "aligned_rows": 42,
+          "fields": {
+            "velocity": {
+              "max_abs": 3.2759742456145435e-05,
+              "relative_l2": 1.4635406418789153e-05
+            },
+            "vorticity": {
+              "max_abs": 2.1364488826794575e-05,
+              "relative_l2": 0.0004704127423456937
+            },
+            "pressure": {
+              "max_abs": 0.00039727585039635305,
+              "relative_l2": 0.0023214075773311782
+            }
+          }
+        },
+        "span_lower.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.8161112877779217e-05,
+              "relative_l2": 1.3232271322167847e-05
+            },
+            "vorticity": {
+              "max_abs": 5.553602954823378e-06,
+              "relative_l2": 0.00025196404842435776
+            },
+            "pressure": {
+              "max_abs": 0.0002955381266705123,
+              "relative_l2": 0.002470327407692118
+            }
+          }
+        },
+        "span_middle.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.797775673151314e-05,
+              "relative_l2": 1.3423457012385138e-05
+            },
+            "vorticity": {
+              "max_abs": 5.609202429578478e-06,
+              "relative_l2": 0.0002335967371354999
+            },
+            "pressure": {
+              "max_abs": 0.00029897205662231946,
+              "relative_l2": 0.0024841494869923863
+            }
+          }
+        },
+        "span_upper.csv": {
+          "aligned_rows": 26,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.8465906669928867e-05,
+              "relative_l2": 1.3626398343380975e-05
+            },
+            "vorticity": {
+              "max_abs": 5.651439489762905e-06,
+              "relative_l2": 0.00023411620114493974
+            },
+            "pressure": {
+              "max_abs": 0.0003023219514962927,
+              "relative_l2": 0.002495145371718648
+            }
+          }
+        },
+        "vpm_transverse_x1.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 0.00016149000000001412,
+              "relative_l2": 3.551082701899633e-05
+            },
+            "vorticity": {
+              "max_abs": 0.0014192461967468262,
+              "relative_l2": 0.02451369986278155
+            }
+          }
+        },
+        "vpm_transverse_x2.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 1.0903999999999081e-05,
+              "relative_l2": 5.505540729033562e-06
+            },
+            "vorticity": {
+              "max_abs": 4.756060661748052e-06,
+              "relative_l2": 0.020744364708355126
+            }
+          }
+        },
+        "vpm_transverse_x4.csv": {
+          "aligned_rows": 78,
+          "fields": {
+            "velocity": {
+              "max_abs": 4.989999999999856e-06,
+              "relative_l2": 3.279611918125833e-06
+            },
+            "vorticity": {
+              "max_abs": 3.3527612686157227e-08,
+              "relative_l2": 0.002489094288145054
+            }
+          }
+        }
+      },
+      "interpretation": "Aitken changes interface iterates; field differences do not establish numerical equivalence."
+    }
+  }
+}

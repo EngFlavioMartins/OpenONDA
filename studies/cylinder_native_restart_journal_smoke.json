@@ -1,0 +1,62 @@
+{
+  "schema": "openonda-cylinder-native-restart-journal-smoke/1",
+  "qualification": "Isolated copy of the corrected t=0.4 baseline; tests native checkpoint replay and output rewind only, not science accuracy. Original timed case untouched.",
+  "copied_from": "/tmp/openonda-cylinder-final-short-cohort/baseline",
+  "isolated_run": "/tmp/openonda-cylinder-final-restart-journal-smoke",
+  "backup_step": 6,
+  "backup_time": 0.24,
+  "injected_future_coupler_step": 11,
+  "injected_future_sampler_time": 0.44,
+  "trial": {
+    "returncode": 0,
+    "wall_seconds": 212.94280433301174,
+    "peak_process_tree_rss_bytes": 5715066880,
+    "wall_limit_seconds": 360
+  },
+  "result": {
+    "completed_marker": true,
+    "coupler_steps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "coupler_max_time": 0.4,
+    "sentinel_present": false,
+    "samplers": {
+      "forces_history.csv": {
+        "rows": 2,
+        "max_time": 0.4000000000000003,
+        "future_rows": 0
+      },
+      "fvm_transverse_x1.csv": {
+        "rows": 42,
+        "max_time": 0.4000000000000003,
+        "future_rows": 0
+      },
+      "span_lower.csv": {
+        "rows": 26,
+        "max_time": 0.4000000000000003,
+        "future_rows": 0
+      },
+      "span_middle.csv": {
+        "rows": 26,
+        "max_time": 0.4000000000000003,
+        "future_rows": 0
+      },
+      "span_upper.csv": {
+        "rows": 26,
+        "max_time": 0.4000000000000003,
+        "future_rows": 0
+      }
+    },
+    "superseded_archive_count": 11,
+    "canonical_backup_step": 6
+  }
+}

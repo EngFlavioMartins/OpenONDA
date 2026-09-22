@@ -315,6 +315,13 @@ def test_curved_cylinder_wall_is_recognized_without_a_box_approximation(capped):
         if capped:
             triangles.extend(([[0, 0, -1], lower[i], lower[j]], [[0, 0, 1], upper[j], upper[i]]))
     wall = TriangulatedWall(np.array(triangles), [-2, 2, -2, 2, -1, 1])
+    if capped:
+        assert wall.verified_cylinder_z is None
+    else:
+        assert wall.verified_cylinder_z is not None
+        assert wall.contains(np.array([[0.0, 0.0, 1.5]]))[0]
+        internal_wall = TriangulatedWall(np.array(triangles), [-2, 2, -2, 2, -2, 2])
+        assert internal_wall.verified_cylinder_z is None
     query = np.array([[0, 0, 0], [0.3, 0.3, 0.4], [0.45, 0.45, 0.4], [0.6, 0, -0.4]])
     np.testing.assert_array_equal(wall.contains(query), [True, True, False, False])
     first = wall.signed_distance(query)

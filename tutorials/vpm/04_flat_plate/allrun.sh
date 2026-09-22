@@ -1,6 +1,8 @@
 #!/bin/bash -e
 cd -- "$(dirname -- "$0")"
 
+./allclean.sh
+
 python setup.py --mode moving --angle -10
 python setup.py --mode moving --angle -5
 python setup.py --mode moving --angle -2

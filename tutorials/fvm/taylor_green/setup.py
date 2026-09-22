@@ -20,6 +20,8 @@ from openonda.tutorial_runner import case_package
 __package__ = case_package(Path(__file__).parent)
 from .assets.decay_errors import flow_integrals, history_row
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_DIR = Path(__file__).resolve().parent
 
 
@@ -70,6 +72,7 @@ def main() -> None:
         fvm.BoundaryConfig.empty("zmax"),
     ]
     fvm_setup = fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=nsteps), write_at_end=True),
         case_name="taylor_green",
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
@@ -92,8 +95,12 @@ def main() -> None:
     with fvm.create_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=mesh) as fvm_solver:
         centres = fvm_solver.geo_data["cell_centre"]
         fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
-        fvm_solver.write_vtk()
         initial_total_kinetic_energy, initial_enstrophy = fvm_solver.evaluate(flow_integrals)
+        restored = fvm_solver.start_from(START_FROM)
+        recorded = fvm_solver.reconcile_history("history.csv")
+        if not restored:
+            fvm_solver.save_state(CASE_DIR / "solution" / "backup")
+            fvm_solver.write_vtk()
         fields = (
             "step",
             "time",
@@ -123,7 +130,8 @@ def main() -> None:
                 append=append,
             )
 
-        record_history(append=False)
+        if not recorded:
+            record_history(append=restored)
         while fvm_solver.time < FINAL_TIME - 1.0e-14:
             fvm_solver.advance()
             record_history(append=True)

@@ -133,11 +133,13 @@ def test_selective_trace_keeps_weighted_target_and_excluded_circulation(
     expected = vortex_strength_from_velocity_trace(lattice.positions, spacing, full_velocity)
     sampled_points = []
 
-    def counted_sample(points, *args):
-        sampled_points.append(points.copy())
-        return sample(points, *args)
+    prepare = transfer._velocity_trace.prepare
 
-    monkeypatch.setattr(transfer._velocity_trace, "sample", counted_sample)
+    def counted_prepare(points):
+        sampled_points.append(points.copy())
+        return prepare(points)
+
+    monkeypatch.setattr(transfer._velocity_trace, "prepare", counted_prepare)
     monkeypatch.setattr(
         transfer_module,
         "replace_particles_from_buffered_m4_renewal",
@@ -156,3 +158,8 @@ def test_selective_trace_keeps_weighted_target_and_excluded_circulation(
     assert sum(map(len, sampled_points)) < 6 * len(lattice.positions)
     if has_solid:
         assert all(np.all(transfer._signed_solid_distance(points) > 0) for points in sampled_points)
+    updated = transfer._transfer_buffered_m4_renewal(
+        None, fvm_velocity=2 * velocity, fvm_velocity_gradient=2 * gradient
+    )
+    np.testing.assert_array_equal(updated, 2 * actual)
+    assert len(sampled_points) == 6

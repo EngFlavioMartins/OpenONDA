@@ -19,19 +19,17 @@ schema; use a fresh output namespace to preserve the original data.
 mean. It refuses missing or incomplete histories. `allplot.sh` includes this
 figure; old retained results without the new lines will need a fresh run.
 
-From this directory, run `./allrun.sh` (which uses the canonical fresh
-`completion` namespace) and then `./allplot.sh`; use `./allplot.sh pdf` for
-vector figures. To choose another preserved namespace, invoke
-`python setup.py --output-tag <name>` and set `ROTOR_OUTPUT_TAG=<name>` when
-plotting. Direct `python setup.py` runs require `--output-tag` when an existing
-native result is present. The installed OpenONDA package supplies the solver
-and plotting dependencies.
+Run `./allrun.sh` for a clean simulation, `./allcontinue.sh` to resume the
+latest backup, and `./allplot.sh` for figures. Use `./allplot.sh pdf` for vector
+figures. `python setup.py` also continues automatically. To use a separate
+case namespace, invoke `python setup.py --output-tag <name>` and select the
+same namespace when plotting.
 
 The ordinary fresh run also declares a restartable lifecycle guard: a 570000-particle
 soft ceiling, 12 GiB process-RSS ceiling and 2 GiB available-memory floor, below the
 separate 600000-particle numerical container capacity.
 
-The ordinary `setup.py` owns fresh runs only. An explicit, bounded smaller-step
+The ordinary `setup.py` starts and continues compatible runs. An explicit, bounded smaller-step
 restart pilot is available for a validated native checkpoint:
 
 ```bash

@@ -19,6 +19,8 @@ __package__ = case_package(Path(__file__).parent)
 from .assets.mesh_square import square_cylinder_mesh
 
 # Case definition
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "cube_flow"
 SIDE = 1.0  # side length of the square cylinder [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
@@ -64,6 +66,7 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
     ]
 
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
@@ -110,7 +113,7 @@ def main() -> None:
     solver = fvm.create_fvm_solver(
         create_fvm_setup(SPACING), case_dir=Path(__file__).parent, mesh=mesh
     )
-    solver.run()
+    solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

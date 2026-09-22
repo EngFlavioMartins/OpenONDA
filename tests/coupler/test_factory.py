@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from source.coupler import CouplerSetup, create_coupler
-import source.coupler.solver as driver_module
 from source.solvers.fvm import FVMSetup
 import source.solvers.fvm.factory as fvm_factory
 import source.solvers.vpm as vpm_api
@@ -18,11 +17,12 @@ def test_factory_constructs_vpm_only_on_owner_and_closes_resources(
     tmp_path, monkeypatch, rank, fails
 ):
     events = []
-    monkeypatch.setattr(driver_module, "_world_rank", lambda: rank)
 
     class FVM:
         case_dir = tmp_path
-        parallel = SimpleNamespace(is_root=rank == 0, comm=None, bcast=lambda value: value)
+        parallel = SimpleNamespace(
+            rank=rank, is_root=rank == 0, comm=None, bcast=lambda value: value
+        )
 
         def __enter__(self):
             return self
@@ -92,6 +92,17 @@ def test_factory_does_not_close_supplied_solvers(tmp_path):
     with create_coupler(fvm, vpm, CouplerSetup()) as driver:
         assert driver._injected_fvm is fvm
         assert driver._injected_vpm is vpm
+
+
+def test_driver_uses_the_supplied_fvm_communicator(tmp_path, monkeypatch):
+    # Communicator-local ownership must not be replaced by a global MPI rank.
+    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
+    comm = SimpleNamespace(Get_rank=lambda: 1, Get_size=lambda: 2)
+    fvm = SimpleNamespace(case_dir=tmp_path, parallel=SimpleNamespace(rank=1, comm=comm))
+    with create_coupler(fvm, None, CouplerSetup()) as driver:
+        assert driver._comm is comm
+        assert driver._mpi_rank == 1
+        assert not driver._is_master
 
 
 def test_worker_receives_local_phase_failure():

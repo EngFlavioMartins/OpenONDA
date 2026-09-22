@@ -1,4 +1,6 @@
 #!/bin/bash -e
 cd -- "$(dirname -- "$0")"
 
-python setup.py --output-tag completion
+./allclean.sh
+
+python setup.py "$@"

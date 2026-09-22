@@ -13,11 +13,25 @@ import pytest
 
 from source.coupler import boundary as boundary_module
 from source.coupler.backup import (
+    _backup_config,
     config_difference_paths,
     load_coupled_backup,
     publish_vpm_snapshot,
     save_coupled_backup,
 )
+
+
+def test_backup_config_records_stable_wall_geometry_revision():
+    setup = _MappingSetup({"coupler": {"transfer_method": "common_lattice"}})
+    vpm = SimpleNamespace(setup=_MappingSetup({"viscous": {"scheme": "GBD"}}))
+    transfer = SimpleNamespace(
+        _solid_bodies=(SimpleNamespace(revision="wall-a"),), _body_bounds=None
+    )
+    coupler = SimpleNamespace(setup=setup, vpm_solver=vpm, vorticity_transfer=transfer)
+    first = _backup_config(coupler)
+    transfer._solid_bodies = (SimpleNamespace(revision="wall-b"),)
+    second = _backup_config(coupler)
+    assert config_difference_paths(first, second) == {"solid_geometry.wall_revisions"}
 
 
 @pytest.fixture(autouse=True)
@@ -418,6 +432,27 @@ def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path
     )
     with pytest.raises(ValueError, match="vpm.stabilization.selective_eddy_viscosity_coefficient"):
         load_coupled_backup(reader, tmp_path)
+
+
+def test_interface_acceleration_restart_identity_precedes_state_publication(tmp_path, monkeypatch):
+    writer = _make_coupler()
+    writer.setup.mapping["coupler"]["interface_acceleration"] = "aitken"
+    save_coupled_backup(writer, tmp_path, coupling_step=1)
+
+    matching = _make_coupler()
+    matching.setup.mapping["coupler"]["interface_acceleration"] = "aitken"
+    assert load_coupled_backup(matching, tmp_path) == 1
+
+    mismatched = _make_coupler()
+    mismatched.setup.mapping["coupler"]["interface_acceleration"] = "none"
+    monkeypatch.setattr(
+        mismatched.fvm_solver, "load_state", lambda *args: pytest.fail("premature FVM load")
+    )
+    monkeypatch.setattr(
+        mismatched.vpm_solver, "_load_backup_from", lambda *args: pytest.fail("premature VPM load")
+    )
+    with pytest.raises(ValueError, match="coupler.interface_acceleration"):
+        load_coupled_backup(mismatched, tmp_path)
 
 
 @pytest.mark.parametrize(

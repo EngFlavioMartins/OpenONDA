@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass
 import hashlib
 
 import numpy as np
@@ -29,6 +30,52 @@ def _sample_velocity(position, cell_centre, velocity, gradient, indices, weights
                     ]
                 value += weight * (velocity[donor, component] + increment)
             sampled[row, component] = value
+
+
+@dataclass(frozen=True)
+class PreparedVelocityTrace:
+    """Immutable donor stencil for a stationary set of velocity targets.
+
+    Geometry is retained once; each evaluation consumes the current donor
+    fields, including provisional interface iterates. Construct through
+    :meth:`FVMVelocityInterpolator.prepare` after the mesh is finalized.
+    """
+
+    position: np.ndarray
+    cell_centre: np.ndarray
+    indices: np.ndarray
+    weights: np.ndarray
+
+    def sample(self, velocity: np.ndarray, gradient: np.ndarray) -> np.ndarray:
+        """Reconstruct current velocity without a geometry search or hash.
+
+        Parameters
+        ----------
+        velocity : ndarray, shape (M, 3)
+            Current donor velocity in m/s.
+        gradient : ndarray, shape (M, 3, 3)
+            Current donor gradient, indexed as d(u_j)/d(x_i), in 1/s.
+
+        Returns
+        -------
+        ndarray, shape (N, 3)
+            Independent reconstructed velocities in m/s.
+        """
+        velocity = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
+        gradient = np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3)
+        if len(velocity) != len(self.cell_centre) or len(gradient) != len(self.cell_centre):
+            raise ValueError("Velocity and gradient must have one row per FVM donor cell")
+        sampled = np.empty((len(self.position), 3), dtype=np.float64)
+        _sample_velocity(
+            self.position,
+            self.cell_centre,
+            velocity,
+            gradient,
+            self.indices,
+            self.weights,
+            sampled,
+        )
+        return sampled
 
 
 class FVMVelocityInterpolator:
@@ -93,6 +140,28 @@ class FVMVelocityInterpolator:
         self.tree = tree
         self.neighbour_count = min(max(int(neighbour_count), 1), len(self.cell_centre))
         self._cache: OrderedDict[bytes, tuple[np.ndarray, np.ndarray]] = OrderedDict()
+
+    def prepare(self, evaluation_position: np.ndarray) -> PreparedVelocityTrace:
+        """Pin a stencil independently of the transient six-entry query cache.
+
+        Parameters
+        ----------
+        evaluation_position : ndarray, shape (N, 3)
+            Fixed target coordinates in m; copied to prevent caller mutation.
+
+        Returns
+        -------
+        PreparedVelocityTrace
+            Read-only target geometry and interpolation weights. Discard this
+            plan when donor geometry or ordering changes. Mutable donor field
+            values are deliberately never cached.
+        """
+        position = np.array(evaluation_position, dtype=np.float64, copy=True).reshape(-1, 3)
+        indices, weights = self._stencil(position)
+        position.flags.writeable = False
+        indices.flags.writeable = False
+        weights.flags.writeable = False
+        return PreparedVelocityTrace(position, self.cell_centre, indices, weights)
 
     @staticmethod
     def _key(evaluation_position: np.ndarray) -> bytes:
@@ -282,4 +351,4 @@ class FVMVelocityInterpolator:
         return sampled
 
 
-__all__ = ["FVMVelocityInterpolator"]
+__all__ = ["FVMVelocityInterpolator", "PreparedVelocityTrace"]

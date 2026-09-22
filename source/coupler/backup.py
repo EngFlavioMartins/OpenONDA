@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Protocol
 
 import h5py
@@ -54,6 +55,19 @@ def _backup_config(coupler) -> dict:
         raise RuntimeError("Initialize the coupler before backuping configuration")
     config = dict(coupler.setup.to_dict())
     config["vpm"] = _vpm_numerical_config(coupler.vpm_solver.setup)
+    transfer = getattr(coupler, "vorticity_transfer", None)
+    if transfer is not None:
+        bodies = getattr(transfer, "_solid_bodies", ())
+        box = getattr(transfer, "_body_bounds", None)
+        if bodies:
+            revisions = [getattr(body, "revision", None) for body in bodies]
+            if any(revision is None for revision in revisions):
+                raise RuntimeError(
+                    "Solid bodies need stable geometry revisions for coupled restart"
+                )
+            config["solid_geometry"] = {"wall_revisions": revisions}
+        elif box is not None:
+            config["solid_geometry"] = {"box_bounds": np.asarray(box).tolist()}
     return config
 
 
@@ -124,6 +138,67 @@ def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
     if stored is None:
         return set()
     return {path for path, _old, _new in _config_differences(stored, current)}
+
+
+def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = None) -> None:
+    """Rewind coupled diagnostics and retain the superseded branch.
+
+    Coupled diagnostics are written by the coupler rather than either solver,
+    so the solver-owned restart I/O cannot reconcile this stream.  The archive
+    suffix deliberately does not match ``coupler_diagnostics.jsonl``: recursive
+    cost/report discovery must see only the active history.
+    """
+    if not path.is_file():
+        if history is not None:
+            history[:] = [
+                record
+                for record in history
+                if isinstance(record, dict) and float(record.get("time", -np.inf)) <= time + 1.0e-12
+            ]
+        return
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept: list[str] = []
+    needs_rewrite = False
+    for index, line in enumerate(lines):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            if index == len(lines) - 1 and not line.endswith(("\n", "\r")):
+                needs_rewrite = True
+                break
+            raise ValueError(f"Coupler diagnostics has an invalid record: {path}") from error
+        if not isinstance(record, dict):
+            raise ValueError(f"Coupler diagnostics has an invalid record: {path}")
+        try:
+            row_time = float(record["time"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Coupler diagnostics has an invalid record: {path}") from error
+        if not np.isfinite(row_time):
+            raise ValueError(f"Coupler diagnostics has a non-finite time: {path}")
+        if row_time <= time + 1.0e-12:
+            if not line.endswith(("\n", "\r")):
+                line += "\n"
+                needs_rewrite = True
+            kept.append(line)
+        else:
+            needs_rewrite = True
+    if needs_rewrite:
+        branch_root = path.parent / "restart-branches"
+        branch_root.mkdir(parents=True, exist_ok=True)
+        branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
+        shutil.copy2(path, branch / f"{path.name}.superseded")
+        temporary = path.with_name(f".{path.name}.tmp")
+        try:
+            temporary.write_text("".join(kept), encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    if history is not None:
+        history[:] = [
+            record
+            for record in history
+            if isinstance(record, dict) and float(record.get("time", -np.inf)) <= time + 1.0e-12
+        ]
 
 
 def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None) -> Path:
@@ -455,61 +530,79 @@ def load_coupled_backup(
         )
 
     if coupler._is_master:
-        assert coupler.vpm_solver is not None
-        coupler.vpm_solver._load_backup_from(str(target / artifacts["vpm"]))
-        with np.load(target / artifacts["vpm_boundary_condition"], allow_pickle=False) as boundary:
-            expected_boundary_keys = {
-                "boundary_schema_version",
-                "has_velocity",
-                "velocity",
-                "has_normal_velocity",
-                "normal_velocity",
-                "has_tangential_gradient",
-                "tangential_gradient",
-                "has_kinematic_pressure_gradient",
-                "kinematic_pressure_gradient",
-                "has_pressure_velocity_snapshot",
-                "pressure_velocity_snapshot",
-                "storage_layout",
-            }
-            if set(boundary.files) != expected_boundary_keys:
-                raise ValueError("Coupled boundary backup has invalid fields")
-            boundary_state = decode_state(
-                {name: np.array(boundary[name], copy=True) for name in boundary.files}
-            )
-            if (
-                "boundary_schema_version" not in boundary_state
-                or int(boundary_state["boundary_schema_version"]) != 3
+        try:
+            assert coupler.vpm_solver is not None
+            coupler.vpm_solver._load_backup_from(str(target / artifacts["vpm"]))
+            with np.load(
+                target / artifacts["vpm_boundary_condition"], allow_pickle=False
+            ) as boundary:
+                expected_boundary_keys = {
+                    "boundary_schema_version",
+                    "has_velocity",
+                    "velocity",
+                    "has_normal_velocity",
+                    "normal_velocity",
+                    "has_tangential_gradient",
+                    "tangential_gradient",
+                    "has_kinematic_pressure_gradient",
+                    "kinematic_pressure_gradient",
+                    "has_pressure_velocity_snapshot",
+                    "pressure_velocity_snapshot",
+                    "storage_layout",
+                }
+                if set(boundary.files) != expected_boundary_keys:
+                    raise ValueError("Coupled boundary backup has invalid fields")
+                boundary_state = decode_state(
+                    {name: np.array(boundary[name], copy=True) for name in boundary.files}
+                )
+                if (
+                    "boundary_schema_version" not in boundary_state
+                    or int(boundary_state["boundary_schema_version"]) != 3
+                ):
+                    raise ValueError("Unsupported coupled boundary backup schema")
+                coupler._velocity_boundary_condition_old = (
+                    boundary_state["velocity"].copy()
+                    if bool(boundary_state["has_velocity"])
+                    else None
+                )
+                coupler._normal_velocity_boundary_condition_old = (
+                    boundary_state["normal_velocity"].copy()
+                    if bool(boundary_state["has_normal_velocity"])
+                    else None
+                )
+                coupler._tangential_gradient_boundary_condition_old = (
+                    boundary_state["tangential_gradient"].copy()
+                    if bool(boundary_state["has_tangential_gradient"])
+                    else None
+                )
+                coupler._kinematic_pressure_gradient_boundary_condition_old = (
+                    boundary_state["kinematic_pressure_gradient"].copy()
+                    if bool(boundary_state["has_kinematic_pressure_gradient"])
+                    else None
+                )
+                coupler._pressure_velocity_snapshot = (
+                    boundary_state["pressure_velocity_snapshot"].copy()
+                    if bool(boundary_state["has_pressure_velocity_snapshot"])
+                    else None
+                )
+                coupler._normal_velocity_boundary_condition = None
+                coupler._tangential_gradient_boundary_condition = None
+                coupler._kinematic_pressure_gradient_boundary_condition = None
+            if not np.isclose(
+                coupler.fvm_solver.time, coupler.vpm_solver.time, rtol=0.0, atol=1e-12
             ):
-                raise ValueError("Unsupported coupled boundary backup schema")
-            coupler._velocity_boundary_condition_old = (
-                boundary_state["velocity"].copy() if bool(boundary_state["has_velocity"]) else None
-            )
-            coupler._normal_velocity_boundary_condition_old = (
-                boundary_state["normal_velocity"].copy()
-                if bool(boundary_state["has_normal_velocity"])
-                else None
-            )
-            coupler._tangential_gradient_boundary_condition_old = (
-                boundary_state["tangential_gradient"].copy()
-                if bool(boundary_state["has_tangential_gradient"])
-                else None
-            )
-            coupler._kinematic_pressure_gradient_boundary_condition_old = (
-                boundary_state["kinematic_pressure_gradient"].copy()
-                if bool(boundary_state["has_kinematic_pressure_gradient"])
-                else None
-            )
-            coupler._pressure_velocity_snapshot = (
-                boundary_state["pressure_velocity_snapshot"].copy()
-                if bool(boundary_state["has_pressure_velocity_snapshot"])
-                else None
-            )
-            coupler._normal_velocity_boundary_condition = None
-            coupler._tangential_gradient_boundary_condition = None
-            coupler._kinematic_pressure_gradient_boundary_condition = None
-        if not np.isclose(coupler.fvm_solver.time, coupler.vpm_solver.time, rtol=0.0, atol=1e-12):
-            error = f"Coupled backup time mismatch: FVM={coupler.fvm_solver.time}, VPM={coupler.vpm_solver.time}"
+                error = f"Coupled backup time mismatch: FVM={coupler.fvm_solver.time}, VPM={coupler.vpm_solver.time}"
+            if error is None and getattr(coupler, "solution_dir", None) is not None:
+                try:
+                    _rewind_coupler_diagnostics(
+                        Path(coupler.solution_dir) / "coupler_diagnostics.jsonl",
+                        float(manifest["time"]),
+                        getattr(coupler, "coupling_diagnostics", None),
+                    )
+                except BaseException as exc:
+                    error = f"Coupled diagnostics restart reconciliation failed: {type(exc).__name__}: {exc}"
+        except Exception as exc:
+            error = f"Coupled VPM restart failed: {type(exc).__name__}: {exc}"
     if comm is not None and comm.Get_size() > 1:
         error = comm.bcast(error if coupler._is_master else None, root=0)
     if error is not None:

@@ -25,6 +25,8 @@ from openonda.vpm import Backup, Samplers
 __package__ = case_package(Path(__file__).parent)
 from .assets.generate_surface import create_delta_wing, save_surface
 
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "delta_wing"
 
 # Wing and flow
@@ -181,7 +183,7 @@ def build_case() -> vpm.VPMCase:
 
 
 def main() -> None:
-    vpm.VPMSolver(build_case()).run()
+    vpm.VPMSolver(build_case()).run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

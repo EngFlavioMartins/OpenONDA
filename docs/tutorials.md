@@ -27,8 +27,9 @@ not overwritten by `create`; `run` reuses them.
 ## From a case directory
 
 ```bash
-python setup.py       # Run the default case.
-./allrun.sh           # Run the cases listed in this file.
+python setup.py       # Start at zero, or resume the latest backup.
+./allrun.sh           # Clean first, then run the listed cases from zero.
+./allcontinue.sh      # Run the same cases without cleaning.
 ./allplot.sh          # Plot saved results as PNG.
 ./allplot.sh pdf      # Export PDF instead.
 ./allclean.sh         # Delete generated output for this tutorial.
@@ -36,8 +37,13 @@ python setup.py       # Run the default case.
 
 Use the active Python environment; no import-path or interpreter variables
 are needed. Shell scripts can also be invoked from another directory.
-**The coupled cube and cylinder `allrun.sh` scripts clean their previous
-outputs before running.** Save results you need before invoking them.
+**Every `allrun.sh` calls `./allclean.sh` before running.** Save results you
+need before invoking it. Every tutorial, including reference flows and rotor
+studies, supplies `allcontinue.sh`. Individual `setup.py` invocations also
+continue automatically; the visible `START_FROM = "latest"` setting controls
+this behavior. A completed case performs no additional timesteps. Increasing
+the configured final time (or VPM total step count) extends the same case.
+See [continuation and backups](continuation.md) for recovery and compatibility.
 Running and plotting are separate operations.
 
 Variant arguments select physical or numerical comparisons. For example:

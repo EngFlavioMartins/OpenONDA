@@ -1,5 +1,6 @@
 """Central stage right-hand side for coupled VPM evolution."""
 
+from collections.abc import Callable
 from contextlib import ExitStack, contextmanager, suppress
 from itertools import count
 from typing import Protocol
@@ -384,6 +385,8 @@ class StageRHS:
         self.induction = induction
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
+        self.position_guard: Callable[[StageState], None] | None = None
+        self.accepted_position_projector: Callable[..., None] | None = None
 
     @contextmanager
     def integration_step(self, tableau, time_step_size):
@@ -438,6 +441,9 @@ class StageRHS:
         state and are evaluated sequentially; disabling strength evolution
         zeros the final rate after all provider callbacks complete.
         """
+        position_guard = getattr(self, "position_guard", None)
+        if position_guard is not None:
+            position_guard(stage_state)
         self.induction.evaluate_stage(
             position=stage_state.position,
             vortex_strength=stage_state.vortex_strength,

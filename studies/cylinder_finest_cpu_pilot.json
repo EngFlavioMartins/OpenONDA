@@ -1,0 +1,480 @@
+{
+  "schema": "openonda-cylinder-finest-cpu-pilot/1",
+  "qualification": "Three accepted early-wake intervals only. Warm intervals narrowly meet the 17.28 s/interval startup budget; developed-wake runtime, long-time shedding, force statistics, and grid independence remain untested.",
+  "configuration": {
+    "boundary_condition_mode": "vorticity_mixed",
+    "compute_device": "CPU",
+    "cores": 4,
+    "dz": 0.064,
+    "end_time": 100.0,
+    "exchange_dt": 0.04,
+    "fvm_bounds": [
+      -1.6,
+      1.6,
+      -1.6,
+      1.6,
+      -0.48,
+      0.48
+    ],
+    "fvm_time_step": 0.004,
+    "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+    "hp": 0.08,
+    "hxy": 0.064,
+    "interface_iterations": 3,
+    "kind": "coupled",
+    "overrides": {
+      "compute_device": "CPU",
+      "cores": 4,
+      "hxy": 0.064
+    },
+    "particle_limit": 1000000,
+    "software_fingerprint": {
+      "digest": "63dd9279e5a2fbb654a09f4a636c6b956fec88bff1b727e476db1b19d64e8de5",
+      "python": "3.11.15",
+      "schema": "openonda-software-fingerprint/1",
+      "source_digest": "b8d7cf498d6253d3833a8f2062a189d032b44fb8c7017d4180458accf7d265cf",
+      "versions": {
+        "gmsh": "4.15.2",
+        "h5py": "3.16.0",
+        "mpi4py": "4.1.2",
+        "numba": "0.66.0",
+        "numpy": "2.4.6",
+        "openonda": "0.1.1",
+        "scipy": "1.17.1",
+        "taichi": "1.7.4",
+        "vtk": "9.6.2"
+      }
+    },
+    "source_hash": "5d9f56d6dba3a387823617d6b83e1c888278b1551c77f55443a9064f9e2df819",
+    "span": 0.96,
+    "transfer_bounds": [
+      -1.25,
+      1.25,
+      -1.25,
+      1.25,
+      -0.48,
+      0.48
+    ],
+    "transfer_method": "buffered_m4_renewal",
+    "transfer_region_bounds": [
+      -1.25,
+      1.25,
+      -1.25,
+      1.25,
+      -0.48,
+      0.48
+    ],
+    "vpm_bounds": [
+      -5.0,
+      15.0,
+      -5.0,
+      5.0,
+      -0.48,
+      0.48
+    ]
+  },
+  "mesh": {
+    "cells": 36555,
+    "faces": 114052,
+    "actual_outer_bounds": [
+      -1.6,
+      1.6,
+      -1.6,
+      1.6,
+      -0.48,
+      0.48
+    ],
+    "meshing_wall_seconds": 107.56
+  },
+  "trial": {
+    "wall_seconds": 225.3924195389991,
+    "peak_process_tree_rss_bytes": 5949386752,
+    "rss_sample_period_seconds": 0.25,
+    "returncode": 0
+  },
+  "intervals": [
+    {
+      "step": 1,
+      "time": 0.04,
+      "n_transfer_particles": 1921,
+      "timing_seconds": {
+        "vpm": 32.33504577900749,
+        "vpm_boundary_condition": 0.9780549370043445,
+        "fvm": 9.420163991002482,
+        "transfer": 4.557072227005847,
+        "total": 47.29033693402016,
+        "last_sweep_donor_gather": 0.004185380996204913
+      },
+      "solid_projection": {
+        "stage_count": 24,
+        "accepted_count": 24,
+        "stage_displacement_l1": 0.2059983270603251,
+        "accepted_displacement_l1": 0.21191254493284142,
+        "stage_impulse_change": [
+          -0.00020116453840471698,
+          -6.536641899376614e-05,
+          -4.346206552924908e-08
+        ],
+        "accepted_impulse_change": [
+          -0.00020343618061723382,
+          -6.715926486941904e-05,
+          -4.479857002367866e-08
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1388,
+        "excluded_signed_weight_l1": 0.6589837616360626,
+        "fluid_correction_l1": 0.7861122417783886
+      },
+      "gbd_moment_recovery": {
+        "applied": true,
+        "nonzero_node_count": 3623,
+        "retained_node_count": 2055,
+        "pruned_node_count": 1568,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.00031929738065225344,
+        "normalized_vortex_strength_residual": 1.6538191164289027e-09,
+        "normalized_linear_impulse_residual": 8.370568817551451e-10,
+        "normalized_angular_impulse_residual": 3.30809633947434e-10
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 6.535588568112871e-07,
+        "velocity": 4.2331058125455456e-07,
+        "gradient": 6.535588568112871e-07,
+        "target_evaluations": 493697.0,
+        "target_batches": 19.0,
+        "seconds": 1.0213261500030058
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.03591093189877881,
+            "gradient_residual_rms": 0.041013248424771595,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.00445693255731883,
+            "gradient_residual_rms": 0.005051854130294143,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 0.00048791433796401256,
+            "gradient_residual_rms": 0.0005608807587229664,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.4980585150042316,
+          "state_restore": 0.006641434010816738,
+          "boundary_refresh": 3.8590625649958383,
+          "accepted_output": 0.0008821160008665174
+        }
+      }
+    },
+    {
+      "step": 2,
+      "time": 0.08,
+      "n_transfer_particles": 2146,
+      "timing_seconds": {
+        "vpm": 1.645684857008746,
+        "vpm_boundary_condition": 1.3510938569961581,
+        "fvm": 9.00590096700762,
+        "transfer": 4.308951546991011,
+        "total": 16.311631228003534,
+        "last_sweep_donor_gather": 0.003930789986043237
+      },
+      "solid_projection": {
+        "stage_count": 12,
+        "accepted_count": 24,
+        "stage_displacement_l1": 0.03962865283837162,
+        "accepted_displacement_l1": 0.04418437034513972,
+        "stage_impulse_change": [
+          -0.00035611964996448345,
+          -2.8255772116095777e-05,
+          -8.168091167245355e-09
+        ],
+        "accepted_impulse_change": [
+          -0.00036449400254818625,
+          -2.4270639386487874e-05,
+          -3.5264762690518314e-08
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1392,
+        "excluded_signed_weight_l1": 1.0160237485312809,
+        "fluid_correction_l1": 0.9616138611902292
+      },
+      "gbd_moment_recovery": {
+        "applied": true,
+        "nonzero_node_count": 4766,
+        "retained_node_count": 2427,
+        "pruned_node_count": 2339,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.0002206647055251395,
+        "normalized_vortex_strength_residual": 9.536832841366772e-10,
+        "normalized_linear_impulse_residual": 3.400410493313671e-10,
+        "normalized_angular_impulse_residual": 1.788097177808532e-10
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 5.561462899095204e-07,
+        "velocity": 4.050199891025841e-07,
+        "gradient": 5.561462899095204e-07,
+        "target_evaluations": 551522.0,
+        "target_batches": 23.0,
+        "seconds": 0.7290784170036204
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.002472807055149486,
+            "gradient_residual_rms": 0.0033368621412575208,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.0002217910489961354,
+            "gradient_residual_rms": 0.00025431401941224184,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 2.464225660599911e-05,
+            "gradient_residual_rms": 2.8192608535239777e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.0024983689945656806,
+          "state_restore": 0.006402300990885124,
+          "boundary_refresh": 4.104924644998391,
+          "accepted_output": 0.0008570039935875684
+        }
+      }
+    },
+    {
+      "step": 3,
+      "time": 0.12,
+      "n_transfer_particles": 2316,
+      "timing_seconds": {
+        "vpm": 2.015768120996654,
+        "vpm_boundary_condition": 1.5156558689923258,
+        "fvm": 9.116514793990063,
+        "transfer": 4.38328452501446,
+        "total": 17.031223308993503,
+        "last_sweep_donor_gather": 0.0038664110034005716
+      },
+      "solid_projection": {
+        "stage_count": 12,
+        "accepted_count": 24,
+        "stage_displacement_l1": 0.027278436213973065,
+        "accepted_displacement_l1": 0.033401771742928826,
+        "stage_impulse_change": [
+          -0.0002101204118294176,
+          -1.768273116695955e-05,
+          -3.3200422078397378e-09
+        ],
+        "accepted_impulse_change": [
+          -0.00020826834003746878,
+          -1.1335933585295624e-05,
+          -4.657911958653736e-08
+        ]
+      },
+      "gbd_wall_transfer": {
+        "wall_adjacent_particles": 1392,
+        "excluded_signed_weight_l1": 0.9048678318432114,
+        "fluid_correction_l1": 0.8589835322719365
+      },
+      "gbd_moment_recovery": {
+        "applied": true,
+        "nonzero_node_count": 5324,
+        "retained_node_count": 2681,
+        "pruned_node_count": 2643,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.000251414728152281,
+        "normalized_vortex_strength_residual": 6.675338571558138e-10,
+        "normalized_linear_impulse_residual": 6.345545587463609e-10,
+        "normalized_angular_impulse_residual": 1.4899374204891648e-10
+      },
+      "last_induction_image_call": {
+        "shell": 64.0,
+        "block_start": 33.0,
+        "relative": 4.9334067853124e-07,
+        "velocity": 3.6233703326615796e-07,
+        "gradient": 4.9334067853124e-07,
+        "target_evaluations": 595212.0,
+        "target_batches": 24.0,
+        "seconds": 0.7786136040085694
+      },
+      "interface_iteration": {
+        "sweeps": 3,
+        "converged": false,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0020965329530514437,
+            "gradient_residual_rms": 0.002920483083015116,
+            "converged": false
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 0.0001791427548325575,
+            "gradient_residual_rms": 0.00020557506896398786,
+            "converged": false
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 1.9850068713811918e-05,
+            "gradient_residual_rms": 2.2718884959782035e-05,
+            "converged": false
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.002285325012053363,
+          "state_restore": 0.006551389989908785,
+          "boundary_refresh": 4.181632125997567,
+          "accepted_output": 0.001229303001309745
+        }
+      }
+    }
+  ],
+  "startup_budget_seconds_per_interval": 17.28,
+  "prior_failed_attempts": [
+    {
+      "reason": "CartesianMesher quantized physical z bounds to \u00b10.512 at hxy=0.064, outside the required \u00b10.48 slip planes.",
+      "evidence": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/finest-cpu/failed-cartesian-extent"
+    },
+    {
+      "reason": "Section extrusion snapped resolved source XY \u00b11.536 inward to requested \u00b11.48 and folded 92 adjacent polygon edges. Initial VTK section had zero invalid edges.",
+      "evidence": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/finest-cpu/failed-section-fold"
+    }
+  ],
+  "evidence": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/finest-cpu/success",
+  "six_rank_comparison": {
+    "mpi_ranks": 6,
+    "trial_wall_seconds": 248.68129710700305,
+    "peak_process_tree_rss_bytes": 6926970880,
+    "intervals": [
+      {
+        "step": 1,
+        "time": 0.04,
+        "n_transfer_particles": 1921,
+        "timing_seconds": {
+          "vpm": 36.86778336999123,
+          "vpm_boundary_condition": 1.0704221709893318,
+          "fvm": 8.195278124010656,
+          "transfer": 5.25934538198635,
+          "total": 51.39282904697757,
+          "last_sweep_donor_gather": 0.004859079010202549
+        },
+        "solid_projection": {
+          "stage_count": 24,
+          "accepted_count": 24,
+          "stage_displacement_l1": 0.20599832141947916,
+          "accepted_displacement_l1": 0.21191252086336915,
+          "stage_impulse_change": [
+            -0.00020116453778659717,
+            -6.536641747662708e-05,
+            -4.346214431628763e-08
+          ],
+          "accepted_impulse_change": [
+            -0.00020343600191686834,
+            -6.715925497568649e-05,
+            -4.479835971842299e-08
+          ]
+        },
+        "gbd_wall_transfer": {
+          "wall_adjacent_particles": 1388,
+          "excluded_signed_weight_l1": 0.6589837624328561,
+          "fluid_correction_l1": 0.7861122559261988
+        }
+      },
+      {
+        "step": 2,
+        "time": 0.08,
+        "n_transfer_particles": 2146,
+        "timing_seconds": {
+          "vpm": 1.9037440589891048,
+          "vpm_boundary_condition": 1.573789703004877,
+          "fvm": 7.899223587999586,
+          "transfer": 5.007250138980453,
+          "total": 16.38400748897402,
+          "last_sweep_donor_gather": 0.004753764005727135
+        },
+        "solid_projection": {
+          "stage_count": 12,
+          "accepted_count": 24,
+          "stage_displacement_l1": 0.039628189921542115,
+          "accepted_displacement_l1": 0.04418197125076699,
+          "stage_impulse_change": [
+            -0.000356113894148569,
+            -2.8255280977500394e-05,
+            -8.12817309198061e-09
+          ],
+          "accepted_impulse_change": [
+            -0.00036448804728379607,
+            -2.4272582853340726e-05,
+            -3.520432203696745e-08
+          ]
+        },
+        "gbd_wall_transfer": {
+          "wall_adjacent_particles": 1392,
+          "excluded_signed_weight_l1": 1.016019934645637,
+          "fluid_correction_l1": 0.9616100930109139
+        }
+      },
+      {
+        "step": 3,
+        "time": 0.12,
+        "n_transfer_particles": 2316,
+        "timing_seconds": {
+          "vpm": 2.3205579229979776,
+          "vpm_boundary_condition": 1.7610757700022077,
+          "fvm": 8.057321712025441,
+          "transfer": 5.227508470008615,
+          "total": 17.366463875034242,
+          "last_sweep_donor_gather": 0.005142506008269265
+        },
+        "solid_projection": {
+          "stage_count": 12,
+          "accepted_count": 24,
+          "stage_displacement_l1": 0.027278384637011648,
+          "accepted_displacement_l1": 0.03340156108641447,
+          "stage_impulse_change": [
+            -0.00021012006219068142,
+            -1.7682698372065785e-05,
+            -3.3044224960087444e-09
+          ],
+          "accepted_impulse_change": [
+            -0.0002082672750282327,
+            -1.1335986304102746e-05,
+            -4.656000689679876e-08
+          ]
+        },
+        "gbd_wall_transfer": {
+          "wall_adjacent_particles": 1392,
+          "excluded_signed_weight_l1": 0.904868069809292,
+          "fluid_correction_l1": 0.8589833772055387
+        }
+      }
+    ],
+    "same_step_agreement": {
+      "particle_counts_equal": true,
+      "maximum_absolute_raw_boundary_flux_difference": 1.2522682447425881e-08,
+      "maximum_absolute_outflow_velocity_mismatch_difference": 3.349560163151688e-06
+    },
+    "evidence": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/study_results/execution_pilots/finest-cpu/six-rank",
+    "assessment": "Six ranks is slightly slower on warm accepted intervals and uses more process-tree memory than four ranks for this early-wake finest pilot."
+  }
+}

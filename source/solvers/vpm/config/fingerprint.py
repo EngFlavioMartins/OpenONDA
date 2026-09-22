@@ -28,6 +28,12 @@ def _canonical_value(value: Any) -> Any:
             "planar_span",
             "spanwise_tolerance",
             "plane_z",
+            "z_min",
+            "z_max",
+            "tail_tolerance",
+            "max_shells",
+            "velocity_scale",
+            "gradient_scale",
             "theta",
             "tolerance",
             "multipole_order",
@@ -38,6 +44,8 @@ def _canonical_value(value: Any) -> Any:
             if hasattr(value, name):
                 result[name] = _canonical_value(getattr(value, name))
         kernel = getattr(value, "kernel", None)
+        if hasattr(value, "base"):
+            result["base"] = _canonical_value(value.base)
         if kernel is not None and hasattr(kernel, "name"):
             result["kernel"] = str(kernel.name)
         return result

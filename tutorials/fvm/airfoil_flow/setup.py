@@ -20,6 +20,8 @@ from .assets.generate_surface import create_airfoil_surface
 from .assets.surface_pressure import write_surface_cp
 
 # Case definition
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CASE_NAME = "airfoil_flow"
 CHORD = 1.0  # airfoil chord length [m]
 DEPTH = 0.8  # finite-span extrusion depth [m]
@@ -104,6 +106,7 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
     )
 
     return fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=time.output_schedule, write_at_end=True),
         case_name=CASE_NAME,
         time=time,
         schemes=schemes,
@@ -129,7 +132,7 @@ def main() -> None:
     solver = fvm.create_fvm_solver(
         create_fvm_setup(velocity), case_dir=case_dir, mesh=create_fvm_mesh
     )
-    solver.run()
+    solver.run(start_from=START_FROM)
     solver.evaluate(write_surface_cp, case_dir / "solution", CHORD, FREESTREAM_VELOCITY)
 
 

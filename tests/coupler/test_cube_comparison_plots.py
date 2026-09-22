@@ -135,6 +135,8 @@ def test_raw_drag_spikes_are_preserved_and_duplicate_times_rejected(modules, tmp
     np.testing.assert_allclose(times, [8.35, 8.4])
     np.testing.assert_allclose(cd, [1.1, 9.557578655])
     assert p.read_text() == original
+    p.write_text(original.replace("1,8.35,cube,1.1,.01\n", "1,8.35,cube,1.1,.01\n" * 2))
+    assert len(util.load_forces("reference")["time"]) == 3
     p.write_text(original + "4,8.45,cube,1.2,.01\n")
     with pytest.raises(ValueError, match="duplicate"):
         util.load_forces("reference")
@@ -177,6 +179,37 @@ def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
     (reference / "fine.pvd").touch()
     (reference / "mesh.npz").touch()
     assert prepare._fvm_artifacts(reference) == (reference / "fine.pvd", reference / "mesh.npz")
+
+
+def test_plotter_selects_finest_complete_reference_run(modules, tmp_path, monkeypatch):
+    _, prepare = modules
+    root = tmp_path / "reference_flow"
+    monkeypatch.setattr(prepare, "CASE_DIR", tmp_path)
+
+    def archived_run(name):
+        solution = root / "solution" / name
+        samples = root / "samples" / name
+        (solution / "fvm").mkdir(parents=True)
+        samples.mkdir(parents=True)
+        (solution / "fvm_metadata.json").write_text(json.dumps({"case_name": name}))
+        (solution / "fvm.pvd").touch()
+        (solution / "fvm" / "mesh.npz").touch()
+        for basename in ("forces_history", "centreline", "offaxis_y075"):
+            (samples / f"{basename}.csv").touch()
+        return solution, samples
+
+    archived_run("grid_h010125")
+    archived_run("grid_h0045")
+    incomplete, _ = archived_run("grid_h003")
+    (incomplete / "fvm" / "mesh.npz").unlink()
+
+    selected = prepare.reference_run()
+    assert selected.name == "grid_h0045"
+    assert selected.target_spacing == pytest.approx(0.045)
+    assert prepare._path("reference", "centreline", ".csv") == selected.samples / "centreline.csv"
+
+    archived_run("fine")
+    assert prepare.reference_run().name == "fine"
 
 
 @pytest.mark.parametrize("state", ["missing_volume_index", "no_common_time"])

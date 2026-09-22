@@ -1,6 +1,7 @@
 """Tests for the central coupled stage right-hand side."""
 
 import numpy as np
+import pytest
 
 from source.solvers.vpm.physics.induction.base import StageRates, StageState
 from source.solvers.vpm.physics.stage_rhs import (
@@ -52,6 +53,17 @@ def test_stage_rhs_passes_stage_time_and_state_to_induction_and_external_provide
     assert external.received[1] == 4.5
     np.testing.assert_allclose(velocity, 4.0)
     np.testing.assert_allclose(rate, 6.0)
+
+
+def test_stage_position_guard_runs_before_induction():
+    induction = _Induction()
+    rhs = StageRHS(induction)
+    rhs.position_guard = lambda _state: (_ for _ in ()).throw(RuntimeError("solid crossing"))
+    state = StageState(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), 1)
+    rates = StageRates(np.zeros((1, 3)), np.zeros((1, 3)))
+    with pytest.raises(RuntimeError, match="solid crossing"):
+        rhs.evaluate(state, 0.0, rates)
+    assert induction.received is None
 
 
 def test_callable_stage_contribution_receives_time_and_all_coupled_stage_arrays():

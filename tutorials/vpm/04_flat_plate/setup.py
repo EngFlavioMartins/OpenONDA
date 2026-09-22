@@ -35,6 +35,8 @@ from .assets.generate_surface import create_flat_plate, save_surface
 
 
 # Plate and flow
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 CHORD = 1.0  # [m]
 SPAN = 10.0  # [m]
 CHORDWISE_PANELS = 8
@@ -141,7 +143,7 @@ def run(mode: str, angle_of_attack: float) -> None:
         run=vpm.RunPlan(steps=n_steps),
         directory=TUTORIAL_DIR,
     )
-    vpm.VPMSolver(case).run()
+    vpm.VPMSolver(case).run(start_from=START_FROM)
 
 
 def main() -> None:

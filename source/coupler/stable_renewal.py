@@ -148,6 +148,7 @@ def inward_cosine_authority(
     vpm_dead_zone: float = 0.0,
     *,
     planar: bool = False,
+    slip_slab: bool = False,
 ) -> np.ndarray:
     """Return the dimensionless FVM authority at each world-frame point.
 
@@ -156,6 +157,8 @@ def inward_cosine_authority(
     vpm_dead_zone measured inward from each face, rises with a cosine and
     reaches one at ramp_width (both nonnegative, in m). A zero ramp gives a
     sharp interior mask. With planar=True, z faces do not limit authority.
+    With slip_slab=True, z faces retain full authority through the closed
+    physical span but points outside it have zero authority.
     The returned independent float64 array has shape (N,) and values in [0,1].
     Invalid bounds, vectors or widths raise ValueError; inputs are unchanged.
     """
@@ -166,19 +169,24 @@ def inward_cosine_authority(
     if width > 0.0 and dead_zone >= width:
         raise ValueError("vpm_dead_zone must be smaller than ramp_width")
 
+    if planar and slip_slab:
+        raise ValueError("planar and slip_slab authority modes are exclusive")
+    skip_z_ramp = planar or slip_slab
     face_distance = np.minimum.reduce(
         [
             position[:, 0] - bounds[0],
             bounds[1] - position[:, 0],
             position[:, 1] - bounds[2],
             bounds[3] - position[:, 1],
-            np.full(len(position), np.inf) if planar else position[:, 2] - bounds[4],
-            np.full(len(position), np.inf) if planar else bounds[5] - position[:, 2],
+            np.full(len(position), np.inf) if skip_z_ramp else position[:, 2] - bounds[4],
+            np.full(len(position), np.inf) if skip_z_ramp else bounds[5] - position[:, 2],
         ]
     )
     authority = np.zeros(len(position), dtype=np.float64)
     if width == 0.0:
         authority[face_distance > 0.0] = 1.0
+        if slip_slab:
+            authority[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
         return authority
 
     authority[face_distance >= width] = 1.0
@@ -186,6 +194,8 @@ def inward_cosine_authority(
     if np.any(ramp):
         phase = (face_distance[ramp] - dead_zone) / (width - dead_zone)
         authority[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
+    if slip_slab:
+        authority[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
     return authority
 
 
@@ -437,6 +447,7 @@ class StableRenewalLattice:
     solid_interior: np.ndarray
     fvm_authority: np.ndarray
     planar_span: float | None = None
+    slip_slab: bool = False
 
     @property
     def particle_volume(self) -> float:
@@ -464,6 +475,7 @@ def build_stable_renewal_lattice(
     fluid_weight_at_node: ArrayFunction | None = None,
     interior_at_node: ArrayFunction | None = None,
     planar_span: float | None = None,
+    slip_slab: bool = False,
     plane_z: float = 0.0,
 ) -> StableRenewalLattice:
     """Build fixed renewal nodes and transfer weights around the FVM region.
@@ -489,6 +501,9 @@ def build_stable_renewal_lattice(
     plane_z : float, default=0.0
         Planar source height in m, within transfer_box's z bounds. Ignored
         for the cubic lattice.
+    slip_slab : bool, default=False
+        Use physical z faces without a z ownership ramp; ghost support nodes
+        remain on the lattice with zero fluid weight.
 
     Returns
     -------
@@ -518,6 +533,8 @@ def build_stable_renewal_lattice(
     renewal_bounds = bounds.copy()
     renewal_bounds[::2] -= buffer
     renewal_bounds[1::2] += buffer
+    if slip_slab:
+        renewal_bounds[4:6] = bounds[4:6]
     lower = renewal_bounds[::2] - M4_PRIME_SUPPORT_CELLS * spacing
     upper = renewal_bounds[1::2] + M4_PRIME_SUPPORT_CELLS * spacing
     anchor_array: np.ndarray | None = None
@@ -542,6 +559,10 @@ def build_stable_renewal_lattice(
 
     mesh_weight = _evaluate_weight("mesh_weight_at_node", mesh_weight_at_node, positions)
     fluid_weight = _evaluate_weight("fluid_weight_at_node", fluid_weight_at_node, positions)
+    if slip_slab:
+        fluid_weight[
+            (positions[:, 2] < bounds[4] - 1e-10) | (positions[:, 2] > bounds[5] + 1e-10)
+        ] = 0.0
     solid_interior = (
         np.zeros(count, dtype=bool)
         if interior_at_node is None
@@ -550,7 +571,9 @@ def build_stable_renewal_lattice(
     if solid_interior.shape != (count,):
         raise ValueError(f"interior_at_node returned {solid_interior.shape}, expected ({count},)")
     authority = (
-        inward_cosine_authority(positions, bounds, width, dead_zone, planar=planar_span is not None)
+        inward_cosine_authority(
+            positions, bounds, width, dead_zone, planar=planar_span is not None, slip_slab=slip_slab
+        )
         * mesh_weight
     )
     return StableRenewalLattice(
@@ -567,6 +590,7 @@ def build_stable_renewal_lattice(
         solid_interior=solid_interior,
         fvm_authority=authority,
         planar_span=planar_span,
+        slip_slab=slip_slab,
     )
 
 
@@ -574,6 +598,8 @@ def scatter_m4_prime_to_lattice(
     positions: np.ndarray,
     vortex_strength: np.ndarray,
     lattice: StableRenewalLattice,
+    *,
+    allow_slab_images: bool = False,
 ) -> np.ndarray:
     """Scatter donors with aligned direct insertion and complete M4' support."""
     position = _vectors("positions", positions)
@@ -582,10 +608,21 @@ def scatter_m4_prime_to_lattice(
         raise ValueError("positions and vortex_strength must have the same length")
     if len(position) == 0:
         return np.zeros((len(lattice.positions), 3), dtype=np.float64)
-    if np.any(position < lattice.renewal_bounds[::2]) or np.any(
-        position > lattice.renewal_bounds[1::2]
+    if not allow_slab_images and (
+        np.any(position < lattice.renewal_bounds[::2])
+        or np.any(position > lattice.renewal_bounds[1::2])
     ):
         raise ValueError("M4' donors must lie inside the physical renewal belt")
+
+    if allow_slab_images:
+        relative_all = (position - lattice.origin) / lattice.particle_spacing
+        lower = np.floor(relative_all).astype(np.int64) - 1
+        upper = lower + 3
+        shape_array = np.asarray(lattice.shape, dtype=np.int64)
+        complete = np.all((lower >= 0) & (upper < shape_array), axis=1)
+        position, strength = position[complete], strength[complete]
+        if len(position) == 0:
+            return np.zeros((len(lattice.positions), 3), dtype=np.float64)
 
     if lattice.planar_span is not None:
         from source.solvers.vpm.physics.diffusion.planar import scatter_planar
@@ -631,6 +668,8 @@ def gaussian_represented_vortex_strength(
     *,
     core_radius: float,
     dimensions: int = 3,
+    slip_slab_bounds: tuple[float, float] | None = None,
+    lattice_origin_z: float | None = None,
 ) -> np.ndarray:
     """Sample the represented Gaussian strength on a Cartesian lattice.
 
@@ -656,9 +695,58 @@ def gaussian_represented_vortex_strength(
     distance = np.arange(-half_width, half_width + 1, dtype=np.float64) * spacing
     weight = spacing / (np.sqrt(np.pi) * radius) * np.exp(-((distance / radius) ** 2))
     represented = strength.reshape(*shape, 3)
-    for axis in range(dimensions):
-        represented = convolve1d(represented, weight, axis=axis, mode="constant", cval=0.0)
-    return represented.reshape(-1, 3)
+    if slip_slab_bounds is None:
+        for axis in range(dimensions):
+            represented = convolve1d(represented, weight, axis=axis, mode="constant", cval=0.0)
+        return represented.reshape(-1, 3)
+    if dimensions != 3 or lattice_origin_z is None or len(shape) != 3:
+        raise ValueError("slip-slab representation requires 3D lattice bounds and z origin")
+    z_min, z_max = map(float, slip_slab_bounds)
+    if not np.isfinite((z_min, z_max, lattice_origin_z)).all() or z_max <= z_min:
+        raise ValueError("slip-slab representation needs finite increasing z planes")
+    lower_twice = 2.0 * (z_min - lattice_origin_z) / spacing
+    upper_twice = 2.0 * (z_max - lattice_origin_z) / spacing
+    period = upper_twice - lower_twice
+    if (
+        abs(lower_twice - round(lower_twice)) > 1e-5
+        or abs(upper_twice - round(upper_twice)) > 1e-5
+        or abs(period - round(period)) > 1e-5
+    ):
+        raise ValueError("slip planes must align to lattice nodes or half nodes")
+    lower_twice = int(round(lower_twice))
+    period = int(round(period))
+    if period <= 0:
+        raise ValueError("slip-slab image translation must be positive")
+    z_nodes = lattice_origin_z + spacing * np.arange(shape[2])
+    physical_z = (z_nodes >= z_min - 1e-8 * spacing) & (z_nodes <= z_max + 1e-8 * spacing)
+    if not np.any(physical_z):
+        raise ValueError("slip-slab lattice has no physical z nodes")
+
+    # Convolution commutes with reflection in z. Smooth only physical sources
+    # in x/y, then place their full even/odd image family on a temporary z
+    # extension. Adding coincident odd images at node-aligned faces matches the
+    # particle induction convention (normal doubles; tangential cancels).
+    xy = represented.copy()
+    xy[:, :, ~physical_z, :] = 0.0
+    for axis in (0, 1):
+        xy = convolve1d(xy, weight, axis=axis, mode="constant", cval=0.0)
+    pad = half_width
+    extended = np.zeros((shape[0], shape[1], shape[2] + 2 * pad, 3), dtype=np.float64)
+    lo, hi = -pad, shape[2] - 1 + pad
+    for source_z in np.flatnonzero(physical_z):
+        source_plane = xy[:, :, source_z, :]
+        for base, odd in ((int(source_z), False), (lower_twice - int(source_z), True)):
+            first = int(np.ceil((lo - base) / period))
+            last = int(np.floor((hi - base) / period))
+            for image in range(first, last + 1):
+                target_z = base + image * period + pad
+                if odd:
+                    extended[:, :, target_z, :2] -= source_plane[:, :, :2]
+                    extended[:, :, target_z, 2] += source_plane[:, :, 2]
+                else:
+                    extended[:, :, target_z, :] += source_plane
+    represented = convolve1d(extended, weight, axis=2, mode="constant", cval=0.0)
+    return represented[:, :, pad : pad + shape[2], :].reshape(-1, 3)
 
 
 @dataclass(frozen=True)
@@ -685,6 +773,8 @@ def blend_represented_state(
     output_weight: np.ndarray | None = None,
     compute_final_representation: bool = True,
     dimensions: int = 3,
+    slip_slab_bounds: tuple[float, float] | None = None,
+    lattice_origin_z: float | None = None,
 ) -> RepresentedStateBlend:
     """Blend the Gaussian represented VPM state and apply one local correction.
 
@@ -706,6 +796,18 @@ def blend_represented_state(
         weight = np.asarray(output_weight, dtype=np.float64).reshape(-1)
         if weight.shape != (len(vpm_strength),):
             raise ValueError("output_weight must share the transfer lattice shape")
+    physical = np.ones(len(vpm_strength), dtype=bool)
+    if slip_slab_bounds is not None:
+        if lattice_origin_z is None:
+            raise ValueError("slip-slab representation requires a z lattice origin")
+        z_nodes = lattice_origin_z + particle_spacing * np.arange(shape[2])
+        z_min, z_max = slip_slab_bounds
+        physical_z = (z_nodes >= z_min - 1e-8 * particle_spacing) & (
+            z_nodes <= z_max + 1e-8 * particle_spacing
+        )
+        physical = np.broadcast_to(physical_z, shape).reshape(-1).copy()
+        if weight is not None:
+            physical &= weight > 0.0
 
     represented_vpm = gaussian_represented_vortex_strength(
         vpm_strength,
@@ -713,8 +815,12 @@ def blend_represented_state(
         particle_spacing,
         core_radius=core_radius,
         dimensions=dimensions,
+        slip_slab_bounds=slip_slab_bounds,
+        lattice_origin_z=lattice_origin_z,
     )
     physical_target = represented_vpm + authority[:, None] * (fvm_strength - represented_vpm)
+    if slip_slab_bounds is not None:
+        physical_target[~physical] = 0.0
 
     blended_strength = vpm_strength + authority[:, None] * (fvm_strength - vpm_strength)
     represented_blend = gaussian_represented_vortex_strength(
@@ -723,16 +829,22 @@ def blend_represented_state(
         particle_spacing,
         core_radius=core_radius,
         dimensions=dimensions,
+        slip_slab_bounds=slip_slab_bounds,
+        lattice_origin_z=lattice_origin_z,
     )
     residual = physical_target - represented_blend
-    denominator = float(np.linalg.norm(physical_target)) + 1.0e-30
-    residual_before = float(np.linalg.norm(residual)) / denominator
+    denominator = float(np.linalg.norm(physical_target[physical])) + 1.0e-30
+    residual_before = float(np.linalg.norm(residual[physical])) / denominator
 
     correction_gain = min(cap - 1.0, 1.0)
     corrected_strength = blended_strength + correction_gain * residual
     if weight is not None:
         corrected_strength = corrected_strength * weight[:, None]
-    target_maximum = float(np.linalg.norm(physical_target, axis=1).max(initial=0.0)) + 1.0e-30
+    if slip_slab_bounds is not None:
+        corrected_strength[~physical] = 0.0
+    target_maximum = (
+        float(np.linalg.norm(physical_target[physical], axis=1).max(initial=0.0)) + 1.0e-30
+    )
     maximum_amplification = (
         float(np.linalg.norm(corrected_strength, axis=1).max(initial=0.0)) / target_maximum
     )
@@ -746,9 +858,11 @@ def blend_represented_state(
             particle_spacing,
             core_radius=core_radius,
             dimensions=dimensions,
+            slip_slab_bounds=slip_slab_bounds,
+            lattice_origin_z=lattice_origin_z,
         )
         residual_after = (
-            float(np.linalg.norm(physical_target - represented_corrected)) / denominator
+            float(np.linalg.norm((physical_target - represented_corrected)[physical])) / denominator
         )
     return RepresentedStateBlend(
         vortex_strength=corrected_strength,
@@ -920,6 +1034,14 @@ def renew_stable_overlap(
         raise ValueError(f"particle_in_solid returned {deep_solid.shape}, expected ({count},)")
 
     valid = ~deep_solid
+    if lattice.slip_slab and np.any(
+        valid
+        & (
+            (position[:, 2] < lattice.transfer_box[4] - 1e-7)
+            | (position[:, 2] > lattice.transfer_box[5] + 1e-7)
+        )
+    ):
+        raise ValueError("physical renewal particle is outside the slip slab")
     in_renewal_belt = valid & np.all(
         (position >= lattice.renewal_bounds[::2]) & (position <= lattice.renewal_bounds[1::2]),
         axis=1,
@@ -931,6 +1053,15 @@ def renew_stable_overlap(
         tapered_strength[in_renewal_belt],
         lattice,
     )
+    if lattice.slip_slab and np.any(in_renewal_belt):
+        source = position[in_renewal_belt]
+        axial_image = tapered_strength[in_renewal_belt] * np.array([-1.0, -1.0, 1.0])
+        for plane in lattice.transfer_box[4:6]:
+            image_position = source.copy()
+            image_position[:, 2] = 2.0 * plane - image_position[:, 2]
+            vpm_lattice_strength += scatter_m4_prime_to_lattice(
+                image_position, axial_image, lattice, allow_slab_images=True
+            )
     excluded_remesh_l1 = float(
         np.linalg.norm(vpm_lattice_strength * (1.0 - lattice.fluid_weight)[:, None], axis=1).sum()
     )
@@ -959,6 +1090,8 @@ def renew_stable_overlap(
         output_weight=lattice.fluid_weight,
         compute_final_representation=compute_diagnostics,
         dimensions=2 if lattice.planar_span is not None else 3,
+        slip_slab_bounds=tuple(lattice.transfer_box[4:6]) if lattice.slip_slab else None,
+        lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
     )
     comparison_weight = lattice.fluid_weight * lattice.mesh_weight
     residual_before_prune: float | None = None
@@ -1040,6 +1173,8 @@ def renew_stable_overlap(
             spacing,
             core_radius=base_core_radius,
             dimensions=2 if lattice.planar_span is not None else 3,
+            slip_slab_bounds=tuple(lattice.transfer_box[4:6]) if lattice.slip_slab else None,
+            lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
         )
         denominator = (
             float(np.linalg.norm(blend.physical_target * comparison_weight[:, None])) + 1.0e-30

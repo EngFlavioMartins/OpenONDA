@@ -1,0 +1,58 @@
+{
+  "artifact": "studies/petsc_partitioned_workspace_reuse_benchmark.py",
+  "baseline": {
+    "git_commit": "52f0a7a4992d23477f3278fb68724df4f2f83eb8",
+    "path": "source/solvers/fvm/solve/petsc_partitioned.py",
+    "sha256": "618ee67cd88bb19254b698707bac162e9513f13b4692f5bd6aff9e2cf03d1b6a"
+  },
+  "commands": {
+    "single_rank": "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python studies/petsc_partitioned_workspace_reuse_benchmark.py --baseline-ref 52f0a7a4992d23477f3278fb68724df4f2f83eb8",
+    "two_rank": "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/mpirun -n 2 /home/flavio-martins/anaconda3/envs/OpenONDA/bin/python studies/petsc_partitioned_workspace_reuse_benchmark.py --baseline-ref 52f0a7a4992d23477f3278fb68724df4f2f83eb8"
+  },
+  "environment": {
+    "mpi4py": "4.1.2",
+    "numpy": "2.4.6",
+    "petsc": "3.25.4",
+    "petsc4py": "3.25.4",
+    "python": "3.11.15",
+    "scipy": "1.17.1"
+  },
+  "limitations": [
+    "A synthetic 40000-row tridiagonal system isolates warm-guess workspace overhead; it is not a cylinder or full FVM runtime measurement.",
+    "The median is the per-solve maximum wall time across ranks. Implementations alternate each repeat to reduce order and thermal bias.",
+    "The current working-tree production source had sha256 9ecbbfa93beb8d2079f3ac998f84c77db124f864fe6ae74a03837d8d43353964 when measured."
+  ],
+  "measurement": {
+    "interleaved": true,
+    "repeats": 80,
+    "system_size": 40000,
+    "warm_guess": "expected + 0.01*sin(global_row)",
+    "tolerance": 1e-11
+  },
+  "results": {
+    "one_rank": {
+      "baseline": {
+        "setup_median_seconds": 0.001427354509360157,
+        "solution_max_error": 4.440892098500626e-16,
+        "wall_median_seconds": 0.005466935996082611
+      },
+      "current": {
+        "setup_median_seconds": 0.0011973194923484698,
+        "solution_max_error": 4.440892098500626e-16,
+        "wall_median_seconds": 0.0052928359946236014
+      }
+    },
+    "two_rank": {
+      "baseline": {
+        "setup_median_seconds": 0.0004668814945034683,
+        "solution_max_error": 1.1102230246251565e-16,
+        "wall_median_seconds": 0.0036236565065337345
+      },
+      "current": {
+        "setup_median_seconds": 0.0003949290112359449,
+        "solution_max_error": 1.1102230246251565e-16,
+        "wall_median_seconds": 0.0035661995061673224
+      }
+    }
+  }
+}

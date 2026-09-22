@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.integrate import trapezoid
 
 
 def _table(path: Path) -> np.ndarray:
@@ -32,7 +33,7 @@ def _values(table: np.ndarray, name: str, path: Path, dtype=float) -> np.ndarray
 def _mean(time: np.ndarray, values: np.ndarray) -> float:
     if len(time) == 1 or time[-1] == time[0]:
         return float(values[-1])
-    return float(np.trapezoid(values, time) / (time[-1] - time[0]))
+    return float(trapezoid(values, time) / (time[-1] - time[0]))
 
 
 def _strouhal(time: np.ndarray, lift: np.ndarray) -> float | None:

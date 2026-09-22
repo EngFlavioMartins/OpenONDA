@@ -34,7 +34,8 @@ From an installed OpenONDA environment, `python setup.py` runs this configuratio
 solution, samples, figures and mesh cache. Preserve results elsewhere before using
 that fresh-run launcher.
 
-`./allcontinue.sh` restores `solution/backups/` without cleaning. The constructed
+`./allcontinue.sh` calls `setup.py` without cleaning. It automatically restores
+`solution/backups/`, or starts at zero when no backup exists. The constructed
 setup must match the checkpoint's numerical and coupled-output identity; an old
 checkpoint does not silently adopt the new .25 s backup cadence. Running processes
 retain the settings with which they were constructed.
@@ -49,8 +50,9 @@ four-grid study. Its physics live in `reference_flow/setup.py`, while its grid
 names and baseline spacings are visible directly in `reference_flow/allrun.sh`.
 
 `./allplot.sh` uses PNG by default; `./allplot.sh pdf` selects the same thesis-sized
-figures in PDF. The existing tutorial plotters use historical registered fine
-results under `reference_flow/samples/fine/` and `reference_flow/solution/fine/`.
+figures in PDF. It uses a complete historical `fine` reference when present,
+otherwise the finest completed `grid_h*` reference run. The selected grid is
+recorded in the comparison report. Only common saved physical times are plotted.
 
 Open the FVM/VPM PVD collections with their complete referenced directories in
 ParaView. Retained frames support animation; rolling coupled backups preserve

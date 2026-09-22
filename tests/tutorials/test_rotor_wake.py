@@ -226,11 +226,13 @@ def test_native_five_revolution_mean_cannot_hide_first_revolution_transient(tmp_
     assert all(row["window_mean_velocity"][:, 0].mean() < 99.0 for row in rows)
 
 
-def test_checkpoint_particle_front_brackets_remain_unqualified_arrival_evidence(tmp_path):
+@pytest.mark.parametrize("layout", ["", "vpm"])
+def test_checkpoint_particle_front_brackets_remain_unqualified_arrival_evidence(tmp_path, layout):
     solution = tmp_path / "solution"
-    solution.mkdir()
+    frames = solution / layout
+    frames.mkdir(parents=True)
     for index, (time, maximum_x) in enumerate(((0.0, 5.0), (1.0, 13.0), (2.0, 25.0))):
-        with h5py.File(solution / f"vpm_{index:06d}.h5", "w") as archive:
+        with h5py.File(frames / f"vpm_{index:06d}.h5", "w") as archive:
             solver = archive.create_group("solver")
             solver.attrs["time"] = time
             solver.attrs["step"] = index

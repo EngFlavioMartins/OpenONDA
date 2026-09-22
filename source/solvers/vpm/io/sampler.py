@@ -190,6 +190,22 @@ class OutputManager:
                 continue
             self._execute_one(sampler, event)
 
+    def resume(self) -> None:
+        """Fill samples interrupted after the native backup was committed."""
+        from source.restart import output_has_time
+
+        event = OutputEvent.INITIAL if self.solver.step == 0 else OutputEvent.ACCEPTED_STEP
+        directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
+        missing = [
+            sample
+            for sample in self._selected(event)
+            if not output_has_time(directory, self._name(sample), self.solver.time)
+        ]
+        if missing:
+            self.solver._refresh_diagnostics_for_output()
+            for sample in missing:
+                self._execute_one(sample, event)
+
     def _backup_due(self) -> bool:
         """Return whether the accepted-step backup cadence fires now."""
         interval = self.solver.case.backup.interval_steps
@@ -239,6 +255,13 @@ class OutputManager:
             return
 
         owned_names = {self._name(sampler) for sampler in self.samplers.samples}
+        if getattr(self.solver, "vlm_solver", None) is not None:
+            owned_names.update(("vlm_forces", "vlm_surface_forces"))
+            owned_names.update(
+                f"vlm_{direction}_{name.replace('/', '_').replace(' ', '_')}"
+                for name in getattr(self.solver.vlm_solver, "_surface_sampling", {})
+                for direction in ("spanwise", "chordwise")
+            )
         for name in owned_names:
             self._rewind_csv(output_directory / f"{name}.csv", time)
             self._rewind_pvd(output_directory, name, time)
@@ -258,6 +281,7 @@ class OutputManager:
             return
         with filepath.open(newline="", encoding="utf-8") as stream:
             rows = list(csv.reader(stream))
+        has_terminal_newline = filepath.read_bytes().endswith((b"\n", b"\r"))
         if not rows:
             return
         try:
@@ -266,8 +290,12 @@ class OutputManager:
             raise ValueError(f"CSV sampler output {filepath} has no time column") from None
 
         kept = [rows[0]]
-        for row in rows[1:]:
-            if not row or len(row) <= time_column:
+        needs_rewrite = False
+        for index, row in enumerate(rows[1:], start=1):
+            if len(row) != len(rows[0]):
+                if index == len(rows) - 1 and not has_terminal_newline:
+                    needs_rewrite = True
+                    break
                 raise ValueError(f"CSV sampler output {filepath} has an invalid row")
             try:
                 event_time = float(row[time_column])
@@ -277,7 +305,15 @@ class OutputManager:
                 raise ValueError(f"CSV sampler output {filepath} has a non-finite time")
             if event_time <= time + 1.0e-12:
                 kept.append(row)
-        if len(kept) != len(rows):
+                if index == len(rows) - 1 and not has_terminal_newline:
+                    needs_rewrite = True
+            else:
+                needs_rewrite = True
+        if needs_rewrite or len(kept) != len(rows):
+            branch_root = filepath.parent / "restart-branches"
+            branch_root.mkdir(parents=True, exist_ok=True)
+            branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
+            shutil.copy2(filepath, branch / f"{filepath.name}.superseded")
             cls._replace_csv(filepath, kept[0], kept[1:])
 
     @classmethod
@@ -310,6 +346,16 @@ class OutputManager:
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(pvd_path, branch / pvd_path.name)
+        from xml.etree import ElementTree as XmlElementTree
+
+        from source.solvers.fvm.io.solver_io import SolverIO
+
+        future = [
+            XmlElementTree.Element("DataSet", {"timestep": str(t), "file": name})
+            for t, name in entries
+            if t > time + 1.0e-12
+        ]
+        SolverIO._archive_pvd_frames(pvd_path, future, branch)
         cls._write_pvd(output_directory, name, kept)
 
     def _selected(self, event: OutputEvent) -> tuple[object, ...]:
@@ -347,6 +393,13 @@ class OutputManager:
     def _execute_one(self, sampler: object, event: OutputEvent) -> None:
         """Write one sampler atomically and update its last-written index."""
         identity = self._output_identity(sampler)
+        if getattr(self.solver, "_restart_output_time", None) == self.solver.time:
+            from source.restart import output_has_time
+
+            directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
+            if output_has_time(directory, self._name(sampler), self.solver.time):
+                self._runtime.last_written[identity] = (self.solver.step, self.solver.time)
+                return
         if event is OutputEvent.FINAL and self._runtime.last_written.get(identity) == (
             self.solver.step,
             self.solver.time,

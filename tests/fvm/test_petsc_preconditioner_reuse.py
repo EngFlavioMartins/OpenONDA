@@ -9,12 +9,11 @@ from scipy.sparse import csr_matrix
 pytest.importorskip("petsc4py")
 from petsc4py import PETSc
 
+from source.solvers.fvm.solve.linear_interface import deviation_norm_factor
 from source.solvers.fvm.solve.petsc_partitioned import OwnedRowsCSR, PartitionedLinearWorkspace
 
 
 def test_uniform_state_uses_the_same_roundoff_floor_as_serial():
-    from source.solvers.fvm.solve.linear_interface import deviation_norm_factor
-
     if PETSc.COMM_WORLD.getSize() != 1:
         pytest.skip("serial unit test; distributed cases use the MPI regression")
     context = SimpleNamespace(size=1, global_sum=lambda v: v, global_max=lambda v: v)
@@ -40,6 +39,70 @@ def test_uniform_state_uses_the_same_roundoff_floor_as_serial():
         np.testing.assert_allclose(solution, rhs, rtol=0, atol=np.finfo(float).eps)
     finally:
         workspace.close()
+
+
+def test_initial_guess_work_vectors_reuse_rebuild_and_close():
+    """Warm guesses retain their PETSc work vectors without retaining an old equation."""
+    if PETSc.COMM_WORLD.getSize() != 1:
+        pytest.skip("serial unit test; distributed cases use the MPI benchmark")
+    context = SimpleNamespace(size=1, global_sum=lambda v: v, global_max=lambda v: v)
+    rhs = np.linspace(-2.0, 3.0, 7)
+    guess = np.linspace(0.25, 1.0, 7)
+    original = np.diag(np.full(7, 4.0)) - np.eye(7, k=1) - np.eye(7, k=-1)
+    changed = original.copy()
+    changed[2, 3] = changed[3, 2] = -1.25
+    workspace = PartitionedLinearWorkspace(context)
+    arguments = {
+        "method": "bicgstab",
+        "tolerance": 1e-11,
+        "max_iterations": 100,
+        "constant_nullspace": False,
+        "initial_guess": guess,
+    }
+    try:
+        solution, result = workspace.solve(
+            OwnedRowsCSR.from_global(csr_matrix(original), rhs, 0, 1), **arguments
+        )
+        expected_initial = np.linalg.norm(rhs - original @ guess) / deviation_norm_factor(
+            original, rhs, guess
+        )
+        assert result.initial_residual == pytest.approx(expected_initial)
+        np.testing.assert_allclose(original @ solution, rhs, rtol=0, atol=2e-10)
+        work_vectors = (workspace._operator_guess, workspace._reference, workspace._uniform)
+        assert all(vector is not None for vector in work_vectors)
+
+        solution, result = workspace.solve(
+            OwnedRowsCSR.from_global(csr_matrix(changed), rhs, 0, 1), **arguments
+        )
+        expected_initial = np.linalg.norm(rhs - changed @ guess) / deviation_norm_factor(
+            changed, rhs, guess
+        )
+        assert result.initial_residual == pytest.approx(expected_initial)
+        np.testing.assert_allclose(changed @ solution, rhs, rtol=0, atol=2e-10)
+        assert (workspace._operator_guess, workspace._reference, workspace._uniform) == work_vectors
+
+        rebuilt = np.diag(np.full(8, 4.0)) - np.eye(8, k=1) - np.eye(8, k=-1)
+        solution, result = workspace.solve(
+            OwnedRowsCSR.from_global(csr_matrix(rebuilt), np.arange(8, dtype=float), 0, 1),
+            **{**arguments, "initial_guess": np.linspace(0.25, 1.0, 8)},
+        )
+        np.testing.assert_allclose(
+            rebuilt @ solution, np.arange(8, dtype=float), rtol=0, atol=2e-10
+        )
+        assert result.converged
+        assert all(
+            vector is not previous
+            for vector, previous in zip(
+                (workspace._operator_guess, workspace._reference, workspace._uniform),
+                work_vectors,
+                strict=True,
+            )
+        )
+    finally:
+        workspace.close()
+    assert workspace._operator_guess is None
+    assert workspace._reference is None
+    assert workspace._uniform is None
 
 
 def test_reused_preconditioner_solves_updated_equation():

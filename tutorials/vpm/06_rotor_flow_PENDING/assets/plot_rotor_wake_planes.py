@@ -13,6 +13,9 @@ from defusedxml import ElementTree
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
+
+from source.solution_layout import vpm_backup_files
 import pyvista as pv
 
 from openonda import plotting as theme
@@ -100,7 +103,7 @@ def _time_weighted_mean(times, values, start, stop):
     sampled_values = np.concatenate(
         (start_value[None, ...], values[inside], stop_value[None, ...]), axis=0
     )
-    return np.trapezoid(sampled_values, clock, axis=0) / (stop - start)
+    return trapezoid(sampled_values, clock, axis=0) / (stop - start)
 
 
 def induced_field_drift(
@@ -233,7 +236,7 @@ def checkpoint_particle_front_brackets(p, station_positions=None):
 
     if solution_dir is None:
         return status_records("unavailable")
-    files = sorted(solution_dir.glob("vpm_*.h5"))
+    files = vpm_backup_files(solution_dir)
     if len(files) < 2:
         return status_records("unavailable")
     checkpoints = []
@@ -482,7 +485,7 @@ def plane_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
         if "window_mean_velocity" in plane:
             mean_velocity = plane["window_mean_velocity"][:, 0] / p.freestream_speed
         else:
-            mean_velocity = np.trapezoid(velocity, plane["times"], axis=0) / np.ptp(plane["times"])
+            mean_velocity = trapezoid(velocity, plane["times"], axis=0) / np.ptp(plane["times"])
         radius, mean = _annulus_profile(r, edges, mean_velocity)
         records.append(
             dict(
@@ -536,7 +539,7 @@ def finite_distance_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
         velocity = plane["velocity"]
         mean_velocity = plane.get("window_mean_velocity")
         if mean_velocity is None:
-            mean_velocity = np.trapezoid(velocity, plane["times"], axis=0) / np.ptp(plane["times"])
+            mean_velocity = trapezoid(velocity, plane["times"], axis=0) / np.ptp(plane["times"])
         axial = mean_velocity[:, 0]
         tangential = -points[:, 2] * mean_velocity[:, 1] + points[:, 1] * mean_velocity[:, 2]
         tangential = np.divide(

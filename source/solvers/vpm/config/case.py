@@ -168,6 +168,13 @@ class Numerics:
                 "DVH requires spatially uniform effective viscosity; "
                 "use GBD for LES variable-viscosity diffusion."
             )
+        if getattr(self.induction, "method", None) == "SLIP_SLAB":
+            if self.viscous.scheme not in {"GBD", "NONE"}:
+                raise ValueError("Slip-slab induction supports GBD or NONE diffusion")
+            if self.viscous.scheme == "GBD" and self.viscous.gbd_remeshing_kernel != "M4_PRIME":
+                raise ValueError("Slip-slab GBD requires M4_PRIME remeshing")
+            if self.turbulence.flow_model == "LES":
+                raise ValueError("Slip-slab diffusion currently supports laminar flow only")
         if hasattr(self.induction, "planar_span"):
             if self.viscous.scheme not in {"GBD", "NONE"}:
                 raise ValueError("Planar induction supports GBD or NONE diffusion")

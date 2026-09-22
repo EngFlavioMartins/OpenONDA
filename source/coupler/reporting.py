@@ -107,7 +107,7 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.Fil
     has_external_handlers = bool(logger.handlers)
     logger.setLevel(logging.INFO)
     logger.propagate = False
-    file_handler = _CaseFileHandler(log_path, mode="w")
+    file_handler = _CaseFileHandler(log_path, mode="a")
     file_handler.setFormatter(log_style.Formatter())
     logger.addHandler(file_handler)
     if not has_external_handlers:
@@ -277,6 +277,9 @@ def write_run_metadata(
             "is_limited": resolved_stop_step < configured_end_step,
         },
     }
+    from source.restart import archive_run_metadata
+
+    archive_run_metadata(coupler.solution_dir / "run_metadata.json")
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
@@ -633,6 +636,52 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
     }
+    if vpm_solver is not None:
+        physics = vpm_solver.physics
+        projection = getattr(physics, "last_solid_projection", None)
+        if projection is not None:
+            projection_record = {
+                "stage_count": int(projection["stage_count"]),
+                "accepted_count": int(projection["accepted_count"]),
+                "stage_displacement_l1": float(projection["stage_displacement_l1"]),
+                "accepted_displacement_l1": float(projection["accepted_displacement_l1"]),
+                "stage_impulse_change": np.asarray(
+                    projection["stage_impulse_change"], dtype=np.float64
+                ).tolist(),
+                "accepted_impulse_change": np.asarray(
+                    projection["accepted_impulse_change"], dtype=np.float64
+                ).tolist(),
+            }
+            if not all(
+                np.isfinite(value)
+                for value in (
+                    projection_record["stage_displacement_l1"],
+                    projection_record["accepted_displacement_l1"],
+                    *projection_record["stage_impulse_change"],
+                    *projection_record["accepted_impulse_change"],
+                )
+            ):
+                raise FloatingPointError("non-finite solid-projection budget")
+            diagnostics["solid_projection"] = projection_record
+        wall_transfer = getattr(physics, "last_gbd_wall_transfer", None)
+        if wall_transfer is not None:
+            wall_record = {
+                "wall_adjacent_particles": int(wall_transfer["wall_adjacent_particles"]),
+                "excluded_signed_weight_l1": float(wall_transfer["excluded_signed_weight_l1"]),
+                "fluid_correction_l1": float(wall_transfer["fluid_correction_l1"]),
+            }
+            if not all(np.isfinite(value) for value in wall_record.values()):
+                raise FloatingPointError("non-finite GBD wall-transfer budget")
+            diagnostics["gbd_wall_transfer"] = wall_record
+        induction = getattr(vpm_solver.physics, "induction", None)
+        tail = getattr(induction, "last_tail", None)
+        if tail is not None:
+            # This describes only the most recent image query, not the total
+            # induction work across the coupling step.
+            image_call = {str(name): float(value) for name, value in tail.items()}
+            if not all(np.isfinite(value) for value in image_call.values()):
+                raise FloatingPointError("non-finite slip-slab image diagnostic")
+            diagnostics["last_induction_image_call"] = image_call
     spanwise = getattr(coupler.vorticity_transfer, "last_spanwise_metrics", None)
     if spanwise:
         values = {str(name): float(value) for name, value in spanwise.items()}
@@ -668,6 +717,8 @@ def record_step(
             "transfer": float(t_transfer),
             "total": float(sum(timing)),
         }
+        stats = getattr(coupler, "_step_transfer_stats", None) or {}
+        timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
         if coupler._is_master:
             diagnostics.update(
                 {"step": int(step), "time": float(time_end), "timing_seconds": timing_data}

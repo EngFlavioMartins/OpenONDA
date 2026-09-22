@@ -18,7 +18,7 @@ from ..setup import STATION_REFERENCE_RADIUS
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
-_OUTPUT_TAG = os.environ.get("ROTOR_OUTPUT_TAG", "completion")
+_OUTPUT_TAG = os.environ.get("ROTOR_OUTPUT_TAG", "")
 SOLUTION_DIR = CASE_DIR / "solution" / _OUTPUT_TAG if _OUTPUT_TAG else CASE_DIR / "solution"
 
 # A complete native window is five nominal rotor revolutions.  The field

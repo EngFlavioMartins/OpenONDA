@@ -106,6 +106,7 @@ selects the strength-rate formulation:
 | `DirectInduction` | Exact all-pairs regularized velocity/gradient and strength-rate evaluation, O(N²). | Supports f32/f64, all four public radial kernels, and CPU/Vulkan/CUDA/Metal Taichi devices. |
 | `TreecodeInduction` | LBVH/Barnes--Hut traversal with hierarchical velocity/gradient approximation. | Device-resident; currently f32 and Gaussian/Winckelmans kernels only. |
 | `FMMInduction` | Fixed-order device FMM (`P2M → M2M → M2L → L2L → L2P`) plus exact kernel-specific near-field P2P. | Device-resident CPU/Vulkan/Metal path; currently f32 only. |
+| `SlipSlabInduction(base, z_min, z_max)` | Full-3D induction with free-slip image vorticity and a checked image-sum tail. | Wraps a target-capable 3D backend; see [coupling span contract](coupling.md#failure-modes-and-limitations). |
 
 For the current Jacobian convention the choices are:
 
@@ -259,6 +260,12 @@ increase `max_n_particles` when filament refinement and regularization are disab
 This reserves more storage while retaining the saved state and physical settings.
 Smaller allocations and capacity changes with either adaptive operator enabled
 still require an exact capacity match.
+
+The tutorial entry point uses `solver.run(start_from="latest")`. It discovers
+the latest `vpm_*.h5` checkpoint, restores VLM state when present, and advances
+to the **total** `RunPlan.steps`. For a custom loop use
+`solver.start_from("latest")` before writing initial samples. See
+[continuation](continuation.md) for the output and compatibility rules.
 
 ## VLM coupling
 

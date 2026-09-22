@@ -6,7 +6,7 @@ rotor studies are scheduled. The single rotor validation case is
 `vpm/rotor_flow`, the wind turbine.
 
 Reproduce a historical case directly with `python setup.py --case coarse`.
-`./allrun.sh` runs the seven completed cases in dependency order.
+`./allrun.sh` cleans and runs the seven cases. `./allcontinue.sh` resumes each case from its own latest backup.
 `./allplot.sh` plots the saved native data; `./allplot.sh pdf` writes vector
 figures. Plotting does not run a simulation.
 
@@ -22,18 +22,15 @@ were transferred from the qualification runs without repeating them.
 | `mesh_refined` | 3.75 | 8 × 24 | 1–3 | 0 |
 | `relaxed` | 3.75 | 4 × 12 | 1–6 | 0.3 |
 | `relaxed_time_refined` | 1.875 | 4 × 12 | 1–3 | 0.3 |
-| `continue_8` | 3.75 | 4 × 12 | 7–8 | 0 |
-| `continue_12` | 3.75 | 4 × 12 | 9–12 | 0 |
+| `continue_8` | 3.75 | 4 × 12 | 1–8 | 0 |
+| `continue_12` | 3.75 | 4 × 12 | 1–12 | 0 |
 | `relaxed_moments` | 3.75 | 4 × 12 | 1–12 | 0.3, preserve moments |
 
 All cases use Gaussian particles, common core overlap 2.5 and CPU/FMM induction.
-`continue_8` loads `solution/coarse/vpm_000576.h5`; `continue_12` loads
-`solution/continue_8/vpm_000768.h5`. Each continuation writes its own output.
-All seven original cases, including the twelve-revolution continuation, have
-completed. `relaxed_moments` failed at step 3: its moment correction exceeded
-the native strength-growth limit (0.1206% versus 0.1%). Its partial native
-outputs are retained; it has no flow-integral samples yet. A completed run does
-not by itself establish stationarity.
+`continue_8` and `continue_12` now have absolute horizons of 8 and 12
+revolutions. Each starts from zero in a clean directory and continues its own
+latest checkpoint. The old hard-coded chain of checkpoint filenames has been
+removed.
 
 Attached VLM forces and loading tables are recorded on every accepted VPM step.
 Coupled surface state is written only by the VPM-owned backup clock: checkpoints

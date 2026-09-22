@@ -198,8 +198,17 @@ accepted state --solve_pimple--> candidate state --advance_time--> accepted stat
 * `save_state(path)` flushes output and atomically writes the complete, versioned time
   state. `load_state(path)` validates mesh/config identity unless
   `allow_config_change=True`; it also reconciles restart-aware output histories.
+
 * `close()` flushes/finishes owned writers and logger resources. The context-manager
   form is recommended for interactive control.
+
+For a case that should resume by default, call `solver.run(start_from="latest")`.
+The configured `BackupConfig.path` selects the committed native backup. An
+empty solution starts at zero; a completed run does not advance again. The
+tutorials declare periodic and final backup schedules. Custom time loops can
+call `solver.start_from("latest")` after setting their initial fields, then
+`solver.reconcile_history("my_history.csv")` before appending application rows.
+The full output and compatibility contract is in [continuation](continuation.md).
 
 Callbacks installed with `set_post_solve_state_callback` run after the linear solve,
 before acceptance diagnostics. They may mutate the solver-owned cell fields and flux;

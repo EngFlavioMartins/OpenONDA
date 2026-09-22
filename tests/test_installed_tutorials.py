@@ -30,7 +30,8 @@ def test_catalog_has_every_maintained_launcher() -> None:
     from importlib.resources import files
 
     root = Path(files("tutorials"))
-    maintained = {str(path.parent.relative_to(root)) for path in root.rglob("allrun.sh")}
+    maintained = {str(path.parent.relative_to(root)) for path in root.rglob("allrun.sh")
+                  if "study_results" not in path.relative_to(root).parts}
     # Retained experiments can be reproduced, but are not public tutorials.
     maintained.discard("vpm/07_quadcopter_PENDING/studies")
     assert {tutorial.relative_path.as_posix() for tutorial in TUTORIALS} == maintained
@@ -313,7 +314,10 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         "PATH": str(executable_dir) + os.pathsep + os.environ["PATH"],
         "OPENONDA_TEST_FAIL": str(int(fail_first)),
     }
-    for index, original in enumerate(sorted(root.rglob("allrun.sh"))):
+    for index, original in enumerate(sorted(
+        path for path in root.rglob("allrun.sh")
+        if "study_results" not in path.relative_to(root).parts
+    )):
         case = tmp_path / f"case {index} with spaces"
         case.mkdir()
         launcher = case / "allrun.sh"
@@ -348,7 +352,7 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
                 for physics in ("vortex", "dipole", "merging")
                 for arguments in (
                     ["setup.py", physics, "CS"],
-                    ["assets/rwm_ensemble.py", physics, "--number-of-realizations"],
+                    ["setup.py", physics, "RWM"],
                     ["setup.py", physics, "DVH"],
                     ["setup.py", physics, "GBD"],
                 )

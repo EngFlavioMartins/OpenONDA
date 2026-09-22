@@ -36,6 +36,8 @@ import h5py
 from scipy import signal, stats
 from scipy.special import expi
 
+from source.solution_layout import vpm_backup_files
+
 # -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/lamb_oseen_vortex/
@@ -1638,7 +1640,7 @@ def surface_plot_tiles(
     return tiles, comparison_time
 
 
-STEP_RE = re.compile(r"_(\d{6})\.h5$")
+STEP_RE = re.compile(r"_(\d{6,})\.h5$")
 PHYSICS_CASES = ("vortex", "dipole", "merging")
 MINIMUM_ENSEMBLE_SIZE = 4
 CONFIDENCE_LEVEL = 0.95
@@ -1675,7 +1677,7 @@ class DiagnosticState:
 
 def _backup_map(folder: Path) -> dict[int, Path]:
     result = {}
-    for path in sorted(folder.glob("*.h5")):
+    for path in vpm_backup_files(folder):
         match = STEP_RE.search(path.name)
         if match:
             result[int(match.group(1))] = path

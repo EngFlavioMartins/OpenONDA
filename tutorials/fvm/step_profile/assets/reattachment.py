@@ -28,6 +28,12 @@ def reattachment_location(fields, step_height):
     return float(x_re / step_height), float(np.min(u))
 
 
+def history_row(fields, step_height):
+    """Evaluate one accepted state, including a restored backup."""
+    position, velocity = reattachment_location(fields, step_height)
+    return [fields.time, position, velocity, fields.max_continuity_error, fields.max_courant_number]
+
+
 def write_solution_tables(fields, solution_dir, history, step_height):
     """Write the cell fields and the reattachment/health history."""
     os.makedirs(solution_dir, exist_ok=True)
@@ -61,6 +67,8 @@ def write_solution_tables(fields, solution_dir, history, step_height):
                 ]
             )
 
+    if history is None:
+        return
     history_path = os.path.join(solution_dir, "reattachment_history.csv")
     with open(history_path, "w", newline="") as stream:
         writer = csv.writer(stream)

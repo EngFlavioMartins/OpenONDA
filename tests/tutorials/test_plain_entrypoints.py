@@ -37,6 +37,12 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
     )
     for family in ("fvm", "coupled_fvm_vpm"):
         for path in (root / family).rglob("*"):
+            if "study_results" in path.relative_to(root).parts:
+                continue
+            # Campaign orchestrators are research tools, outside the direct
+            # tutorial setup/launcher learning surface checked here.
+            if path.name in {"run_campaign.py", "run_pipeline.py", "run_sensitivity.py"}:
+                continue
             if path.suffix not in (".py", ".sh"):
                 continue
             text = path.read_text()
@@ -136,7 +142,10 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         "raise SystemExit(int(os.environ['FAIL']))\n"
     )
     python.chmod(0o755)
-    for i, original in enumerate(sorted(root.rglob("all*.sh"))):
+    for i, original in enumerate(sorted(
+        path for path in root.rglob("all*.sh")
+        if "study_results" not in path.relative_to(root).parts
+    )):
         if original.name == "allclean.sh":
             continue
         case = tmp_path / f"case {i}"

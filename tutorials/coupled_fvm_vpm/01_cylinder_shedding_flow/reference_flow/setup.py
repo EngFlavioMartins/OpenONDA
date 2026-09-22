@@ -7,8 +7,11 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
+from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
 
 # Physical problem
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = 1.0
 DENSITY = 1.0
@@ -16,7 +19,7 @@ REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
 
 # Domain and mesh refinement
-SPAN = 0.25
+SPAN = DEFAULT_CYLINDER_CASE.resolved_span
 DOMAIN = (-8.0, 24.0, -10.0, 10.0, -0.5 * SPAN, 0.5 * SPAN)
 BACKGROUND_CELL_SIZE_RATIO = 16.0
 NEAR_WAKE_CELL_SIZE_RATIO = 2.0
@@ -27,7 +30,7 @@ WAKE = (-2.5, 12.0, -2.5, 2.5)
 
 # Time, output and sampling
 CORES = 6
-END_TIME = 80.0
+END_TIME = DEFAULT_CYLINDER_CASE.reference_end_time
 TIME_STEP_SIZE = 0.001
 MAXIMUM_TIME_STEP_SIZE = 0.01
 MAXIMUM_COURANT_NUMBER = 0.7
@@ -40,7 +43,14 @@ CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
 
 
-def create_solver(name: str, h: float) -> fvm.FVMSolver:
+def create_solver(
+    name: str,
+    h: float,
+    *,
+    output_root: Path | None = None,
+    end_time: float | None = None,
+    cores: int | None = None,
+) -> fvm.FVMSolver:
     refinement_request = 4.0 * h / 3.0
     source_half_span = 16.0 * refinement_request
     span_layers = max(4, math.ceil(SPAN / h))
@@ -83,11 +93,12 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
     )
 
     setup = fvm.FVMSetup(
+        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True),
         case_name=name,
-        cores=CORES,
+        cores=CORES if cores is None else cores,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
-            end_time=END_TIME,
+            end_time=END_TIME if end_time is None else end_time,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL),
             adjustment=fvm.MaximumCourantTimeStep(
                 maximum=MAXIMUM_COURANT_NUMBER,
@@ -125,6 +136,22 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
                 file_name="centreline",
                 schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
             ),
+            *(
+                fvm.LineSampler(
+                    start=[1.0, -1.0, z],
+                    end=[1.0, 1.0, z],
+                    spacing=PROFILE_SPACING,
+                    k=12,
+                    reconstruction="affine",
+                    file_name=name,
+                    schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
+                )
+                for name, z in (
+                    ("span_lower", -SPAN / 4),
+                    ("span_middle", 0.0),
+                    ("span_upper", SPAN / 4),
+                )
+            ),
         ),
         transport=fvm.TransportConfig(
             density=DENSITY,
@@ -142,11 +169,12 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         ],
         initial_velocity=VELOCITY,
     )
+    artifact_root = CASE_DIR if output_root is None else Path(output_root)
     return fvm.create_fvm_solver(
         setup,
-        case_dir=CASE_DIR,
-        solution_dir=CASE_DIR / "solution" / name,
-        samples_dir=CASE_DIR / "samples" / name,
+        case_dir=artifact_root,
+        solution_dir=artifact_root / "solution" / name,
+        samples_dir=artifact_root / "samples" / name,
         mesh=mesh,
     )
 
@@ -158,7 +186,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     with create_solver(arguments.name, arguments.h) as solver:
-        solver.run()
+        solver.run(start_from=START_FROM)
         fvm.update_grid_study(solver, arguments.h, profiles=("centreline",))
 
 

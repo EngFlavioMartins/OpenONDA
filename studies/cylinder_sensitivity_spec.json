@@ -1,0 +1,92 @@
+{
+  "schema": "openonda-cylinder-sensitivity/2",
+  "case": {
+    "reynolds_number": 150.0,
+    "resolved_span": 0.96,
+    "baseline_study_h": 0.08,
+    "baseline_particle_spacing_ratio": 1.0,
+    "baseline_particle_spacing": 0.08,
+    "production_horizon": 100.0,
+    "statistics_window": [40.0, 100.0],
+    "fixed_interface_iterations": 3,
+    "fixed_interface_tolerances": true
+  },
+  "factors": [
+    {
+      "name": "particle_spacing_ratio",
+      "parameter": "particle_spacing_ratio",
+      "levels": [1.25, 1.5],
+      "response": ["mean_drag", "rms_lift", "strouhal", "particle_count", "vpm_time"],
+      "guard": "hold_hxy_span_dz_exchange_dt_and_interface_controls_fixed; baseline_and_span_variants_use_particle_spacing_ratio_1.0"
+    },
+    {
+      "name": "core_radius_ratio",
+      "parameter": "core_radius_ratio",
+      "levels": [0.8, 1.2],
+      "response": ["mean_drag", "rms_lift", "strouhal", "particle_count", "vpm_time"],
+      "guard": "hold_mesh_particle_spacing_and_interface_controls_fixed"
+    },
+    {
+      "name": "blend_width_ratio",
+      "parameter": "blend_width_ratio",
+      "levels": [4.0, 7.0],
+      "response": ["mean_drag", "rms_lift", "strouhal", "interface_residual", "transfer_time"],
+      "guard": "validate_blend_and_release_width_order_and_hold_interface_cycles_fixed"
+    },
+    {
+      "name": "release_width_ratio",
+      "parameter": "release_width_ratio",
+      "levels": [1.0, 3.0],
+      "response": ["mean_drag", "rms_lift", "strouhal", "interface_residual", "renewal_count"],
+      "guard": "release_width_must_remain_below_blend_width"
+    },
+    {
+      "name": "transfer_amplification_cap",
+      "parameter": "transfer_amplification_cap",
+      "levels": [1.4, 2.2],
+      "response": ["mean_drag", "rms_lift", "strouhal", "transfer_time", "amplification_events"],
+      "guard": "reject_nonfinite_or_unbounded_transfer_diagnostics"
+    },
+    {
+      "name": "exchange_clock",
+      "parameter": "exchange_dt",
+      "levels": [0.02, 0.08],
+      "response": ["mean_drag", "rms_lift", "strouhal", "exchange_time", "interface_residual"],
+      "guard": "explicit_temporal_factor_retain_integer_fvm_substep_and_common_physical_window"
+    },
+    {
+      "name": "resolved_span",
+      "parameter": "span",
+      "levels": [0.48, 1.92],
+      "response": ["mean_drag", "rms_lift", "strouhal", "span_profile_error", "particle_count"],
+      "guard": "regenerate_slab_planes_transfer_box_and_spanwise_perturbation_for_each_span"
+    },
+    {
+      "name": "spanwise_spacing",
+      "parameter": "dz",
+      "levels": [0.04, 0.16],
+      "response": ["mean_drag", "rms_lift", "strouhal", "span_profile_error", "fvm_time"],
+      "guard": "quantize_to_an_integer_number_of_physical_slab_layers"
+    }
+  ],
+  "excluded_factors": [
+    "transfer_vorticity_cutoff",
+    "interface_iterations",
+    "interface_cycle_reduction"
+  ],
+  "design": {
+    "screening": "one_factor_at_a_time_after_common_bounded_pilot",
+    "screen_clock": "max_coupling_steps is defined at exchange_dt=0.04; derive integer steps for each exchange clock and compare seconds per physical time",
+    "full_case_count": "17 independent cases plus at most one selected interaction",
+    "interaction": "validate each candidate pair with build_case before scheduling; record rejected body-authority combinations and try the next pair",
+    "production": "repeat baseline and selected variants through the complete 100 s window",
+    "validity": [
+      "identical_reynolds_number_and_statistics_window",
+      "finite_force_interface_and_performance_histories",
+      "complete_native_backup_or_complete_horizon",
+      "reference_grid_selection_is_explicit_and_gci_valid",
+      "report_per_case_wall_budget_and_cumulative_resume_cost"
+    ],
+    "qualification_scope": "Sensitivity results do not replace independent reference, temporal, domain, span, or mesh qualification."
+  }
+}

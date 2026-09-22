@@ -161,6 +161,8 @@ class CouplerSetup:
     """Maximum fixed-predictor FVM/renewal sweeps; one keeps explicit exchange.
     Iteration requires mixed vorticity boundaries, buffered M4 renewal, no
     consistency band, and FVM output schedules aligned with coupling times."""
+    interface_acceleration: Literal["none", "aitken"] = "none"
+    """Experimental safeguarded trace acceleration; does not relax convergence gates."""
     interface_normal_tolerance: float = 1.0e-6
     """Area-weighted RMS normal-velocity residual tolerance in m/s."""
     interface_gradient_tolerance: float = 1.0e-6
@@ -176,6 +178,10 @@ class CouplerSetup:
             or self.interface_iterations < 1
         ):
             raise ValueError("interface_iterations must be a positive integer")
+        if self.interface_acceleration not in {"none", "aitken"}:
+            raise ValueError("interface_acceleration must be 'none' or 'aitken'")
+        if self.interface_acceleration != "none" and self.interface_iterations < 3:
+            raise ValueError("Interface acceleration requires at least three interface sweeps")
         for value in (self.interface_normal_tolerance, self.interface_gradient_tolerance):
             if not np.isfinite(value) or value <= 0.0:
                 raise ValueError("Interface tolerances must be finite and positive")
@@ -354,6 +360,7 @@ class CouplerSetup:
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "fvm_consistency_width": self.fvm_consistency_width,
                 "interface_iterations": self.interface_iterations,
+                "interface_acceleration": self.interface_acceleration,
                 "interface_normal_tolerance": self.interface_normal_tolerance,
                 "interface_gradient_tolerance": self.interface_gradient_tolerance,
                 "transfer_method": self.transfer_method,

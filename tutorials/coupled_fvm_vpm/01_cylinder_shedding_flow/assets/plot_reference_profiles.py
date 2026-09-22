@@ -5,6 +5,7 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import trapezoid
 
 from openonda.plotting import (
     CM,
@@ -24,7 +25,8 @@ def main() -> None:
     parser.add_argument("--format", choices=("png", "pdf"), default="png")
     arguments = parser.parse_args()
 
-    reference_paths = tuple(data.REFERENCE / f"transverse_x{x}.csv" for x in (1, 2, 4))
+    reference = data.reference_directory()
+    reference_paths = tuple(reference / f"transverse_x{x}.csv" for x in (1, 2, 4))
     vpm_paths = tuple(data.CASE_DIR / "samples" / f"vpm_transverse_x{x}.csv" for x in (1, 2, 4))
     fvm_path = data.CASE_DIR / "samples" / "fvm_transverse_x1.csv"
     time = data.latest_common_profile_time((*reference_paths, *vpm_paths, fvm_path))
@@ -70,7 +72,7 @@ def main() -> None:
                 expected = np.interp(y, reference.position_y, reference[velocity])
                 difference = actual - expected
                 errors[f"{label.lower().replace(' ', '_')}_x{x_position}_{velocity}"] = {
-                    "rms": float(np.sqrt(np.trapezoid(difference**2, y) / (y[-1] - y[0]))),
+                    "rms": float(np.sqrt(trapezoid(difference**2, y) / (y[-1] - y[0]))),
                     "maximum": float(np.abs(difference).max()),
                 }
             axis.grid(alpha=0.22)
@@ -90,7 +92,7 @@ def main() -> None:
     )
     data.write_json(
         "reference_profile_errors.json",
-        {"reference": "fine", "time": time, "errors": errors},
+        {"reference": reference.name, "time": time, "errors": errors},
     )
     centered_subplots_adjust(
         figure,

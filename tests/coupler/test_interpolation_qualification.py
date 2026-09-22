@@ -76,3 +76,25 @@ def test_interpolation_is_affine_exact_and_second_order_on_graded_meshes(record_
 
     assert affine_error < 2.0e-15
     assert np.all(orders > 1.8), (errors, orders)
+
+
+def test_prepared_trace_retains_geometry_but_uses_current_iterate():
+    """Rollback/renewal may change every donor value without moving the mesh."""
+    rng = np.random.default_rng(178)
+    donors = rng.uniform(-1.0, 1.0, (60, 3))
+    targets = rng.uniform(-0.8, 0.8, (18, 3))
+    original_targets = targets.copy()
+    interpolation = FVMVelocityInterpolator(donors, cKDTree(donors))
+    trace = interpolation.prepare(targets)
+    targets[:] = 42.0
+    for shift in (0.0, 0.7, -1.3):
+        values, gradients = _quadratic_velocity(donors)
+        values += shift
+        expected = interpolation.sample(original_targets, values, gradients)
+        np.testing.assert_array_equal(trace.sample(values, gradients), expected)
+    # Transient queries can evict the original hash entry, but not the plan.
+    for _ in range(8):
+        interpolation.prepare(rng.uniform(-1, 1, (4, 3)))
+    np.testing.assert_array_equal(trace.sample(values, gradients), expected)
+    assert not trace.position.flags.writeable
+    assert not trace.weights.flags.writeable
