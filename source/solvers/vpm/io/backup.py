@@ -694,6 +694,13 @@ class _BackupIO:
 
             n_particles_total = _read_particle_count(solver_group)
             if n_particles_total == 0:
+                if stabilization is not None:
+                    stabilization.reference_vortex_strength = _read_dataset(
+                        particles_group, "filament_reference_vortex_strength", required=False
+                    )
+                    stabilization.reference_lengths = _read_dataset(
+                        particles_group, "filament_reference_length", required=False
+                    )
                 return
 
             position = _read_dataset(particles_group, "position")
@@ -766,9 +773,6 @@ class _BackupIO:
                     saved_reference_length,
                     dtype=np.float64,
                 )
-            elif stabilization is not None and n_particles_total == 0:
-                stabilization.reference_vortex_strength = None
-                stabilization.reference_lengths = None
             elif solver.stabilization_config.filament_refinement.enabled:
                 references = getattr(
                     stabilization,
