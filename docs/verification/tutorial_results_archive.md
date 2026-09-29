@@ -37,9 +37,9 @@ remain stored; plots select accepted history where their validation requires it.
 
 ## Coverage and verification
 
-The nine frozen bundles contain 4,550 files: 6.56 GB before compression and
-4.82 GB stored in LFS. Their Git pointers total 1,202 bytes; inspectable checksum
-manifests are tracked separately. Sizes below use decimal MB.
+The eleven frozen bundles contain 4,588 files: 6,573,479,884 bytes before
+compression and 4,825,176,993 bytes stored in LFS. Git tracks small LFS pointers
+and inspectable checksum manifests. Sizes below use decimal MB.
 
 | Case | Archive | Scientific status |
 | --- | ---: | --- |
@@ -52,6 +52,8 @@ manifests are tracked separately. Sizes below use decimal MB.
 | Quadcopter | 32.8 MB | Partial history ending on a strain health check |
 | Coupled cube and reference | 153.2 MB | 88 matched states through 22 s; forces through 22.15 s |
 | Taylor–Green | 0.1 MB | Default run completed to 0.05 s |
+| Boundary layer | 1.4 MB | Default run completed to 8 s; Blasius errors remain above targets |
+| Step profile | 0.9 MB | Default run completed to 12 s; reattachment 3.59h, not grid-qualified |
 
 Archive provenance identifies the code revision used when packaging; original run
 configuration and state remain in the exact saved metadata/checkpoints. Packaging
@@ -62,25 +64,35 @@ explicitly partial snapshots, not claims that the requested final time was reach
 The vortex-ring, interaction and quadcopter health-stop states retain that status.
 Missing production results are not replaced by synthetic data.
 
-The installed wheel restored all nine bundles into a separate disk-backed
-workspace, checking all 4,550 file hashes. The installed archive implementation
-matches the source byte-for-byte. The 62-test installed-package/tutorial suite
-passed; the final archive suite passes 23 tests, including sharding, corruption,
-local-run preservation, and removal of obsolete archive parts. The bounded
-solver-policy audit also passed 41 wall-retry, backend and restart tests.
+The installed wheel restored the original nine bundles into a separate
+disk-backed workspace and verified every member hash. The later delta-wing
+archive repair retains every existing file unchanged and adds three genuine
+native fields required by its PVD collection. Both archive creation and
+restoration now reject missing VTK dependencies. The current combined archive,
+launcher, input-reader and thesis-style regression suite passes 99 tests.
 
-The relocated vortex-ring launcher completed with ten figures. Cube validation
-checked all 88 cached states; all four figure families rendered at the final
-matched state at their normal 400 DPI. Full cube rendering produces hundreds of
-figures and was not run to completion. Other relocated suites are recorded as
-they finish; interrupted runs are not counted as successful verification.
+Complete relocated plotting launchers have passed for vortex ring (ten figures),
+vortex interactions (four), quadcopter (three), flat plate (seven analytical
+figures and its ParaView scene), Taylor–Green (one), and delta wing (five).
+The full coupled-cube launcher returned zero and all 353 PNGs decoded:
+four families of 88 frames plus coupling diagnostics. Its paired cached fields
+cover t=0.25–22 s; raw force histories retain their own sampling times.
+Rendering does not establish statistical convergence of these histories.
 
-After restoration, the complete Taylor–Green, quadcopter and vortex-interaction
-launchers also passed (one, three and four PNGs respectively). Flat plate rendered
-seven analytical figures but its scene command could not discover `pvpython` in
-the restarted verification environment. That rendering dependency remains required;
-the archive's data checks passed. Further plotting checks were stopped after the
-host memory incident below, rather than reported as complete.
+Boundary-layer and step defaults were executed unchanged with the installed
+solver, then archived. Ordinary `allplot.sh` restored them from a fresh Git export
+and reproduced all four original image hashes. Their strict thesis geometry
+checks and visual inspections passed. The boundary-layer comparisons remain
+outside their stated accuracy targets; no scientific acceptance limit changed.
+See [the recorded executions](../../studies/fvm_small_cases_archive_verification_2026-09-29.json).
+
+Rotor plotting generated five analytical figures and a 274-frame GIF whose every
+frame decoded. The final force/field window correction has focused regressions
+and finite real output; its subsequent whole-launcher invocation was interrupted
+at the tool level, so that invocation is not counted as a verified zero exit.
+Lamb–Oseen whole-launcher verification remains in progress. No missing production
+inputs have been fabricated for the remaining FVM, coupled NACA or full cylinder
+studies.
 
 ### Verification memory incident
 
@@ -112,7 +124,7 @@ From that clone, Taylor–Green's unmodified `./allplot.sh` restored its archive
 solution and generated `figures/taylor_green_decay.png` successfully using the
 installed wheel in a normally activated Python 3.11 environment. Imports resolved
 to `site-packages`; no source-path overrides were used. The regenerated figure was
-also visually inspected. Full plotting coverage remains limited as recorded above.
+also visually inspected. Subsequent plotting coverage is recorded above.
 
 ## Implementation checklist
 
@@ -138,9 +150,10 @@ also visually inspected. Full plotting coverage remains limited as recorded abov
 - [x] General wall-correction retry, output reconciliation and backend policy tests pass.
 - [x] Cylinder geometry and prepared interpolation improvements have implementation evidence in the
   [execution report](../../studies/cylinder_execution_report.md).
-- [ ] Qualify the original CUDA DVH/treecode OOM on the affected GPU; CPU/mocked tests do not establish this.
+- [x] Qualify the original CUDA DVH/treecode OOM on the affected GPU: 80,958 particles restored and eight repeated evaluations held at 690 MiB with matching velocities. See [the CUDA record](../../studies/cuda_dvh_restart_2026-09-29.json).
 - [ ] Complete rotor, delta-wing and coupled-cube runs and investigate remaining numerical health stops.
-- [ ] Obtain missing airfoil, boundary-layer, FVM cube, cylinder IBM, step-profile and coupled-NACA results.
+- [x] Obtain and archive genuine completed boundary-layer and step-profile defaults.
+- [ ] Obtain missing airfoil, FVM cube, cylinder IBM and coupled-NACA results.
 - [ ] Complete the Re=150 three-dimensional cylinder grid/span and injection/exchange sensitivity campaign;
   retain the [original numerical plan](../../studies/cylinder_3d_accuracy_performance_plan.md), including
   measured runtime qualification of the finest case against the 12-hour target.

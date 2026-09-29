@@ -8,7 +8,7 @@ items must not be described as complete.
 ## Solver portability and the reported failures
 
 - [x] Canonical and legacy VPM backup discovery, numeric ordering, and RWM member reuse implemented.
-- [ ] Repeat the original completed Lamb–Oseen CS/DVH/GBD/RWM continuation paths with the installed final package.
+- [x] Run the original completed Lamb–Oseen CS/DVH/GBD continuation commands with the installed final package; execute real RWM member discovery and aggregation (coverage below).
 - [x] Restore native FVM, VPM and coupled state from latest backups; initial mode ignores prior state; launchers distinguish cleanup from continuation.
 - [x] Repeat real coupled initial/latest/completed-run execution in serial and on two MPI ranks, exercising both native solver states and sampled output clocks. Standalone installed-package verification is also repeated below.
 - [x] Remove stale particle-capacity values from restart identity where they do not define the numerical model.
@@ -49,7 +49,7 @@ candidates. They are not replaced by this shorter ledger.
 ## Data, every plot, installation and delivery
 
 - [x] Inventory large/numerous samples and preserve approved current data losslessly; leave unreferenced superseded histories local.
-- [x] Commit nine checksum manifests and LFS archives; verify automatic local-clone hydration and every archive hash.
+- [x] Commit eleven checksum manifests and LFS archives; verify local-clone hydration for the original nine and fresh-export restoration for the two new FVM bundles, including every archive hash.
 - [x] Measure temporal reconstruction/spectral sensitivity for all archived delta/rotor panel-loading streams and aggregate forces; report qualified/rejected candidates without deleting data. Evidence: [cadence study](../../studies/loading_cadence_report.md). Final-run cadence certification remains dependent on completed histories.
 - [ ] Ensure every expected tutorial plot/scene/animation has genuine portable inputs and execute every allplot launcher from a clone.
 - [ ] Visually inspect all figure families against the thesis palette, typography and geometry.
@@ -57,7 +57,7 @@ candidates. They are not replaced by this shorter ledger.
 - [x] Recover the original README animation into its tutorial assets and verify its frames/hash.
 - [x] Standardize supported CPython minor version to 3.11 throughout packaging, installation, Conda, documentation and CI.
 - [x] Verify an installed wheel outside the checkout, without source-path overrides, including meshing/FVM/VPM/restart and plotting.
-- [ ] Repeat final wheel installation, package tests and direct tutorial entrypoints after cleanup.
+- [x] Repeat final wheel installation and outside-checkout native solver, restart, plotting and direct-entrypoint verification after cleanup.
 - [ ] Obtain real macOS CI evidence; Linux execution alone does not establish it.
 - [x] Commit completed solver/package/archive work locally; retain unrelated work and generated figures.
 - [x] Commit this final cleanup and its measured evidence. Publishing remains separate from the explicitly local-only archive approval.
@@ -107,3 +107,44 @@ pass. Full initial/latest/completed-run coupled lifecycles pass both serially
 and on two MPI ranks, including particle fields and CSV/PVD sample clocks.
 The serial comparison uses tolerances scaled to float32 particle traces and
 physical flow units; solver tolerances were not changed.
+
+Native RWM aggregation was rerun from the original saved states in isolated
+output directories: all 16 vortex members across all 53 checkpoints, and all
+28 dipole/14 merging members at steps 0, 468 and 927. All rebuilt fields and
+jackknife diagnostics completed; sampled maximum relative errors were 6.735%,
+6.801% and 7.010%, respectively. The latter two are bounded regression checks,
+not full-history error maxima. See [the execution record](../../studies/rwm_aggregation_verification_2026-09-29.json).
+
+The final wheel built from commit `048a77cf` passed
+`python -I -m openonda.verify_install --require-site-packages`. Native FVM/VPM,
+Cartesian meshing, installed tutorial resources, direct commands and rendering
+completed. Its SHA-256 is
+`41570e4b2e2caa97dc2cee14365d6aac4646fef9baba2d37ffc7315288d7082d`.
+Completed CS, DVH and GBD tutorial commands each returned success at their saved
+step 927 / time 29.973 s without extending the solution or allocating induction
+work for an already completed run.
+
+## Additional execution and archive closure
+
+The shared mixed-boundary FVM correction passed the genuine 12,642-cell IBM
+case to t=0.6 s, beyond its original t=0.15546 s failure; serial and two-rank
+projection regressions passed. Completed unchanged boundary-layer and step
+defaults were archived losslessly. Their ordinary plotting launchers restored
+all data from a fresh Git export and reproduced the four original image hashes.
+The boundary-layer errors remain above their stated targets; a passing plot is
+not an accuracy qualification. See the
+[small-case evidence](../../studies/fvm_small_cases_archive_verification_2026-09-29.json).
+
+The complete coupled-cube plotting launcher returned zero; all 353 PNGs decoded
+successfully. The four time-dependent families each contain 88 frames through
+t=22 s, plus coupling diagnostics. Raw force histories keep their independent
+sampling clocks. See the
+[cube execution record](../../studies/cube_archive_plot_verification_2026-09-29.json).
+The repaired delta archive also passed its complete plotting launcher from a
+fresh restoration, with all five figure families inspected.
+
+Native refinement tests exposed and fixed empty-wake lineage initialization,
+first-emission moment capture, and restoration from a populated state to an
+empty initial checkpoint. These are shared solver fixes, not changes to health
+limits. The clean CUDA quadcopter qualification remains in progress; passing
+these native lifecycle tests alone does not establish full-run stability.

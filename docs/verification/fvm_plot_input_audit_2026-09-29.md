@@ -1,8 +1,9 @@
 # Remaining FVM plot inputs — 29 September 2026
 
-The local airfoil, boundary-layer, standalone cube, cylinder-IBM and step
-tutorials have no `solution/` or `samples/` trees. None has a results archive.
-Their plot inputs must come from genuine runs of those cases. Existing coupled
+The airfoil, standalone cube and cylinder-IBM tutorials still need completed
+default runs and portable result archives. Boundary-layer and step now have
+genuine completed default runs, committed archives, and successful plotting
+from a fresh Git export. Existing coupled
 cube and VPM archives describe different cases and cannot replace them.
 Taylor–Green now has a genuine archived default 24×24, ten-step history through
 t=0.05; its completion and clone plotting evidence are tracked separately.
@@ -36,9 +37,8 @@ the 16×16 square hole. Airfoil uses a finite-span STL and graded Cartesian
 refinement down to .03125, so assigning it a rectangular 2D cell count would
 be misleading.
 
-No matching completed default-case runtime measurements were found in the
-existing verification reports. Boundary layer and step are the smallest first
-candidates. IBM and cube have thousands of steps; airfoil's actual mesh size
+Boundary layer completed in 232.7 s including invocation overhead; step completed
+in 57.7 s on this loaded host. IBM and cube have thousands of steps; airfoil's actual mesh size
 must be measured before quoting runtime or memory. Current cylinder benchmark
 timings belong to different meshes and physical models and do not predict
 these cases. The five cases require 56 scheduled field states in total plus
@@ -48,10 +48,10 @@ of scientific arrays per cell this is about 65 MB before geometry, additional
 arrays and encoding. This is a storage illustration, not a measured archive
 size or upper bound.
 
-## Prepared isolated execution
+## Isolated execution
 
-The ignored `build/fvm_plot_completion/run_defaults.py` is prepared but has
-**not been launched**. Run it with the final installed Python environment.
+The ignored `build/fvm_plot_completion/run_defaults.py` has been executed with
+the installed Python environment.
 It materializes each unchanged default tutorial into a new isolated workspace,
 executes `allrun.sh` then `allplot.sh` serially, and records setup hashes,
 commands, return codes, elapsed wall time and resulting bytes in `summary.json`.
@@ -59,11 +59,25 @@ All command output goes to disk. A failed simulation skips that case's plots
 and retains evidence; the script continues to the next case and returns failure
 if any case is incomplete. It changes no physical parameters or health limits.
 
-Successful isolated execution would supply genuine inputs and launcher evidence.
-Portable archival, fresh-clone restoration and plotting, and visual review of
-each resulting figure are still required to close the original every-allplot
-request. Existing active workloads must be coordinated before launching this
-sequential batch.
+The first IBM execution exposed inconsistent mixed-boundary branch selection
+during pressure correction. The shared FVM fix passed the unchanged 12,642-cell
+case through t=0.6 s, beyond its original t=0.15546 s failure. This is a bounded
+regression, not completion of its 60 s horizon. See the
+[projection audit](../../studies/fvm_ibm_projection_audit.md).
+
+A subsequent full IBM/cube/airfoil batch was deliberately interrupted during IBM
+startup to avoid overlapping memory peaks with existing user simulations and
+the CUDA quadcopter qualification. It produced no completed result archive.
+The user simulation trees were untouched. Remaining full cases must run
+sequentially with enough memory available.
+
+Boundary-layer and step were rerun unchanged using the wheel exported from
+`91b668b5`, containing the shared FVM correction. Both `allrun.sh` and
+`allplot.sh` returned zero. Their lossless bundles were committed in `6851cc89`.
+A fresh Git export with no samples or solution directories restored each bundle
+through ordinary `allplot.sh`; both launchers returned zero and all four image
+hashes matched the original runs. See the
+[execution and archive record](../../studies/fvm_small_cases_archive_verification_2026-09-29.json).
 
 ## Subsequent real boundary-layer and step execution
 
