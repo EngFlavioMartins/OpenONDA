@@ -362,7 +362,7 @@ class TreecodeInduction:
             raise RuntimeError("TreecodeInduction must be bound before target evaluation")
         target_count = int(target_count)
         source_count = int(source_count)
-        tree = self.physics._get_or_create_treecode(max(target_count, source_count), self.theta)
+        tree = self.physics._get_or_create_treecode(source_count, self.theta)
         tree.build(source_position, source_vortex_strength, source_core_radius, source_count)
         self.physics._target_tree_key = None
         target_np = self.physics._download_vector_field(target_position, target_count)

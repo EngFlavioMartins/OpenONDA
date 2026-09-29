@@ -55,7 +55,7 @@ class PhysicsBase:
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
-        max_evaluation_points: int = 200000,
+        max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
     ):
         """
         Initialize physics base with kernel type and field allocation.
@@ -569,11 +569,14 @@ class PhysicsBase:
         if self._target_field_size >= N:
             return
         raise ValueError(
-            f"Target query requires {N} points but max_evaluation_points="
-            f"{self._target_field_size}. Increase Numerics.max_evaluation_points "
-            "before constructing the solver; runtime Taichi field growth is "
-            "disabled because replaced fields retain device memory."
+            f"Target batch requires {N} points but its fixed workspace holds "
+            f"{self._target_field_size}; batch the query before evaluation."
         )
+
+    def _target_batch_slices(self, count: int):
+        """Yield bounded target ranges without growing Taichi fields."""
+        for start in range(0, count, self._target_field_size):
+            yield start, min(start + self._target_field_size, count)
 
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
@@ -769,10 +772,15 @@ class PhysicsBase:
         """
         from .induction.treecode.lbvh import TaichiTreecode
 
-        # Create new treecode only if we need more capacity
+        if required_size > self.max_n_particles:
+            raise ValueError(
+                f"Treecode source count {required_size} exceeds declared "
+                f"max_n_particles={self.max_n_particles}"
+            )
+        # Allocate against the declared source ceiling once. Taichi retains old
+        # fields, so growing a tree after the first build would retain both.
         if self._treecode is None or required_size > self._treecode_max_particles:
-            ceiling = min(int(self.max_n_particles), MAX_N_PARTICLES)
-            alloc_size = max(_TREECODE_MIN_CAPACITY, required_size, ceiling)
+            alloc_size = max(_TREECODE_MIN_CAPACITY, int(self.max_n_particles))
             self._treecode = TaichiTreecode(
                 max_n_particles=alloc_size,
                 max_nodes=2 * alloc_size,
@@ -781,6 +789,7 @@ class PhysicsBase:
                 multipole_order=self.treecode_multipole_order,
                 sort_particle_targets=self.treecode_sort_particle_targets,
                 traversal_block_dim=self.treecode_traversal_block_dim,
+                max_evaluation_points=self.max_evaluation_points,
             )
             self._treecode_max_particles = alloc_size
         else:
@@ -861,6 +870,20 @@ class PhysicsBase:
             dst[i] = src[i]
 
     @ti.kernel
+    def _copy_vec3_offset(self, src: ti.template(), dst: ti.template(), start: ti.i32, N: ti.i32):
+        """Copy one bounded target batch into its field destination."""
+        for i in range(N):
+            dst[start + i] = src[i]
+
+    @ti.kernel
+    def _fill_vec3_from_background(
+        self, dst: ti.template(), background: ti.template(), start: ti.i32, N: ti.i32
+    ):
+        """Fill a field destination when a query has no contributing sources."""
+        for i in range(N):
+            dst[start + i] = background[None]
+
+    @ti.kernel
     def _zero_vec3_field(self, field: ti.template(), N: ti.i32):
         """Zero the first N entries of a vector field."""
         for i in range(N):
@@ -939,7 +962,7 @@ class PhysicsBase:
                 n_particles_total,
             )
 
-    def _ensure_target_tree_current(self, particles, capacity: int, theta: float):
+    def _ensure_target_tree_current(self, particles, theta: float):
         """Return a tree built for the current particle source revision.
 
         ``Particles.state_revision`` changes only when a Biot--Savart source
@@ -948,7 +971,7 @@ class PhysicsBase:
         particle adapters cannot accidentally observe a stale hierarchy.
         """
         N = len(particles)
-        tree = self._get_or_create_treecode(capacity, theta)
+        tree = self._get_or_create_treecode(N, theta)
         revision = getattr(particles, "state_revision", None)
         key = None if revision is None else (id(tree), id(particles), int(revision), int(N))
         if key is None or self._target_tree_key != key:
@@ -1015,7 +1038,7 @@ class PhysicsBase:
         # If zone_mask is provided, use filtered computation
         if zone_mask is not None and N > 0:
             return self._compute_target_velocity_filtered(
-                particles, target_position, zone_mask, include_freestream
+                particles, target_position, zone_mask, include_freestream, target_velocity
             )
 
         # Handle Taichi field input
@@ -1032,73 +1055,85 @@ class PhysicsBase:
         # Handle Numpy input
         M = len(target_position)
         if M == 0:
-            return np.zeros((0, 3), dtype=self.np_dtype)
+            return None if target_velocity is not None else np.zeros((0, 3), dtype=self.np_dtype)
 
         if N == 0:
+            if target_velocity is not None:
+                self._fill_vec3_from_background(target_velocity, background_velocity, 0, M)
+                return None
             result = np.zeros((M, 3), dtype=self.np_dtype)
             if include_freestream:
                 bg = particles.velocity_background_cpu()
                 result += bg
             return result
 
-        # Route arbitrary target fields through the selected induction
-        # backend.  This matters for FMM: the old path silently launched the
-        # direct Taichi M×N kernel even when particle advection used FMM.
         target_backend = getattr(self, "induction", None)
+        from .induction.treecode.evaluator import TreecodeInduction
+
+        if isinstance(target_backend, TreecodeInduction) or (
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+        ):
+            if target_velocity is None:
+                return self.compute_target_velocity_hierarchical(
+                    particles,
+                    target_position,
+                    theta=self.velocity_theta,
+                    include_freestream=include_freestream,
+                )
+            tree = self._ensure_target_tree_current(particles, self.velocity_theta)
+            background = None
+            if include_freestream:
+                bg = particles.velocity_background
+                background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
+            for start, stop in self._target_batch_slices(M):
+                values = tree.compute_target_velocity(target_position[start:stop], background)
+                self._upload_vector_array(values, self.target_velocity)
+                self._copy_vec3_offset(self.target_velocity, target_velocity, start, stop - start)
+            return None
+
+        # Route arbitrary target fields through the selected induction backend.
         if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
-            self._resize_target_fields(M)
-            self._upload_vector_array(target_position, self.target_position, M)
-            target_backend.evaluate_targets(
-                target_position=self.target_position,
-                source_position=particles.position,
-                source_vortex_strength=particles.vortex_strength,
-                source_core_radius=particles.core_radius,
-                target_velocity=self.target_velocity,
-                target_velocity_gradient=None,
-                target_count=M,
-                source_count=N,
-                include_freestream=include_freestream,
-                background_velocity=(
-                    particles.velocity_background if include_freestream else self._zero_velocity
-                ),
+            result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
+            for start, stop in self._target_batch_slices(M):
+                count = stop - start
+                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                target_backend.evaluate_targets(
+                    target_position=self.target_position,
+                    source_position=particles.position,
+                    source_vortex_strength=particles.vortex_strength,
+                    source_core_radius=particles.core_radius,
+                    target_velocity=self.target_velocity,
+                    target_velocity_gradient=None,
+                    target_count=count,
+                    source_count=N,
+                    include_freestream=include_freestream,
+                    background_velocity=background_velocity,
+                )
+                if target_velocity is not None:
+                    self._copy_vec3_offset(self.target_velocity, target_velocity, start, count)
+                elif result is not None:
+                    result[start:stop] = self.extract_target_velocity(count)
+            return result
+
+        result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
+        for start, stop in self._target_batch_slices(M):
+            count = stop - start
+            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.compute_target_velocity_kernel(
+                self.target_position,
+                particles.position,
+                particles.vortex_strength,
+                particles.core_radius,
+                self.target_velocity,
+                background_velocity,
+                count,
+                N,
             )
             if target_velocity is not None:
-                self._copy_vec3(self.target_velocity, target_velocity, M)
-                return None
-            return self.extract_target_velocity(M)
-
-        # Target evaluation must honor the same velocity method selected for
-        # particle advection.  Falling through to the direct M-by-N kernel
-        # here made coupled boundary queries launch almost one billion pair
-        # interactions in a single Vulkan dispatch, tripping integrated-GPU
-        # watchdogs even though particle self-evaluation used the treecode.
-        if self.velocity_method == "TREECODE":
-            return self.compute_target_velocity_hierarchical(
-                particles,
-                target_position,
-                theta=self.velocity_theta,
-                include_freestream=include_freestream,
-            )
-
-        # Resize target fields if needed
-        self._resize_target_fields(M)
-
-        # Copy target position to GPU through fixed-shape external buffers.
-        self._upload_vector_array(target_position, self.target_position, M)
-
-        # Compute velocity at targets
-        self.compute_target_velocity_kernel(
-            self.target_position,
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            self.target_velocity,
-            background_velocity,
-            M,
-            N,
-        )
-
-        return self.extract_target_velocity(M)
+                self._copy_vec3_offset(self.target_velocity, target_velocity, start, count)
+            elif result is not None:
+                result[start:stop] = self.extract_target_velocity(count)
+        return result
 
     def compute_transport_target_velocity(
         self,
@@ -1143,6 +1178,21 @@ class PhysicsBase:
             )
         if not len(targets):
             return np.zeros((0, 3), dtype=self.np_dtype)
+        if len(targets) > self._target_field_size:
+            return np.concatenate(
+                [
+                    self.compute_transport_target_velocity(
+                        particles,
+                        targets[start:stop],
+                        target_core_radius
+                        if np.ndim(target_core_radius) == 0
+                        else radii[start:stop],
+                        include_freestream=include_freestream,
+                        use_induction_backend=use_induction_backend,
+                    )
+                    for start, stop in self._target_batch_slices(len(targets))
+                ]
+            )
         self._resize_target_fields(len(targets))
         if not hasattr(self, "_transport_target_core"):
             self._transport_target_core = ti.field(
@@ -1269,6 +1319,17 @@ class PhysicsBase:
     ):
         """Handle velocity computation when target_position is a Taichi field."""
         M = target_position.shape[0]
+        if self._target_field_size < M:
+            positions = self._download_vector_field(target_position, M)
+            result = self.compute_target_velocity(
+                particles,
+                positions,
+                include_freestream=include_freestream,
+            )
+            if target_velocity is not None:
+                self._upload_vector_array(result, target_velocity, M)
+                return None
+            return result
         if N == 0:
             if include_freestream:
                 freestream_velocity = np.array(
@@ -1288,6 +1349,19 @@ class PhysicsBase:
             return np.tile(freestream_velocity, (M, 1))
 
         target_backend = getattr(self, "induction", None)
+        from .induction.treecode.evaluator import TreecodeInduction
+
+        if isinstance(target_backend, TreecodeInduction) or (
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+        ):
+            positions = self._download_vector_field(target_position, M)
+            result = self.compute_target_velocity(
+                particles, positions, include_freestream=include_freestream
+            )
+            if target_velocity is not None:
+                self._upload_vector_array(result, target_velocity, M)
+                return None
+            return result
         if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
             self._resize_target_fields(M)
             out_field = target_velocity if target_velocity is not None else self.target_velocity
@@ -1328,7 +1402,12 @@ class PhysicsBase:
         return None
 
     def _compute_target_velocity_filtered(
-        self, particles, target_position, zone_mask, include_freestream: bool = True
+        self,
+        particles,
+        target_position,
+        zone_mask,
+        include_freestream: bool = True,
+        target_velocity=None,
     ):
         """
         Compute velocity at target position using only selected particles.
@@ -1352,7 +1431,7 @@ class PhysicsBase:
 
         M = len(target_position)
         if M == 0:
-            return np.zeros((0, 3), dtype=self.np_dtype)
+            return None if target_velocity is not None else np.zeros((0, 3), dtype=self.np_dtype)
 
         # Get particle data and filter by zone_mask
         position = particles.position_cpu()
@@ -1368,13 +1447,22 @@ class PhysicsBase:
 
         # If no particles pass the filter, return freestream only
         if N_filtered == 0:
+            if target_velocity is not None:
+                self._fill_vec3_from_background(
+                    target_velocity,
+                    particles.velocity_background if include_freestream else self._zero_velocity,
+                    0,
+                    M,
+                )
+                return None
             if include_freestream:
                 bg = particles.velocity_background_cpu()
-                return np.tile(bg, (M, 1))
-            return np.zeros((M, 3), dtype=self.np_dtype)
+                result = np.tile(bg, (M, 1))
+            else:
+                result = np.zeros((M, 3), dtype=self.np_dtype)
+            return result
 
         # Resize target and filtered fields (cached to prevent memory leak)
-        self._resize_target_fields(M)
         self._resize_filtered_fields(N_filtered)
 
         # Copy filtered data through fixed-shape external buffers.
@@ -1384,42 +1472,46 @@ class PhysicsBase:
         )
         self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)
 
-        # Copy target position to GPU
-        self._upload_vector_array(target_position, self.target_position, M)
-
         # Select background velocity
         background_velocity = (
             particles.velocity_background if include_freestream else self._zero_velocity
         )
 
-        # Compute with filtered particles
+        # Compute with filtered particles in the fixed target workspace.
         backend = getattr(self, "induction", None)
-        if hasattr(backend, "planar_span"):
-            backend.evaluate_targets(
-                target_position=self.target_position,
-                source_position=self._filtered_pos,
-                source_vortex_strength=self._filtered_vortex_strength,
-                source_core_radius=self._filtered_rad,
-                target_velocity=self.target_velocity,
-                target_velocity_gradient=None,
-                target_count=M,
-                source_count=N_filtered,
-                include_freestream=include_freestream,
-                background_velocity=background_velocity,
-            )
-            return self.extract_target_velocity(M)
-        self.compute_target_velocity_kernel(
-            self.target_position,
-            self._filtered_pos,
-            self._filtered_vortex_strength,
-            self._filtered_rad,
-            self.target_velocity,
-            background_velocity,
-            M,
-            N_filtered,
-        )
-
-        return self.extract_target_velocity(M)
+        result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
+        for start, stop in self._target_batch_slices(M):
+            count = stop - start
+            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            if hasattr(backend, "planar_span"):
+                backend.evaluate_targets(
+                    target_position=self.target_position,
+                    source_position=self._filtered_pos,
+                    source_vortex_strength=self._filtered_vortex_strength,
+                    source_core_radius=self._filtered_rad,
+                    target_velocity=self.target_velocity,
+                    target_velocity_gradient=None,
+                    target_count=count,
+                    source_count=N_filtered,
+                    include_freestream=include_freestream,
+                    background_velocity=background_velocity,
+                )
+            else:
+                self.compute_target_velocity_kernel(
+                    self.target_position,
+                    self._filtered_pos,
+                    self._filtered_vortex_strength,
+                    self._filtered_rad,
+                    self.target_velocity,
+                    background_velocity,
+                    count,
+                    N_filtered,
+                )
+            if target_velocity is not None:
+                self._copy_vec3_offset(self.target_velocity, target_velocity, start, count)
+            elif result is not None:
+                result[start:stop] = self.extract_target_velocity(count)
+        return result
 
     def compute_velocities_from_arrays(
         self,
@@ -1465,7 +1557,6 @@ class PhysicsBase:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
         # Resize cached Taichi fields (grow-only, no GC leak)
-        self._resize_target_fields(M)
         self._resize_filtered_fields(N)
 
         # Upload source data to GPU through fixed-shape external buffers.
@@ -1473,37 +1564,38 @@ class PhysicsBase:
         self._upload_vector_array(source_vortex_strength, self._filtered_vortex_strength, N)
         self._upload_scalar_array(source_core_radius, self._filtered_rad, N)
 
-        # Upload target position
-        self._upload_vector_array(target_position, self.target_position, M)
-
-        # Call Taichi kernel (no background velocity)
+        # Call Taichi kernel (no background velocity) in bounded target batches.
         backend = getattr(self, "induction", None)
-        if hasattr(backend, "planar_span"):
-            backend.evaluate_targets(
-                target_position=self.target_position,
-                source_position=self._filtered_pos,
-                source_vortex_strength=self._filtered_vortex_strength,
-                source_core_radius=self._filtered_rad,
-                target_velocity=self.target_velocity,
-                target_velocity_gradient=None,
-                target_count=M,
-                source_count=N,
-                include_freestream=False,
-                background_velocity=self._zero_velocity,
-            )
-            return self.extract_target_velocity(M)
-        self.compute_target_velocity_kernel(
-            self.target_position,
-            self._filtered_pos,
-            self._filtered_vortex_strength,
-            self._filtered_rad,
-            self.target_velocity,
-            self._zero_velocity,
-            M,
-            N,
-        )
-
-        return self.extract_target_velocity(M)
+        result = np.empty((M, 3), dtype=self.np_dtype)
+        for start, stop in self._target_batch_slices(M):
+            count = stop - start
+            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            if hasattr(backend, "planar_span"):
+                backend.evaluate_targets(
+                    target_position=self.target_position,
+                    source_position=self._filtered_pos,
+                    source_vortex_strength=self._filtered_vortex_strength,
+                    source_core_radius=self._filtered_rad,
+                    target_velocity=self.target_velocity,
+                    target_velocity_gradient=None,
+                    target_count=count,
+                    source_count=N,
+                    include_freestream=False,
+                    background_velocity=self._zero_velocity,
+                )
+            else:
+                self.compute_target_velocity_kernel(
+                    self.target_position,
+                    self._filtered_pos,
+                    self._filtered_vortex_strength,
+                    self._filtered_rad,
+                    self.target_velocity,
+                    self._zero_velocity,
+                    count,
+                    N,
+                )
+            result[start:stop] = self.extract_target_velocity(count)
+        return result
 
     def compute_vorticities(self, particles):
         """
@@ -1558,37 +1650,33 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
-        # Resize target fields if needed
-        self._resize_target_fields(M)
-
-        # Copy target position to GPU
-        self._upload_vector_array(target_position, self.target_position, M)
-
         backend = getattr(self, "induction", None)
-        if hasattr(backend, "planar_span"):
-            backend.evaluate_vorticity(
-                self.target_position,
-                particles.position,
-                particles.vortex_strength,
-                particles.core_radius,
-                self.target_vorticity,
-                M,
-                N,
-            )
-            return self._download_vector_field(self.target_vorticity, M)
-
-        # Compute vorticity at targets
-        self.compute_target_vorticity_kernel(
-            self.target_position,
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            self.target_vorticity,
-            M,
-            N,
-        )
-
-        return self._download_vector_field(self.target_vorticity, M)
+        result = np.empty((M, 3), dtype=self.np_dtype)
+        for start, stop in self._target_batch_slices(M):
+            count = stop - start
+            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            if hasattr(backend, "planar_span"):
+                backend.evaluate_vorticity(
+                    self.target_position,
+                    particles.position,
+                    particles.vortex_strength,
+                    particles.core_radius,
+                    self.target_vorticity,
+                    count,
+                    N,
+                )
+            else:
+                self.compute_target_vorticity_kernel(
+                    self.target_position,
+                    particles.position,
+                    particles.vortex_strength,
+                    particles.core_radius,
+                    self.target_vorticity,
+                    count,
+                    N,
+                )
+            result[start:stop] = self._download_vector_field(self.target_vorticity, count)
+        return result
 
     def compute_velocity_gradients(self, particles):
         """
@@ -1636,44 +1724,53 @@ class PhysicsBase:
             return np.zeros((M, 9), dtype=self.np_dtype)
 
         target_backend = getattr(self, "induction", None)
-        if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
-            self._resize_target_fields(M)
-            self._upload_vector_array(target_position, self.target_position, M)
-            target_backend.evaluate_targets(
-                target_position=self.target_position,
-                source_position=particles.position,
-                source_vortex_strength=particles.vortex_strength,
-                source_core_radius=particles.core_radius,
-                target_velocity=None,
-                target_velocity_gradient=self.target_velocity_gradient,
-                target_count=M,
-                source_count=N,
-                include_freestream=False,
-                background_velocity=self._zero_velocity,
+        from .induction.treecode.evaluator import TreecodeInduction
+
+        if isinstance(target_backend, TreecodeInduction) or (
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+        ):
+            return self.compute_target_velocity_gradient_hierarchical(
+                particles, target_position, theta=self.velocity_theta
             )
-            grads = self._download_matrix_field(self.target_velocity_gradient, M)
-            return grads.reshape(M, 9)
+        if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
+            result = np.empty((M, 9), dtype=self.np_dtype)
+            for start, stop in self._target_batch_slices(M):
+                count = stop - start
+                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                target_backend.evaluate_targets(
+                    target_position=self.target_position,
+                    source_position=particles.position,
+                    source_vortex_strength=particles.vortex_strength,
+                    source_core_radius=particles.core_radius,
+                    target_velocity=None,
+                    target_velocity_gradient=self.target_velocity_gradient,
+                    target_count=count,
+                    source_count=N,
+                    include_freestream=False,
+                    background_velocity=self._zero_velocity,
+                )
+                result[start:stop] = self._download_matrix_field(
+                    self.target_velocity_gradient, count
+                ).reshape(-1, 9)
+            return result
 
-        # Resize target fields if needed
-        self._resize_target_fields(M)
-
-        # Copy target position to GPU
-        self._upload_vector_array(target_position, self.target_position, M)
-
-        # Compute velocity gradients at targets
-        self.compute_target_velocity_gradient_kernel(
-            self.target_position,
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            self.target_velocity_gradient,
-            M,
-            N,
-        )
-
-        # Return flattened gradients
-        grads = self._download_matrix_field(self.target_velocity_gradient, M)
-        return grads.reshape(M, 9)
+        result = np.empty((M, 9), dtype=self.np_dtype)
+        for start, stop in self._target_batch_slices(M):
+            count = stop - start
+            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.compute_target_velocity_gradient_kernel(
+                self.target_position,
+                particles.position,
+                particles.vortex_strength,
+                particles.core_radius,
+                self.target_velocity_gradient,
+                count,
+                N,
+            )
+            result[start:stop] = self._download_matrix_field(
+                self.target_velocity_gradient, count
+            ).reshape(-1, 9)
+        return result
 
     def compute_velocities_hierarchical(self, particles, theta: float = 0.5):
         """
@@ -1723,15 +1820,19 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
-        max_size = max(N, M)
-        tree = self._ensure_target_tree_current(particles, max_size, theta)
+        tree = self._ensure_target_tree_current(particles, theta)
 
         background_vel = None
         if include_freestream:
             bg = particles.velocity_background
             background_vel = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
 
-        return tree.compute_target_velocity(target_position, background_vel)
+        return np.concatenate(
+            [
+                tree.compute_target_velocity(target_position[start:stop], background_vel)
+                for start, stop in self._target_batch_slices(M)
+            ]
+        )
 
     def compute_target_velocity_gradient_hierarchical(
         self, particles, target_position: np.ndarray, theta: float = 0.5
@@ -1753,11 +1854,14 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 9), dtype=self.np_dtype)
 
-        max_size = max(N, M)
-        tree = self._ensure_target_tree_current(particles, max_size, theta)
+        tree = self._ensure_target_tree_current(particles, theta)
 
-        grads = tree.compute_target_velocity_gradient(target_position)
-        return grads.reshape(M, 9)
+        return np.concatenate(
+            [
+                tree.compute_target_velocity_gradient(target_position[start:stop]).reshape(-1, 9)
+                for start, stop in self._target_batch_slices(M)
+            ]
+        )
 
     def compute_target_velocity_and_gradients_hierarchical(
         self,
@@ -1784,14 +1888,19 @@ class PhysicsBase:
                 velocity += particles.velocity_background_cpu()
             return velocity, np.zeros((M, 9), dtype=self.np_dtype)
 
-        max_size = max(N, M)
-        tree = self._ensure_target_tree_current(particles, max_size, theta)
+        tree = self._ensure_target_tree_current(particles, theta)
         background = None
         if include_freestream:
             bg = particles.velocity_background
             background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
-        velocity, gradient = tree.compute_target_velocity_and_gradients(target_position, background)
-        return velocity, gradient.reshape(M, 9)
+        chunks = [
+            tree.compute_target_velocity_and_gradients(target_position[start:stop], background)
+            for start, stop in self._target_batch_slices(M)
+        ]
+        return (
+            np.concatenate([velocity for velocity, _gradient in chunks]),
+            np.concatenate([gradient.reshape(-1, 9) for _velocity, gradient in chunks]),
+        )
 
     def compute_target_velocity_gradient_consistent(
         self, particles, target_position: np.ndarray
