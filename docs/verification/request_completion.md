@@ -26,7 +26,7 @@ items must not be described as complete.
 - [x] Audit all tracked tutorial setup files and comments for redundant constants, machine assumptions, incident-specific prose, and unnecessary orchestration.
 - [x] Remove avoidable nonphysical setup arguments and package-bootstrap clutter without breaking editable local assets.
 - [ ] Confirm particle splitting handles core growth/strength conservatively and qualify rotor stability past the reported 7.5 s failure.
-- [ ] Investigate quadcopter strain failure; preserve intentionally unstable comparison cases and label their health stops accurately.
+- [ ] Complete the quadcopter strain-failure qualification and verify full-horizon particle capacity; preserve intentionally unstable comparison cases and label their health stops accurately.
 
 ## Cylinder geometry, accuracy and performance
 
@@ -58,7 +58,7 @@ candidates. They are not replaced by this shorter ledger.
 - [x] Recover the original README animation into its tutorial assets and verify its frames/hash.
 - [x] Standardize supported CPython minor version to 3.11 throughout packaging, installation, Conda, documentation and CI.
 - [x] Verify an installed wheel outside the checkout, without source-path overrides, including meshing/FVM/VPM/restart and plotting.
-- [ ] Rebuild and repeat outside-checkout native solver, restart, plotting and direct-entrypoint verification after the latest source and reference-plotting commits. The [last passing wheel](../../studies/installed_wheel_verification_685c2d8a.json) predates them.
+- [x] Rebuild and repeat outside-checkout native solver, restart, plotting and direct-entrypoint verification after the final allocation, finite-facet and field-plot commits. The [f1deb186 wheel](../../studies/installed_wheel_verification_f1deb186.json) passed the complete verifier and pip check.
 - [ ] Obtain real macOS CI evidence; Linux execution alone does not establish it.
 - [x] Commit completed solver/package/archive work locally; retain unrelated work and generated figures.
 - [ ] Commit the remaining active source changes and final verification evidence. Publishing remains separate from the explicitly local-only archive approval.
@@ -223,10 +223,10 @@ entire field. Seventy-three transfer regressions, native two-rank continuation,
 and all five continuation tests at the unchanged default divergence tolerance
 pass. See the [roundoff analysis](../../studies/coupled_uniform_transfer_roundoff.md).
 
-The airfoil setup's finest spacing now applies to the airfoil surface rather
-than every outer domain plane. A bounded native mesh regression confirms that
-scope. The full default corrected mesh is still running; neither its final cost
-nor full-airfoil plotting is yet qualified.
+The airfoil setup's finest spacing applies to its surface rather than every
+outer domain plane. Its complete 105,508-cell mesh now passes strict native
+validation after finite-facet feature recovery. The flow run and real airfoil
+plotting remain pending; see the [geometry qualification](../../studies/airfoil_mesh_verification_2026-09-29.md).
 
 The NACA 4412 scalar force history now samples every accepted FVM step while
 large field snapshots retain their 0.8 s schedule. Its actual sampler schedule
@@ -283,3 +283,49 @@ two MPI ranks, using the new default AMG pressure solver. Initial, latest,
 completed no-op and initial-reset behavior all passed with native FVM clocks
 and sampled histories checked.
 [Native execution record](../../studies/coupled_installed_amg_lifecycle_2026-09-29.json).
+
+## Final geometry, allocation and plotting corrections
+
+The airfoil finite-feature projection uses connected finite STL facets and their
+actual shared edge segments. It preserves sharp rims without a triangle-count
+criterion or relaxed quality limits. The full retained native airfoil mesh has
+zero interior fluid centres, zero unclosed cell edges and no inverted face
+pyramids. The native two-disjoint-body fixture and ten focused feature tests
+also pass. The raw native meshing stage was reused; this was a complete strict
+finalization and independent revalidation, not a second full remesh.
+
+Hierarchical induction now allocates scratch from the active source count and
+destroys the old owned Taichi tree before growing. The sole public hard particle
+capacity and target-query batching remain intact. Native CPU numerical, target
+and restart checks and small CUDA allocation-growth checks pass. These checks
+do not enable production CUDA FMM, which remains outside its qualified backend
+set. See [allocation evidence](../../studies/vpm_lazy_hierarchical_workspace_2026-09-29.md).
+
+Actual execution of the FVM cube plotting launcher found and corrected a long
+force annotation and two plots that treated native cell data as point data. All
+three figures now render from genuine partial outputs through 25 s, with force
+history through 26.217 s. They were visually inspected; the default 120 s flow
+run is still active. See [the plotting record](../../studies/fvm_cube_partial_plot_verification_2026-09-29.json).
+The same-class audit changed airfoil velocity figures to native section polygons
+and checked the IBM force figure against its complete saved history. The airfoil
+field reader has geometric fixture coverage; genuine flow-output verification
+remains required. See [the association audit](../../studies/fvm_plot_association_audit_2026-09-29.json).
+
+The quadcopter accepted checkpoints show correct child-reference resets and
+continued stretching under the current bisection rule. The capacity
+risk is real: the original emission count alone approaches its declared ceiling.
+Neither increasing capacity arbitrarily nor suppressing splits has been accepted
+as a stability fix. See [the growth audit](../../studies/quadcopter_refinement_growth_audit_2026-09-29.json).
+
+The committed `f1deb186` wheel passed the complete outside-checkout native
+installation verifier and `pip check` in 209.28 seconds. Its exact wheel hash,
+CPython 3.11 requirement, packaged helpers and genuine README GIF are recorded
+in [the final-wheel check](../../studies/installed_wheel_verification_f1deb186.json).
+
+The same installed wheel restored the original 80,958-particle DVH checkpoint
+on the actual CUDA device. Eight repeated evaluations retained one tree of
+capacity 80,958 and matching velocities. NVIDIA process allocation remained
+434 MiB on all eight samples, compared with 690 MiB in the earlier verified
+implementation. This directly exercises the originally reported allocation
+failure; it does not promise that arbitrarily large physical problems fit any
+GPU. See [the native checkpoint record](../../studies/cuda_dvh_restart_f1deb186.json).

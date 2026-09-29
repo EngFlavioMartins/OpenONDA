@@ -1,0 +1,39 @@
+{
+  "source_revision": "f1deb186",
+  "started_utc": "2026-09-29T20:25:32.644697+00:00",
+  "status": "passed",
+  "installed_openonda": "/home/flavio-martins/Projects/OpenONDA/build/wheel-verification-f1deb186/lib/python3.11/site-packages/openonda/__init__.py",
+  "checkpoint_sha256": "6a125559e144d7e2d15e6607565b9bd243645cd02b06d6c08438df483715ab95",
+  "returncode": 0,
+  "wall_seconds": 174.4289212520016,
+  "native_result": {
+    "case": "vortex_dvh",
+    "backend": "CUDA",
+    "checkpoint": "vpm_000927.h5",
+    "checkpoint_sha256": "6a125559e144d7e2d15e6607565b9bd243645cd02b06d6c08438df483715ab95",
+    "restored_step": 927,
+    "restored_time": 29.972999999691,
+    "particles": 80958,
+    "tree_source_capacity": 80958,
+    "evaluations": 8,
+    "process_vram_mib": [
+      434.0,
+      434.0,
+      434.0,
+      434.0,
+      434.0,
+      434.0,
+      434.0,
+      434.0
+    ],
+    "tree_workspaces": 1,
+    "repeated_velocity_agreement": true
+  },
+  "wheel_sha256": "0d6988655da90098b6565a461658d63fb30487f7535998e2d5ea2088fcb6c3d8",
+  "comparison": {
+    "prior_verified_process_vram_mib": 690,
+    "current_process_vram_mib": 434,
+    "decrease_mib": 256,
+    "note": "Same genuine checkpoint and eight-evaluation protocol; process-wide NVIDIA allocation measurement, not a whole-solver speed or universal memory bound."
+  }
+}
