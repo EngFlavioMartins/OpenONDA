@@ -180,14 +180,15 @@ class CylinderSampling:
 def align_cylinder_sampling(
     *, end_time, exchange_dt, fvm_time_step, sample_period, slice_period, output_period
 ) -> CylinderSampling:
-    """Land point samples on the common destination and align volume writes."""
+    """Round physical sampling cadence to exchange steps, preferring finer ties.
+
+    Short runs clamp the interval to their length. Periodic sampling need not
+    land on an off-cadence destination; final-only schedules remain separate.
+    """
     total_exchanges = round(end_time / exchange_dt)
     substeps = round(exchange_dt / fvm_time_step)
     desired_steps = sample_period / exchange_dt
-    sample_steps = min(
-        (step for step in range(1, total_exchanges + 1) if total_exchanges % step == 0),
-        key=lambda step: (abs(step - desired_steps), step),
-    )
+    sample_steps = max(1, min(total_exchanges, math.ceil(desired_steps - 0.5)))
     return CylinderSampling(
         sample_steps=sample_steps,
         fvm_sample_steps=sample_steps * substeps,

@@ -89,7 +89,12 @@ Screen runs use short bounded coupling segments and are not accuracy
 qualifications. Their step budget is defined at the baseline `exchange_dt =
 0.04 s` clock, so a 20-step screen uses 40 steps at `0.02 s` and 10 steps at
 `0.08 s`; runtime comparisons are normalized per physical time. Full runs
-retain the 100 s horizon and common statistics window. An interrupted pipeline
+retain the 100 s horizon and common statistics window. Point sampling uses
+the nearest exchange-step interval, choosing the finer interval for equal
+distances. Short pilots clamp that interval to their duration. Periodic records
+need not include an off-cadence final time: a 100.04 s run still samples through
+100 s for the registered statistics window. Custom windows must be covered by
+actual samples; the postprocessor does not extrapolate beyond them. An interrupted pipeline
 can be continued without cleaning with:
 
 ```bash
