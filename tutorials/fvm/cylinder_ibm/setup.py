@@ -63,6 +63,12 @@ def create_fvm_setup(
         ),
         schemes=schemes,
         linear=linear,
+        samplers=(
+            fvm.IBMForceSampler(
+                reference_velocity=FREESTREAM_VELOCITY,
+                reference_area=DIAMETER * depth,
+            ),
+        ),
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
