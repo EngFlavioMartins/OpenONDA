@@ -83,6 +83,7 @@ def check(directory: Path) -> dict:
             "restored_step": solver.step,
             "restored_time": solver.time,
             "particles": solver.particles.n_particles_total,
+            "tree_source_capacity": solver.physics._treecode.max_n_particles,
             "evaluations": len(samples),
             "process_vram_mib": samples,
             "tree_workspaces": len(tree_ids),

@@ -516,7 +516,7 @@ class SurfaceIndex:
         if point.shape != (3,) or not np.all(np.isfinite(point)):
             raise ValueError("point must contain three finite coordinates")
         v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
-        span = float(np.max(self.triangles.max(axis=(0, 1)) - self.triangles.min(axis=(0, 1))))
+        span = float(np.max(self.surface_upper - self.surface_lower))
         radius = max(self.cell_size, np.finfo(np.float64).eps * max(span, 1.0))
         for _ in range(32):
             candidate_ids = self.candidate_triangles(point - radius, point + radius)

@@ -754,10 +754,7 @@ def validate_wall_vertex_conformance(
     if not np.isfinite(limit) or limit <= 0.0:
         raise MeshValidationError("wall conformance tolerance must be finite and positive")
     index = SurfaceIndex.build(surface_triangles)
-    distances = np.asarray(
-        [index.nearest_point(points[int(vertex_id)])[1] for vertex_id in wall_vertex_ids],
-        dtype=np.float64,
-    )
+    _nearest, distances, _triangle_ids = index.nearest_points(points[wall_vertex_ids])
     maximum = float(distances.max(initial=0.0))
     if maximum > limit:
         worst = int(wall_vertex_ids[int(np.argmax(distances))])
