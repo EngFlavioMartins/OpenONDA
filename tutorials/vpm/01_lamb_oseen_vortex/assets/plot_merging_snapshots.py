@@ -38,9 +38,6 @@ if not __package__:
 from .. import setup
 from ..assets.postprocess import _metadata, load_theme, validate_thesis_figure
 
-load_theme()
-plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
-
 
 @njit(parallel=True, cache=True)
 def sample_velocity(points, position, strength, sigma):
@@ -200,6 +197,8 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=OUT)
     parser.add_argument("--format", choices=("pdf", "png", "both"), default="pdf")
     args = parser.parse_args()
+    load_theme()
+    plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
     args.output_dir.mkdir(parents=True, exist_ok=True)
     run = _metadata(CASE_DIR / "solution/merging_gbd/vpm_metadata.json")
     if not run:

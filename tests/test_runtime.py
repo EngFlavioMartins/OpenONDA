@@ -49,6 +49,7 @@ scipy.linalg.solve(np.eye(3), np.ones(3))
 threadpool_limits(limits=4)
 assert any(p['num_threads'] > 1 for p in threadpool_info())
 runtime._world_size = lambda: 4
+runtime._configure_mpi_exception_reporting = lambda: None
 runtime.RunConfig(cpu_cores=4, parallel_mode='mpi').ensure_runtime('unused.py')
 assert all(p['num_threads'] == 1 for p in threadpool_info()), threadpool_info()
 assert numba.get_num_threads() == 1

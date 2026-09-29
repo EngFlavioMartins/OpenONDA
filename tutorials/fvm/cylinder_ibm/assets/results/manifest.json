@@ -1,0 +1,186 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "285adfe89127f57dafae1883d6be66adafb9d07404ac12fe79dbdcabec3a8ecf",
+  "excluded_superseded": [
+    "samples/restart-branches/before-caduyjlz/ibm_forces_history.csv.superseded",
+    "solution/restart-branches/before-49spnn4l/diagnostics.jsonl.superseded",
+    "solution/restart-branches/before-p6wj9i_b/performance.jsonl.superseded",
+    "solution/restart-branches/run-before-5dr27rm3/fvm_metadata.json"
+  ],
+  "files": [
+    {
+      "path": "samples/ibm_forces_history.csv",
+      "sha256": "7fd14dc4d8b81cb4f697b80d90ee0dae823891fac52973c25ed8133bc4f8aefb",
+      "size": 938372
+    },
+    {
+      "path": "solution/backup",
+      "sha256": "21c3f9759419a810460227e056d7e81876eabeeb8c31f1eb0ac3dc0dd7ab80c6",
+      "size": 1155278
+    },
+    {
+      "path": "solution/diagnostics.jsonl",
+      "sha256": "b8b4aa099f5ecac533527d8a351bcd569cd334be7b1d8af817b7fc1b303f4075",
+      "size": 22658475
+    },
+    {
+      "path": "solution/fvm.log",
+      "sha256": "3fcbdb6c2b618ada7c5aa7084f9608455320b18dca613be967917b6b5072aa60",
+      "size": 4320251
+    },
+    {
+      "path": "solution/fvm.pvd",
+      "sha256": "d8263973480651d3ac573487509937229d83e211ccc58575f2fe781dfbdc604f",
+      "size": 1105
+    },
+    {
+      "path": "solution/fvm/fvm_000000.vtu",
+      "sha256": "e2939e2a567b0c9539991c4cf8da6bea66d0dd56c5351a07af5923d7798b708e",
+      "size": 207370
+    },
+    {
+      "path": "solution/fvm/fvm_000427.vtu",
+      "sha256": "3d9179a418f32aeb25ca7b411df71991e4caa1efea4eff77b06a13880ec190e4",
+      "size": 571320
+    },
+    {
+      "path": "solution/fvm/fvm_000854.vtu",
+      "sha256": "df5e973efab4696981476e2b7397c8ccd5307c06e5b5d813b445d30955cc162f",
+      "size": 567992
+    },
+    {
+      "path": "solution/fvm/fvm_001281.vtu",
+      "sha256": "9d73e5d51f8b6397df4f62569b6edd810ca65ea8f1f57dd62945e1e664170ccd",
+      "size": 567238
+    },
+    {
+      "path": "solution/fvm/fvm_001708.vtu",
+      "sha256": "96055de70ad516ae6ff01567b8365da0af7e3a8df9cb9f25e48c7bbcc6210734",
+      "size": 566959
+    },
+    {
+      "path": "solution/fvm/fvm_002135.vtu",
+      "sha256": "6abe7422db80a68fd9aaa9e11ee7be5bc16ffd4361e3a069b9f9019b7094c39f",
+      "size": 566815
+    },
+    {
+      "path": "solution/fvm/fvm_002562.vtu",
+      "sha256": "e0c2b3b324e4da8506b7543355f7de74cb82fb44ea27aaec66e1ca693beefc4c",
+      "size": 566565
+    },
+    {
+      "path": "solution/fvm/fvm_002989.vtu",
+      "sha256": "2ab89dd88633f328e1fe3d9aa3b4a4108a9b1f00dab1b83262abb5cb06b5a5cd",
+      "size": 566854
+    },
+    {
+      "path": "solution/fvm/fvm_003416.vtu",
+      "sha256": "7db5d8eb1bc2893526ee19e5a8d9209f773f56eb6e2bd8a251455d7f848e52cb",
+      "size": 566954
+    },
+    {
+      "path": "solution/fvm/fvm_003843.vtu",
+      "sha256": "4c774ac2d8ce65c3af5437fcf22e370c1431cba8f285503ee5d6376182c63916",
+      "size": 566934
+    },
+    {
+      "path": "solution/fvm/fvm_004270.vtu",
+      "sha256": "86b197564bc55b8a4e90c9d799fe653d88721033d817be58737c9a5c8da8914c",
+      "size": 566949
+    },
+    {
+      "path": "solution/fvm/fvm_004697.vtu",
+      "sha256": "146fed56670f703bab1182d8d1bd232ec1e315caf2f2d263fb4bd7916d44b9fa",
+      "size": 566977
+    },
+    {
+      "path": "solution/fvm/fvm_005124.vtu",
+      "sha256": "7784670e99a82e85cd80b79f28a9b25616f0f4b26043f3776eb5e9bf81c8bc91",
+      "size": 566887
+    },
+    {
+      "path": "solution/fvm/mesh-backup-gdr5hijp/mesh.npz",
+      "sha256": "0d607980f63ca603c94adeb476498751efcc2d336ee37b89fb3ebb7ea26b8a6c",
+      "size": 541622
+    },
+    {
+      "path": "solution/fvm/mesh-backup-gdr5hijp/mesh.vtu",
+      "sha256": "eb0f647280924a5d392a8c6fa20f59b6a8c40d5b7980a2a36a9f34e35977359c",
+      "size": 205288
+    },
+    {
+      "path": "solution/fvm/mesh.npz",
+      "sha256": "0d607980f63ca603c94adeb476498751efcc2d336ee37b89fb3ebb7ea26b8a6c",
+      "size": 541622
+    },
+    {
+      "path": "solution/fvm/mesh.vtu",
+      "sha256": "eb0f647280924a5d392a8c6fa20f59b6a8c40d5b7980a2a36a9f34e35977359c",
+      "size": 205288
+    },
+    {
+      "path": "solution/fvm_metadata.json",
+      "sha256": "e37d6aafef8a9a7457763afcff0d55f724951224fd1f17b4d2f04cf8446f02d1",
+      "size": 7383
+    },
+    {
+      "path": "solution/ibm_markers.csv",
+      "sha256": "bcd9aa49a165ac652f6b2dc4947d16605f4f659a77aefcf6e6309e10098ae75c",
+      "size": 2445
+    },
+    {
+      "path": "solution/mesher.log",
+      "sha256": "109f222e1efa10ee14a866b2e347860ba774e93b57450041daff4f8dbc197503",
+      "size": 6005
+    },
+    {
+      "path": "solution/performance.jsonl",
+      "sha256": "04713917296bf06e478fa3a7d5952db13d155a083944e51f727fca052f165d23",
+      "size": 32958238
+    }
+  ],
+  "provenance": {
+    "archived_utc": "2026-09-29T18:44:16.009580+00:00",
+    "commands": [
+      {
+        "launcher": "allcontinue.sh",
+        "log": "/home/flavio-martins/Projects/OpenONDA/build/fvm-final-37de66ba/cylinder_ibm-allcontinue.sh.log",
+        "returncode": 0,
+        "wall_seconds": 3693.6868494169976
+      },
+      {
+        "launcher": "allplot.sh",
+        "log": "/home/flavio-martins/Projects/OpenONDA/build/fvm-final-37de66ba/cylinder_ibm-allplot.sh.log",
+        "returncode": 1,
+        "wall_seconds": 31.47873297899787
+      },
+      {
+        "interpreter": "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+        "launcher": "allplot.sh",
+        "log": "/home/flavio-martins/Projects/OpenONDA/build/ibm-allplot-final-e4a47e80.log",
+        "plot_source_commit": "e4a47e80",
+        "returncode": 0,
+        "verification": "Ordinary allplot launcher executed with editable development package; installed fresh-export rerun pending."
+      }
+    ],
+    "continuation": {
+      "initial_source_commit": "06982ac2",
+      "reason": "Verified exact direct-factorization reuse; unchanged numerical model.",
+      "resume_source_commit": "37de66ba",
+      "resume_step": 2135,
+      "resume_time": 25.0
+    },
+    "native_final_state": {
+      "step": 5124,
+      "time": 60.0
+    },
+    "setup_sha256": "2f7bb14abcbf24297f26234219319dc8bdb91d52f8b1edf34f406c2b8ad7c22b",
+    "source_commit": "37de66ba"
+  },
+  "restore_roots": [
+    "samples",
+    "solution"
+  ],
+  "schema_version": 1,
+  "scientific_status": "Completed unchanged default run to t=60 s; full allplot passed. Grid convergence is not established. Mean Cd=1.7681 is inside the reference band, but recirculation length L/D=2.137 exceeds the reference 1.55\u20131.70; this is not accuracy-qualified."
+}
