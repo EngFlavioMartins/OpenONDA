@@ -57,7 +57,7 @@ Archive provenance identifies the code revision used when packaging; original ru
 configuration and state remain in the exact saved metadata/checkpoints. Packaging
 does not retroactively establish an unrecorded simulation source revision.
 
-The active delta-wing and rotor simulations were left running. Their archives are
+The active delta-wing and rotor simulations were left running during capture. Their archives are
 explicitly partial snapshots, not claims that the requested final time was reached.
 The vortex-ring, interaction and quadcopter health-stop states retain that status.
 Missing production results are not replaced by synthetic data.
@@ -74,6 +74,32 @@ checked all 88 cached states; all four figure families rendered at the final
 matched state at their normal 400 DPI. Full cube rendering produces hundreds of
 figures and was not run to completion. Other relocated suites are recorded as
 they finish; interrupted runs are not counted as successful verification.
+
+After restoration, the complete Taylor–Green, quadcopter and vortex-interaction
+launchers also passed (one, three and four PNGs respectively). Flat plate rendered
+seven analytical figures but its scene command could not discover `pvpython` in
+the restarted verification environment. That rendering dependency remains required;
+the archive's data checks passed. Further plotting checks were stopped after the
+host memory incident below, rather than reported as complete.
+
+### Verification memory incident
+
+The kernel recorded a global out-of-memory event on 29 September at 13:37:
+ChatGPT was killed, followed by the rotor solver process (PID 298126). Concurrent
+verification processes and RAM-backed `/tmp` scratch files added avoidable memory
+pressure. The verification environment was moved to disk under the ignored
+`build/` directory, obsolete scratch copies were removed, and remaining plotting
+jobs were stopped. `/tmp` usage fell from about 3.3 GB to 0.5 GB. No user solver
+process was deliberately stopped or restarted.
+
+The rotor's latest surviving native checkpoint is `vpm_001096.h5`, with recorded
+time 6.576 s. The published candidate archive remains the earlier, internally
+consistent 6.552 s snapshot. Future verification on this host must use disk-backed
+scratch space and run serially without competing with production simulations.
+
+Implementation code is committed as `20e9577c`. The nine dataset archives and
+manifests remain staged: automatic approval review requires explicit confirmation
+of their 4.82 GB inclusion before their commit. Nothing has been pushed or uploaded.
 
 ## Implementation checklist
 
