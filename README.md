@@ -120,10 +120,10 @@ openonda tutorial list
 openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
-Generated samples and restart checkpoints are kept with simulation archives,
-outside Git. The clone command above downloads source with shallow history and
-skips optional Git LFS reference documents. Run `git lfs pull` to retrieve those
-documents when LFS access is available.
+Working samples and restart checkpoints remain local. Published result snapshots
+are versioned losslessly through Git LFS under each case's `assets/results`;
+`allplot.sh` restores them in a fresh clone. The pip package contains tutorial
+inputs and scripts; result archives are distributed with the Git repository.
 
 Each case includes its own instructions and input assets. See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 
