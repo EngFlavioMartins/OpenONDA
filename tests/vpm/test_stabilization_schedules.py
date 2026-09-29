@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from source.solvers.vpm.config.divergence_relaxation import DivergenceRelaxationConfig
 from source.solvers.vpm.config.filament_refinement import FilamentRefinementConfig
 from source.solvers.vpm.config.stabilization import StabilizationConfig
 from source.solvers.vpm.stabilization.divergence_relaxation import (
@@ -74,6 +75,39 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
     manager.apply_relaxation()
 
     assert calls == [625]
+
+
+def test_empty_refinement_records_birth_lineage_before_nonempty_moments():
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig(
+        filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1),
+        divergence_relaxation=DivergenceRelaxationConfig.constrained(
+            interval_steps=1, grid_spacing=0.1
+        ),
+    )
+    particles = SimpleNamespace(n_particles_total=0, strength=np.empty((0, 3)))
+    particles.vortex_strength_cpu = lambda: particles.strength
+    particles.particle_volume_cpu = lambda: np.ones(particles.n_particles_total)
+    particles.position_cpu = lambda: np.zeros((particles.n_particles_total, 3))
+    particles.core_radius_cpu = lambda: np.ones(particles.n_particles_total)
+    manager.ctx = SimpleNamespace(particles=particles, state=SimpleNamespace(step=0))
+    manager.reference_vortex_strength = None
+    manager.reference_lengths = None
+    manager.reference_moments = None
+
+    manager.capture_reference_state()
+    manager.apply_filament_refinement()
+    manager.apply_divergence_relaxation()
+    assert manager.reference_vortex_strength.shape == (0,)
+    assert manager.reference_moments is None
+
+    particles.n_particles_total = 1
+    particles.strength = np.array([[0.0, 0.0, 2.0]])
+    manager.on_add(np.array([2.0]), np.ones(1), start=0)
+    particles.strength *= 2
+    manager.capture_reference_state()
+    np.testing.assert_array_equal(manager.reference_vortex_strength, [2.0])
+    np.testing.assert_array_equal(manager.reference_moments[0], [0.0, 0.0, 4.0])
 
 
 @pytest.mark.parametrize("preserve_moments", [False, True])
@@ -410,6 +444,7 @@ def test_filament_refinement_keeps_one_cadence_and_both_strength_criteria(monkey
     )
     state = SimpleNamespace(step=749)
     particles = SimpleNamespace(
+        n_particles_total=1,
         _max_particles=64,
         position_cpu=lambda: np.zeros((1, 3)),
         vortex_strength_cpu=lambda: np.ones((1, 3)),

@@ -683,6 +683,8 @@ class _BackupIO:
                     )
                 if stabilization is not None:
                     stabilization.reference_moments = tuple(row.copy() for row in reference_array)
+            elif stabilization is not None:
+                stabilization.reference_moments = None
 
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
@@ -764,6 +766,9 @@ class _BackupIO:
                     saved_reference_length,
                     dtype=np.float64,
                 )
+            elif stabilization is not None and n_particles_total == 0:
+                stabilization.reference_vortex_strength = None
+                stabilization.reference_lengths = None
             elif solver.stabilization_config.filament_refinement.enabled:
                 references = getattr(
                     stabilization,

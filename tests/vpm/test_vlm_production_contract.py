@@ -1,10 +1,12 @@
 """Physical backup fields and cross-surface wake response on real VPM states."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 from _flat_plate_geometry import create_flat_plate
 import h5py
 import numpy as np
+import pytest
 import pyvista as pv
 
 import openonda.vpm as vpm
@@ -54,6 +56,57 @@ def _case(directory, *, responsive=False):
             ),
         ),
     )
+
+
+@pytest.mark.parametrize("checkpoint_step", [0, 1, 2])
+def test_refinement_initializes_with_first_emitted_wake_and_restarts(tmp_path, checkpoint_step):
+    case = _case(tmp_path)
+    case = replace(
+        case,
+        numerics=replace(
+            case.numerics,
+            stabilization=vpm.StabilizationConfig(
+                filament_refinement=vpm.FilamentRefinementConfig.adaptive(interval_steps=1)
+            ),
+        ),
+    )
+    solver = vpm.VPMSolver(case)
+    try:
+        assert solver.particles.n_particles_total == 0
+        for _ in range(checkpoint_step):
+            solver.advance(defer_output=True)
+        references = solver.stabilization.reference_vortex_strength
+        if checkpoint_step:
+            references = references.copy()
+            assert solver.particles.n_particles_total > 0
+            assert len(references) == solver.particles.n_particles_total
+            assert np.all(references > 0)
+        solver.save_backup()
+        solver.advance(defer_output=True)
+        position = solver.particle_position.copy()
+        strength = solver.particle_vortex_strength.copy()
+        if checkpoint_step == 0:
+            solver.load_backup(str(tmp_path / "solution/vpm/vpm_000000.h5"))
+            assert solver.stabilization.reference_vortex_strength is None
+            assert solver.stabilization.reference_moments is None
+            solver.advance(defer_output=True)
+            np.testing.assert_allclose(solver.particle_position, position, rtol=1e-12, atol=1e-12)
+            np.testing.assert_allclose(
+                solver.particle_vortex_strength, strength, rtol=1e-12, atol=1e-12
+            )
+    finally:
+        solver.close()
+    restored = vpm.VPMSolver(case)
+    try:
+        restored.load_backup(str(tmp_path / f"solution/vpm/vpm_{checkpoint_step:06d}.h5"))
+        np.testing.assert_array_equal(restored.stabilization.reference_vortex_strength, references)
+        restored.advance(defer_output=True)
+        np.testing.assert_allclose(restored.particle_position, position, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(
+            restored.particle_vortex_strength, strength, rtol=1e-12, atol=1e-12
+        )
+    finally:
+        restored.close()
 
 
 def test_coupled_backup_velocity_contains_bound_induction_and_preserves_state(tmp_path):
@@ -296,9 +349,7 @@ def test_coupling_stepper_tracks_device_wake_for_filament_refinement():
         stepper=SimpleNamespace(time=0.25, step=3),
         stabilization=SimpleNamespace(
             reference_vortex_strength=np.ones(3),
-            on_add=lambda magnitudes, volumes, start: added.append(
-                (magnitudes, volumes, start)
-            ),
+            on_add=lambda magnitudes, volumes, start: added.append((magnitudes, volumes, start)),
         ),
     )
 

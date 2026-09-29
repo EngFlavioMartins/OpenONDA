@@ -416,7 +416,7 @@ class StabilizationManager:
     def capture_reference_state(self) -> None:
         """Capture the lineage and moment references the workers relax toward."""
         particles = self.ctx.particles
-        if self.reference_vortex_strength is not None or particles.n_particles_total == 0:
+        if self.reference_vortex_strength is not None and self.reference_moments is not None:
             return
         if not (
             self.config.filament_refinement.enabled or self.config.divergence_relaxation.enabled
@@ -429,8 +429,11 @@ class StabilizationManager:
         particle_volume = particles.particle_volume_cpu()
         magnitude = np.linalg.norm(vortex_strength, axis=1)
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
-        self.reference_vortex_strength = np.maximum(magnitude, floor)
-        self.reference_lengths = np.cbrt(particle_volume)
+        if self.reference_vortex_strength is None:
+            self.reference_vortex_strength = np.maximum(magnitude, floor)
+            self.reference_lengths = np.cbrt(particle_volume)
+        if particles.n_particles_total == 0:
+            return
         moments = gaussian_particle_moments(
             particles.position_cpu(),
             vortex_strength,
@@ -539,7 +542,11 @@ class StabilizationManager:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
         ctx = self.ctx
         cfg = self.config.filament_refinement
-        if not cfg.enabled or ctx.state.step % cfg.interval_steps != 0:
+        if (
+            not cfg.enabled
+            or ctx.state.step % cfg.interval_steps != 0
+            or ctx.particles.n_particles_total == 0
+        ):
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
@@ -632,7 +639,10 @@ class StabilizationManager:
         """Reassign vortex_strength onto the solenoidal subspace of the blob field."""
         ctx = self.ctx
         cfg = self.config.divergence_relaxation
-        if not self._due(cfg.interval_steps, cfg.start_step):
+        if (
+            not self._due(cfg.interval_steps, cfg.start_step)
+            or ctx.particles.n_particles_total == 0
+        ):
             return
 
         from .divergence_relaxation import (
