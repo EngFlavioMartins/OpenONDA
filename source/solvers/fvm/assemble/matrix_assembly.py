@@ -34,6 +34,7 @@ class MatrixAssemblyWorkspace:
     pattern: _CSRPattern
     include_boundaries: bool
     cache_namespace: int = field(default_factory=lambda: next(_WORKSPACE_IDS))
+    direct_factorization: object | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def create(cls, mesh_data, *, include_boundaries: bool = True):

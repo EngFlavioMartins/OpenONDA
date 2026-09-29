@@ -13,7 +13,7 @@ import time
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, spsolve
+from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, splu, spsolve
 
 _ILU_CACHE = {}
 _AMG_CACHE = {}
@@ -22,6 +22,50 @@ _AMG_BUILD_SEED = 0
 _FALLBACK_WARN_COUNT = 0
 LINEAR_VERIFICATION_FACTOR = 10.0
 LINEAR_RESIDUAL_FLOOR = 1.0e-12
+
+
+class _DirectFactorization:
+    """One exact sparse LU with independent snapshots of its matrix coefficients."""
+
+    def __init__(self, matrix, dtype):
+        self.shape = matrix.shape
+        self.matrix_dtype = matrix.dtype
+        self.dtype = dtype
+        self.indptr = matrix.indptr.copy()
+        self.indices = matrix.indices.copy()
+        self.values = matrix.data.copy()
+        self.factor = splu(matrix.tocsc().astype(dtype, copy=False))
+
+    def matches(self, matrix, dtype):
+        return (
+            matrix.shape == self.shape
+            and matrix.dtype == self.matrix_dtype
+            and dtype == self.dtype
+            and np.array_equal(matrix.indptr, self.indptr)
+            and np.array_equal(matrix.indices, self.indices)
+            and np.array_equal(matrix.data, self.values)
+        )
+
+
+def _solve_direct_with_workspace(A, b, workspace):
+    setup_start = time.perf_counter()
+    matrix = A.tocsr(copy=False)
+    dtype = np.result_type(matrix.dtype, np.asarray(b).dtype)
+    if dtype.kind not in "fc":
+        dtype = np.dtype(np.float64)
+    cached = workspace.direct_factorization
+    if cached is None or not cached.matches(matrix, dtype):
+        workspace.direct_factorization = None
+        del cached  # Free the previous LU before allocating its replacement.
+        try:
+            cached = _DirectFactorization(matrix, dtype)
+        except (RuntimeError, ValueError) as error:
+            raise LinearSolveError(f"Sparse direct factorization failed: {error}") from error
+        workspace.direct_factorization = cached
+    setup_seconds = time.perf_counter() - setup_start
+    solve_start = time.perf_counter()
+    solution = cached.factor.solve(np.asarray(b, dtype=dtype))
+    return solution, setup_seconds, time.perf_counter() - solve_start
 
 
 def _emit_warning(log_sink, message, *args) -> None:
@@ -956,6 +1000,7 @@ def solve_linear_system(
     failure_action="raise",
     log_sink=None,
     matrix_values_unchanged=False,
+    direct_workspace=None,
     **kwargs,
 ):
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
@@ -1046,16 +1091,23 @@ def solve_linear_system(
         return (solution, result) if return_info else solution
 
     if method == "spsolve":
-        solve_start = time.perf_counter()
-        solution = spsolve(A, b)
+        if direct_workspace is None:
+            solve_start = time.perf_counter()
+            solution = spsolve(A, b)
+            setup_seconds = 0.0
+            solve_seconds = time.perf_counter() - solve_start
+        else:
+            solution, setup_seconds, solve_seconds = _solve_direct_with_workspace(
+                A, b, direct_workspace
+            )
         return finish(
             solution,
             {
                 "preconditioner": None,
                 "iterations": 1,
                 "reason": "sparse direct solve completed",
-                "setup_seconds": 0.0,
-                "solve_seconds": time.perf_counter() - solve_start,
+                "setup_seconds": setup_seconds,
+                "solve_seconds": solve_seconds,
                 "used_fallback": False,
             },
         )

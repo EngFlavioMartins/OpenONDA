@@ -2094,6 +2094,7 @@ class SIMPLESolver:
         namespace = self._momentum_matrix_workspace.cache_namespace
         clear_linear_solver_caches(("momentum", namespace))
         clear_linear_solver_caches(("kinematic_pressure", namespace))
+        self._momentum_matrix_workspace.direct_factorization = None
 
     def step(
         self,
@@ -2217,6 +2218,7 @@ class SIMPLESolver:
                 else None
             ),
             return_info=True,
+            direct_workspace=self._pressure_matrix_workspace,
         )
 
         # 3. Correct velocity and flux

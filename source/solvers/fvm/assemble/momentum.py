@@ -660,6 +660,7 @@ def solve_momentum_predictor(
             tol=solver_kwargs.get("momentum_tolerance", 1e-4),
             rel_tol=solver_kwargs.get("momentum_relative_tolerance", 0.0),
             return_info=True,
+            direct_workspace=matrix_workspace,
         )
         if X.ndim == 1:
             X = X[:, np.newaxis]
@@ -763,6 +764,7 @@ def solve_momentum_predictor(
             parallel_context=parallel_context,
             partitioned_workspace=partitioned_workspace,
             return_info=True,
+            direct_workspace=matrix_workspace,
             **solver_kwargs,
         )
         solve_diagnostics[comp_name] = {

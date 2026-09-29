@@ -448,6 +448,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         ),
                         matrix_values_unchanged=reuse_pressure_matrix,
                         return_info=True,
+                        direct_workspace=self._pressure_matrix_workspace,
                     )
                     linear_results.append(kinematic_pressure_result)
                     initial_kinematic_pressure_residual = kinematic_pressure_result.initial_residual
