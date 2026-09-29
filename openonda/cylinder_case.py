@@ -119,6 +119,15 @@ def normalize_coupled_overrides(overrides: dict[str, object] | None) -> dict[str
     return normalized
 
 
+def resolve_cylinder_particle_spacing(*, span: float, hxy: float, ratio: float) -> float:
+    """Fit uniform GBD intervals to the slip span with at least six layers."""
+    if min(span, hxy, ratio) <= 0 or not all(math.isfinite(v) for v in (span, hxy, ratio)):
+        raise ValueError(
+            "span, cell spacing and particle spacing ratio must be positive and finite"
+        )
+    return span / max(6, math.ceil(span / (hxy * ratio)))
+
+
 def validate_coupled_geometry(
     *,
     hxy: float,
@@ -395,6 +404,7 @@ __all__ = [
     "is_complete",
     "new_run_directory",
     "normalize_coupled_overrides",
+    "resolve_cylinder_particle_spacing",
     "validate_coupled_geometry",
     "write_complete_marker",
     "write_manifest",

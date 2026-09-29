@@ -19,6 +19,7 @@ import openonda.coupler as coupling
 from openonda.cylinder_case import (
     DEFAULT_CYLINDER_CASE,
     normalize_coupled_overrides,
+    resolve_cylinder_particle_spacing,
     validate_coupled_geometry,
     validate_cylinder_authority,
 )
@@ -313,10 +314,7 @@ def build_case(
     half_span = span / 2.0
     fvm_box = (*FVM_BOX[:4], -half_span, half_span)
     transfer_box = (*TRANSFER_REGION_BOX[:4], -half_span, half_span)
-    # The slip-slab GBD stencil needs six physical axial intervals. Refine the
-    # requested spacing when a short span would otherwise under-resolve it.
-    particle_layers = max(6, math.ceil(span / (hxy * hp_ratio)))
-    particle_spacing = span / particle_layers
+    particle_spacing = resolve_cylinder_particle_spacing(span=span, hxy=hxy, ratio=hp_ratio)
     validate_cylinder_authority(
         transfer_edge_x=transfer_box[1],
         radius=DIAMETER / 2.0,

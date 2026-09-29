@@ -73,7 +73,12 @@ cases), with at most one paired interaction case selected after the OFAT
 results. The sensitivity baseline uses `hxy = 0.08` and
 `particle_spacing_ratio = 1.0`, giving `hp = 0.08`; span variants keep that
 particle spacing so span and particle resolution are not confounded. The
-particle-spacing factor then tests ratios `1.25` and `1.5`. The remaining
+particle-spacing factor then tests ratios `1.25` and `1.5`, keeping the
+physical core radius `0.08 D`, blend width `0.48 D`, and release width `0.16 D`
+fixed. The report records requested and realized spacing, span intervals and
+`sigma/hp` overlap. Reports before sensitivity schema 3 changed those physical
+lengths together with spacing; preserve those cohorts and use a new directory
+for the independent study. The remaining
 factors cover core radius, blend width (4 and 7), release width, transfer
 amplification cap, exchange clock, span and spanwise spacing. Interface
 iteration limits and tolerances remain fixed;

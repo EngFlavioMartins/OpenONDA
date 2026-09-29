@@ -10,7 +10,11 @@ from pathlib import Path
 import sys
 
 from openonda.cylinder_campaign import collect_cost, compare_profiles, profile_statistics, run_trial
-from openonda.cylinder_case import new_run_directory
+from openonda.cylinder_case import (
+    DEFAULT_CYLINDER_CASE,
+    new_run_directory,
+    resolve_cylinder_particle_spacing,
+)
 from openonda.tutorial_runner import load_case_module
 
 CASE_DIR = Path(__file__).resolve().parents[1]
@@ -27,6 +31,43 @@ FACTORS = {
 }
 
 
+def _study_overrides(requested, *, cores=4, compute_device="CPU"):
+    """Vary requested factors while keeping independent physical lengths fixed."""
+    hxy = 0.08
+    span = float(requested.get("span", DEFAULT_CYLINDER_CASE.resolved_span))
+    hp_ratio = float(requested.get("particle_spacing_ratio", 1.0))
+    baseline_hp = resolve_cylinder_particle_spacing(
+        span=DEFAULT_CYLINDER_CASE.resolved_span, hxy=hxy, ratio=1.0
+    )
+    hp = resolve_cylinder_particle_spacing(span=span, hxy=hxy, ratio=hp_ratio)
+    physical = {
+        "core_radius": baseline_hp * float(requested.get("core_radius_ratio", 1.0)),
+        "blend_width": baseline_hp * float(requested.get("blend_width_ratio", 6.0)),
+        "release_width": baseline_hp * float(requested.get("release_width_ratio", 2.0)),
+    }
+    overrides = {
+        "hxy": hxy,
+        "cores": cores,
+        "compute_device": compute_device,
+        "particle_spacing_ratio": hp_ratio,
+        **requested,
+        "core_radius_ratio": physical["core_radius"] / hp,
+        "blend_width_ratio": physical["blend_width"] / hp,
+        "release_width_ratio": physical["release_width"] / hp,
+    }
+    resolved = {
+        **physical,
+        "particle_spacing": hp,
+        "requested_particle_spacing": hxy * hp_ratio,
+        "particle_spacing_ratio": hp / hxy,
+        "span": span,
+        "particle_span_layers": round(span / hp),
+        "sigma_over_hp": physical["core_radius"] / hp,
+        "exchange_dt": float(requested.get("exchange_dt", 0.04)),
+    }
+    return overrides, resolved
+
+
 def _select_interaction(candidates, coupled_module):
     """Return the first valid two-factor interaction and rejected pairs."""
     rejected = []
@@ -37,15 +78,10 @@ def _select_interaction(candidates, coupled_module):
             if left_factor == right_factor:
                 continue
             combined = {
-                left_factor: left["overrides"][left_factor],
-                right_factor: right["overrides"][right_factor],
+                left_factor: left.get("requested_factors", left["overrides"])[left_factor],
+                right_factor: right.get("requested_factors", right["overrides"])[right_factor],
             }
-            overrides = {
-                "hxy": 0.08,
-                "cores": 4,
-                "particle_spacing_ratio": 1.0,
-                **combined,
-            }
+            overrides, _ = _study_overrides(combined)
             try:
                 coupled_module.build_case(end_time=100.0, overrides=overrides)
             except ValueError as error:
@@ -96,6 +132,15 @@ def main() -> int:
         args.run_dir.resolve() if args.run_dir else new_run_directory(args.root.resolve(), "paired")
     )
     root.mkdir(parents=True, exist_ok=True)
+    prior_report = root / "sensitivity.json"
+    if (
+        prior_report.is_file()
+        and json.loads(prior_report.read_text()).get("schema") != "openonda-cylinder-sensitivity/3"
+    ):
+        raise ValueError(
+            "Existing sensitivity cohort used hp-relative core and widths; its spacing results "
+            "are confounded. Preserve it and use a new run directory for independent factors."
+        )
     post = load_case_module(CASE_DIR / "reference_flow", "postprocess_grid_study")
     variants = [("baseline", {}, "baseline")]
     for factor in FACTORS if args.factor == "all" else (args.factor,):
@@ -108,13 +153,9 @@ def main() -> int:
     independent_count = len(variants)
     for label, override, factor_name in variants:
         run_dir = root / label
-        values = {
-            "hxy": 0.08,
-            "cores": args.coupled_cores,
-            "compute_device": args.compute_device,
-            "particle_spacing_ratio": 1.0,
-            **override,
-        }
+        values, resolved_factors = _study_overrides(
+            override, cores=args.coupled_cores, compute_device=args.compute_device
+        )
         command = [sys.executable, str(LAUNCHER), "--kind", "coupled", "--run-dir", str(run_dir)]
         if args.resume and run_dir.exists():
             command.append("--resume")
@@ -128,6 +169,8 @@ def main() -> int:
         record = {
             "label": label,
             "factor": factor_name,
+            "requested_factors": override,
+            "resolved_physical_factors": resolved_factors,
             "overrides": values,
             **run_trial(command, root / "logs" / label, cwd=CASE_DIR, wall_limit=args.timeout),
         }
@@ -200,8 +243,10 @@ def main() -> int:
             if interaction is not None:
                 variants.append(interaction)
         report = {
-            "schema": "openonda-cylinder-sensitivity/2",
+            "schema": "openonda-cylinder-sensitivity/3",
             "screen_only": args.screen,
+            "spacing_policy": "Particle spacing varies independently of physical core radius, blend width and release width; span quantization and sigma/hp are recorded per run.",
+            "legacy_cohorts": "Reports without schema /3 used hp-relative widths and core radius; particle-spacing effects there are confounded and cannot qualify an isolated spacing recommendation.",
             "scope": "Matched initial inflow with a controlled 3D perturbation; exchange_dt changes the exchange clock, not a standalone particle emission rate. Interface iteration limits and tolerances are fixed. Short screens do not qualify shedding accuracy.",
             "runs": records,
             "rejected_interactions": rejected_interactions,
