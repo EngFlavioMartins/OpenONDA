@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from paraview.simple import (  # type: ignore[import-not-found]
     AssignViewToLayout,
@@ -28,7 +29,11 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--omega-min", required=True, type=float)
     parser.add_argument("--omega-max", required=True, type=float)
+    parser.add_argument("--camera", required=True)
+    parser.add_argument("--color-points", required=True)
     args = parser.parse_args()
+    camera = json.loads(args.camera)
+    color_points = json.loads(args.color_points)
 
     ResetSession()
     view = CreateView("RenderView")
@@ -39,10 +44,10 @@ def main() -> None:
     view.UseColorPaletteForBackground = 0
     view.OrientationAxesVisibility = 0
     view.CameraParallelProjection = 1
-    view.CameraFocalPoint = [-11.6, 0.0, -0.75]
-    view.CameraPosition = [-11.6, -28.0, 12.0]
-    view.CameraViewUp = [0.0, 0.0, 1.0]
-    view.CameraParallelScale = 7.0
+    view.CameraFocalPoint = camera["focal_point_m"]
+    view.CameraPosition = camera["position_m"]
+    view.CameraViewUp = camera["view_up"]
+    view.CameraParallelScale = camera["parallel_scale"]
 
     particles = XMLPolyDataReader(FileName=[args.particles])
     glyphs = Glyph(Input=particles, GlyphType="Sphere")
@@ -57,21 +62,10 @@ def main() -> None:
     particle_display.Representation = "Surface"
     ColorBy(particle_display, ("POINTS", "vorticity_magnitude"))
     omega_lut = GetColorTransferFunction("vorticity_magnitude")
-    viridis = [
-        (0.000, 0.267004, 0.004874, 0.329415),
-        (0.125, 0.278826, 0.175490, 0.483397),
-        (0.250, 0.229739, 0.322361, 0.545706),
-        (0.375, 0.172719, 0.448791, 0.557885),
-        (0.500, 0.127568, 0.566949, 0.550556),
-        (0.625, 0.157851, 0.683765, 0.501686),
-        (0.750, 0.369214, 0.788888, 0.382914),
-        (0.875, 0.678489, 0.863742, 0.189503),
-        (1.000, 0.993248, 0.906157, 0.143936),
-    ]
     span = args.omega_max - args.omega_min
     omega_lut.RGBPoints = [
         component
-        for fraction, red, green, blue in viridis
+        for fraction, red, green, blue in color_points
         for component in (args.omega_min + fraction * span, red, green, blue)
     ]
     omega_lut.ColorSpace = "RGB"
