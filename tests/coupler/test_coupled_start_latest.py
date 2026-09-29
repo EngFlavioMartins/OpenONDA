@@ -17,7 +17,6 @@ def _coupler(directory):
         freestream_velocity=velocity,
         eta_blend_width=0.0,
         backup_interval_steps=2,
-        transfer_discretization_error_limit=1.0,
     )
     fvm = FVMSolver(
         FVMSetup(
