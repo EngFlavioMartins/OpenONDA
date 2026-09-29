@@ -130,6 +130,14 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         if velocity_old is None or time_step_size is None:
             raise ValueError("PIMPLESolver.step requires velocity_old and time_step_size")
         n_elem = self.mesh_data["n_cells"]
+        simple_solver.prepare_freestream_boundaries(
+            velocity,
+            kinematic_pressure,
+            volumetric_face_flux,
+            self.mesh_data,
+            self.geo_data,
+            self.boundaries,
+        )
         n_outer = int(self.params.get("n_outer_correctors", 1))
         n_corr = int(self.params["n_correctors"])
         velocity_relaxation = self.params["velocity_relaxation"]

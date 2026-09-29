@@ -263,9 +263,16 @@ def _apply_ustar_bc(velocity_star, boundary, mesh_data, geo_data, n_cells):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         velocity_star[b_elem_indices] = velocity_star[owners_b]
     elif strategy is BoundaryStrategy.FREESTREAM:
-        # The boundary ghost was switched using the latest face flux before
-        # momentum assembly; preserve that per-face inflow/outflow state.
-        return
+        outflow = boundary.get("_freestream_outflow")
+        if outflow is None:
+            sf = geo_data["face_area_vector"][start_face : start_face + n_faces]
+            outflow = np.einsum("ij,ij->i", velocity_star[b_elem_indices], sf) >= 0.0
+        owners_b = mesh_data["owners"][start_face : start_face + n_faces]
+        velocity_star[b_elem_indices] = np.where(
+            np.asarray(outflow)[:, np.newaxis],
+            velocity_star[owners_b],
+            velocity_star[b_elem_indices],
+        )
     elif strategy is BoundaryStrategy.CYCLIC:
         paired = mesh_data["boundary_neighbour_cell"][start_face : start_face + n_faces]
         velocity_star[b_elem_indices] = velocity_star[paired]

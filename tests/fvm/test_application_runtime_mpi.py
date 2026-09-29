@@ -22,6 +22,7 @@ import pytest
         "analysis_failure",
         "immersed_body",
         "four_ranks",
+        "freestream",
     ],
 )
 def test_plain_python_application_owns_output_and_propagates_failures(tmp_path, mode):
@@ -51,6 +52,8 @@ velocity = [0.,0.,0.] if mode == "immersed_body" else [1.,0.,0.]
 boundaries = [fvm.BoundaryConfig(name="numericalBoundary",
     velocity_type="fixedValue", velocity_value=velocity,
     pressure_type="fixedFluxPressure")]
+if mode == "freestream":
+    boundaries = [fvm.BoundaryConfig.freestream("numericalBoundary", velocity)]
 backup = fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=1), write_at_end=True)
 execution = fvm.ComputeConfig(linear_backend="petsc", parallel_mode="petsc_replicated") if mode == "replicated" else fvm.ComputeConfig()
 def analyse(fields):

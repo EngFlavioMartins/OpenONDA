@@ -406,7 +406,16 @@ def assemble_diffusion_term(
                 include_total_flux=include_total_flux,
             )
             indices = b_fluxes["face_indices"]
-            inflow = np.asarray(volumetric_face_flux)[indices] < 0.0
+            mask = (
+                boundary.get("_freestream_outflow")
+                if strategy is BoundaryStrategy.FREESTREAM
+                else None
+            )
+            inflow = (
+                ~np.asarray(mask, dtype=bool)
+                if mask is not None
+                else np.asarray(volumetric_face_flux)[indices] < 0.0
+            )
             flux_cf[indices] = np.where(inflow, b_fluxes["flux_cf"], 0.0)
             flux_ff[indices] = 0.0
             flux_vf[indices] = np.where(inflow, b_fluxes["flux_vf"], 0.0)

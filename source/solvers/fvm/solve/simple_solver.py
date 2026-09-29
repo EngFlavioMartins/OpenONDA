@@ -98,7 +98,12 @@ def _pressure_requires_constraint(boundaries, velocity_star, mesh_data, geo_data
             flux = np.sum(
                 velocity_star[ghosts] * geo_data["face_area_vector"][start : start + nf], axis=1
             )
-            if np.any(flux >= 0.0):
+            outflow = boundary.get("_fixed_freestream_outflow")
+            if outflow is None:
+                outflow = boundary.get("_freestream_outflow")
+            if outflow is None:
+                outflow = flux >= 0.0
+            if np.any(outflow):
                 local_requires_constraint = False
                 break
     else:
@@ -107,6 +112,44 @@ def _pressure_requires_constraint(boundaries, velocity_star, mesh_data, geo_data
     if parallel is not None and parallel.is_partitioned:
         return parallel.global_all(local_requires_constraint)
     return local_requires_constraint
+
+
+def prepare_freestream_boundaries(velocity, pressure, face_flux, mesh_data, geo_data, boundaries):
+    """Select each mixed boundary branch once for the momentum/projection solve."""
+    changed = False
+    for boundary in boundaries:
+        if (
+            BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost")
+            is not BoundaryStrategy.FREESTREAM
+        ):
+            continue
+        start = int(boundary["start_face"])
+        stop = start + int(boundary["n_faces"])
+        fixed = boundary.get("_fixed_freestream_outflow")
+        boundary["_freestream_outflow"] = (
+            np.asarray(fixed, dtype=bool)
+            if fixed is not None
+            else np.asarray(face_flux[start:stop] >= 0.0)
+        )
+        changed = True
+    if changed:
+        _update_velocity_bcs(
+            velocity,
+            face_flux,
+            boundaries,
+            mesh_data["owners"],
+            geo_data,
+            mesh_data["n_cells"],
+            mesh_data["n_interior_faces"],
+            mesh_data=mesh_data,
+        )
+        update_scalar_boundaries(
+            pressure,
+            mesh_data,
+            boundaries,
+            field_name="kinematic_pressure",
+            volumetric_face_flux=face_flux,
+        )
 
 
 def compute_ddt_flux_correction(
@@ -711,8 +754,18 @@ def _build_boundary_face_arrays(boundaries, n_interior, n_faces, layout=None):
     signature = _pressure_boundary_signature(boundaries)
     if layout is None or layout.signature != signature:
         layout = build_pressure_boundary_layout(boundaries, n_interior, n_faces)
+    codes = layout.type_codes.copy()
+    for boundary in boundaries:
+        if boundary.get("pressure_type") == "freestream":
+            mask = boundary.get("_fixed_freestream_outflow")
+            if mask is None:
+                mask = boundary.get("_freestream_outflow")
+            if mask is not None:
+                start = int(boundary["start_face"]) - n_interior
+                stop = start + int(boundary["n_faces"])
+                codes[start:stop] = np.where(mask, 1, 0)
     return (
-        layout.type_codes,
+        codes,
         _pressure_boundary_values(boundaries, n_interior, n_faces),
         layout.face_indices,
     )
@@ -1063,6 +1116,24 @@ def assemble_pressure_correction_equation_rhie_chow(
     neighbours = mesh_data["neighbours"]
     _validate_reference_density(density)
 
+    for boundary in boundaries:
+        if boundary.get("pressure_type") != "freestream":
+            continue
+        fixed = boundary.get("_fixed_freestream_outflow")
+        if fixed is not None:
+            boundary["_freestream_outflow"] = np.asarray(fixed, dtype=bool)
+        elif boundary.get("_freestream_outflow") is None:
+            start = int(boundary["start_face"])
+            nf = int(boundary["n_faces"])
+            ghost = velocity_star[n_cells + start - n_interior : n_cells + start - n_interior + nf]
+            boundary["_freestream_outflow"] = (
+                np.einsum("ij,ij->i", ghost, geo_data["face_area_vector"][start : start + nf])
+                >= 0.0
+            )
+    update_scalar_boundaries(
+        kinematic_pressure, mesh_data, boundaries, field_name="kinematic_pressure"
+    )
+
     # 1. Compute pressure_velocity_coefficient and kinematic_pressure_gradient. The momentum diagonal is fixed for all
     # pressure/non-orthogonal corrections in one PIMPLE outer iteration, so
     # retain its inverse and face conductance instead of rebuilding two
@@ -1171,31 +1242,6 @@ def assemble_pressure_correction_equation_rhie_chow(
             boundaries, n_interior, n_faces, layout=boundary_layout
         )
 
-        # Authoritative freestream inflow/outflow switch for THIS assembly:
-        # the same ghost-velocity flux the JIT thresholds below.  Every later
-        # stage of the correction (kinematic_pressure' ghost extension, boundary-flux
-        # correction, velocity/pressure ghost updates) must reuse this mask.
-        # Re-deriving the switch from the evolving flux field lets grazing
-        # faces (u·n ≈ 0, e.g. the lateral sides of a coupling box) change
-        # class between assembly and correction, injecting boundary flux the
-        # pressure matrix never saw — which surfaces as a divergence
-        # checkerboard anchored at the patch corners.
-        for boundary in boundaries:
-            strategy = BOUNDARIES.strategy(
-                boundary.get("pressure_type"), "kinematic_pressure", "pressure"
-            )
-            if strategy is BoundaryStrategy.FREESTREAM:
-                start = int(boundary["start_face"])
-                nf = int(boundary["n_faces"])
-                fixed_outflow = boundary.get("_fixed_freestream_outflow")
-                if fixed_outflow is not None:
-                    boundary["_freestream_outflow"] = fixed_outflow
-                else:
-                    ghost = velocity_star[
-                        n_cells + (start - n_interior) : n_cells + (start - n_interior) + nf
-                    ]
-                    sf_patch = geo_data["face_area_vector"][start : start + nf]
-                    boundary["_freestream_outflow"] = np.einsum("ij,ij->i", ghost, sf_patch) >= 0.0
         pressure_velocity_coefficient_components = (
             (
                 pressure_velocity_coefficient,
@@ -2095,6 +2141,14 @@ class SIMPLESolver:
             retain the shapes and units described above.
         """
         # 1. Solve momentum predictor
+        prepare_freestream_boundaries(
+            velocity,
+            kinematic_pressure,
+            volumetric_face_flux,
+            self.mesh_data,
+            self.geo_data,
+            self.boundaries,
+        )
         velocity_star, momentum_diagonal, momentum_diagnostics = momentum.solve_momentum_predictor(
             velocity,
             kinematic_pressure,
