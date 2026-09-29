@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "backend": "CUDA",
+  "checks": [
+    "eight grid replacements destroy prior allocation and preserve unrelated field",
+    "full source support and nonfinite rejection",
+    "physical-domain overflow rejected without clipping"
+  ],
+  "seconds": 12.75558232000185,
+  "verification_only_device_memory_fraction": 0.02,
+  "date": "2026-09-29",
+  "platform": "Linux x86_64",
+  "source_parent": "204bfa73",
+  "changes": [
+    "Own and destroy disposable diffusion grids before replacement; no reallocation-count, axis-length, or byte ceilings",
+    "Preserve upper source halo after half-cell lattice offset",
+    "Retain all scalar surface sources and batch sources/targets for potential velocity, gradients, and stretching",
+    "Remove obsolete capacity and pool bookkeeping constants"
+  ],
+  "cpu_verification": {
+    "grid_lifetime_and_gbd": 33,
+    "dvh": 8,
+    "source_batches_and_stage_rhs": 10
+  },
+  "limitations": [
+    "No full production trajectory established by these focused regressions",
+    "Configured physical diffusion domains remain fixed on GPU",
+    "Actual memory availability still limits physical resolution"
+  ]
+}
