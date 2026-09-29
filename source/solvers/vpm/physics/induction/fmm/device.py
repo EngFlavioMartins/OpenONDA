@@ -1063,7 +1063,7 @@ class FMMInduction:
     requested particle-strength rate. The stretching formulation is
     independent of the FMM approximation.
 
-    Supported production combinations are CPU, Vulkan, Metal, and AUTO
+    Supported production combinations are CPU, Vulkan, Metal, CUDA, and AUTO
     resolution; f32 precision; and Gaussian, high-order Gaussian, super-Gaussian, or
     Winckelmans radial kernels. Arbitrary target queries reuse the source LBVH,
     p=3 multipoles, and exact regularized near interactions on the device.
@@ -1072,7 +1072,7 @@ class FMMInduction:
     # AUTO is accepted as a request to resolve a backend at solver construction;
     # the resolved backend is checked again before any FMM workspace is built.
     # Only the backends exercised by the production qualification are advertised.
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "METAL"})
+    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "METAL", "CUDA"})
     supported_kernels = frozenset(
         {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
     )
