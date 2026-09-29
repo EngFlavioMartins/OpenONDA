@@ -80,6 +80,15 @@ def load_forces_csv(solution_dir):
 latest_vtu = THEME.latest_fvm_snapshot
 
 
+def snapshot_vector_field(mesh, name):
+    """Return native vector values and their matching spatial coordinates."""
+    if name in mesh.cell_data:
+        return mesh.cell_data[name], mesh.cell_centers().points
+    if name in mesh.point_data:
+        return mesh.point_data[name], mesh.points
+    raise ValueError(f"Snapshot has no {name!r} field in cell or point data")
+
+
 def strouhal_from_lift(t, cl):
     """Dominant lift frequency (Hz) from the second half of the signal."""
     n = len(t)

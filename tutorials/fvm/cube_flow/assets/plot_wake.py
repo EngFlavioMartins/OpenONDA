@@ -28,6 +28,7 @@ from ._common import (  # noqa: E402
     figure_size,
     latest_vtu,
     save_fig,
+    snapshot_vector_field,
 )
 
 
@@ -40,10 +41,7 @@ def main():
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
-    u = mesh.point_data.get("velocity")
-    if u is None:
-        raise SystemExit("  WARNING: No velocity field 'velocity' found in VTU.")
-    pts = mesh.points
+    u, pts = snapshot_vector_field(mesh, "velocity")
 
     on_plane = np.abs(pts[:, 2]) < 1e-9
     if not on_plane.any():

@@ -39,7 +39,7 @@ def main():
     drag_coefficient = d["drag_coefficient"]
     lift_coefficient = d["lift_coefficient"]
 
-    # Statistics over the settled part (last third).
+    # Show descriptive statistics over the last third of the available history.
     i0 = 2 * len(t) // 3
     drag_coefficient_mean = float(np.mean(drag_coefficient[i0:]))
     lift_coefficient_rms = float(
@@ -64,16 +64,16 @@ def main():
     ax.text(
         0.02,
         0.06,
-        f"mean drag coefficient (last 1/3) = {drag_coefficient_mean:.4f}",
+        rf"$\overline{{C_D}}$ (last 1/3) = {drag_coefficient_mean:.4f}",
         transform=ax.transAxes,
     )
     ax.grid(True, alpha=0.3)
 
     ax = axes[1]
     ax.plot(t, lift_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
-    label = f"lift coefficient rms = {lift_coefficient_rms:.4f}"
+    label = rf"$C_{{L,\mathrm{{rms}}}}$ = {lift_coefficient_rms:.4f}"
     if strouhal_number is not None:
-        label += f",  strouhal_number = {strouhal_number:.4f}"
+        label += f"\n$St$ = {strouhal_number:.4f}"
         if "strouhal_number" in ref:
             label += f" (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
     ax.text(0.02, 0.06, label, transform=ax.transAxes)

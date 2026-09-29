@@ -3,7 +3,9 @@
 import ast
 from pathlib import Path
 
+import numpy as np
 import pytest
+import pyvista as pv
 
 from openonda import plotting
 from tests._tutorial_helpers import load_tutorial_module
@@ -51,3 +53,26 @@ def test_required_force_history_rejects_header_only_csv(tmp_path, monkeypatch, c
         load(tmp_path / "solution")
     path.write_text(f"{identifier},time,drag_coefficient\ncylinder,0,1.25\n")
     assert load(tmp_path / "solution")["cylinder"]["drag_coefficient"].tolist() == [1.25]
+
+
+def test_cube_snapshot_vectors_follow_native_cell_or_point_locations(monkeypatch):
+    monkeypatch.setattr(plotting, "set_thesis_style", lambda: None)
+    common = load_tutorial_module("fvm/cube_flow", "assets._common")
+    x, y, z = np.meshgrid([0.0, 1.0, 3.0], [0.0, 1.0], [0.0, 0.5], indexing="ij")
+    mesh = pv.StructuredGrid(x, y, z).cast_to_unstructured_grid()
+    cell_velocity = np.arange(mesh.n_cells * 3).reshape(mesh.n_cells, 3)
+    point_velocity = np.arange(mesh.n_points * 3).reshape(mesh.n_points, 3)
+    mesh.cell_data["velocity"] = cell_velocity
+    mesh.point_data["velocity"] = point_velocity
+
+    values, locations = common.snapshot_vector_field(mesh, "velocity")
+    np.testing.assert_array_equal(values, cell_velocity)
+    np.testing.assert_allclose(locations, mesh.cell_centers().points)
+
+    del mesh.cell_data["velocity"]
+    values, locations = common.snapshot_vector_field(mesh, "velocity")
+    np.testing.assert_array_equal(values, point_velocity)
+    np.testing.assert_allclose(locations, mesh.points)
+
+    with pytest.raises(ValueError, match="no 'vorticity' field"):
+        common.snapshot_vector_field(mesh, "vorticity")

@@ -1,0 +1,126 @@
+{
+  "status": "PARTIAL_VERIFICATION_ONLY",
+  "source_run": "build/fvm-final-37de66ba/workspace/tutorials/fvm/cube_flow",
+  "installed_wheel_source_commit": "fc921ec094ef416d5cf3ade8f40df26d07b3bcc9",
+  "launcher": "env -u PYTHONPATH PATH=build/wheel-verification-fc921ec0/bin:/usr/bin:/bin MPLCONFIGDIR=build/fvm-cube-partial-plot-verify/mpl-cache OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash ./allplot.sh",
+  "exit_code": 0,
+  "stable_copy": "All plot inputs stat-stable over two seconds and unchanged throughout copy; source and copy SHA256 matched at copy time. Active run files were not modified.",
+  "frames": [
+    {
+      "time_s": 0.0,
+      "file": "fvm/fvm_000000.vtu"
+    },
+    {
+      "time_s": 5.0,
+      "file": "fvm/fvm_000175.vtu"
+    },
+    {
+      "time_s": 10.0,
+      "file": "fvm/fvm_000335.vtu"
+    },
+    {
+      "time_s": 15.0,
+      "file": "fvm/fvm_000491.vtu"
+    },
+    {
+      "time_s": 20.0,
+      "file": "fvm/fvm_000645.vtu"
+    },
+    {
+      "time_s": 25.0,
+      "file": "fvm/fvm_000798.vtu"
+    }
+  ],
+  "force_history": {
+    "rows": 836,
+    "min_time_s": 0.0,
+    "max_time_s": 26.21710526315793
+  },
+  "inputs": [
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm.pvd",
+      "size_bytes": 580,
+      "sha256": "d6d39c5269e6f159c255b9d3ff60d98e8cd789df7415551801b25a9948e04b3b"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm_metadata.json",
+      "size_bytes": 8003,
+      "sha256": "393a0e2fab8faa9e41ecf3248f15987b34d399fc964f722abcd920f18de1eccb"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/samples/forces_history.csv",
+      "size_bytes": 242064,
+      "sha256": "d2e82816d78cc278d22ecef388798a00be645af51862e7daf228ef0059224b27"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000000.vtu",
+      "size_bytes": 418022,
+      "sha256": "aaa07cdc668917f868998ae891cf4cc39eaa0f91c6b6a306ed02bf7763020703"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000175.vtu",
+      "size_bytes": 902841,
+      "sha256": "487f2cd32c021f1754839718e7d1285986123f640dfc9dd39f13680271d3b86d"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000335.vtu",
+      "size_bytes": 901165,
+      "sha256": "d4023c44a67523635639d50aee7d5a7cc6fdd0f240318c6234b45773be579e66"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000491.vtu",
+      "size_bytes": 898618,
+      "sha256": "3719d4aed226ca7b5850b537cb821ac53a504027a8b038b14340f98bc931925f"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000645.vtu",
+      "size_bytes": 894654,
+      "sha256": "3a259ddb918e438ac3f1d29070db7aaf9edff2c1a5134f94808f58d11ce637a2"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/solution/fvm/fvm_000798.vtu",
+      "size_bytes": 891169,
+      "sha256": "41998950da22f0e191b4ca9145ecd44a54c451d101ed2c61069b74300d44b30c"
+    }
+  ],
+  "plots": [
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/figures/cube_vorticity_street.png",
+      "size_bytes": 225918,
+      "sha256": "cda5f3dfd851a3be816c9d3eeb666f18c62731fcba47cb91bb47c9ecfc37db2e"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/figures/cube_wake_centreline.png",
+      "size_bytes": 101429,
+      "sha256": "85f43f97990ad6198a6009014f5f1f1e4f67d9f06d39a46fc2796efb12183590"
+    },
+    {
+      "path": "build/fvm-cube-partial-plot-verify/tutorials/fvm/cube_flow/figures/forces_cube.png",
+      "size_bytes": 167723,
+      "sha256": "ad9d6f84edd31574ad84474e4089ee99402155df851de779e0f5c55f445c3994"
+    }
+  ],
+  "visual_review": {
+    "forces_cube": "Renders real startup transient and subsequent force history; compact two-line annotation stays within fixed canvas. Partial-history Cd/St are descriptive, not final stationary validation.",
+    "cube_vorticity_street": "Signed cell-centered vorticity wake is continuous with no obvious triangulation holes.",
+    "cube_wake_centreline": "Cell-centered velocity profile renders; instantaneous reversed-flow extent x/D ~6.22."
+  },
+  "fixes": "Source assets now locate vector arrays in native cell data with matching cell centers, falling back to point data/coordinates; force annotation uses conventional compact symbols. No snapshot values were resampled or invented.",
+  "limitations": "Full t=120 run continues separately; this verifies only accepted partial outputs through the copied time series.",
+  "source_asset_sha256": {
+    "tutorials/fvm/cube_flow/assets/_common.py": "aa5a1e7f9824f78c0662b556e4426ae9491680bfd56270548c877e833361d3e5",
+    "tutorials/fvm/cube_flow/assets/plot_forces.py": "ecdd6c2a03cc1cb215be9b84adef2babce0ebc76830babbf0568267c9f0ea8cf",
+    "tutorials/fvm/cube_flow/assets/plot_vorticity.py": "f3ea21c61cf45a45299609da97da9deea74426ba0b54e5856a4fe89175e7fefb",
+    "tutorials/fvm/cube_flow/assets/plot_wake.py": "385b9db04413a24d93097a3ef925039a6dc90688627c8811753c68ef3e68bc0e"
+  },
+  "verification_failures_resolved": [
+    "Initial one-line force annotation exceeded fixed canvas by 31.68 pt.",
+    "Published native VTU fields were cell arrays, but vorticity and wake assets looked only for point arrays."
+  ],
+  "checks": {
+    "ruff_check_and_format": "pass on four assets and focused test",
+    "pytest": "tests/tutorials/test_fvm_plot_inputs.py: 8 passed",
+    "ordinary_allplot_exit_code": 0
+  },
+  "scope": "Genuine partial FVM cube data; full 120 s run remains active and unverified by this record."
+}

@@ -22,6 +22,7 @@ from ._common import (  # noqa: E402
     figure_size,
     latest_vtu,
     save_fig,
+    snapshot_vector_field,
 )
 
 
@@ -34,13 +35,10 @@ def main():
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
-    vort = mesh.point_data.get("vorticity")
-    if vort is None:
-        raise SystemExit("  WARNING: No 'vorticity' field found in VTU.")
+    vort, pts = snapshot_vector_field(mesh, "vorticity")
     wz = vort[:, 2]
-    pts = mesh.points
 
-    # Quasi-2D mesh: keep the z = 0 plane of nodes.
+    # Quasi-2D mesh: keep one physical z plane of field locations.
     mask = np.abs(pts[:, 2]) < 1e-9
     if not mask.any():
         mask = pts[:, 2] < pts[:, 2].min() + 1e-9
