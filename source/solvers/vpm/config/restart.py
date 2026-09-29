@@ -4,14 +4,6 @@ from copy import deepcopy
 from typing import Any
 
 
-def _capacity_sensitive_adaptation(configuration: dict[str, Any]) -> bool:
-    """Regularization can change its accepted output with extra capacity."""
-    stabilization = configuration.get("stabilization")
-    if not isinstance(stabilization, dict):
-        return True
-    return bool(stabilization.get("regularization_interval_steps"))
-
-
 def _configuration_mismatches(
     expected: Any,
     found: Any,
@@ -32,14 +24,11 @@ def _configuration_mismatches(
                     type(old_capacity) is int
                     and type(new_capacity) is int
                     and new_capacity > old_capacity
-                    and not any(
-                        _capacity_sensitive_adaptation(configuration)
-                        for configuration in (expected, found)
-                    )
                 ):
-                    # These disabled operators cannot change behavior when
-                    # extra particle storage becomes available. The saved
-                    # checksum and every physical setting are still checked.
+                    # Population is bounded strictly by capacity: no
+                    # active operator truncates a field or changes algorithms
+                    # when a proposal exceeds it. A larger allocation can
+                    # resume the same configuration after an exhausted one.
                     continue
             if key not in expected or key not in found:
                 paths.append(child_path)
@@ -90,11 +79,14 @@ def _normalize_capacity_aliases(configuration: dict[str, Any]) -> None:
     ):
         stabilization.pop("regularization_max_events", None)
 
-    if stabilization.get("regularization_max_particles") == particle_capacity:
-        stabilization["regularization_max_particles"] = None
+    inactive = stabilization.get("regularization_interval_steps") == 0
+    if inactive or stabilization.get("regularization_max_particles") in (
+        None,
+        particle_capacity,
+    ):
+        stabilization.pop("regularization_max_particles", None)
     # Removed capacity-specific settings are compatible only when inactive or
     # equivalent to the ordinary remeshing configuration.
-    inactive = stabilization.get("regularization_interval_steps") == 0
     standard_limit = stabilization.get("regularization_max_particles") or particle_capacity
     for name in tuple(stabilization):
         if not name.startswith("regularization_capacity_"):

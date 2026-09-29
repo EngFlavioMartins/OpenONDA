@@ -403,7 +403,6 @@ def _capacity_configuration() -> dict:
         "max_n_particles": 64,
         "viscous": {"dvh_max_nodes": None, "gbd_max_nodes": None},
         "stabilization": {
-            "regularization_max_particles": None,
             "filament_refinement": {"interval_steps": 0},
         },
     }
@@ -739,6 +738,86 @@ def test_refinement_capacity_can_increase_after_last_accepted_backup(tmp_path):
         )
     finally:
         reader.close()
+
+
+def test_regularization_capacity_can_increase_after_rejected_remap(tmp_path):
+    from source.solvers.vpm.stabilization.regularization import regularize
+    from source.solvers.vpm.stabilization.remeshing import gaussian_core_remesh
+
+    stabilization = StabilizationConfig(
+        filament_refinement=FilamentRefinementConfig.adaptive(
+            interval_steps=100, max_vortex_strength_factor=3.0
+        ),
+        regularization_interval_steps=1,
+        regularization_grid_spacing=0.1,
+        regularization_core_radius=0.1,
+        regularization_core_radius_trigger=0.1,
+        regularization_transfer_only=True,
+    )
+    writer = _solver(tmp_path / "writer", max_n_particles=10, stabilization=stabilization)
+    try:
+        _add_counter_rotating_pair(writer)
+        writer.stabilization.capture_reference_state()
+        writer.save_backup()
+        before_position = writer.particle_position.copy()
+        before_strength = writer.particle_vortex_strength.copy()
+        before_reference = writer.stabilization.reference_vortex_strength.copy()
+        before_lengths = writer.stabilization.reference_lengths.copy()
+        with pytest.raises(ValueError, match=r"Gaussian remeshing requires .*capacity is 10"):
+            regularize(writer.stabilization.ctx, stabilization)
+        np.testing.assert_array_equal(writer.particle_position, before_position)
+        np.testing.assert_array_equal(writer.particle_vortex_strength, before_strength)
+        np.testing.assert_array_equal(writer.stabilization.reference_vortex_strength, before_reference)
+        np.testing.assert_array_equal(writer.stabilization.reference_lengths, before_lengths)
+        assert (writer.step, writer.time) == (0, 0.0)
+    finally:
+        writer.close()
+
+    reader = _solver(tmp_path / "reader", max_n_particles=1024, stabilization=stabilization)
+    try:
+        reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
+        np.testing.assert_array_equal(reader.particle_position, before_position)
+        np.testing.assert_array_equal(reader.particle_vortex_strength, before_strength)
+        np.testing.assert_array_equal(reader.stabilization.reference_vortex_strength, before_reference)
+        remapped = gaussian_core_remesh(
+            reader.particles,
+            spacing=stabilization.regularization_grid_spacing,
+            core_radius=stabilization.regularization_core_radius,
+            tail_budget=stabilization.regularization_tail_budget,
+            max_particles=reader.particles.capacity,
+        )
+        assert 10 < len(remapped["position"]) <= reader.particles.capacity
+        assert (reader.step, reader.time) == (0, 0.0)
+    finally:
+        reader.close()
+
+
+def test_regularization_capacity_increase_rejects_changed_physical_model():
+    from source.solvers.vpm.config.restart import (
+        _configuration_mismatches,
+        canonical_restart_configuration,
+    )
+
+    saved = _capacity_configuration()
+    saved["stabilization"].update(
+        regularization_interval_steps=1,
+        regularization_grid_spacing=0.1,
+        regularization_max_particles=64,
+    )
+    current = json.loads(json.dumps(saved))
+    current["max_n_particles"] = 128
+    current["stabilization"].pop("regularization_max_particles")
+    assert _configuration_mismatches(
+        canonical_restart_configuration(current), canonical_restart_configuration(saved)
+    ) == []
+    current["stabilization"]["regularization_grid_spacing"] = 0.11
+    assert _configuration_mismatches(
+        canonical_restart_configuration(current), canonical_restart_configuration(saved)
+    ) == ["stabilization.regularization_grid_spacing"]
+    saved["stabilization"]["regularization_max_particles"] = 32
+    assert "stabilization.regularization_max_particles" in _configuration_mismatches(
+        canonical_restart_configuration(current), canonical_restart_configuration(saved)
+    )
 
 
 def test_vpm_case_has_no_partial_configuration_serialization(tmp_path):

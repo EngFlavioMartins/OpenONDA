@@ -33,7 +33,6 @@ def test_combined_stabilization_schedule_is_representable():
         regularization_interval_steps=25,
         regularization_start_step=475,
         regularization_grid_spacing=0.055,
-        regularization_max_particles=30_000,
     )
 
     assert config.filament_refinement.interval_steps == 25
@@ -197,7 +196,6 @@ def test_regularization_schedule_continues_after_multiple_events(monkeypatch):
         regularization_interval_steps=5,
         regularization_start_step=10,
         regularization_grid_spacing=0.1,
-        regularization_max_particles=100,
     )
     manager = object.__new__(StabilizationManager)
     manager.config = config

@@ -53,9 +53,6 @@ class StabilizationConfig:
         adaptive core broadening, enstrophy adjustment and projection. The
         energy/enstrophy limits then bound absolute transfer errors, allowing
         either sign rather than enforcing dissipation.
-    regularization_max_particles : int or None
-        Optional post-remesh population ceilings. The particle container's
-        capacity is the default and upper bound.
     regularization_total_kinetic_energy_dissipation_limit,
     regularization_total_enstrophy_dissipation_limit : float
         Allowed fractional losses in ``(0, 1)`` for an accepted proposal.
@@ -113,7 +110,6 @@ class StabilizationConfig:
     Requires transfer-only redistribution; overlapping groups cost additional
     particles. Labels identify vorticity contributions, not post-merger cores.
     """
-    regularization_max_particles: int | None = None
     regularization_total_kinetic_energy_dissipation_limit: float = 0.15
     regularization_total_enstrophy_dissipation_limit: float = 0.15
     regularization_divergence_trigger: float | None = 0.04
@@ -175,8 +171,6 @@ class StabilizationConfig:
             or self.regularization_grid_spacing <= 0.0
         ):
             raise ValueError("enabled regularization requires finite positive grid spacing")
-        if self.regularization_max_particles is not None and self.regularization_max_particles <= 0:
-            raise ValueError("regularization_max_particles must be positive or None")
         if not 0.0 < self.regularization_tail_budget < 1.0:
             raise ValueError("regularization_tail_budget must lie in (0, 1)")
         if not 0.0 < self.regularization_total_kinetic_energy_dissipation_limit < 1.0:
@@ -276,7 +270,6 @@ class StabilizationConfig:
         interval_steps: int,
         start_step: int,
         grid_spacing: float,
-        max_n_particles: int,
         tail_budget: float = 3.0e-3,
         solenoidal_remesh: bool = False,
         total_kinetic_energy_dissipation_limit: float = 0.15,
@@ -294,7 +287,6 @@ class StabilizationConfig:
             regularization_interval_steps=interval_steps,
             regularization_start_step=start_step,
             regularization_grid_spacing=grid_spacing,
-            regularization_max_particles=max_n_particles,
             regularization_tail_budget=tail_budget,
             regularization_solenoidal_remesh=solenoidal_remesh,
             regularization_total_kinetic_energy_dissipation_limit=(

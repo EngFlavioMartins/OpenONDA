@@ -133,13 +133,6 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
     before_health = discretization_health(position, vortex_strength, core_radius)
     particle_capacity = particles.capacity
-    regularization_limit = min(
-        particle_capacity,
-        cfg.regularization_max_particles
-        if cfg.regularization_max_particles is not None
-        else particle_capacity,
-    )
-    max_particles = regularization_limit
     spacing = float(cfg.regularization_grid_spacing)
     if not _regularization_triggered(
         before_health,
@@ -165,30 +158,23 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     removed_before = ctx.state.particles_removed
     vortex_strength_removed_before = ctx.state.vortex_strength_removed.copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
-    projection_only = max_particles is not None and len(position) > max_particles
-    if cfg.regularization_transfer_only and projection_only:
-        raise ValueError(
-            "transfer-only redistribution cannot replace an over-cap remap by projection"
-        )
     configured_core_radius = cfg.regularization_core_radius
-    if projection_only:
-        proposal = old_state.copy()
-    else:
-        from .remeshing import gaussian_core_remesh
+    from .remeshing import gaussian_core_remesh
 
-        # Gaussian redistribution preserves variable source-core variance.
-        proposal = gaussian_core_remesh(
-            particles,
-            spacing=spacing,
-            core_radius=(configured_core_radius or float(np.min(core_radius))),
-            tail_budget=cfg.regularization_tail_budget,
-            max_particles=max_particles,
-            solenoidal=cfg.regularization_solenoidal_remesh,
-            preserve_groups=cfg.regularization_preserve_groups,
-        )
+    # Gaussian redistribution preserves variable source-core variance.  The
+    # container capacity is the sole population limit; the remesher rejects a
+    # proposal that cannot satisfy both that limit and the tail budget.
+    proposal = gaussian_core_remesh(
+        particles,
+        spacing=spacing,
+        core_radius=(configured_core_radius or float(np.min(core_radius))),
+        tail_budget=cfg.regularization_tail_budget,
+        max_particles=particle_capacity,
+        solenoidal=cfg.regularization_solenoidal_remesh,
+        preserve_groups=cfg.regularization_preserve_groups,
+    )
     if proposal is None:
         raise RuntimeError("conservative regularization produced no particle field")
-    # A projection-only event must retain the original widths as well.
 
     new_position = np.asarray(proposal["position"], dtype=np.float64)
     proposed_vortex_strength = np.asarray(proposal["vortex_strength"], dtype=np.float64)
@@ -327,11 +313,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         ) = evaluate_moment_corrected_candidate()
 
         # Broaden a fixed regenerated core only when it would inject energy or enstrophy.
-        if (
-            not cfg.regularization_transfer_only
-            and configured_core_radius is not None
-            and not projection_only
-        ):
+        if not cfg.regularization_transfer_only and configured_core_radius is not None:
             for retry in range(1, 9):
                 if candidate_energy_change <= 1.0e-7 and candidate_enstrophy_change <= 1.0e-7:
                     break
@@ -369,7 +351,6 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
         if (
             cfg.regularization_transfer_only
-            or projection_only
             or (
                 -cfg.regularization_total_kinetic_energy_dissipation_limit
                 <= candidate_energy_change
@@ -465,9 +446,9 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             uploaded.astype(np.float64),
             new_core_radius,
         )
-        if not cfg.regularization_transfer_only and (
-            projection_only
-            or preliminary_health["vorticity_divergence_error"]
+        if (
+            not cfg.regularization_transfer_only
+            and preliminary_health["vorticity_divergence_error"]
             > cfg.regularization_projection_trigger
         ):
             projection_result = constrained_divergence_relaxation(
@@ -573,7 +554,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
         total_enstrophy_change_relative=total_enstrophy_change_relative,
         projected=projection_result is not None
-        or (cfg.regularization_solenoidal_remesh and not projection_only),
+        or cfg.regularization_solenoidal_remesh,
         total_kinetic_energy_transfer=energy_transfer,
         total_enstrophy_transfer=float(after_integrals["total_enstrophy"])
         - float(before_integrals["total_enstrophy"]),

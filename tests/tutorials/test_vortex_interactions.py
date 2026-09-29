@@ -114,7 +114,7 @@ def test_frozen_representation_controls_are_retained():
     assert config.regularization_grid_spacing == config.regularization_core_radius == 0.05
     assert config.regularization_core_radius_trigger == 0.1
     assert config.regularization_tail_budget == 0.003
-    assert config.regularization_max_particles is None
+    assert not hasattr(config, "regularization_max_particles")
     assert config.regularization_total_kinetic_energy_dissipation_limit == 0.01
     assert config.regularization_total_enstrophy_dissipation_limit == 0.01
 
