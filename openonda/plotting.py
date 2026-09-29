@@ -455,7 +455,11 @@ def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
     for axis in fig.axes:
         for axis_object, limits in ((axis.xaxis, axis.get_xlim()), (axis.yaxis, axis.get_ylim())):
             lower, upper = sorted(limits)
-            tolerance = 1e-10 * max(1.0, abs(lower), abs(upper))
+            tolerance = (
+                16
+                * np.finfo(float).eps
+                * max(abs(lower), abs(upper), abs(upper - lower), np.finfo(float).tiny)
+            )
             for tick in (*axis_object.get_major_ticks(), *axis_object.get_minor_ticks()):
                 in_range = lower - tolerance <= tick.get_loc() <= upper + tolerance
                 in_range_tick_label[tick.label1] = in_range

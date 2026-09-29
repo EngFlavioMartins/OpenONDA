@@ -77,8 +77,8 @@ def main():
         ax.set_title(f"IBM cylinder forces — {name} (Re = {args.Re:g})")
         ax.text(
             0.02,
-            0.06,
-            f"mean drag coefficient (last 1/3) = {drag_coefficient_mean:.4f}",
+            0.45,
+            rf"$\overline{{C_d}} = {drag_coefficient_mean:.4f}$ (last third)",
             transform=ax.transAxes,
         )
         ax.grid(True, alpha=0.3)
@@ -86,10 +86,16 @@ def main():
         ax = axes[1]
         ax.plot(t, lift_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
         strouhal_number = strouhal_from_lift(t, lift_coefficient)
-        label = f"lift coefficient rms = {lift_coefficient_rms:.4f}"
+        label = rf"$C_{{l,\mathrm{{rms}}}} = {lift_coefficient_rms:.3g}$"
         if strouhal_number is not None and "strouhal_number" in ref:
             label += f",  strouhal_number = {strouhal_number:.4f} (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
-        ax.text(0.02, 0.06, label, transform=ax.transAxes)
+        ax.text(
+            0.02,
+            0.06,
+            label,
+            transform=ax.transAxes,
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85},
+        )
         ax.set_ylabel("$C_l$")
         ax.grid(True, alpha=0.3)
 
