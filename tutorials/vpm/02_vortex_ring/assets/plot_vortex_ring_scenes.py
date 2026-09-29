@@ -77,9 +77,7 @@ def export_document(work, output_dir, name, tex, figure_format, texbin):
     )
     shutil.copy2(work / f"{name}.tex", output_dir / f"{name}.tex")
     if figure_format == "png":
-        pdftoppm = shutil.which("pdftoppm")
-        if pdftoppm is None:
-            raise FileNotFoundError("pdftoppm is required to export the rendered PNG.")
+        pdftoppm = find_executable("pdftoppm")
         subprocess.run(
             [
                 pdftoppm,

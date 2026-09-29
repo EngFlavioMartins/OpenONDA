@@ -50,6 +50,32 @@ logger = logging.getLogger("coupler")
 _PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
 
 
+def _minimum_donor_separation(position: np.ndarray, volume: np.ndarray) -> float:
+    """Smallest resolved cell-centre spacing, including stretched directions."""
+    if len(position) > 1:
+        distances, _ = cKDTree(position, compact_nodes=False).query(position, k=2)
+        positive = distances[:, 1][distances[:, 1] > 0.0]
+        if len(positive):
+            return float(positive.min())
+    return float(np.cbrt(np.min(volume)))
+
+
+def _discard_unresolved_uniform_curl(
+    vorticity: np.ndarray, velocity: np.ndarray, minimum_separation: float
+) -> np.ndarray:
+    """Do not turn derivative roundoff in a uniform flow into particles.
+
+    The FVM donor velocity and gradient use float64. A velocity difference
+    has rounded values and a length scale. Eight float64 ulps give a scale
+    for this near-zero state; a resolved field is never replaced cell by cell.
+    """
+    velocity_scale = float(np.max(np.abs(velocity), initial=0.0))
+    floor = 8.0 * np.finfo(np.float64).eps * velocity_scale / minimum_separation
+    if float(np.max(np.linalg.norm(vorticity, axis=1), initial=0.0)) <= floor:
+        return np.zeros_like(vorticity)
+    return vorticity
+
+
 def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
     """C1 Hermite ramp for the solid and mesh confidence tapers."""
     span = float(upper) - float(lower)
@@ -1960,6 +1986,7 @@ class VorticityTransfer:
                 self._cell_volume,
                 np.zeros_like(self._cell_centre),
             )
+            self._roundoff_length = _minimum_donor_separation(self._cell_centre, self._cell_volume)
             if self.transfer_method == "buffered_m4_renewal":
                 self._cell_tree = cKDTree(self._cell_centre)
 
@@ -3101,6 +3128,9 @@ class VorticityTransfer:
         if self._lattice_anchor is None:
             raise RuntimeError("VorticityTransfer.setup() did not resolve a lattice anchor")
         fvm_vorticity = self._vorticity_from_gradient(gradient_values)
+        fvm_vorticity = _discard_unresolved_uniform_curl(
+            fvm_vorticity, velocity_values, self._roundoff_length
+        )
         if self.transfer_method == "buffered_m4_renewal":
             result = self._transfer_buffered_m4_renewal(
                 vpm,

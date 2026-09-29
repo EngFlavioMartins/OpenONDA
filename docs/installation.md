@@ -119,11 +119,15 @@ the other ranks wait. No per-tutorial thread exports are required.
 - **OpenFOAM/cfMesh:** only needed for independent external parity studies or
   comparison data. Native solver operation and the introductory examples use
   neither program. Mesh-file interchange is distinct from running OpenFOAM.
-- **LaTeX:** the tutorial thesis figures require `latex`, `dvipng`, and the
-  `newpxtext`/`newpxmath` packages from a TeX installation. They use the shared
+- **LaTeX:** the tutorial thesis figures require `latex`, `pdflatex`, `dvipng`,
+  and the `newpxtext`/`newpxmath`, `standalone`, and TikZ packages from a TeX
+  installation. They use the shared
   thesis fonts and palette. The solver itself does not require TeX;
   `openonda.plotting.set_style()` supports plots with Matplotlib's built-in
   math renderer when the thesis typography is not required.
+- **Poppler:** the labelled ParaView scenes use its `pdftoppm` command for PNG
+  export. Install `poppler-utils` on Debian/Ubuntu or `poppler` with Homebrew
+  or Conda; a PDF-only scene export does not require this rasterizer.
 
 Plotting also requires the case's saved data. Installing OpenONDA does not
 produce simulation results. See the [tutorial data audit](verification/tutorial_data_and_portability_2026-09-29.md)

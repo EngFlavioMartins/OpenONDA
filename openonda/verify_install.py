@@ -241,6 +241,54 @@ def _verify_native_vpm() -> dict[str, object]:
     return {"n_particles": 2, "steps": 1, "restart_step": 2, "backend": "CPU"}
 
 
+def _verify_native_coupled() -> dict[str, object]:
+    """Advance and resume both installed solvers through the public factory."""
+    from openonda import coupler, vpm
+
+    velocity = [1.0, 0.0, 0.0]
+    flow = FVMSetup(
+        case_name="installed_coupled",
+        execution=ComputeConfig(operator_backend="numpy"),
+        time=TimeConfig(time_step_size=0.01, end_time=0.04),
+        transport=TransportConfig(kinematic_viscosity=0.01),
+        boundaries=[BoundaryConfig.inlet("numericalBoundary", velocity)],
+        initial_velocity=velocity,
+    )
+    particles = vpm.VPMCase(
+        numerics=vpm.Numerics(
+            compute_device="CPU",
+            time_step_size=0.02,
+            max_n_particles=4000,
+            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+            freestream_velocity=velocity,
+            induction=vpm.DirectInduction(),
+            viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.25),
+        ),
+    )
+    exchange = coupler.CouplerSetup(freestream_velocity=velocity)
+    mesh = msh.coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), 0.25)
+    with (
+        tempfile.TemporaryDirectory(prefix="openonda-installed-coupled-") as directory,
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        with coupler.create_coupler(
+            flow, particles, exchange, mesh=mesh, case_dir=directory
+        ) as first:
+            if first.run(start_from="latest", max_coupling_steps=1) != 1:
+                raise RuntimeError("Installed coupled solver did not accept its first exchange")
+        with coupler.create_coupler(
+            flow, particles, exchange, mesh=mesh, case_dir=directory
+        ) as resumed:
+            if resumed.run(start_from="latest") != 2:
+                raise RuntimeError("Installed coupled solver did not resume its accepted exchange")
+            fvm_step = resumed.fvm_solver.step
+            vpm_step = resumed.vpm_solver.step
+            field = resumed.fvm_solver.get_velocity_field()
+            if fvm_step != 4 or vpm_step != 2 or not np.isfinite(field).all():
+                raise RuntimeError("Installed coupled restart produced invalid fields or clocks")
+    return {"n_cells": int(mesh["n_cells"]), "fvm_step": fvm_step, "vpm_step": vpm_step}
+
+
 def _verify_distribution_resources() -> dict[str, object]:
     """Verify typing, tutorial, and plotting resources from the installation."""
     if not (resources.files("openonda") / "py.typed").is_file():
@@ -359,7 +407,7 @@ def main() -> int:
 
     The check validates that the imported package, distribution resources, direct
     tutorial entry points, Cartesian meshing, FVM iterative solves, and VPM
-    stepping/output/restart are usable from an installed environment. It removes
+    stepping/output/restart, and coupled continuation are usable from an installed environment. It removes
     ``PYTHONPATH`` while exercising tutorial scripts so a source checkout cannot
     mask packaging errors.
 
@@ -412,6 +460,7 @@ def main() -> int:
             "taichi_arch": taichi_arch,
             "native_fvm": _verify_native_fvm(),
             "native_vpm": _verify_native_vpm(),
+            "native_coupled": _verify_native_coupled(),
         }
     )
     numba.config.reload_config()
