@@ -21,6 +21,10 @@ from source.solution_layout import component_directory
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.vpm.config.case import Numerics
 from source.solvers.vpm.config.fingerprint import numerical_configuration
+from source.solvers.vpm.config.restart import (
+    _configuration_mismatches,
+    canonical_restart_configuration,
+)
 from source.solvers.vpm.io.backup import _BackupIO
 from source.solvers.vpm.io.vlm_backup import export_vlm_backup
 
@@ -109,6 +113,11 @@ def _config_differences(
 ) -> list[tuple[str, object, object]]:
     """Return recursive leaf differences with stable dotted paths."""
     if isinstance(stored, dict) and isinstance(current, dict):
+        incompatible_paths = None
+        if prefix == "vpm":
+            stored = canonical_restart_configuration(stored)
+            current = canonical_restart_configuration(current)
+            incompatible_paths = set(_configuration_mismatches(current, stored))
         differences: list[tuple[str, object, object]] = []
         for key in sorted(set(stored) | set(current)):
             path = f"{prefix}.{key}" if prefix else str(key)
@@ -118,6 +127,16 @@ def _config_differences(
                 differences.append((path, stored[key], "<missing>"))
             else:
                 differences.extend(_config_differences(stored[key], current[key], prefix=path))
+        if incompatible_paths is not None:
+            differences = [
+                difference
+                for difference in differences
+                if any(
+                    path == difference[0].removeprefix("vpm.")
+                    or path.startswith(difference[0].removeprefix("vpm.") + "[")
+                    for path in incompatible_paths
+                )
+            ]
         return differences
     if stored != current:
         return [(prefix, stored, current)]

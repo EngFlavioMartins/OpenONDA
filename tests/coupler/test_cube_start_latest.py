@@ -32,6 +32,6 @@ def test_cube_tutorial_recovers_initial_failure_and_continues(tmp_path, cores):
         env=environment,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=1200,
     )
     assert result.returncode == 0, result.stdout[-8000:] + result.stderr[-8000:]

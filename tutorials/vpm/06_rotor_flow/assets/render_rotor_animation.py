@@ -16,13 +16,14 @@ from pathlib import Path
 import h5py
 from defusedxml import ElementTree
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 import numpy as np
 
 from source.solution_layout import vpm_backup_files
 from PIL import Image
 import pyvista as pv
 
+from openonda import plotting as theme
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = CASE_DIR / "assets" / "animation" / "rotor_30fps.gif"
@@ -149,19 +150,24 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
     playback = physical_span / gif_span if gif_span > 0 else np.nan
     output.parent.mkdir(parents=True, exist_ok=True)
     images: list[Image.Image] = []
-    figure, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+    theme.set_thesis_style()
+    # Keep animation raster size independent of the publication export DPI.
+    figure, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=100, constrained_layout=True)
+    circulation_cmap = LinearSegmentedColormap.from_list(
+        "thesis_rotor_circulation",
+        [theme.PALETTE["teal"], theme.PALETTE["white"], theme.PALETTE["purple"]],
+    )
+    vorticity_cmap = LinearSegmentedColormap.from_list(
+        "thesis_rotor_vorticity",
+        [theme.PALETTE["white"], theme.PALETTE["purple"], theme.PALETTE["dark"]],
+    )
     native_frames = []
     for time, backup_path in vlm_frames:
         centres, circulation = _panel_centres(backup_path)
         native_frames.append((time, backup_path, centres, circulation))
     circulation_all = np.concatenate([circulation for _, _, _, circulation in native_frames])
-    circulation_norm = Normalize(
-        vmin=float(circulation_all.min()), vmax=float(circulation_all.max())
-    )
-    if circulation_norm.vmin == circulation_norm.vmax:
-        circulation_norm = Normalize(
-            vmin=circulation_norm.vmin - 1.0, vmax=circulation_norm.vmax + 1.0
-        )
+    circulation_scale = max(float(np.abs(circulation_all).max()), 1e-12)
+    circulation_norm = Normalize(vmin=-circulation_scale, vmax=circulation_scale)
     plane_cache = {}
     for time, _ in vlm_frames:
         plane_time, plane_path = _nearest_frame(plane_frames, time)
@@ -197,7 +203,8 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         for axis in axes:
             axis.clear()
         axes[0].scatter(
-            centres[:, 1], centres[:, 2], c=circulation, s=7, cmap="coolwarm", norm=circulation_norm
+            centres[:, 1], centres[:, 2], c=circulation, s=7,
+            cmap=circulation_cmap, norm=circulation_norm
         )
         axes[0].set(xlabel="rotor y [m]", ylabel="rotor z [m]", title="coupled VPM+VLM rotor disk")
         axes[0].set_aspect("equal", adjustable="box")
@@ -208,13 +215,13 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
             points[::4, 2],
             c=vorticity[::4],
             s=1.2,
-            cmap="magma",
+            cmap=vorticity_cmap,
             norm=vorticity_norm,
         )
         axes[1].set(
             xlabel="wake-plane y [m]",
             ylabel="wake-plane z [m]",
-            title=f"native wake_1D field (t={plane_time:.3f} s)",
+            title=rf"native wake\_1D field (t={plane_time:.3f} s)",
         )
         axes[1].set_aspect("equal", adjustable="box")
         axes[1].set_xlim(wake_limits[0], wake_limits[1])
@@ -222,11 +229,12 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         figure.suptitle(
             f"rotor coupled backup frames | accepted t={time:.3f} s | frame {frame_index + 1}/{native_frame_count} | "
             f"GIF {fps:g} fps | playback {playback:.2f}x",
-            fontsize=12,
         )
         figure.canvas.draw()
         rgba = np.asarray(figure.canvas.buffer_rgba())
-        images.append(Image.fromarray(rgba[:, :, :3].copy()))
+        # Retain one byte per pixel, the native GIF representation, rather
+        # than every frame's RGB canvas. All native frames remain included.
+        images.append(Image.fromarray(rgba[:, :, :3]).quantize(colors=256))
     plt.close(figure)
     # GIF stores frame delays in 10 ms units. Round cumulative timestamps so
     # 40 ms frames are distributed throughout the sequence instead of

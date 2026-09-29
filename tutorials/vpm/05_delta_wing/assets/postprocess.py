@@ -2584,7 +2584,8 @@ def render(
         _theme.validate_thesis_figure(fig, (ax, cax))
         fig.canvas.draw()
         pixels = np.asarray(fig.canvas.buffer_rgba())[..., :3]
-        frames.append(Image.fromarray(pixels))
+        # Detach from the canvas and retain GIF-native one-byte pixels.
+        frames.append(Image.fromarray(pixels).quantize(colors=256))
         plt.close(fig)
 
     output.parent.mkdir(parents=True, exist_ok=True)

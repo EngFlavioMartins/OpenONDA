@@ -21,11 +21,17 @@ def main(directory, cores):
         time=replace(case["FVM_SETUP"].time, end_time=0.1),
     )
     numerics = case["VPM_CASE"].numerics
+    # Coupled boundary traces use float32 particle fields.
+    velocity_scale = np.linalg.norm(case["FREESTREAM_VELOCITY"])
+    transfer_roundoff = 8 * np.finfo(np.float32).eps
+    velocity_tolerance = transfer_roundoff * velocity_scale
+    pressure_tolerance = max(flow.linear.pressure_tolerance, transfer_roundoff * velocity_scale**2)
     particles = replace(
         case["VPM_CASE"],
         numerics=replace(
             numerics,
             compute_device="CPU",
+            induction=case["vpm"].DirectInduction(),
             max_n_particles=100_000,
             max_evaluation_points=100_000,
             viscous=replace(
@@ -102,13 +108,13 @@ def main(directory, cores):
             actual_velocity,
             reference.fvm_solver.get_velocity_field(),
             rtol=1e-6,
-            atol=1e-8,
+            atol=velocity_tolerance,
         )
         np.testing.assert_allclose(
             actual_pressure,
             reference.fvm_solver.get_pressure_field(),
             rtol=1e-6,
-            atol=flow.linear.pressure_tolerance,
+            atol=pressure_tolerance,
         )
     with (
         h5py.File(directory / "continued/solution/vpm/vpm_000002.h5") as actual,
@@ -155,11 +161,16 @@ def main(directory, cores):
     with build("continued") as renewed:
         assert renewed.run(start_from="latest") == 2
         np.testing.assert_allclose(
-            renewed.fvm_solver.get_velocity_field(), actual_velocity, rtol=1e-6, atol=1e-8
+            renewed.fvm_solver.get_velocity_field(),
+            actual_velocity,
+            rtol=1e-6,
+            atol=velocity_tolerance,
         )
         np.testing.assert_allclose(
-            renewed.fvm_solver.get_pressure_field(), actual_pressure,
-            rtol=1e-6, atol=flow.linear.pressure_tolerance,
+            renewed.fvm_solver.get_pressure_field(),
+            actual_pressure,
+            rtol=1e-6,
+            atol=pressure_tolerance,
         )
     assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1, 2]
 

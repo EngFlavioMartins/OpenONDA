@@ -14,6 +14,7 @@ import pytest
 from source.coupler import boundary as boundary_module
 from source.coupler.backup import (
     _backup_config,
+    config_diff,
     config_difference_paths,
     load_coupled_backup,
     publish_vpm_snapshot,
@@ -432,6 +433,84 @@ def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path
     )
     with pytest.raises(ValueError, match="vpm.stabilization.selective_eddy_viscosity_coefficient"):
         load_coupled_backup(reader, tmp_path)
+
+
+def _retired_vpm_controls():
+    return {
+        "max_n_particles": 100,
+        "compute_device": "CUDA",
+        "device_memory_fraction": 0.4,
+        "stabilization": {
+            "regularization_interval_steps": 0,
+            "regularization_capacity_fraction": 0.8,
+            "filament_refinement": {"interval_steps": 0, "max_n_particles": 100},
+        },
+    }
+
+
+def test_coupled_restart_canonicalization_preserves_inputs_and_physical_paths():
+    from source.solvers.vpm.config.restart import canonical_restart_configuration
+
+    old_vpm = {
+        **_retired_vpm_controls(),
+        "time_step_size": 0.1,
+        "precision": "f32",
+        "viscous": {"scheme": "GBD", "gbd_max_nodes": 20, "kinematic_viscosity": 0.01},
+    }
+    stored = {"vpm": old_vpm}
+    current = {"vpm": canonical_restart_configuration(old_vpm)}
+    current["vpm"]["compute_device"] = "CPU"
+    original_stored, original_current = deepcopy(stored), deepcopy(current)
+    assert config_difference_paths(stored, current) == set()
+    assert config_diff(stored, current) == []
+    assert stored == original_stored
+    assert current == original_current
+
+    current["vpm"]["time_step_size"] = 0.05
+    assert config_difference_paths(stored, current) == {"vpm.time_step_size"}
+    current["vpm"]["precision"] = "f64"
+    current["vpm"]["viscous"]["kinematic_viscosity"] = 0.02
+    stored["vpm"]["stabilization"]["regularization_interval_steps"] = 1
+    current["vpm"]["stabilization"]["regularization_interval_steps"] = 1
+    assert config_difference_paths(stored, current) == {
+        "vpm.time_step_size",
+        "vpm.precision",
+        "vpm.viscous.kinematic_viscosity",
+        "vpm.stabilization.regularization_capacity_fraction",
+    }
+
+
+def test_authenticated_old_coupled_manifest_uses_original_checksum(tmp_path, monkeypatch):
+    import json
+
+    from source.coupler.backup import config_mapping_digest
+    from source.solvers.vpm.config.restart import canonical_restart_configuration
+
+    writer = _make_coupler()
+    writer.vpm_solver.setup.mapping.update(_retired_vpm_controls())
+    writer.vpm_solver.setup.mapping["viscous"]["gbd_max_nodes"] = 20
+    save_coupled_backup(writer, tmp_path, coupling_step=1)
+    reader = _make_coupler()
+    reader.vpm_solver.setup.mapping = canonical_restart_configuration(
+        writer.vpm_solver.setup.mapping
+    )
+    reader.vpm_solver.setup.mapping["compute_device"] = "CPU"
+    manifest_path = tmp_path / "manifest.json"
+    original_text = manifest_path.read_text()
+    assert load_coupled_backup(reader, tmp_path) == 1
+    assert manifest_path.read_text() == original_text
+
+    manifest = json.loads(original_text)
+    manifest["config"]["vpm"]["device_memory_fraction"] = 0.5
+    # Even ignored operational fields are authenticated before normalization.
+    manifest_path.write_text(json.dumps(manifest))
+    with monkeypatch.context() as patch:
+        patch.setattr(reader.fvm_solver, "load_state", lambda *args: pytest.fail("premature load"))
+        with pytest.raises(ValueError, match="stored configuration hash mismatch"):
+            load_coupled_backup(reader, tmp_path)
+    manifest["config_sha256"] = config_mapping_digest(manifest["config"])
+    manifest_path.write_text(json.dumps(manifest))
+    assert load_coupled_backup(reader, tmp_path) == 1
 
 
 def test_interface_acceleration_restart_identity_precedes_state_publication(tmp_path, monkeypatch):
