@@ -32,9 +32,9 @@ from ._common import (  # noqa: E402
 )
 
 
-def recirculation_length(x, u, D=D_REF):
-    """Distance from the cylinder rear (x = D/2) to the u_x sign recovery."""
-    rear = 0.5 * D
+def recirculation_length(x, u, D=D_REF, center_x=0.0):
+    """Distance from the cylinder rear to the u_x sign recovery."""
+    rear = center_x + 0.5 * D
     mask = x > rear
     xs, us = x[mask], u[mask]
     order = np.argsort(xs)
@@ -50,6 +50,10 @@ def recirculation_length(x, u, D=D_REF):
     u0, u1 = us[i_last], us[i_last + 1]
     x_zero = x0 - u0 * (x1 - x0) / (u1 - u0)
     return float(x_zero - rear)
+
+
+def _wake_endpoint_over_d(length, D, center_x=0.0):
+    return (center_x + 0.5 * D + length) / D
 
 
 def main():
@@ -95,7 +99,7 @@ def main():
         )
     if L is not None:
         ax.axvline(
-            0.5 + L,
+            _wake_endpoint_over_d(L, D_REF),
             color=COLORS["TUDred"],
             linestyle="--",
             linewidth=0.8,
@@ -114,7 +118,7 @@ def main():
         msg = f"  recirculation length L/D = {L / D_REF:.3f}"
         if "L_over_D" in ref:
             lo, hi = ref["L_over_D"]
-            status = "OK" if lo * 0.9 <= L / D_REF <= hi * 1.1 else "OUT OF BAND"
+            status = "OK" if lo <= L / D_REF <= hi else "OUT OF BAND"
             msg += f"  [reference {lo:.2f}-{hi:.2f}: {status}]"
         print(msg)
     else:
