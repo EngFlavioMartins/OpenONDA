@@ -16,7 +16,7 @@ items must not be described as complete.
 - [x] Implement transactional subdivision for excessive coupled wall corrections, preserving the accepted macro step.
 - [x] Exercise excessive wall correction using native particle motion, the real RK2 integrator and a rotated wall; subdivision preserves circulation, one accepted clock and projection diagnostics.
 - [x] Correct ParaView view/layout screenshot targets; include the leapfrogging reference table; correct thesis-layout clearance.
-- [ ] Finish real plotting executions that exercise each reported plotting failure.
+- [x] Finish real plotting executions that exercise each reported plotting failure.
 
 ## Minimal configuration and readable tutorials
 
@@ -115,7 +115,7 @@ jackknife diagnostics completed; sampled maximum relative errors were 6.735%,
 6.801% and 7.010%, respectively. The latter two are bounded regression checks,
 not full-history error maxima. See [the execution record](../../studies/rwm_aggregation_verification_2026-09-29.json).
 
-The final wheel built from commit `048a77cf` passed
+The earlier wheel built from commit `048a77cf` passed
 `python -I -m openonda.verify_install --require-site-packages`. Native FVM/VPM,
 Cartesian meshing, installed tutorial resources, direct commands and rendering
 completed. Its SHA-256 is
@@ -148,3 +148,15 @@ first-emission moment capture, and restoration from a populated state to an
 empty initial checkpoint. These are shared solver fixes, not changes to health
 limits. The clean CUDA quadcopter qualification remains in progress; passing
 these native lifecycle tests alone does not establish full-run stability.
+
+The originally reported vortex-ring, Lamb–Oseen and interaction plotting failures
+were exercised by their complete ordinary launchers using genuine archived data.
+Lamb–Oseen returned zero under a retained supervisor; all seven PNGs decoded and
+representative analytical and particle figures passed visual inspection. See the
+[Lamb execution record](../../studies/lamb_archive_plot_verification_2026-09-29.json).
+
+The corrected rotor full plotting launcher returned zero under a detached
+supervisor. Its five analytical PNGs and 274 GIF frames decoded. This closes
+plotting execution coverage for the archived accepted history; full-horizon rotor
+stability remains unqualified. See the
+[rotor execution record](../../studies/rotor_archive_plot_verification_2026-09-29.json).

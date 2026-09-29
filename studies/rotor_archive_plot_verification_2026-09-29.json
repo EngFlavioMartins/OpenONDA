@@ -1,0 +1,43 @@
+{
+  "child_exit": {
+    "command": [
+      "bash",
+      "allplot.sh"
+    ],
+    "started_utc": "2026-09-29T16:29:42.018656+00:00",
+    "finished_utc": "2026-09-29T16:41:31.001029+00:00",
+    "child_returncode": 0,
+    "child_pid": 3769899
+  },
+  "log": "build/rotor-final-full-allplot.log",
+  "clone": "build/archive-clean-clone/tutorials/vpm/06_rotor_flow",
+  "installed_environment": "build/archive-verification-env",
+  "pythonpath": "unset",
+  "decoded_pngs": [
+    "rotor_induction_validation.png",
+    "rotor_loading_validation.png",
+    "rotor_performance.png",
+    "rotor_streamwise.png",
+    "rotor_wake_planes.png"
+  ],
+  "gif": {
+    "path": "build/archive-clean-clone/tutorials/vpm/06_rotor_flow/assets/animation/rotor_30fps.gif",
+    "decoded_frames": 274,
+    "size": [
+      1200,
+      500
+    ],
+    "duration_ms": 9130,
+    "sha256": "4a054375d5783ac3cb1bbab16ccba7a86b5c274a9079d80f557618d6c710dbf0"
+  },
+  "visual_inspection": [
+    "rotor_performance.png",
+    "rotor_streamwise.png",
+    "GIF midpoint"
+  ],
+  "scientific_status": "archived accepted output rendered; no full rotor horizon or stability qualification",
+  "earlier_foreground_interruption": {
+    "tool_exit": 143,
+    "actual_child_status": "unavailable"
+  }
+}

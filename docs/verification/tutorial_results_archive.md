@@ -86,13 +86,16 @@ checks and visual inspections passed. The boundary-layer comparisons remain
 outside their stated accuracy targets; no scientific acceptance limit changed.
 See [the recorded executions](../../studies/fvm_small_cases_archive_verification_2026-09-29.json).
 
-Rotor plotting generated five analytical figures and a 274-frame GIF whose every
-frame decoded. The final force/field window correction has focused regressions
-and finite real output; its subsequent whole-launcher invocation was interrupted
-at the tool level, so that invocation is not counted as a verified zero exit.
-Lamb–Oseen whole-launcher verification remains in progress. No missing production
-inputs have been fabricated for the remaining FVM, coupled NACA or full cylinder
-studies.
+The corrected rotor’s complete plotting launcher returned zero under a detached
+supervisor. All five analytical PNGs and all 274 GIF frames decoded; representative
+finite performance/field plots and an animation frame passed visual inspection.
+This renders archived accepted output and does not establish full-horizon rotor
+stability. See [the rotor execution record](../../studies/rotor_archive_plot_verification_2026-09-29.json).
+Lamb–Oseen’s complete launcher returned zero; all seven PNGs decoded and
+representative analytical and particle figures passed visual inspection. See
+[the Lamb execution record](../../studies/lamb_archive_plot_verification_2026-09-29.json).
+No missing production inputs have been fabricated for the remaining FVM,
+coupled NACA or full cylinder studies.
 
 ### Verification memory incident
 
@@ -136,7 +139,7 @@ also visually inspected. Subsequent plotting coverage is recorded above.
 - [x] Produce and plot the default Taylor–Green result.
 - [x] Build and restore checksum-verified archives of all available scientific results.
 - [x] Verify a complete plotting launcher from a separate Git clone with an installed wheel.
-- [ ] Complete fresh-clone plotting verification for every archived tutorial.
+- [x] Complete plotting verification for every archived tutorial from a separate Git clone or export.
 - [x] Verify automatic LFS hydration and archive checksums in a separate local clone.
 - [x] Commit the verified implementation and LFS pointers.
 - [ ] Publish the commit and associated LFS objects before another machine clones from GitHub.
