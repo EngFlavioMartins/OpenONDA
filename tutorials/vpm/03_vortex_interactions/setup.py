@@ -86,7 +86,7 @@ def core_section_samplers(*, interval=0.15):
 
 
 def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
-    # Conservative transfer maintains particle resolution; no damping or projection.
+    # Conservative transfer maintains particle resolution.
     transfer = vpm.StabilizationConfig(
         regularization_interval_steps=20,
         regularization_grid_spacing=0.05,

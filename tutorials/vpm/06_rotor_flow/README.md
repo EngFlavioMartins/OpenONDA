@@ -7,7 +7,7 @@ that historical stop cannot establish their late-time behavior. Rotor loads
 and induction still need spatial, temporal, and particle-core convergence checks. See the [VPM guide](../../../docs/vpm.md#vlm-coupling)
 for the lifting-surface model and its limitations.
 
-The setup now also samples four streamwise lines at design `r/R = 0, 0.25,
+The setup samples four streamwise lines at design `r/R = 0, 0.25,
 0.65, 1.1`, from `x/D = -1` to `3`, every `0.06 s`. Their native
 `streamwise_r*.csv` files retain `time`, `step`, positions, and all three signed
 velocity components. The output owner appends these records across accepted
@@ -27,9 +27,8 @@ figure; old retained results without the new lines will need a fresh run.
 
 Run `./allrun.sh` for a clean simulation, `./allcontinue.sh` to resume the
 latest backup, and `./allplot.sh` for figures. Use `./allplot.sh pdf` for vector
-figures. `python setup.py` also continues automatically. To use a separate
-case namespace, invoke `python setup.py --output-tag <name>` and select the
-same namespace when plotting.
+figures. `python setup.py` also continues automatically. Independent research
+trials use the study scripts below and their own output directories.
 
 The ordinary `setup.py` starts and continues compatible runs. An explicit, bounded smaller-step
 restart pilot is available for a validated native checkpoint:
@@ -76,7 +75,7 @@ The performance figure uses wind-turbine coefficient definitions:
 
 The native console also reports generic lift/drag coefficients using its displayed reference pressure and blade area. Use the disk-based `CT` and `CP` in these figures for the rotor theory comparison.
 
-Power is the native fluid-on-blade rotational power, evaluated using actual angular speed, including the ramp. BEM uses the same recorded blade geometry, a thin-plate lift polar, Prandtl hub/tip losses and Buhl's high-induction relation. Loading profiles compare time-averaged sampled circulation and sectional lift with BEM. Operating-point means and wake profiles use the final five nominal rotor revolutions; the impulse balance uses a separate final three-revolution clock window. The ideal far-wake reference includes streamtube expansion. Wake stationarity requires a complete five-revolution native window and compares its first two whole revolutions with its final three using exact bracketed time-weighted means, so every portion of the published mean is evaluated. Subtracting the freestream and retaining local velocity vectors prevents opposite spatial changes from cancelling. Curves with more than 1% drift, or incomplete native windows, are dotted. The validator also reports persistent induced-velocity signal onset at each plane using a predeclared 1%-of-freestream RMS threshold for three consecutive native frames; this is not a physical convected-front proof. A five-revolution window is refused as stationary unless onset precedes it, and 7.5 s may therefore remain insufficient. No unrequested 3D/5D context is emitted by the completion setup.
+Power is the native fluid-on-blade rotational power, evaluated using actual angular speed, including the ramp. BEM uses the same recorded blade geometry, a thin-plate lift polar, Prandtl hub/tip losses and Buhl's high-induction relation. Loading profiles compare time-averaged sampled circulation and sectional lift with BEM. Operating-point means and wake profiles use the final five nominal rotor revolutions; the impulse balance uses a separate final three-revolution clock window. The ideal far-wake reference includes streamtube expansion. Wake stationarity requires a complete five-revolution native window and compares its first two whole revolutions with its final three using exact bracketed time-weighted means, so every portion of the published mean is evaluated. Subtracting the freestream and retaining local velocity vectors prevents opposite spatial changes from cancelling. Curves with more than 1% drift, or incomplete native windows, are dotted. The validator also reports persistent induced-velocity signal onset at each plane using a predeclared 1%-of-freestream RMS threshold for three consecutive native frames; this is not a physical convected-front proof. A five-revolution window is refused as stationary unless onset precedes it.
 
 The current 10 s run writes numerical backups every four steps and compact
 wake fields every 0.06 s. Filament splitting changes particle counts, so
@@ -91,7 +90,7 @@ brackets are evidence only and do not certify physical convected-wake arrival.
 
 The latter uses the analytical right-vortex-cylinder equations of [Li et al. (2025), Eqs. 30–45](https://wes.copernicus.org/articles/10/2515/2025/) and the planar superposition/closure described by [Li et al. (2022), Sect. 3](https://wes.copernicus.org/articles/7/75/2022/). It uses the matched BEM bound-circulation table to form piecewise-constant cylinder sheets; it does not fit a curve to the VPM samples. The predeclared scaled-RMS screens are 25% for axial induction and 35% for azimuthal induction, with reference floors of 5% and 2% of the relevant velocity scale. These screens are explicitly diagnostic flags, not uncertainty-based acceptance gates: no defensible uncertainty budget is claimed for the infinite-blade, inviscid, non-expanding reference against the finite-blade LES wake. The report includes dimensional RMS errors and finite-bin coverage so weak or zero swirl cannot be hidden by a floor or profile average. A flag keeps theory agreement unqualified; do not tune the screens or silently replace the model with the ideal far-wake curve.
 
-`allplot.sh` additionally writes `figures/rotor_induction_validation.{png,pdf}`, showing native and finite-distance reference axial and azimuthal induction profiles at 1D/2D. It also writes `assets/animation/rotor_30fps.gif` from the recorded coupled VPM+VLM backups and nearest recorded 1D wake fields. The sidecar JSON records the exact source backups and wake-plane files. The GIF title reports accepted physical time and its accelerated playback multiplier; no solver state is interpolated or fabricated. The authored 7.5 s horizon precedes the older run's t=7.68 s CFL stop but is not a selected healthy endpoint or before-failure proof: report any missing signal onset, late growth or stationary window rather than relabeling startup as steady validation.
+`allplot.sh` additionally writes `figures/rotor_induction_validation.{png,pdf}`, showing native and finite-distance reference axial and azimuthal induction profiles at 1D/2D. It also writes `assets/animation/rotor_30fps.gif` from the recorded coupled VPM+VLM backups and nearest recorded 1D wake fields. The sidecar JSON records the exact source backups and wake-plane files. The GIF title reports accepted physical time and its accelerated playback multiplier; no solver state is interpolated or fabricated. The simulation horizon is 10 s. Report missing signal onset, late growth or incomplete stationary windows; an animation does not establish wake qualification.
 
 This is an inviscid blade-loading model coupled to a viscous/LES particle wake. It does not resolve blade boundary layers, transition, stall or airfoil profile drag. BEM agreement validates the corresponding attached-flow approximation, not every effect in a high-Reynolds-number turbine.
 
@@ -112,10 +111,9 @@ separate numerical study, the native flow-integrals sampler records its
 cumulative vector-strength, linear-impulse and angular-impulse transfers. Those
 transfers are numerical sources, not turbine forces.
 
-The non-remeshing late-growth diagnostic is staged separately from qualification.
-The changed-step restart route is intentionally model-strict: it permits only
-an explicit `time_step_size` change, so it must reject applying stretching
-viscosity to the baseline checkpoint. Use the public fresh-pair runner instead:
+Independent matched trials isolate selective viscosity from filament splitting.
+Changed-step restarts preserve the physical model and cannot add stabilization
+to a baseline checkpoint. Start each variant with the fresh-pair runner:
 
 ```bash
 python assets/run_matched_stabilization_pair.py \
@@ -126,7 +124,7 @@ python assets/run_matched_stabilization_pair.py \
 ```
 
 This comparison isolates selective viscosity: one case disables stabilization,
-and the other uses `C=0.5`. The main tutorial now combines that viscosity
+and the other uses `C=0.5`. The main tutorial combines that viscosity
 with filament refinement, so the pair does not validate the main case. It
 requires two independent runs and output directories.
 
@@ -148,5 +146,5 @@ namespace, dense `0.024 s` full backups, mandatory accepted-step loading CSVs,
 and native guards. No remeshing, clipping, particle deletion or guard
 relaxation is permitted; longer survival alone is not qualification.
 
-Run the full case before judging late wake planes, loads, or stationarity.
-The short startup check cannot establish stability after 7.5 s.
+Run the full 10 s case before judging late wake planes, loads, or stationarity.
+Short startup checks do not establish late-time stability.

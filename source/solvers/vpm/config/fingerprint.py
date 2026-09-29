@@ -73,7 +73,6 @@ def numerical_configuration(setup: Numerics) -> dict[str, Any]:
     """
     return {
         "axisymmetric_no_swirl_axis": setup.axisymmetric_no_swirl_axis,
-        "compute_device": setup.compute_device,
         "cutoff_radius_factor": setup.cutoff_radius_factor,
         "domain_bounds": _canonical_value(setup.domain_bounds),
         "health_limits": _canonical_value(setup.health_limits),

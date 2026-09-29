@@ -36,7 +36,6 @@ def _viscous_config(scheme: str):
             threshold_mode="absolute",
             dvh_support_radius_ratio=3,
             kinematic_viscosity=NU,
-            max_nodes=4096,
             core_radius_ratio=1.25,
         )
     if scheme == "GBD":
@@ -46,7 +45,6 @@ def _viscous_config(scheme: str):
             threshold=1.0e-14,
             threshold_mode="absolute",
             kinematic_viscosity=NU,
-            max_nodes=4096,
             core_radius_ratio=1.25,
         )
     if scheme == "NONE":

@@ -19,10 +19,8 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-__package__ = case_package(Path(__file__).parent)
 
 # Physics (Lamb--Oseen benchmark)
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -44,10 +42,9 @@ TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
 SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
 MERGING_SAMPLE_INTERVAL_STEPS = 6  # resolve the rapid final collapse of the two vorticity peaks
 BACKUP_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
-INITIAL_STRENGTH_CUTOFF = 1e-4  # discard particles with Γ < x% of peak
+INITIAL_STRENGTH_CUTOFF = 1e-4  # minimum initial strength relative to the peak
 MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD population)
 
-VISCOUS_SCHEMES = ("CS", "DVH", "GBD")
 ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 RWM_ENSEMBLE_SIZE = 10
 
@@ -232,9 +229,7 @@ def run_case(
     integral_interval_steps = field_interval_steps
     if scheme == "DVH":
         diffusion_steps = math.ceil(viscous.dvh_required_time_step_size() / TIME_STEP_SIZE)
-        # Each energy secant must include an actual heat transfer. Between
-        # transfers DVH advances only advection, whose small discretization
-        # drift is not a viscous energy-rate estimate. Keep field output dense.
+        # Energy-rate samples span a complete DVH diffusion interval.
         integral_interval_steps *= math.ceil(diffusion_steps / integral_interval_steps)
     samplers = [vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(integral_interval_steps))]
     if surfaces:

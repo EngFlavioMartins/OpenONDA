@@ -121,7 +121,6 @@ def make_coupler(directory, kind, transfer_method):
                     threshold_mode=(
                         "absolute" if transfer_method == "buffered_m4_renewal" else "budget"
                     ),
-                    max_nodes=20000,
                 ),
             ),
         )

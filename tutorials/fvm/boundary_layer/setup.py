@@ -12,11 +12,9 @@ from functools import partial
 from pathlib import Path
 
 import openonda.fvm as fvm
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.mesh_plate import flat_plate_mesh
-from .assets.profiles import write_profiles
+from openonda.tutorial_support.fvm_boundary_layer.mesh_plate import flat_plate_mesh
+from openonda.tutorial_support.fvm_boundary_layer.profiles import write_profiles
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -56,7 +54,9 @@ def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
     ]
 
     return fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
+        ),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,

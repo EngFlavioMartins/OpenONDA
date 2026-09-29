@@ -99,7 +99,6 @@ class Numerics:
     precision: Literal["f32", "f64"] = "f32"
     write_precision: WritePrecision = DEFAULT_WRITE_PRECISION
     random_seed: int = 42
-    device_memory_fraction: float = 0.5
     debug_mode: bool = False
     diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
     health_limits: HealthLimits = field(default_factory=HealthLimits)

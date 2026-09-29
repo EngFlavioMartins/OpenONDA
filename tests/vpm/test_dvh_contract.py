@@ -28,7 +28,6 @@ def _make_dvh_solver(tmp_path, *, time_step_size: float, viscosity: float):
                     threshold=1.0e-12,
                     threshold_mode="absolute",
                     kinematic_viscosity=viscosity,
-                    max_nodes=4096,
                     core_radius_ratio=2.0,
                 ),
                 verbose=False,
@@ -46,6 +45,45 @@ def _add_single_particle(solver, *, viscosity: float = 0.0) -> None:
         particle_volume=np.array([0.1**3]),
         kinematic_viscosity=np.array([viscosity]),
     )
+
+
+@pytest.mark.parametrize("factory", [vpm.ViscousConfig.dvh, vpm.ViscousConfig.gbd])
+def test_diffusion_capacity_overflow_preserves_particles(tmp_path, factory):
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        backup=vpm.Backup(interval_steps=0),
+        numerics=vpm.Numerics(
+            time_step_size=0.1,
+            compute_device="CPU",
+            max_n_particles=8,
+            induction=vpm.DirectInduction(),
+            viscous=factory(
+                particle_spacing=0.1,
+                padding=6.0,
+                threshold=1e-12,
+                threshold_mode="absolute",
+                kinematic_viscosity=0.0308,
+            ),
+            verbose=False,
+        ),
+    )
+    solver = vpm.VPMSolver(case)
+    try:
+        _add_single_particle(solver, viscosity=0.0308)
+        fields = ("position", "vortex_strength", "core_radius", "particle_volume")
+        before = {
+            name: getattr(solver.particles, f"{name}_cpu")(use_cache=False).copy()
+            for name in fields
+        }
+        with pytest.raises(RuntimeError, match="regeneration needs .*max_n_particles=8"):
+            solver.stepper._apply_grid_diffusion(solver.stepper._viscous_config, 0.1)
+        assert solver.particles.n_particles_total == 1
+        for name, expected in before.items():
+            np.testing.assert_array_equal(
+                getattr(solver.particles, f"{name}_cpu")(use_cache=False), expected
+            )
+    finally:
+        solver.close()
 
 
 def test_dvh_rejects_nonuniform_effective_viscosity(tmp_path):

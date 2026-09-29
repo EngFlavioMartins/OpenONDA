@@ -1,5 +1,11 @@
 # Tutorial data and portability audit — 29 September 2026
 
+This is the pre-archive inventory and decision record. The approved lossless
+implementation and clone checks are recorded in
+[the archive report](tutorial_results_archive.md); measured cadence screening is
+recorded in [the loading study](../../studies/loading_cadence_report.md).
+Statements below about pending archives describe the state at this initial audit.
+
 ## Status and scope
 
 The audited local `samples/` trees contain approximately **5.04 GB in 3,915
@@ -190,8 +196,9 @@ including its realization count and convergence flag.
 - [x] Measure sample sizes, compression and current output cadence.
 - [x] Verify installation outside the checkout and recover the README asset.
 - [x] Run existing plot launchers and fix the reproduced rendering defects.
-- [ ] Agree retention and transport for current and superseded sample data.
-- [ ] Qualify any reduced sampling cadence against spectra and plot convergence.
-- [ ] Package the selected plot inputs and metadata with portable references.
-- [ ] Resolve the rotor data-clock mismatch and obtain missing FVM/coupled inputs.
+- [x] Agree retention and transport for current and superseded sample data: nine lossless LFS archives, explicitly approved for local commit.
+- [x] Screen reduced loading cadence against reconstruction and spectra; retain current cadence because panel-level candidates failed (see the cadence report).
+- [x] Package selected existing plot inputs and metadata with portable references; all nine archives pass restoration/hash checks.
+- [x] Resolve rotor plot selection against the accepted native clock without rewriting saved histories.
+- [ ] Obtain the missing FVM/coupled production inputs.
 - [ ] Run every complete plotting suite from a fresh clone of the chosen archive.

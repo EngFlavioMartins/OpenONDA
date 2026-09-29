@@ -12,10 +12,8 @@ from functools import partial
 from pathlib import Path
 
 import openonda.fvm as fvm
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.mesh_rectilinear import cylinder_ibm_mesh
+from openonda.tutorial_support.fvm_cylinder_ibm.mesh_rectilinear import cylinder_ibm_mesh
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -51,7 +49,9 @@ def create_fvm_setup(
     linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
 
     return fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
+        ),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=time_step_size,

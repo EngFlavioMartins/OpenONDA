@@ -19,11 +19,12 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.generate_surface import create_delta_wing, save_surface
+from openonda.tutorial_support.vpm_delta_wing.generate_surface import (
+    create_delta_wing,
+    save_surface,
+)
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 

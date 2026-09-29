@@ -11,6 +11,107 @@ from source.solvers.vpm.core.evolution import EvolutionStepper
 from source.solvers.vpm.wall_errors import WallCorrectionTooLargeError
 
 
+def test_native_rk_wall_retry_preserves_clock_strength_and_projection_budget(tmp_path, caplog):
+    """A real RK stage crosses a rotated wall and retries on native fields."""
+    from openonda import vpm
+    from tests.coupler._solid_geometry import wall_case
+
+    boundary, start, _, normal = wall_case("rotated")
+    spacing = 0.1
+    dt = 0.16
+    strength = np.array([[0.0, 0.0, 1e-6]])
+    # The unrestricted macro trajectory needs 0.06 m of correction, beyond
+    # the 0.025 m wall tolerance. This uses the actual segment classifier.
+    with pytest.raises(WallCorrectionTooLargeError):
+        boundary.constrain_motion((start - dt * normal)[None], spacing, starts=start[None])
+
+    solver = vpm.VPMSolver(
+        vpm.VPMCase(
+            directory=tmp_path,
+            backup=vpm.Backup(interval_steps=0),
+            numerics=vpm.Numerics(
+                time_step_size=dt,
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=4,
+                max_evaluation_points=4,
+                freestream_velocity=tuple(-normal),
+                induction=vpm.DirectInduction(),
+                integrator=vpm.RK2(),
+                viscous=vpm.ViscousConfig.inviscid(),
+                verbose=False,
+            ),
+        )
+    )
+    try:
+        solver.add_vortex_particles(
+            position=start[None],
+            velocity=np.zeros((1, 3)),
+            vortex_strength=strength,
+            core_radius=np.array([0.05]),
+            particle_volume=np.array([spacing**3]),
+            kinematic_viscosity=np.zeros(1),
+        )
+        guard = SolidParticleGuard(boundary, solver.physics, spacing, logging.getLogger(__name__))
+        solver.stage_rhs.position_guard = guard.stage
+        solver.stage_rhs.accepted_position_projector = guard.accepted
+        initial_budget = {
+            "stage_count": 7,
+            "accepted_count": 3,
+            "stage_displacement_l1": 0.5,
+            "accepted_displacement_l1": 0.25,
+            "stage_impulse_change": np.array([0.1, 0.2, 0.3]),
+            "accepted_impulse_change": np.array([0.4, 0.5, 0.6]),
+        }
+        solver.physics.last_solid_projection = {
+            key: value.copy() if isinstance(value, np.ndarray) else value
+            for key, value in initial_budget.items()
+        }
+        initial_time, initial_step = solver.time, solver.step
+        with caplog.at_level(logging.INFO, logger=__name__):
+            solver.advance(defer_output=True)
+
+        positions = solver.particles.position_cpu()
+        assert not boundary.contains(positions).any()
+        wall_clearance = np.dot(positions[0] - start, normal) + 0.1
+        assert 0 < wall_clearance <= 8 * boundary.tolerance
+        np.testing.assert_allclose(solver.particles.vortex_strength_cpu(), strength, atol=1e-12)
+        assert solver.time == pytest.approx(initial_time + dt)
+        assert solver.step == initial_step + 1
+        assert guard._reference is None
+        assert any("wall correction accepted after" in record.message for record in caplog.records)
+        projection_logs = [
+            record for record in caplog.records if record.message.startswith("Solid-wall exclusion")
+        ]
+        assert projection_logs
+        assert all(record.args[2] <= 0.25 * spacing for record in projection_logs)
+        budget = solver.physics.last_solid_projection
+        # Retain the prior diagnostic history and count only accepted RK trials.
+        total_displacement = 0.0
+        for kind in ("stage", "accepted"):
+            assert budget[f"{kind}_count"] >= initial_budget[f"{kind}_count"]
+            displacement = (
+                budget[f"{kind}_displacement_l1"] - initial_budget[f"{kind}_displacement_l1"]
+            )
+            assert displacement >= 0.0
+            kind_logs = [record for record in projection_logs if record.args[1] == kind]
+            assert budget[f"{kind}_count"] - initial_budget[f"{kind}_count"] == sum(
+                record.args[0] for record in kind_logs
+            )
+            assert displacement == pytest.approx(
+                sum(record.args[2] for record in kind_logs), abs=1e-12
+            )
+            total_displacement += displacement
+            np.testing.assert_allclose(
+                budget[f"{kind}_impulse_change"] - initial_budget[f"{kind}_impulse_change"],
+                np.cross(displacement * normal, strength[0]),
+                atol=1e-10,
+            )
+        assert 0.0 < total_displacement < 2.0 * dt
+    finally:
+        solver.close()
+
+
 class _Particles:
     def __init__(self):
         self.position = np.array([[0.0, 0.0, 0.0]])

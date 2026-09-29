@@ -376,10 +376,9 @@ class VPMSolver:
             self.compute_device,
             debug_mode,
             self.precision,
-            device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
             random_seed=final_setup.random_seed,
             supported_devices=getattr(self.induction, "supported_devices", None),
-            minimum_pool_bytes=minimum_pool_bytes,
+            _minimum_pool_bytes=minimum_pool_bytes,
         )
         # Keep the resolved backend identity independent of the process-global
         # Taichi constant.  ``close()`` releases that global runtime before a

@@ -95,7 +95,6 @@ def _regularization_triggered(
     divergence_trigger: float | None,
     misalignment_trigger: float | None,
     core_radius_trigger: float | None,
-    energy_growth: bool,
 ) -> bool:
     """Return whether any enabled cloud-health trigger requests redistribution."""
     divergence_exceeded = divergence_trigger is not None and (
@@ -107,7 +106,7 @@ def _regularization_triggered(
     radius_exceeded = core_radius_trigger is not None and (
         float(np.max(core_radius, initial=0.0)) >= core_radius_trigger
     )
-    return divergence_exceeded or misalignment_exceeded or radius_exceeded or energy_growth
+    return divergence_exceeded or misalignment_exceeded or radius_exceeded
 
 
 def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> RegularizationOutcome | None:
@@ -140,43 +139,14 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         if cfg.regularization_max_particles is not None
         else particle_capacity,
     )
-    capacity_count = max(
-        1,
-        int(np.ceil(cfg.regularization_capacity_fraction * regularization_limit)),
-    )
-    at_capacity = len(position) >= capacity_count
-    max_particles = (
-        min(particle_capacity, cfg.regularization_capacity_max_particles)
-        if at_capacity and cfg.regularization_capacity_max_particles is not None
-        else regularization_limit
-    )
-    spacing = float(
-        cfg.regularization_capacity_grid_spacing
-        if at_capacity and cfg.regularization_capacity_grid_spacing is not None
-        else cfg.regularization_grid_spacing
-    )
-    divergence_trigger = (
-        cfg.regularization_capacity_divergence_trigger
-        if at_capacity and cfg.regularization_capacity_divergence_trigger is not None
-        else cfg.regularization_divergence_trigger
-    )
-    misalignment_trigger = (
-        cfg.regularization_capacity_misalignment_trigger
-        if at_capacity and cfg.regularization_capacity_misalignment_trigger is not None
-        else cfg.regularization_misalignment_trigger
-    )
-    energy_rate_trigger = cfg.regularization_capacity_energy_rate_trigger if at_capacity else None
-    energy_growth = (
-        energy_rate_trigger is not None
-        and float(ctx.metrics.kinetic_energy_rate) > energy_rate_trigger
-    )
+    max_particles = regularization_limit
+    spacing = float(cfg.regularization_grid_spacing)
     if not _regularization_triggered(
         before_health,
         core_radius,
-        divergence_trigger=divergence_trigger,
-        misalignment_trigger=misalignment_trigger,
+        divergence_trigger=cfg.regularization_divergence_trigger,
+        misalignment_trigger=cfg.regularization_misalignment_trigger,
         core_radius_trigger=cfg.regularization_core_radius_trigger,
-        energy_growth=energy_growth,
     ):
         return
 
@@ -200,19 +170,13 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         raise ValueError(
             "transfer-only redistribution cannot replace an over-cap remap by projection"
         )
-    configured_core_radius = (
-        cfg.regularization_capacity_core_radius
-        if at_capacity and cfg.regularization_capacity_core_radius is not None
-        else cfg.regularization_core_radius
-    )
+    configured_core_radius = cfg.regularization_core_radius
     if projection_only:
         proposal = old_state.copy()
     else:
         from .remeshing import gaussian_core_remesh
 
-        # DVH advances diffusion and requires equal source cores. Calling it
-        # here double-counted viscosity and rejected the variable cores made
-        # by CS+LES. Reset the representation using Gaussian variance instead.
+        # Gaussian redistribution preserves variable source-core variance.
         proposal = gaussian_core_remesh(
             particles,
             spacing=spacing,

@@ -404,7 +404,6 @@ def _capacity_configuration() -> dict:
         "viscous": {"dvh_max_nodes": None, "gbd_max_nodes": None},
         "stabilization": {
             "regularization_max_particles": None,
-            "regularization_capacity_max_particles": None,
             "filament_refinement": {"interval_steps": 0},
         },
     }
@@ -431,7 +430,8 @@ def test_restart_capacity_aliases_accept_equivalent_legacy_configuration():
     assert _configuration_mismatches(expected, found) == []
 
 
-def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path):
+@pytest.mark.parametrize("legacy_node_cap", [None, 32, 64])
+def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path, legacy_node_cap):
     writer = _solver(tmp_path / "writer")
     try:
         writer.save_backup()
@@ -444,8 +444,8 @@ def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path):
         configuration = json.loads(attributes["numerical_configuration"])
         capacity = configuration["max_n_particles"]
         configuration["viscous"].update(
-            dvh_max_nodes=capacity,
-            gbd_max_nodes=capacity,
+            dvh_max_nodes=legacy_node_cap,
+            gbd_max_nodes=legacy_node_cap,
         )
         configuration["stabilization"].update(
             regularization_max_particles=capacity,
@@ -467,8 +467,6 @@ def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path):
 @pytest.mark.parametrize(
     ("section", "name", "path"),
     [
-        ("viscous", "dvh_max_nodes", "viscous.dvh_max_nodes"),
-        ("viscous", "gbd_max_nodes", "viscous.gbd_max_nodes"),
         (
             "stabilization",
             "regularization_max_particles",
@@ -835,14 +833,12 @@ def test_fmm_restart_and_repeated_run_match_over_twenty_accepted_steps(tmp_path)
             padding=3.0,
             threshold=1.0e-12,
             kinematic_viscosity=0.01,
-            max_nodes=5_000,
         ),
         ViscousConfig.gbd(
             particle_spacing=0.2,
             padding=3.0,
             threshold=1.0e-12,
             kinematic_viscosity=0.01,
-            max_nodes=5_000,
         ),
     ],
     ids=("none", "core-spreading", "rwm", "dvh", "gbd"),
@@ -855,6 +851,7 @@ def test_split_run_matches_each_deterministic_viscous_scheme(tmp_path, viscous):
             "integrator": SSPRK3(),
             "viscous": viscous,
             "induction": DirectInduction(),
+            "max_n_particles": 2048,
         },
     )
 
@@ -1113,3 +1110,100 @@ def test_flow_integrals_append_past_step_100_and_reject_real_clock_conflicts(tmp
             assert csv.read_bytes() == original
     finally:
         solver.close()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_removed_capacity_controls_preserve_restart_physics(enabled):
+    from source.solvers.vpm.io.backup import (
+        _configuration_mismatches,
+        _normalize_capacity_aliases,
+    )
+
+    expected = _capacity_configuration()
+    expected["stabilization"]["regularization_interval_steps"] = 1 if enabled else 0
+    found = json.loads(json.dumps(expected))
+    found["stabilization"].update(
+        regularization_capacity_fraction=0.8,
+        regularization_capacity_grid_spacing=0.05,
+        regularization_capacity_energy_rate_trigger=4.0,
+    )
+    _normalize_capacity_aliases(expected)
+    _normalize_capacity_aliases(found)
+    mismatches = _configuration_mismatches(expected, found)
+    if enabled:
+        assert sorted(mismatches) == [
+            "stabilization.regularization_capacity_energy_rate_trigger",
+            "stabilization.regularization_capacity_fraction",
+            "stabilization.regularization_capacity_grid_spacing",
+        ]
+    else:
+        assert mismatches == []
+
+
+@pytest.mark.parametrize("legacy_cap", [None, 32, 64])
+def test_restart_ignores_retired_diffusion_node_caps(legacy_cap):
+    from source.solvers.vpm.io.backup import _configuration_mismatches, _normalize_capacity_aliases
+
+    expected = _capacity_configuration()
+    expected["viscous"] = {}
+    found = json.loads(json.dumps(expected))
+    found["viscous"].update(dvh_max_nodes=legacy_cap, gbd_max_nodes=legacy_cap)
+    _normalize_capacity_aliases(expected)
+    _normalize_capacity_aliases(found)
+    assert _configuration_mismatches(expected, found) == []
+
+
+@pytest.mark.parametrize("requested_device", ["CUDA", "CPU"])
+def test_restart_device_selection_is_operational(requested_device):
+    from source.solvers.vpm.io.backup import _configuration_mismatches
+
+    saved = {"compute_device": "AUTO", "precision": "f32", "particle_kernel": "GAUSSIAN"}
+    current = {**saved, "compute_device": requested_device}
+    assert _configuration_mismatches(current, saved) == []
+    current["precision"] = "f64"
+    assert _configuration_mismatches(current, saved) == ["precision"]
+    current["particle_kernel"] = "WINCKELMANS"
+    assert _configuration_mismatches(current, saved) == ["particle_kernel", "precision"]
+
+
+def test_restart_current_identity_accepts_legacy_operational_keys():
+    from source.solvers.vpm.io.backup import _configuration_mismatches
+
+    current = {"precision": "f32"}
+    saved = {**current, "compute_device": "AUTO", "device_memory_fraction": 0.5}
+    assert _configuration_mismatches(current, saved) == []
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_restart_retired_stabilization_policies_preserve_algorithm_identity(active):
+    from source.solvers.vpm.io.backup import _configuration_mismatches, _normalize_capacity_aliases
+
+    expected = _capacity_configuration()
+    expected["stabilization"].update(
+        regularization_interval_steps=5,
+        selective_eddy_viscosity_coefficient=1.6,
+    )
+    expected["stabilization"]["filament_refinement"]["interval_steps"] = 5
+    found = json.loads(json.dumps(expected))
+    found["stabilization"].update(
+        regularization_max_events=2 if active else None,
+        selective_eddy_viscosity_feedback_gain=1.0 if active else 0.0,
+        selective_eddy_viscosity_feedback_interval_steps=5,
+        selective_eddy_viscosity_feedback_growth_limit=0.25,
+        selective_eddy_viscosity_max_coefficient=8.0 if active else None,
+    )
+    found["stabilization"]["filament_refinement"].update(
+        late_interval_steps=1 if active else None,
+        late_start_step=750 if active else None,
+        late_absolute_only=active,
+        end_step=800 if active else None,
+    )
+    _normalize_capacity_aliases(expected)
+    _normalize_capacity_aliases(found)
+    mismatches = _configuration_mismatches(expected, found)
+    if active:
+        assert "stabilization.regularization_max_events" in mismatches
+        assert "stabilization.selective_eddy_viscosity_feedback_gain" in mismatches
+        assert "stabilization.filament_refinement.late_interval_steps" in mismatches
+    else:
+        assert mismatches == []

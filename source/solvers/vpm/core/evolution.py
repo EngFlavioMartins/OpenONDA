@@ -711,7 +711,6 @@ class EvolutionStepper:
                 regen_threshold_mode=vc.dvh_threshold_mode,
                 rd_ratio=vc.dvh_support_radius_ratio,
                 effective_viscosity=effective_viscosity,
-                max_nodes=getattr(vc, "dvh_max_nodes", None),
             )
         else:
             # LES uses per-particle effective viscosity in the grid Laplacian.
@@ -729,6 +728,5 @@ class EvolutionStepper:
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,
                 effective_viscosity=effective_viscosity,
-                max_nodes=getattr(vc, "gbd_max_nodes", None),
                 remeshing_kernel=vc.gbd_remeshing_kernel,
             )

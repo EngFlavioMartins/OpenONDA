@@ -508,10 +508,10 @@ def initialize_taichi_backend(
     preferred_backend: str = "AUTO",
     debug_mode: bool = False,
     precision: str = "f32",
-    device_memory_fraction: float = 0.5,
     random_seed: int = 42,
     supported_devices: set[str] | frozenset[str] | None = None,
-    minimum_pool_bytes: int = 0,
+    *,
+    _minimum_pool_bytes: int = 0,
 ) -> str:
     """
     Initialize Taichi with user-specified backend and precision settings.
@@ -526,10 +526,6 @@ def initialize_taichi_backend(
           debug_mode: Enable Taichi debug features (default ``False``).
           precision: Floating-point precision — ``'f32'`` (default) or
               ``'f64'`` (CPU only; Vulkan/Metal have limited f64 support).
-          device_memory_fraction: Fraction of GPU VRAM reserved for
-              Taichi's internal memory pool (default 0.5).  Lower this
-              value (e.g. 0.3) if you see ``Failed to allocate ext arr
-              buffer`` errors.  Clamped to [0.1, 0.7].
           random_seed: Seed for backend algorithms that use Taichi's RNG
               (default 42). RWM uses its own counter-based generator keyed by
               this declared seed and does not depend on a backend RNG cursor.
@@ -538,8 +534,6 @@ def initialize_taichi_backend(
               numerical method. ``AUTO`` considers only GPU backends in this
               set, so (for example) an FMM case does not resolve to CUDA before
               discovering that its qualified devices are Vulkan and Metal.
-          minimum_pool_bytes: Fixed workspace plus headroom requested on an
-              integrated GPU; ignored on CPU and discrete GPU backends.
 
     Returns:
           str: Name of the successfully initialised backend
@@ -577,16 +571,9 @@ def initialize_taichi_backend(
         )
     strict_gpu = preferred_backend in {"AUTO", "METAL", "VULKAN", "CUDA"} and precision == "f32"
 
-    # Clamp to a safe range.
-    clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
-    if clamped_fraction != device_memory_fraction:
-        Logging.record(
-            "warning  backend memory fraction clamped",
-            ("requested", f"{device_memory_fraction:.3g}"),
-            ("applied", f"{clamped_fraction:.3g}"),
-            ("allowed range", "[0.1, 0.7]"),
-        )
-    device_memory_fraction = clamped_fraction
+    # Runtime allocation is automatic; retain the established default pool
+    # share and adapt it to hardware budgets in the private helper below.
+    device_memory_fraction = 0.5
 
     default_fp, default_ip = _PRECISION_MAP[precision]
 
@@ -600,7 +587,7 @@ def initialize_taichi_backend(
             memory_kwargs = {}  # Metal does not accept device_memory_* kwargs
         else:
             memory_kwargs = _safe_device_memory_for_init(
-                device_memory_fraction, name, minimum_pool_bytes
+                device_memory_fraction, name, _minimum_pool_bytes
             )
 
         # Metal does not accept advanced_optimization / random_seed — keep its

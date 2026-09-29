@@ -560,22 +560,9 @@ class Logging:
             rows.append(
                 ("  grid spacing", f"{getattr(cfg, 'regularization_grid_spacing', 0.0):.3e}", "m")
             )
-            capacity_spacing = getattr(cfg, "regularization_capacity_grid_spacing", None)
-            if capacity_spacing is not None:
-                rows.append(("  capacity grid spacing", f"{capacity_spacing:.3e}", "m"))
-                rows.append(
-                    (
-                        "  capacity budget",
-                        f"{100.0 * getattr(cfg, 'regularization_capacity_fraction', 1.0):.0f}",
-                        "%",
-                    )
-                )
             core_radius = getattr(cfg, "regularization_core_radius", None)
             if core_radius is not None:
                 rows.append(("  regenerated core", f"{core_radius:.3e}", "m"))
-            capacity_core = getattr(cfg, "regularization_capacity_core_radius", None)
-            if capacity_core is not None:
-                rows.append(("  capacity core", f"{capacity_core:.3e}", "m"))
             radius_trigger = getattr(cfg, "regularization_core_radius_trigger", None)
             if radius_trigger is not None:
                 rows.append(("  trigger, core radius", f"{radius_trigger:.3e}", "m"))

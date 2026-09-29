@@ -134,7 +134,7 @@ def planar_gbd(
     core_radius_ratio : float
         Dimensionless output core radius divided by grid spacing.
     max_particles : int
-        Maximum replacement population, also limited by config.gbd_max_nodes.
+        Maximum replacement population from the solver particle capacity.
     solid_at : callable or None
         Maps world points (N,3) in m to a boolean solid mask.
 
@@ -201,7 +201,7 @@ def planar_gbd(
         discarded = np.cumsum(magnitude[order]) <= config.gbd_threshold * magnitude.sum()
         threshold = magnitude[order[discarded][-1]] if np.any(discarded) else 0.0
     keep = magnitude > threshold
-    cap = min(max_particles, config.gbd_max_nodes or max_particles)
+    cap = max_particles
     if keep.sum() > cap:
         raise RuntimeError(
             f"Planar GBD needs {keep.sum()} particles, exceeding capacity {cap}; increase capacity or demonstrate coarser-grid convergence"

@@ -5,7 +5,9 @@ The current tutorial setups and `allcontinue.sh` launchers were compared with
 the native metadata and latest backups. All 98 current backups passed the
 solver's HDF5 validation (schema, configuration hash, particle arrays and finite
 values); stored VLM and VPM clocks agree. Archived restart branches were excluded.
-No active VPM tutorial processes were present during the audit.
+The completion table was refreshed later that day from all 98 native checkpoint
+clocks: 90 completed states, six health stops and two active simulations.
+Delta wing and rotor are currently running; do not start duplicate continuations.
 
 | Tutorial / variant | Latest backup step / target | Physical time / target [s] | Result and next action |
 | --- | ---: | ---: | --- |
@@ -20,9 +22,9 @@ No active VPM tutorial processes were present during the audit.
 | 03 vortex interactions: selective eddy viscosity | 2400 / 2400 | 9 / 9 | Complete. |
 | 04 flat plate: 10 moving angles | 197 / 197 each | 2.4625 / 2.4625 | Complete. |
 | 04 flat plate: 10 static angles | 192 / 192 each | 2.4 / 2.4 | Complete. |
-| 05 delta wing | 2230 / 8000 | 5.575 / 20 | Interrupted; run `allcontinue.sh`. |
-| 06 rotor flow | 1008 / 1667 | 6.048 / 10.002 | Interrupted; run `allcontinue.sh`. |
-| 07 quadcopter | 295 / 2304 | 0.04609375 / 0.36 | Stopped on strain increment 1.1233 > 1. |
+| 05 delta wing | 2580 / 8000 | 6.45 / 20 | Active; continue only after its current process exits. |
+| 06 rotor flow | 1100 / 1667 | 6.6 / 10.002 | Active; continue only after its current process exits. |
+| 07 quadcopter | 296 / 2304 | 0.04625 / 0.36 | Stopped on the strain health limit; stretching diagnosed, refinement candidate requires a new clean qualification. |
 
 The rotor setup requests 10 s, rounded to 1667 steps of 0.006 s (10.002 s).
 The Lamb–Oseen ensemble tables also meet the 7.5% MCSE criterion: maximum
@@ -30,7 +32,9 @@ relative errors are 6.7353% (vortex), 6.8199% (dipole), and 7.0706% (merging).
 
 ## Continuation commands
 
-Run these from the repository root, one at a time in the OpenONDA environment:
+These are the continuation commands for interrupted delta-wing and rotor runs.
+Both are currently active, so no additional invocation is needed now. After an
+interruption, run from the repository root, one at a time:
 
 ```bash
 (cd tutorials/vpm/05_delta_wing && ./allcontinue.sh)
@@ -38,8 +42,8 @@ Run these from the repository root, one at a time in the OpenONDA environment:
 ```
 
 Both current setups match their saved numerical configurations, and both
-latest checkpoints passed validation. Metadata still says `running`, but
-there is no corresponding live process. These commands resume the last saved
+latest checkpoints passed validation. The refreshed native clocks above have
+corresponding live processes. These commands resume the last saved
 state. They do not guarantee that a later physical state will remain resolved.
 Do not use `allrun.sh` to resume; it cleans the existing output first.
 
@@ -57,7 +61,7 @@ commit `24cc275a`, blob `684e5725bfe471f4518d094261b37b6a1e444ba1`, into
 `tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif`. All frames decoded
 successfully. SHA-256:
 `3cd7b47adb8bd1ca1e49de323122414340b3d8d559e92a7fb14d2c0ffe9a04c5`.
-It illustrates an archived run and does not imply that the current 5.575 s
+It illustrates an archived run and does not imply that the current partial
 local solution has reached 20 s. Current-run rendering still writes to
 `figures/`, with its own source-data sidecar.
 
@@ -91,3 +95,13 @@ The macOS CI jobs remain configured for Apple Silicon and Intel using Python
 3.11; macOS execution was not performed on this Linux host. These installation
 checks do not constitute full-duration tutorial simulation or grid-convergence
 verification.
+
+## Quadcopter follow-up
+
+Direct induction of the saved step-296 cloud reproduced the strain violation.
+One nearby particle had amplified its strength by about 167 times while its core
+radius grew by only 1.71 times. The setup now uses conservative filament
+refinement at each step. This changes its numerical configuration: do not bypass
+the restart mismatch to apply it to the old cloud, whose disabled refinement
+never recorded lineage references. An isolated clean run is required before the
+new setup can be called stable. See [the diagnosis](../../studies/quadcopter_stability_audit.md).

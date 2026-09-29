@@ -15,10 +15,11 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.ring_diagnostics import RingDiagnosticsSampler, vortex_ring_mode_sampler
+from openonda.tutorial_support.vpm_vortex_ring.ring_diagnostics import (
+    RingDiagnosticsSampler,
+    vortex_ring_mode_sampler,
+)
 
 
 # Physics
@@ -159,7 +160,9 @@ def run_case(
     n_steps: int = N_STEPS,
 ) -> None:
     """Construct and run one vortex-ring comparison case."""
-    vpm.VPMSolver(build_case(variant, compute_device=compute_device, n_steps=n_steps)).run(start_from=START_FROM)
+    vpm.VPMSolver(build_case(variant, compute_device=compute_device, n_steps=n_steps)).run(
+        start_from=START_FROM
+    )
 
 
 if __name__ == "__main__":

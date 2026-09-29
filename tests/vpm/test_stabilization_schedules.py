@@ -21,17 +21,10 @@ def test_combined_stabilization_schedule_is_representable():
         interval_steps=25,
         max_vortex_strength_factor=3.0,
         max_absolute_vortex_strength=0.5,
-        late_interval_steps=5,
-        late_start_step=750,
-        late_absolute_only=True,
-        end_step=800,
     )
     config = StabilizationConfig(
         selective_eddy_viscosity_coefficient=1.6,
         selective_eddy_viscosity_start_step=550,
-        selective_eddy_viscosity_feedback_gain=1.0,
-        selective_eddy_viscosity_feedback_growth_limit=0.5,
-        selective_eddy_viscosity_max_coefficient=8.0,
         pedrizzetti_relaxation_factor=0.005,
         pedrizzetti_relaxation_end_step=650,
         filament_refinement=refinement,
@@ -39,19 +32,11 @@ def test_combined_stabilization_schedule_is_representable():
         regularization_start_step=475,
         regularization_grid_spacing=0.055,
         regularization_max_particles=30_000,
-        regularization_capacity_max_particles=45_000,
-        regularization_capacity_energy_rate_trigger=4.0,
-        regularization_max_events=2,
     )
 
-    assert config.filament_refinement.end_step == 800
-    assert config.filament_refinement.late_interval_steps == 5
-    assert config.filament_refinement.late_start_step == 750
-    assert config.filament_refinement.late_absolute_only
-    assert config.regularization_max_events == 2
-    assert config.regularization_capacity_energy_rate_trigger == pytest.approx(4.0)
-    assert config.selective_eddy_viscosity_feedback_growth_limit == pytest.approx(0.5)
-    assert config.selective_eddy_viscosity_max_coefficient == pytest.approx(8.0)
+    assert config.filament_refinement.interval_steps == 25
+    assert config.filament_refinement.max_absolute_vortex_strength == 0.5
+    assert config.selective_eddy_viscosity_coefficient == 1.6
     assert config.pedrizzetti_relaxation_end_step == 650
 
 
@@ -172,13 +157,12 @@ def test_pedrizzetti_moment_correction_restores_closed_field_invariants():
         np.testing.assert_allclose(restored[index], target[index], rtol=1.0e-12, atol=1.0e-12)
 
 
-def test_regularization_event_limit_stops_the_schedule(monkeypatch):
+def test_regularization_schedule_continues_after_multiple_events(monkeypatch):
     config = StabilizationConfig(
         regularization_interval_steps=5,
         regularization_start_step=10,
         regularization_grid_spacing=0.1,
         regularization_max_particles=100,
-        regularization_max_events=2,
     )
     manager = object.__new__(StabilizationManager)
     manager.config = config
@@ -208,10 +192,10 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
     manager.apply_regularization()
     manager.apply_regularization()
 
-    assert len(calls) == 2
-    assert manager.regularization_events == 2
-    assert manager.regularization_energy_transfer == pytest.approx(-0.4)
-    assert manager.regularization_enstrophy_transfer == pytest.approx(-1.0)
+    assert len(calls) == 3
+    assert manager.regularization_events == 3
+    assert manager.regularization_energy_transfer == pytest.approx(-0.6)
+    assert manager.regularization_enstrophy_transfer == pytest.approx(-1.5)
 
 
 def test_regularization_can_be_triggered_only_by_core_radius():
@@ -223,7 +207,6 @@ def test_regularization_can_be_triggered_only_by_core_radius():
         "divergence_trigger": None,
         "misalignment_trigger": None,
         "core_radius_trigger": 0.2,
-        "energy_growth": False,
     }
 
     assert not _regularization_triggered(health, np.array([0.1, 0.199]), **arguments)
@@ -320,45 +303,18 @@ def test_absolute_only_refinement_ignores_lineage_growth():
     assert result.refined_parent_index.tolist() == [0]
 
 
-@pytest.mark.parametrize(
-    ("keyword", "value"),
-    [
-        ("max_absolute_vortex_strength", 0.0),
-        ("late_interval_steps", 0),
-        ("late_start_step", -1),
-    ],
-)
-def test_filament_refinement_rejects_invalid_staging(keyword, value):
-    arguments = {
-        "interval_steps": 10,
-        "late_interval_steps": 5,
-        "late_start_step": 750,
-        keyword: value,
-    }
+@pytest.mark.parametrize("threshold", [0.0, -1.0, np.inf])
+def test_filament_refinement_rejects_invalid_absolute_threshold(threshold):
     with pytest.raises(ValueError):
-        FilamentRefinementConfig.adaptive(**arguments)
+        FilamentRefinementConfig.adaptive(interval_steps=10, max_absolute_vortex_strength=threshold)
 
 
-def test_late_absolute_only_requires_an_absolute_threshold():
-    with pytest.raises(ValueError):
-        FilamentRefinementConfig.adaptive(
-            interval_steps=10,
-            late_interval_steps=5,
-            late_start_step=750,
-            late_absolute_only=True,
-        )
-
-
-def test_selective_eddy_viscosity_feedback_is_bounded_per_update():
+def test_selective_eddy_viscosity_coefficient_is_fixed_despite_energy_changes():
     state = SimpleNamespace(step=550)
     metrics = SimpleNamespace(kinetic_energy_rate=4.0, viscous_kinetic_energy_rate=-2.0)
     config = StabilizationConfig(
         selective_eddy_viscosity_coefficient=1.6,
         selective_eddy_viscosity_start_step=550,
-        selective_eddy_viscosity_feedback_gain=1.0,
-        selective_eddy_viscosity_feedback_interval_steps=5,
-        selective_eddy_viscosity_feedback_growth_limit=0.5,
-        selective_eddy_viscosity_max_coefficient=8.0,
     )
     applied = []
     manager = object.__new__(StabilizationManager)
@@ -371,8 +327,7 @@ def test_selective_eddy_viscosity_feedback_is_bounded_per_update():
     manager.operators = SimpleNamespace(
         apply_selective_eddy_viscosity=lambda particles, coefficient: applied.append(coefficient)
     )
-    manager.selective_eddy_viscosity_coefficient = 1.6
-    manager._last_residual_feedback_step = -1
+    manager.selective_eddy_viscosity_coefficient = 8.0  # Retired checkpoint diagnostic.
 
     manager.update_selective_eddy_viscosity()
     manager.update_selective_eddy_viscosity()
@@ -380,27 +335,12 @@ def test_selective_eddy_viscosity_feedback_is_bounded_per_update():
     metrics.kinetic_energy_rate = -1.0
     manager.update_selective_eddy_viscosity()
 
-    assert applied == pytest.approx([2.4, 2.4, 1.92])
+    assert applied == pytest.approx([1.6, 1.6, 1.6])
 
 
-@pytest.mark.parametrize(
-    ("keyword", "value"),
-    [
-        ("selective_eddy_viscosity_feedback_gain", -1.0),
-        ("selective_eddy_viscosity_feedback_growth_limit", 1.1),
-        ("selective_eddy_viscosity_max_coefficient", 0.5),
-        ("pedrizzetti_relaxation_end_step", -1),
-        ("regularization_capacity_max_particles", 0),
-        ("regularization_capacity_energy_rate_trigger", -1.0),
-        ("regularization_max_events", 0),
-    ],
-)
-def test_stabilization_schedule_rejects_invalid_limits(keyword, value):
-    arguments = {keyword: value}
-    if keyword == "selective_eddy_viscosity_max_coefficient":
-        arguments["selective_eddy_viscosity_coefficient"] = 1.0
+def test_stabilization_schedule_rejects_invalid_relaxation_window():
     with pytest.raises(ValueError):
-        StabilizationConfig(**arguments)
+        StabilizationConfig(pedrizzetti_relaxation_end_step=-1)
 
 
 def test_accepted_relaxation_records_exact_momentum_transfers():
@@ -449,3 +389,52 @@ def test_accepted_relaxation_records_exact_momentum_transfers():
     )
     np.testing.assert_allclose(manager.pedrizzetti_moment_transfer, expected, atol=1e-14)
     assert manager.events == 2
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["regularization_capacity_fraction", "regularization_capacity_max_particles"],
+)
+def test_capacity_specific_remeshing_controls_are_not_public(name):
+    with pytest.raises(TypeError, match=name):
+        StabilizationConfig(**{name: 1})
+
+
+def test_filament_refinement_keeps_one_cadence_and_both_strength_criteria(monkeypatch):
+    config = StabilizationConfig(
+        filament_refinement=FilamentRefinementConfig.adaptive(
+            interval_steps=5,
+            max_vortex_strength_factor=3.0,
+            max_absolute_vortex_strength=0.5,
+        )
+    )
+    state = SimpleNamespace(step=749)
+    particles = SimpleNamespace(
+        _max_particles=64,
+        position_cpu=lambda: np.zeros((1, 3)),
+        vortex_strength_cpu=lambda: np.ones((1, 3)),
+        core_radius_cpu=lambda: np.ones(1),
+        particle_volume_cpu=lambda: np.ones(1),
+    )
+    manager = object.__new__(StabilizationManager)
+    manager.config = config
+    manager.ctx = SimpleNamespace(state=state, particles=particles)
+    manager.reference_vortex_strength = np.ones(1)
+    manager.reference_lengths = np.ones(1)
+    manager.measure = lambda: None
+    calls = []
+
+    def split(*args, **kwargs):
+        calls.append(
+            (state.step, kwargs["max_stretch_factor"], kwargs["max_absolute_vortex_strength"])
+        )
+        return SimpleNamespace(refined_particles=0, deferred_particles=0)
+
+    monkeypatch.setattr(
+        "source.solvers.vpm.stabilization.filament_refinement.split_stretched_filaments", split
+    )
+    for step in [749, 750, 755, 800]:
+        state.step = step
+        manager.apply_filament_refinement()
+
+    assert calls == [(750, 3.0, 0.5), (755, 3.0, 0.5), (800, 3.0, 0.5)]

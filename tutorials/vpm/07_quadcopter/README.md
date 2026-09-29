@@ -51,3 +51,11 @@ complete run and useful native wake/load figures; a separate isolated-propeller
 validation campaign is not a prerequisite. Earlier [diagnostic studies](studies/README.md)
 and their results are retained for reproducibility, but are not separate
 validation tutorials. No additional isolated quadcopter-rotor studies are scheduled.
+
+Adaptive filament refinement checks the wake each accepted step and bisects
+particles whose strength has doubled relative to their lineage reference.
+The strain limit and maximum particle capacity remain active. The archived
+unrefined health-stop run is a different numerical configuration and cannot
+continue with this setup. Qualify the refined case from a clean initial state
+in a separate copy to retain the old data. See the
+[checkpoint audit](../../../studies/quadcopter_stability_audit.md).

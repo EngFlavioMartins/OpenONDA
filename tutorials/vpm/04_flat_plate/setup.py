@@ -27,11 +27,12 @@ import math
 from pathlib import Path
 
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.generate_surface import create_flat_plate, save_surface
+from openonda.tutorial_support.vpm_flat_plate.generate_surface import (
+    create_flat_plate,
+    save_surface,
+)
 
 
 # Plate and flow

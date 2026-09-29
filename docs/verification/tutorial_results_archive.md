@@ -149,3 +149,10 @@ also visually inspected. Full plotting coverage remains limited as recorded abov
 The archive mechanism resolves transport and path portability. It does not resolve
 unfinished simulations or establish grid independence. Those numerical requirements
 remain explicitly open until supported by completed runs and comparisons.
+
+### Final installed-package recheck
+
+The complete flat-plate `allplot.sh` now exits successfully in the fresh local
+clone, including its ParaView scene. The verification environment explicitly
+provides the documented renderer on PATH. No tutorial import paths were altered.
+The rendered wake figure was inspected.

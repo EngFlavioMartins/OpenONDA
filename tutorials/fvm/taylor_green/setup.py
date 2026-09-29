@@ -15,10 +15,8 @@ import numpy as np
 
 import openonda.fvm as fvm
 from openonda.fvm.mesher import periodic_square_mesh
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.decay_errors import flow_integrals, history_row
+from openonda.tutorial_support.fvm_taylor_green.decay_errors import flow_integrals, history_row
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 

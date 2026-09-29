@@ -14,11 +14,12 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.mesh_step import backward_facing_step_mesh
-from .assets.reattachment import history_row, write_solution_tables
+from openonda.tutorial_support.fvm_step_profile.mesh_step import backward_facing_step_mesh
+from openonda.tutorial_support.fvm_step_profile.reattachment import (
+    history_row,
+    write_solution_tables,
+)
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -76,7 +77,9 @@ def create_fvm_setup(
     )
 
     return fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
+        ),
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
@@ -123,8 +126,14 @@ def main() -> None:
         if not restored:
             fvm_solver.save_state(solution_dir / "backup")
             fvm_solver.write_vtk()
-        columns = ("time", "reattachment_position_over_height", "min_near_wall_velocity",
-                   "max_continuity_error", "max_courant_number")
+        columns = (
+            "time",
+            "reattachment_position_over_height",
+            "min_near_wall_velocity",
+            "max_continuity_error",
+            "max_courant_number",
+        )
+
         def record_history():
             row = fvm_solver.evaluate(history_row, STEP_HEIGHT)
             fvm_solver.write_csv("reattachment_history.csv", [row], columns=columns, append=True)

@@ -32,7 +32,6 @@ def main(directory, cores):
                 numerics.viscous,
                 particle_spacing=0.25,
                 gbd_grid_spacing=0.25,
-                gbd_max_nodes=100_000,
                 gbd_threshold=case["GBD_VORTICITY_FLOOR"] * 0.25**3,
             ),
         ),

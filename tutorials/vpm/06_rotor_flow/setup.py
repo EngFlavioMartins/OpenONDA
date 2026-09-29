@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 
@@ -27,10 +26,11 @@ ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # [rad/s]
 TIME_STEP_SIZE = 0.006  # [s]
 END_TIME = 10  # [s]
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
-FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]; compact wake-plane fields
-BACKUP_INTERVAL_TIME = 0.024  # [s]; dense full-state animation/restart frames
+FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]
+BACKUP_INTERVAL_TIME = 0.024  # [s]
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
+
 
 def build_case(
     *,
@@ -146,27 +146,10 @@ def build_case(
     )
 
 
-def run(output_tag: str | None = None) -> None:
-    """Run or continue one rotor case in an explicit output namespace."""
-    solution_directory = Path("solution") if output_tag is None else Path("solution") / output_tag
-    sample_directory = Path("samples") / CASE_NAME
-    if output_tag is not None:
-        sample_directory /= output_tag
-    solver = vpm.VPMSolver(
-        build_case(
-            solution_directory=solution_directory,
-            sample_directory=sample_directory,
-        )
-    )
-    solver.run(start_from=START_FROM)
+def run() -> None:
+    """Run or continue the rotor case."""
+    vpm.VPMSolver(build_case()).run(start_from=START_FROM)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--output-tag",
-        help=(
-            "case namespace under solution/ and samples/rotor/ (resumes its latest backup)"
-        ),
-    )
-    run(parser.parse_args().output_tag)
+    run()

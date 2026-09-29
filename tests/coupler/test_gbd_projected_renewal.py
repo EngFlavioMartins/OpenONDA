@@ -260,7 +260,6 @@ def _make_gbd_vpm(
                     threshold=threshold,
                     threshold_mode="absolute",
                     kinematic_viscosity=1.0e-3,
-                    max_nodes=capacity,
                     core_radius_ratio=1.25,
                 ),
                 verbose=False,

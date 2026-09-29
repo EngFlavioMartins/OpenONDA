@@ -491,14 +491,8 @@ def test_nearly_coincident_geometry_fails_as_ill_conditioned():
 def test_excessive_recovery_fraction_fails_before_returning_a_cloud():
     grid, grid_min, particle_spacing = _make_grid(seed=5)
     magnitude = np.linalg.norm(grid, axis=-1)
-    ix, iy, iz = np.where(magnitude >= 0.01 * float(magnitude.max()))
-    ix, iy, iz, _, _ = _GridDiffusionMixin._cap_surviving_nodes(
-        magnitude,
-        ix,
-        iy,
-        iz,
-        30,
-    )
+    threshold = np.sort(magnitude.ravel())[-30]
+    ix, iy, iz = np.where(magnitude >= threshold)
 
     with pytest.raises(RuntimeError, match="excessive strength correction"):
         _GridDiffusionMixin._redistribute_pruned_moments(
@@ -561,21 +555,13 @@ def test_nearest_node_query_contains_only_discarded_nodes(monkeypatch):
     assert queried_counts == [expected_discarded]
 
 
-def test_threshold_then_population_cap_still_preserves_all_moments():
+def test_absolute_threshold_pruning_still_preserves_all_moments():
     grid, grid_min, particle_spacing = _make_grid(seed=3)
     magnitude = np.linalg.norm(grid, axis=-1)
-    threshold = 0.02 * float(magnitude.max())
+    retained_count = 320
+    threshold = np.sort(magnitude.ravel())[-retained_count]
     ix, iy, iz = np.where(magnitude >= threshold)
-    cap = 320
-    ix, iy, iz, _, candidate_count = _GridDiffusionMixin._cap_surviving_nodes(
-        magnitude,
-        ix,
-        iy,
-        iz,
-        cap,
-    )
-    assert candidate_count > cap
-    assert len(ix) == cap
+    assert len(ix) == retained_count
 
     corrected = _GridDiffusionMixin._redistribute_pruned_moments(
         grid,
@@ -587,7 +573,7 @@ def test_threshold_then_population_cap_still_preserves_all_moments():
         particle_spacing,
     )
 
-    assert len(corrected) == cap
+    assert len(corrected) == retained_count
     assert np.isfinite(corrected).all()
     _assert_moments_close(
         _moments(grid, grid_min, particle_spacing),

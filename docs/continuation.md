@@ -54,8 +54,7 @@ checkpoint.
 
 Tutorials save periodically and at their destination, including an initial
 restart point. Work after the latest successful backup is replayed. Backup
-cadence controls how much work an abrupt interruption can lose. A stopped
-A stopped run can continue when resources are available; restoring a
+cadence controls how much work an abrupt interruption can lose. A stopped run can continue when resources are available; restoring a
 backup does not fix a numerical instability or an unchanged physical limit.
 
 ## Samples, diagnostics and logs

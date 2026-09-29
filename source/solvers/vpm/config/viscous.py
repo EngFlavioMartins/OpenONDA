@@ -35,9 +35,6 @@ class ViscousConfig:
         fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
     dvh_threshold_mode, gbd_threshold_mode : {'budget', 'relative_max', 'absolute'}
         Interpretation of the associated threshold.
-    gbd_max_nodes, dvh_max_nodes : int or None
-        Optional positive caps on regenerated active nodes, additionally
-        bounded by the solver particle capacity.
     gbd_remeshing_kernel : {'M4_PRIME', 'LAGRANGE6'}, default='M4_PRIME'
         Particle-to-grid scatter. The six-point Lagrange option is experimental,
         non-positivity-preserving, and requires at least four padding cells.
@@ -57,7 +54,7 @@ class ViscousConfig:
     Raises
     ------
     ValueError
-        If a choice, physical scale, support, padding, or node cap is invalid.
+        If a choice, physical scale, support, or padding is invalid.
 
     Notes
     -----
@@ -104,17 +101,11 @@ class ViscousConfig:
     gbd_threshold_mode: str = "budget"
     """GBD pruning mode."""
 
-    gbd_max_nodes: int | None = None
-    """Optional cap on surviving GBD grid nodes."""
-
     gbd_remeshing_kernel: str = "M4_PRIME"
     """Scatter kernel: M4_PRIME or experimental six-point LAGRANGE6."""
 
     dvh_support_radius_ratio: int = 4
     """DVH compact-support radius ``R_d / h``; allowed values are 3, 4, and 5."""
-
-    dvh_max_nodes: int | None = None
-    """Optional cap on surviving DVH grid nodes."""
 
     kinematic_viscosity: float | None = None
     """Molecular kinematic viscosity ``kinematic_viscosity`` [m²/s]."""
@@ -154,10 +145,6 @@ class ViscousConfig:
             raise ValueError("gbd_remeshing_kernel must be M4_PRIME or LAGRANGE6")
         if self.gbd_remeshing_kernel == "LAGRANGE6" and self.gbd_domain_padding < 4:
             raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
-        if self.gbd_max_nodes is not None and self.gbd_max_nodes < 1:
-            raise ValueError("gbd_max_nodes must be positive when set")
-        if self.dvh_max_nodes is not None and self.dvh_max_nodes < 1:
-            raise ValueError("dvh_max_nodes must be positive when set")
 
     def rwm_accuracy_time_step_size(self) -> float:
         """Return the RWM accuracy bound ``h²/(4*nu)`` in s.
@@ -258,7 +245,6 @@ class ViscousConfig:
         threshold_mode: str = "budget",
         dvh_support_radius_ratio: int = 4,
         kinematic_viscosity: float | None = None,
-        max_nodes: int | None = None,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
         """Configure heat-kernel DVH regeneration.
@@ -277,7 +263,6 @@ class ViscousConfig:
             dvh_threshold_mode=threshold_mode,
             dvh_support_radius_ratio=dvh_support_radius_ratio,
             kinematic_viscosity=kinematic_viscosity,
-            dvh_max_nodes=max_nodes,
             core_radius_ratio=core_radius_ratio,
         )
 
@@ -288,7 +273,6 @@ class ViscousConfig:
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
         kinematic_viscosity: float | None = None,
-        max_nodes: int | None = None,
         core_radius_ratio: float = 2.5,
         remeshing_kernel: str = "M4_PRIME",
         gbd_grid_spacing: float | None = None,
@@ -317,7 +301,6 @@ class ViscousConfig:
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,
             kinematic_viscosity=kinematic_viscosity,
-            gbd_max_nodes=max_nodes,
             gbd_remeshing_kernel=remeshing_kernel,
             core_radius_ratio=core_radius_ratio,
         )

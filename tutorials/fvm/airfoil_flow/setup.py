@@ -13,11 +13,9 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
-from openonda.tutorial_runner import case_package
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.generate_surface import create_airfoil_surface
-from .assets.surface_pressure import write_surface_cp
+from openonda.tutorial_support.fvm_airfoil_flow.generate_surface import create_airfoil_surface
+from openonda.tutorial_support.fvm_airfoil_flow.surface_pressure import write_surface_cp
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.

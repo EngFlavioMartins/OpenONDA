@@ -1668,38 +1668,20 @@ class _GridDiffusionMixin:
         return max(threshold, 1e-10)
 
     @staticmethod
-    def _regeneration_cap(particles, n_before: int, max_nodes: int | None) -> int:
+    def _regeneration_cap(particles, n_before: int) -> int:
         """Return the declared global particle limit for regeneration."""
         del n_before
         capacity = int(getattr(particles, "capacity", 0) or MAX_N_PARTICLES)
-        cap = capacity
-        if max_nodes is not None:
-            cap = min(cap, int(max_nodes))
-        return max(int(cap), 1)
+        return max(capacity, 1)
 
     @staticmethod
-    def _cap_surviving_nodes(
-        vortex_strength_magnitude: np.ndarray,
-        ix: np.ndarray,
-        iy: np.ndarray,
-        iz: np.ndarray,
-        cap: int,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, int]:
-        """Apply a cloud-wide strongest-node cap to regenerated particles."""
-        n_survivors = len(ix)
-        if cap <= 0:
-            raise ValueError("Diffusion regeneration cap must be positive.")
-        if n_survivors <= cap:
-            threshold = float(vortex_strength_magnitude[ix, iy, iz].min()) if n_survivors else 0.0
-            return ix, iy, iz, threshold, n_survivors
-
-        values = vortex_strength_magnitude[ix, iy, iz]
-        keep = np.argsort(-values, kind="stable")[:cap]
-        ix_keep = ix[keep]
-        iy_keep = iy[keep]
-        iz_keep = iz[keep]
-        threshold = float(vortex_strength_magnitude[ix_keep, iy_keep, iz_keep].min())
-        return ix_keep, iy_keep, iz_keep, threshold, n_survivors
+    def _require_regeneration_capacity(n_survivors: int, capacity: int, scheme: str) -> None:
+        """Reject capacity overflow before discarding any threshold-retained nodes."""
+        if n_survivors > capacity:
+            raise RuntimeError(
+                f"{scheme} regeneration needs {n_survivors} particles, exceeding "
+                f"max_n_particles={capacity}; increase the declared particle capacity"
+            )
 
     def _wall_recovery_labels(self, magnitude, groups):
         """Keep pruning recovery within connected, wall-visible grid support.
@@ -2685,7 +2667,6 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
-        max_nodes: int | None = None,
         remeshing_kernel: str = "M4_PRIME",
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
@@ -3048,30 +3029,8 @@ class _GridDiffusionMixin:
             ("strength fraction retained", f"{threshold_retained:.6f}"),
         )
 
-        # -- Particle-count cap ------------------------------------------------
-        cap = self._regeneration_cap(particles, N, max_nodes)
-        if len(ix) > cap:
-            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                cap,
-            )
-            retained = (
-                float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
-            )
-            retained_total = retained * threshold_retained
-            self._event_observer.record(
-                "gaussian blob diffusion population cap",
-                ("cap", f"{cap:,}"),
-                ("nodes, before", f"{old_count:,}"),
-                ("nodes, after", f"{len(ix):,}"),
-                ("strength fraction, candidates", f"{retained:.6f}"),
-                ("strength fraction, net", f"{retained_total:.6f}"),
-                ("threshold", f"{threshold:.3e}"),
-            )
+        cap = self._regeneration_cap(particles, N)
+        self._require_regeneration_capacity(len(ix), cap, "GBD")
 
         nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
         support_augmented_node_count = 0
@@ -3188,7 +3147,6 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
-        max_nodes: int | None = None,
         remeshing_kernel: str = "M4_PRIME",
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
@@ -3209,7 +3167,6 @@ class _GridDiffusionMixin:
             regen_threshold,
             regen_threshold_mode,
             effective_viscosity=effective_viscosity,
-            max_nodes=max_nodes,
             remeshing_kernel=remeshing_kernel,
         )
 
@@ -3357,7 +3314,6 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         rd_ratio: float = 4.0,
         effective_viscosity: np.ndarray | None = None,
-        max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
         """DVH diffusion + particle regeneration (Durante et al. 2024).
 
@@ -3563,28 +3519,8 @@ class _GridDiffusionMixin:
             ("strength fraction retained", f"{threshold_retained:.6f}"),
         )
 
-        # -- Particle-count cap ------------------------------------------------
-        cap = self._regeneration_cap(particles, N, max_nodes)
-        if len(ix) > cap:
-            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
-            ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                cap,
-            )
-            retained = (
-                float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
-            )
-            self._event_observer.record(
-                "discrete vortex heat method population cap",
-                ("cap", f"{cap:,}"),
-                ("nodes, before", f"{old_count:,}"),
-                ("nodes, after", f"{len(ix):,}"),
-                ("strength fraction, candidates", f"{retained:.6f}"),
-                ("threshold", f"{threshold:.3e}"),
-            )
+        cap = self._regeneration_cap(particles, N)
+        self._require_regeneration_capacity(len(ix), cap, "DVH")
 
         return self._build_diffusion_particle_arrays(
             ix,
@@ -3614,7 +3550,6 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         rd_ratio: float = 4.0,
         effective_viscosity: np.ndarray | None = None,
-        max_nodes: int | None = None,
     ) -> dict[str, np.ndarray] | None:
         """DVH (Durante 2024) diffusion step with particle regeneration.
 
@@ -3641,7 +3576,6 @@ class _GridDiffusionMixin:
             regen_threshold_mode,
             rd_ratio=rd_ratio,
             effective_viscosity=effective_viscosity,
-            max_nodes=max_nodes,
         )
 
     # Taichi Kernels

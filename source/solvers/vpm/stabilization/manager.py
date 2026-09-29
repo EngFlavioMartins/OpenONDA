@@ -175,7 +175,6 @@ class StabilizationManager:
         self.max_vorticity_growth = 0.0
         self.lagrangian_cfl = 0.0
         self.selective_eddy_viscosity_coefficient = self.config.selective_eddy_viscosity_coefficient
-        self._last_residual_feedback_step = -1
         # Lineage and reference state the workers need across events.  It is
         # part of the restart state, so the backup reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
@@ -447,33 +446,7 @@ class StabilizationManager:
         step = self.ctx.state.step
         if step < cfg.selective_eddy_viscosity_start_step:
             return
-        if (
-            cfg.selective_eddy_viscosity_feedback_gain > 0.0
-            and step != self._last_residual_feedback_step
-            and self._due(
-                cfg.selective_eddy_viscosity_feedback_interval_steps,
-                cfg.selective_eddy_viscosity_start_step,
-            )
-        ):
-            energy_rate = float(self.ctx.metrics.kinetic_energy_rate)
-            viscous_rate = float(self.ctx.metrics.viscous_kinetic_energy_rate)
-            if np.isfinite(energy_rate) and np.isfinite(viscous_rate):
-                scale = max(abs(viscous_rate), np.finfo(float).eps)
-                adjustment = np.clip(
-                    1.0 + cfg.selective_eddy_viscosity_feedback_gain * energy_rate / scale,
-                    0.80,
-                    1.0 + cfg.selective_eddy_viscosity_feedback_growth_limit,
-                )
-                upper = (
-                    cfg.selective_eddy_viscosity_max_coefficient
-                    if cfg.selective_eddy_viscosity_max_coefficient is not None
-                    else np.inf
-                )
-                self.selective_eddy_viscosity_coefficient = float(
-                    np.clip(self.selective_eddy_viscosity_coefficient * adjustment, 0.0, upper)
-                )
-            self._last_residual_feedback_step = step
-        coefficient = self.selective_eddy_viscosity_coefficient
+        coefficient = cfg.selective_eddy_viscosity_coefficient
         if coefficient <= 0.0:
             return
         self.operators.apply_selective_eddy_viscosity(self.ctx.particles, coefficient)
@@ -566,15 +539,7 @@ class StabilizationManager:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
         ctx = self.ctx
         cfg = self.config.filament_refinement
-        interval_steps = cfg.interval_steps
-        late_stage = cfg.late_start_step is not None and ctx.state.step >= cfg.late_start_step
-        if late_stage:
-            interval_steps = int(cfg.late_interval_steps)
-        if (
-            not cfg.enabled
-            or (cfg.end_step is not None and ctx.state.step >= cfg.end_step)
-            or ctx.state.step % interval_steps != 0
-        ):
+        if not cfg.enabled or ctx.state.step % cfg.interval_steps != 0:
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
@@ -601,9 +566,7 @@ class StabilizationManager:
             particles.particle_volume_cpu(),
             reference_vortex_strength=self.reference_vortex_strength,
             reference_length=self.reference_lengths,
-            max_stretch_factor=(
-                np.inf if late_stage and cfg.late_absolute_only else cfg.max_vortex_strength_factor
-            ),
+            max_stretch_factor=cfg.max_vortex_strength_factor,
             offset_fraction=cfg.offset_fraction,
             max_n_particles=capacity,
             max_absolute_vortex_strength=cfg.max_absolute_vortex_strength,
@@ -748,10 +711,7 @@ class StabilizationManager:
     def apply_regularization(self) -> None:
         """Redistribute a distorted cloud when its discretization health demands it."""
         cfg = self.config
-        if (
-            cfg.regularization_max_events is not None
-            and self.regularization_events >= cfg.regularization_max_events
-        ) or not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
+        if not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
             return
 
         from .regularization import regularize

@@ -20,11 +20,9 @@ import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.airfoil_geometry import naca4_vertices
+from openonda.tutorial_support.coupled_fvm_vpm_naca4412_flow.airfoil_geometry import naca4_vertices
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
@@ -46,7 +44,6 @@ KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CHORD / REYNOLDS
 FVM_BOX = (-1.2, 1.4, -0.8, 0.8, -3.3, 3.3)
 VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_N_PARTICLES = 1_500_000
-VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = 2.5
 WRITE_INTERVAL_TIME = 0.8
 SAMPLE_INTERVAL_TIME = min(WRITE_INTERVAL_TIME, END_TIME)

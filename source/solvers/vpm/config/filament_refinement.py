@@ -21,13 +21,6 @@ class FilamentRefinementConfig:
         ``[0, 0.5]``.
     max_absolute_vortex_strength : float or None, optional
         Additional positive ``|Gamma|`` trigger in m³/s.
-    late_interval_steps, late_start_step : int or None, optional
-        Optional positive cadence and non-negative activation step; specify both.
-    late_absolute_only : bool, default=False
-        After ``late_start_step``, ignore the lineage-relative trigger and use
-        only ``max_absolute_vortex_strength``.
-    end_step : int or None, optional
-        First accepted step excluded from refinement.
 
     Notes
     -----
@@ -51,18 +44,6 @@ class FilamentRefinementConfig:
     max_absolute_vortex_strength: float | None = None
     """Optional absolute strength threshold for refinement."""
 
-    late_interval_steps: int | None = None
-    """Optional shorter cadence after ``late_start_step``."""
-
-    late_start_step: int | None = None
-    """First step using ``late_interval_steps``."""
-
-    late_absolute_only: bool = False
-    """After ``late_start_step``, refine only at the absolute strength threshold."""
-
-    end_step: int | None = None
-    """First step at which refinement is no longer applied."""
-
     def __post_init__(self) -> None:
         if self.interval_steps < 0:
             raise ValueError("filament-refinement interval_steps must be non-negative")
@@ -75,20 +56,6 @@ class FilamentRefinementConfig:
             or self.max_absolute_vortex_strength <= 0.0
         ):
             raise ValueError("max_absolute_vortex_strength must be finite and positive")
-        if (self.late_interval_steps is None) != (self.late_start_step is None):
-            raise ValueError("late refinement interval and start step must be set together")
-        if self.late_interval_steps is not None and self.late_interval_steps <= 0:
-            raise ValueError("late_interval_steps must be positive or None")
-        if self.late_start_step is not None and self.late_start_step < 0:
-            raise ValueError("late_start_step must be non-negative or None")
-        if self.late_absolute_only and (
-            self.late_start_step is None or self.max_absolute_vortex_strength is None
-        ):
-            raise ValueError(
-                "late_absolute_only requires late_start_step and max_absolute_vortex_strength"
-            )
-        if self.end_step is not None and self.end_step < 0:
-            raise ValueError("end_step must be non-negative or None")
 
     @property
     def enabled(self) -> bool:
@@ -107,10 +74,6 @@ class FilamentRefinementConfig:
         max_vortex_strength_factor: float = 2.0,
         offset_fraction: float = 0.25,
         max_absolute_vortex_strength: float | None = None,
-        late_interval_steps: int | None = None,
-        late_start_step: int | None = None,
-        late_absolute_only: bool = False,
-        end_step: int | None = None,
     ) -> "FilamentRefinementConfig":
         """Refine over-stretched particles at the requested step interval."""
         return FilamentRefinementConfig(
@@ -118,8 +81,4 @@ class FilamentRefinementConfig:
             max_vortex_strength_factor=max_vortex_strength_factor,
             offset_fraction=offset_fraction,
             max_absolute_vortex_strength=max_absolute_vortex_strength,
-            late_interval_steps=late_interval_steps,
-            late_start_step=late_start_step,
-            late_absolute_only=late_absolute_only,
-            end_step=end_step,
         )

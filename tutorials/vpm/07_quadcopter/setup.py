@@ -20,11 +20,9 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-__package__ = case_package(Path(__file__).parent)
-from .assets.generate_blade import create_rotor_blade, save_blade
+from openonda.tutorial_support.vpm_quadcopter.generate_blade import create_rotor_blade, save_blade
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
@@ -48,7 +46,7 @@ STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 24
 N_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
 SAMPLE_INTERVAL_TIME = 12 * TIME_STEP_SIZE  # eight field snapshots per revolution
-BACKUP_INTERVAL_TIME = 3 * TIME_STEP_SIZE  # 32 coupled backups per revolution
+BACKUP_INTERVAL_TIME = 3 * TIME_STEP_SIZE  # 32 VPM/VLM backups per revolution
 
 WAKE_PLANES = (("sampled_zplane", -0.35), ("sampled_zplane_deep", -0.70))
 
@@ -118,11 +116,12 @@ def run() -> None:
             induction=vpm.TreecodeInduction(
                 stretching_scheme="transposed", theta=0.3, multipole_order=3
             ),
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.17),
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=vpm.StabilizationConfig(
-                remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
+                filament_refinement=vpm.FilamentRefinementConfig.adaptive(interval_steps=1),
+                remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0],
             ),
             max_n_particles=500_000,
         ),

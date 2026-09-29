@@ -122,10 +122,7 @@ def test_restart_preflight_caps_steps_near_authored_endpoint() -> None:
 
 
 def test_restart_pilot_help_is_lightweight() -> None:
-    script = (
-        Path(__file__).parents[2]
-        / "tutorials/vpm/06_rotor_flow/assets/run_restart_pilot.py"
-    )
+    script = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow/assets/run_restart_pilot.py"
     result = subprocess.run(
         [sys.executable, str(script), "--help"],
         cwd=script.parent.parent,
@@ -170,3 +167,19 @@ def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:
     assert launcher.read_text() == (
         '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\n./allclean.sh\n\npython setup.py "$@"\n'
     )
+
+
+def test_default_rotor_entrypoint_uses_native_continuation(monkeypatch) -> None:
+    calls = []
+
+    class Solver:
+        def __init__(self, case):
+            assert case.backup.directory == "solution"
+            assert case.samplers.directory == "rotor"
+
+        def run(self, *, start_from):
+            calls.append(start_from)
+
+    monkeypatch.setattr(setup.vpm, "VPMSolver", Solver)
+    setup.run()
+    assert calls == ["latest"]
