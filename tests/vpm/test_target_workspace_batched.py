@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
+from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction.treecode.evaluator import TreecodeInduction
 
@@ -16,7 +17,7 @@ def runtime():
     ti.reset()
 
 
-def test_tree_allocates_declared_source_ceiling_once(monkeypatch):
+def test_tree_grows_with_sources_and_releases_previous_scratch(monkeypatch):
     import source.solvers.vpm.physics.induction.treecode.lbvh as lbvh
 
     allocations = []
@@ -35,24 +36,78 @@ def test_tree_allocates_declared_source_ceiling_once(monkeypatch):
         def set_sort_particle_targets(self, _value):
             pass
 
+        def destroy(self):
+            self.destroyed = True
+
     monkeypatch.setattr(lbvh, "TaichiTreecode", FakeTree)
     physics = PhysicsBase.__new__(PhysicsBase)
     physics.max_n_particles = 1_000_000
     physics.max_evaluation_points = 7
     physics._treecode = None
     physics._treecode_max_particles = 0
+    physics._target_tree_key = ("old tree",)
     physics.particle_kernel = "GAUSSIAN"
     physics.treecode_multipole_order = 3
     physics.treecode_sort_particle_targets = False
     physics.treecode_traversal_block_dim = 128
     first = physics._get_or_create_treecode(2, 0.3)
-    assert physics._get_or_create_treecode(750_000, 0.3) is first
-    assert len(allocations) == 1
-    assert allocations[0]["max_n_particles"] == 1_000_000
-    assert allocations[0]["max_nodes"] == 2_000_000
+    assert physics._get_or_create_treecode(2, 0.3) is first
+    assert allocations[0]["max_n_particles"] == 8192
+    assert allocations[0]["max_nodes"] == 16384
     assert allocations[0]["max_evaluation_points"] == 7
+    second = physics._get_or_create_treecode(750_000, 0.3)
+    assert second is not first
+    assert first.destroyed
+    assert physics._target_tree_key is None
+    assert physics._get_or_create_treecode(750_000, 0.3) is second
+    assert len(allocations) == 2
+    assert allocations[1]["max_n_particles"] == 750_000
     with pytest.raises(ValueError, match="declared max_n_particles"):
         physics._get_or_create_treecode(1_000_001, 0.3)
+    assert physics._treecode is second
+
+
+def test_native_tree_growth_preserves_fields_and_direct_velocity():
+    physics = PhysicsBase("GAUSSIAN", 16_384, ti.f32, max_evaluation_points=3)
+    physics.treecode_multipole_order = 1
+    physics.treecode_sort_particle_targets = False
+    physics.treecode_traversal_block_dim = 0
+    position = np.array(
+        [[0.0, 0.0, 0.0], [0.2, -0.1, 0.1], [0.5, 0.1, 0.3], [-0.2, 0.3, -0.1], [0.1, -0.4, 0.2]],
+        dtype=np.float32,
+    )
+    strength = np.array(
+        [
+            [0.02, 0.01, -0.01],
+            [-0.01, 0.02, 0.01],
+            [0.01, 0.0, 0.02],
+            [0.0, -0.02, 0.01],
+            [0.01, 0.01, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    radius = np.full(5, 0.1, dtype=np.float32)
+    first = physics._get_or_create_treecode(2, 0.1)
+    first.build(position[:2], strength[:2], radius[:2])
+    before, _, _ = first.compute_velocity_and_gradient()
+    assert first.max_n_particles == 8192
+
+    grown = physics._get_or_create_treecode(8193, 0.1)
+    assert grown.max_n_particles == 16_384
+    assert first._field_owner.tree is None
+    grown.build(position, strength, radius)
+    actual, _, _ = grown.compute_velocity_and_gradient()
+    kernel = make_vortex_kernel("GAUSSIAN")
+    displacement = position[:, None, :] - position[None, :, :]
+    expected = kernel.velocity_pair(
+        displacement, strength[None, :, :], radius[None, :], radius[None, :]
+    ).sum(axis=1)
+    np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-5)
+
+    grown.build(position[:2], strength[:2], radius[:2])
+    after, _, _ = grown.compute_velocity_and_gradient()
+    np.testing.assert_array_equal(after, before)
+    assert physics._get_or_create_treecode(2, 0.1) is grown
 
 
 def test_native_tree_target_batches_preserve_velocity_gradient_and_tree_identity():
@@ -144,7 +199,7 @@ def test_native_tree_target_batches_preserve_velocity_gradient_and_tree_identity
     assert physics.compute_target_velocity(cloud, targets, target_velocity=destination) is None
     np.testing.assert_allclose(destination.to_numpy(), expected_velocity, rtol=2e-4, atol=2e-5)
     assert physics._treecode is tree
-    assert tree.max_n_particles == 8192
+    assert tree.max_n_particles == source_count
     assert tree.max_evaluation_points == 3
 
 

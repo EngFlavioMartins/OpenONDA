@@ -22,7 +22,7 @@ import taichi as ti
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ..base import _STRETCHING_MODES, normalize_stretching_scheme
 from ..stretching import stretching_rate
-from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode
+from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _OwnedFields
 from .diagnostics import FMMDiagnostics
 
 _EXPANSION_ORDER = 3
@@ -146,7 +146,7 @@ def _translation_tables():
 class FMMDeviceWorkspace:
     """Preallocated f32 fields implementing the fixed-order device FMM.
 
-    This important internal runtime object stores source moments, local
+    The workspace stores source moments, local
     expansions, interaction lists, near-field pairs, output rates, and scalar
     diagnostics for one fixed particle capacity. The algorithm uses a
     Cartesian expansion of order three, exact kernel-specific P2P interactions
@@ -215,11 +215,7 @@ class FMMDeviceWorkspace:
         self.radial_factors = radial_factors
         self.velocity_tail_cutoff = float(velocity_tail_cutoff)
         self.gradient_tail_cutoff = float(gradient_tail_cutoff)
-        self.target_batch_capacity = min(
-            self.max_n_particles,
-            max(1, int(max_evaluation_points)),
-            _TRAVERSAL_BATCH_SIZE,
-        )
+        self.target_batch_capacity = min(max(1, int(max_evaluation_points)), _TRAVERSAL_BATCH_SIZE)
         self.tree = TaichiTreecode(
             max_n_particles=self.max_n_particles,
             max_nodes=self.max_nodes,
@@ -233,12 +229,13 @@ class FMMDeviceWorkspace:
             hierarchy_only=True,
             max_evaluation_points=self.target_batch_capacity,
         )
-        self.multipole = ti.Vector.field(3, dtype=ti.f32, shape=self.max_nodes * _MOMENT_COUNT)
-        self.local = ti.Vector.field(3, dtype=ti.f32, shape=self.max_nodes * _LOCAL_COUNT)
-        self._coefficient_a = ti.field(dtype=ti.i32, shape=_MOMENT_COUNT)
-        self._coefficient_b = ti.field(dtype=ti.i32, shape=_MOMENT_COUNT)
-        self._coefficient_c = ti.field(dtype=ti.i32, shape=_MOMENT_COUNT)
-        self._derivative_lookup = ti.field(
+        fields = _OwnedFields()
+        self.multipole = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _MOMENT_COUNT)
+        self.local = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _LOCAL_COUNT)
+        self._coefficient_a = fields.scalar(dtype=ti.i32, shape=_MOMENT_COUNT)
+        self._coefficient_b = fields.scalar(dtype=ti.i32, shape=_MOMENT_COUNT)
+        self._coefficient_c = fields.scalar(dtype=ti.i32, shape=_MOMENT_COUNT)
+        self._derivative_lookup = fields.scalar(
             dtype=ti.i32,
             shape=(
                 _DERIVATIVE_ORDER + 1,
@@ -246,53 +243,55 @@ class FMMDeviceWorkspace:
                 _DERIVATIVE_ORDER + 1,
             ),
         )
-        self._derivative_term_count = ti.field(dtype=ti.i32, shape=_DERIVATIVE_COUNT)
-        self._derivative_coefficient = ti.field(
+        self._derivative_term_count = fields.scalar(dtype=ti.i32, shape=_DERIVATIVE_COUNT)
+        self._derivative_coefficient = fields.scalar(
             dtype=ti.f32,
             shape=(_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS),
         )
-        self._derivative_exponent = ti.Vector.field(
+        self._derivative_exponent = fields.vector(
             3,
             dtype=ti.i32,
             shape=(_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS),
         )
-        self._derivative_radial_step = ti.field(
+        self._derivative_radial_step = fields.scalar(
             dtype=ti.i32,
             shape=(_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS),
         )
-        self._m2l_derivative = ti.field(
+        self._m2l_derivative = fields.scalar(
             dtype=ti.f32,
             shape=(self.m2l_batch_size, _DERIVATIVE_COUNT),
         )
-        self.m2l_target = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self.m2l_source = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self.near_target = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self.near_source = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self._m2l_count = ti.field(dtype=ti.i32, shape=())
-        self._near_count = ti.field(dtype=ti.i32, shape=())
+        self.m2l_target = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self.m2l_source = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self.near_target = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self.near_source = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self._m2l_count = fields.scalar(dtype=ti.i32, shape=())
+        self._near_count = fields.scalar(dtype=ti.i32, shape=())
         # Metal lacks the i64 atomic required by a monolithic exact counter.
         # Two u32 limbs retain every near P2P interaction count without
         # relying on lossy f32 accumulation. A single list entry contains at
         # most 32*32 interactions, so carry detection is unambiguous.
-        self._p2p_particle_count_low = ti.field(dtype=ti.u32, shape=())
-        self._p2p_particle_count_high = ti.field(dtype=ti.u32, shape=())
-        self._list_error = ti.field(dtype=ti.i32, shape=())
-        self._nonzero_l2l_count = ti.field(dtype=ti.i32, shape=())
-        self._queue_target_a = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self._queue_source_a = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self._queue_target_b = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self._queue_source_b = ti.field(dtype=ti.i32, shape=self.max_pairs)
-        self._queue_count_a = ti.field(dtype=ti.i32, shape=())
-        self._queue_count_b = ti.field(dtype=ti.i32, shape=())
-        self._near_target_count = ti.field(dtype=ti.i32, shape=self.max_nodes)
-        self._near_scan_a = ti.field(dtype=ti.i32, shape=self.max_nodes)
-        self._near_scan_b = ti.field(dtype=ti.i32, shape=self.max_nodes)
-        self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=self.max_n_particles)
-        self.gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=self.max_n_particles)
-        self.rate = ti.Vector.field(3, dtype=ti.f32, shape=self.max_n_particles)
-        self._rate_sum = ti.Vector.field(3, dtype=ti.f32, shape=())
-        self._rate_norm_sum = ti.field(dtype=ti.f32, shape=())
-        self._rate_defect = ti.field(dtype=ti.f32, shape=())
+        self._p2p_particle_count_low = fields.scalar(dtype=ti.u32, shape=())
+        self._p2p_particle_count_high = fields.scalar(dtype=ti.u32, shape=())
+        self._list_error = fields.scalar(dtype=ti.i32, shape=())
+        self._nonzero_l2l_count = fields.scalar(dtype=ti.i32, shape=())
+        self._queue_target_a = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self._queue_source_a = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self._queue_target_b = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self._queue_source_b = fields.scalar(dtype=ti.i32, shape=self.max_pairs)
+        self._queue_count_a = fields.scalar(dtype=ti.i32, shape=())
+        self._queue_count_b = fields.scalar(dtype=ti.i32, shape=())
+        self._near_target_count = fields.scalar(dtype=ti.i32, shape=self.max_nodes)
+        self._near_scan_a = fields.scalar(dtype=ti.i32, shape=self.max_nodes)
+        self._near_scan_b = fields.scalar(dtype=ti.i32, shape=self.max_nodes)
+        self.velocity = fields.vector(3, dtype=ti.f32, shape=self.max_n_particles)
+        self.gradient = fields.matrix(3, 3, dtype=ti.f32, shape=self.max_n_particles)
+        self.rate = fields.vector(3, dtype=ti.f32, shape=self.max_n_particles)
+        self._rate_sum = fields.vector(3, dtype=ti.f32, shape=())
+        self._rate_norm_sum = fields.scalar(dtype=ti.f32, shape=())
+        self._rate_defect = fields.scalar(dtype=ti.f32, shape=())
+        fields.finalize()
+        self._field_owner = fields
         coefficient_array = np.asarray(_MULTI_INDICES, dtype=np.int32)
         self._coefficient_a.from_numpy(coefficient_array[:, 0])
         self._coefficient_b.from_numpy(coefficient_array[:, 1])
@@ -313,6 +312,11 @@ class FMMDeviceWorkspace:
             "near_field": 0.0,
             "strength_rate": 0.0,
         }
+
+    def destroy(self) -> None:
+        """Release the disposable FMM and hierarchy scratch fields."""
+        self.tree.destroy()
+        self._field_owner.destroy()
 
     @ti.func
     def _factorial(self, value: ti.i32) -> ti.f32:
@@ -1091,7 +1095,8 @@ class FMMInduction:
         Notes
         -----
         Construction allocates no FMM workspace. :meth:`bind` performs the
-        precision check and allocates fields sized to the physics capacity.
+        precision check and allocates one-source scratch, which grows with the
+        active source count.
 
         Raises
         ------
@@ -1135,28 +1140,64 @@ class FMMInduction:
 
         Notes
         -----
-        Binding allocates a fixed-order workspace proportional to capacity;
-        it may consume substantially more memory than the active count alone
-        suggests.
+        Binding allocates one-source scratch. Later evaluations grow scratch
+        to fit active sources without changing the declared particle ceiling.
         """
         if physics.accumulator_dtype != ti.f32:
             raise ValueError("FMMInduction currently supports precision='f32' only")
+        if self.workspace is not None:
+            ti.sync()
+            self.workspace.destroy()
+        self._last_tree_key = None
+        self._fixed_source_key = None
         self.physics = physics
         self.kernel = make_vortex_kernel(physics.particle_kernel) if kernel is None else kernel
         self.max_n_particles = int(physics.max_n_particles)
-        velocity_tail_cutoff, gradient_tail_cutoff = self.kernel.dimensionless_tail_cutoffs(
-            _VELOCITY_TAIL_RELATIVE_TOLERANCE,
-            _GRADIENT_TAIL_RELATIVE_TOLERANCE,
+        self._velocity_tail_cutoff, self._gradient_tail_cutoff = (
+            self.kernel.dimensionless_tail_cutoffs(
+                _VELOCITY_TAIL_RELATIVE_TOLERANCE,
+                _GRADIENT_TAIL_RELATIVE_TOLERANCE,
+            )
         )
+        self._radial_factors = physics._kernel_functions["radial_factors_"]
+        self._max_evaluation_points = physics.max_evaluation_points
         self.workspace = FMMDeviceWorkspace(
-            self.max_n_particles,
-            physics._kernel_functions["radial_factors_"],
+            1,
+            self._radial_factors,
             self.kernel.name,
-            velocity_tail_cutoff,
-            gradient_tail_cutoff,
-            physics.max_evaluation_points,
+            self._velocity_tail_cutoff,
+            self._gradient_tail_cutoff,
+            self._max_evaluation_points,
         )
         return self
+
+    def _ensure_workspace(self, source_count: int) -> None:
+        """Grow disposable scratch to fit the active source prefix."""
+        if source_count > self.max_n_particles:
+            raise ValueError(
+                f"source count {source_count} exceeds FMM capacity {self.max_n_particles}"
+            )
+        current = self.workspace
+        if current is None:
+            raise RuntimeError("FMMInduction must be bound before evaluation")
+        if source_count <= current.max_n_particles:
+            return
+        if getattr(self, "_fixed_source_key", None) is not None:
+            raise RuntimeError("cannot grow FMM workspace inside fixed-source target scope")
+        capacity = min(self.max_n_particles, max(source_count, 2 * current.max_n_particles))
+        ti.sync()
+        self.workspace = None
+        self._last_tree_key = None
+        current.destroy()
+        del current
+        self.workspace = FMMDeviceWorkspace(
+            capacity,
+            self._radial_factors,
+            self.kernel.name,
+            self._velocity_tail_cutoff,
+            self._gradient_tail_cutoff,
+            self._max_evaluation_points,
+        )
 
     def estimated_workspace_bytes(
         self, max_n_particles: int, max_evaluation_points: int | None = None
@@ -1196,7 +1237,7 @@ class FMMInduction:
             evaluation_capacity = int(max_evaluation_points)
         if evaluation_capacity < 1:
             raise ValueError("max_evaluation_points must be positive")
-        evaluation_capacity = min(capacity, evaluation_capacity, _TRAVERSAL_BATCH_SIZE)
+        evaluation_capacity = min(evaluation_capacity, _TRAVERSAL_BATCH_SIZE)
         node_count = 2 * capacity
         max_pairs = _PAIR_CAPACITY_FACTOR * capacity
         coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
@@ -1288,6 +1329,7 @@ class FMMInduction:
             raise ValueError(f"stage count {count} exceeds FMM capacity {self.max_n_particles}")
         if count == 0:
             return
+        self._ensure_workspace(count)
         self.workspace.evaluate(
             position, vortex_strength, core_radius, count, self._stretching_mode
         )
@@ -1346,13 +1388,14 @@ class FMMInduction:
         if getattr(self, "_fixed_source_key", None) is not None:
             raise RuntimeError("nested fixed-source target scopes are unsupported")
         key = (position, strength, radius, int(count))
+        self._ensure_workspace(int(count))
         previous = getattr(self, "_last_tree_key", None)
         same_tree = (
             previous is not None
             and all(previous[i] is key[i] for i in range(3))
             and previous[3] == key[3]
         )
-        if not reuse_current_tree or not same_tree:
+        if int(count) > 0 and (not reuse_current_tree or not same_tree):
             self.workspace.tree.build(*key)
         self._last_tree_key = key
         self._fixed_source_key = key
@@ -1443,6 +1486,7 @@ class FMMInduction:
             and fixed[3] == int(source_count)
         ):
             raise RuntimeError("fixed-source target scope received different source fields")
+        self._ensure_workspace(int(source_count))
         self.workspace.evaluate_targets(
             target_position,
             source_position,
@@ -1468,7 +1512,7 @@ class FMMInduction:
         if self.workspace is None:
             return self.estimated_workspace_bytes(self.max_n_particles)
         return self.estimated_workspace_bytes(
-            self.max_n_particles,
+            self.workspace.max_n_particles,
             self.workspace.target_batch_capacity,
         )
 

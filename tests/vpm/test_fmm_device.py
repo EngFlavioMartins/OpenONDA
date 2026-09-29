@@ -57,6 +57,37 @@ def test_fmm_does_not_force_the_unqualified_vulkan_sort():
     assert harness.induction.workspace.tree.device_sort_only is False
 
 
+def test_fmm_scratch_grows_with_active_sources_and_releases_old_fields():
+    harness = _DeviceFMMHarness(capacity=16, max_evaluation_points=10000)
+    induction = harness.induction
+    assert induction.workspace.max_n_particles == 1
+    assert induction.workspace.target_batch_capacity == _TRAVERSAL_BATCH_SIZE
+    assert induction._estimate_memory_bytes() < induction.estimated_workspace_bytes(16)
+
+    position = np.array([[0.0, 0.0, 0.0], [0.3, -0.1, 0.2]], dtype=np.float32)
+    strength = np.array([[0.0, 0.02, 0.01], [0.01, -0.01, 0.0]], dtype=np.float32)
+    radius = np.array([0.08, 0.1], dtype=np.float32)
+    before = harness.evaluate(position, strength, radius)
+    assert induction.workspace.max_n_particles == 2
+    previous = induction.workspace
+
+    expanded_position = np.vstack((position, np.eye(3, dtype=np.float32)))
+    expanded_strength = np.vstack((strength, np.full((3, 3), 0.002, dtype=np.float32)))
+    expanded_radius = np.concatenate((radius, np.full(3, 0.1, dtype=np.float32)))
+    harness.evaluate(expanded_position, expanded_strength, expanded_radius)
+    assert induction.workspace.max_n_particles == 5
+    assert previous._field_owner.tree is None
+    assert previous.tree._field_owner.tree is None
+    after = harness.evaluate(position, strength, radius)
+    for first, second in zip(before, after, strict=True):
+        np.testing.assert_array_equal(first, second)
+
+    active = induction.workspace
+    with pytest.raises(ValueError, match="exceeds FMM capacity"):
+        induction._ensure_workspace(17)
+    assert induction.workspace is active
+
+
 def test_external_target_traversal_is_bounded_per_gpu_dispatch():
     calls = []
     target_count = 2 * _TRAVERSAL_BATCH_SIZE + 17
@@ -520,6 +551,7 @@ def test_device_fmm_raises_before_consuming_an_overflowed_interaction_queue():
     # The allocated arrays retain their normal size; restricting the logical
     # queue isolates the required hard-failure path from allocator behaviour.
     assert harness.induction.workspace is not None
+    harness.induction._ensure_workspace(64)
     harness.induction.workspace.max_pairs = 1
     with pytest.raises(RuntimeError, match="interaction-list capacity was exceeded"):
         harness.evaluate(position, strength, radius)

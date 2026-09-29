@@ -56,6 +56,41 @@ _TRAVERSAL_BATCH_SIZE = 4096
 _TOPOLOGY_BATCH_SIZE = 4096
 
 
+class _OwnedFields:
+    """Place scratch fields in one disposable Taichi SNode tree."""
+
+    def __init__(self):
+        self.builder = ti.FieldsBuilder()
+        self.tree = None
+
+    def _place(self, field, shape):
+        if shape == ():
+            self.builder.place(field)
+        else:
+            dimensions = (shape,) if isinstance(shape, int) else tuple(shape)
+            axes = (ti.i, ti.ij, ti.ijk)[len(dimensions) - 1]
+            self.builder.dense(axes, dimensions).place(field)
+        return field
+
+    def scalar(self, *, dtype, shape):
+        return self._place(ti.field(dtype=dtype), shape)
+
+    def vector(self, n, *, dtype, shape):
+        return self._place(ti.Vector.field(n, dtype=dtype), shape)
+
+    def matrix(self, n, m, *, dtype, shape):
+        return self._place(ti.Matrix.field(n, m, dtype=dtype), shape)
+
+    def finalize(self):
+        self.tree = self.builder.finalize()
+        self.builder = None
+
+    def destroy(self):
+        if self.tree is not None:
+            self.tree.destroy()
+            self.tree = None
+
+
 @ti.data_oriented
 class TaichiTreecode:
     """
@@ -166,22 +201,23 @@ class TaichiTreecode:
             raise ValueError("max_evaluation_points must be positive")
         self.max_evaluation_points = evaluation_capacity
 
+        fields = _OwnedFields()
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
-        self.position = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
-        self.vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
-        self.core_radius = ti.field(dtype=ti.f32, shape=max_n_particles)
+        self.position = fields.vector(3, dtype=ti.f32, shape=max_n_particles)
+        self.vortex_strength = fields.vector(3, dtype=ti.f32, shape=max_n_particles)
+        self.core_radius = fields.scalar(dtype=ti.f32, shape=max_n_particles)
 
         # TREE STRUCTURE (binary LBVH)
         # Node properties (centre/half_size computed from AABB)
-        self.node_centre = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
-        self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
+        self.node_centre = fields.vector(3, dtype=ti.f32, shape=max_nodes)
+        self.node_half_size = fields.scalar(dtype=ti.f32, shape=max_nodes)
 
         # Multipole moments
-        self.node_net_vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
-        self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
-        self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
-        self.node_min_radius = ti.field(dtype=ti.f32, shape=max_nodes)
-        self.node_max_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        self.node_net_vortex_strength = fields.vector(3, dtype=ti.f32, shape=max_nodes)
+        self.node_com = fields.vector(3, dtype=ti.f32, shape=max_nodes)
+        self.node_avg_radius = fields.scalar(dtype=ti.f32, shape=max_nodes)
+        self.node_min_radius = fields.scalar(dtype=ti.f32, shape=max_nodes)
+        self.node_max_radius = fields.scalar(dtype=ti.f32, shape=max_nodes)
         # Higher-order moments are sized by the requested order: at the default
         # order 1 they would otherwise cost 36 + 108 bytes/node (144 MB at 1e6
         # nodes) for fields no kernel ever reads.  Allocating one element keeps
@@ -192,40 +228,40 @@ class TaichiTreecode:
         # First-order source-position moment around node_com:
         #   M[b, a] = sum_j (x_j - node_com)_b * vortex_strength_{j,a}
         # Used by the opt-in dipole correction when multipole_order == 2.
-        self.node_vortex_strength_dipole = ti.Matrix.field(
+        self.node_vortex_strength_dipole = fields.matrix(
             3, 3, dtype=ti.f32, shape=self._dipole_nodes
         )
         # Second-order source-position moment around node_com:
         #   Q[node, k][a, b] = sum_j vortex_strength_{j,k} * d_a * d_b,   d = x_j - node_com
         # (symmetric in a, b).  Used when multipole_order == 3 (quadrupole).
-        self.node_vortex_strength_quadrupole = ti.Matrix.field(
+        self.node_vortex_strength_quadrupole = fields.matrix(
             3, 3, dtype=ti.f32, shape=(self._quad_nodes, 3)
         )
 
         # Binary tree structure (left/right child, -1 = none)
-        self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
-        self.node_right = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_left = fields.scalar(dtype=ti.i32, shape=max_nodes)
+        self.node_right = fields.scalar(dtype=ti.i32, shape=max_nodes)
         # Parent pointer (root = -1); derived from the child links after build.
-        self.node_parent = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_parent = fields.scalar(dtype=ti.i32, shape=max_nodes)
         # Depth from the root, used by the level-synchronous multipole pass.
-        self.node_depth = ti.field(dtype=ti.i32, shape=max_nodes)
-        self.node_is_leaf = ti.field(dtype=ti.i32, shape=max_nodes)
-        self.node_particle_start = ti.field(dtype=ti.i32, shape=max_nodes)
-        self.node_particle_count = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_depth = fields.scalar(dtype=ti.i32, shape=max_nodes)
+        self.node_is_leaf = fields.scalar(dtype=ti.i32, shape=max_nodes)
+        self.node_particle_start = fields.scalar(dtype=ti.i32, shape=max_nodes)
+        self.node_particle_count = fields.scalar(dtype=ti.i32, shape=max_nodes)
 
         # Particle-to-leaf mapping (contiguous sorted indices)
-        self.leaf_particles = ti.field(dtype=ti.i32, shape=max_n_particles)
+        self.leaf_particles = fields.scalar(dtype=ti.i32, shape=max_n_particles)
 
         # LBVH BUILD FIELDS
-        self.morton_codes = ti.field(dtype=ti.u32, shape=max_n_particles)
+        self.morton_codes = fields.scalar(dtype=ti.u32, shape=max_n_particles)
         # The sort network needs a power-of-two prefix. Pad these two scratch
         # fields once, instead of sorting the entire particle capacity for
         # every small active cloud (or allocating a field per active count).
         self._sort_capacity = 1 << (max_n_particles - 1).bit_length()
-        self.sorted_indices = ti.field(dtype=ti.i32, shape=self._sort_capacity)
+        self.sorted_indices = fields.scalar(dtype=ti.i32, shape=self._sort_capacity)
         # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
         # run on-device, removing the per-build CPU argsort host round-trip.
-        self._sort_keys = ti.field(dtype=ti.u32, shape=self._sort_capacity)
+        self._sort_keys = fields.scalar(dtype=ti.u32, shape=self._sort_capacity)
         # Taichi 1.7's Vulkan parallel_sort can fail only for particular active
         # lengths even after an earlier invocation validated successfully.  A
         # bad permutation creates malformed Karras parent links; the subsequent
@@ -236,57 +272,57 @@ class TaichiTreecode:
         self._gpu_sort = ti.lang.impl.current_cfg().arch == ti.cuda
         self._sort_validated = False
         # LCP array (for Karras tree; length max_n_particles for simplicity)
-        self._lcp = ti.field(dtype=ti.i32, shape=max_n_particles)
+        self._lcp = fields.scalar(dtype=ti.i32, shape=max_n_particles)
         # Nearest smaller LCP left/right (for Karras tree construction)
-        self._nsl = ti.field(dtype=ti.i32, shape=max_n_particles)
-        self._nsr = ti.field(dtype=ti.i32, shape=max_n_particles)
+        self._nsl = fields.scalar(dtype=ti.i32, shape=max_n_particles)
+        self._nsr = fields.scalar(dtype=ti.i32, shape=max_n_particles)
         # Temporary stack for serial NSL/NSR computation (GPU)
-        self._stack = ti.field(dtype=ti.i32, shape=max_n_particles)
+        self._stack = fields.scalar(dtype=ti.i32, shape=max_n_particles)
         # Node particle range in sorted order
-        self._node_first = ti.field(dtype=ti.i32, shape=max_nodes)
-        self._node_last = ti.field(dtype=ti.i32, shape=max_nodes)
+        self._node_first = fields.scalar(dtype=ti.i32, shape=max_nodes)
+        self._node_last = fields.scalar(dtype=ti.i32, shape=max_nodes)
         # Node AABB
-        self._node_aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
-        self._node_aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self._node_aabb_min = fields.vector(3, dtype=ti.f32, shape=max_nodes)
+        self._node_aabb_max = fields.vector(3, dtype=ti.f32, shape=max_nodes)
 
         # OUTPUT VELOCITIES
         particle_output_capacity = 1 if self.hierarchy_only else max_n_particles
-        self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=particle_output_capacity)
+        self.velocity = fields.vector(3, dtype=ti.f32, shape=particle_output_capacity)
 
         # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
-        self.velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
-        self.strain_rate = ti.Matrix.field(3, 3, dtype=ti.f32, shape=particle_output_capacity)
+        self.velocity_gradient = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
+        self.strain_rate = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
 
         # TARGET POINT FIELDS
         target_field_capacity = 1 if self.hierarchy_only else evaluation_capacity
-        self.target_position = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
-        self.target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=target_field_capacity)
-        self.target_velocity_gradient = ti.Matrix.field(
+        self.target_position = fields.vector(3, dtype=ti.f32, shape=target_field_capacity)
+        self.target_velocity = fields.vector(3, dtype=ti.f32, shape=target_field_capacity)
+        self.target_velocity_gradient = fields.matrix(
             3, 3, dtype=ti.f32, shape=target_field_capacity
         )
-        self.n_targets = ti.field(dtype=ti.i32, shape=())
-        self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
-        self.regularization_tail_cutoff = ti.field(dtype=ti.f32, shape=())
-        self.multipole_order = ti.field(dtype=ti.i32, shape=())
-        self.sort_particle_targets = ti.field(dtype=ti.i32, shape=())
+        self.n_targets = fields.scalar(dtype=ti.i32, shape=())
+        self.kernel_type_id = fields.scalar(dtype=ti.i32, shape=())
+        self.regularization_tail_cutoff = fields.scalar(dtype=ti.f32, shape=())
+        self.multipole_order = fields.scalar(dtype=ti.i32, shape=())
+        self.sort_particle_targets = fields.scalar(dtype=ti.i32, shape=())
 
         # TREE TRAVERSAL STACK
         self.max_stack_depth = 48
         particle_stack_capacity = 1 if self.hierarchy_only else max_n_particles
-        self.traversal_stack = ti.field(dtype=ti.i32, shape=(particle_stack_capacity, 48))
-        self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(evaluation_capacity, 48))
+        self.traversal_stack = fields.scalar(dtype=ti.i32, shape=(particle_stack_capacity, 48))
+        self.target_traversal_stack = fields.scalar(dtype=ti.i32, shape=(evaluation_capacity, 48))
 
         # COUNTERS
-        self.n_particles_total = ti.field(dtype=ti.i32, shape=())
-        self.n_nodes = ti.field(dtype=ti.i32, shape=())
-        self._root = ti.field(dtype=ti.i32, shape=())
-        self._max_depth = ti.field(dtype=ti.i32, shape=())
-        self._topology_error = ti.field(dtype=ti.i32, shape=())
-        self._external_target_traversal_error = ti.field(dtype=ti.i32, shape=())
+        self.n_particles_total = fields.scalar(dtype=ti.i32, shape=())
+        self.n_nodes = fields.scalar(dtype=ti.i32, shape=())
+        self._root = fields.scalar(dtype=ti.i32, shape=())
+        self._max_depth = fields.scalar(dtype=ti.i32, shape=())
+        self._topology_error = fields.scalar(dtype=ti.i32, shape=())
+        self._external_target_traversal_error = fields.scalar(dtype=ti.i32, shape=())
         self.max_tree_depth_guard = 96
 
         # Background velocity
-        self.freestream_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
+        self.freestream_velocity = fields.vector(3, dtype=ti.f32, shape=())
 
         # Statistics
         self.build_time = 0.0
@@ -294,8 +330,8 @@ class TaichiTreecode:
         self.grad_time = 0.0
 
         # AABB fields (allocated at instance level, not class level)
-        self._aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=())
-        self._aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=())
+        self._aabb_min = fields.vector(3, dtype=ti.f32, shape=())
+        self._aabb_max = fields.vector(3, dtype=ti.f32, shape=())
 
         # Constants for gradient kernel
         self.default_cutoff_radius_factor = 15.0
@@ -311,9 +347,16 @@ class TaichiTreecode:
         self._built_n = None
         self._combine_levels = 0
 
+        fields.finalize()
+        self._field_owner = fields
+
         self.set_kernel_type(self.kernel_type)
         self.set_multipole_order(multipole_order)
         self.set_sort_particle_targets(sort_particle_targets)
+
+    def destroy(self) -> None:
+        """Release this treecode's scratch allocation."""
+        self._field_owner.destroy()
 
     def set_kernel_type(self, kernel_type: str) -> None:
         """Select the regularization kernel evaluated during traversal.

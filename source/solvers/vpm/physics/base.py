@@ -754,14 +754,10 @@ class PhysicsBase:
     # TREECODE MANAGEMENT (for hierarchical methods)
 
     def _get_or_create_treecode(self, required_size: int, theta: float = 0.5):
-        """
-        Get or create cached treecode instance for hierarchical methods.
+        """Reuse tree scratch sized to the active source count.
 
-        Taichi fields cannot be garbage collected, so creating a new TaichiTreecode
-        instance on every call leads to memory accumulation and eventual OOM.
-        This method caches and reuses a single instance, sized once to the run's
-        declared particle ceiling so a growing particle count never forces a
-        rebuild.
+        The source ceiling remains a hard limit. Scratch grows geometrically
+        and releases its previous Taichi allocation before replacement.
 
         Args:
             required_size: Required max_n_particles capacity
@@ -772,15 +768,24 @@ class PhysicsBase:
         """
         from .induction.treecode.lbvh import TaichiTreecode
 
-        if required_size > self.max_n_particles:
+        required_size = int(required_size)
+        if required_size < 0 or required_size > self.max_n_particles:
             raise ValueError(
                 f"Treecode source count {required_size} exceeds declared "
                 f"max_n_particles={self.max_n_particles}"
             )
-        # Allocate against the declared source ceiling once. Taichi retains old
-        # fields, so growing a tree after the first build would retain both.
         if self._treecode is None or required_size > self._treecode_max_particles:
-            alloc_size = max(_TREECODE_MIN_CAPACITY, int(self.max_n_particles))
+            alloc_size = min(
+                self.max_n_particles,
+                max(_TREECODE_MIN_CAPACITY, required_size, 2 * self._treecode_max_particles),
+            )
+            if self._treecode is not None:
+                ti.sync()
+                previous = self._treecode
+                self._treecode = None
+                self._treecode_max_particles = 0
+                self._target_tree_key = None
+                previous.destroy()
             self._treecode = TaichiTreecode(
                 max_n_particles=alloc_size,
                 max_nodes=2 * alloc_size,

@@ -316,6 +316,7 @@ def test_fmm_slab_targets_agree_with_direct_on_3d_cloud():
         ).bind(physics)
         hierarchy_builds = []
         if backend is FMMInduction:
+            slab.base._ensure_workspace(4)
             tree = slab.base.workspace.tree
             original_build = tree.build
 
