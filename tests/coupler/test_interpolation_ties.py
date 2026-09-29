@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
+from source.coupler import interpolation as interpolation_module
 from source.coupler.interpolation import FVMVelocityInterpolator
 
 
@@ -51,8 +52,9 @@ def test_untied_stencil_keeps_original_inverse_distance_taylor_value():
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-@pytest.mark.parametrize("chunk_size", [1, 17, 100_000])
-def test_fused_reconstruction_matches_vectorized_taylor_sum(dtype, chunk_size):
+@pytest.mark.parametrize("batch_size", [1, 17, 100_000])
+def test_fused_reconstruction_matches_vectorized_taylor_sum(dtype, batch_size, monkeypatch):
+    monkeypatch.setattr(interpolation_module, "_INTERPOLATION_BATCH_SIZE", batch_size)
     rng = np.random.default_rng(427)
     axis = np.linspace(-1.0, 1.0, 5)
     positions = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
@@ -75,12 +77,27 @@ def test_fused_reconstruction_matches_vectorized_taylor_sum(dtype, chunk_size):
         optimize=True,
     )
     np.testing.assert_allclose(
-        trace.sample(points, velocity, gradient, chunk_size=chunk_size),
+        trace.sample(points, velocity, gradient),
         expected,
         rtol=2e-15,
         atol=2e-15,
     )
     assert trace.sample(np.empty((0, 3)), velocity, gradient).shape == (0, 3)
+
+
+@pytest.mark.parametrize("batch_size", [1, 17, 100_000])
+def test_cell_field_batches_preserve_every_target_and_stencil_cache(batch_size, monkeypatch):
+    monkeypatch.setattr(interpolation_module, "_INTERPOLATION_BATCH_SIZE", batch_size)
+    rng = np.random.default_rng(428)
+    positions = rng.normal(size=(31, 3))
+    points = rng.normal(size=(43, 3))
+    field = rng.normal(size=(31, 3))
+    trace = FVMVelocityInterpolator(positions, cKDTree(positions))
+    indices, weights = trace._stencil(points)
+    expected = np.einsum("nk,nkj->nj", weights, field[indices])
+    np.testing.assert_allclose(trace.sample_cell_field(points, field), expected, atol=1e-14)
+    assert trace._stencil(points)[0] is indices
+    assert trace.sample_cell_field(np.empty((0, 3)), field).shape == (0, 3)
 
 
 @pytest.mark.parametrize("velocity_count,gradient_count", [(3, 4), (4, 3)])

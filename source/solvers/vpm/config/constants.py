@@ -130,17 +130,6 @@ VLM_SMALL_VELOCITY = 1e-10
 # Large domain size for unbounded problems
 LARGE_DOMAIN_SIZE = 1e6
 
-# PERFORMANCE AND OPTIMIZATION
-
-# Number of threads for CPU parallelization
-DEFAULT_NUM_THREADS = 8
-
-# Memory allocation block size
-MEMORY_BLOCK_SIZE = 1024
-
-# Cache size for frequently accessed data
-DEFAULT_CACHE_SIZE = 1000
-
 THREADS_PER_BLOCK = 256
 
 # PERIODIC KERNEL PARAMETERS

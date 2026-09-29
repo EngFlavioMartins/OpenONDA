@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
+import json
+import runpy
 from pathlib import Path
 
 import matplotlib
@@ -16,7 +17,29 @@ import numpy as np
 from openonda import plotting as theme
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-ALPHA = math.radians(10.0)
+
+
+def _wind_direction(case_dir: Path) -> np.ndarray:
+    metadata_path = case_dir / "solution" / "run_metadata.json"
+    if metadata_path.is_file():
+        velocity = json.loads(metadata_path.read_text())["physics"]["freestream_velocity"]
+    else:
+        velocity = runpy.run_path(str(case_dir / "setup.py"))["FREESTREAM_VELOCITY"]
+    vector = np.asarray(velocity, dtype=float)
+    if vector.shape != (3,) or not np.all(np.isfinite(vector)):
+        raise ValueError("freestream velocity must be a finite three-component vector")
+    speed = float(np.linalg.norm(vector[:2]))
+    if speed <= 0.0 or not np.isclose(vector[2], 0.0):
+        raise ValueError("freestream velocity must lie in the nonzero airfoil plane")
+    return vector[:2] / speed
+
+
+def _wind_axis_coefficients(
+    body_drag: np.ndarray, body_lift: np.ndarray, direction: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    drag = body_drag * direction[0] + body_lift * direction[1]
+    lift = -body_drag * direction[1] + body_lift * direction[0]
+    return drag, lift
 
 
 def main() -> None:
@@ -45,11 +68,8 @@ def main() -> None:
         ]
     )
     time, body_axis_drag_coefficient, body_axis_lift_coefficient, slip_error = data.T
-    drag = body_axis_drag_coefficient * math.cos(ALPHA) + body_axis_lift_coefficient * math.sin(
-        ALPHA
-    )
-    lift = -body_axis_drag_coefficient * math.sin(ALPHA) + body_axis_lift_coefficient * math.cos(
-        ALPHA
+    drag, lift = _wind_axis_coefficients(
+        body_axis_drag_coefficient, body_axis_lift_coefficient, _wind_direction(CASE_DIR)
     )
 
     figures = CASE_DIR / "figures"
@@ -71,10 +91,10 @@ def main() -> None:
     plt.close(figure)
     print(f"Wrote {output}")
 
-    settled = time >= 0.5 * time[-1]
+    last_half = time >= 0.5 * time[-1]
     print(
-        f"Settled wind-axis mean drag_coefficient={np.mean(drag[settled]):.4f}; "
-        f"lift_coefficient={np.mean(lift[settled]):.4f}."
+        f"Mean over last half of saved time window: wind-axis drag_coefficient={np.mean(drag[last_half]):.4f}; "
+        f"lift_coefficient={np.mean(lift[last_half]):.4f}."
     )
 
 

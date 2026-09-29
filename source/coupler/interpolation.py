@@ -11,6 +11,8 @@ from scipy.spatial import cKDTree
 
 from source._numba import cacheable_njit as njit
 
+_INTERPOLATION_BATCH_SIZE = 100_000
+
 
 @njit(cache=True, fastmath=False)
 def _sample_velocity(position, cell_centre, velocity, gradient, indices, weights, sampled):
@@ -312,7 +314,6 @@ class FVMVelocityInterpolator:
         evaluation_position: np.ndarray,
         velocity: np.ndarray,
         gradient: np.ndarray,
-        chunk_size: int = 100_000,
     ) -> np.ndarray:
         """Reconstruct velocity at arbitrary points from values and gradients.
 
@@ -325,9 +326,6 @@ class FVMVelocityInterpolator:
         gradient : ndarray, shape (M, 3, 3)
             Donor velocity gradient in 1/s with
             ``gradient[i, j] = d(velocity_j)/d(x_i)``.
-        chunk_size : int, default=100000
-            Positive target rows reconstructed per temporary batch.
-
         Returns
         -------
         ndarray, shape (N, 3)
@@ -355,8 +353,8 @@ class FVMVelocityInterpolator:
         indices, weights = self._stencil(evaluation_position)
         sampled = np.empty((len(evaluation_position), 3), dtype=np.float64)
 
-        for start in range(0, len(evaluation_position), chunk_size):
-            stop = min(start + chunk_size, len(evaluation_position))
+        for start in range(0, len(evaluation_position), _INTERPOLATION_BATCH_SIZE):
+            stop = min(start + _INTERPOLATION_BATCH_SIZE, len(evaluation_position))
             _sample_velocity(
                 evaluation_position[start:stop],
                 self.cell_centre,
@@ -372,7 +370,6 @@ class FVMVelocityInterpolator:
         self,
         evaluation_position: np.ndarray,
         field: np.ndarray,
-        chunk_size: int = 100_000,
     ) -> np.ndarray:
         """Interpolate a cell-centred vector field without donor gradients.
 
@@ -382,9 +379,6 @@ class FVMVelocityInterpolator:
             Cartesian target positions in m.
         field : ndarray, shape (M, 3)
             Donor vector values. Units are preserved in the output.
-        chunk_size : int, default=100000
-            Positive target rows evaluated per batch.
-
         Returns
         -------
         ndarray, shape (N, 3)
@@ -403,8 +397,8 @@ class FVMVelocityInterpolator:
         indices, weights = self._stencil(evaluation_position)
         sampled = np.empty((len(evaluation_position), 3), dtype=np.float64)
 
-        for start in range(0, len(evaluation_position), chunk_size):
-            stop = min(start + chunk_size, len(evaluation_position))
+        for start in range(0, len(evaluation_position), _INTERPOLATION_BATCH_SIZE):
+            stop = min(start + _INTERPOLATION_BATCH_SIZE, len(evaluation_position))
             sampled[start:stop] = np.einsum(
                 "mk,mkj->mj",
                 weights[start:stop],
