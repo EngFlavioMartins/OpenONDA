@@ -54,7 +54,7 @@ def main():
         drag_coefficient = d["drag_coefficient"]
         lift_coefficient = d["lift_coefficient"]
         slip_error = d["slip_error"]
-        # Statistics over the settled part (last third).
+        # Describe the last third of the available history.
         i0 = 2 * len(t) // 3
         drag_coefficient_mean = float(np.mean(drag_coefficient[i0:]))
         lift_coefficient_rms = float(
@@ -88,7 +88,7 @@ def main():
         strouhal_number = strouhal_from_lift(t, lift_coefficient)
         label = rf"$C_{{l,\mathrm{{rms}}}} = {lift_coefficient_rms:.3g}$"
         if strouhal_number is not None and "strouhal_number" in ref:
-            label += f",  strouhal_number = {strouhal_number:.4f} (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
+            label += f"\n$St$ = {strouhal_number:.4f} (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
         ax.text(
             0.02,
             0.06,

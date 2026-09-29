@@ -76,3 +76,21 @@ def test_cube_snapshot_vectors_follow_native_cell_or_point_locations(monkeypatch
 
     with pytest.raises(ValueError, match="no 'vorticity' field"):
         common.snapshot_vector_field(mesh, "vorticity")
+
+
+def test_airfoil_midspan_plot_preserves_native_cell_values():
+    plot_velocity = load_tutorial_module("fvm/airfoil_flow", "assets.plot_velocity")
+    x, y, z = np.meshgrid([0.0, 1.0, 3.0], [0.0, 1.0], [-0.5, 0.5], indexing="ij")
+    mesh = pv.StructuredGrid(x, y, z).cast_to_unstructured_grid()
+    mesh.cell_data["velocity"] = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+
+    polygons, speed = plot_velocity._section_polygons_and_speed(mesh)
+    np.testing.assert_allclose(speed, [1.0, 2.0])
+    assert len(polygons) == mesh.n_cells
+    for polygon, left, right in zip(polygons, [0.0, 1.0], [1.0, 3.0], strict=True):
+        np.testing.assert_allclose(np.unique(polygon[:, 0]), [left, right])
+        np.testing.assert_allclose(np.unique(polygon[:, 1]), [0.0, 1.0])
+
+    del mesh.cell_data["velocity"]
+    with pytest.raises(ValueError, match="no velocity field"):
+        plot_velocity._section_polygons_and_speed(mesh)

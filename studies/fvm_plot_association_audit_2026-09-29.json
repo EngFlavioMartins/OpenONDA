@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-29",
+  "scope": "bounded tutorial FVM plotting association and annotation audit; no airfoil solver run and no fabricated case results",
+  "installed_wheel_source_commit": "fc921ec094ef416d5cf3ade8f40df26d07b3bcc9",
+  "scan": {
+    "cube_flow": "Already corrected in commit 582ea1ea: native cell-centered velocity and vorticity with matching centers.",
+    "cylinder_ibm": "plot_fields and plot_wake already read native cell arrays and cell geometry; force annotation compacted when St is available.",
+    "airfoil_flow": "plot_velocity previously averaged native cell velocity onto points; now slices actual cells at midspan and colors each resulting polygon by its unchanged cell value, preserving the airfoil opening. Point-only snapshots remain supported via explicit conversion to cell association. Force labels shortened to conventional coefficients."
+  },
+  "tests": {
+    "command": "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python -m pytest tests/tutorials/test_fvm_plot_inputs.py -q",
+    "outcome": "9 passed",
+    "airfoil_fixture": "Two native hexahedral cells with different velocities: midspan polygons and speeds remained in exact 1:1 cell correspondence, no nodal averaging; missing field fails.",
+    "ruff": "check and format --check passed on all three assets and focused test."
+  },
+  "ibm_genuine_plot": {
+    "input": {
+      "path": "build/final IBM clone fc921ec0/tutorials/fvm/cylinder_ibm/samples/ibm_forces_history.csv",
+      "sha256": "7fd14dc4d8b81cb4f697b80d90ee0dae823891fac52973c25ed8133bc4f8aefb",
+      "bytes": 938372
+    },
+    "output": {
+      "path": "build/fvm-ibm-annotation-verify/tutorials/fvm/cylinder_ibm/figures/forces_cylinder.png",
+      "sha256": "f1c762850c4429ec48dacd526d5e332644b090fea85344a64823ef41b595a279",
+      "bytes": 216289
+    },
+    "command": "env -u PYTHONPATH PATH=build/wheel-verification-fc921ec0/bin:/usr/bin:/bin ... python assets/plot_forces.py from isolated copied IBM case",
+    "exit_code": 0,
+    "visual_review": "Strict thesis figure validator passed with genuine archived IBM force history; new optional St line was not exercised because this input reported no St.",
+    "sample_rows": 5125,
+    "time_range_s": [
+      0.0,
+      60.0
+    ]
+  },
+  "source_assets": [
+    {
+      "path": "tutorials/fvm/airfoil_flow/assets/plot_velocity.py",
+      "sha256": "023b59e8fb423ba2649ffa61c4cfbf1480178987c6721fd1561b9faec2ff7271",
+      "bytes": 2707
+    },
+    {
+      "path": "tutorials/fvm/airfoil_flow/assets/plot_forces.py",
+      "sha256": "873db8d2fad10dc3ca705b7936d94e985edaea067ceac620e611e7c8493442a2",
+      "bytes": 2170
+    },
+    {
+      "path": "tutorials/fvm/cylinder_ibm/assets/plot_forces.py",
+      "sha256": "d81d77e6a680d47ba85f05202e9dd14cc0d4628130949706329cf8bef0d030de",
+      "bytes": 4356
+    }
+  ],
+  "limits": "No genuine airfoil VTU exists yet; native two-cell fixture validates association, not full airfoil visual result. Real airfoil allplot remains required after its expensive run. No FVM physical settings or active jobs changed."
+}

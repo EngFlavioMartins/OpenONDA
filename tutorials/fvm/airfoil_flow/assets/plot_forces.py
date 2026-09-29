@@ -48,7 +48,7 @@ def main():
     ax.text(
         0.02,
         0.06,
-        f"mean drag coefficient (last 1/3) = {drag_coefficient_mean:.4f}",
+        rf"$\overline{{C_D}}$ (last 1/3) = {drag_coefficient_mean:.4f}",
         transform=ax.transAxes,
     )
     ax.grid(True, alpha=0.3)
@@ -58,7 +58,7 @@ def main():
     ax.text(
         0.02,
         0.06,
-        f"mean lift coefficient (last 1/3) = {lift_coefficient_mean:.4f}",
+        rf"$\overline{{C_L}}$ (last 1/3) = {lift_coefficient_mean:.4f}",
         transform=ax.transAxes,
     )
     ax.set_ylabel("lift coefficient")

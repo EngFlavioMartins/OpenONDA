@@ -11,12 +11,14 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
 import numpy as np
 import pyvista as pv
 
 from ._common import (  # noqa: E402
     COLORMAPS,
     FIGURES_DIR,
+    FREESTREAM_SPEED,
     RE,
     SOLUTION_DIR,
     build_arg_parser,
@@ -24,6 +26,31 @@ from ._common import (  # noqa: E402
     latest_vtu,
     save_fig,
 )
+
+
+def _section_polygons_and_speed(mesh):
+    """Cut native FVM cells at the midspan without averaging cell values."""
+    if "velocity" not in mesh.cell_data:
+        if "velocity" not in mesh.point_data:
+            raise ValueError("Snapshot has no velocity field")
+        mesh = mesh.point_data_to_cell_data()
+    section = mesh.slice(normal="z", origin=(0.0, 0.0, 0.0))
+    velocity = section.cell_data.get("velocity")
+    if section.n_cells == 0 or velocity is None:
+        raise ValueError("Snapshot has no velocity-bearing cells at midspan")
+
+    faces = section.faces
+    polygons = []
+    cursor = 0
+    while cursor < len(faces):
+        n = int(faces[cursor])
+        if n < 3:
+            raise ValueError("Midspan section contains a non-polygon cell")
+        polygons.append(section.points[faces[cursor + 1 : cursor + 1 + n], :2])
+        cursor += n + 1
+    if len(polygons) != section.n_cells:
+        raise ValueError("Midspan section polygon and field counts differ")
+    return polygons, np.linalg.norm(velocity, axis=1) / FREESTREAM_SPEED
 
 
 def main():
@@ -35,25 +62,15 @@ def main():
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
-    u = mesh.point_data.get("velocity")
-    if u is None and "velocity" in mesh.cell_data:
-        mesh = mesh.cell_data_to_point_data()
-        u = mesh.point_data.get("velocity")
-    if u is None:
-        raise SystemExit("  No velocity data in VTU.")
-    pts = mesh.points
-    mag = np.linalg.norm(u, axis=1)
-
-    on_plane = np.abs(pts[:, 2]) < 1e-9
-    if not on_plane.any():
-        on_plane = pts[:, 2] < pts[:, 2].min() + 1e-9
-    near = on_plane & (pts[:, 0] > -1.0) & (pts[:, 0] < 3.0) & (np.abs(pts[:, 1]) < 1.5)
+    polygons, speed = _section_polygons_and_speed(mesh)
 
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
-    sc = ax.tripcolor(
-        pts[near, 0], pts[near, 1], mag[near], cmap=COLORMAPS["field_speed"], shading="gouraud"
-    )
+    sc = PolyCollection(polygons, cmap=COLORMAPS["field_speed"], edgecolors="none")
+    sc.set_array(speed)
+    ax.add_collection(sc)
     plt.colorbar(sc, ax=ax, label="velocity magnitude / freestream speed")
+    ax.set_xlim(-1.0, 3.0)
+    ax.set_ylim(-1.5, 1.5)
     ax.set_xlabel("x / c")
     ax.set_ylabel("y / c")
     ax.set_title(
