@@ -1,0 +1,168 @@
+{
+  "cases": [
+    {
+      "accepted_state_step": 197,
+      "camera": {
+        "focal_point_m": [
+          -11.3472660779953,
+          0.0,
+          -0.746180797368288
+        ],
+        "image_pixels": [
+          1800,
+          900
+        ],
+        "parallel_scale": 7.099530782699586,
+        "position_m": [
+          -11.3472660779953,
+          -27.89101378917694,
+          11.931552743166685
+        ],
+        "projection": "parallel",
+        "view_up": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "command": [
+        "python",
+        "build/flat-plate-render-verification/assets/render_flat_plate.py",
+        "--format",
+        "png"
+      ],
+      "environment": {
+        "MPLCONFIGDIR": "build/verification-mpl-cache",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PATH": "build/archive-verification-env/bin:/opt/paraview/bin:/usr/bin:/bin",
+        "PYTHONPATH": "unset",
+        "TMPDIR": "build/verification-tmp"
+      },
+      "exit_code": 0,
+      "label": "latest",
+      "log": "build/flat-plate-render-verification/render.log",
+      "native_inputs": {
+        "hdf5": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vpm/vpm_000197.h5",
+        "hdf5_sha256": "5c8f89fb69d9da4cfd85710f7b61a4cf3c57610ebe60f6fe87af3f982a94d4ce",
+        "vlm_vtp": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp",
+        "vlm_vtp_sha256": "9a3eb4cb930a42d526555f9b9dbfb576e8889077f080363bf2a98daf4f4260a3"
+      },
+      "outputs": {
+        "dimensions_pixels": [
+          1969,
+          985
+        ],
+        "png": "build/flat-plate-render-verification/figures/flat_plate_wake.png",
+        "png_sha256": "672dd7b87cd9c5f01f3814ebef01c0c7af03594269cc544cf287ffe5f02e83d4",
+        "raw_png": "build/flat-plate-render-verification/figures/flat_plate_wake_raw.png",
+        "raw_png_sha256": "16554a5a843ec2cbc1f25410c7ca52d9f41b8232d78c89a3bd8b3b8fdcc67b7c"
+      },
+      "panels": 224,
+      "particles": 11032,
+      "plate_velocity_m_per_s": [
+        -10.0,
+        0.0,
+        0.0
+      ],
+      "scene_record": "build/flat-plate-render-verification/figures/flat_plate_wake_scene.json",
+      "selected_step": 197,
+      "selected_time_seconds": 2.4625,
+      "visual_review": "Complete plate and native wake within dynamically fitted camera; three motion arrows, readable velocity annotation and shared magma vorticity scale; no clipping or blank field."
+    },
+    {
+      "accepted_state_step": 197,
+      "camera": {
+        "focal_point_m": [
+          -9.078823208808899,
+          0.0,
+          -0.6238930471241474
+        ],
+        "image_pixels": [
+          1800,
+          900
+        ],
+        "parallel_scale": 5.779858789443971,
+        "position_m": [
+          -9.078823208808899,
+          -22.706588101387027,
+          9.697283362597227
+        ],
+        "projection": "parallel",
+        "view_up": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "command": [
+        "python",
+        "build/flat-plate-render-step160-verification/assets/render_flat_plate.py",
+        "--format",
+        "png"
+      ],
+      "environment": {
+        "MPLCONFIGDIR": "build/verification-mpl-cache",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PATH": "build/archive-verification-env/bin:/opt/paraview/bin:/usr/bin:/bin",
+        "PYTHONPATH": "unset",
+        "TMPDIR": "build/verification-tmp"
+      },
+      "exit_code": 0,
+      "label": "earlier",
+      "log": "build/flat-plate-render-step160-verification/render.log",
+      "native_inputs": {
+        "hdf5": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vpm/vpm_000160.h5",
+        "hdf5_sha256": "ba0e905651013ef2e892e8c65f58ac5dceace4f5af574a1b6bcebc84212f452a",
+        "vlm_vtp": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000160.vtp",
+        "vlm_vtp_sha256": "ffeedd1ebba270a79398d9f897766e9f40e8ca3c0d4d9441b95879f244e4ef28"
+      },
+      "outputs": {
+        "dimensions_pixels": [
+          1969,
+          985
+        ],
+        "png": "build/flat-plate-render-step160-verification/figures/flat_plate_wake.png",
+        "png_sha256": "fcf0a6cb49b5b48b8758b936b5b4acf4bf097acf5e29d596e0a7bbd97b75c0db",
+        "raw_png": "build/flat-plate-render-step160-verification/figures/flat_plate_wake_raw.png",
+        "raw_png_sha256": "99e198de78167536026a13b65778d8127790762feccf012abff2f50d3b904c76"
+      },
+      "panels": 224,
+      "particles": 8960,
+      "plate_velocity_m_per_s": [
+        -10.0,
+        0.0,
+        0.0
+      ],
+      "scene_record": "build/flat-plate-render-step160-verification/figures/flat_plate_wake_scene.json",
+      "selected_step": 160,
+      "selected_time_seconds": 2.0,
+      "visual_review": "Complete plate and native wake within dynamically fitted camera; three motion arrows, readable velocity annotation and shared magma vorticity scale; no clipping or blank field."
+    }
+  ],
+  "palette": "openonda.plotting.get_colormap(\"field_vorticity\") = magma; identical sampled LUT passed to ParaView and drawn in TeX overlay.",
+  "paraview_helper_sha256": "d17f14ec48988a0af488768542514ab97fc4d2ba62f1c81ba1880784631a4902",
+  "renderer_commit": "4b01e4e9",
+  "renderer_paths": [
+    "tutorials/vpm/04_flat_plate/assets/render_flat_plate.py",
+    "tutorials/vpm/04_flat_plate/assets/render_flat_plate_paraview.py"
+  ],
+  "renderer_sha256": "192af798131b851fa91979b691d04bb7610997f0a807c181412151de89329281",
+  "schema_version": 1,
+  "simulation_run": false,
+  "source": "Genuine archived HDF5 and matching VLM VTP; isolated verification directories use read-only symlinks to original files.",
+  "test": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/tutorials/test_flat_plate_native_render.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "passed": 5
+  },
+  "verification_date": "2026-09-29",
+  "visual_comparison": "Archived step160 and197 show different particle counts and wake geometry; both PNGs visually inspected and differ in SHA-256."
+}

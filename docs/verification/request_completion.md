@@ -189,3 +189,35 @@ paired study and current timing evidence are in the
 Historical reference data use a different span and observation window and cannot
 replace the current campaign; see the
 [historical input audit](../../studies/historical_plot_input_audit_2026-09-29.md).
+
+## Final installed solver and generalized scene checks
+
+The wheel from `37de66ba` passed the complete verifier outside the repository
+with isolated Python imports. This now includes native coupled initial/latest
+execution (64 FVM cells, four FVM steps and two VPM steps), in addition to the
+standalone solvers, mesher, rendering and installed tutorial entrypoints.
+`pip check` passed. See the [exact wheel record](../../studies/installed_wheel_verification_37de66ba.json).
+
+The flat-plate scene no longer assumes a particular saved step, particle count,
+plate velocity or camera. Genuine steps 160 and 197 both rendered correctly with
+the shared vorticity palette; see the [native scene checks](../../studies/flat_plate_native_render_verification_2026-09-29.json).
+The ordinary complete launcher then passed from a fresh Git export in a path
+containing spaces, restoring its committed lossless archive and producing all
+nine PNGs. See the [launcher record](../../studies/flat_plate_archive_plot_verification_2026-09-29.json).
+
+Exact SciPy direct-factorization reuse preserves matrix identity and each solve's
+residual checks. Native cached/uncached results agree, and repeated paired
+solve-stage measurements show reduced cost; these measurements are not a
+whole-case speed claim. See the [factorization audit](../../studies/fvm_exact_factorization_audit.md).
+
+Actual installed coupled execution exposed floating-point curl in uniform flow.
+The shared transfer now recognizes a wholly unresolved curl field at a
+velocity/spacing-scaled machine-precision bound; any resolved curl preserves the
+entire field. Seventy-three transfer regressions, native two-rank continuation,
+and all five continuation tests at the unchanged default divergence tolerance
+pass. See the [roundoff analysis](../../studies/coupled_uniform_transfer_roundoff.md).
+
+The airfoil setup's finest spacing now applies to the airfoil surface rather
+than every outer domain plane. A bounded native mesh regression confirms that
+scope. The full default corrected mesh is still running; neither its final cost
+nor full-airfoil plotting is yet qualified.
