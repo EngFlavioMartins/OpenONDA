@@ -2,10 +2,11 @@
 
 The measured evidence supports provisional mesh/rank choices and short transient
 sensitivity results. It does **not** yet select a grid-independent production
-mesh or establish completion within twelve hours. This read-only assessment
-uses the [execution report](cylinder_execution_report.md),
+mesh or establish completion within twelve hours. The original read-only
+snapshot used the [execution report](cylinder_execution_report.md),
 [original plan](cylinder_3d_accuracy_performance_plan.md), saved pilot JSONs and
-the existing `phase-20260929` logs. No simulation was started or modified.
+the existing `phase-20260929` logs; it started no simulation. The completed
+matched transient pair reported below ran later in separate isolated workspaces.
 
 ## Measured meshes and parallel choices
 
@@ -62,6 +63,31 @@ not been reinterpreted as the corrected experiment. The implemented renewal
 rate still equals the accepted exchange clock, so changing that clock also
 changes integration and boundary lag. No completed paired long-window
 comparison isolates those effects.
+
+## Completed matched transient exchange-clock pair
+
+Two newer installed-`fc921ec0` one-rank CPU runs held `hxy=dz=hp=0.08D`,
+span `0.96D`, core `0.08D`, blend width `0.48D`, release width `0.16D`,
+geometry/source hashes, Aitken three-sweep interface settings and the
+100,000-particle hard capacity fixed. Both exited zero at t=0.4D/U; only
+exchange `dt` changed. At `dt=0.02`, 18/20 accepted intervals passed the
+unchanged `1e-5` normal/gradient interface gates; startup steps 1 and 2 did
+not, with scaled residuals 12.267 and 1.02865. At `dt=0.04`, all 10/10 passed
+and the maximum scaled residual was 0.917. Endpoint Cd was 1.76730 versus
+1.53734; this 0.22995 difference is a short-transient sensitivity, not
+qualified temporal convergence.
+
+Matched t=0.2 and 0.4 samples show FVM centreline `u_x` max absolute
+difference 0.00770 (relative L2 0.660%) and `omega_z` 0.15580 (1.338%).
+VPM downstream x=2 `omega_z` differs by only 0.000281 absolute but 135.3%
+relative L2 because the reference magnitude there is small. Conservation
+errors remained finite, including corrected boundary flux below `4.72e-16`
+and renewal conservation error below `1.34e-8`. Over the common physical
+window (0.12, 0.4] s, warm phase totals were 1283.83 versus 995.68 s;
+full startup-to-finish times were 2639.76 versus 2110.99 s under nonidentical
+shared-host load. [Full paired evidence and source hashes](cylinder_paired_transient_evidence_2026-09-29.md).
+The clock change also changes integration and renewal cadence, so it does not
+isolate injection frequency or establish a developed wake.
 
 ## Existing phase benchmark snapshot
 
