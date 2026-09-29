@@ -6,11 +6,12 @@ import json
 import math
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import trapezoid
 from scipy.signal import find_peaks
 from scipy.stats import t as student_t
+
+from openonda.reference_grid import plot_force_grids
 
 CASE_DIR = Path(__file__).resolve().parent
 SAMPLES_DIR = CASE_DIR / "samples"
@@ -219,23 +220,7 @@ def write_csv(grids: list[dict], path: Path) -> None:
 
 
 def plot_forces(grids: list[dict], path: Path) -> None:
-    h = [grid["h"] for grid in grids]
-    labels = {
-        "mean_drag": r"$\overline{C_D}$",
-        "rms_drag": r"$C_{D,\mathrm{rms}}$",
-        "rms_lift": r"$C_{L,\mathrm{rms}}$",
-        "rms_side": r"$C_{S,\mathrm{rms}}$",
-        "strouhal": r"$St$",
-    }
-    figure, axes = plt.subplots(2, 3, figsize=(10, 6), constrained_layout=True)
-    for axis, metric in zip(axes.flat, METRICS, strict=False):
-        axis.plot(h, [grid[metric] for grid in grids], "o-", color="black")
-        axis.set_xlabel("wall spacing h [m]")
-        axis.set_ylabel(labels[metric])
-        axis.invert_xaxis()
-    axes.flat[-1].axis("off")
-    figure.savefig(path, dpi=200)
-    plt.close(figure)
+    plot_force_grids(grids, path)
 
 
 def analyse_forces(

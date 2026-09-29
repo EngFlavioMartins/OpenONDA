@@ -1,6 +1,6 @@
 # Cube reference flow
 
-This is a four-grid body-fitted reference study for flow around a unit cube at
+This is a three-grid body-fitted reference study for flow around a unit cube at
 Re = 1000. The physical problem and numerical method are defined in `setup.py`;
 the grid names and baseline spacings are defined in `allrun.sh`.
 
@@ -17,8 +17,6 @@ The launcher runs:
 | `grid_h010125` | 0.10125 |
 | `grid_h00675` | 0.0675 |
 | `grid_h0045` | 0.045 |
-| `grid_h003` | 0.03 |
-
 Successive grids have a refinement ratio of 1.5. Each command has only the
 output name and baseline grid spacing:
 
@@ -26,16 +24,19 @@ output name and baseline grid spacing:
 python setup.py --name grid_h0045 -h 0.045
 ```
 
-After all grids finish, post-process their force histories with:
+After all grids finish, restore archived samples if needed and plot with:
 
 ```bash
-python postprocess_grid_study.py
+./allplot.sh
 ```
 
-The script writes `grid_forces.json`, `grid_forces.csv` and `grid_forces.png`
-under `figures/`. It reports mean drag, force RMS, Strouhal number and
-Richardson/GCI estimates over the statistics window declared at the top of the
-script.
+The script writes `grid_forces.json`, `grid_forces.csv`, `grid_forces.png`, and
+`grid_forces_fluctuations.png` under `figures/`. It reports mean drag, force RMS,
+Strouhal number and guarded Richardson/GCI estimates over the declared
+statistics window. The present 15–30 s archive contains fewer than ten force
+cycles, so its force-grid statistics are **not yet qualified**. The local
+0.03 m run remains excluded from the launcher until its runtime and sampling
+are qualified; it is not silently counted as a fourth completed grid.
 
-`allclean.sh` removes generated solutions, samples and figures. It is never run
-automatically.
+`allrun.sh` calls `allclean.sh` before starting from zero. Use `allcontinue.sh`
+to resume the three existing grid outputs from native backups.

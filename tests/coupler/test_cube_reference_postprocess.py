@@ -23,7 +23,7 @@ def load_script(name: str):
     return module
 
 
-def test_allrun_declares_the_four_geometric_grids():
+def test_allrun_declares_the_three_active_geometric_grids():
     commands = [
         shlex.split(line)
         for line in (CASE / "allrun.sh").read_text().splitlines()
@@ -33,7 +33,6 @@ def test_allrun_declares_the_four_geometric_grids():
         ["python", "setup.py", "--name", "grid_h010125", "-h", "0.10125"],
         ["python", "setup.py", "--name", "grid_h00675", "-h", "0.0675"],
         ["python", "setup.py", "--name", "grid_h0045", "-h", "0.045"],
-        ["python", "setup.py", "--name", "grid_h003", "-h", "0.03"],
     ]
     spacings = np.array([float(command[-1]) for command in commands])
     np.testing.assert_allclose(spacings[:-1] / spacings[1:], 1.5)
@@ -103,7 +102,6 @@ def test_force_postprocessor_preserves_inputs_and_reports_gci(tmp_path):
             ("grid_h010125", 0.10125),
             ("grid_h00675", 0.0675),
             ("grid_h0045", 0.045),
-            ("grid_h003", 0.03),
         ],
         start=1,
     ):
@@ -118,11 +116,47 @@ def test_force_postprocessor_preserves_inputs_and_reports_gci(tmp_path):
         "grid_h010125",
         "grid_h00675",
         "grid_h0045",
-        "grid_h003",
     ]
     mean_drag = report["convergence"]["mean_drag"]
     assert mean_drag["order"] == pytest.approx(2.0, rel=1.0e-4)
     assert mean_drag["fine_gci"] > 0
     assert (samples / "grid_h0045/forces_history.csv").read_text() == original
-    for name in ("grid_forces.json", "grid_forces.csv", "grid_forces.png"):
+    for name in (
+        "grid_forces.json",
+        "grid_forces.csv",
+        "grid_forces.png",
+        "grid_forces_fluctuations.png",
+    ):
         assert (output / name).stat().st_size > 0
+    assert not report["statistics_qualified"]
+    assert not report["force_grid_qualified"]
+    assert all(grid["complete_cycles"] < 10 for grid in report["grids"])
+
+
+def test_force_history_requires_window_coverage_and_rejects_conflicting_restarts(tmp_path):
+    postprocess = load_script("postprocess_grid_study.py")
+    samples = tmp_path / "samples"
+    original = write_grid(samples, "grid_h", 0.08, 1000)
+    history = samples / "grid_h/forces_history.csv"
+    with pytest.raises(ValueError, match="requested window"):
+        postprocess.force_statistics(history, 15.0, 31.0)
+
+    history.write_text(original + "\n".join(original.splitlines()[1:]) + "\n")
+    repeated = postprocess.force_statistics(history, 15.0, 30.0)
+    assert repeated["repeated_history_segments"] == 1
+
+    rows = history.read_text().splitlines()
+    second_start = len(original.splitlines())
+    changed = rows[second_start].split(",")
+    changed[1] = str(float(changed[1]) + 1.0)
+    rows[second_start] = ",".join(changed)
+    history.write_text("\n".join(rows) + "\n")
+    with pytest.raises(ValueError, match="conflicting repeated force histories"):
+        postprocess.force_statistics(history, 15.0, 30.0)
+
+
+def test_gci_rejects_zero_or_insufficient_grid_differences():
+    postprocess = load_script("postprocess_grid_study.py")
+    equal = [{"h": h, "mean_drag": 0.0} for h in (0.1, 0.05, 0.025)]
+    assert not postprocess.richardson_gci(equal, "mean_drag")["valid"]
+    assert not postprocess.richardson_gci(equal[:2], "mean_drag")["valid"]

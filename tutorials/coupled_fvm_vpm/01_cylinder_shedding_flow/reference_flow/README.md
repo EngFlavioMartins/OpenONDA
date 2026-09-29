@@ -58,15 +58,18 @@ default production pipeline remains the three-grid `.10, .08, .064D` family.
 After all grids finish, post-process their force histories with:
 
 ```bash
-python postprocess_grid_study.py
+./allplot.sh
 ```
 
-The script writes `grid_forces.json`, `grid_forces.csv` and `grid_forces.png`
-under `figures/`. It reports mean drag, force RMS, lift-based Strouhal number
-and Richardson/GCI estimates over the statistics window declared at the top of
-the script.
+The launcher restores a parent-case result bundle if one is available. The
+cylinder reference production samples are not archived yet; a fresh clone
+needs the genuine completed grid runs before this plot can succeed. The
+postprocessor writes `grid_forces.json`, `grid_forces.csv`,
+`grid_forces.png` and `grid_forces_fluctuations.png` under `figures/`. It reports
+mean drag, force RMS, lift-based Strouhal number and Richardson/GCI estimates
+over the declared statistics window.
 
-`allclean.sh` removes generated solutions, samples and figures. It is never run
-automatically. Full production completion and the finest-case 12-hour target
+`allrun.sh` calls `allclean.sh` before starting from zero. Full production
+completion and the finest-case 12-hour target
 remain pending measured long-horizon runs. A per-case timeout is not evidence
 that the case completed within the budget.
