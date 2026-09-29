@@ -1,0 +1,162 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "1ddb16908c99e0fcdf9a8613f862a9dd1c7fde0ee897bbd48770abe60d72b5a8",
+  "excluded_superseded": [],
+  "files": [
+    {
+      "path": "samples/dns_direct/flow_integrals.csv",
+      "sha256": "675be49c7622734ec9972098a0f0d017854da0a4919a4f43712a16ad8f457e37",
+      "size": 18969
+    },
+    {
+      "path": "samples/dns_direct/ring_diagnostics.csv",
+      "sha256": "624aaf81fa7ff9f1f0e0900ac84081ede6f4f60e91b785a88fe1eb0c54ef1851",
+      "size": 6452
+    },
+    {
+      "path": "samples/dns_direct/ring_modes.csv",
+      "sha256": "5978ab8e519234cb6c29e654569530a649407d4c476bdbd8fa89aebb402b4628",
+      "size": 128383
+    },
+    {
+      "path": "samples/dns_mixed/flow_integrals.csv",
+      "sha256": "b75a10302e5564d152142b6eff3c96aafd67808b5b5407d5352437de6f63fe7e",
+      "size": 51472
+    },
+    {
+      "path": "samples/dns_mixed/ring_diagnostics.csv",
+      "sha256": "d451f37a44e84bfab8b063cd839f38252707a7cd1c33f7e967da1199ff0aa99b",
+      "size": 18065
+    },
+    {
+      "path": "samples/dns_mixed/ring_modes.csv",
+      "sha256": "33787abf1830a0c21e7e8c9f4b0dfca340606a4f0ba22b1e7bd1b39b841d3c9b",
+      "size": 368930
+    },
+    {
+      "path": "samples/dns_transposed/flow_integrals.csv",
+      "sha256": "851b58cf7c3c9f92d56a1d6be011dc755f38ffc4abbdab53a8abd6b1f32fd881",
+      "size": 456254
+    },
+    {
+      "path": "samples/dns_transposed/ring_diagnostics.csv",
+      "sha256": "6f8e302ab540609f955e9b76272b30eb5061b73ffab8ec3f4f9c4caf1e03fd2d",
+      "size": 162781
+    },
+    {
+      "path": "samples/dns_transposed/ring_modes.csv",
+      "sha256": "a9ff875062f49236c9e3fa40c412b24456016641a3af38f810df2acb8912f010",
+      "size": 3388854
+    },
+    {
+      "path": "samples/les_transposed/flow_integrals.csv",
+      "sha256": "75694a09e7550173b92eafec8231845d08099b93b4ea2f72314526ed6614809c",
+      "size": 476911
+    },
+    {
+      "path": "samples/les_transposed/ring_diagnostics.csv",
+      "sha256": "668f091a429e9fdf1491cb28b3e6d52ed92c28fa8fe14ac91bdb58cc6fcb9aa7",
+      "size": 163047
+    },
+    {
+      "path": "samples/les_transposed/ring_modes.csv",
+      "sha256": "179cecc3f19d5b9758c805c8c17d200f1730121e2ceadf6d25de42f199dd35e9",
+      "size": 3387918
+    },
+    {
+      "path": "solution/dns_direct/vpm_metadata.json",
+      "sha256": "d9fe2ab2ae85077383c612b7c06ab1e89ed3ebd8ac1f177f02ef1f5717420a30",
+      "size": 9859
+    },
+    {
+      "path": "solution/dns_mixed/vpm_metadata.json",
+      "sha256": "bea6f566e5a0a327c57c62dceaa4a052be34439453c5b291bdef1c0477c6808b",
+      "size": 9854
+    },
+    {
+      "path": "solution/dns_transposed/vpm_metadata.json",
+      "sha256": "a0cee9783159b63c2979bb77e3eda9ece93723f1024586f54fee0c2db3868ae8",
+      "size": 9874
+    },
+    {
+      "path": "solution/les_transposed/vpm/vpm_003000.h5",
+      "sha256": "47b727c95f2eb239a45134e7583c0f96613c28c052bbda0954924ada6bdaca05",
+      "size": 452973
+    },
+    {
+      "path": "solution/les_transposed/vpm_metadata.json",
+      "sha256": "2c21a19e01240255db5a780c4b88abe2482043217a7cb3ec642750ea6520b021",
+      "size": 9886
+    }
+  ],
+  "provenance": {
+    "archive_source_revision": "888636dec372e3d288a70ff6c2ac27af2f39c4a6",
+    "captured_date": "2026-09-29",
+    "case": "tutorials/vpm/02_vortex_ring",
+    "clocks": {
+      "solution/dns_direct/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "resolution_lost"
+        },
+        "state": {
+          "initial_n_particles_total": 8772,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 8772,
+          "requested_steps": 3000,
+          "step": 108,
+          "time": 2.16
+        }
+      },
+      "solution/dns_mixed/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "resolution_lost"
+        },
+        "state": {
+          "initial_n_particles_total": 8772,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 8772,
+          "requested_steps": 3000,
+          "step": 321,
+          "time": 6.42
+        }
+      },
+      "solution/dns_transposed/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "completed"
+        },
+        "state": {
+          "initial_n_particles_total": 8772,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 8772,
+          "requested_steps": 3000,
+          "step": 3000,
+          "time": 60.0
+        }
+      },
+      "solution/les_transposed/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "completed"
+        },
+        "state": {
+          "initial_n_particles_total": 8772,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 8772,
+          "requested_steps": 3000,
+          "step": 3000,
+          "time": 60.0
+        }
+      }
+    },
+    "scope": "all current samples plus plotting checkpoints; unreferenced superseded histories remain local"
+  },
+  "restore_roots": [
+    "samples",
+    "solution"
+  ],
+  "schema_version": 1,
+  "scientific_status": "mixed: transposed cases complete; direct and mixed cases stopped on health checks"
+}

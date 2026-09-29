@@ -1,0 +1,77 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "732535f4d2a9ef959d7f78f65eff55360c7e1c112bb79e783f4fe39a3616f153",
+  "excluded_superseded": [],
+  "files": [
+    {
+      "path": "solution/backup",
+      "sha256": "ace1e7fb13133a783f0e4e6477a0363d59bb66ea3b9b549264ca4ee0d2c3ce9b",
+      "size": 45861
+    },
+    {
+      "path": "solution/diagnostics.jsonl",
+      "sha256": "0375b0e3755be3d6d620b60f3ce920fd6093f4bd251cd8e5e489fadbc589500f",
+      "size": 32643
+    },
+    {
+      "path": "solution/fvm.log",
+      "sha256": "438fdddca6e65266fbb26e91efee0ea0d1aaee07d1adb6fca88498cb4e7332ac",
+      "size": 15400
+    },
+    {
+      "path": "solution/fvm.pvd",
+      "sha256": "33a6b371e393be9d9d7dbdf0204734c979af3d5699b5bed04fe62549f507a0fe",
+      "size": 297
+    },
+    {
+      "path": "solution/fvm/fvm_000000.vtu",
+      "sha256": "4609e7bf5629eeeb44ecdc13f65f4e4216beffc5fc8b2237848f81cb0a4337aa",
+      "size": 17721
+    },
+    {
+      "path": "solution/fvm/fvm_000010.vtu",
+      "sha256": "ac2f2c6bf355d274e52c3fdbb0076cb0fdb569b52d8af7181b4d33cab55553c7",
+      "size": 24140
+    },
+    {
+      "path": "solution/fvm/mesh.npz",
+      "sha256": "0a0791590942469d73e4dfeb0998d799dec2a12194fe243b8c9caa1cc6c678cd",
+      "size": 31914
+    },
+    {
+      "path": "solution/fvm/mesh.vtu",
+      "sha256": "78c19ca67931ef17ab40b45525dfd690794b75bbaa5ed5e52f6e0952321808e8",
+      "size": 12769
+    },
+    {
+      "path": "solution/fvm_metadata.json",
+      "sha256": "cf9a08fee03bba8eb3b62f8118ee522eee379c28fbcdcb0a4da240729f2661e7",
+      "size": 7051
+    },
+    {
+      "path": "solution/history.csv",
+      "sha256": "14735e920261c94123ed56b65973203fb0f90cbea98478e4e3f830da2ae4d069",
+      "size": 2295
+    },
+    {
+      "path": "solution/mesher.log",
+      "sha256": "b903aaca75df8a86c66e79b146deaf620550220906d5603fb311d69218688cc3",
+      "size": 2810
+    },
+    {
+      "path": "solution/performance.jsonl",
+      "sha256": "b315b23e6a2df72349ba8c75129a504beee0dd0bf1d7504eb50c4e485a5fc3a2",
+      "size": 61558
+    }
+  ],
+  "provenance": {
+    "archive_source_revision": "888636dec372e3d288a70ff6c2ac27af2f39c4a6",
+    "captured_date": "2026-09-29",
+    "case": "tutorials/fvm/taylor_green"
+  },
+  "restore_roots": [
+    "solution"
+  ],
+  "schema_version": 1,
+  "scientific_status": "complete: default 24 by 24 Taylor-Green run, ten steps to t=0.05"
+}

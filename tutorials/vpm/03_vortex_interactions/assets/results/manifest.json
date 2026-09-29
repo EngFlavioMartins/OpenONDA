@@ -1,0 +1,1097 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "b6312774990d8a02bd70f39665172713f9cacdc6850a362c7fc1389ad7792e9f",
+  "excluded_superseded": [],
+  "files": [
+    {
+      "path": "samples/baseline/core_section.pvd",
+      "sha256": "3f26fb1ea272b40f3896c379af7cbd7ef0cbed4d66622a915bbdce17c4df0c8d",
+      "size": 2656
+    },
+    {
+      "path": "samples/baseline/core_section_000000.vts",
+      "sha256": "91148dfa5099e5389208d5647835023903b38f65269ad1e1eb3011755daede3e",
+      "size": 1665402
+    },
+    {
+      "path": "samples/baseline/core_section_000040.vts",
+      "sha256": "4ced525e7e18d3678e143828c2d49d7612501f344d394c2965ea64e51a425ec7",
+      "size": 1740094
+    },
+    {
+      "path": "samples/baseline/core_section_000080.vts",
+      "sha256": "8fba8bac42b799d9723dde5ef51f2d33e0942a4e5f53d0487152e7783288246b",
+      "size": 1744124
+    },
+    {
+      "path": "samples/baseline/core_section_000120.vts",
+      "sha256": "cb4c3e92078e8f1c153d06c0334b51826393982aaf811267dedb0963534f3a2d",
+      "size": 1743546
+    },
+    {
+      "path": "samples/baseline/core_section_000160.vts",
+      "sha256": "ee21242655421ce78dc2afaaa469793857337212eac744fdc9fe6a5c036eade8",
+      "size": 1746332
+    },
+    {
+      "path": "samples/baseline/core_section_000200.vts",
+      "sha256": "ba527c219973a57dac6bf28f907e7b2951df9c53c9428dbd03b24136f5290b23",
+      "size": 1746300
+    },
+    {
+      "path": "samples/baseline/core_section_000240.vts",
+      "sha256": "a91dd1251b11377b59d0ade1609218c77bbc8565fe7307fec97e6c4a8853609d",
+      "size": 1753888
+    },
+    {
+      "path": "samples/baseline/core_section_000280.vts",
+      "sha256": "5e28f9a14e59b4834d2110aad2b49bc7063da17d92c499bd1e13fdd82e30c00a",
+      "size": 1744534
+    },
+    {
+      "path": "samples/baseline/core_section_000320.vts",
+      "sha256": "0e4f0fa3a9e2a0bf8e73040213850a2256ed55c3041c43a089d343e65b94fe77",
+      "size": 1748954
+    },
+    {
+      "path": "samples/baseline/core_section_000360.vts",
+      "sha256": "b6032830d16e7f627249d26d78f6c936a0c1c037e0ee330bd7336d420cd4920e",
+      "size": 1798493
+    },
+    {
+      "path": "samples/baseline/core_section_000400.vts",
+      "sha256": "38cd7ca09b4db5757df3302fa0e8282b86d9d5af174285d1c0520b76e39ebc03",
+      "size": 1784051
+    },
+    {
+      "path": "samples/baseline/core_section_000440.vts",
+      "sha256": "fe9e50f3c169eb91ae1410c89cdb4378a79922181539cac3c4bda317468ddb06",
+      "size": 1751237
+    },
+    {
+      "path": "samples/baseline/core_section_000480.vts",
+      "sha256": "3a0444a19d92e208bb2fc8719535cccded7633ce3b4db60abd8947e359bee325",
+      "size": 1803335
+    },
+    {
+      "path": "samples/baseline/core_section_000520.vts",
+      "sha256": "fa406a1ee523ddaef10cad6fa47b658bc4d6e1600e72afe472593d19bac69aa5",
+      "size": 1788921
+    },
+    {
+      "path": "samples/baseline/core_section_000560.vts",
+      "sha256": "9f5773596f86fe7aa81e5678b8335e14d76c2dd05250d2ac2638c0ba01eaeec9",
+      "size": 1785381
+    },
+    {
+      "path": "samples/baseline/core_section_000600.vts",
+      "sha256": "ba9d94625b4fe4591f643c94e4eea4dee5800f35e93855c36403196384f27e98",
+      "size": 1766944
+    },
+    {
+      "path": "samples/baseline/core_section_000640.vts",
+      "sha256": "a2b13095201f8c73898ab9c7918b7e1c8a72dfd72a0fdcc0b76fd590164cca95",
+      "size": 1780537
+    },
+    {
+      "path": "samples/baseline/core_section_000680.vts",
+      "sha256": "11ccb7fae8e4b8f21863ffcad8e527b549ebee4d6ed8867fe9cbf3fd23e38062",
+      "size": 1772349
+    },
+    {
+      "path": "samples/baseline/core_section_000720.vts",
+      "sha256": "7f39baf4dabc1844b7deb04a45809191b2bb477387d5fb7cdbb16ef09a478221",
+      "size": 1781146
+    },
+    {
+      "path": "samples/baseline/core_section_000760.vts",
+      "sha256": "226afb4bc19addbd8b8301b4780e7e0aa540bda912a8596000941efe2de9566b",
+      "size": 1781234
+    },
+    {
+      "path": "samples/baseline/core_section_000800.vts",
+      "sha256": "430c6a28d3727b993d4ba863a1a1e23e695fddfda570d03f8d85a247a70c195c",
+      "size": 1787837
+    },
+    {
+      "path": "samples/baseline/core_section_000840.vts",
+      "sha256": "bf2b8873f34e7759c02eb59a7eb397ecd99baeb7f9d7917b521c69005fc8b3a1",
+      "size": 1784961
+    },
+    {
+      "path": "samples/baseline/core_section_000880.vts",
+      "sha256": "58e9c50ae38795a975fab603ab5719eef5187d84f1350c406f80d2ff17a6981c",
+      "size": 1790391
+    },
+    {
+      "path": "samples/baseline/core_section_000920.vts",
+      "sha256": "21861067bd4c76584653380871a89ce152ba2808b814faabe9eb1cb75e1e3698",
+      "size": 1805852
+    },
+    {
+      "path": "samples/baseline/core_section_000960.vts",
+      "sha256": "13f1463eead01137afc74a49c082b8bc03d191621a8accf98a5b01efd341c2e7",
+      "size": 1800431
+    },
+    {
+      "path": "samples/baseline/core_section_001000.vts",
+      "sha256": "9fd1bb775d4c8fa97017818689992448d913b34a9592f17f80c59c0ac965e586",
+      "size": 1801419
+    },
+    {
+      "path": "samples/baseline/core_section_001040.vts",
+      "sha256": "65951c5d48f64d585409d24bd6e944d44871dd66e2d59fc6e3cc6fc0f1ad0226",
+      "size": 1793577
+    },
+    {
+      "path": "samples/baseline/core_section_001080.vts",
+      "sha256": "85cc1ff01ec6f937438a19fc43973c8061825fd1a40644d69f3a0ff6055f5ff9",
+      "size": 1778351
+    },
+    {
+      "path": "samples/baseline/core_section_001120.vts",
+      "sha256": "ebc993dbe569c7dda21b636d2de282204319c900ac5c8dee6651fe6d40ef34d5",
+      "size": 1770534
+    },
+    {
+      "path": "samples/baseline/core_section_001160.vts",
+      "sha256": "e8b0cb35cd69fc3a7e69d6c79e313143665b265c8ff54d2ba06772d9539dde57",
+      "size": 1770909
+    },
+    {
+      "path": "samples/baseline/core_section_001200.vts",
+      "sha256": "91307483d460c8b4be5fea8e24aede8c71470d7ec69ea6438d5e07888de4016c",
+      "size": 1785503
+    },
+    {
+      "path": "samples/baseline/core_section_001240.vts",
+      "sha256": "fab07ab7ab054605affcfd7eef053d055c18f0c2a10fba1f5d32991974b6e69c",
+      "size": 1793820
+    },
+    {
+      "path": "samples/baseline/core_section_001280.vts",
+      "sha256": "7a4850e5272eef25f10967758626826ed17940a7b29e490e88b727690f63c3e4",
+      "size": 1806579
+    },
+    {
+      "path": "samples/baseline/core_section_001320.vts",
+      "sha256": "a1b81bc2271665f7b37942a02b32d5036ac51e23097c89a4c4708e92408a82c5",
+      "size": 1809441
+    },
+    {
+      "path": "samples/baseline/core_section_001360.vts",
+      "sha256": "6d59dc30f8b5766ea9efd46f9f9f329996614d5ea98a61ba4e89113b87d61a7d",
+      "size": 1811941
+    },
+    {
+      "path": "samples/baseline/core_section_001400.vts",
+      "sha256": "f35f764e473bbf3bb6cc428a69f2285ebbbab8f395c863804da658290a634540",
+      "size": 1816374
+    },
+    {
+      "path": "samples/baseline/core_section_001440.vts",
+      "sha256": "98eff1f94c1357f949b1f78e070fdcf86116c3a20cd3e4f83bc1a379b69c66f3",
+      "size": 1832898
+    },
+    {
+      "path": "samples/baseline/core_section_001480.vts",
+      "sha256": "2546e2d59ab9d546cb163786ee1be130b61099c4ddf04fdc3b23f3cf119b632b",
+      "size": 1833002
+    },
+    {
+      "path": "samples/baseline/core_section_001520.vts",
+      "sha256": "0ba045bf38e3266447fa814fdb8a0bc31008ed72e2ae7c71f913a260ec43418d",
+      "size": 1839635
+    },
+    {
+      "path": "samples/baseline/core_section_001560.vts",
+      "sha256": "24ad4f5feed1594aef1aa11b95f31d567f05ae4796dfb0094dcc72bdcf91ad93",
+      "size": 1844243
+    },
+    {
+      "path": "samples/baseline/core_section_001573.vts",
+      "sha256": "60596a3b02adae42448c64af4b03fca8d289a9ddb2277b977efbb3fd7e79dac3",
+      "size": 1845229
+    },
+    {
+      "path": "samples/baseline/flow_integrals.csv",
+      "sha256": "f4714a8a7252087656ca9e2a8d16ce0a15ca627caa66a123d36fd3d18b4fd93a",
+      "size": 136523
+    },
+    {
+      "path": "samples/baseline/ring_diagnostics.csv",
+      "sha256": "b944e623747474a1c17afcbb0c812f2010e59adc2729b551cbb883f29badbfb0",
+      "size": 101741
+    },
+    {
+      "path": "samples/particle_splitting/core_section.pvd",
+      "sha256": "5e39b46aed9bf7fadb02286710e77b86b93462a7202df055b66f8562ac6c6951",
+      "size": 2778
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000000.vts",
+      "sha256": "91148dfa5099e5389208d5647835023903b38f65269ad1e1eb3011755daede3e",
+      "size": 1665402
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000040.vts",
+      "sha256": "4ced525e7e18d3678e143828c2d49d7612501f344d394c2965ea64e51a425ec7",
+      "size": 1740094
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000080.vts",
+      "sha256": "8fba8bac42b799d9723dde5ef51f2d33e0942a4e5f53d0487152e7783288246b",
+      "size": 1744124
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000120.vts",
+      "sha256": "cb4c3e92078e8f1c153d06c0334b51826393982aaf811267dedb0963534f3a2d",
+      "size": 1743546
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000160.vts",
+      "sha256": "ee21242655421ce78dc2afaaa469793857337212eac744fdc9fe6a5c036eade8",
+      "size": 1746332
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000200.vts",
+      "sha256": "ba527c219973a57dac6bf28f907e7b2951df9c53c9428dbd03b24136f5290b23",
+      "size": 1746300
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000240.vts",
+      "sha256": "a91dd1251b11377b59d0ade1609218c77bbc8565fe7307fec97e6c4a8853609d",
+      "size": 1753888
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000280.vts",
+      "sha256": "5e28f9a14e59b4834d2110aad2b49bc7063da17d92c499bd1e13fdd82e30c00a",
+      "size": 1744534
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000320.vts",
+      "sha256": "0e4f0fa3a9e2a0bf8e73040213850a2256ed55c3041c43a089d343e65b94fe77",
+      "size": 1748954
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000360.vts",
+      "sha256": "b6032830d16e7f627249d26d78f6c936a0c1c037e0ee330bd7336d420cd4920e",
+      "size": 1798493
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000400.vts",
+      "sha256": "38cd7ca09b4db5757df3302fa0e8282b86d9d5af174285d1c0520b76e39ebc03",
+      "size": 1784051
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000440.vts",
+      "sha256": "fe9e50f3c169eb91ae1410c89cdb4378a79922181539cac3c4bda317468ddb06",
+      "size": 1751237
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000480.vts",
+      "sha256": "3a0444a19d92e208bb2fc8719535cccded7633ce3b4db60abd8947e359bee325",
+      "size": 1803335
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000520.vts",
+      "sha256": "fa406a1ee523ddaef10cad6fa47b658bc4d6e1600e72afe472593d19bac69aa5",
+      "size": 1788921
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000560.vts",
+      "sha256": "9f5773596f86fe7aa81e5678b8335e14d76c2dd05250d2ac2638c0ba01eaeec9",
+      "size": 1785381
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000600.vts",
+      "sha256": "2c34948e06316163740b02ba8c9051fc0ba662888a4ed104698cae5d61f9b000",
+      "size": 1766144
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000640.vts",
+      "sha256": "77074a83e5913be83dc2ac5db325efb942241a283994b72fdea0d14fa7816568",
+      "size": 1780538
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000680.vts",
+      "sha256": "b1b63bc2c12048ac4e2a1a7506997fa8c470e49757fa46273b86303fd13e8315",
+      "size": 1772058
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000720.vts",
+      "sha256": "7242b110c3a4ef6dbcfaf237e26cdb574fc1ab2cf3f3ffb64a79e3414f28d60c",
+      "size": 1780432
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000760.vts",
+      "sha256": "6c1087204ad1833ec7ba6a04df230432f7a295f7c019e54caaaee767cfb49664",
+      "size": 1781008
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000800.vts",
+      "sha256": "636addf830dd18696743bfe06c0e28af4eb33cd59d39245dbdd0b49d998171b0",
+      "size": 1791835
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000840.vts",
+      "sha256": "b12751122f21cc4141d3fadd269564c6cd2060d918deed931ca8810ea29a04f4",
+      "size": 1784902
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000880.vts",
+      "sha256": "105e8f6b7269949ed01fc96685d62107d4cd61fdfcb6ba868187ea3ffe4c9f16",
+      "size": 1788658
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000920.vts",
+      "sha256": "1eae713a42c878ebfb78a7951b9a3e0f628a4501489cea7b57b6cc920c67a5cd",
+      "size": 1796683
+    },
+    {
+      "path": "samples/particle_splitting/core_section_000960.vts",
+      "sha256": "53422f4a7e638d3f3f6bee40b66db3790bf2d2b11dd666f48c29ad05c5eb4fea",
+      "size": 1794112
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001000.vts",
+      "sha256": "0f6da884180fa8a34f1ba83dc7d73df3a6478526f1caf67e614f29b11d8edc38",
+      "size": 1795325
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001040.vts",
+      "sha256": "58323aec9a59f7b68f355e60ff30a69d0f49a216b1fc56ea67ebe17f80c2e0e9",
+      "size": 1779033
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001080.vts",
+      "sha256": "8b284672bb7f569716cb2848ef5ea2485286becd8ae7effef8345ad21f68831f",
+      "size": 1766477
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001120.vts",
+      "sha256": "98a514414a1bfdaf751c02e468cbcee5757d71f212e2acee7108bc2b5b85d270",
+      "size": 1762362
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001160.vts",
+      "sha256": "e89772d3f935abffad6ecc5a1e7cd71f4d9d0936eb5eec036756ca2443f5e326",
+      "size": 1770432
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001200.vts",
+      "sha256": "0b4745799d89933224b9fc4c70851fdf0a75ab6150bca132a04e2b0de239e5c9",
+      "size": 1787740
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001240.vts",
+      "sha256": "b4d3b95888b8cb1bc341c5944804aa8a94cee96b14310916e5223663a41eeb5a",
+      "size": 1795729
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001280.vts",
+      "sha256": "64c3664766cfc7d6fdba4a7400fe73a32fbb3fe6d7f0a61845e1202a3a382801",
+      "size": 1798789
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001320.vts",
+      "sha256": "57cad7034604d112b7fd8f8e5851277b768572e6402755685b3893480f6ab355",
+      "size": 1798040
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001360.vts",
+      "sha256": "970f64c5a601621f287b043cdc0f0502476c718a1e86c155e7fb5b2c0bf82c44",
+      "size": 1811518
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001400.vts",
+      "sha256": "9248a28cbe258030ee13396682d84ebbfcc23edc806d02dddc2df3829074320f",
+      "size": 1817328
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001440.vts",
+      "sha256": "de64b2ebb5088e1f03f2517d446897af21f018863b8ffbf428369beee8bad1f6",
+      "size": 1823611
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001480.vts",
+      "sha256": "2ece326f3e2d19bb1c4585aa20b2df74f0e9a99daae829102eac2543fade4921",
+      "size": 1833808
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001520.vts",
+      "sha256": "76ebbbbec1291e84845a9eec659770e479a0e0e8c10ebaf0eb35fb0361c7321c",
+      "size": 1842037
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001560.vts",
+      "sha256": "b6b6b38a2b2182a4afca3cae164d0a2fbc8fe09bed4129f04b6f30db8b9627d4",
+      "size": 1848852
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001600.vts",
+      "sha256": "1873b73f5c76d1447f63400ed40068d9eb7612c15c51cda50871c1a8bae15a1f",
+      "size": 1854440
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001640.vts",
+      "sha256": "1c87a1d39f3803397c7275e2a02daf611abee5d12cbfeee831b1cc04642f8983",
+      "size": 1856308
+    },
+    {
+      "path": "samples/particle_splitting/core_section_001654.vts",
+      "sha256": "a809bd3e92483fa1ff820a4b756189ccffe1915f0e19a88cfe953d2c3c7053e2",
+      "size": 1855003
+    },
+    {
+      "path": "samples/particle_splitting/flow_integrals.csv",
+      "sha256": "94e4b095b2ff09608f1110a01e5326ad8dbf661f515cd5a86bb4dbb269db2f7b",
+      "size": 138945
+    },
+    {
+      "path": "samples/particle_splitting/ring_diagnostics.csv",
+      "sha256": "4b99e7eeaed44dfe4c5419ab80d01d754e1d4962359240f327d2d2d94cf266e1",
+      "size": 106763
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section.pvd",
+      "sha256": "26177b1648b010aff2817e34f6a40d97690bc7daa44c9cfaf8093524382b05cd",
+      "size": 2779
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000000.vts",
+      "sha256": "91148dfa5099e5389208d5647835023903b38f65269ad1e1eb3011755daede3e",
+      "size": 1665402
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000040.vts",
+      "sha256": "a7dd1f30dc0c6426dcda28405b5de17ff0679e6a99960bfc8765f4b617ed2798",
+      "size": 1740362
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000080.vts",
+      "sha256": "d7c5df84dd23a139a221914c862d12ce5acbcfe82d1b8d0afbeb18ffa02350e9",
+      "size": 1744131
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000120.vts",
+      "sha256": "d84f2457b9d25f0b871ceb3fec3896162d708e13915842b55478591ca882027c",
+      "size": 1743304
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000160.vts",
+      "sha256": "ad6aaeb44fe27e431b69e7ed5cbe7b883064226078684cd2a486b827e771872f",
+      "size": 1745707
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000200.vts",
+      "sha256": "94eb634b92859fd92ed17bd3bf10083ceda53bc765a54ecaac2bc789b9d73d37",
+      "size": 1745121
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000240.vts",
+      "sha256": "f3c1f41c53ce8df8029bdfcba0bd98bc68b7bbed20f2d81c37ce097b510bf933",
+      "size": 1753100
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000280.vts",
+      "sha256": "22ce97068d8ff3cc5b346fad4e5d24d0948ac2bc58c0b437ff0855028343ee81",
+      "size": 1743516
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000320.vts",
+      "sha256": "6b3066ac31ea7c8a677efe95079c42966b76ec24080842318e245db3a44069f6",
+      "size": 1748741
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000360.vts",
+      "sha256": "2d438d342fe602cabd7803f9afd954c72085abef6fd16f3d13a02ff320c8e33a",
+      "size": 1798334
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000400.vts",
+      "sha256": "bdda4d680ae950f870c2e3d74f614b75437ee8279427d0ef4d81f1dc7fde3bcf",
+      "size": 1784223
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000440.vts",
+      "sha256": "a35badcc40d4beaea702ba13d7b105bb4325c711b55037b159395a0f912285a0",
+      "size": 1751008
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000480.vts",
+      "sha256": "0ae8b93363855cc5a4cef5f8c98577fa74db9585cb3fea94fb357c7c8b467a24",
+      "size": 1800983
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000520.vts",
+      "sha256": "0fae80ce43085f432e44c0c54843baede9db472fc63579c478a1c6ed5fb9aa85",
+      "size": 1788608
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000560.vts",
+      "sha256": "2d0205fa2d243a455641cf14c70004d9a879026a06ef4ff7223f188c7ce9013b",
+      "size": 1784797
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000600.vts",
+      "sha256": "d6f65672a37a76e41894f4b24fe55c5580031c4e5b2faf530de8b046c56c35d8",
+      "size": 1765172
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000640.vts",
+      "sha256": "82772e9622fedf2f59e60aaaf2fd10f0d5c7e9d8877f7474d9d23334a3079644",
+      "size": 1778776
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000680.vts",
+      "sha256": "521c90a281df288e25aad6d0ad4a1c8a3cdfb341c07a4d515885d13c8577cc5c",
+      "size": 1770248
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000720.vts",
+      "sha256": "fc8702e7e061c33f6c866055043b482f90fee1d2ae2d7100d253567e9ccda39e",
+      "size": 1780914
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000760.vts",
+      "sha256": "eeafab59f03a00d7ba2f63581a017822294091ca67d4b8ab07c9bfe0cee35985",
+      "size": 1781940
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000800.vts",
+      "sha256": "4877734317846b58693b6174bf74b9e2d6e1481e5fb734b1d875de05ade508f8",
+      "size": 1787936
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000840.vts",
+      "sha256": "19d6a2c109a363eb044188fed8458556779eaa88ea15b14a209e29d4d34d2882",
+      "size": 1778395
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000880.vts",
+      "sha256": "283a12d7a65cacf09e415ad3d02ff9d9b041980affed427ecab4fb1d81a2c2be",
+      "size": 1790286
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000920.vts",
+      "sha256": "82a0c90a2d67bc86deb7533d2b2b14d454c3c04978ba568f54212fa959b007de",
+      "size": 1800586
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_000960.vts",
+      "sha256": "a76c7f76650fe41cb91da891e0910fade368fd14c2a9238730e6c577c3877ac6",
+      "size": 1793341
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001000.vts",
+      "sha256": "e9a2664893b5108660abbaf4907310b7afe475e6de313ef28d36febcf9b590f4",
+      "size": 1786158
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001040.vts",
+      "sha256": "827aa8443699eda4b49e27fc04f2a4196cf037e52212c1901ff5e2c7a4845396",
+      "size": 1762430
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001080.vts",
+      "sha256": "a727e2151456ebd28347166efb40132b2a4d6fcada9952c41656ed474b4e4703",
+      "size": 1752380
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001120.vts",
+      "sha256": "8275a36d00e35a9eb3b480f782424dd613f6455ceb2a3aba9d578305557edb46",
+      "size": 1747658
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001160.vts",
+      "sha256": "edede8d25261be6768b9b1564df0f54912861194e17d44015f57c06d1f19b09b",
+      "size": 1755490
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001200.vts",
+      "sha256": "9bc51ce1008259c0d7866c7fecbabb401508b39d7b3f055a4fad1b1458831923",
+      "size": 1771532
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001240.vts",
+      "sha256": "d2b3be0450b8ed38e40dcfa93b3865343377e2d7ada53020f3e58668b17f414e",
+      "size": 1780701
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001280.vts",
+      "sha256": "f38485f775ea0a970a43986bcbf6a884bb4e4f0dd80843655cc29538cb8d8e7b",
+      "size": 1779670
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001320.vts",
+      "sha256": "5dff7b9e67cbb9f030900d439612e958f91dbf98d86b03321c6653f138e88e17",
+      "size": 1785538
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001360.vts",
+      "sha256": "38dfc60d39d4c6c25c69ec323819710b66c5b6c927b2c5e78ba06e6c98b4ba4f",
+      "size": 1813044
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001400.vts",
+      "sha256": "61639eae4818d56a3c17a8ab8d7a8b82842e56b835c900002e05377613be3198",
+      "size": 1827565
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001440.vts",
+      "sha256": "1f875e79009ae07d7c1729d3eda613568e0ae07787b83b27de6e4eef2db9d80d",
+      "size": 1845649
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001480.vts",
+      "sha256": "79409cce9f0bde1630cba97f73991042b252d46a95739381ed9e5a0921f03253",
+      "size": 1851364
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001520.vts",
+      "sha256": "26de05f9b2614bb0457ff3bd052105365ced5045220a13c3ba5c8bfbaa2cf30b",
+      "size": 1852473
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001560.vts",
+      "sha256": "1ca370d10c716b0575dee352f4cc83c20b72f1f6feb332fc44917f9865330489",
+      "size": 1856377
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001600.vts",
+      "sha256": "0d390fde8cb94f23d89bb8abcbdda457f397fe8a1023245e8787c44bdacec2a9",
+      "size": 1859613
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001640.vts",
+      "sha256": "126fda262a6a4d26eca5fdff156d002696b185592415f4325515bb208da9f4b6",
+      "size": 1857618
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/core_section_001671.vts",
+      "sha256": "f0ab22c97bf96ad19906deea49da3a057bdc6ae3c9937e59fd239a544f99e362",
+      "size": 1849049
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/flow_integrals.csv",
+      "sha256": "14541ebab7f7fc3552b812088646b48cf9047d6094ecacfe3af65afda1771de8",
+      "size": 180939
+    },
+    {
+      "path": "samples/pedrizzetti_relaxation/ring_diagnostics.csv",
+      "sha256": "c2a743422573bd6e94467fbb210d49c479975427e05a861942a6b494e1185ba4",
+      "size": 108111
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section.pvd",
+      "sha256": "4f0c736e1e583fa63a2ddf765d691c26dc416ea7a653d5564f61a3dc7bc01da5",
+      "size": 3882
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000000.vts",
+      "sha256": "91148dfa5099e5389208d5647835023903b38f65269ad1e1eb3011755daede3e",
+      "size": 1665402
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000040.vts",
+      "sha256": "bc2db2c013ac61876d3c84b43a4e633090c35765a41b5a7cbe47abff34a89009",
+      "size": 1739493
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000080.vts",
+      "sha256": "7e21deced2185e6c6ad45b4eaab6518f9233dfbae5904ef2678e43c39b619513",
+      "size": 1739194
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000120.vts",
+      "sha256": "c120506594b822565e017cc3b033310e1eabda7ca9ba482baaa423626746d69c",
+      "size": 1741334
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000160.vts",
+      "sha256": "41a4d84f5d0b537a67df49516683027efdf01d373d8addee66368b17955abeac",
+      "size": 1740252
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000200.vts",
+      "sha256": "4de9af675c1216022530f80820a4fb74bdadd7a1a06a4302e87e1fc107ef221f",
+      "size": 1742521
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000240.vts",
+      "sha256": "91c9a7bf650ba3dc7febcaef971544f116b58b400a5cb201ab1be1ba4f4158f4",
+      "size": 1750956
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000280.vts",
+      "sha256": "de5a70fd2c417132d7bb7770ce8a56838e2030b688f4e3d9ba342901ee6709bd",
+      "size": 1766353
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000320.vts",
+      "sha256": "df3d9cfdd3175c0a2b7b89abdd67c295fd347c8f031be79b4c4f644873730e53",
+      "size": 1798502
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000360.vts",
+      "sha256": "ab38a2d310ca6423ae6c111c8e33893ece24f30355a7bf8cd1ab229a516ba74a",
+      "size": 1788027
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000400.vts",
+      "sha256": "ee2d27623a76bbf2ef83303c833747b06ced1afd7cfef6591ea281268c002046",
+      "size": 1786142
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000440.vts",
+      "sha256": "2a1e333012e1c8677b22a53688047b4607840f0eb24846b8a9a57686a52340d6",
+      "size": 1798732
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000480.vts",
+      "sha256": "832a5010a3551748043c565606e0ed0e59e8be31ab65b144b4a2554d3867ca3c",
+      "size": 1789125
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000520.vts",
+      "sha256": "7c4923d6601210894579ffcee9edc7750ac6559b903a66184456f4ac7fb93845",
+      "size": 1782016
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000560.vts",
+      "sha256": "dfe138f1593fab2d85c0abe745c91533c2a1f517b0178efb9886d874a9f213d3",
+      "size": 1776225
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000600.vts",
+      "sha256": "428f6367836356e0e19885b6a842151f9baf7d8b994307ca8128f6173f8dbf6c",
+      "size": 1779416
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000640.vts",
+      "sha256": "41710bce53d24876323fe36301682c358921c781f8bf107be96f4c8380ad4e5b",
+      "size": 1778522
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000680.vts",
+      "sha256": "ff1bc30c2cfcb8f8b49170fee86b60afd37dcae74b64047ef70a37783c78d447",
+      "size": 1773899
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000720.vts",
+      "sha256": "3a3f633b5e48fd05820b6fad0ac6b1c14844005c197252b5e0d6a255e7143364",
+      "size": 1780129
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000760.vts",
+      "sha256": "f7ebf00720572ce2c35a3b81b878591bf09af8d20e52b08638b7007348879d0a",
+      "size": 1779683
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000800.vts",
+      "sha256": "a18d93a4f67f0c0caba815e7b4aabd6eee2a806e1a8d8c247de65f3c6621fab8",
+      "size": 1782770
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000840.vts",
+      "sha256": "7e9646d932db18d432c626515ef25d4adb6b3411752bf76325416bf370b890ea",
+      "size": 1782793
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000880.vts",
+      "sha256": "2cb865fd2f528c1f109fc8eff73ebe89f3e4a78e364911629653befb58a06154",
+      "size": 1779743
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000920.vts",
+      "sha256": "d664d448b2afb4d182873d88ea5a1e05c5dce0cdf6ad32310ef23fba6651de11",
+      "size": 1775837
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_000960.vts",
+      "sha256": "024f43098ef500b8405abe881cb67183ec4e345afc382e34fad3c2f7415266fe",
+      "size": 1776180
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001000.vts",
+      "sha256": "04c24587a8147ffd2d51838f7d7168ee67feb350ee87c11bf6cfbd11d2dce342",
+      "size": 1750380
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001040.vts",
+      "sha256": "0c1c8536f505b784e5fe821ccb069bc10b9d8f3b26da10084db079e1a744358e",
+      "size": 1741212
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001080.vts",
+      "sha256": "71e84acc8e3973ff0d80274c963cae4085b5f5a6818ce7e6562e5d0e81feb194",
+      "size": 1735478
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001120.vts",
+      "sha256": "139bb14ef0c86be4f563d50fcb6d00eb5c862c064dd899dea78e173f2000d78d",
+      "size": 1725927
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001160.vts",
+      "sha256": "b5d577c87c56b8535d380e8550fff2c2494153ea434e83ffb4e29c5848635da7",
+      "size": 1732305
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001200.vts",
+      "sha256": "4e9a8950b396e9913e7129daa140ea92fb58e67e074d311eb450e8bd5f597374",
+      "size": 1741187
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001240.vts",
+      "sha256": "e8f7fa184e16e2f93485c4b4f7e0f79ac4399ec1021b91629197727de64b8ac4",
+      "size": 1735037
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001280.vts",
+      "sha256": "e6b61c7f60505e364108a920e4198655018eb1c6c9e2a2dca5589e774193dda9",
+      "size": 1738670
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001320.vts",
+      "sha256": "94478f52123085e19664a6574fae6ca4ada880928ca32576f6d1f39d4ae51c5a",
+      "size": 1731704
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001360.vts",
+      "sha256": "d2efb3faa2e62eda51b5648f19c9553b25337714605f672652c287896a32e604",
+      "size": 1721742
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001400.vts",
+      "sha256": "fcb6c219d78fa681df77f4bfc8314dc3f7d3eee3d4517dd090fd572d634b64bf",
+      "size": 1728286
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001440.vts",
+      "sha256": "92f8753a0825ce098a09559dc4b6e5677fceb3745fd3898a1534270bfb8d0035",
+      "size": 1732540
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001480.vts",
+      "sha256": "85b8f8f602a62a8f3d664b269650ed9065de73a84f27af0f8bfb438f5589935e",
+      "size": 1743910
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001520.vts",
+      "sha256": "c5240256b092db4b9fdf73669078508476297dd627f9488feaf7305a6e27ed86",
+      "size": 1750811
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001560.vts",
+      "sha256": "90cee864710097fab317268e9b062ef87b48ce863778616b57478e9bcecdd5b0",
+      "size": 1758936
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001600.vts",
+      "sha256": "5582ce90171dcb5addde3e8995fa28a561cca4ba190cae75728a9ea84fd51f0a",
+      "size": 1763535
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001640.vts",
+      "sha256": "ef516adb8cc0c37938a7f63f1168fcc831f7510c446f3db080f7eff7037714de",
+      "size": 1768633
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001680.vts",
+      "sha256": "04dd8648068a9dff4bb8cb7dd6c5b9404de53d613454ebdbbd3708e9320b5eb6",
+      "size": 1775941
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001720.vts",
+      "sha256": "62eb43a344ca96fcbb5b506192ffbfe3ca3ea058245e9f3d90eea86ceb0670b6",
+      "size": 1778839
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001760.vts",
+      "sha256": "2c1f3ffb48af5d815a37e3e4dc2d4e2ebf60c6cbaeeeb2f32df906f9773bbc3c",
+      "size": 1777645
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001800.vts",
+      "sha256": "8404d0884d429d67d0a6eb672a47897f7b2509205c657c67bc99d32b9e68b3ae",
+      "size": 1786458
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001840.vts",
+      "sha256": "b0b039908171d12285019b1186b3c5437b5ec027e24e89b5fbc0c98c46cebf59",
+      "size": 1782455
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001880.vts",
+      "sha256": "72d086a2896a5b3407a57531131dd53a904d3601022064702af46eb8a99ad653",
+      "size": 1786607
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001920.vts",
+      "sha256": "6e954409243bee641d8e69417a73a4d616e1c7811544b9b6134801a41fce6420",
+      "size": 1790938
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_001960.vts",
+      "sha256": "b0a3f03995dfba375a2a6511e8509cf08f8a2e26f112be3a66c193d7f6c6d2d5",
+      "size": 1792970
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002000.vts",
+      "sha256": "f2e04dc4d74f42013ce62bcee34f24ad893cb33ac10b4b206381dbfc94757d24",
+      "size": 1796993
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002040.vts",
+      "sha256": "390e327334e62d6dbc0d18b460ff5c17505c8e9d151a574a69c2dbbb9ab678ea",
+      "size": 1794934
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002080.vts",
+      "sha256": "e19d4ae9a3896db956cae539b7bd628aa5778c1010e464497eafda882ff5ffa3",
+      "size": 1804046
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002120.vts",
+      "sha256": "00d309731b069c0400463c690f2b3ff94a16590ba7a2756bdf994ac4d904dc13",
+      "size": 1812429
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002160.vts",
+      "sha256": "c0350b5640c2a36d52cfeb72b16fba4aec9a9d1e74d4ef9d00c708eb24eab719",
+      "size": 1815698
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002200.vts",
+      "sha256": "63d5263cc6f932f1e89df4bb267b35cea7427dbce45a276a4f3f4e2a0278d671",
+      "size": 1818661
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002240.vts",
+      "sha256": "3777b987f81a317bd45e82a3ee4c3a530b77195a38f2fe85dc054f4429d7ec04",
+      "size": 1822661
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002280.vts",
+      "sha256": "0aafd036478db4bf420f8e4da2380ac4bd48e723ecd9653f1230c2bac113bcfb",
+      "size": 1824932
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002320.vts",
+      "sha256": "b29a8edfa2a79f0964ca5af79ad2f97260497b6808434c72e8f73ef1495cbc21",
+      "size": 1827768
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002360.vts",
+      "sha256": "03cc3550cc67360298b707f97bc936200dc6607154d9b1e1326e0a272669dc08",
+      "size": 1832096
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/core_section_002400.vts",
+      "sha256": "8488d9c15e983192cae769fd221e9d57586f739059c4e2b400add6d8dbc549fa",
+      "size": 1835045
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/flow_integrals.csv",
+      "sha256": "c5c43957871f4acb2325e90c0a5cf30713e1800b28c20398da72347a6d307040",
+      "size": 214348
+    },
+    {
+      "path": "samples/selective_eddy_viscosity/ring_diagnostics.csv",
+      "sha256": "4f33d07de4eb8a20cfa8c30697cc1be810c3e4a401d6c89d6f6d4ad94174f05d",
+      "size": 154960
+    },
+    {
+      "path": "solution/baseline/vpm_metadata.json",
+      "sha256": "267b27594ddeb5f36928ec9e47385ad11ea8488bd753f27fc33bc089d80da972",
+      "size": 12667
+    },
+    {
+      "path": "solution/particle_splitting/vpm_metadata.json",
+      "sha256": "5ec131f3b00dd7b566fd4f60489e74265c27235d399db1655b922674e11e0a9c",
+      "size": 12492
+    },
+    {
+      "path": "solution/pedrizzetti_relaxation/vpm_metadata.json",
+      "sha256": "9f936cbc88861d7713f42bf1bf4cf6d2d07acec464fdb146dafd04c8973ed946",
+      "size": 12516
+    },
+    {
+      "path": "solution/selective_eddy_viscosity/vpm_metadata.json",
+      "sha256": "5d5926217f5c9bfbcc6a45639018ce62223cd4b1f33f3625d01289f915ca2ae5",
+      "size": 12721
+    }
+  ],
+  "provenance": {
+    "archive_source_revision": "888636dec372e3d288a70ff6c2ac27af2f39c4a6",
+    "captured_date": "2026-09-29",
+    "case": "tutorials/vpm/03_vortex_interactions",
+    "clocks": {
+      "solution/baseline/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "resolution_lost"
+        },
+        "state": {
+          "initial_n_particles_total": 31040,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 155971,
+          "requested_steps": 2400,
+          "step": 1573,
+          "time": 5.89875
+        }
+      },
+      "solution/particle_splitting/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "resolution_lost"
+        },
+        "state": {
+          "initial_n_particles_total": 31040,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 179212,
+          "requested_steps": 2400,
+          "step": 1654,
+          "time": 6.2025
+        }
+      },
+      "solution/pedrizzetti_relaxation/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "resolution_lost"
+        },
+        "state": {
+          "initial_n_particles_total": 31040,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 150269,
+          "requested_steps": 2400,
+          "step": 1671,
+          "time": 6.26625
+        }
+      },
+      "solution/selective_eddy_viscosity/vpm_metadata.json": {
+        "lifecycle": {
+          "status": "completed"
+        },
+        "state": {
+          "initial_n_particles_total": 31040,
+          "initial_step": 0,
+          "initial_time": 0.0,
+          "n_particles_total": 295378,
+          "requested_steps": 2400,
+          "step": 2400,
+          "time": 9.0
+        }
+      }
+    },
+    "scope": "all current samples plus plotting checkpoints; unreferenced superseded histories remain local"
+  },
+  "restore_roots": [
+    "samples",
+    "solution"
+  ],
+  "schema_version": 1,
+  "scientific_status": "mixed: selective eddy viscosity complete; other variants stopped on health checks"
+}
