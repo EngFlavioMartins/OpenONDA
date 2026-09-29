@@ -256,3 +256,30 @@ statistics unqualified. Historical duplicate replay rows are accepted only
 when the repeated values agree, without rewriting the archive. Cylinder
 reference plotting remains blocked on genuine completed production samples;
 the historical differing-span data cannot substitute for them.
+
+## Latest installed package and IBM archive
+
+The wheel from `fc921ec0` passed the outside-checkout installation verifier
+and `pip check` in 229.44 seconds. It includes the source-batching, diffusion
+workspace-lifetime and AMG pressure-default fixes. Native meshing, FVM, VPM,
+coupled continuation, plotting and direct entrypoints ran successfully.
+[Exact wheel and environment evidence](../../studies/installed_wheel_verification_fc921ec0.json).
+
+The completed IBM cylinder archive restores into a fresh Git export and its
+ordinary `allplot.sh` regenerates all four expected PNGs using that installed
+wheel, including from a directory containing spaces. All four images were
+visually inspected. The raw history is preserved losslessly; mean drag is
+within its reference band, but wake length remains outside its band.
+[Archive, execution and image hashes](../../studies/ibm_archive_plot_verification_2026-09-29.json).
+
+The full airfoil meshing attempt reached 105,508 cells but failed strict final
+validation: 114 fluid-cell centres lay inside the surface. The saved raw mesh
+already has 76 such centres around the finite wing cap/side seam. Nearest-point
+projection mixes the two surfaces on individual wall faces. A geometry fix and
+a successful native rerun are required before this case can be called runnable.
+
+The same installed wheel passed a 64-cell coupled lifecycle in serial and on
+two MPI ranks, using the new default AMG pressure solver. Initial, latest,
+completed no-op and initial-reset behavior all passed with native FVM clocks
+and sampled histories checked.
+[Native execution record](../../studies/coupled_installed_amg_lifecycle_2026-09-29.json).
