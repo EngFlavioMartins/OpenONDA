@@ -286,10 +286,9 @@ class ViscousConfig:
         The molecular Laplacian and viscosity coefficient are unchanged.
         M4' remains the default. LAGRANGE6 needs at least four padding cells.
 
-        ``gbd_grid_spacing`` defaults to ``particle_spacing``. A larger
-        explicit spacing is a numerical-memory control for GPU runs: it
-        changes the regeneration-grid resolution while leaving the
-        representative particle spacing used by VPM accuracy checks unchanged.
+        ``gbd_grid_spacing`` defaults to ``particle_spacing``. It sets the
+        diffusion and regeneration lattice resolution independently of the
+        representative particle spacing used by VPM accuracy checks.
         """
         if gbd_grid_spacing is None:
             gbd_grid_spacing = particle_spacing

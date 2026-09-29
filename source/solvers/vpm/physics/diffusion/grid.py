@@ -25,12 +25,7 @@ from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
 from ..events import NullPhysicsEventObserver
 
 _GRID_TRANSFER_CHUNK = 65536
-# M4' performs 64 atomic grid deposits per particle.  One all-particle Vulkan
-# dispatch can exceed integrated-GPU watchdog limits at production counts, so
-# accumulate the same grid in bounded particle batches.
-# Each particle performs 64 atomic deposits, making a nominal 32k batch more
-# than two million contended grid updates.  Keep dispatches below the i915
-# Vulkan fence-watchdog limit observed in the production coupled-cube case.
+# Bound the 64 atomic deposits per particle to keep GPU dispatches short.
 _M4_SCATTER_BATCH_SIZE = 4096
 
 # The nine moment constraints need 27 coefficients per survivor when written
@@ -405,32 +400,11 @@ class _GridDiffusionMixin:
     # The silent class default also permits focused numerical harnesses.
     _event_observer = NullPhysicsEventObserver()
 
-    # Headroom factor: allocate this much larger than first observed grid
-    # so slow vortex-cloud growth never triggers a reallocation.
+    # Geometric growth amortizes grid allocation and kernel recompilation.
     _ALLOC_HEADROOM = 1.5
-
-    # How many times the DVH grid is allowed to re-allocate when the
-    # particle cloud outgrows the initial allocation.
-    _MAX_GRID_REALLOCS = 5
-
-    # Headroom applied when *re*-allocating (larger than the initial
-    # headroom to avoid repeated re-allocations as the wake extends).
     _REALLOC_HEADROOM = 2.0
 
-    # Fallback ceiling for grid pre-allocation when the device pool is unknown
-    # (CPU, Metal).  On CUDA/Vulkan the runtime pool published by the backend is
-    # the authority instead; see _grid_prealloc_budget_bytes.
-    _MAX_PREALLOC_BYTES: int = 1 << 30
-
-    # Share of the device pool the diffusion workspace may claim.  The rest is
-    # for particles, the treecode, evaluation fields and ndarray staging.
-    _GRID_POOL_SHARE: float = 0.45
-
-    # Thresholding is a population-control operation, not a physical sink.
-    # Restore the discarded nodes onto the retained cloud while preserving the
-    # diffused field's circulation and impulse moments.  The long-running cube
-    # coupling method relied on this closure before it was removed during the
-    # later GBD simplification.
+    # Retained nodes preserve the diffused field's circulation and impulse.
     conserve_pruned_moments: bool = True
     _body_link_grid = None
     _body_segment_classifier = None
@@ -441,7 +415,6 @@ class _GridDiffusionMixin:
 
     def _init_grid_diffusion(self):
         """Initialize grid-based diffusion state."""
-        self._grid_realloc_count: int = 0
         self._last_gbd_diffusion_substeps: int = 1
         self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
         self._last_gbd_wall_transfer = {
@@ -460,7 +433,8 @@ class _GridDiffusionMixin:
         # Fixed grid origin when the domain is pre-allocated.
         self._fixed_grid_min: np.ndarray | None = None
 
-        # Lazily allocated grid fields (never freed after first allocation).
+        # Grid scratch owns one replaceable Taichi allocation.
+        self._grid_tree = None
         self._grid_a: ti.template() | None = None
         self._grid_b: ti.template() | None = None
         self._body_mask_grid: ti.template() | None = None  # 1=inside solid, 0=fluid
@@ -483,15 +457,13 @@ class _GridDiffusionMixin:
         self._body_links_host: np.ndarray | None = None
         self._body_query_bounds: np.ndarray | None = None
 
-        # Maximum number of grid cells per spatial dimension.
-        self._max_cells_per_dimension: int = 2000
         self._require_fixed_grid_allocation: bool = False
 
     def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
         """Require grid-based diffusion to pre-allocate one fixed grid.
 
-        GPU backends use this because replacing Taichi fields leaks device memory
-        and recompiles template kernels.
+        GPU backends use a fixed lattice to avoid allocation and kernel
+        recompilation as the cloud grows.
         """
         self._require_fixed_grid_allocation = bool(enabled)
 
@@ -549,58 +521,27 @@ class _GridDiffusionMixin:
         padding: float,
         half_cell_offset: bool = True,
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
-        """Grid origin (float32) and integer dimensions from particle cloud.
-
-        Robust against NaN position and stray outliers:
-
-        1. Non-finite position are filtered before computing the bounding box.
-        2. Each axis is capped at ``_max_cells_per_dimension`` cells. If the raw
-           extent exceeds the cap, the domain is centred on the cloud and
-           clamped, so a single stray particle cannot inflate the grid into
-           an OOM allocation.
-
-        Domain anchoring was removed (Feb 2026) because with the budget
-        threshold the positive feedback loop it guarded against is no
-        longer a concern, while its never-shrink property made it
-        catastrophically sensitive to even one outlier.
-        """
-        # -- Filter non-finite position ----------------------------------
-        finite_mask = np.isfinite(pos).all(axis=1)
-        if not finite_mask.all():
-            n_bad = int((~finite_mask).sum())
-            self._event_observer.warning(
-                f"Diffusion grid excluded {n_bad} non-finite particle positions"
-            )
-            pos = pos[finite_mask]
-            if len(pos) == 0:
-                # Everything was NaN — return minimal grid
-                lo = np.zeros(3, dtype=np.float32)
-                return lo, (5, 5, 5)
-
+        """Return an origin and dimensions covering every finite source and its halo."""
+        pos = np.asarray(pos)
+        if not np.isfinite(pos).all():
+            raise ValueError("Diffusion requires finite particle positions")
+        if not np.isfinite(particle_spacing) or particle_spacing <= 0:
+            raise ValueError("Diffusion grid spacing must be finite and positive")
+        if not np.isfinite(padding) or padding < 0:
+            raise ValueError("Diffusion grid padding must be finite and nonnegative")
+        if len(pos) == 0:
+            return np.zeros(3, dtype=np.float32), (5, 5, 5)
         margin = padding * particle_spacing
         lo = pos.min(axis=0) - margin
         hi = pos.max(axis=0) + margin
 
-        # -- Cap maximum grid extent per axis -----------------------------
-        max_extent = self._max_cells_per_dimension * particle_spacing
-        for d in range(3):
-            span = hi[d] - lo[d]
-            if span > max_extent:
-                centre = 0.5 * (lo[d] + hi[d])
-                lo[d] = centre - 0.5 * max_extent
-                hi[d] = centre + 0.5 * max_extent
-                self._event_observer.warning(
-                    f"Diffusion grid axis {d} was limited from {span:.1f} m to "
-                    f"{max_extent:.1f} m ({self._max_cells_per_dimension} cells)"
-                )
+        # Offset the lattice while retaining the complete upper support halo.
+        if half_cell_offset:
+            lo = lo - 0.5 * particle_spacing
 
         nx = max(5, int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1)
         ny = max(5, int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1)
         nz = max(5, int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1)
-
-        # Half-cell offset to avoid particle-on-node coincidence (M4 aliasing).
-        if half_cell_offset:
-            lo = lo - 0.5 * particle_spacing
 
         return lo.astype(np.float32), (nx, ny, nz)
 
@@ -668,118 +609,72 @@ class _GridDiffusionMixin:
                 )
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
-    @staticmethod
-    def _device_pool_bytes() -> int | None:
-        """Taichi device memory pool in bytes, or None when self-managed."""
-        from ...config import constants as constants_module
+    def _allocate_grid(self, shape: tuple[int, int, int]) -> None:
+        """Replace disposable diffusion scratch, releasing its previous storage."""
+        if self._grid_tree is not None:
+            ti.sync()
+            self._grid_tree.destroy()
+            self._grid_tree = None
+        self._grid_a = self._grid_b = None
+        self._body_mask_grid = self._body_link_grid = None
+        self._effective_viscosity_grid = None
+        self._grid_shape = None
+        self._body_mask_cache_key = None
+        self._body_mask_host = self._body_links_host = None
+        self._grid_vec_chunks = {}
+        self._grid_scalar_chunks = {}
 
-        return getattr(constants_module, "TAICHI_POOL_BYTES", None)
-
-    def _grid_prealloc_budget_bytes(self) -> int:
-        """Bytes the diffusion workspace may claim."""
-        return self._MAX_PREALLOC_BYTES
-
-    def _warn_if_grid_crowds_device_pool(self, total_bytes: int, nx: int, ny: int, nz: int) -> None:
-        pool = self._device_pool_bytes()
-        if not pool or total_bytes <= pool * self._GRID_POOL_SHARE:
-            return
-        self._event_observer.warning(
-            f"Diffusion grid {nx} x {ny} x {nz} needs {total_bytes / (1 << 20):.0f} MiB, "
-            f"or {100.0 * total_bytes / pool:.0f}% of the {pool / (1 << 20):.0f} MiB device pool"
+        fields = (
+            ti.Vector.field(3, dtype=ti.f32),
+            ti.Vector.field(3, dtype=ti.f32),
+            ti.field(dtype=ti.i32),
+            ti.field(dtype=ti.i32),
+            ti.field(dtype=ti.f32),
         )
+        builder = ti.FieldsBuilder()
+        builder.dense(ti.ijk, shape).place(*fields)
+        self._grid_tree = builder.finalize()
+        (
+            self._grid_a,
+            self._grid_b,
+            self._body_mask_grid,
+            self._body_link_grid,
+            self._effective_viscosity_grid,
+        ) = fields
+        self._grid_shape = shape
+        self._ping = True
 
     def _ensure_grid_capacity(self, nx: int, ny: int, nz: int) -> tuple[int, int, int]:
-        """Allocate ping-pong Taichi grid fields and return effective (nx, ny, nz).
-
-        If ``configure_max_grid_extent`` was called, the grid is pre-allocated
-        to the full VPM domain and no re-allocation is ever necessary.
-
-        Otherwise, fields are allocated on the first call with headroom.  If
-        the cloud outgrows the allocation, the grid is re-allocated (capped at
-        ``_MAX_GRID_REALLOCS``).
-
-        In either case, requested dimensions are clamped to
-        ``_max_grid_dims`` (the VPM domain ceiling) when available.
-        """
-        # -- Clamp request to VPM-domain ceiling --------------------------
+        """Ensure the complete active grid fits without discarding source support."""
+        requested = (int(nx), int(ny), int(nz))
+        if min(requested) < 1:
+            raise ValueError("Diffusion grid dimensions must be positive")
         cap = self._max_grid_dims
+        if cap is not None and any(n > c for n, c in zip(requested, cap, strict=True)):
+            raise ValueError(f"Diffusion grid {requested} exceeds configured domain grid {cap}")
+        if cap is None and self._require_fixed_grid_allocation:
+            raise RuntimeError("Fixed diffusion allocation requires domain_bounds")
+        previous = self._grid_shape
+        if previous is not None and all(
+            n <= old for n, old in zip(requested, previous, strict=True)
+        ):
+            return requested
         if cap is not None:
-            nx = min(nx, cap[0])
-            ny = min(ny, cap[1])
-            nz = min(nz, cap[2])
-        elif self._require_fixed_grid_allocation:
-            raise RuntimeError(
-                "GPU DVH/GBD requires domain_bounds so the diffusion grid "
-                "can be pre-allocated once. Refusing grow-on-demand grid allocation "
-                "because Taichi 1.7.x retains replaced Vulkan fields until ti.reset()."
+            shape = cap
+        elif previous is None:
+            shape = tuple(int(np.ceil(n * self._ALLOC_HEADROOM)) for n in requested)
+        else:
+            shape = tuple(
+                int(np.ceil(n * self._REALLOC_HEADROOM)) if n > old else old
+                for n, old in zip(requested, previous, strict=True)
             )
-
-        if self._grid_a is not None:
-            alloc = self._grid_shape
-            if nx <= alloc[0] and ny <= alloc[1] and nz <= alloc[2]:
-                return nx, ny, nz
-
-            if self._require_fixed_grid_allocation:
-                raise RuntimeError(
-                    "GPU DVH/GBD grid request exceeds the fixed pre-allocated "
-                    f"grid {alloc}: requested {(nx, ny, nz)}. Increase "
-                    "domain_bounds/padding or use CUDA/CPU for this run."
-                )
-
-            if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
-                clamped = (min(nx, alloc[0]), min(ny, alloc[1]), min(nz, alloc[2]))
-                self._event_observer.warning(
-                    f"Diffusion grid reached its {self._MAX_GRID_REALLOCS} reallocation limit "
-                    f"after {self._grid_realloc_count} reallocations; requested shape {(nx, ny, nz)} "
-                    f"was limited to {clamped}"
-                )
-                return clamped
-
-            # Re-allocate:
-            self._grid_realloc_count += 1
-            if cap is not None:
-                alloc_nx, alloc_ny, alloc_nz = cap
-            else:
-                rh = self._REALLOC_HEADROOM
-                alloc_nx = int(nx * rh) if nx > alloc[0] else alloc[0]
-                alloc_ny = int(ny * rh) if ny > alloc[1] else alloc[1]
-                alloc_nz = int(nz * rh) if nz > alloc[2] else alloc[2]
-            self._event_observer.warning(
-                f"Diffusion grid reallocation {self._grid_realloc_count} of {self._MAX_GRID_REALLOCS}: "
-                f"{alloc} to {(alloc_nx, alloc_ny, alloc_nz)}; previous device allocations remain retained"
-            )
-            self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
-            self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
-            self._body_mask_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
-            self._body_link_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
-            self._effective_viscosity_grid = ti.field(
-                dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz)
-            )
-            self._grid_shape = (alloc_nx, alloc_ny, alloc_nz)
-            self._ping = True
-            return nx, ny, nz
-
-        alloc_nx = int(nx * self._ALLOC_HEADROOM)
-        alloc_ny = int(ny * self._ALLOC_HEADROOM)
-        alloc_nz = int(nz * self._ALLOC_HEADROOM)
-
+        self._allocate_grid(shape)
         self._event_observer.record(
             "diffusion grid allocation",
-            ("requested shape", (nx, ny, nz)),
-            ("allocated shape", (alloc_nx, alloc_ny, alloc_nz)),
-            ("headroom", self._ALLOC_HEADROOM),
+            ("requested shape", requested),
+            ("allocated shape", shape),
         )
-
-        self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
-        self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
-        self._body_mask_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
-        self._body_link_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
-        self._effective_viscosity_grid = ti.field(
-            dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz)
-        )
-        self._grid_shape = (alloc_nx, alloc_ny, alloc_nz)
-        self._ping = True
-        return nx, ny, nz
+        return requested
 
     def configure_max_grid_extent(
         self,
@@ -789,14 +684,8 @@ class _GridDiffusionMixin:
     ) -> None:
         """Set maximum grid-diffusion dimensions from VPM domain bounds.
 
-        When the VPM domain is known, this method computes the grid that
-        would cover the full domain (with padding) and either:
-
-        * **Pre-allocates** the grid immediately if the memory cost is
-          within ``_MAX_PREALLOC_BYTES`` (default 1 GB).  This avoids all
-          re-allocation during the simulation.
-        * **Stores the max dims** as a ceiling for future re-allocations
-          if the full grid would exceed the memory budget.
+        A configured domain fixes the lattice and allocates its full padded
+        extent once. The physical domain and spacing determine its storage.
 
         Parameters
         ----------
@@ -841,48 +730,11 @@ class _GridDiffusionMixin:
             dtype=np.float32,
         )
 
-        # Memory estimate: two vector fields, solid mask, blocked links and viscosity.
-        bytes_per_node = 2 * 12 + 4 + 4 + 4  # = 36 bytes
-        total_bytes = nx * ny * nz * bytes_per_node
-        total_mb = total_bytes / (1 << 20)
-
-        budget = self._grid_prealloc_budget_bytes()
-        self._warn_if_grid_crowds_device_pool(total_bytes, nx, ny, nz)
-        if total_bytes <= budget and self._grid_a is None:
+        if self._grid_shape != (nx, ny, nz):
+            self._allocate_grid((nx, ny, nz))
             self._event_observer.record(
                 "diffusion grid preallocated",
                 ("shape", f"{nx}x{ny}x{nz}"),
-                ("memory", f"{total_mb:.0f}", "MiB"),
-            )
-            self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
-            self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
-            self._body_mask_grid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
-            self._body_link_grid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
-            self._effective_viscosity_grid = ti.field(dtype=ti.f32, shape=(nx, ny, nz))
-            self._grid_shape = (nx, ny, nz)
-            self._ping = True
-        else:
-            if self._require_fixed_grid_allocation and self._grid_a is None:
-                pool = self._device_pool_bytes()
-                pool_txt = (
-                    f"{pool / (1 << 20):.0f} MB device pool" if pool else "unknown device pool"
-                )
-                raise MemoryError(
-                    "GPU DVH/GBD requires a fixed pre-allocated grid.\n"
-                    f"  requested grid : {nx}x{ny}x{nz} = {nx * ny * nz:,} nodes\n"
-                    f"  grid memory    : {total_mb:.0f} MB "
-                    f"({bytes_per_node} B/node)\n"
-                    f"  budget         : {budget / (1 << 20):.0f} MB "
-                    f"({self._GRID_POOL_SHARE:.0%} of {pool_txt})\n"
-                    "Reduce domain_bounds, coarsen the diffusion particle_spacing, or use CUDA/CPU."
-                )
-            allocation = "retained" if self._grid_a is not None else "deferred"
-            reason = "existing_allocation" if self._grid_a is not None else "budget_exceeded"
-            self._event_observer.record(
-                f"diffusion grid {allocation}",
-                ("reason", reason.replace("_", " ")),
-                ("shape, max", f"{nx}x{ny}x{nz}"),
-                ("memory", f"{total_mb:.0f}", "MiB"),
             )
 
     def configure_grid_lattice_anchor(self, anchor, particle_spacing: float) -> None:

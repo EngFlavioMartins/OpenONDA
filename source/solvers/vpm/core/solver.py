@@ -26,7 +26,7 @@ from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.case import Numerics, RestartState, VPMCase
-from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
+from ..config.constants import MAX_N_PARTICLES
 from ..config.health import (
     HealthError,
     HealthSnapshot,
@@ -485,9 +485,13 @@ class VPMSolver:
                 )
 
             self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
-        self.source_position = ti.Vector.field(3, dtype=self.compute_dtype, shape=MAX_SOURCES)
-        self.source_strength = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
-        self.source_core_radius = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
+        self._source_batch_size = self.physics.max_evaluation_points
+        self.source_position = ti.Vector.field(
+            3, dtype=self.compute_dtype, shape=self._source_batch_size
+        )
+        self.source_strength = ti.field(dtype=self.compute_dtype, shape=self._source_batch_size)
+        self.source_core_radius = ti.field(dtype=self.compute_dtype, shape=self._source_batch_size)
+        self._surface_sources = None
         self.n_sources = 0
         if hasattr(self.setup, "freestream_velocity"):
             self.particles.set_freestream_velocity(np.array(self.setup.freestream_velocity))
@@ -1529,40 +1533,32 @@ class VPMSolver:
     ) -> np.ndarray:
         """Add source-particle and body-potential terms to particle induction."""
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
-        velocity = np.asarray(particle_velocity, dtype=self.np_dtype).reshape(-1, 3)
+        velocity = np.array(particle_velocity, dtype=self.np_dtype, copy=True).reshape(-1, 3)
         if len(velocity) != len(points):
             raise ValueError("target velocity and position counts must match")
 
-        if self.n_sources > 0:
-            n_targets = len(points)
-            self.physics._resize_target_fields(n_targets)
-            target_position_field = self.physics.target_position
-            target_velocity_field = self.physics.target_velocity
-
-            # Fixed-shape buffers avoid persistent staging allocations.
-            self.physics._upload_vector_array(points, target_position_field, n_targets)
-            self.physics._upload_vector_array(velocity, target_velocity_field, n_targets)
-
-            self.physics.kernels["compute_target_source_velocity_kernel"](
-                target_position_field,
-                self.source_position,
-                self.source_strength,
-                self.source_core_radius,
-                target_velocity_field,
-                n_targets,
-                self.n_sources,
-            )
-            velocity = self.physics.extract_target_velocity(n_targets)
-
         vlm = self.vlm_solver
-        if include_body and vlm is not None and vlm._solved and len(points):
-            self.physics._resize_target_fields(len(points))
-            positions = self.physics.target_position
-            velocities = self.physics.target_velocity
-            self.physics._upload_vector_array(points, positions, len(points))
-            self.physics._upload_vector_array(velocity, velocities, len(points))
-            vlm.add_stage_velocity(positions, velocities, len(points), self.time)
-            velocity = self.physics.extract_target_velocity(len(points))
+        add_vlm = include_body and vlm is not None and vlm._solved
+        if self.n_sources > 0 or add_vlm:
+            for start, stop in self.physics._target_batch_slices(len(points)):
+                count = stop - start
+                positions = self.physics.target_position
+                velocities = self.physics.target_velocity
+                self.physics._upload_vector_array(points[start:stop], positions, count)
+                self.physics._upload_vector_array(velocity[start:stop], velocities, count)
+                for source_count in self._surface_source_batches():
+                    self.physics.kernels["compute_target_source_velocity_kernel"](
+                        positions,
+                        self.source_position,
+                        self.source_strength,
+                        self.source_core_radius,
+                        velocities,
+                        count,
+                        source_count,
+                    )
+                if add_vlm:
+                    vlm.add_stage_velocity(positions, velocities, count, self.time)
+                velocity[start:stop] = self.physics.extract_target_velocity(count)
 
         body_fn = self._body_induced_fn
         if include_body and body_fn is not None:
@@ -1630,41 +1626,37 @@ class VPMSolver:
     def set_surface_sources(
         self, position: np.ndarray, vortex_strength: np.ndarray, core_radius: np.ndarray
     ) -> None:
-        """Set auxiliary regularized source particles for body corrections.
+        """Set regularized potential sources for velocity and particle evolution.
 
-        Parameters
-        ----------
-        position : numpy.ndarray
-            Source coordinates, shape ``(N, 3)``, in m.
-        vortex_strength : numpy.ndarray
-            Source circulation vectors, shape ``(N, 3)``, in m³/s.
-        core_radius : numpy.ndarray
-            Source radii, shape ``(N,)``, in m.
-
-        Notes
-        -----
-        Sources are copied into fixed-capacity device buffers and clipped to
-        ``MAX_SOURCES`` with a warning. They contribute to body-complete target
-        velocity/gradient queries, not to particle evolution.
+        ``position`` has shape (N, 3), scalar source flux ``vortex_strength``
+        has shape (N,), and positive ``core_radius`` has shape (N,).
+        Every source is retained; evaluation uses bounded device batches.
         """
-        self.n_sources = len(position)
-        if self.n_sources > MAX_SOURCES:
-            Logging.warning(
-                f"Requested {self.n_sources} sources exceeds capacity {MAX_SOURCES}; limiting to capacity"
-            )
-            self.n_sources = MAX_SOURCES
+        positions = np.asarray(position, dtype=self.np_dtype)
+        strengths = np.asarray(vortex_strength, dtype=self.np_dtype)
+        radii = np.asarray(core_radius, dtype=self.np_dtype)
+        count = len(positions)
+        if positions.shape != (count, 3) or strengths.shape != (count,) or radii.shape != (count,):
+            raise ValueError("Surface sources require positions (N, 3), strengths (N,), radii (N,)")
+        if not all(np.isfinite(values).all() for values in (positions, strengths, radii)):
+            raise ValueError("Surface sources must be finite")
+        if np.any(radii <= 0):
+            raise ValueError("Surface source radii must be positive")
+        self._surface_sources = (positions.copy(), strengths.copy(), radii.copy())
+        self.n_sources = count
 
-        n = self.n_sources
-        # Taichi ``from_numpy`` requires the allocated shape.
-        position_buffer = np.zeros((MAX_SOURCES, 3), dtype=self.np_dtype)
-        str_buf = np.zeros(MAX_SOURCES, dtype=self.np_dtype)
-        core_radius_buffer = np.zeros(MAX_SOURCES, dtype=self.np_dtype)
-        position_buffer[:n] = np.asarray(position[:n], dtype=self.np_dtype)
-        str_buf[:n] = np.asarray(vortex_strength[:n], dtype=self.np_dtype)
-        core_radius_buffer[:n] = np.asarray(core_radius[:n], dtype=self.np_dtype)
-        self.source_position.from_numpy(position_buffer)
-        self.source_strength.from_numpy(str_buf)
-        self.source_core_radius.from_numpy(core_radius_buffer)
+    def _surface_source_batches(self):
+        """Upload every source through the reusable device workspace."""
+        if not self.n_sources:
+            return
+        positions, strengths, radii = self._surface_sources
+        for start in range(0, self.n_sources, self._source_batch_size):
+            stop = min(start + self._source_batch_size, self.n_sources)
+            count = stop - start
+            self.physics._upload_vector_array(positions[start:stop], self.source_position, count)
+            self.physics._upload_scalar_array(strengths[start:stop], self.source_strength, count)
+            self.physics._upload_scalar_array(radii[start:stop], self.source_core_radius, count)
+            yield count
 
     def compute_velocity_gradient_at_points(
         self, evaluation_position: np.ndarray, *, particle_spacing: float

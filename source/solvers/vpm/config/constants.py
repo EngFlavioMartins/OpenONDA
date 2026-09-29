@@ -1,6 +1,5 @@
 """
-Physical and numerical constants for the VPM solver (e.g. MAX_N_PARTICLES,
-MAX_SOURCES), with helpers to list and print them.
+Physical and numerical constants for the VPM solver, with inspection helpers.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -48,21 +47,8 @@ BOX_SIZE = 2 * PI
 BOX_MAX = 2 * PI
 BOX_MIN = 0.0
 
-# SYSTEM LIMITS AND CAPACITIES
-# Under-relaxation factor for iterative methods
-ALPHA = 0.4
-
-# Maximum number of particles (buffer size)
+# Default hard particle capacity
 MAX_N_PARTICLES = 500000
-MAX_SOURCES = 50000  # Surface sources for blockage correction
-MAX_TARGETS = 100000  # Target evaluation points (e.g. boundary mesh)
-MAX_RETRY_ATTEMPTS = 5
-
-# Maximum number of iterations for iterative solvers
-MAX_ITERATIONS = 5
-
-# Default buffer size for dynamic arrays
-DEFAULT_BUFFER_SIZE = 1024
 
 # SOLVER DEFAULT PARAMETERS
 
@@ -190,10 +176,6 @@ TAICHI_BACKEND = None
 
 # Hardware device name (set by initialize_taichi_backend)
 TAICHI_DEVICE_NAME = None
-
-# Taichi device memory pool in bytes (set by initialize_taichi_backend).
-# None when the backend manages its own pool (CPU, Metal).
-TAICHI_POOL_BYTES = None
 
 # UTILITY FUNCTIONS FOR CONSTANTS
 

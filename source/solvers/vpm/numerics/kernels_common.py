@@ -294,7 +294,7 @@ def _make_target_source_velocity_gradient_kernel(radial_factors_):
                 for row in ti.static(range(3)):
                     for column in ti.static(range(3)):
                         identity = 1.0 if row == column else 0.0
-                        gradient[row, column] += source_strength[j][row] * (
+                        gradient[row, column] += source_strength[j] * (
                             identity * factors[0] - factors[1] * r_vec[row] * r_vec[column]
                         )
             target_velocity_gradient[i] = gradient

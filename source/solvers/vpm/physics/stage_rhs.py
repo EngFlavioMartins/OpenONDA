@@ -607,26 +607,39 @@ class ParticleExternalStageContribution:
         source_count = int(getattr(owner, "n_sources", 0)) if owner is not None else 0
         source_gradient = None
         if source_count:
-            self.physics.kernels["compute_target_source_velocity_kernel"](
-                stage_state.position,
-                owner.source_position,
-                owner.source_strength,
-                owner.source_core_radius,
-                stage_rates.velocity,
-                count,
-                source_count,
+            batches = (
+                owner._surface_source_batches()
+                if hasattr(owner, "_surface_source_batches")
+                else (source_count,)
             )
-            if stage_rates.strength_rate_enabled or stage_rates.velocity_gradient is not None:
-                self.physics.kernels["compute_target_source_velocity_gradient_kernel"](
+            need_gradient = (
+                stage_rates.strength_rate_enabled or stage_rates.velocity_gradient is not None
+            )
+            if need_gradient:
+                source_gradient = np.zeros((count, 3, 3), dtype=np.float64)
+            for batch_count in batches:
+                self.physics.kernels["compute_target_source_velocity_kernel"](
                     stage_state.position,
                     owner.source_position,
                     owner.source_strength,
                     owner.source_core_radius,
-                    self._source_gradient,
+                    stage_rates.velocity,
                     count,
-                    source_count,
+                    batch_count,
                 )
-                source_gradient = self.physics._download_matrix_field(self._source_gradient, count)
+                if need_gradient:
+                    self.physics.kernels["compute_target_source_velocity_gradient_kernel"](
+                        stage_state.position,
+                        owner.source_position,
+                        owner.source_strength,
+                        owner.source_core_radius,
+                        self._source_gradient,
+                        count,
+                        batch_count,
+                    )
+                    source_gradient += self.physics._download_matrix_field(
+                        self._source_gradient, count
+                    )
 
         body_field = getattr(self.physics, "body_velocity_field", None)
         if body_field is not None:
