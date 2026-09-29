@@ -9,6 +9,8 @@ if not __package__:
 
 
 import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
+from matplotlib.patches import Polygon
 import numpy as np
 import pyvista as pv
 
@@ -26,6 +28,18 @@ from ._common import (  # noqa: E402
 )
 
 
+def _cell_footprints(mesh):
+    """Return the lower face of each hexahedral cell in the x-y plane."""
+    if mesh.n_cells == 0 or not np.all(mesh.celltypes == pv.CellType.HEXAHEDRON):
+        raise ValueError("Field snapshot must contain hexahedral cells")
+    cell_points = mesh.points[mesh.cells.reshape(-1, 9)[:, 1:]]
+    lower = np.argsort(cell_points[:, :, 2], axis=1)[:, :4]
+    face = cell_points[np.arange(mesh.n_cells)[:, None], lower, :2]
+    center = face.mean(axis=1, keepdims=True)
+    angle = np.arctan2(face[:, :, 1] - center[:, :, 1], face[:, :, 0] - center[:, :, 0])
+    return face[np.arange(mesh.n_cells)[:, None], np.argsort(angle, axis=1)]
+
+
 def main():
     args = build_arg_parser().parse_args()
 
@@ -34,7 +48,7 @@ def main():
         raise SystemExit(f"  No field snapshots in {SOLUTION_DIR}")
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
-    cell_centre = mesh.cell_centers().points
+    footprints = _cell_footprints(mesh)
     u = mesh.cell_data.get("velocity")
     vort = mesh.cell_data.get("vorticity")
     if u is None:
@@ -44,46 +58,52 @@ def main():
 
     markers = load_markers(SOLUTION_DIR)
 
-    fields = [("velocity_magnitude", np.linalg.norm(u, axis=1), COLORMAPS["field_speed"], None)]
+    fields = [
+        (
+            "field_velocity_magnitude.png",
+            r"$|\mathbf{u}|/U_\infty$",
+            np.linalg.norm(u, axis=1),
+            COLORMAPS["field_speed"],
+            None,
+        )
+    ]
     if vort is not None:
         wz = vort[:, 2] if vort.ndim == 2 else vort
         lim = max(np.percentile(np.abs(wz), 99.0), 1e-12)
-        fields.append((r"$\omega_z$", wz, COLORMAPS["vorticity"], (-lim, lim)))
-
-    for label, f, cmap, clim in fields:
-        fig, ax = plt.subplots(figsize=figure_size("wide"))
-        sc = ax.scatter(
-            cell_centre[:, 0],
-            cell_centre[:, 1],
-            c=f,
-            s=2.5,
-            cmap=cmap,
-            marker="s",
-            linewidths=0,
+        fields.append(
+            (
+                "field_vorticity.png",
+                r"$\omega_z$ [s$^{-1}$]",
+                wz,
+                COLORMAPS["vorticity"],
+                (-lim, lim),
+            )
         )
+
+    for name, label, values, cmap, clim in fields:
+        fig, ax = plt.subplots(figsize=figure_size("wide_short"))
+        image = PolyCollection(footprints, cmap=cmap, edgecolors="none", antialiased=False)
+        image.set_array(values)
         if clim is not None:
-            sc.set_clim(*clim)
+            image.set_clim(*clim)
+        ax.add_collection(image)
         if markers is not None:
-            ax.plot(
-                np.append(markers[:, 0], markers[0, 0]),
-                np.append(markers[:, 1], markers[0, 1]),
-                "-",
-                color=COLORS["AxisBlack"],
-                linewidth=0.8,
+            ax.add_patch(
+                Polygon(
+                    markers[:, :2],
+                    closed=True,
+                    facecolor="white",
+                    edgecolor=COLORS["AxisBlack"],
+                    linewidth=0.8,
+                    zorder=3,
+                )
             )
         ax.set_xlim(-3, 10)
         ax.set_ylim(-3.5, 3.5)
         ax.set_aspect("equal")
         ax.set_xlabel("x / D")
         ax.set_ylabel("y / D")
-        ax.set_title(label)
-        fig.colorbar(sc, ax=ax, shrink=0.8)
-        fig.tight_layout()
-        name = (
-            "field_velocity_magnitude.png"
-            if label == "velocity_magnitude"
-            else "field_vorticity.png"
-        )
+        fig.colorbar(image, ax=ax, orientation="horizontal", pad=0.24, fraction=0.06, label=label)
         save_fig(fig, name, FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
