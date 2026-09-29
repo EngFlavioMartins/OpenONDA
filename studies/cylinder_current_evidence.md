@@ -54,6 +54,15 @@ Exchange timestep changes do not independently test skipped renewal cadence.
 No stationary drag, lift RMS, Strouhal or uncertainty qualification follows
 from these endpoints. [Raw corrected cohort](cylinder_final_short_cohort.json).
 
+The current sensitivity builder now varies realized particle spacing while
+holding physical core radius, blend width and release width fixed. It records
+the requested and resolved spacing, span quantization and resulting core-to-
+spacing ratio. The table above is historical and remains confounded; it has
+not been reinterpreted as the corrected experiment. The implemented renewal
+rate still equals the accepted exchange clock, so changing that clock also
+changes integration and boundary lag. No completed paired long-window
+comparison isolates those effects.
+
 ## Existing phase benchmark snapshot
 
 The frozen launch selects h=0.04D, span=0.96D, 24 span layers, FVM dt=0.008 s,
@@ -77,6 +86,11 @@ Local provenance: `tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/`
 `study_results/phase-20260929/{launch.json,events.jsonl,logs/reference/console.log}`.
 This independent reference experiment was left untouched; its frozen source
 identity must be compared with any later solver changes before reusing results.
+
+The ordinary cylinder reference `allplot.sh` and thesis-sized force figures
+are now implemented, but no compatible completed cylinder-reference bundle is
+available to render after a fresh clone. The archived cube reference provides
+an actual launcher/restoration check, not evidence for this Re=150 cylinder.
 
 ## Concrete remaining original requirements
 

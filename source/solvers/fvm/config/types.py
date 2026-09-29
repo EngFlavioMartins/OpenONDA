@@ -452,7 +452,9 @@ class LinearSolverConfig:
     linear_solver : {'bicgstab', 'gmres', 'cg', 'amg', 'spsolve'}
         Default method. Momentum cannot use ``amg`` directly.
     momentum_solver, pressure_solver : str or None
-        Equation-specific overrides; ``None`` inherits ``linear_solver``.
+        Equation-specific methods. Momentum inherits ``linear_solver`` by
+        default; pressure defaults to AMG. Explicit ``None`` inherits
+        ``linear_solver`` for either equation.
     pressure_nullspace_method : {'auto', 'reference', 'petsc'}
         Constant-pressure nullspace treatment for singular incompressible
         systems. ``reference`` pins a datum; ``petsc`` attaches a nullspace.
@@ -518,7 +520,7 @@ class LinearSolverConfig:
             "spsolve",
         ]
         | None
-    ) = None
+    ) = "amg"
     pressure_nullspace_method: Literal[
         "auto",
         "reference",

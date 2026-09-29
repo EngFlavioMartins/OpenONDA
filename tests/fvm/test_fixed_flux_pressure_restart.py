@@ -19,7 +19,7 @@ def make_solver(directory):
     return FVMSolver(
         FVMSetup(
             case_name="fixed_flux_restart",
-            linear=LinearSolverConfig(linear_solver="spsolve"),
+            linear=LinearSolverConfig(linear_solver="spsolve", pressure_solver="spsolve"),
             time=TimeConfig(time_step_size=0.01, end_time=0.1),
             transport=TransportConfig(kinematic_viscosity=0.01),
             initial_velocity=velocity,

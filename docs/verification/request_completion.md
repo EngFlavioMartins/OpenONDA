@@ -21,6 +21,7 @@ items must not be described as complete.
 ## Minimal configuration and readable tutorials
 
 - [x] Remove remaining public GPU-memory, diffusion-node and remeshing soft-capacity controls and associated truncation paths.
+- [x] Remove the public VPM target-batch setting; authenticated legacy backups ignore that operational size. Filament refinement now rejects an insufficient hard particle capacity before a partial split. See the [native capacity checks](../../studies/vpm_capacity_restart_qualification_2026-09-29.md).
 - [x] Verify old backups remain readable after retiring operational settings; reject genuinely incompatible physical state.
 - [x] Audit all tracked tutorial setup files and comments for redundant constants, machine assumptions, incident-specific prose, and unnecessary orchestration.
 - [x] Remove avoidable nonphysical setup arguments and package-bootstrap clutter without breaking editable local assets.
@@ -49,7 +50,7 @@ candidates. They are not replaced by this shorter ledger.
 ## Data, every plot, installation and delivery
 
 - [x] Inventory large/numerous samples and preserve approved current data losslessly; leave unreferenced superseded histories local.
-- [x] Commit eleven checksum manifests and LFS archives; verify local-clone hydration for the original nine and fresh-export restoration for the two new FVM bundles, including every archive hash.
+- [x] Commit twelve checksum manifests and LFS archives, including the completed IBM default; verify local-clone hydration and fresh-export restoration without reducing the saved histories.
 - [x] Measure temporal reconstruction/spectral sensitivity for all archived delta/rotor panel-loading streams and aggregate forces; report qualified/rejected candidates without deleting data. Evidence: [cadence study](../../studies/loading_cadence_report.md). Final-run cadence certification remains dependent on completed histories.
 - [ ] Ensure every expected tutorial plot/scene/animation has genuine portable inputs and execute every allplot launcher from a clone.
 - [ ] Visually inspect all figure families against the thesis palette, typography and geometry.
@@ -57,10 +58,10 @@ candidates. They are not replaced by this shorter ledger.
 - [x] Recover the original README animation into its tutorial assets and verify its frames/hash.
 - [x] Standardize supported CPython minor version to 3.11 throughout packaging, installation, Conda, documentation and CI.
 - [x] Verify an installed wheel outside the checkout, without source-path overrides, including meshing/FVM/VPM/restart and plotting.
-- [x] Repeat final wheel installation and outside-checkout native solver, restart, plotting and direct-entrypoint verification after cleanup.
+- [ ] Rebuild and repeat outside-checkout native solver, restart, plotting and direct-entrypoint verification after the latest source and reference-plotting commits. The [last passing wheel](../../studies/installed_wheel_verification_685c2d8a.json) predates them.
 - [ ] Obtain real macOS CI evidence; Linux execution alone does not establish it.
 - [x] Commit completed solver/package/archive work locally; retain unrelated work and generated figures.
-- [x] Commit this final cleanup and its measured evidence. Publishing remains separate from the explicitly local-only archive approval.
+- [ ] Commit the remaining active source changes and final verification evidence. Publishing remains separate from the explicitly local-only archive approval.
 
 ## Execution constraints
 
@@ -172,8 +173,12 @@ hash and native results are in the
 Actual execution exposed a separate IBM cylinder force-normalization error:
 the implicit unit reference area was 16 times the cylinder's projected area.
 The setup now passes diameter times span to the force sampler. Four regressions
-cover two spans and two reference speeds. The corrected full default execution
-is running in an isolated workspace; its final plots are still outstanding.
+cover two spans and two reference speeds. The corrected default finished at
+t=60 s and was archived losslessly as the twelfth result bundle. Its real
+`allplot.sh` completed; mean Cd=1.7681 is in the cited band, while the measured
+recirculation length 2.137D is outside 1.55–1.70D, so accuracy is not qualified.
+The field figures now cover the actual stretched-cell cross-section without
+scatter gaps. See the [bundle manifest](../../tutorials/fvm/cylinder_ibm/assets/results/manifest.json).
 
 Cylinder particle-spacing studies now hold the physical core radius and transfer
 widths fixed, recording both requested and resolved lattice spacings. Sampling
@@ -241,3 +246,13 @@ coupled continuation and the updated mesher. The wheel was installed locally
 while dependencies came from the development environment; this complements the
 earlier independent dependency environment. See the
 [installation record](../../studies/installed_wheel_verification_685c2d8a.json).
+
+Both body-fitted reference flows now have ordinary `allplot.sh` launchers and
+shared thesis-sized grid figures. The cube launcher restored genuine archived
+samples from the parent bundle in an isolated case and wrote both figure panels.
+The cube's 15–30 s histories contain zero complete force cycles and do not
+show monotone Richardson differences; its report and plots explicitly mark
+statistics unqualified. Historical duplicate replay rows are accepted only
+when the repeated values agree, without rewriting the archive. Cylinder
+reference plotting remains blocked on genuine completed production samples;
+the historical differing-span data cannot substitute for them.

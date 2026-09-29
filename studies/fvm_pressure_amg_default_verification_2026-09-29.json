@@ -1,0 +1,64 @@
+{
+  "purpose": "Evaluate a general AMG default for the FVM pressure equation without changing equations, stopping criteria, or time controls.",
+  "source_revision_before_default_change": "204bfa735b9723989afc94970d16caf108c74666",
+  "case": {
+    "mesh": "build/fvm-final-37de66ba/workspace/tutorials/fvm/cube_flow/solution/fvm/mesh.npz",
+    "cells": 25822,
+    "pressure_matrix_shape": [25822, 25822],
+    "pressure_matrix_nonzeros": 128368,
+    "captured_matrix_calls": 8,
+    "matrix_observations": "Calls 0, 1, 6, and 7 were exactly symmetric with strictly positive diagonals; this observation is limited to the sampled anchored cube matrices."
+  },
+  "controls": {
+    "pressure_absolute_residual_tolerance": 1e-8,
+    "pressure_relative_residual_tolerance": 0.0,
+    "pressure_iteration_limit": 500,
+    "same_assembled_matrix_rhs_for_paired_replay": true,
+    "pressure_backend": "SciPy; AMG uses PyAMG-preconditioned CG",
+    "petsc_mapping": "The existing PETSc replicated and partitioned implementations map AMG to CG with GAMG.",
+    "pyamg_dependency": "pyamg>=5.0.0 is a mandatory project dependency"
+  },
+  "paired_unchanged_matrix_replay": [
+    {"call": 0, "amg_iterations": 49, "amg_residual": 2.535770775706659e-10, "amg_seconds": 1.5608552069970756, "bicgstab_iterations": 205, "bicgstab_residual": 1.7849113849545437e-10, "bicgstab_seconds": 39.98830201799865},
+    {"call": 6, "amg_iterations": 46, "amg_residual": 4.6575903280895513e-11, "amg_seconds": 1.0567199340002844, "bicgstab_iterations": 186, "bicgstab_residual": 2.3786942933053632e-11, "bicgstab_seconds": 35.53214850399672}
+  ],
+  "four_step_native_evolution": {
+    "accepted_times_both_methods": [0.023923444976076555, 0.04242187083118408, 0.061416423050221686, 0.08149196604595249],
+    "all_eight_pressure_solves_per_method_met_unchanged_residual_contract": true,
+    "amg_pressure_iterations_range": [46, 53],
+    "bicgstab_pressure_iterations_range": [185, 207],
+    "final_field_difference_amg_vs_bicgstab": {
+      "velocity_max_abs": 2.370862617340208e-9,
+      "velocity_relative_l2": 1.733505499073083e-10,
+      "kinematic_pressure_max_abs": 9.66787664646862e-8,
+      "kinematic_pressure_relative_l2": 1.023029953832942e-7,
+      "volumetric_face_flux_max_abs": 1.0701079779240619e-11,
+      "volumetric_face_flux_relative_l2": 2.6191742458729655e-11
+    }
+  },
+  "legacy_restart_diagnostic": {
+    "mesh_cells": 8,
+    "old_method": "default BiCGStab pressure",
+    "new_method": "default AMG pressure",
+    "restored_state_max_abs_difference_before_advance": 0.0,
+    "one_continued_step_vs_uninterrupted_amg": {
+      "velocity_max_abs": 1.9237666648574958e-7,
+      "velocity_relative_l2": 2.470779536284769e-7,
+      "kinematic_pressure_max_abs": 1.767675171215899e-5,
+      "kinematic_pressure_relative_l2": 2.6440859945847937e-6,
+      "volumetric_face_flux_max_abs": 2.7755575615628914e-17,
+      "volumetric_face_flux_relative_l2": 9.330093306274157e-17
+    },
+    "authentication": "The saved original numerical configuration hash must match the current complete setup with only the historical pressure_solver=None restored. Tampered hashes and changed pressure tolerance or time scheme are rejected before state mutation."
+  },
+  "evidence_files": [
+    "build/pressure-audit-cube/paired_matrix_replay.json",
+    "build/pressure-audit-cube/amg_matrix_replay.json",
+    "build/pressure-audit-cube/amg/result.json",
+    "build/pressure-audit-cube/bicgstab/result.json",
+    "build/pressure-audit-cube/amg/fields_4steps.npz",
+    "build/pressure-audit-cube/bicgstab/fields_4steps.npz",
+    "tests/fvm/test_pressure_default_restart.py"
+  ],
+  "scope_limit": "These are isolated native cube and small-mesh checks on a shared loaded host. Timings are comparative evidence for these matrices, not a full-case or full-horizon speed guarantee. Changing a converged linear method can change subsequent fields slightly, so restart migration guarantees exact restored state and unchanged equations/tolerances, not an identical future trajectory."
+}
