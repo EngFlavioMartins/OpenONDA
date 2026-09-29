@@ -1,0 +1,41 @@
+{
+  "case": "isolated installed-wheel FVM cube_flow; unchanged physical setup and end_time=120 s",
+  "status_at_record": "AMG continuation running beyond accepted step 195; full horizon and normal allplot remain pending",
+  "old_run": {
+    "source_commit": "37de66ba",
+    "pressure_method": "default BiCGStab",
+    "accepted_backup": {"step": 175, "time": 5.0, "sha256": "e66503e7bb830f6a0586c27eeecee039dcd6f72a433540a011a9402e1fea8582"},
+    "historical_log": "build/fvm-final-37de66ba/cube_flow-allrun.sh.log",
+    "historical_summary": "build/fvm-final-37de66ba/summary.json",
+    "preserved_backup": "build/fvm-final-37de66ba/cube_flow-pre-amg-accepted-t5.backup"
+  },
+  "new_run": {
+    "source_commit": "fc921ec094ef416d5cf3ade8f40df26d07b3bcc9",
+    "wheel_sha256": "c467e9d19b44e4adaa68c362e9e3bc96eff1e1960d9697978e9541df3b260c01",
+    "installed_python": "build/wheel-verification-fc921ec0/bin/python",
+    "installed_fvm_types": "build/wheel-verification-fc921ec0/lib/python3.11/site-packages/source/solvers/fvm/config/types.py",
+    "pressure_method": "AMG-preconditioned CG",
+    "first_accepted_step": {"step": 176, "time": 5.030864197530864, "pressure_iterations": [43, 48], "pressure_residuals": [8.314393358077958e-9, 8.631213308489273e-9]},
+    "continuation_record": "build/fvm-final-37de66ba/cube_flow-amg-continuation-fc921ec0-verified.json",
+    "continuation_log": "build/fvm-final-37de66ba/cube_flow-allcontinue.sh-fc921ec0-verified.log"
+  },
+  "reconciled_wrong_interpreter_attempt": {
+    "reason": "The first launcher used the older archive-verification-env interpreter, whose installed pressure default was BiCGStab; it was stopped after two accepted steps, before any new checkpoint.",
+    "superseded_steps": [176, 177],
+    "old_attempt_record": "build/fvm-final-37de66ba/cube_flow-amg-continuation-fc921ec0.json",
+    "old_attempt_log": "build/fvm-final-37de66ba/cube_flow-allcontinue.sh-fc921ec0.log",
+    "native_reconciliation": "On verified continuation from the t=5 backup, solver-owned histories and samples beyond the checkpoint were archived in restart-branches and replaced by the AMG branch.",
+    "active_diagnostics_and_performance_duplicate_step_ids_at_195": 0
+  },
+  "native_20_step_comparison": {
+    "limits": "Adjacent accepted intervals use the same mesh, setup, solver tolerances and host, but different flow times and variable shared-host load. These timings do not establish a full-run speed guarantee.",
+    "pressure_absolute_residual_limit": 1e-8,
+    "bicgstab": {"steps": [156, 175], "time": [4.431414460622564, 5.0], "mean_step_wall_seconds": 16.266550382399146, "median_step_wall_seconds": 15.668533988999116, "mean_pressure_solve_seconds_per_step": 13.209158821650998, "mean_pressure_iterations_per_step": 386.3, "all_pressure_solves_converged": true, "largest_final_pressure_residual": 9.981975593348631e-9},
+    "amg": {"steps": [176, 195], "time": [5.030864197530864, 5.620429346544], "mean_step_wall_seconds": 2.5993194426508124, "median_step_wall_seconds": 2.338061333502992, "mean_pressure_solve_seconds_per_step": 1.4083321634025197, "mean_pressure_iterations_per_step": 89.8, "all_pressure_solves_converged": true, "largest_final_pressure_residual": 9.993791066334081e-9}
+  },
+  "raw_histories": [
+    "build/fvm-final-37de66ba/workspace/tutorials/fvm/cube_flow/solution/diagnostics.jsonl",
+    "build/fvm-final-37de66ba/workspace/tutorials/fvm/cube_flow/solution/performance.jsonl",
+    "build/fvm-final-37de66ba/workspace/tutorials/fvm/cube_flow/samples/forces_history.csv"
+  ]
+}
