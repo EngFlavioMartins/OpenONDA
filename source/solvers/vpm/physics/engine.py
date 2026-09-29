@@ -7,7 +7,7 @@ from typing import Any
 import taichi as ti
 
 from ..config.constants import MAX_N_PARTICLES
-from .base import PhysicsBase
+from .base import _HOST_TRANSFER_CHUNK_SIZE, PhysicsBase
 from .diffusion.core_spreading import apply_core_spreading
 from .diffusion.grid import _GridDiffusionMixin
 from .diffusion.random_walk import apply_random_walk
@@ -29,7 +29,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
-        max_evaluation_points: int = 200000,
+        max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
         event_observer: PhysicsEventObserver | None = None,
     ):
         """Allocate the shared VPM physics workspace.
@@ -42,7 +42,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             Fixed particle capacity for device fields.
         accumulator_dtype : taichi scalar type, default=ti.f32
             Precision of reusable accumulation fields.
-        max_evaluation_points : int, default=200000
+        max_evaluation_points : int, default=_HOST_TRANSFER_CHUNK_SIZE
             Capacity for arbitrary target-point velocity/gradient evaluation.
         event_observer : PhysicsEventObserver, optional
             Diagnostic sink for warnings and numerical events.  A silent

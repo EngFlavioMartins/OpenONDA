@@ -113,7 +113,8 @@ def test_runtime_compute_device_override_preserves_restart_identity(tmp_path) ->
     try:
         assert solver.compute_device == "CPU"
         assert solver.setup.compute_device == "AUTO"
-        assert numerical_configuration(solver.setup)["compute_device"] == "AUTO"
+        assert "compute_device" not in numerical_configuration(solver.setup)
+        assert "max_evaluation_points" not in numerical_configuration(solver.setup)
         solver.advance(defer_output=True)
         solver.save_backup()
         checkpoint = tmp_path / "solution" / "vpm" / "vpm_000001.h5"

@@ -109,7 +109,6 @@ def test_pressure_is_invariant_to_redundant_refresh_after_deferred_advance(tmp_p
                 compute_device="CPU",
                 precision="f32",
                 max_n_particles=16,
-                max_evaluation_points=16,
                 induction=vpm.DirectInduction(),
                 viscous=vpm.ViscousConfig.inviscid(),
                 verbose=False,

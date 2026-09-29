@@ -33,7 +33,6 @@ def main(directory, cores):
             compute_device="CPU",
             induction=case["vpm"].DirectInduction(),
             max_n_particles=100_000,
-            max_evaluation_points=100_000,
             viscous=replace(
                 numerics.viscous,
                 particle_spacing=0.25,

@@ -464,6 +464,35 @@ def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path, legacy_node_
         reader.close()
 
 
+def test_restart_ignores_authenticated_legacy_target_batch_capacity(tmp_path):
+    writer = _solver(tmp_path / "writer")
+    try:
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
+    with h5py.File(backup, "r+") as archive:
+        attributes = archive["solver"].attrs
+        configuration = json.loads(attributes["numerical_configuration"])
+        assert "max_evaluation_points" not in configuration
+        configuration["max_evaluation_points"] = 7
+        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+        attributes["numerical_configuration"] = encoded
+
+    reader = _solver(tmp_path / "reader")
+    try:
+        with pytest.raises(ValueError, match="fingerprint"):
+            reader.load_backup(backup)
+        with h5py.File(backup, "r+") as archive:
+            archive["solver"].attrs["numerical_configuration_sha256"] = hashlib.sha256(
+                encoded.encode()
+            ).hexdigest()
+        reader.load_backup(backup)
+        assert (reader.step, reader.time) == (0, 0.0)
+    finally:
+        reader.close()
+
+
 @pytest.mark.parametrize(
     ("section", "name", "path"),
     [
@@ -646,14 +675,10 @@ def test_larger_restart_capacity_preserves_the_particle_trajectory(tmp_path, ind
         reader.close()
 
 
-@pytest.mark.parametrize("policy", ("smaller", "filament", "remesh"))
+@pytest.mark.parametrize("policy", ("smaller", "remesh"))
 def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_path, policy):
     stabilization = StabilizationConfig.disabled()
-    if policy == "filament":
-        stabilization = StabilizationConfig(
-            filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1)
-        )
-    elif policy == "remesh":
+    if policy == "remesh":
         stabilization = StabilizationConfig(
             regularization_interval_steps=1, regularization_grid_spacing=0.1
         )
@@ -672,6 +697,46 @@ def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_p
         with pytest.raises(ValueError, match="max_n_particles"):
             reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
         assert reader.particles.n_particles_total == 0
+    finally:
+        reader.close()
+
+
+def test_refinement_capacity_can_increase_after_last_accepted_backup(tmp_path):
+    from source.solvers.vpm.stabilization.filament_refinement import FilamentRefinementError
+
+    stabilization = StabilizationConfig(
+        filament_refinement=FilamentRefinementConfig.adaptive(
+            interval_steps=1, max_vortex_strength_factor=1.5
+        )
+    )
+    writer = _solver(tmp_path / "writer", max_n_particles=3, stabilization=stabilization)
+    try:
+        _add_counter_rotating_pair(writer)
+        writer.stabilization.capture_reference_state()
+        writer.stabilization.reference_vortex_strength[:] *= 0.5
+        writer.save_backup()
+        before_position = writer.particle_position.copy()
+        before_strength = writer.particle_vortex_strength.copy()
+        before_reference = writer.stabilization.reference_vortex_strength.copy()
+        with pytest.raises(FilamentRefinementError, match="requires 4 particles.*capacity 3"):
+            writer.stabilization.apply_filament_refinement()
+        np.testing.assert_array_equal(writer.particle_position, before_position)
+        np.testing.assert_array_equal(writer.particle_vortex_strength, before_strength)
+        np.testing.assert_array_equal(
+            writer.stabilization.reference_vortex_strength, before_reference
+        )
+    finally:
+        writer.close()
+
+    reader = _solver(tmp_path / "reader", max_n_particles=4, stabilization=stabilization)
+    try:
+        reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
+        np.testing.assert_array_equal(reader.particle_position, before_position)
+        reader.stabilization.apply_filament_refinement()
+        assert reader.particles.n_particles_total == 4
+        np.testing.assert_allclose(
+            reader.particle_vortex_strength.sum(axis=0), before_strength.sum(axis=0)
+        )
     finally:
         reader.close()
 

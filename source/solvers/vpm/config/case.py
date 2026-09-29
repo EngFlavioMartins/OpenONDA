@@ -58,8 +58,8 @@ class Numerics:
         Optional attached vortex-lattice configuration.
     particle_kernel : str
         Radial regularization kernel name.
-    max_n_particles, max_evaluation_points : int
-        Fixed particle capacity and target-query capacity.
+    max_n_particles : int
+        Fixed particle capacity.
     compute_device, precision, write_precision : str
         Device and compute/write precision policies.
     random_seed : int
@@ -94,7 +94,6 @@ class Numerics:
         "GAUSSIAN"
     )
     max_n_particles: int = MAX_N_PARTICLES
-    max_evaluation_points: int = 200_000
     compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] = "AUTO"
     precision: Literal["f32", "f64"] = "f32"
     write_precision: WritePrecision = DEFAULT_WRITE_PRECISION
@@ -120,8 +119,6 @@ class Numerics:
             raise ValueError("time_step_size must be positive")
         if self.max_n_particles < 1:
             raise ValueError("max_n_particles must be at least one")
-        if self.max_evaluation_points < 1:
-            raise ValueError("max_evaluation_points must be at least one")
         valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
         if self.compute_device.upper() not in valid_devices:
             raise ValueError(f"compute_device must be one of {sorted(valid_devices)}")

@@ -155,7 +155,6 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
             numerics=Numerics(
                 compute_device="CPU",
                 max_n_particles=count,
-                max_evaluation_points=count,
                 induction=induction_type(stretching_scheme=scheme),
                 viscous=ViscousConfig.inviscid(particle_spacing=0.2),
                 verbose=False,

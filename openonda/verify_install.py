@@ -188,7 +188,6 @@ def _verify_native_vpm() -> dict[str, object]:
             numerics=vpm.Numerics(
                 compute_device="CPU",
                 max_n_particles=8,
-                max_evaluation_points=8,
                 time_step_size=0.01,
                 viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2),
                 verbose=False,

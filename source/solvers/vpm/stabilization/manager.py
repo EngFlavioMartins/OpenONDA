@@ -579,11 +579,6 @@ class StabilizationManager:
             max_absolute_vortex_strength=cfg.max_absolute_vortex_strength,
         )
         if result.refined_particles == 0:
-            if result.deferred_particles:
-                Logging.record(
-                    "particle splitting capacity",
-                    ("eligible parents left unsplit", f"{result.deferred_particles:,}"),
-                )
             return
 
         source = result.source_index
@@ -624,8 +619,7 @@ class StabilizationManager:
             self.accept(
                 "filament refinement",
                 before,
-                detail=f"split={result.refined_particles}, deferred={result.deferred_particles}, "
-                f"stretch={result.max_stretch_ratio:.2f}",
+                detail=f"split={result.refined_particles}, stretch={result.max_stretch_ratio:.2f}",
             )
         except Exception:
             ctx.mutations.replace(**old, report_removal=False)

@@ -368,7 +368,6 @@ def test_planar_solver_target_routes_and_evolution(tmp_path, device):
         compute_device=device,
         time_step_size=0.01,
         max_n_particles=2000,
-        max_evaluation_points=2000,
         freestream_velocity=(1, 0, 0),
         verbose=False,
         viscous=vpm.ViscousConfig.gbd(

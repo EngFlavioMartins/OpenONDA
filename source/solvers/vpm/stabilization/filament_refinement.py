@@ -49,7 +49,6 @@ class FilamentRefinementResult:
     linear_impulse_error: float
     angular_impulse_error: float
     isolated_kinetic_energy_change: float
-    deferred_particles: int = 0
 
 
 @dataclass(frozen=True)
@@ -357,8 +356,7 @@ def split_stretched_filaments(
 
     A call performs one bisection per selected parent. Delayed checks can leave
     long under-resolved segments; splitting is not a substitute for a resolved
-    time step. Capacity prioritizes the most stretched parents and explicitly
-    reports the eligible parents left unsplit.
+    time step. Every eligible parent must fit within the hard particle capacity.
     """
 
     position = np.asarray(position, dtype=np.float64)
@@ -409,13 +407,15 @@ def split_stretched_filaments(
     if max_absolute_vortex_strength is not None:
         risk = np.maximum(risk, magnitude / max_absolute_vortex_strength)
     eligible = np.flatnonzero(risk >= 1.0)
-    selected = eligible
     if max_n_particles is not None:
-        available = max(0, max_n_particles - len(position))
-        if len(selected) > available:
-            priority = np.lexsort((selected, -risk[selected]))
-            selected = selected[priority[:available]]
-    refined_count = len(selected)
+        required = len(position) + len(eligible)
+        if required > max_n_particles:
+            raise FilamentRefinementError(
+                f"Filament refinement requires {required} particles, exceeding "
+                f"the hard capacity {max_n_particles}"
+            )
+    selected = eligible
+    refined_count = len(eligible)
 
     if refined_count == 0:
         source = np.arange(len(position), dtype=np.int64)
@@ -435,7 +435,6 @@ def split_stretched_filaments(
             linear_impulse_error=0.0,
             angular_impulse_error=0.0,
             isolated_kinetic_energy_change=0.0,
-            deferred_particles=len(eligible),
         )
 
     retained_mask = np.ones(len(position), dtype=bool)
@@ -513,7 +512,6 @@ def split_stretched_filaments(
             core_radius[selected],
             displacement_magnitude,
         ),
-        deferred_particles=len(eligible) - refined_count,
     )
 
 

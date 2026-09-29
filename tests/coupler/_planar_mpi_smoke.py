@@ -49,7 +49,6 @@ def main(directory):
             time_step_size=0.01,
             freestream_velocity=(1, 0, 0),
             max_n_particles=5000,
-            max_evaluation_points=5000,
             viscous=vpm.ViscousConfig.gbd(
                 particle_spacing=h,
                 gbd_grid_spacing=h,

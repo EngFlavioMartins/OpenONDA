@@ -410,7 +410,6 @@ class VPMSolver:
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
-            max_evaluation_points=final_setup.max_evaluation_points,
             event_observer=LoggingPhysicsEventObserver(),
         )
 

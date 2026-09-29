@@ -10,6 +10,7 @@ from source.solvers.vpm.stabilization.divergence_relaxation import (
     restore_particle_moments,
 )
 from source.solvers.vpm.stabilization.filament_refinement import (
+    FilamentRefinementError,
     particle_moments,
     split_stretched_filaments,
 )
@@ -247,24 +248,76 @@ def test_regularization_can_be_triggered_only_by_core_radius():
     assert _regularization_triggered(health, np.array([0.1, 0.2]), **arguments)
 
 
-def test_filament_refinement_prioritizes_strongest_particles_at_capacity():
+def test_filament_refinement_fails_before_partial_split_at_hard_capacity():
     strength = np.array([[2.0, 0.0, 0.0], [5.0, 0.0, 0.0], [4.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    position = np.zeros((4, 3))
+    reference = np.ones(4)
+    with pytest.raises(FilamentRefinementError, match="requires 7 particles.*capacity 6"):
+        split_stretched_filaments(
+            position,
+            strength,
+            np.ones(4),
+            np.ones(4),
+            reference_vortex_strength=reference,
+            reference_length=reference,
+            max_stretch_factor=1.5,
+            max_n_particles=6,
+        )
+    np.testing.assert_array_equal(position, np.zeros((4, 3)))
+    np.testing.assert_array_equal(strength[:, 0], [2.0, 5.0, 4.0, 1.0])
+    np.testing.assert_array_equal(reference, np.ones(4))
+
     result = split_stretched_filaments(
-        np.zeros((4, 3)),
+        position,
         strength,
         np.ones(4),
         np.ones(4),
-        reference_vortex_strength=np.ones(4),
-        reference_length=np.ones(4),
+        reference_vortex_strength=reference,
+        reference_length=reference,
         max_stretch_factor=1.5,
-        max_n_particles=6,
+        max_n_particles=7,
     )
 
-    assert result.refined_parent_index.tolist() == [1, 2]
-    assert result.refined_particles == 2
-    assert result.deferred_particles == 1
-    assert len(result.position) == 6
-    assert 0 in result.source_index
+    assert result.refined_parent_index.tolist() == [0, 1, 2]
+    assert result.refined_particles == 3
+    assert len(result.position) == 7
+
+
+def test_hard_refinement_failure_leaves_manager_particles_and_lineage_unchanged():
+    position = np.zeros((4, 3))
+    strength = np.array([[2.0, 0.0, 0.0], [5.0, 0.0, 0.0], [4.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    references = np.ones(4)
+    replaced = []
+    particles = SimpleNamespace(
+        n_particles_total=4,
+        _max_particles=6,
+        position_cpu=lambda: position,
+        vortex_strength_cpu=lambda: strength,
+        core_radius_cpu=lambda: np.ones(4),
+        particle_volume_cpu=lambda: np.ones(4),
+    )
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig(
+        filament_refinement=FilamentRefinementConfig.adaptive(
+            interval_steps=1, max_vortex_strength_factor=1.5
+        )
+    )
+    manager.ctx = SimpleNamespace(
+        state=SimpleNamespace(step=1),
+        particles=particles,
+        mutations=SimpleNamespace(replace=lambda **kwargs: replaced.append(kwargs)),
+    )
+    manager.reference_vortex_strength = references.copy()
+    manager.reference_lengths = references.copy()
+    manager.measure = lambda: None
+
+    with pytest.raises(FilamentRefinementError, match="requires 7 particles"):
+        manager.apply_filament_refinement()
+    assert replaced == []
+    np.testing.assert_array_equal(position, np.zeros((4, 3)))
+    np.testing.assert_array_equal(strength[:, 0], [2.0, 5.0, 4.0, 1.0])
+    np.testing.assert_array_equal(manager.reference_vortex_strength, references)
+    np.testing.assert_array_equal(manager.reference_lengths, references)
 
 
 def test_winckelmans_fixed_core_bisection_and_reset_at_exact_threshold():
@@ -463,7 +516,7 @@ def test_filament_refinement_keeps_one_cadence_and_both_strength_criteria(monkey
         calls.append(
             (state.step, kwargs["max_stretch_factor"], kwargs["max_absolute_vortex_strength"])
         )
-        return SimpleNamespace(refined_particles=0, deferred_particles=0)
+        return SimpleNamespace(refined_particles=0)
 
     monkeypatch.setattr(
         "source.solvers.vpm.stabilization.filament_refinement.split_stretched_filaments", split

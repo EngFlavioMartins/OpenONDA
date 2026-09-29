@@ -29,7 +29,6 @@ def _solver(tmp_path, name: str, induction, *, precision: str = "f32"):
             induction=induction,
             viscous=ViscousConfig.inviscid(particle_spacing=0.15),
             max_n_particles=1_024,
-            max_evaluation_points=1_024,
             verbose=False,
         ),
     )

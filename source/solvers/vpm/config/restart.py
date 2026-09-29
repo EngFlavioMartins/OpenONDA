@@ -5,16 +5,11 @@ from typing import Any
 
 
 def _capacity_sensitive_adaptation(configuration: dict[str, Any]) -> bool:
-    """Unknown or adaptive allocation policies require an exact capacity."""
+    """Regularization can change its accepted output with extra capacity."""
     stabilization = configuration.get("stabilization")
     if not isinstance(stabilization, dict):
         return True
-    refinement = stabilization.get("filament_refinement")
-    if not isinstance(refinement, dict):
-        return True
-    return bool(
-        stabilization.get("regularization_interval_steps") or refinement.get("interval_steps")
-    )
+    return bool(stabilization.get("regularization_interval_steps"))
 
 
 def _configuration_mismatches(
@@ -140,4 +135,5 @@ def canonical_restart_configuration(configuration: dict[str, Any]) -> dict[str, 
     _normalize_capacity_aliases(result)
     result.pop("compute_device", None)
     result.pop("device_memory_fraction", None)
+    result.pop("max_evaluation_points", None)
     return result

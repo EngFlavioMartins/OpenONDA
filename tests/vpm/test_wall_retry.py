@@ -34,7 +34,6 @@ def test_native_rk_wall_retry_preserves_clock_strength_and_projection_budget(tmp
                 compute_device="CPU",
                 precision="f64",
                 max_n_particles=4,
-                max_evaluation_points=4,
                 freestream_velocity=tuple(-normal),
                 induction=vpm.DirectInduction(),
                 integrator=vpm.RK2(),
