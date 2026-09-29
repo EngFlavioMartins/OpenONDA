@@ -368,3 +368,37 @@ def test_finite_distance_profiles_report_both_induction_components(monkeypatch):
         "reference_tangential_velocity",
     ):
         assert np.isfinite(row[key]).any()
+
+
+def test_native_window_ends_at_shared_sample_when_accepted_clock_is_unaligned(tmp_path):
+    p = published_planes(tmp_path)
+    p.metadata["state"].update(step=49, time=6.125)
+    p.metadata["configuration"]["numerics"]["time_step_size"] = 0.125
+    # The owner advances past the last field output while a coarser field
+    # schedule has not yet become due. Every due field sample remains present.
+    for item in p.metadata["configuration"]["samplers"]["items"]:
+        item["schedule"] = {"type": "EveryTime", "interval": 0.25, "start_time": 0.0}
+        path = tmp_path / f"{item['file_name']}.pvd"
+        tree = ElementTree.parse(path)
+        collection = tree.getroot().find("Collection")
+        for frame in list(collection):
+            if not np.isclose(float(frame.attrib["timestep"]) % 0.25, 0.0):
+                collection.remove(frame)
+        tree.write(path)
+    rows = native_plane_windows(p, require_complete=True)
+    assert all(row["window_end"] == 6.0 and row["window_start"] == 1.0 for row in rows)
+    assert all(np.isfinite(row["window_mean_velocity"]).all() for row in rows)
+    assert all(row["compared_rotations"] == 5 for row in rows)
+
+
+def test_force_reference_uses_exact_native_field_window(monkeypatch):
+    import pandas as pd
+
+    times = np.array([0.0, 0.4, 1.0, 1.2, 2.0, 3.0, 4.0, 5.0, 6.0, 6.125])
+    data = pd.DataFrame({"time": times, "CT": times, "CP": 2 * times})
+    monkeypatch.setattr(rotor_common, "performance", lambda: data)
+    assert rotor_common.read_operating_point(window_start=1.0, window_end=6.0) == pytest.approx(
+        (3.5, 7.0)
+    )
+    with pytest.raises(ValueError, match="does not bracket"):
+        rotor_common.read_operating_point(window_start=1.0, window_end=6.2)

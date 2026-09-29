@@ -260,3 +260,84 @@ def test_sharded_bundle_roundtrip_and_rejection(tmp_path, monkeypatch, damage):
         assert restore_results(target, output) == ["samples", "solution"]
         for relative in ("samples/history.csv", "solution/state.bin"):
             assert (target / relative).read_bytes() == (source / relative).read_bytes()
+
+
+@pytest.mark.parametrize("suffix,attribute", [("pvd", "file"), ("pvtu", "Source"), ("vtm", "file")])
+def test_vtk_collection_nested_roundtrip(tmp_path, suffix, attribute):
+    source = tmp_path / "source"
+    collection = f"samples/collection.{suffix}"
+    child = "samples/nested/frame.vtu"
+    (source / child).parent.mkdir(parents=True)
+    (source / child).write_bytes(b"original VTK bytes")
+    payload = f'<VTKFile><DataSet {attribute}="nested/frame.vtu"/></VTKFile>'.encode()
+    (source / collection).write_bytes(payload)
+    output = tmp_path / "bundle"
+    pack_results(source, output, [collection, child], scientific_status="partial", provenance={})
+    target = tmp_path / "target"
+    assert restore_results(target, output) == ["samples"]
+    assert (target / collection).read_bytes() == payload
+    assert (target / child).read_bytes() == b"original VTK bytes"
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "missing.vts",
+        "/outside.vts",
+        "../outside.vts",
+        "nested/../../outside.vts",
+        "C:/outside.vts",
+        "nested\\outside.vts",
+    ],
+)
+def test_vtk_pack_rejects_incomplete_or_unsafe_collection(tmp_path, reference):
+    source, output = bundle(tmp_path)
+    metadata_before = (output / "manifest.json").read_bytes()
+    archive_before = (output / "data.tar.gz").read_bytes()
+    (source / "samples/wake.pvd").write_text(f'<VTKFile><DataSet file="{reference}"/></VTKFile>')
+    with pytest.raises(ResultsError, match="(Missing VTK|Unsafe)"):
+        pack_results(
+            source, output, ["samples/wake.pvd"], scientific_status="partial", provenance={}
+        )
+    assert (output / "manifest.json").read_bytes() == metadata_before
+    assert (output / "data.tar.gz").read_bytes() == archive_before
+
+
+def test_vtk_restore_reference_corruption_installs_nothing(tmp_path):
+    _, output = bundle(tmp_path)
+    archive = output / "data.tar.gz"
+    payloads = {
+        "samples/wake.pvd": b'<VTKFile><DataSet file="missing.vts"/></VTKFile>',
+        "solution/state.bin": b"genuine bytes",
+    }
+    with tarfile.open(archive, "w:gz") as tar:
+        for relative, payload in payloads.items():
+            info = tarfile.TarInfo(relative)
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+    metadata = output / "manifest.json"
+    manifest = json.loads(metadata.read_text())
+    manifest["files"] = [
+        {"path": path, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        for path, data in payloads.items()
+    ]
+    manifest["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    metadata.write_text(json.dumps(manifest))
+    target = tmp_path / "target"
+    with pytest.raises(ResultsError, match="Missing VTK"):
+        restore_results(target, output)
+    assert not (target / "samples").exists()
+    assert not (target / "solution").exists()
+    assert not list(target.glob(".results-restore-*"))
+
+
+def test_vtk_collection_rejects_xml_entity_expansion(tmp_path):
+    source, output = bundle(tmp_path)
+    (source / "samples/wake.pvd").write_text(
+        '<!DOCTYPE VTKFile [<!ENTITY local "frame.vts">]>'
+        '<VTKFile><DataSet file="&local;"/></VTKFile>'
+    )
+    with pytest.raises(ResultsError, match="Invalid VTK collection"):
+        pack_results(
+            source, output, ["samples/wake.pvd"], scientific_status="partial", provenance={}
+        )

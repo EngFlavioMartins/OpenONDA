@@ -47,7 +47,7 @@ def main():
     ax.set_title(f"Skin friction (Re$_L$ = {args.Re:g})")
     ax.set_ylim(0, min(0.06, 1.5 * float(np.max(cf_ref))))
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8)
+    ax.legend()
 
     fig.tight_layout()
     save_fig(fig, "skin_friction.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)

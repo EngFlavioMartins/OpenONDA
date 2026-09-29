@@ -1,9 +1,24 @@
 """Missing or empty native histories cannot masquerade as successful plots."""
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from openonda import plotting
 from tests._tutorial_helpers import load_tutorial_module
+
+
+def test_fvm_plot_text_uses_shared_thesis_font_size():
+    tutorials = Path(__file__).resolve().parents[2] / "tutorials" / "fvm"
+    for script in tutorials.glob("*/assets/plot_*.py"):
+        tree = ast.parse(script.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.keyword) and node.arg == "fontsize":
+                assert not isinstance(node.value, ast.Constant), (
+                    script,
+                    "Literal text sizes override the fixed thesis font and fail real plots",
+                )
 
 
 @pytest.mark.parametrize("case", ["airfoil_flow", "boundary_layer", "step_profile"])

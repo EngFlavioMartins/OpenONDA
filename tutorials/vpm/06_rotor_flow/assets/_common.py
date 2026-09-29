@@ -159,8 +159,34 @@ def accepted_history(data, metadata):
     return data.loc[accepted].copy()
 
 
-def read_operating_point(*, revolutions=OPERATING_WINDOW_REVOLUTIONS):
+def read_operating_point(
+    *, revolutions=OPERATING_WINDOW_REVOLUTIONS, window_start=None, window_end=None
+):
     data = performance()
+    if window_start is not None or window_end is not None:
+        if window_start is None or window_end is None or window_start >= window_end:
+            raise ValueError("Operating point requires an ordered complete window")
+        times = data.time.to_numpy()
+        if len(times) < 2 or np.any(np.diff(times) <= 0) or not np.isfinite(times).all():
+            raise ValueError("Operating point requires finite increasing force clocks")
+        if times[0] > window_start or times[-1] < window_end:
+            raise ValueError("Force history does not bracket the native field window")
+        selected = times[(times > window_start) & (times < window_end)]
+        integration_times = np.concatenate(([window_start], selected, [window_end]))
+        from scipy.integrate import trapezoid
+
+        means = []
+        for column in ("CT", "CP"):
+            values = data[column].to_numpy()
+            if not np.isfinite(values).all():
+                raise ValueError("Operating point requires finite force coefficients")
+            means.append(
+                float(
+                    trapezoid(np.interp(integration_times, times, values), integration_times)
+                    / (window_end - window_start)
+                )
+            )
+        return tuple(means)
     tail = data[data.time > data.time.max() - revolutions * rotor_inputs().rotation_period]
     return float(tail.CT.mean()), float(tail.CP.mean())
 

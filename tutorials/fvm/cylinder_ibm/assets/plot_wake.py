@@ -105,7 +105,7 @@ def main():
     ax.set_xlabel("x / D")
     ax.set_ylabel(r"$u_x / U_\infty$")
     ax.set_title(f"Wake centreline (Re = {args.Re:g})")
-    ax.legend(fontsize=8)
+    ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     save_fig(fig, "wake_centreline.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)

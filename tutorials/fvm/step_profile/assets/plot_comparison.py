@@ -22,6 +22,7 @@ from ._common import (  # noqa: E402
     FIGURES_DIR,
     SOLUTION_DIR,
     build_arg_parser,
+    figure_size,
     load_csv_columns,
     save_fig,
 )
@@ -43,7 +44,7 @@ def main():
     )
     triangulation.set_mask((triangle_centres[:, 0] < 0.0) & (triangle_centres[:, 1] < 1.0))
 
-    fig, (flow_ax, history_ax) = plt.subplots(2, 1, figsize=(7.1, 5.8), constrained_layout=True)
+    fig, (flow_ax, history_ax) = plt.subplots(2, 1, figsize=figure_size("stacked"))
     contour = flow_ax.tricontourf(triangulation, speed, levels=30, cmap=COLORMAPS["field_speed"])
     flow_ax.plot([-4.0, 0.0, 0.0, 20.0], [1.0, 1.0, 0.0, 0.0], color="black", linewidth=1.5)
     flow_ax.plot([-4.0, 20.0], [2.0, 2.0], color="black", linewidth=1.5)
@@ -52,8 +53,8 @@ def main():
     flow_ax.set_aspect("equal", adjustable="box")
     flow_ax.set_xlabel(r"$x/h$")
     flow_ax.set_ylabel(r"$y/h$")
-    flow_ax.set_title("Backward-facing-step speed and geometric outline")
-    fig.colorbar(contour, ax=flow_ax, label=r"$|U|/U_b$")
+    flow_ax.set_title("Backward-facing-step speed")
+    fig.colorbar(contour, ax=flow_ax, orientation="horizontal", pad=0.35, label=r"$|U|/U_b$")
 
     time = history["time"]
     x_re = history["reattachment_position_over_height"]

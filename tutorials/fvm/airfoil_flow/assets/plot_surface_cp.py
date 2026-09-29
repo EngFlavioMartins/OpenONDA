@@ -62,7 +62,7 @@ def main():
     ax.set_ylabel("$-C_p$")
     ax.set_title(f"NACA 0012 surface pressure (Re = {RE:.0f}, $\\alpha$ = {args.angle:g}$^\\circ$)")
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8)
+    ax.legend()
 
     fig.tight_layout()
     save_fig(fig, "airfoil_surface_cp.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)

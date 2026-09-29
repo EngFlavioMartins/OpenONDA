@@ -58,7 +58,7 @@ def main():
             alpha=0.25,
             label=f"literature: {ref['drag_coefficient'][0]:.2f}-{ref['drag_coefficient'][1]:.2f}",
         )
-        ax.legend(loc="upper right", fontsize=8)
+        ax.legend(loc="upper right")
     ax.set_ylabel("drag coefficient")
     ax.set_title(f"Square cylinder forces (Re = {args.Re:g})")
     ax.text(
@@ -66,7 +66,6 @@ def main():
         0.06,
         f"mean drag coefficient (last 1/3) = {drag_coefficient_mean:.4f}",
         transform=ax.transAxes,
-        fontsize=8,
     )
     ax.grid(True, alpha=0.3)
 
@@ -77,7 +76,7 @@ def main():
         label += f",  strouhal_number = {strouhal_number:.4f}"
         if "strouhal_number" in ref:
             label += f" (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
-    ax.text(0.02, 0.06, label, transform=ax.transAxes, fontsize=8)
+    ax.text(0.02, 0.06, label, transform=ax.transAxes)
     ax.set_ylabel("lift coefficient")
     ax.set_xlabel("t [s]")
     ax.grid(True, alpha=0.3)

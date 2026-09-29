@@ -50,7 +50,6 @@ def main():
         0.06,
         f"mean drag coefficient (last 1/3) = {drag_coefficient_mean:.4f}",
         transform=ax.transAxes,
-        fontsize=8,
     )
     ax.grid(True, alpha=0.3)
 
@@ -61,7 +60,6 @@ def main():
         0.06,
         f"mean lift coefficient (last 1/3) = {lift_coefficient_mean:.4f}",
         transform=ax.transAxes,
-        fontsize=8,
     )
     ax.set_ylabel("lift coefficient")
     ax.set_xlabel("t [s]")

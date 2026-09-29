@@ -81,6 +81,7 @@ def load_csv_columns(path):
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):
     path = Path(figures_dir) / name
     axes = fig.axes
+    fig.tight_layout(pad=1.0)
     THEME.fit_thesis_y_label_margins(fig, axes)
     THEME.validate_thesis_figure(fig, axes)
     output = THEME.figure_path(path, figure_format)

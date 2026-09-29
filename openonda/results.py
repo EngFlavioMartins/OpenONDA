@@ -18,17 +18,44 @@ import shutil
 import tarfile
 import tempfile
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
+
 _ARCHIVE_PART_BYTES = 1024**3
+_VTK_COLLECTION_SUFFIXES = {".pvd", ".pvtu", ".pvtp", ".pvts", ".pvtr", ".pvti", ".vtm"}
+
+
+def _validate_vtk_references(relative: str, payload: bytes, files: set[str]) -> None:
+    """Require every VTK collection dependency to travel in the same bundle."""
+    try:
+        collection = ElementTree.fromstring(payload)
+    except (ElementTree.ParseError, DefusedXmlException) as error:
+        raise ResultsError(f"Invalid VTK collection: {relative}: {error}") from error
+    for element in collection.iter():
+        for attribute in ("file", "Source"):
+            if attribute not in element.attrib:
+                continue
+            reference = element.attrib[attribute]
+            # Windows drive paths and URI references are not portable local files.
+            if ":" in reference:
+                raise ResultsError(f"Unsafe VTK reference in {relative}: {reference!r}")
+            reference = _relative(reference)
+            target = str(PurePosixPath(relative).parent / reference)
+            if target not in files:
+                raise ResultsError(f"Missing VTK reference in {relative}: {reference!r}")
 
 
 class _HashingReader:
-    def __init__(self, stream, digest):
+    def __init__(self, stream, digest, capture=False):
         self.stream = stream
         self.digest = digest
+        self.blocks = [] if capture else None
 
     def read(self, size=-1):
         data = self.stream.read(size)
         self.digest.update(data)
+        if self.blocks is not None:
+            self.blocks.append(data)
         return data
 
 
@@ -137,7 +164,14 @@ def pack_results(
                 info.mode = 0o644
                 digest = hashlib.sha256()
                 with source.open("rb") as stream:
-                    tar.addfile(info, _HashingReader(stream, digest))
+                    reader = _HashingReader(
+                        stream,
+                        digest,
+                        capture=PurePosixPath(relative).suffix.lower() in _VTK_COLLECTION_SUFFIXES,
+                    )
+                    tar.addfile(info, reader)
+                    if reader.blocks is not None:
+                        _validate_vtk_references(relative, b"".join(reader.blocks), set(selected))
                 after = source.stat()
                 if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
                     after.st_dev,
@@ -292,6 +326,9 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
                     raise ResultsError(f"Result SHA-256 mismatch: {relative}")
         if seen != set(expected):
             raise ResultsError("Result archive is missing manifest files")
+        for relative in expected:
+            if PurePosixPath(relative).suffix.lower() in _VTK_COLLECTION_SUFFIXES:
+                _validate_vtk_references(relative, (stage / relative).read_bytes(), seen)
         reserved = []
         restored = []
         try:

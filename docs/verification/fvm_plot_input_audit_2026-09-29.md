@@ -64,3 +64,45 @@ Portable archival, fresh-clone restoration and plotting, and visual review of
 each resulting figure are still required to close the original every-allplot
 request. Existing active workloads must be coordinated before launching this
 sequential batch.
+
+## Subsequent real boundary-layer and step execution
+
+The isolated default boundary-layer and step runs completed. Boundary layer
+took 865 accepted steps and logged 202.7 s total solver wall time. Their original
+plots exposed 8 pt font overrides, missing vertical layout and an 18.034 cm
+step-comparison canvas. The five FVM families now inherit the fixed thesis font;
+their helpers fit vertical layout before validating symmetric margins. Step
+comparison uses the shared 12.5 cm width and a horizontal colorbar. Both real
+`allplot.sh` launchers subsequently exited 0 with the installed package. All four
+figures passed strict thesis validation and visual inspection. Source/data
+copies and `plot_cleanup_evidence.json` are under
+`build/fvm_plot_completion/runs-20260929T150300195325Z/`.
+
+Boundary-layer results remain **out of band**, not scientifically validated.
+The profile plot had used requested stations .25/.5/.75 instead of recorded
+sample columns .243056/.493056/.743056. Correcting the similarity coordinate
+and labels to recorded x gives maximum profile errors .0416/.0565/.0759; the
+overall .0759 still exceeds .05. Skin-friction error over .2<x/L<.95 remains
+15.34% mean and 25.90% maximum against the fixed-freestream Blasius reference,
+with a 5% mean target. Step ends at reattachment x/h=3.59 at t=12; this does not
+establish stationary or mesh-converged reattachment.
+
+Saved boundary-layer fields show top velocity 1.017–1.041 over the skin-friction
+comparison interval and profile peak velocities 1.030–1.045. A diagnostic
+rescaling of the Blasius skin friction by the local top-speed ratio to the power
+1.5 reduces mean disagreement to 10.07% and maximum to 18.52%, but still misses
+the target. It is not a replacement acceptance reference: local acceleration
+violates the uniform-edge-speed assumption. Finite domain height/pressure
+gradient and discretization effects are plausible contributors; these data do
+not isolate a solver defect or establish that coarse resolution alone explains
+the discrepancy. The first wall-cell height is .0015 and the plate has 72 cells
+along x.
+
+A minimal next qualification would separately double plate resolution to 144,
+halve first wall-cell height to .00075 at the same domain and stretch ratio,
+then test height .70 with the original central resolution. Keep physical Re,
+duration, solver tolerances and timestep rules fixed and compare actual sampled
+x coordinates, edge speed, pressure gradient, profiles and wall shear. A paired
+smaller-timestep check is needed before attributing changes solely to mesh or
+domain. These are proposed isolated studies; none was launched or substituted
+for the current default results.

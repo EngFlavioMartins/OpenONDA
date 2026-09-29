@@ -51,18 +51,19 @@ def main():
     for station in sorted(set(data["station"])):
         sel = data["station"] == station
         y, u = data["position_y"][sel], data["velocity_x"][sel]
-        eta = y * np.sqrt(FREESTREAM_SPEED / (kinematic_viscosity * station))
+        sampled_x = float(data["position_x"][sel][0])
+        eta = y * np.sqrt(FREESTREAM_SPEED / (kinematic_viscosity * sampled_x))
         u_norm = u / FREESTREAM_SPEED
         marker = STATION_MARKERS.get(station, "d")
         ax.plot(
-            eta, u_norm, marker, markersize=3.5, linestyle="none", label=f"FVM $x/L$ = {station:g}"
+            eta, u_norm, marker, markersize=3.5, linestyle="none", label=f"FVM $x/L$ = {sampled_x:.3g}"
         )
         # Error against Blasius inside the layer (eta <= 6).
         inside = eta <= 6.0
         u_ref = np.interp(eta[inside], eta_ref, fprime_ref)
         err = float(np.max(np.abs(u_norm[inside] - u_ref))) if inside.any() else 0.0
         max_err = max(max_err, err)
-        print(f"  x/L = {station:g}: max |u/U - f'(eta)| = {err:.4f} (eta <= 6)")
+        print(f"  sampled x/L = {sampled_x:.6g}: max |u/U - f'(eta)| = {err:.4f} (eta <= 6)")
 
     ax.set_xlim(0, 8)
     ax.set_ylim(0, 1.15)
@@ -70,7 +71,7 @@ def main():
     ax.set_ylabel(r"$u / U_\infty$")
     ax.set_title(f"Flat-plate profiles vs Blasius (Re$_L$ = {args.Re:g})")
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8)
+    ax.legend()
 
     fig.tight_layout()
     save_fig(fig, "blasius_profiles.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)

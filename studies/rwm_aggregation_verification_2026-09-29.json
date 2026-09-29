@@ -1,0 +1,107 @@
+{
+  "source_commit": "048a77cf",
+  "cases": [
+    {
+      "case": "vortex",
+      "ensemble_size": 16,
+      "random_seeds": [
+        42000,
+        42001,
+        42002,
+        42003,
+        42004,
+        42005,
+        42006,
+        42007,
+        42008,
+        42009,
+        42010,
+        42011,
+        42012,
+        42013,
+        42014,
+        42015
+      ],
+      "confidence_level": 0.95,
+      "minimum_absolute_circulation_capture_fraction": 0.9999999999999993,
+      "frames": 53,
+      "maximum_relative_mcse": 0.0673529845219168,
+      "coverage": "all 53 native checkpoints"
+    },
+    {
+      "case": "dipole",
+      "ensemble_size": 28,
+      "random_seeds": [
+        42000,
+        42001,
+        42002,
+        42003,
+        42004,
+        42005,
+        42006,
+        42007,
+        42008,
+        42009,
+        42010,
+        42011,
+        42012,
+        42013,
+        42014,
+        42015,
+        42016,
+        42017,
+        42018,
+        42019,
+        42020,
+        42021,
+        42022,
+        42023,
+        42024,
+        42025,
+        42026,
+        42027
+      ],
+      "confidence_level": 0.95,
+      "minimum_absolute_circulation_capture_fraction": 0.9999999999999996,
+      "frames": 3,
+      "selected_native_steps": [
+        0,
+        468,
+        927
+      ],
+      "maximum_relative_mcse": 0.0680117861025545,
+      "coverage": "initial, middle and final native checkpoints; all members"
+    },
+    {
+      "case": "merging",
+      "ensemble_size": 14,
+      "random_seeds": [
+        42000,
+        42001,
+        42002,
+        42003,
+        42004,
+        42005,
+        42006,
+        42007,
+        42008,
+        42009,
+        42010,
+        42011,
+        42012,
+        42013
+      ],
+      "confidence_level": 0.95,
+      "minimum_absolute_circulation_capture_fraction": 0.9983425379053854,
+      "frames": 3,
+      "selected_native_steps": [
+        0,
+        468,
+        927
+      ],
+      "maximum_relative_mcse": 0.0701011555055893,
+      "coverage": "initial, middle and final native checkpoints; all members"
+    }
+  ],
+  "original_data_modified": false
+}

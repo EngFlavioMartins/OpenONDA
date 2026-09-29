@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -e
 cd -- "$(dirname -- "$0")"
 python setup.py baseline
 python setup.py selective_eddy_viscosity

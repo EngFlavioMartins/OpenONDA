@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -e
 cd -- "$(dirname -- "$0")"
 
 python setup.py --name "grid_h010125" -h 0.10125

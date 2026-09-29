@@ -1,6 +1,18 @@
 {
   "archive": "data.tar.gz",
-  "archive_sha256": "f56a4ba9f59bac5a7e1b3fecfb5042d788c5047b3b828d6e467ccff1031a0e1c",
+  "archive_parts": [
+    {
+      "name": "data.tar.gz.part000",
+      "sha256": "b365ddcc434a91f8249a79de34a9f2ac595d61c81bd5c145c40d18e6c44b6d9d",
+      "size": 1073741824
+    },
+    {
+      "name": "data.tar.gz.part001",
+      "sha256": "6f8b04352497733aef078e123e97a0eff9bef806f18819da4194946cbba35c5a",
+      "size": 42288413
+    }
+  ],
+  "archive_sha256": "564be1aef5c825aa0f5054698221fab2f19cbab1310f8f709c889446779aa17c",
   "excluded_superseded": [],
   "files": [
     {
@@ -1244,6 +1256,11 @@
       "size": 70171
     },
     {
+      "path": "samples/delta_wing/wake_10span_002410.vts",
+      "sha256": "cada23eb2e25133dd32ff40f2afa105dc6cf5ba3fdcb78447294b01baffc6d56",
+      "size": 70234
+    },
+    {
       "path": "samples/delta_wing/wake_1span.pvd",
       "sha256": "ed623a9753cfca9ae7f60f47cb7ea20136caf66a84baae33cf5fef6bd8bbff34",
       "size": 14652
@@ -2449,6 +2466,11 @@
       "size": 69492
     },
     {
+      "path": "samples/delta_wing/wake_1span_002410.vts",
+      "sha256": "abc5a4ec22e4c6b7aaa9a75c89a3a099c10ec955586abda6f5bde68c4ff77afc",
+      "size": 69426
+    },
+    {
       "path": "samples/delta_wing/wake_5span.pvd",
       "sha256": "7fd54f3f1b8ce4d50ed3f90a19d16219fbc687ba8d84cda36c3903eb233dd791",
       "size": 14652
@@ -3652,6 +3674,11 @@
       "path": "samples/delta_wing/wake_5span_002400.vts",
       "sha256": "3a9c1dc37689d86bca0608dd539da03b183d1052396f470aa062bfbc4b4f1167",
       "size": 69805
+    },
+    {
+      "path": "samples/delta_wing/wake_5span_002410.vts",
+      "sha256": "9ad2d86d268a69fdfeef83687122fb8b538972a8045a8785d89b21a7b84666fb",
+      "size": 70201
     },
     {
       "path": "solution/vpm/vpm_000000.h5",
@@ -4888,6 +4915,27 @@
           "time": 6.025
         }
       }
+    },
+    "collection_repair": {
+      "added_files": [
+        {
+          "path": "samples/delta_wing/wake_1span_002410.vts",
+          "sha256": "abc5a4ec22e4c6b7aaa9a75c89a3a099c10ec955586abda6f5bde68c4ff77afc",
+          "size": 69426
+        },
+        {
+          "path": "samples/delta_wing/wake_5span_002410.vts",
+          "sha256": "9ad2d86d268a69fdfeef83687122fb8b538972a8045a8785d89b21a7b84666fb",
+          "size": 70201
+        },
+        {
+          "path": "samples/delta_wing/wake_10span_002410.vts",
+          "sha256": "cada23eb2e25133dd32ff40f2afa105dc6cf5ba3fdcb78447294b01baffc6d56",
+          "size": 70234
+        }
+      ],
+      "method": "Copied original native sample files referenced by frozen PVD; source and frozen step-2410 checkpoints match byte-for-byte.",
+      "native_checkpoint_sha256": "37db3d7c6108ec170e684206f482cbbeb948490737ea9769cc8cc9493db55617"
     },
     "scope": "all current samples plus plotting checkpoints; unreferenced superseded histories remain local"
   },

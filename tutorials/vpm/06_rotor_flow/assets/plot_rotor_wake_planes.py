@@ -309,7 +309,10 @@ def _signal_onset_window_status(p, plane):
         return {"signal_onset_time": None, "signal_onset_qualifies": True}
     assessment = assess_wake_signal_onset(p, plane["name"])
     onset_time = assessment["signal_onset_time"]
-    window_start = p.metadata["state"]["time"] - OPERATING_WINDOW_REVOLUTIONS * p.rotation_period
+    window_start = plane.get(
+        "window_start",
+        p.metadata["state"]["time"] - OPERATING_WINDOW_REVOLUTIONS * p.rotation_period,
+    )
     return {
         "signal_onset_time": onset_time,
         "signal_onset_qualifies": onset_time is not None and onset_time <= window_start + 1.0e-10,
@@ -328,7 +331,7 @@ def native_plane_windows(
 
     config, state = p.metadata["configuration"], p.metadata["state"]
     dt = config["numerics"]["time_step_size"]
-    end, start = state["time"], state["time"] - rotations * p.rotation_period
+    horizon = state["time"]
     declared = [item for item in config["samplers"]["items"] if item["type"] == "SurfaceSampler"]
     if required_names is not None:
         required_names = tuple(required_names)
@@ -339,6 +342,31 @@ def native_plane_windows(
         declared = [declared_by_name[name] for name in required_names]
     if not declared:
         raise ValueError("No downstream planes declared in native metadata")
+    tolerance = max(1e-10, dt * 1e-6)
+    collections = {}
+    common_times = None
+    for item in declared:
+        name = item["file_name"]
+        frames = ElementTree.parse(p.samples_dir / f"{name}.pvd").findall(".//DataSet")
+        times = np.array([float(frame.attrib["timestep"]) for frame in frames])
+        if len(times) < 2 or not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
+            raise ValueError(f"{name}: missing, duplicate or unordered frame times")
+        collections[name] = frames, times
+        available = times[times <= horizon + tolerance]
+        if common_times is None:
+            common_times = available
+        else:
+            common_times = np.array(
+                [
+                    time
+                    for time in common_times
+                    if np.any(np.isclose(available, time, rtol=0, atol=tolerance))
+                ]
+            )
+    if not len(common_times):
+        raise ValueError("Native planes have no shared sample within the accepted horizon")
+    end = float(common_times[-1])
+    start = end - rotations * p.rotation_period
     steps = np.arange(state["initial_step"] + 1, state["step"] + 1)
     accepted_times = state["initial_time"] + (steps - state["initial_step"]) * dt
     background = np.asarray(config["numerics"]["freestream_velocity"])
@@ -346,10 +374,7 @@ def native_plane_windows(
     for item in declared:
         name = item["file_name"]
         pvd = p.samples_dir / f"{name}.pvd"
-        frames = ElementTree.parse(pvd).findall(".//DataSet")
-        times = np.array([float(frame.attrib["timestep"]) for frame in frames])
-        if len(times) < 2 or not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
-            raise ValueError(f"{name}: missing, duplicate or unordered frame times")
+        frames, times = collections[name]
         schedule_data = item["schedule"]
         if schedule_data["type"] == "EverySteps":
             schedule = EverySteps(
@@ -375,13 +400,16 @@ def native_plane_windows(
         )
         selected = np.flatnonzero((times > start + tolerance) & (times <= end + tolerance))
         sampled_times = times[selected]
+        # A shared field endpoint must not hide missing scheduled output near
+        # the accepted clock. Check the full due cadence through that clock.
+        published = times[(times > start + tolerance) & (times <= horizon + tolerance)]
         complete = (
             len(expected) >= 4
-            and len(selected) == len(expected)
-            and np.allclose(sampled_times, expected, rtol=0, atol=tolerance)
+            and len(published) == len(expected)
+            and np.allclose(published, expected, rtol=0, atol=tolerance)
             and expected[0] <= start + cadence + tolerance
             and end - expected[-1] <= cadence + tolerance
-            and times[-1] <= end + tolerance
+            and times[-1] <= horizon + tolerance
         )
         if require_complete and not complete:
             raise ValueError(f"{name}: incomplete final {rotations:g}-revolution velocity window")
@@ -450,6 +478,8 @@ def native_plane_windows(
                 induced_field_drift=drift,
                 compared_rotations=compared_rotations,
                 window_mean_velocity=window_mean_velocity,
+                window_start=start,
+                window_end=end,
             )
         )
     if require_complete:
@@ -494,6 +524,8 @@ def plane_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
                 radius=radius,
                 mean=mean,
                 times=plane["times"],
+                window_start=plane.get("window_start", float(plane["times"][0])),
+                window_end=plane.get("window_end", float(plane["times"][-1])),
                 complete=plane["complete"],
                 induced_field_drift=plane["induced_field_drift"],
                 compared_rotations=plane["compared_rotations"],
@@ -613,12 +645,15 @@ def main():
     args = build_arg_parser(__doc__).parse_args()
     theme.set_thesis_style()
     p = rotor_inputs()
-    ct, _ = read_operating_point()
+    profiles = plane_profiles(p)
+    ct, _ = read_operating_point(
+        window_start=profiles[0]["window_start"], window_end=profiles[0]["window_end"]
+    )
     induction = axial_induction_factor_from_thrust_coefficient(ct)
     fig, ax = plt.subplots(figsize=theme.figure_size("stacked"), constrained_layout=True)
-    for row in plane_profiles(p):
+    for row in profiles:
         drift = row["induced_field_drift"]
-        start, end = row["times"][[0, -1]] / p.rotation_period
+        start, end = np.array([row["window_start"], row["window_end"]]) / p.rotation_period
         quality = (
             f"field drift {100 * drift:.1f}\\%" if np.isfinite(drift) else "wake drift unqualified"
         )

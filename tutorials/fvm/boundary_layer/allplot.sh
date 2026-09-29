@@ -1,4 +1,5 @@
-#!/bin/bash -e
+#!/bin/bash
+set -e
 # Usage: ./allplot.sh [png|pdf] (default: png)
 cd -- "$(dirname -- "$0")"
 

@@ -58,7 +58,7 @@ def main():
     ax.axvline(0.0, color=COLORS["reference"], linewidth=0.8, linestyle="--")
     ax.set_xlabel(r"$u/U_b$")
     ax.set_ylabel(r"$y/h$")
-    ax.set_title("Backward-facing step: downstream velocity profiles")
+    ax.set_title("Downstream velocity profiles")
     ax.set_ylim(0.0, 2.0)
     ax.legend()
     ax.grid(True, alpha=0.3)
