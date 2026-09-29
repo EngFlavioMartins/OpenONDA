@@ -42,25 +42,27 @@ def main():
     fig, axes = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
 
     ax = axes[0]
-    ax.plot(t, drag_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
+    ax.plot(
+        t,
+        drag_coefficient,
+        color=COLORS["TUDdark"],
+        linewidth=0.9,
+        label=rf"$\overline{{C_D}}$ (last 1/3) = {drag_coefficient_mean:.4f}",
+    )
     ax.set_ylabel("drag coefficient")
     ax.set_title(f"NACA 0012 forces (Re = {RE:.0f}, $\\alpha$ = {args.angle:g}$^\\circ$)")
-    ax.text(
-        0.02,
-        0.06,
-        rf"$\overline{{C_D}}$ (last 1/3) = {drag_coefficient_mean:.4f}",
-        transform=ax.transAxes,
-    )
+    ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
     ax = axes[1]
-    ax.plot(t, lift_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
-    ax.text(
-        0.02,
-        0.06,
-        rf"$\overline{{C_L}}$ (last 1/3) = {lift_coefficient_mean:.4f}",
-        transform=ax.transAxes,
+    ax.plot(
+        t,
+        lift_coefficient,
+        color=COLORS["TUDdark"],
+        linewidth=0.9,
+        label=rf"$\overline{{C_L}}$ (last 1/3) = {lift_coefficient_mean:.4f}",
     )
+    ax.legend(loc="best")
     ax.set_ylabel("lift coefficient")
     ax.set_xlabel("t [s]")
     ax.grid(True, alpha=0.3)

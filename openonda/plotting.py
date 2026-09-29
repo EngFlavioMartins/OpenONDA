@@ -415,8 +415,80 @@ def fit_thesis_y_label_margins(fig, axes: Iterable[Axes] | Axes) -> None:
     """Place y labels near the edge, retaining an x-centred subplot grid."""
     axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
     for _ in range(3):
+        _separate_corner_tick_labels(fig, axes)
+        _separate_title_from_y_ticks(fig, axes)
         outer = thesis_y_label_margin(fig, axes)
         centered_subplots_adjust(fig, outer=outer)
+
+
+def _separate_corner_tick_labels(fig, axes: tuple[Axes, ...]) -> None:
+    """Give intersecting x/y tick labels enough horizontal room to clear."""
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    gap = fig.dpi / 72.0
+    for axis in axes:
+        xlow, xhigh = sorted(axis.get_xlim())
+        ylow, yhigh = sorted(axis.get_ylim())
+        for major in (True, False):
+            x_ticks = axis.xaxis.get_major_ticks() if major else axis.xaxis.get_minor_ticks()
+            y_ticks = axis.yaxis.get_major_ticks() if major else axis.yaxis.get_minor_ticks()
+            x_labels = [
+                tick.label1.get_window_extent(renderer)
+                for tick in x_ticks
+                if xlow <= tick.get_loc() <= xhigh
+                and tick.label1.get_visible()
+                and tick.label1.get_text().strip()
+            ]
+            needed = 0.0
+            for tick in y_ticks:
+                label = tick.label1
+                if not (
+                    ylow <= tick.get_loc() <= yhigh
+                    and label.get_visible()
+                    and label.get_text().strip()
+                ):
+                    continue
+                bounds = label.get_window_extent(renderer)
+                for x_bounds in x_labels:
+                    if bounds.overlaps(x_bounds):
+                        needed = max(needed, bounds.x1 - x_bounds.x0 + gap)
+            if needed > 0.0 and y_ticks:
+                axis.yaxis.set_tick_params(
+                    which="major" if major else "minor",
+                    pad=y_ticks[0].get_pad() + needed * 72.0 / fig.dpi,
+                )
+
+
+def _separate_title_from_y_ticks(fig, axes: tuple[Axes, ...]) -> None:
+    """Raise a title only when its rendered bounds touch a y tick."""
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    gap = fig.dpi / 72.0
+    for axis in axes:
+        title = axis.title
+        if not title.get_visible() or not title.get_text().strip():
+            continue
+        title_bounds = title.get_window_extent(renderer)
+        lower, upper = sorted(axis.get_ylim())
+        needed = 0.0
+        for tick in (*axis.yaxis.get_major_ticks(), *axis.yaxis.get_minor_ticks()):
+            if not lower <= tick.get_loc() <= upper:
+                continue
+            for label in (tick.label1, tick.label2):
+                if not label.get_visible() or not label.get_text().strip():
+                    continue
+                bounds = label.get_window_extent(renderer)
+                if bounds.overlaps(title_bounds):
+                    needed = max(needed, bounds.y1 - title_bounds.y0 + gap)
+        if needed > 0.0:
+            _, y = title.get_position()
+            axis.set_title(
+                title.get_text(),
+                loc="center",
+                y=y + needed / axis.bbox.height,
+                fontproperties=title.get_fontproperties(),
+                color=title.get_color(),
+            )
 
 
 def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
