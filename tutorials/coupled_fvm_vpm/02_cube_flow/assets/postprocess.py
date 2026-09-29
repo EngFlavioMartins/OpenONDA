@@ -141,8 +141,73 @@ def _fvm_artifacts(solution_directory: Path) -> tuple[Path, Path]:
     raise FileNotFoundError(candidates[0][0])
 
 
+@lru_cache(maxsize=1)
+def prepared_inputs() -> dict | None:
+    """Verify the complete portable comparison inputs before using saved fields."""
+    marker = COMPARISON / "prepared_inputs.json"
+    if not marker.is_file():
+        return None
+    record = json.loads(marker.read_text())
+    if record.get("schema_version") != 1 or record.get("method") != PREPARATION_METHOD:
+        raise ValueError("Unsupported prepared cube comparison inputs")
+    files = record.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("Prepared cube comparison inputs have no checked files")
+    checked = {item["path"] for item in files}
+    reference = record["reference"]
+    required = {
+        "samples/comparison/manifest.json",
+        "samples/vpm_slice_z0.pvd",
+        "samples/vpm_centreline.csv",
+        "samples/vpm_offaxis_y075.csv",
+        "samples/forces_history.csv",
+        "solution/run_metadata.json",
+        "solution/fvm_metadata.json",
+        "solution/coupler_diagnostics.jsonl",
+        f"{reference['solution']}/fvm_metadata.json",
+        f"{reference['solution']}/diagnostics.jsonl",
+        f"{reference['samples']}/forces_history.csv",
+        *record["meshes"].values(),
+    }
+    if not required <= checked:
+        raise ValueError("Prepared cube comparison inputs omit required scientific provenance")
+    for item in files:
+        relative = Path(item["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Prepared cube comparison input path must be case-relative")
+        path = CASE_DIR / relative
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        if digest.hexdigest() != item["sha256"]:
+            raise ValueError(f"Prepared cube comparison input changed: {relative}")
+    manifest = record["comparison"]
+    original = json.loads((COMPARISON / "manifest.json").read_text())
+    identity = lambda value: [(row["time"], row["file"]) for row in value["frames"]]
+    if identity(manifest) != identity(original):
+        raise ValueError("Prepared cube comparison states differ from the source manifest")
+    if manifest.get("method") != PREPARATION_METHOD or not manifest.get("frames"):
+        raise ValueError("Prepared cube comparison has no supported matched fields")
+    expected = {f"samples/comparison/{row['file']}" for row in manifest["frames"]}
+    for _, path in _pvd_frames(SAMPLES / "vpm_slice_z0.pvd"):
+        expected.add(path.relative_to(CASE_DIR).as_posix())
+    if not expected <= checked:
+        raise ValueError("Prepared cube comparison inputs omit field samples")
+    return record
+
+
 def reference_run() -> ReferenceRun:
     """Use the registered fine run, or the finest complete grid-study run."""
+    archived = prepared_inputs()
+    if archived is not None:
+        selected = archived["reference"]
+        return ReferenceRun(
+            selected["name"],
+            CASE_DIR / selected["solution"],
+            CASE_DIR / selected["samples"],
+            selected["target_spacing"],
+        )
     root = CASE_DIR / "reference_flow"
     samples_root = root / "samples"
     solution_root = root / "solution"
@@ -375,6 +440,9 @@ def remove_obsolete_frames(prefix: str, times: np.ndarray, fmt: str) -> None:
 
 
 def comparison_manifest() -> dict:
+    marker = COMPARISON / "prepared_inputs.json"
+    if marker.is_file():
+        return json.loads(marker.read_text())["comparison"]
     path = COMPARISON / "manifest.json"
     if not path.is_file():
         raise FileNotFoundError(f"Missing {path}; run assets/postprocess.py first")
@@ -720,6 +788,9 @@ def comparison_configurations() -> tuple[dict, dict]:
 
 def prepare_comparison_fields() -> int:
     """Prepare exactly coincident FVM fields on the native comparison lattice."""
+    if prepared_inputs() is not None:
+        comparison_manifest()
+        return 0
     reference_solution = reference_run().solution
     reference_config = reference_solution / "fvm_metadata.json"
     coupled_config = SOLUTION / "fvm_metadata.json"
@@ -899,8 +970,16 @@ def build_comparison_report():
                     }
                 )
     meshes = {
-        "coupled": mesh_summary(_fvm_artifacts(SOLUTION)[1]),
-        "reference": mesh_summary(_fvm_artifacts(selected_reference.solution)[1]),
+        "coupled": mesh_summary(
+            CASE_DIR / prepared_inputs()["meshes"]["coupled"]
+            if prepared_inputs() is not None
+            else _fvm_artifacts(SOLUTION)[1]
+        ),
+        "reference": mesh_summary(
+            CASE_DIR / prepared_inputs()["meshes"]["reference"]
+            if prepared_inputs() is not None
+            else _fvm_artifacts(selected_reference.solution)[1]
+        ),
     }
     coupled_spacing = meshes["coupled"]["cube_adjacent_cartesian_spacings"]
     reference_spacing = meshes["reference"]["cube_adjacent_cartesian_spacings"]
@@ -933,7 +1012,7 @@ def build_comparison_report():
                     if np.isclose(float(row["time"]), end, rtol=0, atol=TIME_ATOL)
                 )
     return {
-        "reference_samples": str(selected_reference.samples),
+        "reference_samples": selected_reference.samples.relative_to(CASE_DIR).as_posix(),
         "reference_grid": selected_reference.name,
         "reference_target_spacing": selected_reference.target_spacing,
         "comparison_end_time": end,
@@ -1143,7 +1222,8 @@ def main(arguments: list[str] | None = None) -> int:
         )
         return 2
     result = validate_plot_inputs()
-    print(f"Prepared {count} matched comparison state(s).")
+    total = len(comparison_manifest()["frames"])
+    print(f"Ready: {total} matched comparison state(s); {count} newly prepared.")
     print(
         "Validated plotting inputs: "
         f"profiles through t={result['latest_profile_time']:.6g} s, "

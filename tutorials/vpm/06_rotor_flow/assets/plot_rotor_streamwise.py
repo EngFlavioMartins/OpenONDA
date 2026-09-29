@@ -15,6 +15,7 @@ from scipy.integrate import trapezoid
 from ._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
+    accepted_history,
     build_arg_parser,
     load_theme,
     rotor_inputs,
@@ -59,7 +60,10 @@ def main():
     """Render one common five-revolution native window for all four lines."""
     args = build_arg_parser(__doc__).parse_args()
     p = rotor_inputs()
-    tables = [pd.read_csv(p.samples_dir / f"{name}.csv") for name in STREAMWISE_NAMES]
+    tables = [
+        accepted_history(pd.read_csv(p.samples_dir / f"{name}.csv"), p.metadata)
+        for name in STREAMWISE_NAMES
+    ]
     end = min(table.time.max() for table in tables)
     start = end - OPERATING_WINDOW_REVOLUTIONS * p.rotation_period
     _, theme = load_theme()

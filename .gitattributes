@@ -4,3 +4,4 @@ docs/LBM.pdf filter=lfs diff=lfs merge=lfs -text
 tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/mesh_evidence/** filter=lfs diff=lfs merge=lfs -text
 tutorials/**/figures/**/*.log -diff
 tutorials/**/figures/**/*.aux -diff
+tutorials/**/assets/results/data.tar.gz* filter=lfs diff=lfs merge=lfs -text

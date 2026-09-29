@@ -13,6 +13,7 @@ import pandas as pd
 from ._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
+    accepted_history,
     bem_reference,
     build_arg_parser,
     load_theme,
@@ -127,6 +128,7 @@ def shared_vlm_window(
     expected_cadence=None,
     accepted_step_size=None,
     expected_chord_panels=None,
+    cadence_start_time=None,
 ):
     """Select one shared final window after reconciling span/chord clocks."""
     if revolutions <= 0:
@@ -153,7 +155,12 @@ def shared_vlm_window(
         if accepted_step_size < 0.0:
             raise ValueError("accepted_step_size must be non-negative")
         maximum_gap = expected_cadence + accepted_step_size + 1.0e-10
-        if np.any(np.diff(span_times) > maximum_gap):
+        gaps = np.diff(span_times)
+        if cadence_start_time is not None:
+            # A continuation can change dt: its recorded schedule constrains
+            # this segment, while older native clocks remain paired and ordered.
+            gaps = gaps[span_times[:-1] >= cadence_start_time - 1.0e-10]
+        if np.any(gaps > maximum_gap):
             raise ValueError("native VLM clock has a gap beyond its declared cadence")
     recorded_end = float(span_times[-1])
     if end_time is None:
@@ -185,8 +192,12 @@ def main():
     inputs = rotor_inputs()
     vlm = inputs.metadata["configuration"]["numerics"]["vlm"]
     surface = vlm["surfaces"][0]["name"]
-    span = pd.read_csv(inputs.samples_dir / f"vlm_spanwise_{surface}.csv")
-    chord = pd.read_csv(inputs.samples_dir / f"vlm_chordwise_{surface}.csv")
+    span = accepted_history(
+        pd.read_csv(inputs.samples_dir / f"vlm_spanwise_{surface}.csv"), inputs.metadata
+    )
+    chord = accepted_history(
+        pd.read_csv(inputs.samples_dir / f"vlm_chordwise_{surface}.csv"), inputs.metadata
+    )
     expected_cadence = _native_vlm_logging_cadence(
         inputs.metadata,
         inputs.time_step_size,
@@ -209,6 +220,7 @@ def main():
         expected_cadence=expected_cadence,
         accepted_step_size=inputs.time_step_size,
         expected_chord_panels=expected_chord_panels,
+        cadence_start_time=inputs.metadata["state"]["initial_time"],
     )
     start, end = cutoff / inputs.rotation_period, end_time / inputs.rotation_period
     positions = chord.groupby(["step", "station_id"])[["bound_y", "bound_z"]].mean()

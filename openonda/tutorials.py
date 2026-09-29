@@ -102,6 +102,7 @@ _EXCLUDED_PARTS: Final = {
     "__pycache__",
     ".matplotlib",
     "animation",
+    "results",
 }
 _EXCLUDED_NAMES: Final = {
     ".DS_Store",

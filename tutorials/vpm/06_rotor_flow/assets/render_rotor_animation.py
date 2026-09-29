@@ -68,6 +68,16 @@ def _coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
     if not paths:
         raise FileNotFoundError(f"no coupled VPM backups found under {solution_dir}")
     records = [(time, path) for path in paths for _, time in [_read_backup_clock(path)]]
+    metadata_path = solution_dir / "vpm_metadata.json"
+    if metadata_path.is_file():
+        state = json.loads(metadata_path.read_text())["state"]
+        records = [
+            (time, path)
+            for time, path in records
+            if time <= state["time"] + 1e-10 and _backup_step(path) <= state["step"]
+        ]
+    if not records:
+        raise ValueError("no coupled backups within the recorded accepted horizon")
     steps = np.asarray([_backup_step(path) for _, path in records])
     times = np.asarray([time for time, _ in records])
     if np.any(np.diff(steps) <= 0) or np.any(np.diff(times) <= 0):
@@ -75,7 +85,7 @@ def _coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
     return records
 
 
-def _pvd_frames(path: Path) -> list[tuple[float, Path]]:
+def _pvd_frames(path: Path, *, end_time=None) -> list[tuple[float, Path]]:
     if not path.is_file():
         raise FileNotFoundError(path)
     root = ElementTree.parse(path)
@@ -88,6 +98,10 @@ def _pvd_frames(path: Path) -> list[tuple[float, Path]]:
     times = np.asarray([time for time, _ in frames])
     if np.any(np.diff(times) <= 0):
         raise ValueError(f"{path}: frame times are not strictly increasing")
+    if end_time is not None:
+        frames = [(time, frame) for time, frame in frames if time <= end_time + 1e-10]
+        if not frames:
+            raise ValueError(f"{path}: no native frames within the accepted horizon")
     return frames
 
 
@@ -125,7 +139,7 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         raise ValueError("GIF playback cannot represent more than 100 fps")
     solution_dir, samples_dir = _run_directories()
     vlm_frames = _coupled_frames(solution_dir)
-    plane_frames = _pvd_frames(samples_dir / "wake_1D.pvd")
+    plane_frames = _pvd_frames(samples_dir / "wake_1D.pvd", end_time=vlm_frames[-1][0])
     if max_frames is not None:
         if max_frames < 2:
             raise ValueError("max_frames must be at least 2")

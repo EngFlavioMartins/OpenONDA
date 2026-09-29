@@ -159,8 +159,8 @@ tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.json
 !tutorials/**/*.sh
 tests/**/reference_flow/**
 
-# Generated sampler output remains local pending the data-retention decision.
-# See docs/verification/tutorial_data_and_portability_2026-09-29.md.
+# Working output stays local; approved lossless snapshots use assets/results and Git LFS.
+# See docs/verification/tutorial_results_archive.md.
 **/samples/
 **/study_results/
 

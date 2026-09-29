@@ -2,6 +2,8 @@
 # Usage: ./allplot.sh [png|pdf] (default: png)
 cd -- "$(dirname -- "$0")"
 
+python -m openonda.results restore
+
 python assets/plot_delta_wing_forces.py --format "${1:-png}"
 python assets/plot_delta_wing_force_cycles.py --format "${1:-png}"
 python assets/plot_delta_wing_circulation_history.py --format "${1:-png}"

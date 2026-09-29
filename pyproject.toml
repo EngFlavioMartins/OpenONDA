@@ -134,7 +134,7 @@ include-package-data = false
 "*" = [
     "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
     "**/solution_*/*", "**/solutions_*/*",
-    "**/study_results/*", "**/animation/*", "**/__pycache__/*",
+    "**/study_results/*", "**/animation/*", "**/assets/results/*", "**/__pycache__/*",
     "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
 ]
 

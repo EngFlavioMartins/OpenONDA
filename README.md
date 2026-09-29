@@ -29,7 +29,8 @@ Only the 3.11 release series is supported; 3.11 security and bug-fix updates
 remain allowed. Create a virtual environment with that interpreter:
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --branch development \
+git lfs install
+git clone --depth 1 --branch development \
   https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 python3.11 -m venv .venv
@@ -44,6 +45,14 @@ to work on the source without reinstalling after edits. Ordinary
 
 See [installation details](docs/installation.md) for environment setup,
 optional mesh import and MPI/PETSc support.
+
+To reproduce archived tutorial figures, install [Git LFS](https://git-lfs.com/)
+before cloning and the [rendering dependencies](docs/installation.md#optional-external-software).
+Run `./allplot.sh` inside the case. Its lossless result archive restores missing
+plot inputs; existing local runs are preserved. Archives record whether their
+results are complete, partial or stopped on a numerical health check. See the
+[archive checklist](docs/verification/tutorial_results_archive.md) for coverage
+and remaining numerical work. Result archives are separate from the pip package.
 
 ## Two small examples
 

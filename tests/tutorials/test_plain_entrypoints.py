@@ -132,7 +132,7 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "from pathlib import Path\n"
-        "assert Path(sys.argv[1]).is_file(), sys.argv[1]\n"
+        "assert sys.argv[1:] == ['-m', 'openonda.results', 'restore'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
         "with open(os.environ['CALLS'], 'a') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "raise SystemExit(int(os.environ['FAIL']))\n"

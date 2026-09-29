@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import warnings
 from functools import lru_cache
 from types import SimpleNamespace
 from pathlib import Path
@@ -109,12 +110,53 @@ def bem_reference():
 def performance():
     """Actual shaft power includes the prescribed ramp and all individual blades."""
     p = rotor_inputs()
-    data = pd.read_csv(p.samples_dir / "vlm_forces.csv")
+    data = accepted_history(pd.read_csv(p.samples_dir / "vlm_forces.csv"), p.metadata)
     reference = 0.5 * p.density * p.freestream_speed**2 * np.pi * p.rotor_radius**2
     data["CT"] = data.force_x / reference
     data["CP"] = data.rotational_power / (reference * p.freestream_speed)
     data["nominal_revolutions"] = data.time / p.rotation_period
     return data
+
+
+def accepted_history(data, metadata):
+    """Select recorded accepted history while leaving live sampler tails untouched.
+
+    Samplers can flush newer rows before the next metadata checkpoint. Such
+    rows remain stored but cannot define a plot's accepted operating window.
+    """
+    state = metadata["state"]
+    horizon = float(state["time"])
+    dt = float(metadata["configuration"]["numerics"]["time_step_size"])
+    tolerance = max(1e-10, dt * 1e-6)
+    if not np.isfinite(horizon) or dt <= 0 or not np.isfinite(dt):
+        raise ValueError("invalid recorded accepted horizon")
+    times = data.time.to_numpy()
+    if not np.isfinite(times).all():
+        raise ValueError("native history has non-finite timestamps")
+    if "step" in data:
+        steps = data.step.to_numpy()
+        current = steps >= state["initial_step"]
+        expected = state["initial_time"] + (steps - state["initial_step"]) * dt
+        if (
+            not np.isfinite(steps).all()
+            or np.any(steps < 0)
+            or np.any(steps != np.rint(steps))
+            or not np.allclose(times[current], expected[current], rtol=0, atol=tolerance)
+            or np.any(times[~current] > state["initial_time"] + tolerance)
+        ):
+            raise ValueError("native history step/time clock disagrees with recorded solver clock")
+        accepted = (steps <= state["step"]) & (times <= horizon + tolerance)
+    else:
+        accepted = times <= horizon + tolerance
+    if not np.any(accepted):
+        raise ValueError("native history has no rows within the accepted horizon")
+    if not np.all(accepted):
+        warnings.warn(
+            f"Plotting accepted history through t={horizon:.9g} s; "
+            "newer sampler rows are retained on disk and excluded from this plot.",
+            stacklevel=2,
+        )
+    return data.loc[accepted].copy()
 
 
 def read_operating_point(*, revolutions=OPERATING_WINDOW_REVOLUTIONS):
