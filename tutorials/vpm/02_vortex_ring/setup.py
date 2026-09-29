@@ -42,7 +42,6 @@ MAX_N_PARTICLES = 100_000
 WIDNALL_MODES = 24
 DEFAULT_WIDNALL_AMPLITUDE = 0.005
 TOROIDAL_TAIL_FRACTION = 0.05
-SMAGORINSKY_COEFFICIENT = 0.20
 RANDOM_SEED = 42
 
 # Common resolution-loss limits
@@ -70,9 +69,7 @@ def cadence_steps(period: float) -> int:
 def turbulence_config(variant: str) -> vpm.TurbulenceConfig:
     return {
         "DNS": vpm.TurbulenceConfig.dns(),
-        "LES_SMAGORINSKY": vpm.TurbulenceConfig.les_smagorinsky(
-            smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT
-        ),
+        "LES_SMAGORINSKY": vpm.TurbulenceConfig.les_smagorinsky(),
     }[VARIANT_CONFIG[variant][0]]
 
 
@@ -120,12 +117,8 @@ def build_case(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
-            integrator=vpm.SSPRK3(),
             turbulence=turbulence_config(variant),
-            stabilization=vpm.StabilizationConfig.disabled(),
             induction=vpm.TreecodeInduction(stretching_scheme=stretching_scheme(variant)),
-            viscous=vpm.ViscousConfig.cs(),
-            write_precision="f32",
             max_n_particles=MAX_N_PARTICLES,
             random_seed=RANDOM_SEED,
             health_limits=vpm.HealthLimits(

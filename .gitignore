@@ -131,6 +131,7 @@ log.*
 
 # Digitized literature reference curves plotted against sampled results
 !tutorials/vpm/01_lamb_oseen_vortex/assets/references/*.csv
+!tutorials/vpm/03_vortex_interactions/assets/references/*.csv
 
 # Small, inspectable qualification tables shipped with the surface-interaction tutorial
 !tutorials/vpm/08_surface_interaction/studies/*.csv

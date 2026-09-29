@@ -18,8 +18,6 @@ from .health import (
     LagrangianCFLLimit,
     MisalignmentLimit,
     ParticleStrengthLimit,
-    ResourceLimitError,
-    ResourceLimits,
 )
 from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
@@ -39,8 +37,6 @@ __all__ = [
     "LagrangianCFLLimit",
     "ParticleStrengthLimit",
     "MisalignmentLimit",
-    "ResourceLimitError",
-    "ResourceLimits",
     "RestartState",
     "RunPlan",
     "Samplers",

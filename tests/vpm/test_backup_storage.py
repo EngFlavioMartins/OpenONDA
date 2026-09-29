@@ -398,6 +398,115 @@ def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
         reader.load_backup(str(backup))
 
 
+def _capacity_configuration() -> dict:
+    return {
+        "max_n_particles": 64,
+        "viscous": {"dvh_max_nodes": None, "gbd_max_nodes": None},
+        "stabilization": {
+            "regularization_max_particles": None,
+            "regularization_capacity_max_particles": None,
+            "filament_refinement": {"interval_steps": 0},
+        },
+    }
+
+
+def test_restart_capacity_aliases_accept_equivalent_legacy_configuration():
+    from source.solvers.vpm.io.backup import (
+        _configuration_mismatches,
+        _normalize_capacity_aliases,
+    )
+
+    expected = _capacity_configuration()
+    found = json.loads(json.dumps(expected))
+    found["viscous"].update(dvh_max_nodes=64, gbd_max_nodes=64)
+    found["stabilization"].update(
+        regularization_max_particles=64,
+        regularization_capacity_max_particles=64,
+    )
+    found["stabilization"]["filament_refinement"]["max_n_particles"] = 64
+
+    _normalize_capacity_aliases(expected)
+    _normalize_capacity_aliases(found)
+
+    assert _configuration_mismatches(expected, found) == []
+
+
+def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path):
+    writer = _solver(tmp_path / "writer")
+    try:
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
+
+    with h5py.File(backup, "r+") as archive:
+        attributes = archive["solver"].attrs
+        configuration = json.loads(attributes["numerical_configuration"])
+        capacity = configuration["max_n_particles"]
+        configuration["viscous"].update(
+            dvh_max_nodes=capacity,
+            gbd_max_nodes=capacity,
+        )
+        configuration["stabilization"].update(
+            regularization_max_particles=capacity,
+            regularization_capacity_max_particles=capacity,
+        )
+        configuration["stabilization"]["filament_refinement"]["max_n_particles"] = capacity
+        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+        attributes["numerical_configuration"] = encoded
+        attributes["numerical_configuration_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+
+    reader = _solver(tmp_path / "reader")
+    try:
+        reader.load_backup(backup)
+        assert (reader.step, reader.time) == (0, 0.0)
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize(
+    ("section", "name", "path"),
+    [
+        ("viscous", "dvh_max_nodes", "viscous.dvh_max_nodes"),
+        ("viscous", "gbd_max_nodes", "viscous.gbd_max_nodes"),
+        (
+            "stabilization",
+            "regularization_max_particles",
+            "stabilization.regularization_max_particles",
+        ),
+        (
+            "stabilization",
+            "regularization_capacity_max_particles",
+            "stabilization.regularization_capacity_max_particles",
+        ),
+        (
+            "filament_refinement",
+            "max_n_particles",
+            "stabilization.filament_refinement.max_n_particles",
+        ),
+    ],
+)
+def test_restart_capacity_aliases_reject_lower_algorithmic_caps(section, name, path):
+    from source.solvers.vpm.io.backup import (
+        _configuration_mismatches,
+        _normalize_capacity_aliases,
+    )
+
+    expected = _capacity_configuration()
+    found = json.loads(json.dumps(expected))
+    target = (
+        found["stabilization"]["filament_refinement"]
+        if section == "filament_refinement"
+        else found[section]
+    )
+    target[name] = 32
+
+    _normalize_capacity_aliases(expected)
+    _normalize_capacity_aliases(found)
+
+    assert _configuration_mismatches(expected, found) == [path]
+
+
 def test_explicit_changed_time_step_restart_preserves_clock_and_checkpoint_state(tmp_path):
     writer = _solver(tmp_path / "writer", time_step_size=0.01)
     try:

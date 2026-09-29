@@ -116,6 +116,8 @@ class FVMVelocityInterpolator:
         cell_centre: np.ndarray,
         tree: cKDTree,
         neighbour_count: int = 4,
+        *,
+        solid_boundary=None,
     ) -> None:
         """Create an interpolator over one donor geometry and search index.
 
@@ -139,7 +141,55 @@ class FVMVelocityInterpolator:
         self.cell_centre = np.asarray(cell_centre, dtype=np.float64).reshape(-1, 3)
         self.tree = tree
         self.neighbour_count = min(max(int(neighbour_count), 1), len(self.cell_centre))
+        self.solid_boundary = solid_boundary
+        self._fluid_donors = (
+            None if solid_boundary is None else ~solid_boundary.contains(self.cell_centre)
+        )
         self._cache: OrderedDict[bytes, tuple[np.ndarray, np.ndarray]] = OrderedDict()
+
+    def _visible_stencil(self, positions):
+        """Find complete distance shells without borrowing through a wall."""
+        rows = np.arange(len(positions))
+        selected = [None] * len(rows)
+        count = self.neighbour_count
+        query_count = min(max(2 * count, 8), len(self.cell_centre))
+        while len(rows):
+            distance, donors = self.tree.query(positions[rows], k=query_count, workers=-1)
+            distance = np.asarray(distance).reshape(len(rows), query_count)
+            donors = np.asarray(donors).reshape(len(rows), query_count)
+            targets = np.broadcast_to(positions[rows, None, :], (*donors.shape, 3))
+            visible = self._fluid_donors[donors].copy()
+            visible[visible] &= ~self.solid_boundary.blocks_segments(
+                self.cell_centre[donors[visible]],
+                targets[visible],
+            )
+            pending = []
+            for local, row in enumerate(rows):
+                valid = np.flatnonzero(visible[local])
+                complete = query_count == len(self.cell_centre)
+                if not len(valid):
+                    if complete:
+                        raise RuntimeError("FVM velocity trace has no wall-visible fluid donor")
+                    pending.append(row)
+                    continue
+                cutoff = distance[local, valid[min(count, len(valid)) - 1]]
+                tolerance = 64 * np.finfo(float).eps * max(1.0, cutoff)
+                if not complete and (
+                    len(valid) < count or distance[local, -1] <= cutoff + tolerance
+                ):
+                    pending.append(row)
+                    continue
+                valid = valid[distance[local, valid] <= cutoff + tolerance]
+                selected[row] = (donors[local, valid], distance[local, valid])
+            rows = np.asarray(pending, dtype=np.int64)
+            query_count = min(2 * query_count, len(self.cell_centre))
+        width = max((len(item[0]) for item in selected), default=count)
+        indices = np.zeros((len(positions), width), dtype=np.int32)
+        distances = np.full(indices.shape, np.inf)
+        for row, (donors, distance) in enumerate(selected):
+            indices[row, : len(donors)] = donors
+            distances[row, : len(donors)] = distance
+        return distances, indices
 
     def prepare(self, evaluation_position: np.ndarray) -> PreparedVelocityTrace:
         """Pin a stencil independently of the transient six-entry query cache.
@@ -191,6 +241,11 @@ class FVMVelocityInterpolator:
             self._cache.move_to_end(key)
             return cached
 
+        if self.solid_boundary is not None:
+            distance, indices = self._visible_stencil(evaluation_position)
+            weights = self._normalized_weights(distance)
+            return self._cache_stencil(key, indices, weights)
+
         # Ask for one additional donor to detect a truncated distance shell.
         # Cartesian cells frequently tie: choosing an arbitrary subset then
         # changes reconstructed curvature under cell reordering/reflection.
@@ -230,12 +285,20 @@ class FVMVelocityInterpolator:
         else:
             distance, indices = distance[:, :count], indices[:, :count]
 
+        weights = self._normalized_weights(distance)
+        return self._cache_stencil(key, indices, weights)
+
+    @staticmethod
+    def _normalized_weights(distance):
         weights = 1.0 / np.maximum(distance, 1.0e-12) ** 2
         exact = distance[:, 0] <= 1.0e-12
         if exact.any():
             weights[exact] = 0.0
             weights[exact, 0] = 1.0
         weights /= weights.sum(axis=1, keepdims=True)
+        return weights
+
+    def _cache_stencil(self, key, indices, weights):
         result = indices, weights
 
         self._cache[key] = result

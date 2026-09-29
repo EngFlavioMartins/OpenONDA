@@ -432,6 +432,12 @@ class _GridDiffusionMixin:
     # coupling method relied on this closure before it was removed during the
     # later GBD simplification.
     conserve_pruned_moments: bool = True
+    _body_link_grid = None
+    _body_segment_classifier = None
+
+    @property
+    def _has_body_links(self):
+        return self._body_link_grid is not None
 
     def _init_grid_diffusion(self):
         """Initialize grid-based diffusion state."""
@@ -458,6 +464,7 @@ class _GridDiffusionMixin:
         self._grid_a: ti.template() | None = None
         self._grid_b: ti.template() | None = None
         self._body_mask_grid: ti.template() | None = None  # 1=inside solid, 0=fluid
+        self._body_link_grid = None  # Three bits: blocked positive x/y/z links.
         self._effective_viscosity_grid: ti.template() | None = None
         self._grid_shape: tuple[int, int, int] | None = None
 
@@ -469,9 +476,11 @@ class _GridDiffusionMixin:
         self._body_box_bounds: np.ndarray | None = None
         self._body_cylinder: tuple[int, np.ndarray, float, float, float] | None = None
         self._body_classifier: Callable[[np.ndarray], np.ndarray] | None = None
+        self._body_segment_classifier = None
         self._body_geometry_revision: object | None = None
         self._body_mask_cache_key: tuple | None = None
         self._body_mask_host: np.ndarray | None = None
+        self._body_links_host: np.ndarray | None = None
         self._body_query_bounds: np.ndarray | None = None
 
         # Maximum number of grid cells per spatial dimension.
@@ -742,6 +751,7 @@ class _GridDiffusionMixin:
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
             self._body_mask_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
+            self._body_link_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
             self._effective_viscosity_grid = ti.field(
                 dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz)
             )
@@ -763,6 +773,7 @@ class _GridDiffusionMixin:
         self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
         self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
         self._body_mask_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
+        self._body_link_grid = ti.field(dtype=ti.i32, shape=(alloc_nx, alloc_ny, alloc_nz))
         self._effective_viscosity_grid = ti.field(
             dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz)
         )
@@ -830,8 +841,8 @@ class _GridDiffusionMixin:
             dtype=np.float32,
         )
 
-        # Memory estimate: 2 vector fields (3×f32), mask i32, effective_viscosity f32.
-        bytes_per_node = 2 * 12 + 4 + 4  # = 32 bytes
+        # Memory estimate: two vector fields, solid mask, blocked links and viscosity.
+        bytes_per_node = 2 * 12 + 4 + 4 + 4  # = 36 bytes
         total_bytes = nx * ny * nz * bytes_per_node
         total_mb = total_bytes / (1 << 20)
 
@@ -846,6 +857,7 @@ class _GridDiffusionMixin:
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
             self._body_mask_grid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+            self._body_link_grid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
             self._effective_viscosity_grid = ti.field(dtype=ti.f32, shape=(nx, ny, nz))
             self._grid_shape = (nx, ny, nz)
             self._ping = True
@@ -911,6 +923,7 @@ class _GridDiffusionMixin:
         self._body_query_bounds = b.astype(np.float64)
         self._body_cylinder = None
         self._body_classifier = None
+        self._body_segment_classifier = None
         self._body_mask_cache_key = None
         self._body_mask_host = None
         self._body_mask_active = True
@@ -961,6 +974,7 @@ class _GridDiffusionMixin:
         self._body_mask_active = True
         self._body_query_bounds = b.astype(np.float64)
         self._body_classifier = None
+        self._body_segment_classifier = None
         self._body_mask_cache_key = None
         self._body_mask_host = None
 
@@ -970,6 +984,7 @@ class _GridDiffusionMixin:
         *,
         revision: object,
         query_bounds: np.ndarray | None = None,
+        blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> None:
         """Use the transfer body's strict-interior classifier on the GBD lattice.
 
@@ -984,6 +999,7 @@ class _GridDiffusionMixin:
         self._body_box_bounds = None
         self._body_cylinder = None
         self._body_classifier = contains_interior
+        self._body_segment_classifier = blocks_segments
         self._body_geometry_revision = revision
         if query_bounds is not None:
             bounds = np.asarray(query_bounds, dtype=np.float64).reshape(6)
@@ -1017,6 +1033,8 @@ class _GridDiffusionMixin:
         )
         if key == self._body_mask_cache_key:
             return
+        if self._body_link_grid is not None:
+            self._body_link_grid.fill(0)
         if (
             self._body_classifier is not None
             or getattr(self, "_slip_slab_bounds", None) is not None
@@ -1053,6 +1071,7 @@ class _GridDiffusionMixin:
                 )
             ti.sync()
             self._body_mask_host = host_mask.reshape(nx, ny, nz)
+            self._prepare_body_links(g, particle_spacing, nx, ny, nz)
             self._body_mask_cache_key = key
             return
         if self._body_box_bounds is not None:
@@ -1095,6 +1114,89 @@ class _GridDiffusionMixin:
                 nz,
             )
             self._body_mask_cache_key = key
+
+    def _body_blocked_segments(self, starts, ends):
+        """Test visibility on the physical wall, including reflected slab paths."""
+        starts = np.asarray(starts, dtype=np.float64).reshape(-1, 3)
+        ends = np.asarray(ends, dtype=np.float64).reshape(-1, 3)
+        classifier = self._body_segment_classifier
+        if classifier is None:
+            return np.zeros(len(starts), dtype=bool)
+
+        def query(a, b):
+            result = np.asarray(classifier(a, b), dtype=bool).reshape(-1)
+            if len(result) != len(a):
+                raise RuntimeError("body segment classifier must return one flag per segment")
+            return result
+
+        slab = getattr(self, "_slip_slab_bounds", None)
+        if slab is None or len(starts) == 0:
+            return query(starts, ends)
+        lower, upper = slab
+        length = upper - lower
+        # Splitting at mirror planes preserves the kink of the folded path.
+        zmin = min(starts[:, 2].min(), ends[:, 2].min())
+        zmax = max(starts[:, 2].max(), ends[:, 2].max())
+        planes = lower + length * np.arange(
+            int(np.floor((zmin - lower) / length)),
+            int(np.ceil((zmax - lower) / length)) + 1,
+        )
+        delta = ends - starts
+        fractions = np.ones((len(starts), len(planes) + 2))
+        fractions[:, 0] = 0.0
+        moving = np.abs(delta[:, 2]) > 0.0
+        fractions[moving, 1:-1] = np.clip(
+            (planes[None, :] - starts[moving, 2, None]) / delta[moving, 2, None],
+            0,
+            1,
+        )
+        fractions.sort(axis=1)
+        result = np.zeros(len(starts), dtype=bool)
+        for index in range(fractions.shape[1] - 1):
+            rows = (fractions[:, index + 1] > fractions[:, index]) & ~result
+            if not np.any(rows):
+                continue
+            a = starts[rows] + fractions[rows, index, None] * delta[rows]
+            b = starts[rows] + fractions[rows, index + 1, None] * delta[rows]
+            result[rows] |= query(self._fold_slab_exterior_z(a), self._fold_slab_exterior_z(b))
+        return result
+
+    def _prepare_body_links(self, origin, spacing, nx, ny, nz):
+        """Cache surface-crossing links, including walls with no solid grid node."""
+        if self._body_segment_classifier is None:
+            return
+        if self._body_link_grid is None:
+            self._body_link_grid = ti.field(dtype=ti.i32, shape=self._body_mask_grid.shape)
+        mask = self._body_mask_host
+        buffer = self._grid_transfer_buffer("scalar", self._body_link_grid, "upload")
+        total = nx * ny * nz
+        host_links = np.zeros(total, dtype=np.int32)
+        dimensions = np.array([nx, ny, nz])
+        for start in range(0, total, _GRID_TRANSFER_CHUNK):
+            stop = min(start + _GRID_TRANSFER_CHUNK, total)
+            linear = np.arange(start, stop, dtype=np.int64)
+            indices = np.column_stack((linear // (ny * nz), (linear // nz) % ny, linear % nz))
+            points = np.asarray(origin) + spacing * indices
+            values = np.zeros(len(indices), dtype=np.int32)
+            for axis in range(3):
+                next_indices = indices.copy()
+                next_indices[:, axis] = np.minimum(indices[:, axis] + 1, dimensions[axis] - 1)
+                rows = (
+                    ~mask[tuple(indices.T)]
+                    & ~mask[tuple(next_indices.T)]
+                    & (indices[:, axis] + 1 < dimensions[axis])
+                )
+                ends = points[rows].copy()
+                ends[:, axis] += spacing
+                values[rows] |= (
+                    self._body_blocked_segments(points[rows], ends).astype(np.int32) << axis
+                )
+            buffer[: len(values)] = values
+            host_links[start:stop] = values
+            self._upload_scalar_chunk_kernel(
+                self._body_link_grid, buffer, start, len(values), ny, nz
+            )
+        self._body_links_host = host_links.reshape(nx, ny, nz)
 
     def _fold_slab_exterior_z(self, positions: np.ndarray) -> np.ndarray:
         """Map ghost z to its physical mirror, leaving in-slab coordinates exact."""
@@ -1139,6 +1241,46 @@ class _GridDiffusionMixin:
             )
         return np.zeros(len(points), dtype=bool)
 
+    def _wall_moment_correction(self, point, indices, weights, fluid, origin, spacing, shape):
+        """Find bounded conservative weights on visible fluid support.
+
+        A cut stencil can need more than its original four nodes per axis
+        to represent a particle between the wall and the nearest grid node.
+        Expand locally before declaring the geometry under-resolved.
+        """
+        fractional = (point - origin) / spacing
+        target = np.array([1.0, 0.0, 0.0, 0.0])
+        for radius in range(1, 5):
+            if radius > 1:
+                offsets = np.stack(
+                    np.meshgrid(*([np.arange(-radius, radius + 2)] * 3), indexing="ij"), axis=-1
+                )
+                indices = np.floor(fractional).astype(np.int64) + offsets.reshape(-1, 3)
+                indices = indices[np.all((indices >= 0) & (indices < np.asarray(shape)), axis=1)]
+                nodes = origin + spacing * indices
+                fluid = ~self._body_interior_at_particles(nodes)
+                fluid[fluid] &= ~self._body_blocked_segments(
+                    np.broadcast_to(point, nodes[fluid].shape),
+                    nodes[fluid],
+                )
+                weights = np.prod(_m4_prime_1d(fractional - indices), axis=1)
+            relative = (origin + spacing * indices[fluid] - point) / spacing
+            constraints = np.vstack((np.ones(fluid.sum()), relative.T))
+            gram = constraints @ constraints.T
+            if np.linalg.cond(gram) > 1e10:
+                continue
+            defect = target - constraints @ weights[fluid]
+            correction = constraints.T @ np.linalg.solve(gram, defect)
+            corrected = weights[fluid] + correction
+            if not np.all(np.isfinite(corrected)) or np.sum(np.abs(corrected)) > 2.0:
+                continue
+            if np.max(np.abs(constraints @ corrected - target)) <= 1e-10:
+                return indices[fluid], correction, radius
+        raise RuntimeError(
+            "GBD wall transfer has insufficient visible fluid support for bounded moment "
+            "conservation. Refine the particle spacing near the wall or narrow gap."
+        )
+
     def _m4_wall_corrections(
         self,
         positions: np.ndarray,
@@ -1172,6 +1314,7 @@ class _GridDiffusionMixin:
         touched = 0
         excluded_l1 = 0.0
         correction_l1 = 0.0
+        expanded_support = 0
         grid_min = np.asarray(origin, dtype=np.float64)
         dimensions = np.asarray(shape)
         cached_mask = self._body_mask_host
@@ -1204,38 +1347,53 @@ class _GridDiffusionMixin:
                     )
                     & valid_batch
                 )
-            for row in np.flatnonzero(np.any(solid_batch, axis=1)):
+            unavailable_batch = solid_batch.copy()
+            if self._body_segment_classifier is not None:
+                node_batch = grid_min + index_batch * float(spacing)
+                sources = np.broadcast_to(points[particle_ids, None, :], node_batch.shape)
+                visible_candidates = valid_batch & ~solid_batch
+                unavailable_batch[visible_candidates] |= self._body_blocked_segments(
+                    sources[visible_candidates],
+                    node_batch[visible_candidates],
+                )
+            for row in np.flatnonzero(np.any(unavailable_batch, axis=1)):
                 particle = particle_ids[row]
                 indices = index_batch[row]
                 if not np.all(valid_batch[row]):
                     raise RuntimeError("GBD M4 support leaves the diffusion lattice near a solid")
-                nodes = grid_min + indices * float(spacing)
                 solid = solid_batch[row]
                 touched += 1
                 weights = np.prod(_m4_prime_1d(fractions[row] - indices), axis=1)
-                fluid = ~solid
-                relative = (nodes[fluid] - points[particle]) / float(spacing)
-                constraints = np.vstack((np.ones(fluid.sum()), relative.T))
-                gram = constraints @ constraints.T
-                if np.linalg.cond(gram) > 1.0e10:
-                    raise RuntimeError("GBD wall-adjacent M4 fluid support has deficient moments")
-                target = np.array([1.0, 0.0, 0.0, 0.0])
-                defect = target - constraints @ weights[fluid]
-                correction = constraints.T @ np.linalg.solve(gram, defect)
-                corrected = weights[fluid] + correction
-                if not np.all(np.isfinite(corrected)) or np.sum(np.abs(corrected)) > 2.0:
-                    raise RuntimeError("GBD wall-adjacent M4 correction amplifies local support")
-                if np.max(np.abs(constraints @ corrected - target)) > 1.0e-10:
-                    raise RuntimeError("GBD wall-adjacent M4 moment constraints were not met")
-                node_chunks.append(indices[fluid].astype(np.int32))
+                fluid = ~unavailable_batch[row]
+                correction_indices, correction, radius = self._wall_moment_correction(
+                    points[particle],
+                    indices,
+                    weights,
+                    fluid,
+                    grid_min,
+                    float(spacing),
+                    shape,
+                )
+                expanded_support += radius > 1
+                node_chunks.append(correction_indices.astype(np.int32))
                 value_chunks.append((correction[:, None] * gamma[particle]).astype(np.float32))
+                # The initial device scatter included fluid nodes hidden
+                # behind a wall. Remove those deposits before redistributing
+                # on this particle's visible side of the surface.
+                occluded = unavailable_batch[row] & ~solid
+                if np.any(occluded):
+                    node_chunks.append(indices[occluded].astype(np.int32))
+                    value_chunks.append(
+                        (-weights[occluded, None] * gamma[particle]).astype(np.float32)
+                    )
                 magnitude = float(np.linalg.norm(gamma[particle]))
-                excluded_l1 += float(np.sum(np.abs(weights[solid]))) * magnitude
+                excluded_l1 += float(np.sum(np.abs(weights[unavailable_batch[row]]))) * magnitude
                 correction_l1 += float(np.sum(np.abs(correction))) * magnitude
         diagnostics = {
             "wall_adjacent_particles": touched,
             "excluded_signed_weight_l1": excluded_l1,
             "fluid_correction_l1": correction_l1,
+            "expanded_support_particles": expanded_support,
         }
         if not node_chunks:
             return np.empty((0, 3), dtype=np.int32), np.empty((0, 3), dtype=np.float32), diagnostics
@@ -1543,6 +1701,38 @@ class _GridDiffusionMixin:
         threshold = float(vortex_strength_magnitude[ix_keep, iy_keep, iz_keep].min())
         return ix_keep, iy_keep, iz_keep, threshold, n_survivors
 
+    def _wall_recovery_labels(self, magnitude, groups):
+        """Keep pruning recovery within connected, wall-visible grid support.
+
+        Zero-strength nodes are excluded: a correction cannot jump across a
+        wall by following an empty route around its far edge. Existing source
+        group boundaries are retained as well.
+        """
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+
+        active = magnitude > 0
+        ids = np.full(magnitude.shape, -1, dtype=np.int64)
+        ids[active] = np.arange(np.count_nonzero(active))
+        links = self._body_links_host
+        sources, targets = [], []
+        for axis in range(3):
+            lower, upper = [slice(None)] * 3, [slice(None)] * 3
+            lower[axis], upper[axis] = slice(None, -1), slice(1, None)
+            lower, upper = tuple(lower), tuple(upper)
+            connected = active[lower] & active[upper] & ((links[lower] & (1 << axis)) == 0)
+            connected &= groups[lower] == groups[upper]
+            sources.append(ids[lower][connected])
+            targets.append(ids[upper][connected])
+        rows, columns = np.concatenate(sources), np.concatenate(targets)
+        graph = coo_matrix(
+            (np.ones(len(rows), dtype=bool), (rows, columns)), shape=(int(active.sum()),) * 2
+        ).tocsr()
+        _, components = connected_components(graph, directed=False)
+        labels = np.full(magnitude.shape, -1, dtype=np.int32)
+        labels[active] = components
+        return labels
+
     @staticmethod
     def _augment_moment_recovery_support(
         grid_np: np.ndarray,
@@ -1554,6 +1744,7 @@ class _GridDiffusionMixin:
         particle_spacing: float,
         cap: int,
         labels: np.ndarray | None = None,
+        strict_labels: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, bool]:
         """Introduce the strongest pruned nodes needed for a safe moment basis.
 
@@ -1591,9 +1782,12 @@ class _GridDiffusionMixin:
                 group_nonzero = nonzero_flat[flat_labels[nonzero_flat] == label]
                 return 6 if _gbd_rank_one_direction(flat_grid[group_nonzero]) is not None else 4
 
-            preserve_groups = len(unique_labels) > 1 and all(
-                np.count_nonzero(retained_labels == label) >= minimum_group_support(int(label))
-                for label in unique_labels
+            preserve_groups = strict_labels or (
+                len(unique_labels) > 1
+                and all(
+                    np.count_nonzero(retained_labels == label) >= minimum_group_support(int(label))
+                    for label in unique_labels
+                )
             )
 
         selected = retained_flat.tolist()
@@ -1869,6 +2063,7 @@ class _GridDiffusionMixin:
         particle_spacing: float,
         labels: np.ndarray | None = None,
         diagnostics: dict[str, bool | int | float] | None = None,
+        strict_labels: bool = False,
     ) -> np.ndarray:
         """Coarsen pruned nodes locally while preserving diffusive moments.
 
@@ -2245,7 +2440,15 @@ class _GridDiffusionMixin:
         for label in unique_labels:
             survivor_selection = survivor_labels == label
             discarded_selection = discarded_labels == label
+            if not np.any(discarded_selection):
+                corrected[survivor_selection] = retained_vortex_strength[survivor_selection]
+                continue
             if np.count_nonzero(survivor_selection) < 4:
+                if strict_labels:
+                    raise RuntimeError(
+                        "GBD pruning has insufficient support in a fluid component; "
+                        "increase the regeneration cap or reduce the pruning threshold."
+                    )
                 return redistribute(
                     retained_position,
                     retained_vortex_strength,
@@ -2873,6 +3076,12 @@ class _GridDiffusionMixin:
         nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
         support_augmented_node_count = 0
         preserve_group_recovery = False
+        wall_recovery = self._body_segment_classifier is not None
+        recovery_labels = group_winner_grid
+        if wall_recovery and self.conserve_pruned_moments and len(ix) < nonzero_node_count:
+            recovery_labels = self._wall_recovery_labels(
+                vortex_strength_magnitude, group_winner_grid
+            )
         if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
             retained_before_support = len(ix)
             (
@@ -2890,7 +3099,8 @@ class _GridDiffusionMixin:
                 grid_min_np,
                 particle_spacing,
                 cap,
-                labels=group_winner_grid,
+                labels=recovery_labels,
+                strict_labels=wall_recovery,
             )
             if support_augmented_node_count:
                 self._event_observer.record(
@@ -2919,8 +3129,9 @@ class _GridDiffusionMixin:
                 iz,
                 grid_min_np,
                 particle_spacing,
-                labels=(group_winner_grid if preserve_group_recovery else None),
+                labels=(recovery_labels if preserve_group_recovery else None),
                 diagnostics=closure_diagnostics,
+                strict_labels=wall_recovery,
             )
             correction_l1 = float(
                 np.linalg.norm(corrected_retained.astype(np.float64) - raw_retained, axis=1).sum(
@@ -3594,6 +3805,19 @@ class _GridDiffusionMixin:
                 [corrections[item, 0], corrections[item, 1], corrections[item, 2]]
             )
 
+    @ti.func
+    def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):
+        open_link = body_mask[ni, nj, nk] == 0
+        if ti.static(self._has_body_links):
+            axis = 0
+            if nj != j:
+                axis = 1
+            elif nk != k:
+                axis = 2
+            bits = self._body_link_grid[ti.min(i, ni), ti.min(j, nj), ti.min(k, nk)]
+            open_link = open_link and ((bits & (1 << axis)) == 0)
+        return open_link
+
     @ti.kernel
     def _laplacian_step_gpu_kernel(
         self,
@@ -3627,12 +3851,12 @@ class _GridDiffusionMixin:
             kp = ti.min(k + 1, nz - 1)
 
             centre = src[i, j, k]
-            xp = centre if body_mask[ip, j, k] != 0 else src[ip, j, k]
-            xm = centre if body_mask[im, j, k] != 0 else src[im, j, k]
-            yp = centre if body_mask[i, jp, k] != 0 else src[i, jp, k]
-            ym = centre if body_mask[i, jm, k] != 0 else src[i, jm, k]
-            zp = centre if body_mask[i, j, kp] != 0 else src[i, j, kp]
-            zm = centre if body_mask[i, j, km] != 0 else src[i, j, km]
+            xp = src[ip, j, k] if self._fluid_link_open(body_mask, i, j, k, ip, j, k) else centre
+            xm = src[im, j, k] if self._fluid_link_open(body_mask, i, j, k, im, j, k) else centre
+            yp = src[i, jp, k] if self._fluid_link_open(body_mask, i, j, k, i, jp, k) else centre
+            ym = src[i, jm, k] if self._fluid_link_open(body_mask, i, j, k, i, jm, k) else centre
+            zp = src[i, j, kp] if self._fluid_link_open(body_mask, i, j, k, i, j, kp) else centre
+            zm = src[i, j, km] if self._fluid_link_open(body_mask, i, j, k, i, j, km) else centre
             laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
             dst[i, j, k] = centre + alpha * laplacian
 
@@ -3651,7 +3875,9 @@ class _GridDiffusionMixin:
     ) -> ti.math.vec3:
         """Return the conservative flux through one grid face."""
         flux = ti.Vector.zero(ti.f32, 3)
-        if (ni != i or nj != j or nk != k) and body_mask[ni, nj, nk] == 0:
+        if (ni != i or nj != j or nk != k) and self._fluid_link_open(
+            body_mask, i, j, k, ni, nj, nk
+        ):
             nu_face = 0.5 * (
                 effective_viscosity_grid[i, j, k] + effective_viscosity_grid[ni, nj, nk]
             )

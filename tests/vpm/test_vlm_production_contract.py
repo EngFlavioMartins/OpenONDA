@@ -270,3 +270,41 @@ def test_coupling_stepper_runs_coupling_when_wake_release_is_disabled():
 
     assert calls[-1] == (0.4, True)
     assert len(added) == 1
+
+
+def test_coupling_stepper_tracks_device_wake_for_filament_refinement():
+    particles = SimpleNamespace(n_particles_total=3)
+    added = []
+    strength = np.array([[3.0, 4.0, 0.0], [0.0, 0.0, 2.0]])
+    volume = np.array([8.0, 27.0])
+
+    def advance_coupled(**_kwargs):
+        particles.n_particles_total += 2
+        return None
+
+    solver = SimpleNamespace(
+        vlm_solver=SimpleNamespace(
+            advance_coupled=advance_coupled,
+            lattice=SimpleNamespace(
+                wake_vortex_strength=SimpleNamespace(to_numpy=lambda: strength),
+                wake_volume=SimpleNamespace(to_numpy=lambda: volume),
+            ),
+        ),
+        particles=particles,
+        physics=SimpleNamespace(),
+        setup=SimpleNamespace(),
+        stepper=SimpleNamespace(time=0.25, step=3),
+        stabilization=SimpleNamespace(
+            reference_vortex_strength=np.ones(3),
+            on_add=lambda magnitudes, volumes, start: added.append(
+                (magnitudes, volumes, start)
+            ),
+        ),
+    )
+
+    CouplingStepper(solver).advance_vlm(0.1)
+
+    assert len(added) == 1
+    np.testing.assert_allclose(added[0][0], [5.0, 2.0])
+    np.testing.assert_array_equal(added[0][1], volume)
+    assert added[0][2] == 3

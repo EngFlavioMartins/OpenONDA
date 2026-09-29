@@ -23,7 +23,7 @@ from ..physics.induction.direct import DirectInduction
 from .artifacts import Backup, Samplers
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
 from .diagnostics import DiagnosticsConfig
-from .health import HealthLimits, ResourceLimits
+from .health import HealthLimits
 from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
 from .viscous import ViscousConfig
@@ -263,9 +263,6 @@ class RunPlan:
         records a nonfinite state as ``unstable`` without serializing it.
     wall_time_limit_seconds : float or None
         Optional positive runtime budget checked between accepted steps.
-    resource_limits : ResourceLimits or None
-        Optional accepted-step process-resource bounds. A stopped bound uses
-        the distinct ``resource_limit`` lifecycle status.
     runtime_compute_device : {'AUTO', 'CPU', 'VULKAN', 'CUDA', 'METAL'} or None
         Optional explicit backend selection for this process invocation. This
         runtime-only override is excluded from ``Numerics`` restart identity;
@@ -277,7 +274,6 @@ class RunPlan:
     final_backup: bool = True
     health_limit_action: Literal["RAISE", "STOP"] = "RAISE"
     wall_time_limit_seconds: float | None = None
-    resource_limits: ResourceLimits | None = None
     runtime_compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] | None = None
     """Optional runtime budget, checked between accepted steps.
 
@@ -302,10 +298,6 @@ class RunPlan:
                 raise TypeError("RunPlan.wall_time_limit_seconds must be a positive number")
             if not math.isfinite(limit) or limit <= 0:
                 raise ValueError("RunPlan.wall_time_limit_seconds must be finite and positive")
-        if self.resource_limits is not None and not isinstance(
-            self.resource_limits, ResourceLimits
-        ):
-            raise TypeError("RunPlan.resource_limits must be ResourceLimits or None")
         if self.runtime_compute_device is not None:
             device = str(self.runtime_compute_device).upper()
             valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}

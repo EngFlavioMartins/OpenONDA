@@ -186,6 +186,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     }
     current = {key: value.copy() for key, value in original.items()}
     particles = SimpleNamespace(
+        capacity=100000,
         **{key + "_cpu": lambda key=key: current[key].copy() for key in current}
     )
     replacements = []
@@ -218,7 +219,6 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
         regularization_interval_steps=1,
         regularization_grid_spacing=0.04,
         regularization_core_radius=0.07,
-        regularization_max_particles=100000,
         regularization_transfer_only=True,
         regularization_preserve_groups=preserve_groups,
         regularization_total_kinetic_energy_dissipation_limit=0.01,

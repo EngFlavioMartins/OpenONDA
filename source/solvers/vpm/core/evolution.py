@@ -21,6 +21,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -28,6 +29,7 @@ import taichi as ti
 
 from ..io.logging import Logging
 from ..physics.induction.base import StageRates, StageState
+from ..wall_errors import WallCorrectionTooLargeError
 
 if TYPE_CHECKING:
     from .solver import VPMSolver
@@ -467,19 +469,89 @@ class EvolutionStepper:
     def _advance_particles(self, time_step_size: float) -> None:
         """Advance position and vortex strength at common Runge--Kutta stages."""
         self._validate_axisymmetric_orbits()
-        self.solver.integrator.advance(
-            position=self.particles.position,
-            vortex_strength=self.particles.vortex_strength,
-            core_radius=self.particles.core_radius,
-            count=len(self.particles),
-            time=self.solver.time,
-            time_step_size=time_step_size,
-            right_hand_side=self.solver.stage_rhs,
-        )
         accepted_projector = getattr(self.solver.stage_rhs, "accepted_position_projector", None)
-        if accepted_projector is not None:
-            accepted_projector(
-                self.particles.position, self.particles.vortex_strength, len(self.particles)
+        guard = getattr(accepted_projector, "__self__", None)
+        can_retry_wall = bool(
+            guard is not None and hasattr(guard, "begin_trial") and hasattr(guard, "end_trial")
+        )
+        count = len(self.particles)
+        accepted_logs = []
+        wall_retries = 0
+        accepted_intervals = 0
+
+        def snapshot():
+            return (
+                self.physics._download_vector_field(self.particles.position, count),
+                self.physics._download_vector_field(self.particles.vortex_strength, count),
+                deepcopy(getattr(self.physics, "last_solid_projection", None)),
+                self.physics.rate_projection_max_correction_ratio,
+            )
+
+        def restore(saved):
+            position, strength, budget, ratio = saved
+            self.physics._upload_vector_array(position, self.particles.position, count)
+            self.physics._upload_vector_array(strength, self.particles.vortex_strength, count)
+            self.physics.last_solid_projection = deepcopy(budget)
+            self.physics.rate_projection_max_correction_ratio = ratio
+            self.particles.touch_state()
+
+        macro_snapshot = snapshot() if can_retry_wall and count else None
+
+        def integrate(start_time: float, dt: float, depth: int) -> None:
+            nonlocal wall_retries, accepted_intervals
+            trial_snapshot = (
+                (macro_snapshot if depth == 0 else snapshot())
+                if macro_snapshot is not None
+                else None
+            )
+            if trial_snapshot is not None and guard is not None:
+                guard.begin_trial()
+            try:
+                self.solver.integrator.advance(
+                    position=self.particles.position,
+                    vortex_strength=self.particles.vortex_strength,
+                    core_radius=self.particles.core_radius,
+                    count=count,
+                    time=start_time,
+                    time_step_size=dt,
+                    right_hand_side=self.solver.stage_rhs,
+                    accepted_position_projector=accepted_projector,
+                )
+            except BaseException as error:
+                if trial_snapshot is not None and guard is not None:
+                    restore(trial_snapshot)
+                    guard.end_trial(accepted=False)
+                if (
+                    isinstance(error, WallCorrectionTooLargeError)
+                    and can_retry_wall
+                    and self.vlm_solver is None
+                    and depth < 10
+                ):
+                    wall_retries += 1
+                    half = 0.5 * dt
+                    integrate(start_time, half, depth + 1)
+                    integrate(start_time + half, dt - half, depth + 1)
+                    return
+                raise
+            else:
+                if trial_snapshot is not None and guard is not None:
+                    accepted_logs.extend(guard.end_trial(accepted=True))
+                accepted_intervals += 1
+
+        try:
+            integrate(self.solver.time, time_step_size, 0)
+        except BaseException:
+            if macro_snapshot is not None:
+                restore(macro_snapshot)
+            raise
+        if guard is not None:
+            for args in accepted_logs:
+                guard.logger.warning(*args)
+        if wall_retries and guard is not None:
+            guard.logger.info(
+                "VPM wall correction accepted after %d retries in %d RK intervals",
+                wall_retries,
+                accepted_intervals,
             )
         ti.sync()
         # RK writes source fields directly on the device.  Invalidate cached

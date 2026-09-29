@@ -3,6 +3,7 @@
 import json
 
 import numpy as np
+import pytest
 
 from source.coupler import CouplerSetup, FVMVPMCoupler
 from source.solvers.fvm import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
@@ -59,3 +60,50 @@ def test_coupled_zero_backup_does_not_repeat_initial_transfer(tmp_path):
         resumed.run(start_from="latest", max_coupling_steps=1)
         # One initialization transfer, then one accepted transfer.
         assert resumed.vorticity_transfer.step == 2
+
+
+@pytest.mark.parametrize("corrupt_manifest", [False, True])
+def test_coupled_initial_replaces_prior_run_and_latest_continues_new_branch(
+    tmp_path, corrupt_manifest
+):
+    case = tmp_path / "restarted"
+    with _coupler(case) as previous:
+        assert previous.run(start_from="latest", max_coupling_steps=2) == 2
+
+    manifest = case / "solution/backups/manifest.json"
+    assert json.loads(manifest.read_text())["coupling_step"] == 2
+    # This frame is intentionally invalid. A fresh run must remove it from
+    # native discovery, even though the coupled manifest owns the restart.
+    old_frame = case / "solution/vpm/vpm_999999.h5"
+    old_frame.parent.mkdir(parents=True, exist_ok=True)
+    old_frame.write_bytes(b"stale VPM frame from the previous run")
+    if corrupt_manifest:
+        manifest.write_text("{invalid prior manifest")
+
+    with _coupler(case) as fresh:
+        assert fresh.run(start_from="initial", max_coupling_steps=1) == 1
+        assert fresh.fvm_solver.step == fresh.n_fvm_substeps
+        assert fresh.vpm_solver.step == 1
+    assert not old_frame.exists()
+    assert json.loads(manifest.read_text())["coupling_step"] == 1
+
+    with _coupler(case) as resumed:
+        assert resumed.run(start_from="latest") == 3
+        actual_velocity = resumed.fvm_solver.velocity.copy()
+        actual_pressure = resumed.fvm_solver.get_pressure_field().copy()
+    assert json.loads(manifest.read_text())["coupling_step"] == 3
+    history = case / "solution/coupler_diagnostics.jsonl"
+    assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1, 2, 3]
+    before = history.read_bytes()
+    with _coupler(case) as completed:
+        assert completed.run(start_from="latest") == 3
+    assert history.read_bytes() == before
+
+    with _coupler(tmp_path / "reference") as reference:
+        assert reference.run(start_from="initial") == 3
+        np.testing.assert_allclose(
+            actual_velocity, reference.fvm_solver.velocity, rtol=0, atol=1e-12
+        )
+        np.testing.assert_allclose(
+            actual_pressure, reference.fvm_solver.get_pressure_field(), rtol=0, atol=1e-12
+        )

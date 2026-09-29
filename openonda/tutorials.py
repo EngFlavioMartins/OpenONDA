@@ -59,8 +59,8 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
         "Lamb-Oseen vortex diffusion and interaction",
         "vpm/01_lamb_oseen_vortex",
     ),
-    Tutorial("vpm/quadcopter", "Four-rotor VLM-VPM flow", "vpm/07_quadcopter_PENDING"),
-    Tutorial("vpm/rotor_flow", "Wind-turbine rotor loading and wake", "vpm/06_rotor_flow_PENDING"),
+    Tutorial("vpm/quadcopter", "Four-rotor VLM-VPM flow", "vpm/07_quadcopter"),
+    Tutorial("vpm/rotor_flow", "Wind-turbine rotor loading and wake", "vpm/06_rotor_flow"),
     Tutorial(
         "vpm/vortex_interactions",
         "Vortex-ring interaction stabilization",

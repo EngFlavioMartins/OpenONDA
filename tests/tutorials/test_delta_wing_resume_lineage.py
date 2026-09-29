@@ -176,7 +176,6 @@ def _write_metadata(
                 "final_backup": True,
                 "health_limit_action": "RAISE",
                 "wall_time_limit_seconds": None,
-                "resource_limits": None,
                 "runtime_compute_device": None,
             },
             "backup": {

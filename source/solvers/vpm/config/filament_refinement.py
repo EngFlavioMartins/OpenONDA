@@ -19,8 +19,6 @@ class FilamentRefinementConfig:
     offset_fraction : float, default=0.25
         Symmetric child offset divided by estimated material-line length, in
         ``[0, 0.5]``.
-    max_n_particles : int or None, optional
-        Positive post-event population ceiling, independent of device capacity.
     max_absolute_vortex_strength : float or None, optional
         Additional positive ``|Gamma|`` trigger in m³/s.
     late_interval_steps, late_start_step : int or None, optional
@@ -50,9 +48,6 @@ class FilamentRefinementConfig:
     offset_fraction: float = 0.25
     """Child offset as a fraction of the estimated material-line length."""
 
-    max_n_particles: int | None = None
-    """Maximum particle population permitted after refinement."""
-
     max_absolute_vortex_strength: float | None = None
     """Optional absolute strength threshold for refinement."""
 
@@ -75,8 +70,6 @@ class FilamentRefinementConfig:
             raise ValueError("max_vortex_strength_factor must be greater than one")
         if not 0.0 <= self.offset_fraction <= 0.5:
             raise ValueError("offset_fraction must be in [0, 0.5]")
-        if self.max_n_particles is not None and self.max_n_particles <= 0:
-            raise ValueError("max_n_particles must be positive or None")
         if self.max_absolute_vortex_strength is not None and (
             not np.isfinite(self.max_absolute_vortex_strength)
             or self.max_absolute_vortex_strength <= 0.0
@@ -113,7 +106,6 @@ class FilamentRefinementConfig:
         interval_steps: int,
         max_vortex_strength_factor: float = 2.0,
         offset_fraction: float = 0.25,
-        max_n_particles: int | None = None,
         max_absolute_vortex_strength: float | None = None,
         late_interval_steps: int | None = None,
         late_start_step: int | None = None,
@@ -125,7 +117,6 @@ class FilamentRefinementConfig:
             interval_steps=interval_steps,
             max_vortex_strength_factor=max_vortex_strength_factor,
             offset_fraction=offset_fraction,
-            max_n_particles=max_n_particles,
             max_absolute_vortex_strength=max_absolute_vortex_strength,
             late_interval_steps=late_interval_steps,
             late_start_step=late_start_step,

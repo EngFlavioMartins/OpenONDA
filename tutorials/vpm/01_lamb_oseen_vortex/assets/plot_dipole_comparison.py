@@ -124,7 +124,7 @@ def plot_dipole_case(args) -> int:
     )
 
     fig, axes_grid = plt.subplots(2, 2, figsize=(125 / 25.4, 95 / 25.4), sharex=True)
-    centered_subplots_adjust(fig, outer=0.13, bottom=0.30, top=0.93, wspace=0.42, hspace=0.42)
+    centered_subplots_adjust(fig, outer=0.13, bottom=0.30, top=0.92, wspace=0.42, hspace=0.42)
     axes = axes_grid.ravel()
 
     plotted_schemes = []

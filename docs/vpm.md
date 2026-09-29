@@ -343,7 +343,7 @@ layers, stall, separated delta-wing leading-edge vortices, or a general
 viscous impingement treatment. The coupled force and wake outputs alone do not
 establish particle clearance from the wings.
 
-The [rotor tutorial](../tutorials/vpm/06_rotor_flow_PENDING/README.md) remains
+The [rotor tutorial](../tutorials/vpm/06_rotor_flow/README.md) remains
 unfinished: its previous long run developed excessive wake stretching, and
 converged rotor loads and induction have not been established. Short startup
 or restart tests do not resolve that limitation. The particle RK order also

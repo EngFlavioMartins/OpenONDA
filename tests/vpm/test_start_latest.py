@@ -54,7 +54,7 @@ def _state(directory):
 
 
 @pytest.mark.parametrize("with_vlm", [False, True])
-def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, with_vlm):
+def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monkeypatch, with_vlm):
     reference = vpm.VPMSolver(_build(tmp_path / "reference", with_vlm))
     _add_counter_rotating_pair(reference)
     reference.run(start_from="latest")
@@ -96,6 +96,12 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, with_
     histories = {path: path.read_bytes() for path in (directory / "samples").glob("*.csv")}
     backup = directory / "solution/vpm/vpm_000003.h5"
     stamp = backup.stat().st_mtime_ns
+    from source.solvers.vpm.io.backup import _BackupIO
+
+    def reject_numerical_load(*args, **kwargs):
+        raise AssertionError("a completed continuation must not materialize particle fields")
+
+    monkeypatch.setattr(_BackupIO, "_load_numerical_data", reject_numerical_load)
     done = vpm.VPMSolver(_build(directory, with_vlm))
     done.run(start_from="latest")
     assert done.step == 3
@@ -112,3 +118,36 @@ def test_latest_does_not_fall_back_from_corrupt_committed_backup(tmp_path):
     with pytest.raises((ValueError, OSError)):
         solver.run(start_from="latest")
     assert solver.step == 0
+
+
+def test_initial_ignores_old_native_backup_and_restarts_output_history(tmp_path):
+    case = _build(tmp_path, False)
+    previous = vpm.VPMSolver(case)
+    _add_counter_rotating_pair(previous)
+    previous.run(start_from="latest")
+    assert previous.step == 3
+
+    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    _add_counter_rotating_pair(fresh)
+    fresh.run(start_from="initial")
+    assert fresh.step == 1
+    table = pd.read_csv(tmp_path / "samples/flow_integrals.csv")
+    assert table["step"].tolist() == [0, 1]
+
+    resumed = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    assert resumed.start_from("latest")
+    assert resumed.step == 1
+    resumed.close()
+
+
+def test_initial_ignores_corrupt_old_backup(tmp_path):
+    backup = tmp_path / "solution/vpm/vpm_000010.h5"
+    backup.parent.mkdir(parents=True)
+    backup.write_text("not a native backup")
+    solver = vpm.VPMSolver(replace(_build(tmp_path, False), run=vpm.RunPlan(steps=1)))
+    _add_counter_rotating_pair(solver)
+    solver.run(start_from="initial")
+    assert solver.step == 1
+    assert list(
+        (tmp_path / "solution/restart-branches").glob("initial-before-*/solution/vpm/vpm_000010.h5")
+    )

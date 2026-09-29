@@ -33,13 +33,9 @@ MARKER_ALPHA = 1.0  # marker spacing / grid spacing ratio
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.01  # initial time step [s]
-MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.03  # upper bound on the adapted time step [s]
 MAX_FORCING_FOURIER = 0.1  # Fo = nu*dt/h^2 stability cap for the IBM
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
-CONVECTION_SCHEME = "limitedLinear"
 LINEAR_SOLVER = "spsolve"
 
 
@@ -50,14 +46,9 @@ def create_fvm_setup(
     kinematic_viscosity = FREESTREAM_VELOCITY * DIAMETER / reynolds
 
     schemes = fvm.DiscretizationConfig(
-        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme="gauss",
     )
     linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(
-        n_correctors=PISO_CORRECTORS,
-        n_outer_correctors=OUTER_CORRECTORS,
-    )
 
     return fvm.FVMSetup(
         backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True),
@@ -67,13 +58,11 @@ def create_fvm_setup(
             end_time=end_time,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
                 maximum_time_step_size=max_time_step_size,
             ),
         ),
         schemes=schemes,
         linear=linear,
-        pimple=pimple,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
@@ -90,9 +79,7 @@ def create_fvm_setup(
 def main() -> None:
     case_dir = Path(__file__).parent
 
-    # The direct-forcing feedback loop is stable only for Fo = nu*dt/h^2 <~ 0.1;
-    # above it a slow sawtooth develops in Cd and
-    # in the marker slip error. Cap dt accordingly (this binds at low Re).
+    # Limit the immersed-boundary forcing Fourier number nu*dt/h².
     kinematic_viscosity = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
     fourier_limit = MAX_FORCING_FOURIER * SPACING**2 / kinematic_viscosity
     max_time_step_size = min(MAX_TIME_STEP_SIZE, fourier_limit)

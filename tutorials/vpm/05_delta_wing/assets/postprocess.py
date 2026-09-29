@@ -124,10 +124,7 @@ REQUIRED_CSV_COLUMNS = {
 NUMERIC_CSV_COLUMNS = {
     name: required - {"surface", "station_id"} for name, required in REQUIRED_CSV_COLUMNS.items()
 }
-# Fixed screen-space projection for the moving panels. A plain x-z view is
-# nearly edge-on for this geometry because the wing span is mostly y. This
-# oblique projection retains chord (x), span (y), and heave/pitch (z) in one
-# consistent 2-D view without inventing intermediate solver states.
+# Oblique projection retains chord, span, and heave in one panel view.
 OBLIQUE_PROJECTION = np.array([[1.0, 0.28, 0.0], [0.0, 0.72, 1.0]])
 _SOURCE_COLUMNS = {
     "source_segment",

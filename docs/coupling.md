@@ -249,28 +249,61 @@ solver also rejects physical particles that escape the slab. The FVM-owned
 renewal ramp acts on x/y exchange faces and retains full authority through the
 slip span.
 
-Stationary triangulated walls share one classifier between renewal and GBD.
-The lattice mask is cached by wall revision and lattice geometry. A circular
-z-aligned cylinder receives an analytic fast path only after its wall vertices,
-normals and axial extent have been verified; a bounding box is insufficient.
-Masked M4-prime scatter uses bounded local moment constraints, and the masked
-diffusion stencil excludes solid flux. Physical wall-vorticity production
-remains the responsibility of the no-slip FVM solve. Ghost-node solid queries
+Stationary walls share geometric queries between renewal, particle motion and
+GBD: signed distance, nearest surface and first segment intersection. Native
+walls use their actual oriented FVM triangles, including rotated and concave
+surfaces and multiple bodies. No cylinder fitting or tutorial-specific shape
+substitution is used. Immersed bodies supply the same segment-query interface
+from their represented geometry.
+The FVM velocity trace used by buffered renewal searches for visible fluid
+donors, expanding beyond the nearest cells when a wall hides them. It retains
+complete distance ties and affine-field reproduction without averaging across
+a solid or sampling an immersed body's interior.
+
+GBD caches solid-node masks and surface-crossing grid links by wall revision
+and lattice geometry. A link is blocked even when both endpoint nodes are in
+fluid, so a thin wall need not contain a grid node to exclude diffusive flux.
+M4-prime scatter uses only fluid nodes visible from its source particle and
+preserves circulation and first spatial moments. If the original stencil is
+insufficient, support expands locally up to ten nodes per axis; ill-conditioned
+or excessive signed weights are rejected. Pruning recovery stays within
+connected, wall-visible nonzero grid support and never falls back to a global
+correction across disconnected regions. Insufficient capacity raises an error
+rather than transferring strength across a wall. Physical wall-vorticity
+production remains the responsibility of the no-slip FVM solve. Ghost-node solid queries
 reflect into the physical span. Sparse wall corrections are computed for
 physical particles once and reflected with axial parity; image corrections
 have separate diagnostics. Node-aligned slip-plane particles use half
 control-volume strength and volume to avoid doubling normal circulation on
 repeated remeshing; half-node lattices need no endpoint weight.
 
-For that verified cylinder, shallow RK and accepted-step particle penetrations
-are projected to the fluid side before induction. Penetrations exceeding a
-quarter of the particle spacing are rejected. Projection preserves circulation
+For every solid, shallow RK and accepted-step crossings are projected to the
+fluid side before induction. The first wall hit along the particle path also
+detects tunnelling through a thin solid with two fluid endpoints. Corrections
+preserve tangential motion and are checked against the union of all bodies.
+Displacements exceeding a quarter of the particle spacing reject that RK
+attempt. Without an attached VLM solver, the particle integrator restores the
+attempt's positions, strengths and projection diagnostics, then retries two
+half intervals. Subdivision is bounded to ten levels. Stage evaluations use
+the actual subinterval times; diffusion, output and the coupling clock still
+advance once over the configured interval. Failed attempts do not contribute
+projection diagnostics. If subdivision cannot resolve the crossing, the
+inviscid particle state is restored and the error propagates. VLM-attached
+runs retain the explicit timestep error because their bound-reaction ledger
+requires a single integration interval. Projection preserves circulation
 but changes impulse; `solid_projection` in coupled diagnostics separates
 temporary RK corrections from accepted-state corrections. `gbd_wall_transfer`
-records the remeshing budget. General walls retain a strict crossing error
-until a suitable fluid-side projection has been qualified. These numerical
-exclusion checks do not establish near-wall accuracy; use refinement and
+records the remeshing budget, including expanded support. These numerical
+exclusion checks do not establish near-wall accuracy for every mesh; use refinement and
 matched-reference comparisons for that qualification.
+
+Geometry tests cover rotated and concave polyhedra, curved triangulations,
+multiple solids and sub-grid-thickness barriers. Operator tests check blocked
+flux for constant and variable viscosity, conservative visible remeshing,
+induced-velocity refinement and disconnected-region pruning. Native coupled
+tests advance non-box meshes and compare resumed and uninterrupted states.
+The geometry must remain static, consistently oriented and resolved sufficiently
+for the requested flow accuracy; moving-wall coupling is a separate capability.
 
 Construction/initialization rejects missing injected solvers, mismatched viscosity,
 invalid donor bounds, incompatible step ratios, missing VPM particle spacing, invalid

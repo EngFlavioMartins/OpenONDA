@@ -73,7 +73,6 @@ def test_all_cases_share_the_transposed_dns_rk3_baseline():
         assert numerics.time_step_size == 0.00375
         assert numerics.viscous.kinematic_viscosity == pytest.approx(np.pi / 3000)
         assert numerics.max_n_particles == setup.MAX_N_PARTICLES
-        assert case.run.resource_limits.max_particles == setup.MAX_N_PARTICLES
         assert any(isinstance(s, setup.vpm.RingDiagnosticsSampler) for s in case.samplers.samples)
         assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
         assert numerics.health_limits.divergence.maximum == 0.12
@@ -115,7 +114,7 @@ def test_frozen_representation_controls_are_retained():
     assert config.regularization_grid_spacing == config.regularization_core_radius == 0.05
     assert config.regularization_core_radius_trigger == 0.1
     assert config.regularization_tail_budget == 0.003
-    assert config.regularization_max_particles == setup.MAX_N_PARTICLES
+    assert config.regularization_max_particles is None
     assert config.regularization_total_kinetic_energy_dissipation_limit == 0.01
     assert config.regularization_total_enstrophy_dissipation_limit == 0.01
 

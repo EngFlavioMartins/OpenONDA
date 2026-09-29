@@ -37,26 +37,15 @@ WALL_STRETCHING = 1.12  # wall-normal growth factor (1.0 = uniform)
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.005  # initial time step [s]
-MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.02  # upper bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
-CONVECTION_SCHEME = "limitedLinear"
 GRADIENT_SCHEME = "gauss"
-LINEAR_SOLVER = "bicgstab"
 
 
 def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
     """Build the FVM setup for the flat-plate case."""
     schemes = fvm.DiscretizationConfig(
-        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme=GRADIENT_SCHEME,
-    )
-    linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(
-        n_correctors=PISO_CORRECTORS,
-        n_outer_correctors=OUTER_CORRECTORS,
     )
     forces = [
         fvm.ForceSampler(
@@ -74,13 +63,10 @@ def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
             end_time=FINAL_TIME,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
                 maximum_time_step_size=MAX_TIME_STEP_SIZE,
             ),
         ),
         schemes=schemes,
-        linear=linear,
-        pimple=pimple,
         samplers=forces,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         boundaries=[

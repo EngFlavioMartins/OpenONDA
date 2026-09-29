@@ -70,12 +70,31 @@ def required_ensemble_size(current: int, relative_error: float, limit: float) ->
     return max(current + 4, math.ceil(1.1 * current * (relative_error / limit) ** 2))
 
 
+def existing_ensemble_size(case: str) -> int:
+    """Return the size of a contiguous existing ensemble for one case."""
+    solution_root = TUTORIAL_DIR / "solution"
+    prefix = f"{case}_rwm_"
+    indices = sorted(
+        int(suffix)
+        for path in solution_root.glob(f"{prefix}*")
+        if path.is_dir() and (suffix := path.name.removeprefix(prefix)).isdigit()
+    )
+    if not indices:
+        return 0
+    expected = list(range(indices[-1] + 1))
+    if indices != expected:
+        raise ValueError(f"{case}_rwm: ensemble member indices are not contiguous from zero")
+    return len(indices)
+
+
 def run_converged_ensemble(case, pilot, first_seed, maximum):
     from .postprocess import RWM_RELATIVE_STANDARD_ERROR_LIMIT, aggregate_case
 
     if maximum < pilot:
         raise ValueError("maximum realizations must be at least the pilot size")
-    count = pilot
+    count = max(pilot, existing_ensemble_size(case))
+    if count > pilot:
+        print(f"[RWM] {case} | reusing {count} existing member directories", flush=True)
     first = 0
     while True:
         run_ensemble(case, count, first_seed, first_realization=first)

@@ -39,7 +39,6 @@ KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_
 
 # FVM domain and mesh
 FVM_CORES = 4
-PIMPLE_CORRECTORS = 2
 CELL_SIZE = DEFAULT_CYLINDER_CASE.coupled_wall_spacing
 FVM_RESOLVED_SPAN = DEFAULT_CYLINDER_CASE.resolved_span
 REFERENCE_AREA = DIAMETER * FVM_RESOLVED_SPAN
@@ -68,16 +67,12 @@ VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
 SPANWISE_LAYERS = math.ceil(FVM_RESOLVED_SPAN / 0.05)
 VPM_PARTICLE_SPACING = FVM_RESOLVED_SPAN / SPANWISE_LAYERS
 # Keep renewal and grid-based diffusion on one VPM lattice.
-GBD_GRID_SPACING = VPM_PARTICLE_SPACING
 SAMPLE_SPACING = 2.0 * CELL_SIZE
 PARTICLE_LIMIT = 1_000_000
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 TRANSFER_METHOD = "buffered_m4_renewal"
-TRANSFER_VORTICITY_CUTOFF = 0.05
-TRANSFER_AMPLIFICATION_CAP = 1.8
-FVM_CONSISTENCY_WIDTH = 0.0
 INTERFACE_ITERATIONS = 3
 INTERFACE_TOLERANCE = 1.0e-5
 
@@ -167,17 +162,12 @@ FVM_SETUP = fvm.FVMSetup(
     case_name=CASE_NAME,
     cores=FVM_CORES,
     execution=fvm.ComputeConfig(operator_backend="numba"),
-    output=fvm.OutputConfig(compression="lz4", asynchronous=True, ghost_layers=0),
+    output=fvm.OutputConfig(compression="lz4", ghost_layers=0),
     time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
         end_time=END_TIME,
         # Retained fields and the coupled checkpoint use the same accepted times.
         output_schedule=fvm.RunSchedule(every_n_steps=FVM_OUTPUT_INTERVAL_STEPS),
-    ),
-    schemes=fvm.DiscretizationConfig(
-        convection_scheme="limitedLinear",
-        gradient_scheme="lsq",
-        time_scheme="euler_implicit",
     ),
     linear=fvm.LinearSolverConfig(
         pressure_solver="amg",
@@ -187,7 +177,6 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_relative_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
-        n_correctors=PIMPLE_CORRECTORS,
         n_outer_correctors=2,
         velocity_relaxation=0.7,
         pressure_relaxation=0.3,
@@ -210,7 +199,6 @@ FVM_SETUP = fvm.FVMSetup(
         fvm.BoundaryConfig.wall("cylinder"),
     ],
     initial_velocity=list(FREESTREAM_VELOCITY),
-    initial_kinematic_pressure=0.0,
 )
 
 COUPLER_SETUP = coupling.CouplerSetup(
@@ -219,14 +207,11 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_region_bounds=TRANSFER_REGION_BOX,
     backup_interval_steps=COUPLED_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
-    fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
     interface_iterations=INTERFACE_ITERATIONS,
     interface_normal_tolerance=INTERFACE_TOLERANCE,
     interface_gradient_tolerance=INTERFACE_TOLERANCE,
     eta_blend_width=6.0 * VPM_PARTICLE_SPACING,
     vpm_only_width=2.0 * VPM_PARTICLE_SPACING,
-    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
-    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
@@ -263,12 +248,10 @@ VPM_CASE = vpm.VPMCase(
         freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
-            gbd_grid_spacing=GBD_GRID_SPACING,
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
             threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-            max_nodes=PARTICLE_LIMIT,
             core_radius_ratio=1.0,
         ),
         integrator=vpm.RK2(),
@@ -281,13 +264,8 @@ VPM_CASE = vpm.VPMCase(
             max_shells=129,
         ),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
-        particle_kernel="GAUSSIAN",
-        precision="f32",
-        compute_device="AUTO",
         max_n_particles=PARTICLE_LIMIT,
-        max_evaluation_points=min(32_768, PARTICLE_LIMIT),
         domain_bounds=VPM_DOMAIN,
-        write_precision="f32",
     ),
     # Coupler backups contain the FVM state, VPM state, and boundary history
     # atomically; independent native backups would not be restart-consistent.
@@ -352,11 +330,8 @@ def build_case(
     if not mesh_changed:
         mesh = FVM_MESH
     else:
-        # CartesianMesher quantizes box planes to its root lattice; even when
-        # dz == hxy, that can move the physical slip planes (e.g. ±0.48 to
-        # ±0.512 at hxy=0.064). Extrusion keeps the requested span exact.
-        # Its x/y planes must match the *resolved* source section perimeter;
-        # projecting a quantized outer strip inward can fold adjacent cells.
+        # Extrude the resolved Cartesian section to preserve the requested span.
+        # Keep its transverse perimeter aligned with the source mesh.
         source_half_span = 16.0 * hxy
         source_mesh = msh.CartesianMesher(
             domain=msh.BoxDomain(
@@ -452,7 +427,6 @@ def build_case(
         particle_spacing=particle_spacing,
         gbd_grid_spacing=particle_spacing,
         gbd_threshold=GBD_VORTICITY_FLOOR * particle_spacing**3,
-        gbd_max_nodes=particle_limit,
         core_radius_ratio=core_ratio,
     )
     numerics = replace(
@@ -469,7 +443,6 @@ def build_case(
         stabilization=vpm.StabilizationConfig.bounded_domain(vpm_domain),
         compute_device=compute_device,
         max_n_particles=particle_limit,
-        max_evaluation_points=min(32_768, particle_limit),
         domain_bounds=vpm_domain,
     )
     vpm_case = replace(

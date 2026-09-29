@@ -7,6 +7,8 @@ import hashlib
 
 import numpy as np
 
+from source.solvers.vpm.wall_errors import WallCorrectionTooLargeError
+
 
 class TriangulatedWall:
     """Signed wall distance, positive in fluid, from oriented FVM triangles.
@@ -21,7 +23,7 @@ class TriangulatedWall:
     def __init__(self, triangles: np.ndarray, domain_bounds: np.ndarray) -> None:
         from vtkmodules.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
         from vtkmodules.vtkCommonCore import vtkPoints
-        from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
+        from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData, vtkStaticCellLocator
         from vtkmodules.vtkFiltersCore import vtkImplicitPolyDataDistance
 
         triangles = np.asarray(triangles, dtype=np.float64).reshape(-1, 3, 3)
@@ -32,9 +34,6 @@ class TriangulatedWall:
             + np.ascontiguousarray(domain_bounds, dtype=np.float64).tobytes(),
             digest_size=16,
         ).hexdigest()
-        self.verified_cylinder_z = self._verify_extruded_cylinder_z(
-            triangles, np.asarray(domain_bounds, dtype=np.float64)
-        )
         points, connectivity = np.unique(
             triangles[:, ::-1].reshape(-1, 3), axis=0, return_inverse=True
         )
@@ -53,6 +52,14 @@ class TriangulatedWall:
         self.surface_bounds = np.asarray(self._surface.GetBounds(), dtype=np.float64)
         self._distance = vtkImplicitPolyDataDistance()
         self._distance.SetInput(self._surface)
+        self._locator = vtkStaticCellLocator()
+        self._locator.SetDataSet(self._surface)
+        self._locator.BuildLocator()
+        normals = np.cross(triangles[:, 2] - triangles[:, 0], triangles[:, 1] - triangles[:, 0])
+        lengths = np.linalg.norm(normals, axis=1)
+        if np.any(lengths == 0.0):
+            raise ValueError("Wall triangles must have nonzero area")
+        self._normals = normals / lengths[:, None]
         self._bounds = np.asarray(domain_bounds, dtype=np.float64).reshape(6).copy()
         if not np.all(np.isfinite(self._bounds)) or np.any(self._bounds[1::2] <= self._bounds[::2]):
             raise ValueError("Wall domain bounds must be finite and increasing")
@@ -60,44 +67,88 @@ class TriangulatedWall:
         self.interior_tolerance = 16.0 * np.finfo(np.float32).eps * max(body_scale, 1.0e-6)
         self._cache: OrderedDict[bytes, np.ndarray] = OrderedDict()
 
-    @staticmethod
-    def _verify_extruded_cylinder_z(triangles: np.ndarray, domain_bounds: np.ndarray):
-        """Verify an open z-extruded circular wall from surface vertices.
+    @classmethod
+    def from_box(cls, bounds, domain_bounds):
+        """Represent a box through the same surface-query contract as any wall."""
+        lower, upper = np.asarray(bounds)[::2], np.asarray(bounds)[1::2]
+        vertices = np.array(
+            [
+                [x, y, z]
+                for x in (lower[0], upper[0])
+                for y in (lower[1], upper[1])
+                for z in (lower[2], upper[2])
+            ]
+        )
+        faces = ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3))
+        # Faces above point into the solid, like native FVM wall faces.
+        triangles = np.array(
+            [vertices[[a, c, b]] for a, b, c, d in faces]
+            + [vertices[[a, d, c]] for a, b, c, d in faces]
+        )
+        return cls(triangles, domain_bounds)
 
-        This is a geometric check, independent of patch names or a wall AABB.
-        A candidate must cover the circumference and have no axial cap faces.
+    def closest_surface(self, points):
+        """Return nearest surface points and normals directed into the fluid."""
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        closest = np.empty_like(query)
+        normals = np.empty_like(query)
+        for index, point in enumerate(query):
+            distance = self._distance.EvaluateFunctionAndGetClosestPoint(point, closest[index])
+            delta = point - closest[index]
+            length = np.linalg.norm(delta)
+            if length > 1e-14:
+                normals[index] = delta / length * (1.0 if distance >= 0 else -1.0)
+            else:
+                self._distance.EvaluateGradient(point, normals[index])
+                normals[index] /= np.linalg.norm(normals[index])
+        return closest, normals
+
+    def first_intersections(self, starts, ends):
+        """First entry into the solid along each segment, including thin solids.
+
+        The surface locator tests actual triangles. Tangency and exit faces
+        do not count as entries; no shape fit or sampling interval is used.
         """
-        vertices = np.unique(triangles.reshape(-1, 3), axis=0)
-        xy = np.unique(vertices[:, :2], axis=0)
-        if len(xy) < 12 or np.ptp(vertices[:, 2]) <= 0.0:
-            return None
-        span = float(domain_bounds[5] - domain_bounds[4])
-        axial_tolerance = max(1.0e-7, 2.0e-4 * span)
-        if (
-            abs(float(vertices[:, 2].min()) - float(domain_bounds[4])) > axial_tolerance
-            or abs(float(vertices[:, 2].max()) - float(domain_bounds[5])) > axial_tolerance
-        ):
-            return None
-        matrix = np.column_stack((2.0 * xy, np.ones(len(xy))))
-        if np.linalg.matrix_rank(matrix) < 3:
-            return None
-        cx, cy, intercept = np.linalg.lstsq(matrix, np.sum(xy * xy, axis=1), rcond=None)[0]
-        radius = float(np.sqrt(max(0.0, intercept + cx * cx + cy * cy)))
-        if radius <= 0.0:
-            return None
-        radii = np.linalg.norm(xy - [cx, cy], axis=1)
-        tolerance = max(1.0e-7, 0.002 * radius)
-        if float(np.max(np.abs(radii - radius))) > tolerance:
-            return None
-        angles = np.sort(np.mod(np.arctan2(xy[:, 1] - cy, xy[:, 0] - cx), 2.0 * np.pi))
-        if float(np.max(np.diff(np.r_[angles, angles[0] + 2.0 * np.pi]))) > 0.5:
-            return None
-        normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
-        magnitude = np.linalg.norm(normals, axis=1)
-        valid = magnitude > 0.0
-        if not np.any(valid) or np.any(np.abs(normals[valid, 2]) / magnitude[valid] > 0.01):
-            return None
-        return (float(cx), float(cy), radius, tolerance)
+        from vtkmodules.vtkCommonCore import vtkIdList, vtkPoints
+        from vtkmodules.vtkCommonDataModel import vtkGenericCell
+
+        starts = np.asarray(starts, dtype=np.float64).reshape(-1, 3)
+        ends = np.asarray(ends, dtype=np.float64).reshape(-1, 3)
+        delta = ends - starts
+        lengths = np.linalg.norm(delta, axis=1)
+        fraction = np.full(len(starts), np.inf)
+        normals = np.zeros_like(starts)
+        bounds = self.surface_bounds
+        candidates = np.flatnonzero(
+            (lengths > 0)
+            & np.all(np.maximum(starts, ends) >= bounds[::2], axis=1)
+            & np.all(np.minimum(starts, ends) <= bounds[1::2], axis=1)
+        )
+        if len(candidates):
+            # Signed distance is a conservative broad phase for a segment.
+            distance = self.signed_distance(starts[candidates])
+            candidates = candidates[
+                (distance <= lengths[candidates] + self.interior_tolerance) | ~np.isfinite(distance)
+            ]
+        hits, cells, cell = vtkPoints(), vtkIdList(), vtkGenericCell()
+        hits.SetDataTypeToDouble()
+        tolerance = max(1e-12, self.interior_tolerance * 1e-3)
+        for index in candidates:
+            hits.Reset()
+            cells.Reset()
+            self._locator.IntersectWithLine(
+                starts[index], ends[index], tolerance, hits, cells, cell
+            )
+            for hit in range(cells.GetNumberOfIds()):
+                normal = self._normals[cells.GetId(hit)]
+                if np.dot(delta[index], normal) >= -1e-12 * lengths[index]:
+                    continue
+                point = np.asarray(hits.GetPoint(hit))
+                time = float(np.dot(point - starts[index], delta[index]) / lengths[index] ** 2)
+                if -1e-10 <= time < fraction[index] and time <= 1.0 + 1e-10:
+                    fraction[index] = np.clip(time, 0, 1)
+                    normals[index] = normal
+        return fraction, normals
 
     def signed_distance(self, points: np.ndarray) -> np.ndarray:
         from vtkmodules.util.numpy_support import numpy_to_vtk, vtk_to_numpy
@@ -105,9 +156,6 @@ class TriangulatedWall:
         query = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
         if not np.all(np.isfinite(query)):
             raise ValueError("Wall queries must be finite")
-        if self.verified_cylinder_z is not None:
-            cx, cy, radius, _tolerance = self.verified_cylinder_z
-            return np.linalg.norm(query[:, :2] - [cx, cy], axis=1) - radius
         key = hashlib.blake2b(query.tobytes(), digest_size=16).digest()
         if key in self._cache:
             self._cache.move_to_end(key)
@@ -130,3 +178,187 @@ class TriangulatedWall:
             if include_boundary
             else distance < -self.interior_tolerance
         )
+
+
+class SolidBoundary:
+    """One geometric contract for transfer, particle motion and grid diffusion.
+
+    Bodies supply signed distance and membership. Native triangulated walls
+    also supply exact nearest points and line intersections. Distance-based
+    immersed bodies use conservative advancement with their own distance
+    function; ambiguous intersections fail instead of leaking through a wall.
+    """
+
+    def __init__(self, bodies):
+        self.bodies = tuple(bodies)
+        bounds = [getattr(body, "surface_bounds", None) for body in self.bodies]
+        bounds = [
+            value if value is not None else getattr(body, "solid_bounds", None)
+            for body, value in zip(self.bodies, bounds, strict=True)
+        ]
+        self.bounds = None
+        if bounds and all(value is not None for value in bounds):
+            values = np.asarray(bounds, dtype=np.float64)
+            self.bounds = np.empty(6)
+            self.bounds[::2] = values[:, ::2].min(axis=0)
+            self.bounds[1::2] = values[:, 1::2].max(axis=0)
+            if not np.all(np.isfinite(self.bounds)):
+                self.bounds = None  # Unbounded extrusions cannot use a finite query box.
+        self.tolerance = max(
+            (getattr(body, "interior_tolerance", 0.0) for body in self.bodies), default=0.0
+        )
+
+    @property
+    def revision(self):
+        return tuple(body.revision for body in self.bodies)
+
+    def signed_distance(self, points):
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        result = np.full(len(points), np.inf)
+        for body in self.bodies:
+            result = np.minimum(result, body.signed_distance(points))
+        return result
+
+    def contains(self, points, *, include_boundary=False):
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        result = np.zeros(len(points), dtype=bool)
+        for body in self.bodies:
+            result |= body.contains(points, include_boundary=include_boundary)
+        return result
+
+    @staticmethod
+    def _closest_surface(body, points):
+        method = getattr(body, "closest_surface", None)
+        if method is not None:
+            return method(points)
+        points = np.asarray(points, dtype=np.float64)
+        distance = body.signed_distance(points)
+        epsilon = 1e-6 * max(1.0, float(np.max(np.abs(points), initial=0.0)))
+        normals = np.column_stack(
+            [
+                (
+                    body.signed_distance(points + epsilon * axis)
+                    - body.signed_distance(points - epsilon * axis)
+                )
+                / (2 * epsilon)
+                for axis in np.eye(3)
+            ]
+        )
+        magnitude = np.linalg.norm(normals, axis=1)
+        ambiguous = magnitude < 1e-8
+        if np.any(ambiguous):
+            directions = np.concatenate((np.eye(3), -np.eye(3)))
+            probes = points[ambiguous, None, :] + epsilon * directions
+            values = body.signed_distance(probes.reshape(-1, 3)).reshape(-1, 6)
+            normals[ambiguous] = directions[np.argmax(values, axis=1)]
+            magnitude[ambiguous] = 1.0
+        normals /= magnitude[:, None]
+        return points - distance[:, None] * normals, normals
+
+    def closest_surface(self, points):
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        distances = np.stack([body.signed_distance(points) for body in self.bodies])
+        owners = np.argmin(distances, axis=0)
+        closest, normals = np.empty_like(points), np.empty_like(points)
+        for index, body in enumerate(self.bodies):
+            selected = owners == index
+            if np.any(selected):
+                closest[selected], normals[selected] = self._closest_surface(body, points[selected])
+        return closest, normals
+
+    @classmethod
+    def _distance_intersections(cls, body, starts, ends):
+        delta = ends - starts
+        lengths = np.linalg.norm(delta, axis=1)
+        fraction = np.full(len(starts), np.inf)
+        normals = np.zeros_like(starts)
+        progress = np.zeros(len(starts))
+        scale = max(1.0, float(np.max(np.abs(starts), initial=0.0)))
+        tolerance = 64 * np.finfo(float).eps * scale
+        active = np.flatnonzero(lengths > tolerance)
+        for _ in range(4096):
+            if not len(active):
+                return fraction, normals
+            query = starts[active] + progress[active, None] * delta[active]
+            distance = np.asarray(body.signed_distance(query))
+            near = distance <= tolerance
+            if np.any(near):
+                _, normal = cls._closest_surface(body, query[near])
+                rows = active[near]
+                entering = np.einsum("ij,ij->i", normal, delta[rows]) < -1e-12 * lengths[rows]
+                fraction[rows[entering]] = progress[rows[entering]]
+                normals[rows[entering]] = normal[entering]
+            progress[active] += np.maximum(distance, tolerance) / lengths[active]
+            active = active[(progress[active] < 1.0) & ~np.isfinite(fraction[active])]
+        raise RuntimeError(
+            "Solid distance cannot resolve a segment; supply triangulated wall geometry"
+        )
+
+    def first_intersections(self, starts, ends):
+        starts = np.asarray(starts, dtype=np.float64).reshape(-1, 3)
+        ends = np.asarray(ends, dtype=np.float64).reshape(-1, 3)
+        if starts.shape != ends.shape:
+            raise ValueError("Wall segments need matching start and end arrays")
+        fraction = np.full(len(starts), np.inf)
+        normals = np.zeros_like(starts)
+        for body in self.bodies:
+            method = getattr(body, "first_intersections", None)
+            hit, normal = (
+                method(starts, ends)
+                if method is not None
+                else self._distance_intersections(body, starts, ends)
+            )
+            earlier = hit < fraction
+            fraction[earlier], normals[earlier] = hit[earlier], normal[earlier]
+        return fraction, normals
+
+    def blocks_segments(self, starts, ends):
+        """Whether a segment enters solid, even with two fluid endpoints."""
+        return self.first_intersections(starts, ends)[0] < 1.0 - 1e-10
+
+    def constrain_motion(self, positions, spacing, *, starts=None):
+        """Project bounded wall crossings onto fluid, without changing strength.
+
+        Segment queries stop tunnelling through thin walls. Successive local
+        projections handle corners and multiple bodies; all corrected points
+        and paths are verified against the complete geometry before return.
+        """
+        original = np.asarray(positions)
+        corrected = np.asarray(positions, dtype=np.float64).copy()
+        reference = None if starts is None else np.asarray(starts, dtype=np.float64).copy()
+        scale = max(spacing, float(np.max(np.abs(corrected), initial=0.0)))
+        margin = max(4 * self.tolerance, 32 * np.finfo(original.dtype).eps * scale, 1e-7 * spacing)
+        for _ in range(12):
+            inside = self.contains(corrected)
+            hits = np.full(len(corrected), np.inf)
+            if reference is not None:
+                hits, normals = self.first_intersections(reference, corrected)
+                crossing = np.isfinite(hits)
+                if np.any(crossing):
+                    contact = reference[crossing] + hits[crossing, None] * (
+                        corrected[crossing] - reference[crossing]
+                    )
+                    normal = normals[crossing]
+                    inward = np.einsum("ij,ij->i", corrected[crossing] - contact, normal)
+                    corrected[crossing] += np.maximum(margin - inward, 0)[:, None] * normal
+                    reference[crossing] = contact + margin * normal
+            inside = self.contains(corrected)
+            if np.any(inside):
+                closest, normal = self.closest_surface(corrected[inside])
+                corrected[inside] = closest + margin * normal
+                if reference is not None:
+                    reference[inside] = corrected[inside]
+            maximum = float(np.max(np.linalg.norm(corrected - original, axis=1), initial=0.0))
+            if maximum > 0.25 * spacing:
+                raise WallCorrectionTooLargeError(
+                    "VPM wall correction exceeds a quarter of particle spacing; "
+                    f"maximum={maximum:.6e} m, spacing={spacing:.6e} m. Reduce the time step."
+                )
+            if not np.any(inside) and not np.any(np.isfinite(hits)):
+                result = corrected.astype(original.dtype)
+                if np.any(self.contains(result)):
+                    raise RuntimeError("Wall projection was lost at particle storage precision")
+                displacement = result.astype(np.float64) - original
+                selected = np.any(displacement != 0, axis=1)
+                return result, selected, displacement[selected], maximum
+        raise RuntimeError("Wall projection did not find fluid support at an intersecting boundary")

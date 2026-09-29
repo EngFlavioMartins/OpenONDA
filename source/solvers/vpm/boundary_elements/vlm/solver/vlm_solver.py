@@ -2464,7 +2464,6 @@ class VLMSolver:
 
         n_panels = self.lattice.n_panels
 
-        # 1. Advance kinematics (move geometry to new position)
         if not self._bound_transport_ready:
             # The initial empty wake skips RK; retain the old bound vector
             # before moving the body even when no particles were transported.
@@ -2472,13 +2471,10 @@ class VLMSolver:
             self._bound_transport_ready = True
         self.advance_time(time_step_size, current_time=time)
 
-        # 2. Determine the force normalization velocity
         reference_velocity = self._resolve_coupling_reference_velocity(config)
         self._last_reference_velocity = reference_velocity
 
-        # 3. Compute VPM-induced velocity at collocation_point points.
-        #    Particles from previous steps are already convected downstream,
-        #    providing spatial separation for the explicit coupling.
+        # The old wake has already moved; new particles are shed after this solve.
         physics.compute_target_velocity(
             particles,
             self.lattice.collocation_point,
@@ -2486,18 +2482,14 @@ class VLMSolver:
             include_freestream=True,
         )
 
-        # 4. Solve VLM system (coupled aerodynamic_influence_coefficient — bound horseshoe + near-wake)
         self._prepare_near_wake(time_step_size, physics, particles)
         self.solve(external_velocity=None, time_step_size=time_step_size, coupled=True)
 
-        # 5. Optionally shed the TE near-wake row from the clean post-solve
-        # cumulative Γ.
         result = None
         if release_wake:
             self.lattice.reset_wake_buffer()
             result = self._compute_wake_particles(reset_buffer=False)
 
-        # 6. Transfer the completed row to the free VPM wake.
         if release_wake and result and result.get("_gpu_transfer_ready"):
             n_particles_shed = self.lattice.n_wake_particles[None]
             if n_particles_shed > 0:
@@ -2517,7 +2509,6 @@ class VLMSolver:
                         f" + {n_particles_shed} > {particles.capacity}. Increase max_n_particles."
                     )
 
-        # 7. Post-process forces from the accepted circulation and wake.
         self._bound_transport_ready = False
         physics.compute_target_velocity(
             particles,

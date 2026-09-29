@@ -334,6 +334,103 @@ class ImmersedBody:
         inside = np.minimum(np.maximum(planar, axial), 0.0)
         return outside + inside
 
+    def first_intersections(self, starts, ends):
+        """First solid entry for the geometry represented by this body.
+
+        Intersect the actual primitive surfaces and classify the intervals
+        between roots. This includes thin extrusions, concave polygons and
+        grazing rays without relying on a spatial sampling interval. Geometry
+        dispatch belongs here; coupling consumers use only this interface.
+        """
+        starts = np.asarray(starts, dtype=np.float64).reshape(-1, 3)
+        ends = np.asarray(ends, dtype=np.float64).reshape(-1, 3)
+        if starts.shape != ends.shape:
+            raise ValueError("Solid segments need matching start and end arrays")
+        if self._geometry is None:
+            raise ValueError(f"Immersed body {self.name!r} has no solid geometry metadata")
+        delta = ends - starts
+        geometry = self._geometry
+        kind = geometry["type"]
+        roots = [np.zeros(len(starts)), np.ones(len(starts))]
+        if kind in {"sphere", "cylinder_z"}:
+            dimensions = 3 if kind == "sphere" else 2
+            offset = starts[:, :dimensions] - np.asarray(geometry["centre"])[:dimensions]
+            direction = delta[:, :dimensions]
+            a = np.einsum("ij,ij->i", direction, direction)
+            b = np.einsum("ij,ij->i", offset, direction)
+            c = np.einsum("ij,ij->i", offset, offset) - float(geometry["radius"]) ** 2
+            discriminant = b * b - a * c
+            valid = (a > 0) & (discriminant >= 0)
+            radical = np.sqrt(np.maximum(discriminant, 0))
+            for sign in (-1, 1):
+                root = np.full(len(starts), np.inf)
+                np.divide(-b + sign * radical, a, out=root, where=valid)
+                roots.append(root)
+        elif kind in {"rectangle_z", "polygon_z"}:
+            if kind == "rectangle_z":
+                centre = np.asarray(geometry["centre"])[:2]
+                half = 0.5 * np.asarray(geometry["size"])
+                vertices = centre + half * np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]])
+            else:
+                vertices = np.asarray(geometry["vertex_position"])
+            direction = delta[:, :2]
+            for start, finish in zip(vertices, np.roll(vertices, -1, axis=0), strict=True):
+                edge = finish - start
+                offset = start - starts[:, :2]
+                denominator = direction[:, 0] * edge[1] - direction[:, 1] * edge[0]
+                valid = np.abs(denominator) > 1e-15 * np.linalg.norm(edge) * np.linalg.norm(
+                    direction, axis=1
+                )
+                time, edge_fraction = np.full(len(starts), np.inf), np.full(len(starts), np.inf)
+                np.divide(
+                    offset[:, 0] * edge[1] - offset[:, 1] * edge[0],
+                    denominator,
+                    out=time,
+                    where=valid,
+                )
+                np.divide(
+                    offset[:, 0] * direction[:, 1] - offset[:, 1] * direction[:, 0],
+                    denominator,
+                    out=edge_fraction,
+                    where=valid,
+                )
+                roots.append(
+                    np.where((edge_fraction >= -1e-12) & (edge_fraction <= 1 + 1e-12), time, np.inf)
+                )
+        else:
+            raise ValueError(f"Unsupported immersed-body geometry type {kind!r}")
+        if kind != "sphere" and geometry.get("z_bounds") is not None:
+            for plane in geometry["z_bounds"]:
+                root = np.full(len(starts), np.inf)
+                np.divide(plane - starts[:, 2], delta[:, 2], out=root, where=delta[:, 2] != 0)
+                roots.append(root)
+        times = np.column_stack(roots)
+        times[(times < 0) | (times > 1)] = 1
+        times.sort(axis=1)
+        midpoints = 0.5 * (times[:, :-1] + times[:, 1:])
+        query = starts[:, None, :] + midpoints[:, :, None] * delta[:, None, :]
+        interior = self.contains(query.reshape(-1, 3)).reshape(midpoints.shape)
+        interior &= times[:, 1:] - times[:, :-1] > 1e-12
+        hit = np.any(interior, axis=1)
+        fraction = np.full(len(starts), np.inf)
+        fraction[hit] = times[hit, np.argmax(interior[hit], axis=1)]
+        normals = np.zeros_like(starts)
+        if np.any(hit):
+            contact = starts[hit] + fraction[hit, None] * delta[hit]
+            epsilon = 1e-6 * max(1.0, float(np.max(np.abs(contact))))
+            gradient = np.column_stack(
+                [
+                    self.signed_distance(contact + epsilon * axis)
+                    - self.signed_distance(contact - epsilon * axis)
+                    for axis in np.eye(3)
+                ]
+            )
+            lengths = np.linalg.norm(gradient, axis=1)
+            if np.any(lengths == 0):
+                raise RuntimeError("Solid surface has no resolvable normal at the segment entry")
+            normals[hit] = gradient / lengths[:, None]
+        return fraction, normals
+
     # Factories.
 
     @classmethod

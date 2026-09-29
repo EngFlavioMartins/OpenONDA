@@ -311,22 +311,29 @@ def stage_restart_payload(
             raise ValueError(f"Backup field {field_name} contains non-finite values")
         fields[field_name] = np.ascontiguousarray(values)
 
+    time = _read_scalar(state, "time", kind="float")
+    step = int(_read_scalar(state, "step", kind="int"))
+    n_committed = int(_read_scalar(state, "n_committed_time_steps", kind="int"))
     eddy_viscosity = np.asarray(state["eddy_viscosity"])
     if eddy_viscosity.dtype != np.dtype(np.float64):
         raise ValueError(f"Backup eddy viscosity must use float64; got {eddy_viscosity.dtype}")
     if solver.turbulence is None:
         if eddy_viscosity.size:
             raise ValueError("Backup contains turbulence state for a laminar solver")
-    elif eddy_viscosity.shape != (solver.mesh_data["n_cells"],):
+    elif eddy_viscosity.shape != (solver.mesh_data["n_cells"],) and not (
+        eddy_viscosity.shape == (0,)
+        and step == 0
+        and n_committed == 0
+        and time == float(solver._time_config.start_time)
+    ):
+        # Before the first momentum solve LES viscosity has not been computed.
+        # Preserve that native initial state; accepted steps must carry it.
         raise ValueError("Backup eddy-viscosity shape is incompatible with the mesh")
     if eddy_viscosity.size and (
         not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0)
     ):
         raise ValueError("Backup eddy viscosity is invalid")
 
-    time = _read_scalar(state, "time", kind="float")
-    step = _read_scalar(state, "step", kind="int")
-    n_committed = _read_scalar(state, "n_committed_time_steps", kind="int")
     time_step_size = _read_scalar(state, "time_step_size", kind="float")
     accepted_time_step_size = _read_scalar(state, "accepted_time_step_size", kind="float")
     previous_time_step_size = _read_scalar(state, "previous_time_step_size", kind="float")
@@ -390,6 +397,21 @@ def publish_restart_payload(solver, payload: RestartPayload) -> None:
     """Publish a staged payload after all admission checks have succeeded."""
     for name, values in payload.fields.items():
         getattr(solver, name)[:] = values
+    # The pressure-free flux update stores its boundary increment separately
+    # from the pressure field. Reconstruct it from the saved accepted ghosts
+    # before PIMPLE refreshes them; otherwise restart silently replaces that
+    # boundary history with the constructor's zero-gradient value.
+    for boundary in getattr(solver, "boundaries", ()):
+        if boundary.get("pressure_type") != "fixedFluxPressure":
+            continue
+        start, count = int(boundary["start_face"]), int(boundary["n_faces"])
+        mesh = solver.mesh_data
+        owners = mesh["owners"][start : start + count]
+        ghost_start = mesh["n_cells"] + start - mesh["n_interior_faces"]
+        boundary["fixed_flux_pressure_delta"] = (
+            solver.kinematic_pressure[ghost_start : ghost_start + count]
+            - solver.kinematic_pressure[owners]
+        ).copy()
     solver.eddy_viscosity = (
         None if not payload.eddy_viscosity.size else payload.eddy_viscosity.copy()
     )

@@ -192,6 +192,7 @@ class RungeKutta:
         time_step_size: float,
         right_hand_side: CoupledStageRHS,
         velocity_gradient_out: object | None = None,
+        accepted_position_projector=None,
     ) -> None:
         """Advance particle position and strength through one RK step.
 
@@ -221,15 +222,19 @@ class RungeKutta:
             Optional persistent ``(count, 3, 3)`` gradient output in 1/s. When
             supplied, each stage writes into this field and the final stage's
             gradient remains after return.
+        accepted_position_projector : callable or None, default=None
+            Project the combined accepted position inside the provider step
+            context, so a rejected projection rolls back provider ledgers.
 
         Raises
         ------
         ValueError
             If ``count`` exceeds capacity.
         Exception
-            Exceptions from the right-hand side are propagated; in that case
-            the persistent state may contain partial writes only if the caller
-            supplied mutable fields that the RHS changed directly.
+            Exceptions from the right-hand side or accepted projector are
+            propagated. A projector can reject after the combination has
+            changed persistent position and strength; its caller must restore
+            both fields before retrying.
 
         Notes
         -----
@@ -338,6 +343,10 @@ class RungeKutta:
                 *padded(coefficients),
                 count,
             )
+            # The accepted wall projection belongs to the same transaction as
+            # the RK stages: a rejection must roll back provider exchange.
+            if accepted_position_projector is not None:
+                accepted_position_projector(position, vortex_strength, count)
 
 
 __all__ = ["CoupledStageRHS", "RungeKutta"]

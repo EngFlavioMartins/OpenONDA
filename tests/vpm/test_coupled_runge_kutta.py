@@ -1,5 +1,7 @@
 """Tests for the generic coupled Runge--Kutta engine."""
 
+from contextlib import contextmanager
+
 import numpy as np
 import pytest
 import taichi as ti
@@ -80,6 +82,48 @@ def test_every_rk_stage_uses_one_common_position_strength_state():
     np.testing.assert_allclose(vortex_strength.to_numpy(), [[1.2, 2.3, 3.4]], rtol=2e-6)
     for _, stage_position, stage_strength in rhs.calls:
         assert stage_position.shape == stage_strength.shape == (1, 3)
+
+
+def test_rejected_accepted_projection_rolls_back_provider_context():
+    _ensure_taichi_cpu()
+    position = ti.Vector.field(3, dtype=ti.f32, shape=(1,))
+    strength = ti.Vector.field(3, dtype=ti.f32, shape=(1,))
+    radius = ti.field(dtype=ti.f32, shape=(1,))
+    position[0] = [0.0, 0.0, 0.0]
+    strength[0] = [1.0, 0.0, 0.0]
+    radius[0] = 0.2
+    events = []
+
+    class RHS(_SpyRHS):
+        @contextmanager
+        def integration_step(self, tableau, dt):
+            events.append(("begin", tableau.name, dt))
+            try:
+                yield
+            except RuntimeError:
+                events.append(("rollback",))
+                raise
+            else:
+                events.append(("commit",))
+
+    def reject(accepted_position, accepted_strength, count):
+        events.append(("projection", count))
+        np.testing.assert_allclose(accepted_position.to_numpy()[0], [0.1, 0.2, 0.3])
+        np.testing.assert_allclose(accepted_strength.to_numpy()[0], [1.2, 0.3, 0.4])
+        raise RuntimeError("wall rejected")
+
+    with pytest.raises(RuntimeError, match="wall rejected"):
+        RungeKutta(RK2(), max_n_particles=1).advance(
+            position=position,
+            vortex_strength=strength,
+            core_radius=radius,
+            count=1,
+            time=2.0,
+            time_step_size=0.1,
+            right_hand_side=RHS(),
+            accepted_position_projector=reject,
+        )
+    assert [event[0] for event in events] == ["begin", "projection", "rollback"]
 
 
 class _LinearCoupledRHS:

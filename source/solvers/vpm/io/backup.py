@@ -186,8 +186,79 @@ def _configuration_mismatches(
     return [] if expected == found else [path]
 
 
+def _normalize_capacity_aliases(configuration: dict[str, Any]) -> None:
+    """Canonicalize optional caps that resolve to the container capacity."""
+    particle_capacity = configuration.get("max_n_particles")
+    if type(particle_capacity) is not int:
+        return
+
+    viscous = configuration.get("viscous")
+    if isinstance(viscous, dict):
+        for name in ("dvh_max_nodes", "gbd_max_nodes"):
+            if viscous.get(name) == particle_capacity:
+                viscous[name] = None
+
+    stabilization = configuration.get("stabilization")
+    if not isinstance(stabilization, dict):
+        return
+    if stabilization.get("regularization_max_particles") == particle_capacity:
+        stabilization["regularization_max_particles"] = None
+    if (
+        stabilization.get("regularization_max_particles") is None
+        and stabilization.get("regularization_capacity_max_particles") == particle_capacity
+    ):
+        stabilization["regularization_capacity_max_particles"] = None
+
+    refinement = stabilization.get("filament_refinement")
+    if isinstance(refinement, dict) and refinement.get("max_n_particles") in (
+        None,
+        particle_capacity,
+    ):
+        refinement.pop("max_n_particles", None)
+
+
 class _BackupIO:
     """Read and write VPM restart backups."""
+
+    @staticmethod
+    def inspect(
+        solver,
+        hdf5_file: str | Path,
+        *,
+        allow_time_step_size_mismatch: bool = False,
+    ) -> tuple[int, float, float, int]:
+        """Validate a checkpoint and return its accepted clock."""
+        path = str(hdf5_file)
+        _BackupIO._validate_hdf5_structure(
+            path,
+            expected_float_dtype=_restart_dtype(solver),
+            expected_configuration=_numerical_configuration(solver),
+            allow_time_step_size_mismatch=allow_time_step_size_mismatch,
+        )
+        with h5py.File(path, "r") as file:
+            solver_group = file["solver"]
+            source_step = int(_read_attribute(solver_group, "step"))
+            source_time = float(_read_attribute(solver_group, "time"))
+            source_time_step_size = float(_read_attribute(solver_group, "time_step_size"))
+            source_particle_count = _read_particle_count(solver_group)
+            state = solver_group.get("vlm")
+            vlm = getattr(solver, "vlm_solver", None)
+            if vlm is not None:
+                from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
+
+                validate_vlm_restart(vlm, state)
+                vlm_time = float(state.attrs["time"])
+                clock_tolerance = max(1.0e-10, abs(source_time) * 1.0e-12)
+                if not np.isfinite(source_time) or not np.isfinite(vlm_time):
+                    raise ValueError("VLM and solver restart clocks must be finite")
+                if not np.isclose(vlm_time, source_time, rtol=0.0, atol=clock_tolerance):
+                    raise ValueError(
+                        "VLM restart time does not match solver accepted time: "
+                        f"{vlm_time:.17g} != {source_time:.17g}"
+                    )
+            elif state is not None:
+                raise ValueError("VLM backup requires a configured VLM solver")
+        return source_step, source_time, source_time_step_size, source_particle_count
 
     @staticmethod
     def load(
@@ -205,35 +276,11 @@ class _BackupIO:
         state, and the override is applied only after that restore succeeds.
         """
         path = str(hdf5_file)
-        _BackupIO._validate_hdf5_structure(
+        source_step, source_time, source_time_step_size, _ = _BackupIO.inspect(
+            solver,
             path,
-            expected_float_dtype=_restart_dtype(solver),
-            expected_configuration=_numerical_configuration(solver),
             allow_time_step_size_mismatch=time_step_size is not None,
         )
-
-        vlm = getattr(solver, "vlm_solver", None)
-        with h5py.File(path, "r") as file:
-            solver_group = file["solver"]
-            source_step = int(_read_attribute(solver_group, "step"))
-            source_time = float(_read_attribute(solver_group, "time"))
-            source_time_step_size = float(_read_attribute(solver_group, "time_step_size"))
-            state = file["solver"].get("vlm")
-            if vlm is not None:
-                from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
-
-                validate_vlm_restart(vlm, state)
-                vlm_time = float(state.attrs["time"])
-                clock_tolerance = max(1.0e-10, abs(source_time) * 1.0e-12)
-                if not np.isfinite(source_time) or not np.isfinite(vlm_time):
-                    raise ValueError("VLM and solver restart clocks must be finite")
-                if not np.isclose(vlm_time, source_time, rtol=0.0, atol=clock_tolerance):
-                    raise ValueError(
-                        "VLM restart time does not match solver accepted time: "
-                        f"{vlm_time:.17g} != {source_time:.17g}"
-                    )
-            elif state is not None:
-                raise ValueError("VLM backup requires a configured VLM solver")
 
         stabilization = _stabilization(solver)
         reference_vortex_strength = getattr(
@@ -890,6 +937,8 @@ class _BackupIO:
                 if not isinstance(stored_configuration, dict):
                     invalid("numerical configuration must be a JSON object")
                 if expected_configuration is not None:
+                    _normalize_capacity_aliases(expected_configuration)
+                    _normalize_capacity_aliases(stored_configuration)
                     mismatches = _configuration_mismatches(
                         expected_configuration,
                         stored_configuration,

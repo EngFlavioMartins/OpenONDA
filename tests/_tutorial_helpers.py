@@ -1,6 +1,6 @@
 """Resolve tutorial modules through the installed loader contract.
 
-The numbered tutorial folders (``04_flat_plate``, ``06_rotor_flow_PENDING``, ...)
+The numbered tutorial folders (``04_flat_plate``, ``06_rotor_flow``, ...)
 are organizational names that cannot appear in ordinary Python imports.  Test
 modules resolve the stable catalog identifier with
 :func:`openonda.tutorials.get_tutorial` and import the tutorial's own modules

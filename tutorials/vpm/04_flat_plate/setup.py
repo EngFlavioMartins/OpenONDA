@@ -110,8 +110,6 @@ def run(mode: str, angle_of_attack: float) -> None:
         freestream_velocity=reference_velocity,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
         sigma_factor=PARTICLE_CORE_FACTOR,
-        sample_surface_forces=True,
-        logging_interval_steps=1,
     )
     case = vpm.VPMCase(
         name=name,
@@ -121,14 +119,12 @@ def run(mode: str, angle_of_attack: float) -> None:
             ),
             time_step_size=TIME_STEP_SIZE,
             compute_device="CPU",
-            integrator=vpm.SSPRK3(),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             freestream_velocity=freestream_velocity,
             induction=vpm.DirectInduction(stretching_scheme="transposed"),
-            write_precision="f32",
             max_n_particles=120_000,
         ),
         backup=Backup(

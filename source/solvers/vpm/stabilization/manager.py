@@ -592,8 +592,6 @@ class StabilizationManager:
                 "filament-refinement lineage state no longer matches the particle cloud"
             )
         capacity = int(particles._max_particles)
-        if cfg.max_n_particles is not None:
-            capacity = min(capacity, int(cfg.max_n_particles))
 
         before = self.measure()
         result = split_stretched_filaments(

@@ -133,17 +133,22 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         return
 
     before_health = discretization_health(position, vortex_strength, core_radius)
-    capacity_count = None
-    if cfg.regularization_max_particles is not None:
-        capacity_count = max(
-            1,
-            int(np.ceil(cfg.regularization_capacity_fraction * cfg.regularization_max_particles)),
-        )
-    at_capacity = capacity_count is not None and len(position) >= capacity_count
+    particle_capacity = particles.capacity
+    regularization_limit = min(
+        particle_capacity,
+        cfg.regularization_max_particles
+        if cfg.regularization_max_particles is not None
+        else particle_capacity,
+    )
+    capacity_count = max(
+        1,
+        int(np.ceil(cfg.regularization_capacity_fraction * regularization_limit)),
+    )
+    at_capacity = len(position) >= capacity_count
     max_particles = (
-        cfg.regularization_capacity_max_particles
+        min(particle_capacity, cfg.regularization_capacity_max_particles)
         if at_capacity and cfg.regularization_capacity_max_particles is not None
-        else cfg.regularization_max_particles
+        else regularization_limit
     )
     spacing = float(
         cfg.regularization_capacity_grid_spacing

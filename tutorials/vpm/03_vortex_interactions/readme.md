@@ -60,22 +60,19 @@ and zero imposed disturbance. Cheng et al. use a 0.05 R0, mode-8 axial
 perturbation only for their separate Re=3415 Fig. 3 validation; their Re=3000
 Fig. 5 calculation explicitly excludes flow instability. Every case requests
 2400 steps (physical t=9, or nondimensional T=t Γ0/R0²≈28.3), subject to
-native particle, memory, and numerical-health limits. The shared particle
+particle capacity and numerical-health limits. The shared particle
 capacity is 600,000: Gaussian remeshing exceeded the earlier 120,000-particle
 cap around steps 1380–1440 while retaining the 0.003 tail budget. The launcher
 stops if a command exits with an error; inspect its log before starting the
 remaining methods separately.
 
-Each run starts at t=0 and writes to matching
-`solution/<method>/` and `samples/<method>/`
-directories. Preserve any results you need, then run `allclean.sh` explicitly
-for a full fresh comparison. For one method, clear only that method's old
-output directories after preserving its evidence; the solver appends samples
-and rejects duplicate initial times.
+Each run starts at t=0 and writes to matching `solution/<method>/` and
+`samples/<method>/` directories. `allrun.sh` clears earlier outputs first;
+`allcontinue.sh` resumes the latest compatible backups.
 The old 120,000-particle CS/LES checkpoints cannot be loaded with this CS/DNS
 configuration: the solver checks the closure, remeshing limit, and capacity as part of its
 restart identity. Start a new run after retaining any failed-run output you
-want to inspect. `allrun.sh` does not delete existing outputs.
+want to inspect.
 Group-preserving transfer is part of restart identity: old remeshed
 checkpoints cannot recover lost ancestry by relabelling. Start the updated
 comparison at t=0. The pre-audit dataset is preserved locally in

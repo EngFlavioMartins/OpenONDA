@@ -1,6 +1,7 @@
 """Common start selection for native and coupled simulation lifecycles."""
 
 import csv
+import json
 from pathlib import Path
 import re
 import shutil
@@ -9,17 +10,47 @@ import tempfile
 from source.solution_layout import vpm_backup_files
 
 
+def _metadata_has_accepted_steps(branch):
+    """A constructor's archived metadata alone is not a completed time step.
+
+    Failed initialization can leave only a time-zero FVM artifact and no
+    committed coupled manifest. Permit that startup to be retried, but keep
+    rejecting missing backups after progress or unrecognized metadata.
+    """
+    paths = list(branch.glob("*_metadata.json"))
+    if not paths:
+        return True
+    for path in paths:
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+            if path.name == "run_metadata.json":
+                # Coupled execution metadata records the requested stop,
+                # not the last accepted step. Only its start proves progress.
+                state = metadata["execution"]
+                step, time = state["start_coupling_step"], state["start_time"]
+            else:
+                state = metadata["state"]
+                step, time = state["step"], state["time"]
+            if step != 0 or time != 0.0:
+                return True
+        except (OSError, ValueError, KeyError, TypeError):
+            return True
+    return False
+
+
 def select_backup(start_from, *, directory, kind, backup_path=None):
     """Select a committed backup, never a temporary file or visualization.
 
-    ``None`` keeps the caller's in-memory state. ``initial`` requires a clean
-    solution; ``latest`` starts at zero only when no committed backup exists.
+    ``None`` keeps the caller's in-memory state. ``initial`` ignores all saved
+    states; ``latest`` starts at zero only when no committed backup exists.
     Explicit paths are passed to the strict native reader without fallback.
     """
     if start_from is None:
         return None
     if not isinstance(start_from, (str, Path)):
         raise TypeError("start_from must be 'latest', 'initial', a backup path, or None")
+    if start_from == "initial":
+        return None
     if start_from not in ("latest", "initial"):
         return Path(start_from)
     directory = Path(directory)
@@ -49,19 +80,16 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
         latest = target if (target / "manifest.json").is_file() else None
     else:
         raise ValueError(f"Unknown restart kind {kind!r}")
-    previous_run = any((directory / "restart-branches").glob("run-before-*"))
-    if start_from == "initial":
-        if latest is not None or previous_run or any(directory.glob("*.pvd")):
-            raise ValueError(
-                "Existing backup found; run ./allclean.sh before starting from initial"
-            )
-        return None
+    previous_runs = list((directory / "restart-branches").glob("run-before-*"))
     if latest is None:
         # An old visualization-only run cannot be reconstructed exactly. Do
         # not silently mix a new zero-time solution with that run's history.
         from defusedxml.ElementTree import parse
 
-        if previous_run:
+        if previous_runs and (
+            kind != "coupled"
+            or any(_metadata_has_accepted_steps(branch) for branch in previous_runs)
+        ):
             raise FileNotFoundError(
                 f"Previous output exists in {directory}, but no committed {kind} backup was "
                 "found. Restore a backup or run ./allclean.sh for a fresh simulation."
@@ -75,7 +103,89 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
                     f"Solution output exists in {directory}, but no committed {kind} backup "
                     "was found. Restore a backup or run ./allclean.sh for a fresh simulation."
                 )
+        # Coupled solver metadata can still say 'created' after an abrupt
+        # termination. Its per-step diagnostics are independent evidence of
+        # progress, even before the next visualization write.
+        diagnostics = directory / "coupler_diagnostics.jsonl"
+        if diagnostics.is_file() and diagnostics.stat().st_size:
+            raise FileNotFoundError(
+                f"Coupled diagnostics exist in {directory}, but no committed {kind} backup "
+                "was found. Restore a backup or run ./allclean.sh for a fresh simulation."
+            )
     return latest
+
+
+def reset_run_outputs(
+    directory, *, kind, backup_path=None, samples_dir=None, owned_sample_names=()
+):
+    """Retire an old output series before an explicitly fresh initial run.
+
+    Move only native artifacts and named sampler streams into the existing
+    restart archive, without opening checkpoints or requiring their validity.
+    This prevents a longer old VPM run from winning subsequent latest-backup
+    discovery. Current constructor metadata, open logs and unrelated files
+    remain in place. Call on the writing rank before publishing initial output.
+    No additional restart marker or backup format is introduced.
+    """
+    if kind not in {"fvm", "vpm", "coupled"}:
+        raise ValueError(f"Unknown restart kind {kind!r}")
+    directory = Path(directory).resolve()
+    artifacts = {}
+    components = {"fvm": ("fvm",), "vpm": ("vpm", "vlm"), "coupled": ()}[kind]
+    for component in components:
+        index = directory / f"{component}.pvd"
+        if index.exists():
+            artifacts[index] = Path("solution") / index.name
+        pattern = re.compile(
+            rf"{component}_\d+(?:-rank-\d+|_particles)?\.(?:h5|vtu|vtp|pvtu)(?:\.tmp)?$"
+        )
+        for folder in (directory, directory / component):
+            for path in folder.glob(f"{component}_*"):
+                if path.is_file() and pattern.fullmatch(path.name):
+                    artifacts[path] = Path("solution") / path.relative_to(directory)
+    journals = {
+        "coupled": ("coupler_diagnostics.jsonl",),
+        "fvm": ("diagnostics.jsonl", "performance.jsonl"),
+        "vpm": (),
+    }[kind]
+    for name in journals:
+        path = directory / name
+        if path.exists():
+            artifacts[path] = Path("solution") / name
+    target = None
+    if kind == "coupled":
+        target = directory / "backups"
+    elif kind == "fvm" and backup_path is not None:
+        target = Path(backup_path)
+        target = (target if target.is_absolute() else directory / target).resolve()
+    if target is not None and target.exists():
+        if directory.is_relative_to(target):
+            raise ValueError("The backup path must not contain the solution directory")
+        artifacts[target] = Path("backup") / target.name
+    if samples_dir is not None:
+        samples = Path(samples_dir).resolve()
+        for name in owned_sample_names:
+            for suffix in (".csv", ".pvd"):
+                path = samples / f"{name}{suffix}"
+                if path.is_file():
+                    artifacts[path] = Path("samples") / path.relative_to(samples)
+            frame_pattern = re.compile(rf"{re.escape(str(name))}_\d+\.(?:vts|vtu|vtp|csv)$")
+            for path in samples.glob(f"{name}_*"):
+                if path.is_file() and frame_pattern.fullmatch(path.name):
+                    artifacts[path] = Path("samples") / path.relative_to(samples)
+    # Constructor metadata from the previous series must not make a failed
+    # fresh initialization look like accepted progress from that old series.
+    for path in (directory / "restart-branches").glob("run-before-*"):
+        artifacts[path] = Path("metadata") / path.name
+    if not artifacts:
+        return
+    archive = directory / "restart-branches"
+    archive.mkdir(parents=True, exist_ok=True)
+    branch = Path(tempfile.mkdtemp(prefix="initial-before-", dir=archive))
+    for path, relative in artifacts.items():
+        destination = branch / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(path, destination)
 
 
 def rewind_vpm_frames(directory, step, time):

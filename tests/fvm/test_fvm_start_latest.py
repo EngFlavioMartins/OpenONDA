@@ -10,10 +10,10 @@ from source.solvers.fvm.mesh.cartesian import structured_box
 from tests.fvm.test_restart_and_diagnostics import _setup
 
 
-def _solver(directory):
+def _solver(directory, *, end_time=0.03):
     setup = _setup()
     setup.time = replace(
-        setup.time, end_time=0.03, output_schedule=fvm.RunSchedule(every_n_steps=1)
+        setup.time, end_time=end_time, output_schedule=fvm.RunSchedule(every_n_steps=1)
     )
     setup.backup = fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=2), write_at_end=True)
     return fvm.FVMSolver(setup, str(directory), mesh_data=structured_box(2, 2, 2))
@@ -44,3 +44,35 @@ def test_latest_restores_bdf_history_and_reconciles_unsaved_diagnostics(tmp_path
     completed.run(start_from="latest")
     assert completed.step == 3
     assert history.read_bytes() == before
+
+
+def test_initial_replaces_old_native_history_and_latest_finds_new_run(tmp_path):
+    directory = tmp_path / "fresh_again"
+    previous = _solver(directory)
+    previous.run(start_from="latest")
+    assert previous.step == 3
+
+    fresh = _solver(directory, end_time=0.01)
+    fresh.run(start_from="initial")
+    assert fresh.step == 1
+
+    times = [
+        json.loads(line)["time"]
+        for line in (directory / "solution/diagnostics.jsonl").read_text().splitlines()
+    ]
+    assert times == [0.01]
+    resumed = _solver(directory, end_time=0.01)
+    assert resumed.start_from("latest")
+    assert resumed.step == 1
+    resumed.close()
+
+
+def test_initial_ignores_corrupt_old_backup(tmp_path):
+    directory = tmp_path / "corrupt_old"
+    backup = directory / "solution/backup"
+    backup.parent.mkdir(parents=True)
+    backup.write_text("not a native backup")
+    solver = _solver(directory, end_time=0.01)
+    solver.run(start_from="initial")
+    assert solver.step == 1
+    assert list((directory / "solution/restart-branches").glob("initial-before-*/backup/backup"))

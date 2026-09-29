@@ -30,9 +30,7 @@ from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
 from ..config.health import (
     HealthError,
     HealthSnapshot,
-    ResourceLimitError,
     accepted_step_health,
-    enforce_resource_limits,
 )
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
@@ -187,6 +185,8 @@ class VPMSolver:
         self.restart_state = RestartState()
         self._restart_provenance: dict | None = None
         self._restart_loaded = False
+        self._restart_terminal_noop = False
+        self._restart_particle_count: int | None = None
         self._initial_conditions_built = False
         self._initial_n_particles_total = 0
         self._run_initial_step = 0
@@ -347,9 +347,6 @@ class VPMSolver:
         self.viscous_scheme = final_setup.viscous.scheme
         self._viscous_config = final_setup.viscous
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
-        # These limits belong to the solver's accepted-step lifecycle, not to
-        # corrective stabilization workers.  It is immutable construction
-        # data; the preceding accepted snapshot is runtime state below.
         self.health_limits = final_setup.health_limits
         self.particle_kernel = final_setup.particle_kernel.upper()
         return final_setup
@@ -595,9 +592,7 @@ class VPMSolver:
         )
         self._domain_bounds_enforced_this_step = False
         self.wall_time = 0.0
-        # The step algorithm lives in the stepper; this facade drives it.
         self.stepper = EvolutionStepper(self)
-        # VLM coupling orchestration runs inside the step.
         self.coupling = CouplingStepper(self)
 
     def _setup_vlm_solver(self) -> None:
@@ -763,17 +758,13 @@ class VPMSolver:
         try:
             self.stepper.advance(defer_output=defer_output)
         except BaseException as exc:
-            # The accepted clock is transactional, but backend kernels may have
-            # partially mutated particle fields before raising.  Make that state
-            # explicitly unusable instead of silently allowing continuation.
+            # An exception can leave device fields partly updated.
             self._evolution_failure = exc
             raise
         self._sync_restart_state()
         if defer_output:
-            self._enforce_run_resource_limits()
             return
         self._refresh_accepted_step_health()
-        self._enforce_run_resource_limits()
         if self.vlm_solver is not None:
             self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):
@@ -789,7 +780,30 @@ class VPMSolver:
         tutorial therefore does not add another run's worth of steps. ``None``
         in :meth:`run` preserves the low-level in-memory segment API.
         """
-        from source.restart import select_backup
+        from source.restart import reset_run_outputs, select_backup
+
+        if selection == "initial":
+            if self.step or self.time or getattr(self, "_restart_loaded", False):
+                raise RuntimeError(
+                    "start_from='initial' requires a new VPM solver before advancing"
+                )
+            owned_names = {self.output_manager._name(s) for s in self.case.samplers.samples}
+            if self.vlm_solver is not None:
+                owned_names.update(("vlm_forces", "vlm_surface_forces"))
+                owned_names.update(
+                    f"vlm_{direction}_{name.replace('/', '_').replace(' ', '_')}"
+                    for name in getattr(self.vlm_solver, "_surface_sampling", {})
+                    for direction in ("spanwise", "chordwise")
+                )
+            reset_run_outputs(
+                self._backup_path,
+                kind="vpm",
+                samples_dir=self.samples_dir,
+                owned_sample_names=owned_names,
+            )
+            self.output_manager.rewind_histories(-1.0e100)
+            self._run_to_step = self.case.run.steps
+            return False
 
         path = select_backup(selection, directory=self._backup_path, kind="vpm")
         if path is not None:
@@ -798,12 +812,40 @@ class VPMSolver:
         self._run_to_step = self.case.run.steps
         return path is not None
 
+    def _start_run_from(self, selection) -> bool:
+        """Start a lifecycle continuation without loading an already complete state."""
+        from source.restart import select_backup
+
+        if selection == "initial":
+            return self.start_from(selection)
+        path = select_backup(selection, directory=self._backup_path, kind="vpm")
+        if path is None:
+            self._run_to_step = self.case.run.steps
+            return False
+        checkpoint = str(path)
+        if not checkpoint.endswith(".h5"):
+            checkpoint += ".h5"
+        step, time, _, particle_count = _BackupIO.inspect(self, checkpoint)
+        if step < self.case.run.steps:
+            return self.start_from(path)
+
+        self.step = step
+        self.time = time
+        self._restart_loaded = True
+        self._restart_terminal_noop = True
+        self._restart_particle_count = particle_count
+        self._initial_conditions_built = True
+        self._run_to_step = self.case.run.steps
+        self._sync_restart_state()
+        Logging.info(f"Latest backup already reaches the target: step {step}, time {time:.17g}")
+        return True
+
     def run(self, *, start_from=None) -> None:
         """Execute the complete framework-owned lifecycle for this case.
 
         With ``start_from="latest"``, discover a native checkpoint and treat
         ``RunPlan.steps`` as the total destination step. A path selects an
-        explicit checkpoint and ``"initial"`` requires a clean case. With
+        explicit checkpoint and ``"initial"`` starts a new output history. With
         ``None``, preserve the in-memory state and run that many more steps.
 
         The lifecycle has one owner: it constructs declarative initial
@@ -835,7 +877,7 @@ class VPMSolver:
             raise RuntimeError("VPMSolver.run() may be called only once")
         try:
             if start_from is not None:
-                self.start_from(start_from)
+                self._start_run_from(start_from)
         except BaseException:
             self.close()
             raise
@@ -846,6 +888,17 @@ class VPMSolver:
         self._run_initial_time = self.time
         self._run_final_step = getattr(self, "_run_to_step", self.step + self.case.run.steps)
         remaining_steps = max(0, self._run_final_step - self.step)
+        if getattr(self, "_restart_terminal_noop", False):
+            self._run_wall_finished_at = perf_counter()
+            self._run_finished = True
+            self.run_status = "completed"
+            self._sync_restart_state()
+            try:
+                Logging.run_finished(self, self.run_status)
+                self._write_run_manifest(self.run_status, None)
+            finally:
+                self.close()
+            return
         status = "failed"
         failure: BaseException | None = None
         limit = self.case.run.wall_time_limit_seconds
@@ -861,90 +914,57 @@ class VPMSolver:
             self._log_configuration_once()
             health_limit_failure = None
             invalid_health_failure = None
-            resource_limit_failure = None
-            try:
-                self._enforce_run_resource_limits()
-            except ResourceLimitError as exc:
-                if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
-                    raise
-                resource_limit_failure = exc
-            if resource_limit_failure is not None:
-                # The accepted state already exists (including a loaded
-                # checkpoint), so stop before expensive initial diagnostics or
-                # another physical step and retain a valid terminal backup.
+            if getattr(self, "_restart_loaded", False):
+                self.output_manager.resume()
+            if self.case.run.initial_samples and not getattr(self, "_restart_loaded", False):
+                self._refresh_diagnostics_for_output()
+                self.output_manager.dispatch(OutputEvent.INITIAL)
+            for _ in range(remaining_steps):
+                if deadline is not None and perf_counter() >= deadline:
+                    budget_exhausted = True
+                    break
+                try:
+                    self.advance()
+                except HealthError as exc:
+                    if self.case.run.health_limit_action == "RAISE":
+                        raise
+                    if not exc.restartable:
+                        invalid_health_failure = exc
+                    else:
+                        health_limit_failure = exc
+                    break
+            if invalid_health_failure is not None:
+                status = "unstable"
+                failure = invalid_health_failure
+            else:
+                self._refresh_diagnostics_for_output()
                 if self.case.run.final_backup:
                     self._save_final_backup()
-                status = "resource_limit"
-                failure = resource_limit_failure
-            else:
-                if getattr(self, "_restart_loaded", False):
-                    self.output_manager.resume()
-                if self.case.run.initial_samples and not getattr(self, "_restart_loaded", False):
-                    self._refresh_diagnostics_for_output()
-                    self.output_manager.dispatch(OutputEvent.INITIAL)
-                for _ in range(remaining_steps):
-                    if deadline is not None and perf_counter() >= deadline:
-                        budget_exhausted = True
-                        break
-                    try:
-                        self.advance()
-                    except HealthError as exc:
-                        if self.case.run.health_limit_action == "RAISE":
-                            raise
-                        if not exc.restartable:
-                            invalid_health_failure = exc
-                        elif isinstance(exc, ResourceLimitError):
-                            resource_limit_failure = exc
-                        else:
-                            health_limit_failure = exc
-                        break
-                if invalid_health_failure is not None:
-                    # The clock identifies the rejected state. Do not evaluate
-                    # scientific samplers or serialize it as a restart backup.
-                    status = "unstable"
-                    failure = invalid_health_failure
-                else:
-                    self._refresh_diagnostics_for_output()
-                    # Preserve the accepted numerical state before fallible
-                    # scientific output, including an off-cadence health stop.
-                    if self.case.run.final_backup:
-                        self._save_final_backup()
-                    try:
-                        if budget_exhausted:
-                            self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-                        elif health_limit_failure is None and resource_limit_failure is None:
-                            self.output_manager.dispatch(OutputEvent.FINAL)
-                        else:
-                            # A health limit describes the last usable accepted state.
-                            # Persist every sampler once even when its regular cadence
-                            # is not due at this step.
-                            self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-                    except Exception as output_failure:
-                        stopping_failure = health_limit_failure or resource_limit_failure
-                        if stopping_failure is not None:
-                            output_failure.add_note(
-                                f"Final output was triggered by {type(stopping_failure).__name__}: "
-                                f"{stopping_failure}"
-                            )
-                        raise
-                    if budget_exhausted:
-                        status = "wall_time_limit"
-                    elif health_limit_failure is None and resource_limit_failure is None:
-                        status = "completed"
-                    elif resource_limit_failure is not None:
-                        status = "resource_limit"
-                        failure = resource_limit_failure
+                try:
+                    if budget_exhausted or health_limit_failure is not None:
+                        self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
                     else:
-                        status = "resolution_lost"
-                        failure = health_limit_failure
+                        self.output_manager.dispatch(OutputEvent.FINAL)
+                except Exception as output_failure:
+                    if health_limit_failure is not None:
+                        output_failure.add_note(
+                            "Final output followed a health limit: "
+                            f"{type(health_limit_failure).__name__}: {health_limit_failure}"
+                        )
+                    raise
+                if budget_exhausted:
+                    status = "wall_time_limit"
+                elif health_limit_failure is not None:
+                    status = "resolution_lost"
+                    failure = health_limit_failure
+                else:
+                    status = "completed"
         except BaseException as exc:
             failure = exc
             primary_failure = exc
             try:
                 self.output_manager.dispatch(OutputEvent.FAILED)
             except BaseException as failed_event_error:
-                # The numerical/evolution failure remains the diagnostic of
-                # record; a failed-event writer must not hide it.
                 if primary_failure is None:
                     primary_failure = failed_event_error
         finally:
@@ -957,7 +977,6 @@ class VPMSolver:
             self.run_failure = failure
             self._sync_restart_state()
             for finalizer in (
-                # Each finalizer sees failures raised by earlier finalizers.
                 lambda: Logging.run_finished(self, self.run_status, self.run_failure),
                 lambda: self._write_run_manifest(self.run_status, self.run_failure),
                 self.close,
@@ -1050,8 +1069,6 @@ class VPMSolver:
                 if primary_failure is None:
                     primary_failure = error
         if primary_failure is not None:
-            # Keep the close operation retryable when one independent cleanup
-            # action fails, while still attempting every owned resource.
             raise primary_failure
         self._closed = True
 
@@ -1060,15 +1077,6 @@ class VPMSolver:
         if self.particles.n_particles_total:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
-
-    def _enforce_run_resource_limits(self) -> None:
-        """Check declared process bounds without touching particle state when disabled."""
-        limits = self.case.run.resource_limits
-        if limits is not None:
-            enforce_resource_limits(
-                limits,
-                particle_count=int(self.particles.n_particles_total),
-            )
 
     def _refresh_accepted_step_health(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
@@ -1090,9 +1098,6 @@ class VPMSolver:
             resolution=self._discretization_health,
             previous=self._accepted_health_snapshot,
         )
-        # The stabilization diagnostic record is persisted by the existing
-        # restart layout. It mirrors this solver-owned measurement only;
-        # stabilization no longer evaluates or limits the CFL number.
         self.stabilization.lagrangian_cfl = self._accepted_health_snapshot.strain_increment_infinity
 
     def _refresh_diagnostics_for_output(self) -> None:
@@ -1113,7 +1118,6 @@ class VPMSolver:
         # the particle cloud, so the accepted health state must be measured
         # here rather than before that synchronization.
         self._refresh_accepted_step_health()
-        self._enforce_run_resource_limits()
         if self.vlm_solver is not None:
             self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):

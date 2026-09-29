@@ -87,7 +87,6 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             dvh_support_radius_ratio=4,
             threshold=1e-4,
             threshold_mode="budget",
-            max_nodes=MAX_PARTICLES,
             core_radius_ratio=CORE_RADIUS_RATIO,
         ),
         "GBD": vpm.ViscousConfig.gbd(
@@ -96,7 +95,6 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             kinematic_viscosity=kinematic_viscosity,
             threshold=1e-4,
             threshold_mode="budget",
-            max_nodes=MAX_PARTICLES,
             core_radius_ratio=CORE_RADIUS_RATIO,
         ),
     }[scheme.upper()]
@@ -262,9 +260,6 @@ def run_case(
             viscous=viscous,
             integrator=vpm.RK2(),
             induction=induction_config(scheme),
-            particle_kernel="GAUSSIAN",
-            write_precision="f32",
-            precision="f32",
             max_n_particles=MAX_PARTICLES,
             domain_bounds=domain_bounds,
             compute_device=compute_device,

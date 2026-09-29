@@ -32,12 +32,9 @@ KINEMATIC_VISCOSITY = 0.1  # [m^2/s]
 # Mesh and numerics
 TIME_SCHEME = "backward"
 LINEAR_SOLVER = "spsolve"
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
 NUMBER_OF_CELLS = 24
 TIME_STEP_SIZE = 0.005  # [s]
 FINAL_TIME = 0.05  # [s]
-MAX_COURANT_NUMBER = 0.9
 CONVECTION_SCHEME = "central"
 
 
@@ -62,7 +59,6 @@ def main() -> None:
 
     schemes = fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME)
     linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(n_correctors=PISO_CORRECTORS, n_outer_correctors=OUTER_CORRECTORS)
     boundaries = [
         fvm.BoundaryConfig.cyclic("xmin", "xmax"),
         fvm.BoundaryConfig.cyclic("xmax", "xmin"),
@@ -79,7 +75,6 @@ def main() -> None:
             end_time=FINAL_TIME,
             output_schedule=fvm.RunSchedule(every_n_steps=nsteps),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
                 # Preserve this verification case's nominal time resolution;
                 # CFL control may reduce it but does not coarsen it.
                 maximum_time_step_size=TIME_STEP_SIZE,
@@ -87,7 +82,6 @@ def main() -> None:
         ),
         schemes=schemes,
         linear=linear,
-        pimple=pimple,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         boundaries=boundaries,
     )

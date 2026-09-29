@@ -105,11 +105,6 @@ def create_solver(
                 maximum_time_step_size=MAXIMUM_TIME_STEP_SIZE,
             ),
         ),
-        schemes=fvm.DiscretizationConfig(
-            convection_scheme="limitedLinear",
-            gradient_scheme="lsq",
-            time_scheme="euler_implicit",
-        ),
         linear=fvm.LinearSolverConfig(
             pressure_solver="amg",
             pressure_tolerance=1.0e-7,
@@ -117,7 +112,7 @@ def create_solver(
             momentum_tolerance=1.0e-6,
             momentum_relative_tolerance=0.05,
         ),
-        pimple=fvm.PimpleControl(algorithm="PISO", n_correctors=2),
+        pimple=fvm.PimpleControl(algorithm="PISO"),
         samplers=(
             fvm.ForceSampler(
                 patch_names=["cylinder"],

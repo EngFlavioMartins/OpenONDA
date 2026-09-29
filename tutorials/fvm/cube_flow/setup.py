@@ -33,13 +33,8 @@ SPACING = 0.0625  # core grid spacing next to the cylinder [m]
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.02  # initial time step [s]
-MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
-CONVECTION_SCHEME = "limitedLinear"
-LINEAR_SOLVER = "bicgstab"
 
 
 def create_fvm_setup(depth: float) -> fvm.FVMSetup:
@@ -47,13 +42,7 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
     kinematic_viscosity = FREESTREAM_VELOCITY * SIDE / REYNOLDS_NUMBER
 
     schemes = fvm.DiscretizationConfig(
-        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme="gauss",
-    )
-    linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(
-        n_correctors=PISO_CORRECTORS,
-        n_outer_correctors=OUTER_CORRECTORS,
     )
     forces = [
         fvm.ForceSampler(
@@ -73,13 +62,10 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
             end_time=FINAL_TIME,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
                 maximum_time_step_size=MAX_TIME_STEP_SIZE,
             ),
         ),
         schemes=schemes,
-        linear=linear,
-        pimple=pimple,
         samplers=forces,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         boundaries=[
@@ -102,8 +88,7 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
             fvm.BoundaryConfig.empty("front"),
             fvm.BoundaryConfig.empty("back"),
         ],
-        # A tiny cross-stream component lets the vortex street start right
-        # away instead of waiting for numerical round-off to break symmetry.
+        # A small transverse perturbation seeds asymmetric shedding.
         initial_velocity=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
     )
 

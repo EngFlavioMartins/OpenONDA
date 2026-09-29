@@ -8,6 +8,7 @@ from scipy.spatial import cKDTree
 
 from source.coupler import vorticity_transfer as transfer_module
 from source.coupler.config.types import CouplerSetup
+from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.stable_renewal import vortex_strength_from_velocity_trace
 from source.coupler.vorticity_transfer import VorticityTransfer
 
@@ -114,6 +115,11 @@ def test_selective_trace_keeps_weighted_target_and_excluded_circulation(
     transfer = box_transfer(spacing, np.zeros(3))
     if not has_solid:
         transfer._body_bounds = None
+        transfer.solid_boundary = None
+        transfer._velocity_trace = FVMVelocityInterpolator(
+            transfer._cell_centre,
+            transfer._cell_tree,
+        )
     lattice = transfer._stable_renewal_lattice
     centres = transfer._cell_centre
     velocity = centres**2 + np.roll(centres, 1, axis=1)
@@ -123,11 +129,14 @@ def test_selective_trace_keeps_weighted_target_and_excluded_circulation(
     sample = transfer._velocity_trace.sample
 
     def full_velocity(points):
-        result = sample(points, velocity, gradient)
-        if has_solid:
-            result *= transfer_module._smoothstep(
-                transfer._signed_solid_distance(points), 0.0, spacing
-            )[:, None]
+        weight = (
+            transfer_module._smoothstep(transfer._signed_solid_distance(points), 0.0, spacing)
+            if has_solid
+            else np.ones(len(points))
+        )
+        result = np.zeros_like(points)
+        fluid = weight > 0
+        result[fluid] = sample(points[fluid], velocity, gradient) * weight[fluid, None]
         return result
 
     expected = vortex_strength_from_velocity_trace(lattice.positions, spacing, full_velocity)

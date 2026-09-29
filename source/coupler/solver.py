@@ -46,37 +46,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("coupler")
 
 
-def _project_inside_verified_cylinder(
-    positions: np.ndarray,
-    invalid: np.ndarray,
-    cylinder: tuple,
-    particle_spacing: float,
-    interior_tolerance: float,
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Move shallow strictly interior positions to the fluid side of a verified wall."""
-    cx, cy, radius, _fit_tolerance = cylinder
-    displaced = np.asarray(positions[invalid], dtype=np.float64)
-    radial = displaced[:, :2] - [cx, cy]
-    length = np.linalg.norm(radial, axis=1)
-    penetration = radius - length
-    maximum = float(np.max(penetration))
-    if np.any(length <= 0.0) or maximum > 0.25 * particle_spacing:
-        raise RuntimeError(
-            "VPM particle crossed too deeply into the verified cylinder: "
-            f"count={len(displaced)}, max_penetration={maximum:.6e} m, "
-            f"limit={0.25 * particle_spacing:.6e} m"
-        )
-    margin = max(
-        4.0 * interior_tolerance,
-        32.0 * np.finfo(np.float32).eps * radius,
-    )
-    corrected = np.asarray(positions).copy()
-    projected = displaced.copy()
-    projected[:, :2] = [cx, cy] + radial * ((radius + margin) / length)[:, None]
-    corrected[invalid] = projected.astype(corrected.dtype)
-    return corrected, projected - displaced, maximum
-
-
 def _validate_gbd_moment_recovery(
     recovery: Mapping[str, bool | int | float] | None,
     correction_limit: float,
@@ -636,150 +605,30 @@ class FVMVPMCoupler:
                 fvm_box=self.fvm_box,
             )
         with collective_phase(self._comm, "VPM grid configuration"):
-            revision = ()
-            if self._is_master and self.vorticity_transfer._solid_bodies:
+            boundary = self.vorticity_transfer.solid_boundary
+            if self._is_master and boundary is not None:
+                from .solid import SolidParticleGuard
+
                 assert self.vpm_solver is not None
-                bodies = self.vorticity_transfer._solid_bodies
-                revision = tuple(getattr(body, "revision", id(body)) for body in bodies)
-                body_bounds = [
-                    getattr(body, "surface_bounds", None)
-                    if getattr(body, "surface_bounds", None) is not None
-                    else getattr(body, "solid_bounds", None)
-                    for body in bodies
-                ]
-                query_bounds = None
-                if all(bounds is not None for bounds in body_bounds):
-                    stacked_bounds = np.stack(
-                        [
-                            np.asarray(bounds, dtype=np.float64)
-                            for bounds in body_bounds
-                            if bounds is not None
-                        ]
-                    )
-                    query_bounds = np.empty(6, dtype=np.float64)
-                    query_bounds[::2] = stacked_bounds[:, ::2].min(axis=0)
-                    query_bounds[1::2] = stacked_bounds[:, 1::2].max(axis=0)
-                    if any(
-                        getattr(body, "verified_cylinder_z", None) is not None for body in bodies
-                    ):
-                        domain = self.vpm_solver.setup.domain_bounds
-                        if domain is not None:
-                            query_bounds[4:6] = np.asarray(domain, dtype=np.float64)[4:6]
-                transfer = self.vorticity_transfer
                 self.vpm_solver.physics.configure_body_classifier(
-                    lambda points: transfer._points_in_solid(points, include_boundary=False),
-                    revision=revision,
-                    query_bounds=query_bounds,
+                    lambda points: boundary.contains(points, include_boundary=False),
+                    revision=boundary.revision,
+                    query_bounds=boundary.bounds,
+                    blocks_segments=boundary.blocks_segments,
                 )
+                guard = SolidParticleGuard(
+                    boundary,
+                    self.vpm_solver.physics,
+                    self.vpm_particle_spacing,
+                    logger,
+                )
+                self.vpm_solver.stage_rhs.position_guard = guard.stage
+                self.vpm_solver.stage_rhs.accepted_position_projector = guard.accepted
                 logger.info(
                     format_coupler_log(
                         "vpm diffusion grid",
-                        ("solid mask", "FVM wall classifier"),
-                        ("geometry revision", repr(revision)),
-                        (
-                            "verified cylinder z",
-                            repr([getattr(body, "verified_cylinder_z", None) for body in bodies]),
-                        ),
-                        (
-                            "interior tolerance",
-                            repr([getattr(body, "interior_tolerance", None) for body in bodies]),
-                        ),
-                    )
-                )
-            elif self._is_master and self.vorticity_transfer._body_bounds is not None:
-                assert self.vpm_solver is not None
-                self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
-                bounds = np.asarray(self.vorticity_transfer._body_bounds, dtype=np.float64)
-                logger.info(
-                    format_coupler_log(
-                        "vpm diffusion grid",
-                        ("solid mask", "box"),
-                        ("bounds, x", f"[{bounds[0]:.6g}, {bounds[1]:.6g}]", "m"),
-                        ("bounds, y", f"[{bounds[2]:.6g}, {bounds[3]:.6g}]", "m"),
-                        ("bounds, z", f"[{bounds[4]:.6g}, {bounds[5]:.6g}]", "m"),
-                    )
-                )
-            if self._is_master and (
-                self.vorticity_transfer._solid_bodies
-                or self.vorticity_transfer._body_bounds is not None
-            ):
-                assert self.vpm_solver is not None
-
-                cylinder = None
-                if len(self.vorticity_transfer._solid_bodies) == 1:
-                    cylinder = getattr(
-                        self.vorticity_transfer._solid_bodies[0], "verified_cylinder_z", None
-                    )
-
-                def project_or_reject(field, strength_field, count, *, accepted, stage=None):
-                    if count == 0:
-                        return
-                    physics = self.vpm_solver.physics
-                    positions = physics._download_vector_field(field, count)
-                    invalid = self.vorticity_transfer._points_in_solid(
-                        positions, include_boundary=False
-                    )
-                    if not np.any(invalid):
-                        return
-                    strengths = physics._download_vector_field(strength_field, count)
-                    invalid_count = int(np.count_nonzero(invalid))
-                    invalid_l1 = float(np.linalg.norm(strengths[invalid], axis=1).sum())
-                    if cylinder is None:
-                        raise RuntimeError(
-                            "VPM particle entered an unprojectable FVM solid before induction: "
-                            f"count={invalid_count}, vortex_strength_l1={invalid_l1:.6e}"
-                        )
-                    body = self.vorticity_transfer._solid_bodies[0]
-                    corrected, delta, maximum = _project_inside_verified_cylinder(
-                        positions,
-                        invalid,
-                        cylinder,
-                        self.vpm_particle_spacing,
-                        float(body.interior_tolerance),
-                    )
-                    physics._upload_vector_array(corrected, field, count)
-                    impulse_change = np.cross(delta, strengths[invalid]).sum(axis=0)
-                    budget = getattr(physics, "last_solid_projection", None)
-                    if budget is None:
-                        budget = {
-                            "stage_count": 0,
-                            "accepted_count": 0,
-                            "stage_displacement_l1": 0.0,
-                            "accepted_displacement_l1": 0.0,
-                            "stage_impulse_change": np.zeros(3),
-                            "accepted_impulse_change": np.zeros(3),
-                        }
-                        physics.last_solid_projection = budget
-                    kind = "accepted" if accepted else "stage"
-                    budget[f"{kind}_count"] += invalid_count
-                    budget[f"{kind}_displacement_l1"] += float(np.linalg.norm(delta, axis=1).sum())
-                    budget[f"{kind}_impulse_change"] += impulse_change
-                    logger.warning(
-                        "Cylinder numerical exclusion projected %d %s particles; "
-                        "max penetration %.3e m, |Gamma| L1 %.3e, impulse change %s",
-                        invalid_count,
-                        kind,
-                        maximum,
-                        invalid_l1,
-                        impulse_change,
-                    )
-
-                def guard_solid_rk_stage(stage_state):
-                    current_revision = tuple(body.revision for body in transfer._solid_bodies)
-                    if current_revision != revision:
-                        raise RuntimeError("Solid geometry changed after the GBD mask was built")
-                    project_or_reject(
-                        stage_state.position,
-                        stage_state.vortex_strength,
-                        int(stage_state.count),
-                        accepted=False,
-                        stage=getattr(stage_state, "stage_index", None),
-                    )
-
-                self.vpm_solver.stage_rhs.position_guard = guard_solid_rk_stage
-                self.vpm_solver.stage_rhs.accepted_position_projector = (
-                    lambda position, strength, count: project_or_reject(
-                        position, strength, count, accepted=True
+                        ("solid mask", "FVM wall geometry"),
+                        ("geometry revision", repr(boundary.revision)),
                     )
                 )
             if self._is_master:
@@ -896,7 +745,30 @@ class FVMVPMCoupler:
         if start_from is not None:
             if restart_from is not None or start_step:
                 raise ValueError("start_from cannot be combined with restart_from or start_step")
-            from source.restart import select_backup
+            from source.restart import reset_run_outputs, select_backup
+
+            if start_from == "initial":
+                with collective_phase(self._comm, "coupled initial output reset"):
+                    fvm = self.fvm_solver
+                    assert fvm is not None
+                    used_state = bool(fvm.step or getattr(fvm, "_restart_loaded", False))
+                    if self._is_master:
+                        assert self.vpm_solver is not None
+                        used_state |= bool(
+                            self.vpm_solver.step
+                            or getattr(self.vpm_solver, "_restart_loaded", False)
+                        )
+                    if used_state:
+                        raise RuntimeError(
+                            "start_from='initial' requires a new coupled solver before advancing"
+                        )
+                    if self._is_master:
+                        reset_run_outputs(self.solution_dir, kind="coupled")
+                fvm.start_from("initial")
+                with collective_phase(self._comm, "initial VPM output reset"):
+                    if self._is_master:
+                        assert self.vpm_solver is not None
+                        self.vpm_solver.start_from("initial")
 
             with collective_phase(self._comm, "coupled restart selection"):
                 selected = (
@@ -1263,9 +1135,10 @@ class FVMVPMCoupler:
         committed last so a visible manifest denotes a complete checkpoint.
         This method writes files but does not change physical time.
         """
-        backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
-        if self._is_master:
-            publish_vpm_snapshot(backup, self.solution_dir)
+        with collective_phase(self._comm, "coupled backup"):
+            backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
+            if self._is_master:
+                publish_vpm_snapshot(backup, self.solution_dir)
         return backup
 
     def load_backup(

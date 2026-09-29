@@ -6,7 +6,7 @@ native blade-0 chordwise loading history. The one accepted step contains
 were changed. Tests check complete station/panel keys and reject missing or
 duplicate panel rows; this is schema validation, not rotor-flow qualification.
 
-Source: `tutorials/vpm/06_rotor_flow_PENDING/samples/rotor/vlm_chordwise_blade_0.csv`.
+Source: `tutorials/vpm/06_rotor_flow/samples/rotor/vlm_chordwise_blade_0.csv`.
 The source is stored through Git LFS; the local object was checked against its
 SHA256 before extracting these rows.
 

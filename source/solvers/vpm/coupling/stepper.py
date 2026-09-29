@@ -1,11 +1,4 @@
-"""Advance the coupled VLM solver during a VPM step.
-
-:class:`CouplingStepper` calls the VLM solver's coupled advance method with the
-current VPM state and appends any wake particles it sheds. The implementation
-lives in ``boundary_elements.vlm``; the coupling stepper never re-implements it.
-
-The stepper holds a back-reference to the solver but names each capability it
-uses.  It is intentionally not a forwarding facade for the full solver API.
+"""VLM coupling within a VPM time step.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
@@ -15,6 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
 
@@ -23,21 +18,7 @@ class CouplingStepper:
     """Advance the coupled VLM solver and append shed particles."""
 
     def __init__(self, solver: VPMSolver) -> None:
-        """Attach the boundary-element coupling orchestrator to a solver.
-
-        Parameters
-        ----------
-        solver : VPMSolver
-            VPM solver that owns the particle arrays, time-step clock, and
-            optional VLM solver. The reference is retained; no arrays
-            are copied.
-
-        Notes
-        -----
-        :meth:`advance_vlm` may append shed wake particles to the owning solver.
-        This helper is normally constructed by ``VPMSolver`` and is not an
-        independent time integrator.
-        """
+        """Keep the VPM solver that owns the particle cloud and clock."""
         self.solver = solver
 
     def advance_vlm(self, time_step_size: float) -> None:
@@ -46,6 +27,7 @@ class CouplingStepper:
         if solver.vlm_solver is None:
             return
 
+        particles_before = getattr(solver.particles, "n_particles_total", None)
         wake_particles = solver.vlm_solver.advance_coupled(
             particles=solver.particles,
             physics=solver.physics,
@@ -58,3 +40,13 @@ class CouplingStepper:
 
         if wake_particles is not None:
             solver.add_vortex_particles(**wake_particles)
+        elif particles_before is not None:
+            particles_added = solver.particles.n_particles_total - particles_before
+            if particles_added > 0 and solver.stabilization.reference_vortex_strength is not None:
+                # VLM inserts on the device; read only its shed batch for lineage.
+                lattice = solver.vlm_solver.lattice
+                strength = lattice.wake_vortex_strength.to_numpy()[:particles_added]
+                volume = lattice.wake_volume.to_numpy()[:particles_added]
+                solver.stabilization.on_add(
+                    np.linalg.norm(strength, axis=1), volume, particles_before
+                )

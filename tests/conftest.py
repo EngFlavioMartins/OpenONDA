@@ -28,8 +28,10 @@ QUALIFICATION_MODULES = frozenset(
 
 INTEGRATION_MODULES = frozenset(
     {
+        "test_arbitrary_wall_lifecycle.py",
         "test_common_m4_viscous_lifecycle.py",
         "test_coupled_backup.py",
+        "test_cube_start_latest.py",
         "test_flux_handoff.py",
         "test_fvm_vpm_smoke.py",
         "test_lattice_transfer.py",
@@ -40,8 +42,10 @@ INTEGRATION_MODULES = frozenset(
 
 SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
     {
+        "test_arbitrary_wall_lifecycle.py",
         "test_backup_storage.py",
         "test_common_m4_viscous_lifecycle.py",
+        "test_cube_start_latest.py",
     }
 )
 

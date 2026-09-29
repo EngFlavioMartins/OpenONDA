@@ -33,14 +33,9 @@ FINAL_TIME = 25.0  # [s]
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.005  # initial time step [s]
-MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 4 * TIME_STEP_SIZE  # upper bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
 ORTHOGONAL_CORRECTORS = 1
-CONVECTION_SCHEME = "limitedLinear"
-LINEAR_SOLVER = "bicgstab"
 DOMAIN = (-5.0, 15.0, -5.0, 5.0, -0.5, 0.5)
 AIRFOIL_STL = Path(__file__).resolve().parent / "assets" / "airfoil.stl"
 
@@ -78,13 +73,7 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
     """Build the FVM setup for the airfoil case."""
     kinematic_viscosity = FREESTREAM_VELOCITY * CHORD / REYNOLDS_NUMBER
 
-    schemes = fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME)
-    linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(
-        n_correctors=PISO_CORRECTORS,
-        n_outer_correctors=OUTER_CORRECTORS,
-        n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS,
-    )
+    pimple = fvm.PimpleControl(n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS)
     forces = [
         fvm.ForceSampler(
             patch_names=["airfoil"],
@@ -100,7 +89,6 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
         end_time=FINAL_TIME,
         output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
         adjustment=fvm.MaximumCourantTimeStep(
-            maximum=MAX_COURANT_NUMBER,
             maximum_time_step_size=MAX_TIME_STEP_SIZE,
         ),
     )
@@ -109,8 +97,6 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
         backup=fvm.BackupConfig(schedule=time.output_schedule, write_at_end=True),
         case_name=CASE_NAME,
         time=time,
-        schemes=schemes,
-        linear=linear,
         pimple=pimple,
         samplers=forces,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),

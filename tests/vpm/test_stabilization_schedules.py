@@ -20,7 +20,6 @@ def test_combined_stabilization_schedule_is_representable():
     refinement = FilamentRefinementConfig.adaptive(
         interval_steps=25,
         max_vortex_strength_factor=3.0,
-        max_n_particles=60_000,
         max_absolute_vortex_strength=0.5,
         late_interval_steps=5,
         late_start_step=750,

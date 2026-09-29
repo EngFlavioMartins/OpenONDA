@@ -188,9 +188,7 @@ def main() -> int:
                 for row in record.get("profile_errors_from_baseline", {}).values()
             )
         )
-        # After single-factor trials, test one interaction between the two
-        # fastest admissible controls. This is a paired confirmation, not an
-        # exhaustive Cartesian product or a silently selected speed setting.
+        # Confirm the interaction between the two fastest admissible controls.
         if len(records) == independent_count and args.factor == "all" and not args.screen:
             candidates = sorted(
                 (row for row in records[1:] if row["within_sensitivity_targets"]),

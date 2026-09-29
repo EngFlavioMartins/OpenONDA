@@ -93,7 +93,6 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
         regularization_core_radius=0.05,
         regularization_core_radius_trigger=0.10,
         regularization_tail_budget=0.003,
-        regularization_max_particles=MAX_N_PARTICLES,
         regularization_transfer_only=True,
         regularization_preserve_groups=True,
         regularization_divergence_trigger=None,
@@ -111,7 +110,6 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
-            integrator=vpm.SSPRK3(),
             induction=vpm.TreecodeInduction(
                 theta=0.5, multipole_order=3, stretching_scheme="TRANSPOSED"
             ),
@@ -123,7 +121,6 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             turbulence=vpm.TurbulenceConfig.dns(),
             stabilization=transfer,
             max_n_particles=MAX_N_PARTICLES,
-            write_precision="f32",
             random_seed=42,
             verbose=False,
             health_limits=vpm.HealthLimits(
@@ -148,7 +145,6 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             steps=n_steps,
             final_backup=True,
             health_limit_action="STOP",
-            resource_limits=vpm.ResourceLimits(max_particles=MAX_N_PARTICLES),
         ),
     )
 
@@ -167,7 +163,6 @@ def build_case(method, *, n_steps=N_STEPS, compute_device="AUTO"):
                 interval_steps=5,
                 max_vortex_strength_factor=2.0,
                 offset_fraction=0.25,
-                max_n_particles=MAX_N_PARTICLES,
             ),
         )
     else:  # pedrizzetti_relaxation

@@ -2,7 +2,7 @@
 
 Reference: reference_flow/samples/grid_h0045/ and
 reference_flow/solution/grid_h0045/.
-Comparison ends at t=8.75 s. Reference data after
+Comparison ends at t=22 s. Reference data after
 this time are not used in the figures. No simulation was advanced by plotting.
 
 ## What is matched
@@ -55,13 +55,13 @@ region, where VPM is auxiliary. They are not whole-domain hybrid error maps.
 The line profiles include the sampled outer wake. A z=0 section of 3D fields
 does not establish accuracy everywhere in three dimensions.
 
-At the latest compared time, t=8.75 s:
+At the latest compared time, t=22 s:
 
 | Comparison | RMS [% U_inf] | Sampled max [% U_inf] | Area [D^2] |
 |---|---:|---:|---:|
-| Coupled FVM / VPM (overlap consistency) | 1.479 | 8.911 | 6.4152 |
-| Reference FVM / VPM (auxiliary overlap field) | 4.085 | 15.904 | 6.4152 |
-| Reference FVM / Coupled FVM (primary near field) | 3.969 | 16.042 | 6.4152 |
+| Coupled FVM / VPM (overlap consistency) | 3.654 | 30.865 | 6.4152 |
+| Reference FVM / VPM (auxiliary overlap field) | 23.293 | 116.149 | 6.4152 |
+| Reference FVM / Coupled FVM (primary near field) | 22.302 | 97.414 | 6.4152 |
 
 
 These are instantaneous sampled differences, not time-averaged error estimates.

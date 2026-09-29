@@ -49,7 +49,7 @@ def _load_lamb_oseen_diagnostics():
 
 
 def _load_rotor_wake_plotter():
-    assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/06_rotor_flow_PENDING/assets"
+    assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/06_rotor_flow/assets"
     spec = importlib.util.spec_from_file_location(
         "rotor_wake_plotter",
         assets / "plot_rotor_wake_planes.py",

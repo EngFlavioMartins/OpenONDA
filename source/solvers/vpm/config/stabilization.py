@@ -62,7 +62,8 @@ class StabilizationConfig:
         energy/enstrophy limits then bound absolute transfer errors, allowing
         either sign rather than enforcing dissipation.
     regularization_max_particles, regularization_capacity_max_particles : int or None
-        Positive standard and capacity-triggered post-remesh population ceilings.
+        Optional post-remesh population ceilings. The particle container's
+        capacity is the default and the upper bound for either setting.
     regularization_max_events : int or None
         Optional positive lifetime cap on regularization events.
     regularization_total_kinetic_energy_dissipation_limit,

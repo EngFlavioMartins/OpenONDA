@@ -379,9 +379,7 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
     }
 
     def publish_reference_manifest() -> None:
-        # A previous full family may have left a campaign marker behind while
-        # this invocation adds a new grid.  Per-grid records are authoritative;
-        # remove the aggregate marker until the family is analysed again.
+        # Adding a grid invalidates aggregate completion until re-analysis.
         (run_dir / "COMPLETE").unlink(missing_ok=True)
         write_manifest(
             run_dir / "campaign_manifest.json",

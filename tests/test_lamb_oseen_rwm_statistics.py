@@ -224,3 +224,33 @@ def test_rwm_convergence_extends_only_the_missing_members(tmp_path, monkeypatch)
     assert batches == [(10, 0), (18, 10)]
     with pytest.raises(RuntimeError, match="increase --maximum-realizations"):
         rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 10)
+
+
+def test_rwm_convergence_reuses_an_existing_larger_ensemble(tmp_path, monkeypatch):
+    from tests._tutorial_helpers import load_tutorial_module
+
+    postprocess = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
+    rwm_ensemble = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.rwm_ensemble")
+    monkeypatch.setattr(rwm_ensemble, "TUTORIAL_DIR", tmp_path)
+    for index in range(16):
+        (tmp_path / f"solution/vortex_rwm_{index:03d}").mkdir(parents=True)
+
+    batches = []
+    monkeypatch.setattr(
+        rwm_ensemble,
+        "run_ensemble",
+        lambda case, count, seed, **kw: batches.append((count, kw["first_realization"])),
+    )
+    output = tmp_path / "samples/vortex_rwm"
+    output.mkdir(parents=True)
+
+    def aggregate(solution, samples, case, count):
+        assert count == 16
+        (output / "rwm_convergence.csv").write_text(
+            "relative_standard_error_l2_velocity,relative_standard_error_l2_vorticity\n0.01,0.07\n"
+        )
+
+    monkeypatch.setattr(postprocess, "aggregate_case", aggregate)
+    rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 80)
+
+    assert batches == [(16, 0)]

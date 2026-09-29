@@ -1747,10 +1747,7 @@ def _template_grid(samples_root: Path, physics: str, metadata: dict) -> dict:
     if physics != "vortex":
         return template
 
-    # The historical single-vortex surface window was sized from the initial
-    # core and truncates several percent of the late diffused circulation.
-    # Build a wider uniform reconstruction grid from the configured diffusion
-    # scale.  Plotters already select their common comparison window.
+    # Extend the reconstruction window to contain late diffused circulation.
     dx = float(np.median(np.diff(template["x"][:, 0])))
     core_radius = float(metadata["core_radius"])
     kinematic_viscosity = float(metadata["kinematic_viscosity"])

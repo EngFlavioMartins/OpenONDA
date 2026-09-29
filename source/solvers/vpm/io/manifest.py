@@ -164,9 +164,6 @@ def _case_configuration(solver: Any) -> dict[str, Any]:
             "final_backup": bool(run.final_backup),
             "health_limit_action": str(run.health_limit_action),
             "wall_time_limit_seconds": run.wall_time_limit_seconds,
-            "resource_limits": _manifest_value(run.resource_limits)
-            if run.resource_limits is not None
-            else None,
             "runtime_compute_device": run.runtime_compute_device,
         },
         "backup": {
@@ -214,6 +211,12 @@ def build_manifest(solver: Any, *, status: str | None = None) -> dict[str, Any]:
     dict[str, object]
         JSON-compatible metadata using schema version 1.
     """
+    restored_particle_count = getattr(solver, "_restart_particle_count", None)
+    particle_count = (
+        int(restored_particle_count)
+        if restored_particle_count is not None
+        else int(getattr(getattr(solver, "particles", None), "n_particles_total", 0))
+    )
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "solver": "VPM",
@@ -226,9 +229,7 @@ def build_manifest(solver: Any, *, status: str | None = None) -> dict[str, Any]:
             "time": float(solver.time),
             "requested_steps": int(solver.case.run.steps),
             "initial_n_particles_total": int(getattr(solver, "_initial_n_particles_total", 0)),
-            "n_particles_total": int(
-                getattr(getattr(solver, "particles", None), "n_particles_total", 0)
-            ),
+            "n_particles_total": particle_count,
         },
     }
     if status is not None:

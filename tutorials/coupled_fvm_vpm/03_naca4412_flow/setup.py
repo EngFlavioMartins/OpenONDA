@@ -108,11 +108,9 @@ VPM_SAMPLERS = (
 
 FVM_SETUP = fvm.FVMSetup(
     case_name="naca4412_flow",
-    cores=1,
     execution=fvm.ComputeConfig(operator_backend="numba"),
     output=fvm.OutputConfig(
         compression="lz4",
-        precision="f32",
         asynchronous=False,
         ghost_layers=0,
     ),
@@ -122,7 +120,6 @@ FVM_SETUP = fvm.FVMSetup(
         output_schedule=fvm.RunSchedule(every_time=WRITE_INTERVAL_TIME),
     ),
     schemes=fvm.DiscretizationConfig(
-        convection_scheme="limitedLinear",
         gradient_scheme="gauss",
         time_scheme="backward",
     ),
@@ -135,15 +132,13 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_max_iterations=2000,
     ),
     pimple=fvm.PimpleControl(
-        n_correctors=2,
         n_outer_correctors=2,
         velocity_relaxation=0.7,
         pressure_relaxation=0.3,
-        ibm_forcing_loops=2,
     ),
     samplers=FVM_SAMPLERS,
     transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-    turbulence=fvm.TurbulenceConfig.smagorinsky(smagorinsky_coefficient=0.17),
+    turbulence=fvm.TurbulenceConfig.smagorinsky(),
     boundaries=[
         fvm.BoundaryConfig(
             name="numericalBoundary",
@@ -153,7 +148,6 @@ FVM_SETUP = fvm.FVMSetup(
         )
     ],
     initial_velocity=list(FREESTREAM_VELOCITY),
-    initial_kinematic_pressure=0.0,
 )
 
 VPM_CASE = vpm.VPMCase(
@@ -165,14 +159,12 @@ VPM_CASE = vpm.VPMCase(
             kinematic_viscosity=KINEMATIC_VISCOSITY, particle_spacing=SPACING
         ),
         integrator=vpm.RK2(),
-        turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.17),
+        turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+            smagorinsky_coefficient=FVM_SETUP.turbulence.smagorinsky_coefficient
+        ),
         induction=vpm.TreecodeInduction(),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
-        particle_kernel="GAUSSIAN",
-        precision="f32",
-        compute_device="AUTO",
         max_n_particles=MAX_N_PARTICLES,
-        max_evaluation_points=MAX_N_PARTICLES,
         domain_bounds=list(VPM_DOMAIN),
     ),
     # Coupled restart state is written atomically by COUPLER_SETUP.

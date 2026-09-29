@@ -122,9 +122,6 @@ def build_case() -> vpm.VPMCase:
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
-        sample_surface_forces=True,
-        # Attached VLM loading is an accepted-step diagnostic owned by VPM.
-        logging_interval_steps=1,
     )
 
     samplers = tuple(
@@ -144,7 +141,6 @@ def build_case() -> vpm.VPMCase:
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device="CPU",
-            turbulence=vpm.TurbulenceConfig.dns(),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -162,7 +158,6 @@ def build_case() -> vpm.VPMCase:
                 ]
             ),
             max_n_particles=250_000,
-            write_precision="f32",
         ),
         backup=Backup(
             interval_steps=sample_steps,

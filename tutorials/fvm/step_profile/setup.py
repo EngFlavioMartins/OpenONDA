@@ -37,14 +37,9 @@ N_HEIGHT = 16  # cells across the inlet channel height h
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.02  # initial time step [s]
-MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
-PISO_CORRECTORS = 2
-OUTER_CORRECTORS = 1
-CONVECTION_SCHEME = "limitedLinear"
 GRADIENT_SCHEME = "gauss"
-LINEAR_SOLVER = "bicgstab"
 
 
 def inlet_velocity():
@@ -77,13 +72,7 @@ def create_fvm_setup(
 ) -> fvm.FVMSetup:
     """Build the FVM setup for the backward-facing-step case."""
     schemes = fvm.DiscretizationConfig(
-        convection_scheme=CONVECTION_SCHEME,
         gradient_scheme=GRADIENT_SCHEME,
-    )
-    linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    pimple = fvm.PimpleControl(
-        n_correctors=PISO_CORRECTORS,
-        n_outer_correctors=OUTER_CORRECTORS,
     )
 
     return fvm.FVMSetup(
@@ -94,13 +83,10 @@ def create_fvm_setup(
             end_time=end_time,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
                 maximum_time_step_size=MAX_TIME_STEP_SIZE,
             ),
         ),
         schemes=schemes,
-        linear=linear,
-        pimple=pimple,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", inlet_values.tolist()),

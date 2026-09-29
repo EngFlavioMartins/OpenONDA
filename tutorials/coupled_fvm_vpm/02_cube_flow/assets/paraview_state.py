@@ -9,9 +9,7 @@ paraview.compatibility.minor = 1
 from paraview.simple import *
 
 
-# Resolve inputs from the tutorial rather than the machine where this state
-# file was generated.  ParaView accepts ``Path`` values only inconsistently
-# across releases, so keep the public reader arguments as strings.
+# Resolve input paths from the tutorial directory. ParaView readers use strings.
 CASE_DIR = Path(__file__).resolve().parent.parent
 SOLUTION_DIR = CASE_DIR / "solution"
 

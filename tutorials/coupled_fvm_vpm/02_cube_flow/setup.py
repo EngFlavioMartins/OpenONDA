@@ -35,7 +35,6 @@ KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CUBE_SIDE / REYNOLDS
 
 # FVM domain and mesh
 FVM_CORES = 4
-PIMPLE_CORRECTORS = 2
 
 CELL_SIZE = 0.045
 FVM_BOX = (-1.485, 1.485, -1.485, 1.485, -1.485, 1.485)
@@ -52,9 +51,6 @@ ETA_BLEND_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 TRANSFER_METHOD = "buffered_m4_renewal"
-TRANSFER_VORTICITY_CUTOFF = 0.05
-TRANSFER_AMPLIFICATION_CAP = 1.8
-FVM_CONSISTENCY_WIDTH = 0.0
 INTERFACE_ITERATIONS = 3
 
 # Time and output
@@ -144,8 +140,6 @@ FVM_SETUP = fvm.FVMSetup(
         data_location="cell",
         encoding="appended",
         compression="lz4",
-        precision="f32",
-        asynchronous=True,
         ghost_layers=0,
     ),
     time=fvm.TimeConfig(
@@ -160,21 +154,15 @@ FVM_SETUP = fvm.FVMSetup(
         time_scheme="backward",
     ),
     linear=fvm.LinearSolverConfig(
-        linear_solver="bicgstab",
         pressure_solver="amg",
         pressure_tolerance=1.0e-6,
         pressure_relative_tolerance=0.01,
-        pressure_final_relative_tolerance=0.0,
         momentum_tolerance=1.0e-6,
         momentum_relative_tolerance=0.1,
-        momentum_final_relative_tolerance=0.0,
         momentum_max_iterations=2000,
-        ilu_drop_tolerance=1.0e-4,
-        ilu_fill_factor=10.0,
         ilu_reuse_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
-        n_correctors=PIMPLE_CORRECTORS,
         n_outer_correctors=2,
         n_nonorthogonal_correctors=1,
         velocity_relaxation=0.7,
@@ -193,7 +181,6 @@ FVM_SETUP = fvm.FVMSetup(
         fvm.BoundaryConfig.wall("cube"),
     ],
     initial_velocity=list(FREESTREAM_VELOCITY),
-    initial_kinematic_pressure=0.0,
 )
 
 COUPLER_SETUP = coupling.CouplerSetup(
@@ -202,12 +189,9 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_region_bounds=TRANSFER_REGION_BOX,
     backup_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
-    fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
     interface_iterations=INTERFACE_ITERATIONS,
     eta_blend_width=ETA_BLEND_WIDTH,
     vpm_only_width=2.0 * VPM_PARTICLE_SPACING,
-    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
-    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
@@ -258,19 +242,13 @@ VPM_CASE = vpm.VPMCase(
             padding=5.0,
             threshold_mode="absolute",
             threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-            max_nodes=PARTICLE_LIMIT,
         ),
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(),
         induction=vpm.FMMInduction(),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
-        particle_kernel="GAUSSIAN",
-        precision="f32",
-        compute_device="AUTO",
         max_n_particles=PARTICLE_LIMIT,
-        max_evaluation_points=PARTICLE_LIMIT,
         domain_bounds=VPM_DOMAIN,
-        write_precision="f32",
     ),
     # Coupled runs use the atomic FVM+VPM restart save owned by COUPLER_SETUP.
     backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),

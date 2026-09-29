@@ -30,7 +30,7 @@ make_setup = case.fvm.FVMSetup
 def configured(*args, **kwargs):
     # Compare the analyses at tight linear convergence, independently of the
     # default serial/MPI iterative solvers' different stopping histories.
-    kwargs['linear'] = replace(kwargs['linear'], momentum_tolerance=1e-10,
+    kwargs['linear'] = replace(kwargs.get('linear', case.fvm.LinearSolverConfig()), momentum_tolerance=1e-10,
         pressure_tolerance=1e-10, momentum_relative_tolerance=0.0,
         pressure_relative_tolerance=0.0, momentum_final_relative_tolerance=0.0,
         pressure_final_relative_tolerance=0.0)

@@ -238,8 +238,7 @@ def main() -> int:
             command.append("--screen")
         if args.resume:
             command.append("--resume")
-        # Each sensitivity worker enforces its own per-case limit. This driver
-        # must not apply the 12-hour limit to the entire multi-case campaign.
+        # Sensitivity workers enforce the per-case time budget.
         import subprocess
 
         report["sensitivity_returncode"] = subprocess.call(command, cwd=CASE_DIR)

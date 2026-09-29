@@ -12,7 +12,7 @@ import numpy as np
 from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from source import log_style
-from source.coupler.geometry import TriangulatedWall
+from source.coupler.geometry import SolidBoundary, TriangulatedWall
 from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.lattice_transfer import (
     RenewalLattice,
@@ -1719,6 +1719,7 @@ class VorticityTransfer:
         self._fvm_solid_mask: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
+        self.solid_boundary: SolidBoundary | None = None
         self._lattice_anchor: np.ndarray | None = None
         self._renewal_lattice: RenewalLattice | None = None
         self._renewal_target_solid_mask: np.ndarray | None = None
@@ -1760,6 +1761,8 @@ class VorticityTransfer:
             The input is converted to float64 but is not modified.
         """
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if self.solid_boundary is not None:
+            return self.solid_boundary.contains(query, include_boundary=include_boundary)
         inside = np.zeros(len(query), dtype=bool)
         for body in self._solid_bodies:
             inside |= np.asarray(
@@ -1777,6 +1780,8 @@ class VorticityTransfer:
     def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
         """Approximate signed distance, positive in fluid and negative in solid."""
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if self.solid_boundary is not None:
+            return self.solid_boundary.signed_distance(query)
         distance = np.full(len(query), np.inf, dtype=np.float64)
         for body in self._solid_bodies:
             distance = np.minimum(
@@ -1957,11 +1962,6 @@ class VorticityTransfer:
             )
             if self.transfer_method == "buffered_m4_renewal":
                 self._cell_tree = cKDTree(self._cell_centre)
-                self._velocity_trace = FVMVelocityInterpolator(
-                    self._cell_centre,
-                    self._cell_tree,
-                    neighbour_count=4,
-                )
 
             if wall_faces is not None and len(wall_faces) and wall_normals is not None:
                 bounds = np.array(
@@ -2014,6 +2014,22 @@ class VorticityTransfer:
                 self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_box),)
             elif wall_patches and self._body_bounds is None:
                 raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
+            if self._solid_bodies:
+                self.solid_boundary = SolidBoundary(self._solid_bodies)
+            elif self._body_bounds is not None:
+                wall = (
+                    TriangulatedWall(wall_triangles, self._fvm_box)
+                    if wall_triangles is not None and len(wall_triangles)
+                    else TriangulatedWall.from_box(self._body_bounds, self._fvm_box)
+                )
+                self.solid_boundary = SolidBoundary((wall,))
+            if self.transfer_method == "buffered_m4_renewal":
+                self._velocity_trace = FVMVelocityInterpolator(
+                    self._cell_centre,
+                    self._cell_tree,
+                    neighbour_count=4,
+                    solid_boundary=self.solid_boundary,
+                )
             if self._lattice_anchor is None:
                 self._lattice_anchor = self._cell_centre[0].copy()
             if self._slip_z is not None:

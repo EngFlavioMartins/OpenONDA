@@ -1972,7 +1972,50 @@ class FVMSolver(CouplerInterfaceMixin):
         Return whether a backup was loaded. Call before initial output or a
         custom time loop; user initial fields may be set before this call.
         """
-        from source.restart import select_backup
+        from source.restart import reset_run_outputs, select_backup
+
+        if selection == "initial":
+            state_error = None
+            if (
+                self.step
+                or self.time != self._time_config.start_time
+                or self._n_committed_time_steps
+                or self._step_phase != "accepted"
+                or getattr(self, "_restart_loaded", False)
+            ):
+                state_error = RuntimeError(
+                    "start_from='initial' requires a new FVM solver before advancing"
+                )
+            self._collective_io_failure(state_error, "initial state selection")
+            error = None
+            if self.parallel.is_root:
+                try:
+                    samplers = list(self._samplers)
+                    samplers.extend(
+                        sampler
+                        for sampler in (
+                            getattr(self, "_default_yplus_sampler", None),
+                            getattr(self, "_default_ibm_sampler", None),
+                        )
+                        if sampler is not None
+                    )
+                    owned_names = {
+                        str(getattr(sampler, "file_name", None) or sampler.name)
+                        for sampler in samplers
+                    }
+                    reset_run_outputs(
+                        self.solution_dir,
+                        kind="fvm",
+                        backup_path=self._backup_config.path,
+                        samples_dir=self.samples_dir,
+                        owned_sample_names=owned_names,
+                    )
+                    self.io.rewind_histories(-1.0e100)
+                except Exception as exc:
+                    error = exc
+            self._collective_io_failure(error, "initial output reset")
+            self._initial_run_selected = True
+            return False
 
         selected = None
         error = None
@@ -1999,7 +2042,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         ``start_from="latest"`` restores the configured native backup when
         present and starts at zero otherwise. A path selects an explicit
-        backup; ``"initial"`` requires a clean output directory. ``None``
+        backup; ``"initial"`` starts a new history at the configured initial time. ``None``
         preserves the current in-memory state.
 
         The finite lifecycle writes initial output, executes steady SIMPLE or
@@ -2457,7 +2500,10 @@ class FVMSolver(CouplerInterfaceMixin):
             configured = Path(self.solution_dir) / configured
         if Path(path).resolve() == configured.resolve():
             self._automatic_backup_state = (
-                self.step, self.time, self._state_revision, str(configured)
+                self.step,
+                self.time,
+                self._state_revision,
+                str(configured),
             )
 
     def write_vtk(self, filename: str | None = None) -> None:
@@ -2708,7 +2754,15 @@ class FVMSolver(CouplerInterfaceMixin):
                 path = Path(filename)
                 if not path.is_absolute():
                     path = Path(self.solution_dir) / path
-                self.io._rewind_csv(path, self.time)
+                if getattr(self, "_initial_run_selected", False):
+                    handled = getattr(self, "_initial_reconciled_histories", None)
+                    if handled is None:
+                        handled = self._initial_reconciled_histories = set()
+                    if path not in handled:
+                        self.io._rewind_csv(path, -1.0e100)
+                        handled.add(path)
+                else:
+                    self.io._rewind_csv(path, self.time)
                 if path.is_file():
                     import csv
 

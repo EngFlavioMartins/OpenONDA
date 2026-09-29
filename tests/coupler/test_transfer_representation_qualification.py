@@ -301,7 +301,7 @@ def test_native_wall_triangles_preserve_orientation_and_area():
 
 
 @pytest.mark.parametrize("capped", [False, True])
-def test_curved_cylinder_wall_is_recognized_without_a_box_approximation(capped):
+def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     # Oriented polygonal cylinder; every normal points into the body from
     # the fluid. The open case represents walls crossing the span boundaries.
     angle = np.linspace(0, 2 * np.pi, 65)[:-1]
@@ -315,13 +315,9 @@ def test_curved_cylinder_wall_is_recognized_without_a_box_approximation(capped):
         if capped:
             triangles.extend(([[0, 0, -1], lower[i], lower[j]], [[0, 0, 1], upper[j], upper[i]]))
     wall = TriangulatedWall(np.array(triangles), [-2, 2, -2, 2, -1, 1])
-    if capped:
-        assert wall.verified_cylinder_z is None
-    else:
-        assert wall.verified_cylinder_z is not None
-        assert wall.contains(np.array([[0.0, 0.0, 1.5]]))[0]
-        internal_wall = TriangulatedWall(np.array(triangles), [-2, 2, -2, 2, -2, 2])
-        assert internal_wall.verified_cylinder_z is None
+    # Open walls are classified within the supplied physical domain, without
+    # inventing an infinite analytic cylinder beyond the native surface.
+    assert not wall.contains(np.array([[0.0, 0.0, 1.5]]))[0]
     query = np.array([[0, 0, 0], [0.3, 0.3, 0.4], [0.45, 0.45, 0.4], [0.6, 0, -0.4]])
     np.testing.assert_array_equal(wall.contains(query), [True, True, False, False])
     first = wall.signed_distance(query)

@@ -760,6 +760,7 @@ def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypa
             _particle_spacing,
             labels=None,
             diagnostics=None,
+            strict_labels=False,
         ):
             del labels
             events.append("recover")

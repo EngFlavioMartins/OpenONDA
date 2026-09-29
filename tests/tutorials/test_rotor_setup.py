@@ -24,16 +24,13 @@ def test_ordinary_rotor_case_keeps_native_controls() -> None:
     assert case.run.final_backup is True
     assert case.run.health_limit_action == "STOP"
     assert case.run.wall_time_limit_seconds is None
-    assert case.run.resource_limits is not None
-    assert case.run.resource_limits.max_particles == setup.RUN_PARTICLE_SOFT_LIMIT
-    assert case.run.resource_limits.max_rss_bytes == setup.RUN_RSS_LIMIT_BYTES
-    assert (
-        case.run.resource_limits.min_available_memory_bytes
-        == setup.RUN_AVAILABLE_MEMORY_FLOOR_BYTES
-    )
     assert case.run.runtime_compute_device is None
     assert case.numerics.compute_device == "AUTO"
     assert case.numerics.time_step_size == setup.TIME_STEP_SIZE
+    assert case.numerics.turbulence == setup.vpm.TurbulenceConfig.les_smagorinsky()
+    assert case.numerics.stabilization.selective_eddy_viscosity_coefficient == 0.5
+    assert case.numerics.stabilization.filament_refinement.interval_steps == 5
+    assert case.numerics.stabilization.filament_refinement.max_vortex_strength_factor == 2.0
     assert case.numerics.vlm.logging_interval_steps == 1
     assert case.backup.interval_steps == 4
     backup_time = case.backup.interval_steps * setup.TIME_STEP_SIZE
@@ -60,8 +57,8 @@ def test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius() -> N
     planes = case.samplers.samples[1:3]
 
     assert np.isclose(mesh_tip_radius, 6.005739216519047)
-    assert setup.STATION_REFERENCE_RADIUS == 6.0
-    assert not np.isclose(mesh_tip_radius, setup.STATION_REFERENCE_RADIUS)
+    assert setup.ROTOR_RADIUS == 6.0
+    assert not np.isclose(mesh_tip_radius, setup.ROTOR_RADIUS)
     assert [sampler.point[0] for sampler in planes] == [12.0, 24.0]
 
 
@@ -84,14 +81,8 @@ def test_restart_pilot_is_explicitly_bounded_and_cpu_selected() -> None:
     assert plan.initial_samples is False
     assert plan.final_backup is True
     assert plan.health_limit_action == "STOP"
-    assert plan.wall_time_limit_seconds == pilot.PILOT_WALL_LIMIT_SECONDS
+    assert plan.wall_time_limit_seconds is None
     assert plan.runtime_compute_device == "CPU"
-    assert plan.resource_limits is not None
-    assert plan.resource_limits.max_particles == pilot.PILOT_PARTICLE_SOFT_LIMIT
-    assert plan.resource_limits.max_rss_bytes == pilot.PILOT_RSS_LIMIT_BYTES
-    assert (
-        plan.resource_limits.min_available_memory_bytes == pilot.PILOT_AVAILABLE_MEMORY_FLOOR_BYTES
-    )
 
 
 def test_restart_preflight_has_no_scientific_samplers() -> None:
@@ -107,7 +98,7 @@ def test_restart_preflight_has_no_scientific_samplers() -> None:
     preflight = pilot._preflight_case(case, solution_directory, sample_directory, pilot.PILOT_STEPS)
 
     assert preflight.run.steps == pilot.PREFLIGHT_STEPS
-    assert preflight.run.wall_time_limit_seconds == pilot.PREFLIGHT_WALL_LIMIT_SECONDS
+    assert preflight.run.wall_time_limit_seconds is None
     assert preflight.run.runtime_compute_device == "CPU"
     assert preflight.samplers.samples == ()
     assert preflight.backup.directory == "solution/test_pilot/preflight"
@@ -133,7 +124,7 @@ def test_restart_preflight_caps_steps_near_authored_endpoint() -> None:
 def test_restart_pilot_help_is_lightweight() -> None:
     script = (
         Path(__file__).parents[2]
-        / "tutorials/vpm/06_rotor_flow_PENDING/assets/run_restart_pilot.py"
+        / "tutorials/vpm/06_rotor_flow/assets/run_restart_pilot.py"
     )
     result = subprocess.run(
         [sys.executable, str(script), "--help"],
@@ -175,7 +166,7 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
 
 
 def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:
-    launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow_PENDING/allrun.sh"
+    launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow/allrun.sh"
     assert launcher.read_text() == (
         '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\n./allclean.sh\n\npython setup.py "$@"\n'
     )

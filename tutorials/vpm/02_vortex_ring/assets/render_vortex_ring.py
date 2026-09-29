@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 from paraview.simple import (
+    AssignViewToLayout,
+    CreateLayout,
     CreateView,
     XMLPolyDataReader,
     Glyph,
@@ -23,6 +25,9 @@ out = Path(sys.argv[1])
 rgb_points = json.loads(sys.argv[2])
 schematic_only = "--schematic-only" in sys.argv[3:]
 view = CreateView("RenderView")
+# Headless ParaView rendering requires the view to belong to a layout.
+layout = CreateLayout("Vortex ring render")
+AssignViewToLayout(view=view, layout=layout)
 view.ViewSize = [1500, 1250]
 view.UseColorPaletteForBackground = 0
 view.Background = [1, 1, 1]
@@ -32,6 +37,13 @@ view.CameraFocalPoint = [0, 0, 0]
 view.CameraViewUp = [0, 0, 1]
 view.CameraParallelProjection = 1
 view.CameraParallelScale = 1.06
+
+
+def save_screenshot(name, resolution):
+    path = out / name
+    written = SaveScreenshot(str(path), layout, ImageResolution=resolution)
+    if not written or not path.is_file():
+        raise RuntimeError(f"ParaView failed to save screenshot: {path}")
 
 
 def read(name):
@@ -68,7 +80,7 @@ def particles(name, colored):
 
 for i in [] if schematic_only else [0, 1]:
     g = particles(f"particles_{i}.vtp", True)
-    SaveScreenshot(str(out / f"particles_{i}.png"), view, ImageResolution=[2400, 2000])
+    save_screenshot(f"particles_{i}.png", [2400, 2000])
     Hide(g, view)
 
 # Silver cutaway with the same projected section in the enlarged view.
@@ -102,7 +114,7 @@ for name in ["cut_edge", "other_edge"]:
 objects.append(geometry("core_scale", [0, 0.55, 0.70]))
 for name in ["radius_arrow", "speed_arrow", "circulation_arrow"]:
     objects.append(geometry(name, [0.52, 0.55, 0.58]))
-SaveScreenshot(str(out / "schematic.png"), view, ImageResolution=[2820, 2460])
+save_screenshot("schematic.png", [2820, 2460])
 for obj in objects:
     Hide(obj, view)
 view.ViewSize = [1200, 1200]
@@ -112,4 +124,4 @@ view.CameraFocalPoint = [0, 0, 0]
 particles("core_particles.vtp", False)
 geometry("detail_scale", [0, 0.55, 0.70])
 geometry("core_radius_arrow", [0.35, 0.37, 0.40])
-SaveScreenshot(str(out / "core_detail.png"), view, ImageResolution=[1500, 1500])
+save_screenshot("core_detail.png", [1500, 1500])

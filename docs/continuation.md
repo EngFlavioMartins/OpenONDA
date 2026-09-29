@@ -8,6 +8,15 @@ Every tutorial uses `START_FROM = "latest"` in `setup.py`:
 python setup.py   # start or continue just the default case
 ```
 
+Set `START_FROM = "initial"` in `setup.py` to ignore existing backups and start
+from the configured initial conditions. This does not require a manual cleanup.
+Prior solver-owned checkpoints, frames and histories are retired from the active
+series into `restart-branches/`; unrelated files and open logs are preserved.
+Consequently, a later `"latest"` run selects the new series even when the previous
+run had reached a larger step. Invalid old checkpoints are not read in initial
+mode. `allrun.sh` instead removes old output using the tutorial's `allclean.sh`
+before invoking the same setup commands as `allcontinue.sh`.
+
 Variant arguments select that variant's own solution and sample directories.
 The reference-flow and rotor-study subdirectories have the same launchers.
 The cylinder campaign remains available through `assets/run_pipeline.py`;
@@ -38,11 +47,15 @@ Coupled FVM/VPM runs restore `solution/backups/manifest.json` and its authentica
 FVM, VPM and boundary-history artifacts together. Independent VPM visualization
 frames never determine the coupled restart point. The manifest is committed
 last, so an interrupted new save leaves the previous committed bundle usable.
+If startup fails before the initial bundle commits, rerunning retries the
+initialization when the archived solver metadata and output still show no
+completed steps. An orphan component backup is never treated as a coupled
+checkpoint.
 
 Tutorials save periodically and at their destination, including an initial
 restart point. Work after the latest successful backup is replayed. Backup
 cadence controls how much work an abrupt interruption can lose. A stopped
-resource-limited run can continue when resources are available; restoring a
+A stopped run can continue when resources are available; restoring a
 backup does not fix a numerical instability or an unchanged physical limit.
 
 ## Samples, diagnostics and logs
@@ -71,7 +84,8 @@ Visualization-only results from older runs cannot restore numerical history;
 restore a numerical backup or use `./allrun.sh` for a clean simulation.
 
 The solver APIs support `solver.run(start_from="latest")` and an explicit backup
-path. `start_from="initial"` requires a clean solution directory. FVM and VPM
+path. `start_from="initial"` uses a newly constructed solver's initial state and
+starts fresh output even when backups exist. FVM and VPM
 also expose `solver.start_from(...)` for custom loops, returning whether a backup
 was restored. Set custom initial fields before this call; write initial output
 only when it returns false. FVM's `BackupConfig` and VPM's `Backup` still control

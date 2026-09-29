@@ -62,7 +62,7 @@ def create_fvm_setup() -> fvm.FVMSetup:
             gradient_scheme="gauss",
         ),
         linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
-        pimple=fvm.PimpleControl(n_correctors=1, n_outer_correctors=1),
+        pimple=fvm.PimpleControl(n_correctors=1),
         transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
