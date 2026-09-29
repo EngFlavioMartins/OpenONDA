@@ -1,0 +1,121 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "e9c75bedadfb729312deb524e2ae74142c31554543797989da32054b33887f30",
+  "excluded_superseded": [],
+  "files": [
+    {
+      "path": "solution/backup",
+      "sha256": "de93a3940684c9aa99f49c5f90871d2367e413e04a0cc6491339014658c62d76",
+      "size": 137364
+    },
+    {
+      "path": "solution/diagnostics.jsonl",
+      "sha256": "aaf4a3f92df5823c86ce5ef49f79d3d313c88343e5c1a339cdf24e6801a07c35",
+      "size": 815520
+    },
+    {
+      "path": "solution/fields.csv",
+      "sha256": "dc29e1d37844e615e5ef0778e2b94c6151a5f77bf76af62b5b745cf96eee002f",
+      "size": 191604
+    },
+    {
+      "path": "solution/fvm.log",
+      "sha256": "6af0152162ca484f7d835b06bf16c067e1de6c26bfc657d1db8402e281535074",
+      "size": 191255
+    },
+    {
+      "path": "solution/fvm.pvd",
+      "sha256": "a942fbb09cdacc861c23ccbe43f5b3dac580adb3b6d6f1a5e090313bd3ae49a1",
+      "size": 652
+    },
+    {
+      "path": "solution/fvm/fvm_000000.vtu",
+      "sha256": "56f9ba6b5f74f333ac038c1a0bb046955931b380a4d3c3adb40cf5f6503bc4a1",
+      "size": 38315
+    },
+    {
+      "path": "solution/fvm/fvm_000042.vtu",
+      "sha256": "5053921cf5a7befdb36af1202ddb33f8395c21d90a4f0ab3d4ede42f52eddad2",
+      "size": 66714
+    },
+    {
+      "path": "solution/fvm/fvm_000083.vtu",
+      "sha256": "9b7dd90f7b3e7b80a6b63bafd74b81ddfa81484f6ab6537e3bab76579c13d46e",
+      "size": 68766
+    },
+    {
+      "path": "solution/fvm/fvm_000124.vtu",
+      "sha256": "b59ce864d08c71c4b4e89113f01a9c12a082e2c6a5a0d992b3a1448237a5ce4f",
+      "size": 70799
+    },
+    {
+      "path": "solution/fvm/fvm_000165.vtu",
+      "sha256": "d4cbea12090f72b7a74846cab407c4f48c2e28bf83ad9c7f2382ae5bdc84c7d9",
+      "size": 72783
+    },
+    {
+      "path": "solution/fvm/fvm_000206.vtu",
+      "sha256": "00ba7cef53226598d5c632a2c050d255e7811b78c9a3c6396747dca0aa6e515c",
+      "size": 74677
+    },
+    {
+      "path": "solution/fvm/fvm_000247.vtu",
+      "sha256": "5b5698eb559d38746a93f10493431dc1f589652567c45d400d4417846502d15a",
+      "size": 75953
+    },
+    {
+      "path": "solution/fvm/mesh.npz",
+      "sha256": "06174dcf45dfd5383c8e8c677b501adcba3f98ef99cf12b60357f8a600ba3b26",
+      "size": 94402
+    },
+    {
+      "path": "solution/fvm/mesh.vtu",
+      "sha256": "7b6ff1919d252e6f1a40733daa3ab0b4ed810c1be80cc2a3eed04453ed186c65",
+      "size": 37149
+    },
+    {
+      "path": "solution/fvm_metadata.json",
+      "sha256": "df295479d69a675324f9ba53a4eb3e2b0dc41f5f01f8e89e3f4685e7f84a9fe1",
+      "size": 7194
+    },
+    {
+      "path": "solution/mesher.log",
+      "sha256": "9930fa55e3356af9d28c7a46432fcae221feed27820f0d8c8ac6bc140bbf0c0c",
+      "size": 3002
+    },
+    {
+      "path": "solution/performance.jsonl",
+      "sha256": "06d10b4915d9b9edda1c87641b38e448265469db56a0a190e1f3cc89e3ed3612",
+      "size": 1527158
+    },
+    {
+      "path": "solution/reattachment_history.csv",
+      "sha256": "377ca603bec2c13472e1c7aa6e45095e4a8797fa1962c1e99bad2797efd0887c",
+      "size": 24623
+    }
+  ],
+  "provenance": {
+    "commands": [
+      {
+        "launcher": "allrun.sh",
+        "returncode": 0,
+        "wall_seconds": 57.65374838900243
+      },
+      {
+        "launcher": "allplot.sh",
+        "returncode": 0,
+        "wall_seconds": 15.151252825002302
+      }
+    ],
+    "execution": "unchanged installed tutorial, allrun.sh then allplot.sh",
+    "native_outputs": "all samples and solution files preserved losslessly",
+    "setup_sha256": "306d3ac4fb04344837e4bf1e26ce927f8f852c240b9a8fd2abca6ec98bc4fd23",
+    "source_commit": "91b668b5",
+    "wheel_sha256": "4fe0599e9cdfaf3822375612dca80d582dcc76f94c6d3d2551121373c29bea15"
+  },
+  "restore_roots": [
+    "solution"
+  ],
+  "schema_version": 1,
+  "scientific_status": "completed default run to t=12 s; final reattachment x/h=3.59; stationarity and grid convergence not established"
+}
