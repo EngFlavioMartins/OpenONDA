@@ -66,7 +66,6 @@ FVM_SAMPLERS = (
     fvm.IBMForceSampler(
         reference_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         reference_area=CHORD * SPAN,
-        schedule=fvm.RunSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],

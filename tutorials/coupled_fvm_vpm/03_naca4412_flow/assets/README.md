@@ -17,6 +17,11 @@ keep the immersed-boundary transient within its CFL limit. Edit the physical and
 or differently resolved experiments. Run `python assets/check_run.py` explicitly
 for result validation, and `./allclean.sh` to remove generated output.
 
+The IBM force history is sampled at every accepted FVM step (1,200 rows for
+the default horizon); spatial fields and backups retain their 0.8 s cadence.
+The scalar force CSV is small, while the denser history resolves transient
+changes for plotting and later frequency analysis.
+
 The public `compute_device` field in `VPM_CASE.numerics` explicitly selects the
 CPU when no supported GPU is available. Generated fields are written below
 `solution/`, sampling histories below `samples/`, and plots below `figures/`.
