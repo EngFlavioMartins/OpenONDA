@@ -56,7 +56,12 @@ def main():
         u_norm = u / FREESTREAM_SPEED
         marker = STATION_MARKERS.get(station, "d")
         ax.plot(
-            eta, u_norm, marker, markersize=3.5, linestyle="none", label=f"FVM $x/L$ = {sampled_x:.3g}"
+            eta,
+            u_norm,
+            marker,
+            markersize=3.5,
+            linestyle="none",
+            label=f"FVM $x/L$ = {sampled_x:.3g}",
         )
         # Error against Blasius inside the layer (eta <= 6).
         inside = eta <= 6.0

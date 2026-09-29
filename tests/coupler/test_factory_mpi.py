@@ -19,7 +19,9 @@ def test_partitioned_coupled_restart_keeps_boundary_collectives_in_order(tmp_pat
     if not (Path(sys.executable).with_name("mpiexec").is_file() or shutil.which("mpiexec")):
         pytest.skip("mpiexec is required")
     script = tmp_path / "restart.py"
-    script.write_text(f"selection = {selection!r}\n" + """
+    script.write_text(
+        f"selection = {selection!r}\n"
+        + """
 from pathlib import Path
 import json
 import sys
@@ -63,7 +65,8 @@ with coupler.create_coupler(flow, particles, policy, mesh=mesh,
     assert np.allclose(resumed.fvm_solver.get_velocity_field(), [1.,0.,0.], atol=1e-8)
     rank = resumed.fvm_solver.parallel.rank
     (directory / f"rank-{rank}.json").write_text(json.dumps({"step": 2, "time": .02}))
-""")
+"""
+    )
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     environment["TI_OFFLINE_CACHE_FILE_PATH"] = str(tmp_path / "taichi-cache")

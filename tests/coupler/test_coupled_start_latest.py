@@ -13,20 +13,44 @@ from source.solvers.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase
 
 def _coupler(directory):
     velocity = [1.0, 0.0, 0.0]
-    setup = CouplerSetup(freestream_velocity=velocity, eta_blend_width=0.0, backup_interval_steps=2, transfer_discretization_error_limit=1.0)
-    fvm = FVMSolver(FVMSetup(
-        case_name="continue", time=TimeConfig(time_step_size=0.01, end_time=0.06),
-        transport=TransportConfig(kinematic_viscosity=0.01),
-        boundaries=[BoundaryConfig(name="numericalBoundary", velocity_type="fixedValue",
-                                   velocity_value=velocity, pressure_type="fixedFluxPressure")],
-        initial_velocity=velocity,
-    ), case_dir=directory, mesh_data=coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5), .25))
-    vpm = VPMSolver(VPMCase(directory=directory, numerics=Numerics(
-        time_step_size=0.02, compute_device="CPU", max_n_particles=4000,
-        domain_bounds=(-1.,1.,-1.,1.,-1.,1.), freestream_velocity=velocity,
-        induction=DirectInduction(),
-        viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=.25),
-    )))
+    setup = CouplerSetup(
+        freestream_velocity=velocity,
+        eta_blend_width=0.0,
+        backup_interval_steps=2,
+        transfer_discretization_error_limit=1.0,
+    )
+    fvm = FVMSolver(
+        FVMSetup(
+            case_name="continue",
+            time=TimeConfig(time_step_size=0.01, end_time=0.06),
+            transport=TransportConfig(kinematic_viscosity=0.01),
+            boundaries=[
+                BoundaryConfig(
+                    name="numericalBoundary",
+                    velocity_type="fixedValue",
+                    velocity_value=velocity,
+                    pressure_type="fixedFluxPressure",
+                )
+            ],
+            initial_velocity=velocity,
+        ),
+        case_dir=directory,
+        mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), 0.25),
+    )
+    vpm = VPMSolver(
+        VPMCase(
+            directory=directory,
+            numerics=Numerics(
+                time_step_size=0.02,
+                compute_device="CPU",
+                max_n_particles=4000,
+                domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+                freestream_velocity=velocity,
+                induction=DirectInduction(),
+                viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.25),
+            ),
+        )
+    )
     return FVMVPMCoupler(fvm, vpm, setup)
 
 
@@ -111,6 +135,7 @@ def test_coupled_initial_replaces_prior_run_and_latest_continues_new_branch(
 
 def test_latest_without_bundle_replaces_prior_output_history(tmp_path):
     import shutil
+
     with _coupler(tmp_path) as previous:
         previous.run(start_from="latest", max_coupling_steps=2)
     shutil.rmtree(tmp_path / "solution/backups")

@@ -302,10 +302,9 @@ def test_interaction_selector_rejects_invalid_body_authority_pair():
     class Builder:
         def build_case(self, *, end_time, overrides):
             assert end_time == 100.0
-            if (
-                overrides.get("particle_spacing_ratio") == 1.5
-                and overrides.get("blend_width_ratio") == pytest.approx(7.0 * 0.08 / 0.12)
-            ):
+            if overrides.get("particle_spacing_ratio") == 1.5 and overrides.get(
+                "blend_width_ratio"
+            ) == pytest.approx(7.0 * 0.08 / 0.12):
                 raise ValueError("blend width exceeds body authority")
 
     candidates = [

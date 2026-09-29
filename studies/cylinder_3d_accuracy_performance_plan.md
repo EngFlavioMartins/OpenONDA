@@ -148,7 +148,7 @@ Define “injection rate” explicitly: the present method renews an authoritati
 
 | Factor | Initial study levels | Control / question |
 | --- | --- | --- |
-| Accepted renewal interval | 1×, 2× baseline; add .5× only through a separately controlled exchange-timestep study | Keep FVM/VPM integration and boundary-refresh clocks fixed when testing skipped renewal; introduce this capability only with explicit ownership/history and conservation tests. |
+| Accepted renewal / exchange interval | .02 and .04 s at fixed mesh and physical transfer support; .08 s only after convergence screening | The implemented method renews every accepted exchange. Report this as combined renewal, integration and boundary-lag sensitivity. Independently skipping renewals would require a separate ownership/history algorithm and is not part of this study. |
 | hp/hwall | 1.0, 1.25, 1.5 | Quantify transfer resolution versus count/cost; do not change vorticity cutoff. |
 | Core radius / hp | 0.8, 1.0, 1.2, subject to validated overlap limits | Representation error, smoothness, induced boundary trace, and FMM cost. |
 | Authority blend width / hp | 4, 6, 8 | Geometry containment and interface reflection at constant solver clocks. |
@@ -156,7 +156,7 @@ Define “injection rate” explicitly: the present method renews an authoritati
 | Represented-state amplification cap | 1.4, 1.8, 2.2, only where the current method uses this control | Quantify correction/local-error tradeoffs without relaxing conservation or field-error gates. |
 | Transfer-region location / box size | Current and qualified larger configuration | Separate boundary placement from mesh resolution and slab effects. |
 | dz/hxy and span | Independent dz refinement; 0.48D/.96D/1.92D span | Diagnose anisotropic donor accuracy and span-boundary dependence. |
-| VPM exchange dt | .5×, 1×, 2× qualified baseline in a separate temporal study | Keep accuracy tolerances and physical horizon fixed; account for explicit diffusion substeps and interpolation lag. |
+| FVM substep dt | .5× and 1× qualified baseline at a fixed accepted exchange clock | Separate FVM integration error while keeping renewal frequency fixed; retain physical horizon and accuracy tolerances. |
 | Induction accuracy | Two qualified FMM accuracy settings if exposed | Field-error versus work; compare selected samples to direct induction on a bounded cloud. |
 
 - [ ] Enforce a release-buffer constraint based on measured travel Umax × renewal interval, diffusion length sqrt(2 nu × interval), and remeshing/kernel support. Reject a cadence that lets vorticity cross the ownership region without a valid exchange.

@@ -159,6 +159,7 @@ def test_latest_without_backup_replaces_prior_output_history(tmp_path):
     _add_counter_rotating_pair(previous)
     previous.run(start_from="latest")
     from source.solution_layout import vpm_backup_files
+
     for path in vpm_backup_files(tmp_path / "solution"):
         path.unlink()
     fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))

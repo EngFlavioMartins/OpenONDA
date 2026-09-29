@@ -186,8 +186,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     }
     current = {key: value.copy() for key, value in original.items()}
     particles = SimpleNamespace(
-        capacity=100000,
-        **{key + "_cpu": lambda key=key: current[key].copy() for key in current}
+        capacity=100000, **{key + "_cpu": lambda key=key: current[key].copy() for key in current}
     )
     replacements = []
 

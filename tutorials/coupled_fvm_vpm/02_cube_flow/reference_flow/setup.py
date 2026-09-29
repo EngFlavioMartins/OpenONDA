@@ -60,7 +60,9 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         patch_refinements=(msh.PatchRefinement("cube", h),),
     )
     setup = fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True
+        ),
         case_name=name,
         cores=CORES,
         time=fvm.TimeConfig(

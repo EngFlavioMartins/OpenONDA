@@ -72,5 +72,7 @@ def test_regeneration_cap_uses_declared_global_capacity():
 @pytest.mark.parametrize("scheme", ["GBD", "DVH"])
 def test_regeneration_capacity_overflow_rejects_instead_of_pruning(scheme):
     _GridDiffusionMixin._require_regeneration_capacity(64, 64, scheme)
-    with pytest.raises(RuntimeError, match=rf"{scheme} regeneration needs 65 particles.*max_n_particles=64"):
+    with pytest.raises(
+        RuntimeError, match=rf"{scheme} regeneration needs 65 particles.*max_n_particles=64"
+    ):
         _GridDiffusionMixin._require_regeneration_capacity(65, 64, scheme)

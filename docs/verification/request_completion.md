@@ -35,7 +35,7 @@ items must not be described as complete.
 - [x] Implement measured trace/interpolation reuse, image accumulation and PETSc workspace optimizations; retain accuracy/iteration limits.
 - [x] Record short transient coupling sensitivity and exact optimization evidence in the cylinder execution report.
 - [ ] Complete independent span/z, domain, grid and temporal qualification and select coupled/reference production meshes.
-- [ ] Complete injection/renewal cadence, transfer support, particle-spacing and exchange-time sensitivity with uncertainty and paired physics.
+- [ ] Complete implemented exchange/renewal-clock, transfer-support and particle-spacing sensitivity with uncertainty and paired physics.
 - [ ] Establish developed-wake parallel timings and a conservative finest-case runtime within 12 hours on this machine.
 - [ ] Verify ordinary cylinder launchers produce the requested comparisons and grid-independence report.
 
@@ -160,3 +160,32 @@ supervisor. Its five analytical PNGs and 274 GIF frames decoded. This closes
 plotting execution coverage for the archived accepted history; full-horizon rotor
 stability remains unqualified. See the
 [rotor execution record](../../studies/rotor_archive_plot_verification_2026-09-29.json).
+
+The wheel from `585d6c48` passed the full installation verifier with `python -I`
+from `/tmp`, outside the checkout, and `pip check` found no broken requirements.
+The wheel contains all 26 tutorial-support Python files, excludes result archives
+and local phase-benchmark scripts, and declares only CPython 3.11. The exact wheel
+hash and native results are in the
+[installation record](../../studies/installed_wheel_verification_585d6c48.json).
+
+Actual execution exposed a separate IBM cylinder force-normalization error:
+the implicit unit reference area was 16 times the cylinder's projected area.
+The setup now passes diameter times span to the force sampler. Four regressions
+cover two spans and two reference speeds. The corrected full default execution
+is running in an isolated workspace; its final plots are still outstanding.
+
+Cylinder particle-spacing studies now hold the physical core radius and transfer
+widths fixed, recording both requested and resolved lattice spacings. Sampling
+cadence no longer depends on divisibility of the run horizon: a 2501-exchange run
+keeps the same physical cadence as a 2500-exchange run. Configuration, factory
+equivalence and cadence regressions passed. The long physical comparisons remain
+open.
+
+The original injection-rate request can be assessed through the implemented
+combined exchange/renewal clock. A separate held-cloud algorithm is additional
+scope, not a prerequisite for reporting that sensitivity honestly. The minimum
+paired study and current timing evidence are in the
+[scope assessment](../../studies/cylinder_injection_rate_scope_2026-09-29.md).
+Historical reference data use a different span and observation window and cannot
+replace the current campaign; see the
+[historical input audit](../../studies/historical_plot_input_audit_2026-09-29.md).
