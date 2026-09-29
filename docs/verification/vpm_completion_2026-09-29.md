@@ -7,7 +7,9 @@ solver's HDF5 validation (schema, configuration hash, particle arrays and finite
 values); stored VLM and VPM clocks agree. Archived restart branches were excluded.
 The completion table was refreshed later that day from all 98 native checkpoint
 clocks: 90 completed states, six health stops and two active simulations.
-Delta wing and rotor are currently running; do not start duplicate continuations.
+At the 20:45 UTC refresh, delta wing had stopped after a keyboard interrupt;
+rotor was still running. Only those two changing histories were reread for this
+refresh; the earlier 98-backup validation remains the coverage of the full audit.
 
 | Tutorial / variant | Latest backup step / target | Physical time / target [s] | Result and next action |
 | --- | ---: | ---: | --- |
@@ -22,8 +24,8 @@ Delta wing and rotor are currently running; do not start duplicate continuations
 | 03 vortex interactions: selective eddy viscosity | 2400 / 2400 | 9 / 9 | Complete. |
 | 04 flat plate: 10 moving angles | 197 / 197 each | 2.4625 / 2.4625 | Complete. |
 | 04 flat plate: 10 static angles | 192 / 192 each | 2.4 / 2.4 | Complete. |
-| 05 delta wing | 2580 / 8000 | 6.45 / 20 | Active; continue only after its current process exits. |
-| 06 rotor flow | 1100 / 1667 | 6.6 / 10.002 | Active; continue only after its current process exits. |
+| 05 delta wing | 2780 / 8000 | 6.95 / 20 | Interrupted after accepted step 2781; the last saved state is step 2780. Continue-ready when no replacement process is active. |
+| 06 rotor flow | 1188 / 1667 | 7.128 / 10.002 | Active; continue only after its current process exits. |
 | 07 quadcopter | 296 / 2304 | 0.04625 / 0.36 | Stopped on the strain health limit; stretching diagnosed, refinement candidate requires a new clean qualification. |
 
 The rotor setup requests 10 s, rounded to 1667 steps of 0.006 s (10.002 s).
@@ -32,9 +34,10 @@ relative errors are 6.7353% (vortex), 6.8199% (dipole), and 7.0706% (merging).
 
 ## Continuation commands
 
-These are the continuation commands for interrupted delta-wing and rotor runs.
-Both are currently active, so no additional invocation is needed now. After an
-interruption, run from the repository root, one at a time:
+These are the continuation commands for delta-wing and rotor runs. Delta wing
+was interrupted at the latest inspection; rotor remains active. Check for a
+replacement process before starting delta wing, and do not duplicate rotor.
+Run interrupted cases from the repository root, one at a time:
 
 ```bash
 (cd tutorials/vpm/05_delta_wing && ./allcontinue.sh)
@@ -105,3 +108,11 @@ refinement at each step. This changes its numerical configuration: do not bypass
 the restart mismatch to apply it to the old cloud, whose disabled refinement
 never recorded lineage references. An isolated clean run is required before the
 new setup can be called stable. See [the diagnosis](../../studies/quadcopter_stability_audit.md).
+
+The isolated clean CUDA qualification has since passed the original step-296
+failure with the corrected lineage initialization. Its bounded 384-step run is
+still active, and the full 2304-step particle capacity is not qualified. See
+[the growth audit](../../studies/quadcopter_refinement_growth_audit_2026-09-29.json).
+The protected rotor history has not yet passed 7.5 s; its current refinement
+and runtime evidence are recorded in
+[the rotor audit](../../studies/rotor_refinement_status_2026-09-29.md).

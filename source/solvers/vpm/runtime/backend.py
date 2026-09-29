@@ -149,8 +149,7 @@ def _clear_stale_taichi_cache() -> None:
 # memory pool as  heap_size × device_memory_fraction,  which can vastly
 # exceed the budget, leaving nothing for ext-arr staging buffers.
 #
-# The helpers below detect this situation so that device_memory_fraction
-# can be scaled down automatically.
+# Size the Vulkan pool from its reported usable budget.
 
 
 def _query_vulkan_budget() -> tuple[int, int] | None:
@@ -226,7 +225,7 @@ def _safe_device_memory_for_init(
 ) -> dict[str, float]:
     """Return ``ti.init()`` memory kwargs appropriate for the current GPU.
 
-    On **discrete GPUs** (or when detection fails), the user-supplied
+    On **discrete GPUs** (or when detection fails), the internal
     *desired_fraction* is returned as ``device_memory_fraction``.
 
     On **integrated GPUs / unified-memory architectures** the heap ``size``
@@ -234,13 +233,11 @@ def _safe_device_memory_for_init(
     Instead we use Taichi's ``device_memory_GB`` parameter to set a small,
     fixed-size pool.
 
-    **macOS / Metal**: Vulkan is not available, so Vulkan budget queries are
-    skipped.  Apple Silicon uses unified memory (GPU shares system RAM), so
-    a fixed 2 GiB pool is used.  Intel Macs with a dedicated GPU fall back
-    to the fraction-based approach.
+    **macOS / Metal**: Metal manages its own allocation. No Vulkan query or
+    explicit pool setting is used on either Apple Silicon or Intel Macs.
 
-    Returns a dict with either ``{"device_memory_fraction": ...}`` or
-    ``{"device_memory_GB": ...}``.
+    Returns a pool-size dictionary for CUDA/Vulkan, or an empty dictionary
+    for Metal.
 
     ``minimum_pool_bytes`` sizes an integrated-GPU pool for a known fixed
     workspace, subject to the driver's current memory budget.
@@ -560,8 +557,7 @@ def initialize_taichi_backend(
         )
     strict_gpu = preferred_backend in {"AUTO", "METAL", "VULKAN", "CUDA"} and precision == "f32"
 
-    # Runtime allocation is automatic; retain the established default pool
-    # share and adapt it to hardware budgets in the private helper below.
+    # Adapt the automatic pool share to the backend's memory budget.
     device_memory_fraction = 0.5
 
     default_fp, default_ip = _PRECISION_MAP[precision]
