@@ -55,8 +55,8 @@ def create_fvm_mesh() -> msh.CartesianMesher:
         ),
         surfaces=(msh.STLSurface(AIRFOIL_STL, patch="airfoil"),),
         max_cell_size=1.0,
-        boundary_cell_size=0.03125,
         min_cell_size=0.03125,
+        patch_refinements=(msh.PatchRefinement(patch="airfoil", cell_size=0.03125),),
         refinements=(
             msh.BoxRefinement(
                 name="near_airfoil",
