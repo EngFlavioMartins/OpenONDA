@@ -7,6 +7,7 @@ from source.solvers.vpm.config.divergence_relaxation import DivergenceRelaxation
 from source.solvers.vpm.config.filament_refinement import FilamentRefinementConfig
 from source.solvers.vpm.config.stabilization import StabilizationConfig
 from source.solvers.vpm.stabilization.divergence_relaxation import (
+    GaussianParticleGridOperator,
     restore_particle_moments,
 )
 from source.solvers.vpm.stabilization.filament_refinement import (
@@ -16,6 +17,27 @@ from source.solvers.vpm.stabilization.filament_refinement import (
 )
 from source.solvers.vpm.stabilization.manager import StabilizationError, StabilizationManager
 from source.solvers.vpm.stabilization.regularization import _regularization_triggered
+
+
+def test_divergence_grid_uses_physical_spacing_and_adjoint_transfer():
+    position = np.array([[0.0, 0.0, 0.0], [0.2, 0.1, -0.1]])
+    operator = GaussianParticleGridOperator(
+        position, np.full(2, 0.1), np.ones(2), spacing=0.05
+    )
+    vectors = np.array([[1.0, 0.2, -0.1], [0.1, -0.4, 0.3]])
+    grid_field = np.random.default_rng(4).normal(size=(*operator.shape, 3))
+    assert operator.spacing == 0.05
+    assert operator.nodes == np.prod(operator.shape)
+    np.testing.assert_allclose(
+        np.sum(operator.scatter(vectors) * grid_field),
+        np.sum(vectors * operator.gather(grid_field)),
+        rtol=1e-13,
+        atol=1e-13,
+    )
+    with pytest.raises(TypeError, match="max_grid_nodes"):
+        DivergenceRelaxationConfig.constrained(
+            interval_steps=1, grid_spacing=0.05, max_grid_nodes=8_000_000
+        )
 
 
 def test_combined_stabilization_schedule_is_representable():

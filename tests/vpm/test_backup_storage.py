@@ -492,6 +492,56 @@ def test_restart_ignores_authenticated_legacy_target_batch_capacity(tmp_path):
         reader.close()
 
 
+def test_restart_ignores_authenticated_legacy_divergence_grid_cap(tmp_path):
+    from source.solvers.vpm.config.divergence_relaxation import DivergenceRelaxationConfig
+
+    stabilization = StabilizationConfig(
+        divergence_relaxation=DivergenceRelaxationConfig.constrained(
+            interval_steps=1, grid_spacing=0.2
+        )
+    )
+    writer = _solver(tmp_path / "writer", stabilization=stabilization)
+    try:
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
+    with h5py.File(backup, "r+") as archive:
+        attributes = archive["solver"].attrs
+        configuration = json.loads(attributes["numerical_configuration"])
+        divergence = configuration["stabilization"]["divergence_relaxation"]
+        divergence["max_grid_nodes"] = 32
+        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+        attributes["numerical_configuration"] = encoded
+
+    reader = _solver(tmp_path / "reader", stabilization=stabilization)
+    try:
+        with pytest.raises(ValueError, match="fingerprint"):
+            reader.load_backup(backup)
+        with h5py.File(backup, "r+") as archive:
+            archive["solver"].attrs["numerical_configuration_sha256"] = hashlib.sha256(
+                encoded.encode()
+            ).hexdigest()
+        reader.load_backup(backup)
+        assert (reader.step, reader.time) == (0, 0.0)
+    finally:
+        reader.close()
+
+    with h5py.File(backup, "r+") as archive:
+        attributes = archive["solver"].attrs
+        configuration = json.loads(attributes["numerical_configuration"])
+        configuration["stabilization"]["divergence_relaxation"]["grid_spacing"] = 0.1
+        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+        attributes["numerical_configuration"] = encoded
+        attributes["numerical_configuration_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+    reader = _solver(tmp_path / "physical_mismatch", stabilization=stabilization)
+    try:
+        with pytest.raises(ValueError, match="divergence_relaxation.grid_spacing"):
+            reader.load_backup(backup)
+    finally:
+        reader.close()
+
+
 @pytest.mark.parametrize(
     ("section", "name", "path"),
     [

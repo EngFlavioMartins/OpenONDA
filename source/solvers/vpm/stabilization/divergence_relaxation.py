@@ -28,6 +28,7 @@ transaction.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import prod
 
 import numpy as np
 from scipy import fft
@@ -128,7 +129,6 @@ class GaussianParticleGridOperator:
         spacing: float,
         support_radius_multiplier: float = 4.0,
         max_core_radius_spread: float = 0.25,
-        max_grid_nodes: int = 8_000_000,
     ) -> None:
         """Prepare a symmetric M4/Gaussian grid operator.
 
@@ -152,16 +152,13 @@ class GaussianParticleGridOperator:
         max_core_radius_spread : float, default=0.25
             Maximum allowed relative core-radius range, measured as
             ``ptp(core_radius) / mean(core_radius)``.
-        max_grid_nodes : int, default=8_000_000
-            Hard upper bound on the allocated grid-node count.
 
         Raises
         ------
         ValueError
             If shapes, positivity, or support parameters are invalid.
         DivergenceRelaxationError
-            If core-radius heterogeneity or the resulting grid exceeds a
-            declared acceptance limit.
+            If core-radius heterogeneity exceeds the admissible range.
 
         Notes
         -----
@@ -213,12 +210,7 @@ class GaussianParticleGridOperator:
         lower = np.floor(position.min(axis=0) / spacing).astype(np.int64) - padding
         upper = np.ceil(position.max(axis=0) / spacing).astype(np.int64) + padding
         self.shape = tuple(int(value) for value in upper - lower + 1)
-        self.nodes = int(np.prod(self.shape))
-        if self.nodes > max_grid_nodes:
-            raise DivergenceRelaxationError(
-                f"divergence-relaxation grid requires {self.nodes:,} nodes, exceeding "
-                f"the declared limit {max_grid_nodes:,}"
-            )
+        self.nodes = prod(self.shape)
         origin = lower.astype(np.float64) * spacing
         coordinates = (position - origin) / spacing
         base = np.floor(coordinates).astype(np.int64)
@@ -494,7 +486,6 @@ def _constrained_divergence_relaxation_once(
     regularization: float = 0.1,
     solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
-    max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
     max_residual_ratio: float = 0.9,
     total_kinetic_energy_tolerance: float = 1e-6,
@@ -561,7 +552,6 @@ def _constrained_divergence_relaxation_once(
         core_radius,
         vortex_strength_magnitude,
         spacing=grid_spacing,
-        max_grid_nodes=max_grid_nodes,
     )
     residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
     initial_residual_norm = float(np.linalg.norm(residual))
@@ -1091,7 +1081,6 @@ def _constrained_divergence_relaxation_sweep(
     regularization: float = 0.1,
     solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
-    max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
     max_residual_ratio: float = 0.9,
     total_kinetic_energy_tolerance: float = 1e-6,
@@ -1135,7 +1124,6 @@ def _constrained_divergence_relaxation_sweep(
                     regularization=regularization,
                     solver_relative_tolerance=solver_relative_tolerance,
                     max_iterations=max_iterations,
-                    max_grid_nodes=max_grid_nodes,
                     max_correction_norm=max_correction_norm,
                     max_residual_ratio=max_residual_ratio,
                     total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,
@@ -1175,7 +1163,6 @@ def _combine_projection_sweeps(
     *,
     grid_spacing: float,
     regularization: float,
-    max_grid_nodes: int,
     max_correction_norm: float,
     max_residual_ratio: float,
     total_kinetic_energy_tolerance: float,
@@ -1288,7 +1275,6 @@ def _combine_projection_sweeps(
         core_radius,
         np.linalg.norm(vortex_strength, axis=1),
         spacing=grid_spacing,
-        max_grid_nodes=max_grid_nodes,
     )
     initial_residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
     final_residual, grid_divergence_after, _ = operator.relaxation_residual(relaxed)
@@ -1426,7 +1412,6 @@ def constrained_divergence_relaxation(
     regularization: float = 0.1,
     solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
-    max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
     max_residual_ratio: float = 0.9,
     total_kinetic_energy_tolerance: float = 1e-6,
@@ -1472,7 +1457,6 @@ def constrained_divergence_relaxation(
                     regularization=regularization,
                     solver_relative_tolerance=solver_relative_tolerance,
                     max_iterations=max_iterations,
-                    max_grid_nodes=max_grid_nodes,
                     max_correction_norm=max_correction_norm,
                     max_residual_ratio=(
                         sweep_residual_limit if amplitude_attempt == 0 else monotone_residual_limit
@@ -1509,7 +1493,6 @@ def constrained_divergence_relaxation(
                     candidate_sweeps,
                     grid_spacing=grid_spacing,
                     regularization=regularization,
-                    max_grid_nodes=max_grid_nodes,
                     max_correction_norm=max_correction_norm,
                     max_residual_ratio=max_residual_ratio,
                     total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,

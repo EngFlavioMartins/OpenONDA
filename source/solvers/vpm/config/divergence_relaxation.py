@@ -19,9 +19,8 @@ class DivergenceRelaxationConfig:
         Positive dimensionless Tikhonov weight in the correction solve.
     solver_relative_tolerance : float, default=1e-5
         Positive dimensionless iterative-solver tolerance.
-    max_iterations, max_projection_sweeps, max_grid_nodes : int
-        Positive limits on each linear solve, repeated nonlinear sweeps, and
-        allocated lattice nodes.
+    max_iterations, max_projection_sweeps : int
+        Positive limits on each linear solve and repeated nonlinear sweeps.
     max_correction_norm : float, default=2e-2
         Maximum accepted correction relative to the particle-strength norm.
     max_residual_ratio : float, default=0.9
@@ -57,7 +56,6 @@ class DivergenceRelaxationConfig:
     solver_relative_tolerance: float = 1e-5
     max_iterations: int = 30
     max_projection_sweeps: int = 3
-    max_grid_nodes: int = 8_000_000
     max_correction_norm: float = 2e-2
     max_residual_ratio: float = 0.9
     total_kinetic_energy_tolerance: float = 1e-6
@@ -83,8 +81,8 @@ class DivergenceRelaxationConfig:
             raise ValueError("regularization must be positive")
         if self.solver_relative_tolerance <= 0.0:
             raise ValueError("solver_relative_tolerance must be positive")
-        if self.max_iterations < 1 or self.max_projection_sweeps < 1 or self.max_grid_nodes < 1:
-            raise ValueError("iteration, projection-sweep, and grid-node limits must be positive")
+        if self.max_iterations < 1 or self.max_projection_sweeps < 1:
+            raise ValueError("iteration and projection-sweep limits must be positive")
         if self.max_correction_norm <= 0.0:
             raise ValueError("max_correction_norm must be positive")
         if not 0.0 < self.max_residual_ratio < 1.0:
@@ -142,7 +140,6 @@ class DivergenceRelaxationConfig:
         solver_relative_tolerance: float = 1e-5,
         max_iterations: int = 30,
         max_projection_sweeps: int = 3,
-        max_grid_nodes: int = 8_000_000,
         max_correction_norm: float = 2e-2,
         max_residual_ratio: float = 0.9,
         total_kinetic_energy_tolerance: float = 1e-6,
@@ -166,7 +163,6 @@ class DivergenceRelaxationConfig:
             solver_relative_tolerance=solver_relative_tolerance,
             max_iterations=max_iterations,
             max_projection_sweeps=max_projection_sweeps,
-            max_grid_nodes=max_grid_nodes,
             max_correction_norm=max_correction_norm,
             max_residual_ratio=max_residual_ratio,
             total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,

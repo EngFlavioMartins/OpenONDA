@@ -51,7 +51,6 @@ def gaussian_core_remesh(
     tail_budget: float,
     max_particles: int | None,
     core_bins: int = 16,
-    max_grid_nodes: int = 8_000_000,
     solenoidal: bool = False,
     preserve_groups: bool = False,
 ) -> dict[str, np.ndarray]:
@@ -99,7 +98,6 @@ def gaussian_core_remesh(
                 tail_budget=tail_budget,
                 max_particles=max_particles,
                 core_bins=core_bins,
-                max_grid_nodes=max_grid_nodes,
                 solenoidal=solenoidal,
             )
             count += len(proposal["position"])
@@ -126,8 +124,6 @@ def gaussian_core_remesh(
     variance = np.maximum(variance, 0.0)
     padding = 3 + int(np.ceil(4.0 * np.sqrt(variance.max(initial=0.0)) / spacing))
     grid = _grid_for_particles(position, spacing, padding=padding)
-    if np.prod(grid.shape, dtype=np.int64) > max_grid_nodes:
-        raise ValueError(f"Gaussian remeshing grid {grid.shape} exceeds {max_grid_nodes} nodes")
     field = np.zeros((*grid.shape, 3), dtype=np.float64)
     lo, hi = float(variance.min()), float(variance.max())
     widths = np.linspace(lo, hi, core_bins) if hi > lo + 1e-14 else np.array([lo])
@@ -161,8 +157,6 @@ def gaussian_core_remesh(
 
         padding = tuple((size // 2, size - size // 2) for size in grid.shape)
         shape = tuple(2 * size for size in grid.shape)
-        if np.prod(shape, dtype=np.int64) > max_grid_nodes:
-            raise ValueError("solenoidal remeshing padding exceeds the grid-node limit")
         field = project_grid_strength(np.pad(field, (*padding, (0, 0))), spacing)
         grid = CartesianGrid(
             grid.origin - spacing * np.array([p[0] for p in padding]), spacing, shape

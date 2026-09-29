@@ -61,6 +61,10 @@ def _normalize_capacity_aliases(configuration: dict[str, Any]) -> None:
     stabilization = configuration.get("stabilization")
     if not isinstance(stabilization, dict):
         return
+    divergence_relaxation = stabilization.get("divergence_relaxation")
+    if isinstance(divergence_relaxation, dict):
+        # This retired allocation ceiling never changed an accepted field.
+        divergence_relaxation.pop("max_grid_nodes", None)
     feedback_inactive = (
         stabilization.get("selective_eddy_viscosity_coefficient", 0.0) == 0.0
         or stabilization.get("selective_eddy_viscosity_feedback_gain", 0.0) == 0.0

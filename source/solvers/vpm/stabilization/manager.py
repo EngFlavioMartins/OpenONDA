@@ -678,7 +678,6 @@ class StabilizationManager:
             solver_relative_tolerance=cfg.solver_relative_tolerance,
             max_iterations=cfg.max_iterations,
             max_projection_sweeps=cfg.max_projection_sweeps,
-            max_grid_nodes=cfg.max_grid_nodes,
             max_correction_norm=cfg.max_correction_norm,
             max_residual_ratio=cfg.max_residual_ratio,
             total_kinetic_energy_tolerance=cfg.total_kinetic_energy_tolerance,
