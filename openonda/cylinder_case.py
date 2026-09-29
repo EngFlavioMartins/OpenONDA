@@ -8,6 +8,7 @@ and manifest generation cheap.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -20,6 +21,7 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+from types import MappingProxyType
 import uuid
 
 
@@ -117,6 +119,81 @@ def normalize_coupled_overrides(overrides: dict[str, object] | None) -> dict[str
         if normalized["interface_iterations"] < 1:
             raise ValueError("interface_iterations must be positive")
     return normalized
+
+
+@dataclass(frozen=True, slots=True)
+class CylinderVariant:
+    """Resolved physical inputs for a coupled cylinder campaign variant."""
+
+    hxy: float
+    span: float
+    dz: float
+    particle_spacing_ratio: float
+    core_radius_ratio: float
+    blend_width_ratio: float
+    release_width_ratio: float
+    exchange_dt: float
+    cores: int
+    compute_device: str
+    particle_limit: int
+    end_time: float
+    coupler_overrides: Mapping[str, object]
+
+
+def resolve_cylinder_variant(
+    overrides, *, hxy, span, exchange_dt, cores, particle_limit, end_time, fvm_time_step
+) -> CylinderVariant:
+    """Validate campaign controls separately from the physical case definition."""
+    values = normalize_coupled_overrides(overrides)
+    hxy = float(values.pop("hxy", hxy))
+    resolved = {
+        "hxy": hxy,
+        "span": float(values.pop("span", span)),
+        "dz": float(values.pop("dz", hxy)),
+        "particle_spacing_ratio": float(values.pop("particle_spacing_ratio", 1.25)),
+        "core_radius_ratio": float(values.pop("core_radius_ratio", 1.0)),
+        "blend_width_ratio": float(values.pop("blend_width_ratio", 6.0)),
+        "release_width_ratio": float(values.pop("release_width_ratio", 2.0)),
+        "exchange_dt": float(values.pop("exchange_dt", exchange_dt)),
+        "cores": int(values.pop("cores", cores)),
+        "compute_device": str(values.pop("compute_device", "AUTO")),
+        "particle_limit": int(values.pop("particle_limit", particle_limit)),
+        "end_time": float(end_time),
+    }
+    validate_coupled_geometry(
+        **{name: value for name, value in resolved.items() if name != "compute_device"},
+        fvm_time_step=fvm_time_step,
+    )
+    return CylinderVariant(**resolved, coupler_overrides=MappingProxyType(values))
+
+
+@dataclass(frozen=True, slots=True)
+class CylinderSampling:
+    """Integer schedules shared by the FVM and VPM exchange clocks."""
+
+    sample_steps: int
+    fvm_sample_steps: int
+    fvm_slice_steps: int
+    fvm_output_steps: int
+
+
+def align_cylinder_sampling(
+    *, end_time, exchange_dt, fvm_time_step, sample_period, slice_period, output_period
+) -> CylinderSampling:
+    """Land point samples on the common destination and align volume writes."""
+    total_exchanges = round(end_time / exchange_dt)
+    substeps = round(exchange_dt / fvm_time_step)
+    desired_steps = sample_period / exchange_dt
+    sample_steps = min(
+        (step for step in range(1, total_exchanges + 1) if total_exchanges % step == 0),
+        key=lambda step: (abs(step - desired_steps), step),
+    )
+    return CylinderSampling(
+        sample_steps=sample_steps,
+        fvm_sample_steps=sample_steps * substeps,
+        fvm_slice_steps=max(1, math.ceil(slice_period / exchange_dt)) * substeps,
+        fvm_output_steps=max(1, math.ceil(output_period / exchange_dt)) * substeps,
+    )
 
 
 def resolve_cylinder_particle_spacing(*, span: float, hxy: float, ratio: float) -> float:
@@ -395,6 +472,10 @@ def as_config(parameters: CylinderCaseParameters = DEFAULT_CYLINDER_CASE) -> dic
 
 __all__ = [
     "CylinderCaseParameters",
+    "CylinderVariant",
+    "CylinderSampling",
+    "resolve_cylinder_variant",
+    "align_cylinder_sampling",
     "DEFAULT_CYLINDER_CASE",
     "as_config",
     "complete_marker",

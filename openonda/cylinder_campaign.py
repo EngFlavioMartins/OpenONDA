@@ -17,6 +17,35 @@ import psutil
 from scipy.integrate import trapezoid
 
 
+def run_coupled_cylinder(
+    build_case,
+    *,
+    start_from="latest",
+    output_root=None,
+    end_time=None,
+    restart_from=None,
+    max_coupling_steps=None,
+    overrides=None,
+) -> int:
+    """Execute a local physical factory with native continuation and owned output."""
+    from openonda.coupler import create_coupler
+
+    fvm_setup, vpm_case, coupler_setup, mesh = build_case(end_time=end_time, overrides=overrides)
+    with create_coupler(
+        fvm_setup, vpm_case, coupler_setup, mesh=mesh, case_dir=output_root
+    ) as solver:
+        if restart_from is None:
+            solver.initialize()
+            induction = vpm_case.numerics.induction
+            initialize_cylinder_perturbation(solver.fvm_solver, induction.z_max - induction.z_min)
+        return solver.run(
+            restart_from=restart_from,
+            start_from=start_from if restart_from is None else None,
+            max_coupling_steps=max_coupling_steps,
+            backup_at_stop=max_coupling_steps is not None,
+        )
+
+
 def cylinder_initial_velocity(
     positions: np.ndarray, span: float, amplitude: float = 1e-3
 ) -> np.ndarray:
@@ -452,4 +481,4 @@ def collect_cost(root: Path) -> dict:
     return result
 
 
-__all__ = ["collect_cost", "run_trial"]
+__all__ = ["collect_cost", "run_trial", "run_coupled_cylinder"]

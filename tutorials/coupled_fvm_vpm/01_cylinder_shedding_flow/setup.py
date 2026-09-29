@@ -18,11 +18,12 @@ import numpy as np
 import openonda.coupler as coupling
 from openonda.cylinder_case import (
     DEFAULT_CYLINDER_CASE,
-    normalize_coupled_overrides,
+    align_cylinder_sampling,
+    resolve_cylinder_variant,
     resolve_cylinder_particle_spacing,
-    validate_coupled_geometry,
     validate_cylinder_authority,
 )
+from openonda.cylinder_campaign import run_coupled_cylinder
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
@@ -283,34 +284,23 @@ def build_case(
     overrides: dict[str, object] | None = None,
 ):
     """Construct one resolved coupled case without creating solver state."""
-    values = normalize_coupled_overrides(overrides)
-    hxy = float(values.pop("hxy", CELL_SIZE))
-    span = float(values.pop("span", FVM_RESOLVED_SPAN))
-    dz_target = float(values.pop("dz", hxy))
-    hp_ratio = float(values.pop("particle_spacing_ratio", 1.25))
-    core_ratio = float(values.pop("core_radius_ratio", 1.0))
-    blend_ratio = float(values.pop("blend_width_ratio", 6.0))
-    release_ratio = float(values.pop("release_width_ratio", 2.0))
-    exchange_dt = float(values.pop("exchange_dt", VPM_TIME_STEP_SIZE))
-    cores = int(values.pop("cores", FVM_CORES))
-    compute_device = str(values.pop("compute_device", "AUTO"))
-    particle_limit = int(values.pop("particle_limit", PARTICLE_LIMIT))
-    physical_end = END_TIME if end_time is None else float(end_time)
-    validate_coupled_geometry(
-        hxy=hxy,
-        span=span,
-        dz=dz_target,
-        particle_spacing_ratio=hp_ratio,
-        core_radius_ratio=core_ratio,
-        blend_width_ratio=blend_ratio,
-        release_width_ratio=release_ratio,
-        exchange_dt=exchange_dt,
-        cores=cores,
-        particle_limit=particle_limit,
-        end_time=physical_end,
+    variant = resolve_cylinder_variant(
+        overrides,
+        hxy=CELL_SIZE,
+        span=FVM_RESOLVED_SPAN,
+        exchange_dt=VPM_TIME_STEP_SIZE,
+        cores=FVM_CORES,
+        particle_limit=PARTICLE_LIMIT,
+        end_time=END_TIME if end_time is None else end_time,
         fvm_time_step=FVM_TIME_STEP_SIZE,
     )
-    total_exchanges = round(physical_end / exchange_dt)
+    hxy, span, dz_target = variant.hxy, variant.span, variant.dz
+    hp_ratio, core_ratio = variant.particle_spacing_ratio, variant.core_radius_ratio
+    blend_ratio, release_ratio = variant.blend_width_ratio, variant.release_width_ratio
+    exchange_dt, physical_end = variant.exchange_dt, variant.end_time
+    cores, compute_device = variant.cores, variant.compute_device
+    particle_limit = variant.particle_limit
+    values = dict(variant.coupler_overrides)
     half_span = span / 2.0
     fvm_box = (*FVM_BOX[:4], -half_span, half_span)
     transfer_box = (*TRANSFER_REGION_BOX[:4], -half_span, half_span)
@@ -351,18 +341,17 @@ def build_case(
             levels=tuple(-half_span + layer * realized_dz for layer in range(axial_layers + 1)),
         )
 
-    desired_sample_steps = SAMPLING_INTERVAL_TIME / exchange_dt
-    sample_steps = min(
-        (step for step in range(1, total_exchanges + 1) if total_exchanges % step == 0),
-        key=lambda step: (abs(step - desired_sample_steps), step),
+    sampling = align_cylinder_sampling(
+        end_time=physical_end,
+        exchange_dt=exchange_dt,
+        fvm_time_step=FVM_TIME_STEP_SIZE,
+        sample_period=SAMPLING_INTERVAL_TIME,
+        slice_period=SLICE_INTERVAL_TIME,
+        output_period=OUTPUT_INTERVAL_TIME,
     )
-    sample_every_fvm = sample_steps * round(exchange_dt / FVM_TIME_STEP_SIZE)
-    slice_steps = max(1, math.ceil(SLICE_INTERVAL_TIME / exchange_dt))
-    slice_every_fvm = slice_steps * round(exchange_dt / FVM_TIME_STEP_SIZE)
-    output_steps = max(1, math.ceil(OUTPUT_INTERVAL_TIME / exchange_dt))
-    output_every_fvm = output_steps * round(exchange_dt / FVM_TIME_STEP_SIZE)
-    force_schedule = fvm.RunSchedule(every_n_steps=sample_every_fvm)
-    slice_schedule = fvm.RunSchedule(every_n_steps=slice_every_fvm)
+    sample_steps = sampling.sample_steps
+    force_schedule = fvm.RunSchedule(every_n_steps=sampling.fvm_sample_steps)
+    slice_schedule = fvm.RunSchedule(every_n_steps=sampling.fvm_slice_steps)
     force_sampler = fvm.ForceSampler(
         patch_names=["cylinder"],
         reference_velocity=np.linalg.norm(FREESTREAM_VELOCITY),
@@ -417,7 +406,7 @@ def build_case(
         time=replace(
             FVM_SETUP.time,
             end_time=physical_end,
-            output_schedule=fvm.RunSchedule(every_n_steps=output_every_fvm),
+            output_schedule=fvm.RunSchedule(every_n_steps=sampling.fvm_output_steps),
         ),
     )
     viscous = replace(
@@ -488,28 +477,15 @@ def create_solver(
     overrides: dict[str, object] | None = None,
 ) -> int:
     """Run the coupled case in an optional isolated campaign directory."""
-    fvm_setup, vpm_case, coupler_setup, mesh = build_case(end_time=end_time, overrides=overrides)
-    with coupling.create_coupler(
-        fvm_setup,
-        vpm_case,
-        coupler_setup,
-        mesh=mesh,
-        case_dir=output_root,
-    ) as solver:
-        if restart_from is None:
-            from openonda.cylinder_campaign import initialize_cylinder_perturbation
-
-            solver.initialize()
-            initialize_cylinder_perturbation(
-                solver.fvm_solver,
-                vpm_case.numerics.induction.z_max - vpm_case.numerics.induction.z_min,
-            )
-        return solver.run(
-            restart_from=restart_from,
-            start_from=START_FROM if restart_from is None else None,
-            max_coupling_steps=max_coupling_steps,
-            backup_at_stop=max_coupling_steps is not None,
-        )
+    return run_coupled_cylinder(
+        build_case,
+        start_from=START_FROM,
+        output_root=output_root,
+        end_time=end_time,
+        restart_from=restart_from,
+        max_coupling_steps=max_coupling_steps,
+        overrides=overrides,
+    )
 
 
 def main() -> int:

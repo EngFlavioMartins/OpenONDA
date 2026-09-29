@@ -1,0 +1,486 @@
+[
+  {
+    "overrides": {},
+    "resolved": {
+      "kind": "coupled",
+      "overrides": {},
+      "end_time": 0.8,
+      "hxy": 0.04,
+      "fvm_bounds": [
+        -1.6,
+        1.6,
+        -1.6,
+        1.6,
+        -0.48,
+        0.48
+      ],
+      "vpm_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.48,
+        0.48
+      ],
+      "transfer_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.48,
+        0.48
+      ],
+      "span": 0.96,
+      "dz": 0.04,
+      "hp": 0.048,
+      "exchange_dt": 0.04,
+      "fvm_time_step": 0.004,
+      "cores": 4,
+      "compute_device": "AUTO",
+      "particle_limit": 1000000,
+      "transfer_region_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.48,
+        0.48
+      ],
+      "transfer_method": "buffered_m4_renewal",
+      "boundary_condition_mode": "vorticity_mixed",
+      "interface_iterations": 3,
+      "interface_acceleration": "none",
+      "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+    },
+    "fvm_schedules": [
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 60,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      }
+    ],
+    "vpm_schedules": [
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      }
+    ],
+    "output_schedule": {
+      "every_n_steps": 60,
+      "every_time": null,
+      "final_only": false
+    },
+    "backup_interval_steps": 6
+  },
+  {
+    "overrides": {
+      "hxy": 0.08,
+      "span": 0.48,
+      "particle_spacing_ratio": 1.5
+    },
+    "resolved": {
+      "kind": "coupled",
+      "overrides": {
+        "hxy": 0.08,
+        "span": 0.48,
+        "particle_spacing_ratio": 1.5
+      },
+      "end_time": 0.8,
+      "hxy": 0.08,
+      "fvm_bounds": [
+        -1.6,
+        1.6,
+        -1.6,
+        1.6,
+        -0.24,
+        0.24
+      ],
+      "vpm_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.24,
+        0.24
+      ],
+      "transfer_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.24,
+        0.24
+      ],
+      "span": 0.48,
+      "dz": 0.08,
+      "hp": 0.08,
+      "exchange_dt": 0.04,
+      "fvm_time_step": 0.004,
+      "cores": 4,
+      "compute_device": "AUTO",
+      "particle_limit": 1000000,
+      "transfer_region_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.24,
+        0.24
+      ],
+      "transfer_method": "buffered_m4_renewal",
+      "boundary_condition_mode": "vorticity_mixed",
+      "interface_iterations": 3,
+      "interface_acceleration": "none",
+      "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+    },
+    "fvm_schedules": [
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 60,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      }
+    ],
+    "vpm_schedules": [
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      }
+    ],
+    "output_schedule": {
+      "every_n_steps": 60,
+      "every_time": null,
+      "final_only": false
+    },
+    "backup_interval_steps": 6
+  },
+  {
+    "overrides": {
+      "hxy": 0.08,
+      "exchange_dt": 0.02,
+      "cores": 1,
+      "compute_device": "CPU"
+    },
+    "resolved": {
+      "kind": "coupled",
+      "overrides": {
+        "hxy": 0.08,
+        "exchange_dt": 0.02,
+        "cores": 1,
+        "compute_device": "CPU"
+      },
+      "end_time": 0.8,
+      "hxy": 0.08,
+      "fvm_bounds": [
+        -1.6,
+        1.6,
+        -1.6,
+        1.6,
+        -0.48,
+        0.48
+      ],
+      "vpm_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.48,
+        0.48
+      ],
+      "transfer_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.48,
+        0.48
+      ],
+      "span": 0.96,
+      "dz": 0.08,
+      "hp": 0.096,
+      "exchange_dt": 0.02,
+      "fvm_time_step": 0.004,
+      "cores": 1,
+      "compute_device": "CPU",
+      "particle_limit": 1000000,
+      "transfer_region_bounds": [
+        -1.25,
+        1.25,
+        -1.25,
+        1.25,
+        -0.48,
+        0.48
+      ],
+      "transfer_method": "buffered_m4_renewal",
+      "boundary_condition_mode": "vorticity_mixed",
+      "interface_iterations": 3,
+      "interface_acceleration": "none",
+      "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+    },
+    "fvm_schedules": [
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 60,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      }
+    ],
+    "vpm_schedules": [
+      {
+        "interval": 10,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 10,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 10,
+        "first_step": null,
+        "start_time": null
+      }
+    ],
+    "output_schedule": {
+      "every_n_steps": 60,
+      "every_time": null,
+      "final_only": false
+    },
+    "backup_interval_steps": 12
+  },
+  {
+    "overrides": {
+      "hxy": 0.08,
+      "transfer_region_scale": 0.95,
+      "interface_iterations": 4,
+      "interface_acceleration": "aitken"
+    },
+    "resolved": {
+      "kind": "coupled",
+      "overrides": {
+        "hxy": 0.08,
+        "transfer_region_scale": 0.95,
+        "interface_iterations": 4,
+        "interface_acceleration": "aitken"
+      },
+      "end_time": 0.8,
+      "hxy": 0.08,
+      "fvm_bounds": [
+        -1.6,
+        1.6,
+        -1.6,
+        1.6,
+        -0.48,
+        0.48
+      ],
+      "vpm_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.48,
+        0.48
+      ],
+      "transfer_bounds": [
+        -1.1875,
+        1.1875,
+        -1.1875,
+        1.1875,
+        -0.45599999999999996,
+        0.45599999999999996
+      ],
+      "span": 0.96,
+      "dz": 0.08,
+      "hp": 0.096,
+      "exchange_dt": 0.04,
+      "fvm_time_step": 0.004,
+      "cores": 4,
+      "compute_device": "AUTO",
+      "particle_limit": 1000000,
+      "transfer_region_bounds": [
+        -1.1875,
+        1.1875,
+        -1.1875,
+        1.1875,
+        -0.45599999999999996,
+        0.45599999999999996
+      ],
+      "transfer_method": "buffered_m4_renewal",
+      "boundary_condition_mode": "vorticity_mixed",
+      "interface_iterations": 4,
+      "interface_acceleration": "aitken",
+      "geometry_hash": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+    },
+    "fvm_schedules": [
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 60,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      },
+      {
+        "every_n_steps": 50,
+        "every_time": null,
+        "final_only": false
+      }
+    ],
+    "vpm_schedules": [
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      },
+      {
+        "interval": 5,
+        "first_step": null,
+        "start_time": null
+      }
+    ],
+    "output_schedule": {
+      "every_n_steps": 60,
+      "every_time": null,
+      "final_only": false
+    },
+    "backup_interval_steps": 6
+  }
+]
