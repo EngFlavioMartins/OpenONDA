@@ -37,8 +37,8 @@ remain stored; plots select accepted history where their validation requires it.
 
 ## Coverage and verification
 
-The eleven frozen bundles contain 4,588 files: 6,573,479,884 bytes before
-compression and 4,825,176,993 bytes stored in LFS. Git tracks small LFS pointers
+The twelve frozen bundles contain 4,614 files: 6,644,037,070 bytes before
+compression and 4,838,433,580 bytes stored in LFS. Git tracks small LFS pointers
 and inspectable checksum manifests. Sizes below use decimal MB.
 
 | Case | Archive | Scientific status |
@@ -54,6 +54,7 @@ and inspectable checksum manifests. Sizes below use decimal MB.
 | Taylor–Green | 0.1 MB | Default run completed to 0.05 s |
 | Boundary layer | 1.4 MB | Default run completed to 8 s; Blasius errors remain above targets |
 | Step profile | 0.9 MB | Default run completed to 12 s; reattachment 3.59h, not grid-qualified |
+| IBM cylinder | 13.3 MB | Default run completed to 60 s; mean drag in cited band, recirculation length outside band |
 
 Archive provenance identifies the code revision used when packaging; original run
 configuration and state remain in the exact saved metadata/checkpoints. Packaging
@@ -94,7 +95,14 @@ stability. See [the rotor execution record](../../studies/rotor_archive_plot_ver
 Lamb–Oseen’s complete launcher returned zero; all seven PNGs decoded and
 representative analytical and particle figures passed visual inspection. See
 [the Lamb execution record](../../studies/lamb_archive_plot_verification_2026-09-29.json).
-No missing production inputs have been fabricated for the remaining FVM,
+The completed IBM cylinder result is archived without reducing the force or
+field histories. Its `allplot.sh` restored and rendered the genuine saved data;
+the corrected field plots use actual stretched mesh cells. Mean Cd=1.7681 is
+inside its cited band, but recirculation length 2.137D is outside 1.55–1.70D,
+so the case remains scientifically unqualified. The cube reference's separate
+plotting launcher also restores the parent bundle; its available 15–30 s
+histories have zero complete force cycles and cannot qualify grid statistics.
+No missing production inputs have been fabricated for the airfoil, FVM cube,
 coupled NACA or full cylinder studies.
 
 ### Verification memory incident
@@ -156,7 +164,7 @@ also visually inspected. Subsequent plotting coverage is recorded above.
 - [x] Qualify the original CUDA DVH/treecode OOM on the affected GPU: 80,958 particles restored and eight repeated evaluations held at 690 MiB with matching velocities. See [the CUDA record](../../studies/cuda_dvh_restart_2026-09-29.json).
 - [ ] Complete rotor, delta-wing and coupled-cube runs and investigate remaining numerical health stops.
 - [x] Obtain and archive genuine completed boundary-layer and step-profile defaults.
-- [ ] Obtain missing airfoil, FVM cube, cylinder IBM and coupled-NACA results.
+- [ ] Obtain missing airfoil, FVM cube and coupled-NACA results; the IBM cylinder is archived, but its recirculation-length discrepancy still needs investigation.
 - [ ] Complete the Re=150 three-dimensional cylinder grid/span and injection/exchange sensitivity campaign;
   retain the [original numerical plan](../../studies/cylinder_3d_accuracy_performance_plan.md), including
   measured runtime qualification of the finest case against the 12-hour target.

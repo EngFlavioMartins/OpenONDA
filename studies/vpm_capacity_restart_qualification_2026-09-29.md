@@ -9,7 +9,12 @@ Filament refinement now either splits every eligible parent or raises before
 building replacement particle arrays when the hard particle capacity is too
 small. This makes a larger capacity compatible with an authenticated last
 accepted backup when filament refinement is active. Regularization still
-requires an exact capacity because its accepted output can depend on it.
+uses the same hard capacity: it either accepts every proposed remeshed particle
+or raises before changing the particle cloud. An authenticated backup can
+therefore resume with a larger allocation even when regularization is active.
+The retired regularization-specific cap remains compatible only if it was
+inactive or equal to the saved hard capacity; a changed physical model is
+still rejected.
 The exception does not roll back other work already performed by a failed
 time step; continuation remains from the last accepted backup.
 
@@ -24,3 +29,8 @@ authenticated legacy batch-size key. Another writes a real last accepted
 backup at capacity 3, proves the required split fails without changing
 particle/lineage state, loads that backup at capacity 4, and completes the
 conservative split.
+
+Follow-up in commit `5c6ac9b6` removed the last regularization-specific
+capacity and its partial-output path. Native backup regressions cover a failed
+remap followed by loading the last accepted checkpoint at larger capacity,
+and reject an incompatible change to the physical remeshing configuration.
