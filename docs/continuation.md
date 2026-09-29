@@ -19,11 +19,12 @@ before invoking the same setup commands as `allcontinue.sh`.
 
 Variant arguments select that variant's own solution and sample directories.
 The reference-flow and rotor-study subdirectories have the same launchers.
-The cylinder campaign remains available through `assets/run_pipeline.py`;
-the ordinary cylinder launchers run `setup.py` directly.
+The cylinder launchers run the matched reference/coupled campaign through
+`assets/run_pipeline.py`; `python setup.py` runs its single default coupled case.
 
-An empty solution starts from its initial conditions. An existing solution
-restores the latest committed numerical backup and advances to the configured
+Without a committed numerical backup, the solver starts from its initial
+conditions and retires any previous owned output histories. With a backup, it
+restores the latest committed state and advances to the configured
 destination. FVM and coupled cases use the configured end time; VPM uses the
 **total** `RunPlan.steps`, including restored steps. Repeating a completed run
 does not add steps. Extend that destination to run longer.
@@ -47,10 +48,8 @@ Coupled FVM/VPM runs restore `solution/backups/manifest.json` and its authentica
 FVM, VPM and boundary-history artifacts together. Independent VPM visualization
 frames never determine the coupled restart point. The manifest is committed
 last, so an interrupted new save leaves the previous committed bundle usable.
-If startup fails before the initial bundle commits, rerunning retries the
-initialization when the archived solver metadata and output still show no
-completed steps. An orphan component backup is never treated as a coupled
-checkpoint.
+Without a committed bundle, rerunning starts from the initial conditions.
+An orphan component backup is never treated as a coupled checkpoint.
 
 Tutorials save periodically and at their destination, including an initial
 restart point. Work after the latest successful backup is replayed. Backup
@@ -79,8 +78,9 @@ The mesh and numerical configuration must remain compatible with the saved
 state. Changing the physical model, timestep, geometry or discretization may
 require a new case. Corrupt/incompatible committed backups are errors: automatic
 continuation never falls back to an older state or silently starts over.
-Visualization-only results from older runs cannot restore numerical history;
-restore a numerical backup or use `./allrun.sh` for a clean simulation.
+Visualization-only results cannot restore numerical history. If no numerical
+backup exists, `"latest"` starts from the initial conditions and retires those
+old results before writing the new series.
 
 The solver APIs support `solver.run(start_from="latest")` and an explicit backup
 path. `start_from="initial"` uses a newly constructed solver's initial state and

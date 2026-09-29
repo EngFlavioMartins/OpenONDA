@@ -4,4 +4,4 @@ cd -- "$(dirname -- "$0")"
 
 ./allclean.sh
 
-python setup.py "$@"
+python assets/run_pipeline.py --run-dir study_results/cylinder/default

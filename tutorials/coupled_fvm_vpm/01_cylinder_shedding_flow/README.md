@@ -19,10 +19,17 @@ states.
 and FVM domains use the same physical slab. The spanwise lattice closes the
 span exactly; it does not stretch or average the z direction.
 
-`allrun.sh` cleans and runs `setup.py`; `allcontinue.sh` resumes its latest
-atomic coupled backup. `python setup.py` also resumes automatically.
+`allrun.sh` cleans the default campaign and runs matched reference/coupled
+grids plus sensitivity cases. `allcontinue.sh` continues that campaign from
+each solver's latest native backup; a case with no backup starts from
+the initial time. The default campaign is saved in `study_results/cylinder/default`.
+Historical campaign directories are preserved. Existing standalone backups in
+the tutorial-root `solution/` belong to the single case: continue them with
+`python setup.py`. The campaign launcher uses its own default campaign directory
+and does not migrate those backups. `python setup.py` runs only the coupled
+configuration shown in that file and resumes automatically.
 
-The separate `python assets/run_pipeline.py` campaign uses the
+The campaign uses the
 initial candidate family `h = 0.10, 0.08, 0.064D`; every reference and
 coupled case receives its own 12-hour wall limit, log, output directory and
 cost summary. Resumed attempts consume the same cumulative per-case allowance.
@@ -81,10 +88,12 @@ retain the 100 s horizon and common statistics window. An interrupted pipeline
 can be continued without cleaning with:
 
 ```bash
-python assets/run_pipeline.py --run-dir <directory> --resume --sensitivity none
+./allcontinue.sh
 ```
 
-The coupled backup manifest is the restart authority. Pipeline provenance is
+Use `python assets/run_pipeline.py --run-dir <directory> --resume` for a
+separate study directory. Native solver backups are the restart authority;
+no additional restart file is required by the campaign. Pipeline provenance is
 written to `<directory>/pipeline_manifest.json`; each case has a console log,
 `trial.json`, solver timing journals and cost summary below `<directory>/logs`
 and its case output directory. Reference grid reports are written under

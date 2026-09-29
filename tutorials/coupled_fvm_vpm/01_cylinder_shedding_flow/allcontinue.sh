@@ -2,4 +2,4 @@
 set -e
 cd -- "$(dirname -- "$0")"
 
-python setup.py "$@"
+python assets/run_pipeline.py --run-dir study_results/cylinder/default --resume

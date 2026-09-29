@@ -1,41 +1,12 @@
 """Common start selection for native and coupled simulation lifecycles."""
 
 import csv
-import json
 from pathlib import Path
 import re
 import shutil
 import tempfile
 
 from source.solution_layout import vpm_backup_files
-
-
-def _metadata_has_accepted_steps(branch):
-    """A constructor's archived metadata alone is not a completed time step.
-
-    Failed initialization can leave only a time-zero FVM artifact and no
-    committed coupled manifest. Permit that startup to be retried, but keep
-    rejecting missing backups after progress or unrecognized metadata.
-    """
-    paths = list(branch.glob("*_metadata.json"))
-    if not paths:
-        return True
-    for path in paths:
-        try:
-            metadata = json.loads(path.read_text(encoding="utf-8"))
-            if path.name == "run_metadata.json":
-                # Coupled execution metadata records the requested stop,
-                # not the last accepted step. Only its start proves progress.
-                state = metadata["execution"]
-                step, time = state["start_coupling_step"], state["start_time"]
-            else:
-                state = metadata["state"]
-                step, time = state["step"], state["time"]
-            if step != 0 or time != 0.0:
-                return True
-        except (OSError, ValueError, KeyError, TypeError):
-            return True
-    return False
 
 
 def select_backup(start_from, *, directory, kind, backup_path=None):
@@ -80,45 +51,13 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
         latest = target if (target / "manifest.json").is_file() else None
     else:
         raise ValueError(f"Unknown restart kind {kind!r}")
-    previous_runs = list((directory / "restart-branches").glob("run-before-*"))
-    if latest is None:
-        # An old visualization-only run cannot be reconstructed exactly. Do
-        # not silently mix a new zero-time solution with that run's history.
-        from defusedxml.ElementTree import parse
-
-        if previous_runs and (
-            kind != "coupled"
-            or any(_metadata_has_accepted_steps(branch) for branch in previous_runs)
-        ):
-            raise FileNotFoundError(
-                f"Previous output exists in {directory}, but no committed {kind} backup was "
-                "found. Restore a backup or run ./allclean.sh for a fresh simulation."
-            )
-        for collection in directory.glob("*.pvd"):
-            if any(
-                float(item.attrib["timestep"]) > 0
-                for item in parse(collection).findall(".//DataSet")
-            ):
-                raise FileNotFoundError(
-                    f"Solution output exists in {directory}, but no committed {kind} backup "
-                    "was found. Restore a backup or run ./allclean.sh for a fresh simulation."
-                )
-        # Coupled solver metadata can still say 'created' after an abrupt
-        # termination. Its per-step diagnostics are independent evidence of
-        # progress, even before the next visualization write.
-        diagnostics = directory / "coupler_diagnostics.jsonl"
-        if diagnostics.is_file() and diagnostics.stat().st_size:
-            raise FileNotFoundError(
-                f"Coupled diagnostics exist in {directory}, but no committed {kind} backup "
-                "was found. Restore a backup or run ./allclean.sh for a fresh simulation."
-            )
     return latest
 
 
 def reset_run_outputs(
     directory, *, kind, backup_path=None, samples_dir=None, owned_sample_names=()
 ):
-    """Retire an old output series before an explicitly fresh initial run.
+    """Retire an old output series before a fresh initial run.
 
     Move only native artifacts and named sampler streams into the existing
     restart archive, without opening checkpoints or requiring their validity.
@@ -173,8 +112,7 @@ def reset_run_outputs(
             for path in samples.glob(f"{name}_*"):
                 if path.is_file() and frame_pattern.fullmatch(path.name):
                     artifacts[path] = Path("samples") / path.relative_to(samples)
-    # Constructor metadata from the previous series must not make a failed
-    # fresh initialization look like accepted progress from that old series.
+    # Retain prior constructor metadata with the retired output series.
     for path in (directory / "restart-branches").glob("run-before-*"):
         artifacts[path] = Path("metadata") / path.name
     if not artifacts:

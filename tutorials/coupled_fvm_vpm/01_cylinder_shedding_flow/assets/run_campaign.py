@@ -357,10 +357,9 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
             if _grid_complete(run_dir, module, name, spacing, end_time, cores):
                 print(f"reference grid already complete: {name}")
                 continue
-            if _grid_has_output(run_dir, name):
+            if _grid_has_output(run_dir, name) and not options.resume:
                 raise RuntimeError(
-                    f"reference grid {name} is incomplete and has no native restart; "
-                    "use a fresh --run-dir rather than resuming it"
+                    f"reference grid {name} is incomplete; use --resume to continue its latest backup"
                 )
             pending.append((name, spacing))
         return pending
@@ -398,7 +397,7 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
         )
         with solver:
             initialize_cylinder_perturbation(solver, module.SPAN)
-            solver.run()
+            solver.run(start_from="latest")
             module.fvm.update_grid_study(solver, spacing, profiles=("centreline",))
         _collective_root_action(
             lambda: _write_grid_record(
@@ -449,7 +448,7 @@ def run_coupled(options: argparse.Namespace, run_dir: Path) -> None:
     def inspect_coupled_outputs() -> dict[str, object]:
         if not child and run_dir.exists() and any(run_dir.iterdir()):
             if options.resume:
-                if not _compatible_campaign_config(
+                if manifest_path.is_file() and not _compatible_campaign_config(
                     manifest_path, expected_config, allow_end_extension=True
                 ):
                     raise ValueError(
@@ -457,40 +456,33 @@ def run_coupled(options: argparse.Namespace, run_dir: Path) -> None:
                     )
                 existing = _read_json(manifest_path) or {}
                 existing_end = float(existing.get("config", {}).get("end_time", physical_end))
-                if (run_dir / "COMPLETE").is_file() and math.isclose(
-                    existing_end, physical_end, rel_tol=0.0, abs_tol=1.0e-12
+                if (
+                    manifest_path.is_file()
+                    and (run_dir / "COMPLETE").is_file()
+                    and math.isclose(existing_end, physical_end, rel_tol=0.0, abs_tol=1.0e-12)
                 ):
-                    return {"skip": True, "restart_from": None}
+                    return {"skip": True}
             elif (run_dir / "COMPLETE").is_file():
                 if not _compatible_campaign_config(manifest_path, expected_config):
                     raise ValueError(
                         "completed coupled campaign configuration differs from the request"
                     )
-                return {"skip": True, "restart_from": None}
+                return {"skip": True}
             else:
                 raise FileExistsError(
                     f"coupled run directory is incomplete; pass --resume with a valid backup: {run_dir}"
                 )
-        backup = run_dir / "solution" / "backups" / "manifest.json"
-        if options.resume and backup.is_file():
-            return {"skip": False, "restart_from": str(backup.parent)}
-        if options.resume and not child:
-            raise RuntimeError(
-                "coupled resume requires the canonical solution/backups/manifest.json; "
-                "use a fresh --run-dir when no coupled backup exists"
-            )
-        return {"skip": False, "restart_from": None}
+        return {"skip": False}
 
     preflight = _collective_preflight(inspect_coupled_outputs)
     if preflight["skip"]:
         return
-    restart_from = Path(preflight["restart_from"]) if preflight["restart_from"] else None
     run_dir.mkdir(parents=True, exist_ok=True)
     config = {
         **as_config(),
         "kind": "coupled",
         "max_coupling_steps": max_steps,
-        "resume": restart_from is not None,
+        "resume": options.resume,
         "overrides": overrides,
         "end_time": physical_end,
         "resolved": resolved_config,
@@ -506,7 +498,6 @@ def run_coupled(options: argparse.Namespace, run_dir: Path) -> None:
     completed_step = module.create_solver(
         output_root=run_dir,
         end_time=options.end_time,
-        restart_from=restart_from,
         max_coupling_steps=max_steps,
         overrides=overrides,
     )

@@ -2031,6 +2031,8 @@ class FVMSolver(CouplerInterfaceMixin):
                 error = exc
         self._collective_io_failure(error, "restart selection")
         selected = self.parallel.bcast(selected, root=0)
+        if selected is None and selection == "latest":
+            return self.start_from("initial")
         if selected is not None:
             self.load_state(selected)
             self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")

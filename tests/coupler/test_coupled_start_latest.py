@@ -107,3 +107,14 @@ def test_coupled_initial_replaces_prior_run_and_latest_continues_new_branch(
         np.testing.assert_allclose(
             actual_pressure, reference.fvm_solver.get_pressure_field(), rtol=0, atol=1e-12
         )
+
+
+def test_latest_without_bundle_replaces_prior_output_history(tmp_path):
+    import shutil
+    with _coupler(tmp_path) as previous:
+        previous.run(start_from="latest", max_coupling_steps=2)
+    shutil.rmtree(tmp_path / "solution/backups")
+    with _coupler(tmp_path) as fresh:
+        assert fresh.run(start_from="latest", max_coupling_steps=1) == 1
+    history = tmp_path / "solution/coupler_diagnostics.jsonl"
+    assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1]

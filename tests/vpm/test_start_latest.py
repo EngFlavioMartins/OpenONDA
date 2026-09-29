@@ -151,3 +151,18 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     assert list(
         (tmp_path / "solution/restart-branches").glob("initial-before-*/solution/vpm/vpm_000010.h5")
     )
+
+
+def test_latest_without_backup_replaces_prior_output_history(tmp_path):
+    case = _build(tmp_path, False)
+    previous = vpm.VPMSolver(case)
+    _add_counter_rotating_pair(previous)
+    previous.run(start_from="latest")
+    from source.solution_layout import vpm_backup_files
+    for path in vpm_backup_files(tmp_path / "solution"):
+        path.unlink()
+    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    _add_counter_rotating_pair(fresh)
+    fresh.run(start_from="latest")
+    assert fresh.step == 1
+    assert pd.read_csv(tmp_path / "samples/flow_integrals.csv")["step"].tolist() == [0, 1]

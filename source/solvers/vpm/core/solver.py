@@ -805,6 +805,8 @@ class VPMSolver:
             return False
 
         path = select_backup(selection, directory=self._backup_path, kind="vpm")
+        if path is None and selection == "latest":
+            return self.start_from("initial")
         if path is not None:
             self.load_backup(path)
             Logging.info(f"Continuing from {path}: step {self.step}, time {self.time:.17g}")
@@ -819,6 +821,8 @@ class VPMSolver:
             return self.start_from(selection)
         path = select_backup(selection, directory=self._backup_path, kind="vpm")
         if path is None:
+            if selection == "latest":
+                return self.start_from("initial")
             self._run_to_step = self.case.run.steps
             return False
         checkpoint = str(path)

@@ -12,13 +12,14 @@ import pytest
 
 
 @pytest.mark.integration
-def test_partitioned_coupled_restart_keeps_boundary_collectives_in_order(tmp_path):
+@pytest.mark.parametrize("selection", ["explicit", "latest"])
+def test_partitioned_coupled_restart_keeps_boundary_collectives_in_order(tmp_path, selection):
     if find_spec("mpi4py") is None or find_spec("petsc4py") is None:
         pytest.skip("MPI and PETSc are required")
     if not (Path(sys.executable).with_name("mpiexec").is_file() or shutil.which("mpiexec")):
         pytest.skip("mpiexec is required")
     script = tmp_path / "restart.py"
-    script.write_text("""
+    script.write_text(f"selection = {selection!r}\n" + """
 from pathlib import Path
 import json
 import sys
@@ -51,10 +52,13 @@ policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0,
 mesh = lambda: coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5),.25)
 with coupler.create_coupler(flow, particles, policy, mesh=mesh,
         case_dir=directory / "first") as first:
-    assert first.run(max_coupling_steps=1, backup_at_stop=True) == 1
+    assert first.run(start_from="latest", max_coupling_steps=1, backup_at_stop=True) == 1
 with coupler.create_coupler(flow, particles, policy, mesh=mesh,
-        case_dir=directory / "resumed") as resumed:
-    assert resumed.run(restart_from=directory / "first/solution/backups") == 2
+        case_dir=directory / ("first" if selection == "latest" else "resumed")) as resumed:
+    if selection == "latest":
+        assert resumed.run(start_from="latest") == 2
+    else:
+        assert resumed.run(restart_from=directory / "first/solution/backups") == 2
     assert resumed.fvm_solver.time == .02
     assert np.allclose(resumed.fvm_solver.get_velocity_field(), [1.,0.,0.], atol=1e-8)
     rank = resumed.fvm_solver.parallel.rank

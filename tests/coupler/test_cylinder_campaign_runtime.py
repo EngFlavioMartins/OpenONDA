@@ -356,7 +356,7 @@ def test_reference_grid_completion_requires_matching_resolved_record(tmp_path):
     assert not campaign._grid_complete(tmp_path, ReferenceModule, "grid_h008", 0.04, 4.0)
 
 
-def test_incomplete_reference_resume_is_rejected_without_native_restart(tmp_path, monkeypatch):
+def test_incomplete_reference_output_requires_resume(tmp_path, monkeypatch):
     campaign = load_asset("run_campaign.py")
 
     class ReferenceModule:
@@ -376,21 +376,33 @@ def test_incomplete_reference_resume_is_rejected_without_native_restart(tmp_path
             "end_time": 4.0,
             "grid": ["grid_h008=0.08"],
             "no_analysis": True,
+            "resume": False,
         },
     )()
 
-    with pytest.raises(RuntimeError, match="no native restart"):
+    with pytest.raises(RuntimeError, match="use --resume"):
         campaign.run_reference(options, tmp_path)
 
 
-def test_coupled_resume_requires_canonical_backup(tmp_path, monkeypatch):
+def test_coupled_resume_delegates_latest_selection_without_backup(tmp_path, monkeypatch):
     campaign = load_asset("run_campaign.py")
 
     class CoupledModule:
         END_TIME = 100.0
         VPM_TIME_STEP_SIZE = 0.04
 
-    resolved = {"kind": "coupled", "overrides": {}, "end_time": 100.0, "source_hash": "test"}
+        @staticmethod
+        def create_solver(**kwargs):
+            assert kwargs.get("restart_from") is None
+            return 2500
+
+    resolved = {
+        "kind": "coupled",
+        "overrides": {},
+        "end_time": 100.0,
+        "source_hash": "test",
+        "exchange_dt": 0.04,
+    }
     expected = {"kind": "coupled", "overrides": {}, "end_time": 100.0, "resolved": resolved}
     (tmp_path / "campaign_manifest.json").write_text(json.dumps({"config": expected}))
     (tmp_path / "partial").write_text("state\n")
@@ -408,8 +420,8 @@ def test_coupled_resume_requires_canonical_backup(tmp_path, monkeypatch):
         },
     )()
 
-    with pytest.raises(RuntimeError, match="canonical solution/backups/manifest.json"):
-        campaign.run_coupled(options, tmp_path)
+    campaign.run_coupled(options, tmp_path)
+    assert (tmp_path / "COMPLETE").is_file()
 
 
 def test_coupled_resume_skips_exact_completed_campaign_without_backup(tmp_path, monkeypatch):

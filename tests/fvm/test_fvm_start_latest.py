@@ -76,3 +76,25 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     solver.run(start_from="initial")
     assert solver.step == 1
     assert list((directory / "solution/restart-branches").glob("initial-before-*/backup/backup"))
+
+
+def test_latest_without_backup_replaces_prior_output_history(tmp_path):
+    previous = _solver(tmp_path)
+    previous.run(start_from="latest")
+    (tmp_path / "solution/backup").unlink()
+    fresh = _solver(tmp_path, end_time=0.01)
+    fresh.run(start_from="latest")
+    assert fresh.step == 1
+    history = tmp_path / "solution/diagnostics.jsonl"
+    assert [json.loads(row)["time"] for row in history.read_text().splitlines()] == [0.01]
+    assert list((tmp_path / "solution/restart-branches").glob("initial-before-*"))
+
+
+def test_none_start_preserves_in_memory_state(tmp_path):
+    solver = _solver(tmp_path)
+    solver.advance()
+    expected = solver.velocity.copy()
+    assert not solver.start_from(None)
+    assert solver.step == 1
+    np.testing.assert_array_equal(solver.velocity, expected)
+    solver.close()

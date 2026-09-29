@@ -747,7 +747,15 @@ class FVMVPMCoupler:
                 raise ValueError("start_from cannot be combined with restart_from or start_step")
             from source.restart import reset_run_outputs, select_backup
 
-            if start_from == "initial":
+            with collective_phase(self._comm, "coupled restart selection"):
+                selected = (
+                    select_backup(start_from, directory=self.solution_dir, kind="coupled")
+                    if self._is_master
+                    else None
+                )
+            if self._comm is not None:
+                selected = self._comm.bcast(selected, root=0)
+            if start_from == "initial" or (start_from == "latest" and selected is None):
                 with collective_phase(self._comm, "coupled initial output reset"):
                     fvm = self.fvm_solver
                     assert fvm is not None
@@ -770,14 +778,6 @@ class FVMVPMCoupler:
                         assert self.vpm_solver is not None
                         self.vpm_solver.start_from("initial")
 
-            with collective_phase(self._comm, "coupled restart selection"):
-                selected = (
-                    select_backup(start_from, directory=self.solution_dir, kind="coupled")
-                    if self._is_master
-                    else None
-                )
-            if self._comm is not None:
-                selected = self._comm.bcast(selected, root=0)
             restart_from = selected
         if restart_from is not None:
             if start_step:

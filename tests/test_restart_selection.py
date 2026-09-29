@@ -1,4 +1,4 @@
-"""Failed initialization is retryable; missing accepted backups remain errors."""
+"""Native checkpoints govern continuation independently of visualization history."""
 
 import json
 
@@ -57,12 +57,11 @@ def test_initial_output_reset_retires_all_vpm_candidates_and_preserves_other_fil
         {},
     ],
 )
-def test_latest_rejects_missing_backup_after_progress_or_unknown_metadata(tmp_path, metadata):
+def test_latest_without_checkpoint_ignores_archived_metadata(tmp_path, metadata):
     path = tmp_path / "fvm_metadata.json"
     path.write_text(json.dumps(metadata))
     archive_run_metadata(path)
-    with pytest.raises(FileNotFoundError, match="no committed"):
-        select_backup("latest", directory=tmp_path, kind="coupled")
+    assert select_backup("latest", directory=tmp_path, kind="coupled") is None
 
 
 def test_repeated_failed_initialization_ignores_requested_stop_in_coupler_metadata(tmp_path):
@@ -90,10 +89,31 @@ def test_repeated_failed_initialization_ignores_requested_stop_in_coupler_metada
         ("coupler_diagnostics.jsonl", '{"step":'),
     ],
 )
-def test_stale_created_metadata_does_not_hide_accepted_output(tmp_path, filename, content):
+def test_latest_without_checkpoint_ignores_output_history(tmp_path, filename, content):
     path = tmp_path / "fvm_metadata.json"
     path.write_text(json.dumps({"state": {"step": 0, "time": 0.0}}))
     archive_run_metadata(path)
     (tmp_path / filename).write_text(content)
-    with pytest.raises(FileNotFoundError, match="no committed"):
-        select_backup("latest", directory=tmp_path, kind="coupled")
+    assert select_backup("latest", directory=tmp_path, kind="coupled") is None
+
+
+@pytest.mark.parametrize("kind", ["fvm", "vpm", "coupled"])
+def test_none_preserves_in_memory_selection_despite_corrupt_output(tmp_path, kind):
+    (tmp_path / "backup").write_text("corrupt")
+    (tmp_path / "backups").mkdir()
+    (tmp_path / "backups/manifest.json").write_text("corrupt")
+    (tmp_path / "vpm").mkdir()
+    (tmp_path / "vpm/vpm_000001.h5").write_text("corrupt")
+    assert select_backup(None, directory=tmp_path, kind=kind, backup_path="backup") is None
+
+
+@pytest.mark.parametrize("kind", ["fvm", "coupled"])
+def test_latest_selects_present_corrupt_checkpoint_for_strict_reader(tmp_path, kind):
+    backup = tmp_path / "backup"
+    backup.write_text("corrupt")
+    bundle = tmp_path / "backups"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text("corrupt")
+    assert select_backup("latest", directory=tmp_path, kind=kind, backup_path="backup") == (
+        backup if kind == "fvm" else bundle
+    )

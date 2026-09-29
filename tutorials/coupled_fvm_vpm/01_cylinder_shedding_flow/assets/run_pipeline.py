@@ -23,14 +23,22 @@ def plot_results(report: dict, directory: Path, output_format: str = "png") -> N
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from openonda.plotting import set_thesis_style
+    from openonda.plotting import (
+        COLORS,
+        DEFAULT_DPI,
+        centered_subplots_adjust,
+        figure_size,
+        fit_thesis_y_label_margins,
+        set_thesis_style,
+        validate_thesis_figure,
+    )
 
     directory.mkdir(parents=True, exist_ok=True)
     set_thesis_style()
-    figure, axes = plt.subplots(1, 3, figsize=(10, 3.4), layout="constrained")
-    for label, grids in (
-        ("FVM reference", report["reference"]["grids"]),
-        ("FVM–VPM", report["coupled_grids"]),
+    figure, axes = plt.subplots(3, 1, figsize=figure_size("stacked"))
+    for label, grids, color in (
+        ("FVM reference", report["reference"]["grids"], COLORS["FVMorange"]),
+        ("FVM–VPM", report["coupled_grids"], COLORS["VPMpurple"]),
     ):
         for axis, metric, title in zip(
             axes, ("mean_drag", "rms_lift", "strouhal"), ("Mean drag", "Lift RMS", "Strouhal")
@@ -42,23 +50,35 @@ def plot_results(report: dict, directory: Path, output_format: str = "png") -> N
                 marker="o",
                 capsize=3,
                 label=label,
+                color=color,
             )
             axis.set(xlabel="h/D", title=title)
             axis.grid(alpha=0.2)
     axes[0].legend()
-    figure.suptitle("Grid comparison with 95 percent cycle-block sampling intervals")
-    figure.savefig(directory / f"grid_comparison.{output_format}", dpi=180)
+    figure.suptitle("Grid comparison\n95% cycle-block sampling intervals")
+    centered_subplots_adjust(figure, outer=0.15, bottom=0.12, top=0.82, hspace=0.85)
+    fit_thesis_y_label_margins(figure, axes)
+    validate_thesis_figure(figure, axes)
+    figure.savefig(directory / f"grid_comparison.{output_format}", dpi=DEFAULT_DPI)
     plt.close(figure)
-    figure, axes = plt.subplots(1, 3, figsize=(10, 3.4), layout="constrained")
+    figure, axes = plt.subplots(3, 1, figsize=figure_size("stacked"))
     for axis, (name, row) in zip(axes, report["span_profiles"].items()):
-        for label in ("reference", "coupled"):
+        for label, color in (("reference", COLORS["FVMorange"]), ("coupled", COLORS["VPMpurple"])):
             profile = row[label]
-            axis.plot([value[0] for value in profile["mean_velocity"]], profile["y"], label=label)
+            axis.plot(
+                [value[0] for value in profile["mean_velocity"]],
+                profile["y"],
+                label=label,
+                color=color,
+            )
         axis.set(xlabel="Mean u/U", ylabel="y/D", title=name.replace("_", " "))
         axis.grid(alpha=0.2)
     axes[0].legend()
-    figure.suptitle("Matched x/D=1 mean velocity profiles, tU/D=40–100")
-    figure.savefig(directory / f"span_profiles.{output_format}", dpi=180)
+    figure.suptitle("Mean velocity at x/D=1\ntU/D=40–100")
+    centered_subplots_adjust(figure, outer=0.15, bottom=0.12, top=0.82, hspace=0.85)
+    fit_thesis_y_label_margins(figure, axes)
+    validate_thesis_figure(figure, axes)
+    figure.savefig(directory / f"span_profiles.{output_format}", dpi=DEFAULT_DPI)
     plt.close(figure)
 
 
