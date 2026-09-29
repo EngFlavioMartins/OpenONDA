@@ -47,4 +47,4 @@ repos:
       - id: check-added-large-files
         # Files managed by Git LFS are exempt from this size check.
         args: [--maxkb=10240]
-        exclude: "^tutorials/(.*/figures/|vpm/0[56]_(rotor_flow|quadcopter)/assets/(animation/)?.*\\.gif$)"
+        exclude: "^tutorials/(.*/figures/|vpm/05_delta_wing/assets/delta_wing_30fps\\.gif$|vpm/0[56]_(rotor_flow|quadcopter)/assets/(animation/)?.*\\.gif$)"

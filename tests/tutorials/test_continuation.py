@@ -94,7 +94,10 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
     continuing = commands(directory / "allcontinue.sh")
     assert fresh[1] == "./allclean.sh"
     assert fresh[:1] + fresh[2:] == continuing
-    assert all(command.startswith("python setup.py") for command in continuing[1:])
+    assert all(
+        shlex.split(command)[:2] in (["python", "setup.py"], ["python", "assets/rwm_ensemble.py"])
+        for command in continuing[1:]
+    )
     assert os.access(directory / "allcontinue.sh", os.X_OK)
     tree = ast.parse((directory / "setup.py").read_text())
     assert any(

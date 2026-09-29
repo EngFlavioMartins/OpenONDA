@@ -31,8 +31,7 @@ def main():
 
     final = latest_fvm_snapshot(SOLUTION_DIR)
     if final is None:
-        print(f"  No field snapshots in {SOLUTION_DIR}")
-        return
+        raise SystemExit(f"  No field snapshots in {SOLUTION_DIR}")
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
     cell_centre = mesh.cell_centers().points

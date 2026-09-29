@@ -351,12 +351,18 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         else:
             assert (output / "existing.txt").read_text() == "keep"
         if original.parent.name == "01_lamb_oseen_vortex" and not fail_first:
-            assert [call[:3] for call in calls] == [
+            assert calls == [
                 arguments
                 for physics in ("vortex", "dipole", "merging")
                 for arguments in (
                     ["setup.py", physics, "CS"],
-                    ["setup.py", physics, "RWM"],
+                    [
+                        "assets/rwm_ensemble.py",
+                        physics,
+                        "--number-of-realizations",
+                        "10",
+                        "--converge",
+                    ],
                     ["setup.py", physics, "DVH"],
                     ["setup.py", physics, "GBD"],
                 )

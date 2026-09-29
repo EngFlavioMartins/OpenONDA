@@ -47,8 +47,7 @@ def main():
     ref = REFERENCES.get(args.Re, {})
     data = load_ibm_forces_csv(SOLUTION_DIR)
     if not data:
-        print("  No IBM force data to plot.")
-        return
+        raise SystemExit("  No IBM force data to plot.")
 
     for name, d in data.items():
         t = d["time"]

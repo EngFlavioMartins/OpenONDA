@@ -14,7 +14,7 @@ SOLUTION_DIR = SCRIPT_DIR / "solution"
 def _load_theme():
     from openonda import plotting as theme
 
-    theme.set_style()
+    theme.set_thesis_style()
     return theme
 
 
@@ -57,8 +57,9 @@ def load_ibm_forces_csv(solution_dir):
     """
     csv_path = os.path.join(os.path.dirname(solution_dir), "samples", "ibm_forces_history.csv")
     if not os.path.exists(csv_path):
-        print(f"  WARNING: ibm_forces_history.csv not found at {csv_path}")
-        return {}
+        raise FileNotFoundError(
+            f"Required plotting input missing: ibm_forces_history.csv not found at {csv_path}"
+        )
     data = {}
     with open(csv_path) as f:
         reader = csv.DictReader(f)
@@ -87,4 +88,11 @@ def load_markers(solution_dir):
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):
     path = Path(figures_dir) / name
-    THEME.save_fig(fig, path, figure_format=figure_format, dpi=dpi)
+    axes = fig.axes
+    THEME.fit_thesis_y_label_margins(fig, axes)
+    THEME.validate_thesis_figure(fig, axes)
+    output = THEME.figure_path(path, figure_format)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=THEME.DEFAULT_DPI if dpi is None else dpi, bbox_inches=None)
+    THEME.plt.close(fig)
+    print(f"Saved: {output}")

@@ -9,12 +9,12 @@ It combines finite-volume, vortex-particle, and vortex-lattice methods to study
 viscous flows, wakes, wings, rotors, and interacting vortices.
 
 <p align="center">
-  <img src="tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.gif"
+  <img src="tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif"
        alt="Looping visualization of the wake from two heaving delta wings"
        width="960">
 </p>
 
-<p align="center"><em>Vortex wake from the <a href="tutorials/vpm/05_delta_wing/README.md">two heaving delta wings</a> tutorial.</em></p>
+<p align="center"><em>Vortex wake from an archived run of the <a href="tutorials/vpm/05_delta_wing/README.md">two heaving delta wings</a> tutorial.</em></p>
 
 ## Main capabilities
 
@@ -24,13 +24,16 @@ viscous flows, wakes, wings, rotors, and interacting vortices.
 
 ## Installation
 
-Use Python **3.11–3.13** on Linux or Apple Silicon macOS; Intel macOS requires
-Python **3.11**. A virtual environment is recommended.
+Use **CPython 3.11** on Linux and macOS (Apple Silicon or Intel).
+Only the 3.11 release series is supported; 3.11 security and bug-fix updates
+remain allowed. Create a virtual environment with that interpreter:
 
 ```bash
 GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --branch development \
   https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
+python3.11 -m venv .venv
+source .venv/bin/activate
 python install.py
 ```
 

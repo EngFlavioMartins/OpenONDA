@@ -147,10 +147,7 @@ jobs:
         include:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: ubuntu-latest, python: "3.11", numerics: "numpy==1.26.4 scipy==1.12.0"}
-          - {os: ubuntu-latest, python: "3.12"}
-          - {os: ubuntu-latest, python: "3.13"}
           - {os: macos-14, python: "3.11"}
-          - {os: macos-14, python: "3.13"}
           # Taichi 1.7.1 is the last Intel-macOS wheel and supports Python 3.11.
           - {os: macos-15-intel, python: "3.11"}
     runs-on: ${{ matrix.os }}

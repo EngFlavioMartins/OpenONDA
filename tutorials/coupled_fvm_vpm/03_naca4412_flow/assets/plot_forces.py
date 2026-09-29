@@ -7,8 +7,13 @@ import csv
 import math
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+from openonda import plotting as theme
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 ALPHA = math.radians(10.0)
@@ -16,9 +21,10 @@ ALPHA = math.radians(10.0)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--format", choices=theme.EXPORT_FORMATS, default="png")
     args = parser.parse_args()
 
+    theme.set_thesis_style()
     source = CASE_DIR / "samples" / "ibm_forces_history.csv"
     with source.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
@@ -48,7 +54,7 @@ def main() -> None:
 
     figures = CASE_DIR / "figures"
     figures.mkdir(exist_ok=True)
-    figure, axes = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
+    figure, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), sharex=True)
     axes[0].plot(time, drag, label=r"$C_D$")
     axes[0].plot(time, lift, label=r"$C_L$")
     axes[0].set_ylabel("wind-axis coefficient")
@@ -59,7 +65,10 @@ def main() -> None:
     axes[1].grid(alpha=0.25)
     figure.tight_layout()
     output = figures / f"force_history.{args.format}"
-    figure.savefig(output, dpi=180)
+    theme.fit_thesis_y_label_margins(figure, axes)
+    theme.validate_thesis_figure(figure, axes)
+    figure.savefig(output, dpi=theme.DEFAULT_DPI, bbox_inches=None)
+    plt.close(figure)
     print(f"Wrote {output}")
 
     settled = time >= 0.5 * time[-1]

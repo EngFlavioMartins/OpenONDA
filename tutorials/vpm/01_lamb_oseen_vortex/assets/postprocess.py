@@ -37,6 +37,7 @@ from scipy import signal, stats
 from scipy.special import expi
 
 from source.solution_layout import vpm_backup_files
+from source.vtk_output import write_vtk_dataset
 
 # -- Directory layout --------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
@@ -2060,9 +2061,7 @@ def _write_vts(path: Path, field: dict, sample_z: float) -> None:
     grid.field_data["confidence_multiplier"] = np.array(
         [field["confidence_multiplier"]], dtype=np.float64
     )
-    temporary = path.with_name(f".{path.stem}.tmp.vts")
-    grid.save(temporary, binary=True)
-    temporary.replace(path)
+    write_vtk_dataset(grid, path)
 
 
 def _write_pvd(path: Path, entries: list[tuple[int, float]]) -> None:

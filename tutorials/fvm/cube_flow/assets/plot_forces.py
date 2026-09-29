@@ -33,8 +33,7 @@ def main():
     ref = REFERENCES.get(args.Re, {})
     data = load_forces_csv(SOLUTION_DIR)
     if "cube" not in data:
-        print("  No force data on patch 'cube' to plot.")
-        return
+        raise SystemExit("  No force data on patch 'cube' to plot.")
     d = data["cube"]
     t = d["time"]
     drag_coefficient = d["drag_coefficient"]

@@ -2,9 +2,10 @@
 
 OpenONDA is installed with pip. Native FVM, VPM and hybrid solvers do not
 require OpenFOAM, a source checkout at runtime, or shell startup changes.
-Python 3.11 is the common supported version across Linux x86-64, Apple Silicon,
-and Intel macOS. Package metadata allows 3.11–3.13; Intel macOS uses the older
-Taichi 1.7.1 wheel and requires 3.11. Windows is not currently qualified.
+CPython 3.11 is the supported interpreter across Linux x86-64, Apple Silicon,
+and Intel macOS. All 3.11 security patch updates are supported. This single
+minor version covers the available Taichi wheels on these platforms, including
+Taichi 1.7.1 on Intel macOS. Windows is not currently qualified.
 
 The [README clone command](../README.md#installation) uses shallow Git history
 and skips Git LFS downloads to reduce local storage. To retrieve the full
@@ -22,7 +23,8 @@ source .venv/bin/activate
 python install.py
 ```
 
-`install.py` installs the package and dependencies into that Python environment,
+`install.py` rejects unsupported interpreters before running pip. It installs
+the package and dependencies into the CPython 3.11 environment,
 runs `pip check`, and verifies the installation from a temporary directory.
 It requires no per-case interpreter variables or import-path configuration.
 The equivalent package-only command is `python -m pip install .`.
@@ -104,14 +106,21 @@ the other ranks wait. No per-tutorial thread exports are required.
   in a separate environment, the optional rotor generation tool accepts
   `OPENONDA_OPENVSP_PYTHON` pointing to that interpreter. This selects an
   external executable; it does not change OpenONDA's import paths.
-- **ParaView:** optional interactive visualization and some scene rendering.
-  Obtain it from [ParaView](https://www.paraview.org/download/). Ordinary
-  Matplotlib tutorial plots do not require the GUI.
+- **ParaView:** required for tutorial scripts that render ParaView scenes.
+  Obtain it from [ParaView](https://www.paraview.org/download/) and make its
+  `pvpython` command available on `PATH`. Matplotlib plots do not require it.
 - **OpenFOAM/cfMesh:** only needed for independent external parity studies or
   comparison data. Native solver operation and the introductory examples use
   neither program. Mesh-file interchange is distinct from running OpenFOAM.
-- **LaTeX:** optional explicit publication rendering. The default plotting
-  style uses Matplotlib's built-in math renderer.
+- **LaTeX:** the tutorial thesis figures require `latex`, `dvipng`, and the
+  `newpxtext`/`newpxmath` packages from a TeX installation. They use the shared
+  thesis fonts and palette. The solver itself does not require TeX;
+  `openonda.plotting.set_style()` supports plots with Matplotlib's built-in
+  math renderer when the thesis typography is not required.
+
+Plotting also requires the case's saved data. Installing OpenONDA does not
+produce simulation results. See the [tutorial data audit](verification/tutorial_data_and_portability_2026-09-29.md)
+for the inputs still needed to reproduce every figure from a fresh clone.
 
 ## Conda alternative
 

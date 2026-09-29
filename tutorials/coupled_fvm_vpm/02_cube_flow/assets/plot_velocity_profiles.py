@@ -62,7 +62,7 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     fig, axes = plt.subplots(3, 1, figsize=util.figure_size(16), dpi=dpi)
     axes[1].sharex(axes[0])
     util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.95, hspace=0.5)
-    _profile(axes[0], "centreline", time, consts, r"(a) Centrreline, $y/D=0$")
+    _profile(axes[0], "centreline", time, consts, r"(a) Centreline, $y/D=0$")
     _profile(axes[1], "offaxis_y075", time, consts, r"(b) Off-axis, $y/D=0.75$")
     axes[0].set_xlabel("")
     axes[0].tick_params(labelbottom=False)

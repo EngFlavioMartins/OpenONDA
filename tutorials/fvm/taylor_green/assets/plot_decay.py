@@ -10,19 +10,22 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from openonda import plotting as theme
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--history", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--dpi", type=int, default=theme.DEFAULT_DPI)
     args = parser.parse_args()
 
+    theme.set_thesis_style()
     data = np.genfromtxt(args.history, delimiter=",", names=True)
     data = np.atleast_1d(data)
     time = data["time"]
 
-    fig, axes = plt.subplots(2, 1, figsize=(7.0, 7.2), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), sharex=True)
     axes[0].plot(time, data["total_kinetic_energy"], "o-", label="PIMPLE")
     axes[0].plot(time, data["analytic_total_kinetic_energy"], "k--", label="analytic")
     axes[0].set_ylabel("kinetic energy")
@@ -50,7 +53,11 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
-    fig.savefig(args.output, dpi=args.dpi)
+    theme.fit_thesis_y_label_margins(fig, axes)
+    theme.validate_thesis_figure(fig, axes)
+    fig.savefig(args.output, dpi=args.dpi, bbox_inches=None)
+    plt.close(fig)
+    print(f"Saved: {args.output}")
 
 
 if __name__ == "__main__":

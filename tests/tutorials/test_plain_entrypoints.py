@@ -81,15 +81,11 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
 
 @pytest.mark.parametrize(
     "tutorial",
-    (*TUTORIALS, None),
-    ids=lambda tutorial: tutorial.name if tutorial else "quadcopter_studies",
+    TUTORIALS,
+    ids=lambda tutorial: tutorial.name,
 )
 def test_default_setup_reaches_solver_without_environment_knobs(tmp_path, tutorial):
-    if tutorial is None:
-        parent = materialize_tutorial("vpm/quadcopter", tmp_path / "studies with spaces")
-        case = parent / "studies"
-    else:
-        case = materialize_tutorial(tutorial.name, tmp_path / "workspace with spaces")
+    case = materialize_tutorial(tutorial.name, tmp_path / "workspace with spaces")
     probe = tmp_path / "probe.py"
     probe.write_text("""
 import runpy
@@ -142,10 +138,13 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         "raise SystemExit(int(os.environ['FAIL']))\n"
     )
     python.chmod(0o755)
-    for i, original in enumerate(sorted(
-        path for path in root.rglob("all*.sh")
-        if "study_results" not in path.relative_to(root).parts
-    )):
+    for i, original in enumerate(
+        sorted(
+            path
+            for path in root.rglob("all*.sh")
+            if "study_results" not in path.relative_to(root).parts
+        )
+    ):
         if original.name == "allclean.sh":
             continue
         case = tmp_path / f"case {i}"

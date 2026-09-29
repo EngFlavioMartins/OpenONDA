@@ -30,15 +30,13 @@ def main():
 
     final = latest_vtu(SOLUTION_DIR)
     if final is None:
-        print(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
-        return
+        raise SystemExit(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
     vort = mesh.point_data.get("vorticity")
     if vort is None:
-        print("  WARNING: No 'vorticity' field found in VTU.")
-        return
+        raise SystemExit("  WARNING: No 'vorticity' field found in VTU.")
     wz = vort[:, 2]
     pts = mesh.points
 

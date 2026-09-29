@@ -20,7 +20,6 @@ from pathlib import Path
 import platform
 import re
 import runpy
-import sys
 import tempfile
 from time import perf_counter
 
@@ -44,7 +43,6 @@ def main() -> int:
     for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
         os.environ[name] = "1"
     os.environ["NUMBA_NUM_THREADS"] = str(args.threads)
-    sys.path.insert(0, str(root))
 
     import numba
     import numpy as np

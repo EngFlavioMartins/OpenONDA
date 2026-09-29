@@ -48,10 +48,7 @@ def main(arguments: list[str] | None = None) -> int:
     args = parser.parse_args(arguments)
     # Register the package without importing the executable module twice.
     parent, _, _ = args.module.rpartition(".")
-    package = load_case_module(args.directory, parent) if parent else None
-    if package is None:
-        # An empty module selects the namespace package itself.
-        package = load_case_module(args.directory, "")
+    package = load_case_module(args.directory, parent)
     module_name = package.__name__ + "." + args.module.rsplit(".", 1)[-1]
     sys.argv = [str(args.directory / (args.module.replace(".", "/") + ".py")), *args.arguments]
     runpy.run_module(module_name, run_name="__main__", alter_sys=True)

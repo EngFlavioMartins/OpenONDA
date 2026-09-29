@@ -6,6 +6,8 @@ Examples (from this case directory)::
     python setup.py vortex CS
     python setup.py dipole DVH
     python setup.py merging GBD
+
+Independent RWM ensembles use ``python assets/rwm_ensemble.py CASE --converge``.
 """
 
 from __future__ import annotations
@@ -284,19 +286,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", nargs="?", default="vortex", choices=tuple(PHYSICS_CIRCULATIONS))
     parser.add_argument("viscous_scheme", nargs="?", default="CS", choices=ALL_VISCOUS_SCHEMES)
-    parser.add_argument("--ensemble", action="store_true", help="Run/resume independent RWM seeds")
-    parser.add_argument("--number-of-realizations", type=int, default=RWM_ENSEMBLE_SIZE)
-    parser.add_argument("--converge", action="store_true")
-    parser.add_argument("--maximum-realizations", type=int, default=80)
     args = parser.parse_args()
-    if args.ensemble:
-        if args.viscous_scheme != "RWM":
-            parser.error("--ensemble requires RWM")
-        from .assets.rwm_ensemble import run_converged_ensemble, run_ensemble
-
-        if args.converge:
-            run_converged_ensemble(args.case, args.number_of_realizations, 42000, args.maximum_realizations)
-        else:
-            run_ensemble(args.case, args.number_of_realizations)
-    else:
-        run_case(args.case, args.viscous_scheme)
+    run_case(args.case, args.viscous_scheme)

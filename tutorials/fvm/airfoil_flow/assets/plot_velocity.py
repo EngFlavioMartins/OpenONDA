@@ -31,8 +31,7 @@ def main():
 
     final = latest_vtu(SOLUTION_DIR)
     if final is None:
-        print(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
-        return
+        raise SystemExit(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
@@ -41,8 +40,7 @@ def main():
         mesh = mesh.cell_data_to_point_data()
         u = mesh.point_data.get("velocity")
     if u is None:
-        print("  No velocity data in VTU.")
-        return
+        raise SystemExit("  No velocity data in VTU.")
     pts = mesh.points
     mag = np.linalg.norm(u, axis=1)
 

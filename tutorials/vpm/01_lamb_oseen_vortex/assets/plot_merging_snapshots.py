@@ -38,8 +38,6 @@ if not __package__:
 from .. import setup
 from ..assets.postprocess import _metadata, load_theme, validate_thesis_figure
 
-_initial_conditions = setup._initial_conditions
-
 load_theme()
 plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
 
@@ -170,6 +168,30 @@ def render_streamlines(canvas, zbuffer, segments, colors, lower, upper, line_rad
     return canvas
 
 
+def _initial_particle_state(case_dir: Path):
+    """Load the saved step-zero particle cloud."""
+    initial_path = case_dir / "solution/merging_gbd/vpm/vpm_000000.h5"
+    if not initial_path.is_file():
+        raise FileNotFoundError(f"Initial GBD particle backup required: {initial_path}")
+    with h5py.File(initial_path) as initial:
+        if int(initial["solver"].attrs["step"]) != 0 or not np.isclose(
+            float(initial["solver"].attrs["time"]), 0.0
+        ):
+            raise ValueError("Initial GBD backup is not the step-zero state.")
+        pos0 = initial["particles/position"][:]
+        alpha0 = initial["particles/vortex_strength"][:]
+        sigma0 = initial["particles/core_radius"][:]
+        if len(pos0) != int(initial["solver"].attrs["n_particles_total"]):
+            raise ValueError("Initial GBD backup particle count is inconsistent.")
+    if pos0.ndim != 2 or pos0.shape[1] != 3 or alpha0.shape != pos0.shape:
+        raise ValueError("Initial GBD backup particle vectors have invalid shapes.")
+    if sigma0.shape != (len(pos0),) or not np.all(sigma0 > 0):
+        raise ValueError("Initial GBD backup core radii must be positive particle scalars.")
+    if not all(np.all(np.isfinite(array)) for array in (pos0, alpha0, sigma0)):
+        raise ValueError("Initial GBD backup particle arrays must be finite.")
+    return pos0, alpha0, sigma0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -209,11 +231,7 @@ def main():
     for key, value in expected.items():
         if not np.allclose(run[key], value, rtol=1e-10, atol=1e-12):
             raise ValueError(f"Initial-condition setting {key} differs from the saved GBD run.")
-    configs, *_ = _initial_conditions("merging", viscosity)
-    clouds = [c.build() for c in configs]
-    pos0 = np.concatenate([p.position for p in clouds])
-    alpha0 = np.concatenate([p.vortex_strength for p in clouds])
-    sigma0 = np.concatenate([p.core_radius for p in clouds])
+    pos0, alpha0, sigma0 = _initial_particle_state(CASE_DIR)
     # Use the recorded final step, never a hard-coded backup filename.
     completed_steps = int(run.get("completed_steps", run.get("number_of_steps", -1)))
     path = CASE_DIR / "solution/merging_gbd/vpm" / f"vpm_{completed_steps:06d}.h5"
@@ -226,8 +244,6 @@ def main():
         time = float(f["solver"].attrs["time"])
     if not np.isclose(time, float(run["final_time"])):
         raise ValueError("Final GBD backup time does not match the sample metadata.")
-    if len(pos0) != int(run["initial_n_particles_total"]):
-        raise ValueError("Initial conditions no longer match the stored GBD run.")
     uc = circulation / (2 * np.pi * a0)
     wc = circulation / (np.pi * a0 * a0)
     x = np.linspace(-1.4, 1.4, 149)

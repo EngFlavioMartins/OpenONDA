@@ -29,8 +29,7 @@ def main():
     args = build_arg_parser().parse_args()
     data = load_forces_csv(SOLUTION_DIR)
     if "airfoil" not in data:
-        print("  No force data on patch 'airfoil' to plot.")
-        return
+        raise SystemExit("  No force data on patch 'airfoil' to plot.")
     d = data["airfoil"]
     t = d["time"]
     drag_coefficient = d["drag_coefficient"]

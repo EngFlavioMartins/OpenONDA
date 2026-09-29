@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  # Python 3.11 also supports the legacy x86-64 macOS Taichi wheel.
+  # CPython 3.11 supports the Taichi wheels on all supported platforms.
   - python=3.11
   - pip>=24
   - setuptools>=77

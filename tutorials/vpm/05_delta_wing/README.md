@@ -77,7 +77,13 @@ Individual plotters accept explicit `--samples` paths for forensic inspection;
 the wake plot also accepts matching `--solution` paths. The default individual
 plotters retain accepted-lineage checks.
 
-The completed-run animation is `figures/delta_wing_30fps.gif`. Its JSON sidecar
+The main repository README uses `assets/delta_wing_30fps.gif`, an archived
+illustration recovered unchanged from commit `24cc275a` (Git blob
+`684e5725bfe471f4518d094261b37b6a1e444ba1`). It is independent of the current
+local solution and survives `allclean.sh`. It does not certify completion of
+the current case.
+
+The current completed-run animation is `figures/delta_wing_30fps.gif`. Its JSON sidecar
 records exact native backups, source namespaces and presentation timestamps.
 The renderer selects distinct nearest native states at 30 fps; it does not
 interpolate geometry or loads. A fixed oblique projection uses

@@ -33,3 +33,6 @@ prune tutorials/*/*/animation
 prune tutorials/*/*/*/study_results
 prune tutorials/*/*/*/solutions
 prune tutorials/*/*/*/animation
+
+# Archived illustration referenced by the package README.
+include tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif

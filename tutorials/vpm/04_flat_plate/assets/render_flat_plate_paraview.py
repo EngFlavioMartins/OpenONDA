@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 
 from paraview.simple import (  # type: ignore[import-not-found]
+    AssignViewToLayout,
     ColorBy,
+    CreateLayout,
     CreateView,
     GetColorTransferFunction,
     Glyph,
@@ -30,6 +32,8 @@ def main() -> None:
 
     ResetSession()
     view = CreateView("RenderView")
+    layout = CreateLayout("Flat plate render")
+    AssignViewToLayout(view=view, layout=layout)
     view.ViewSize = [1800, 900]
     view.Background = [1.0, 1.0, 1.0]
     view.UseColorPaletteForBackground = 0
@@ -91,13 +95,15 @@ def main() -> None:
     arrow_display.AmbientColor = [0.78, 0.31, 0.08]
 
     view.Update()
-    SaveScreenshot(
+    written = SaveScreenshot(
         args.output,
-        view,
+        layout,
         ImageResolution=[1800, 900],
         TransparentBackground=0,
         CompressionLevel=0,
     )
+    if not written:
+        raise RuntimeError(f"ParaView failed to save screenshot: {args.output}")
 
 
 if __name__ == "__main__":

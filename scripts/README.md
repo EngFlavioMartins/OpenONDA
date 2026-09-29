@@ -2,6 +2,7 @@
 
 `python install.py` at the repository root installs with pip and verifies the
 result outside the checkout; `--dev` selects an editable installation.
+CPython 3.11 is required; all 3.11 security patch updates are supported.
 These optional Conda files help
 assemble a consistent interpreter and, where requested, an MPI/PETSc stack.
 They do not repair Python imports or modify shell startup files.

@@ -58,8 +58,7 @@ def main():
 
     final = latest_fvm_snapshot(SOLUTION_DIR)
     if final is None:
-        print(f"  No field snapshots in {SOLUTION_DIR}")
-        return
+        raise SystemExit(f"  No field snapshots in {SOLUTION_DIR}")
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
     cell_centre = mesh.cell_centers().points
@@ -68,8 +67,7 @@ def main():
         mesh = mesh.point_data_to_cell_data()
         u = mesh.cell_data.get("velocity")
     if u is None:
-        print("  WARNING: no velocity field 'velocity' in VTU.")
-        return
+        raise SystemExit("  WARNING: no velocity field 'velocity' in VTU.")
 
     # Centreline: cells nearest to y = 0 (one row on this rectilinear mesh).
     y_vals = np.unique(np.round(cell_centre[:, 1], 10))

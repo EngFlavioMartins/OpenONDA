@@ -109,7 +109,7 @@ _EXCLUDED_NAMES: Final = {
     "paraview_tracer.py",
     "run_manifest.json",
 }
-_ALLOWED_SUFFIXES: Final = {".py", ".sh", ".md", ".json", ".csv", ".stl", ".vsp3"}
+_ALLOWED_SUFFIXES: Final = {".py", ".sh", ".md", ".json", ".csv", ".stl", ".vsp3", ".gif"}
 
 
 def tutorial_names() -> tuple[str, ...]:

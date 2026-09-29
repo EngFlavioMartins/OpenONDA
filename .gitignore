@@ -74,7 +74,7 @@ processor*/
 # ParaView marker files and exported scenes (regenerated on demand)
 **/VTK/
 
-# Volume solutions and raw data; sampled outputs are versioned below.
+# Volume solutions and raw data; sample retention is documented below.
 **/solution/
 **/Solution/
 # Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
@@ -159,7 +159,8 @@ tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.json
 !tutorials/**/*.sh
 tests/**/reference_flow/**
 
-# Generated sampler output is archived with simulation runs.
+# Generated sampler output remains local pending the data-retention decision.
+# See docs/verification/tutorial_data_and_portability_2026-09-29.md.
 **/samples/
 **/study_results/
 

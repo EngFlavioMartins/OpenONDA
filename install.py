@@ -17,8 +17,10 @@ def main(arguments=None) -> int:
         "--dev", action="store_true", help="editable install with development tools"
     )
     args = parser.parse_args(arguments)
-    if not (3, 11) <= sys.version_info[:2] < (3, 14):
-        parser.error("OpenONDA requires Python 3.11–3.13; use Python 3.11 on Intel macOS")
+    if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):
+        parser.error(
+            "OpenONDA requires CPython 3.11; all 3.11 security patch updates are supported"
+        )
     root = Path(__file__).resolve().parent
     install = [sys.executable, "-m", "pip", "install"]
     install += ["-e", f"{root}[dev]"] if args.dev else [str(root)]

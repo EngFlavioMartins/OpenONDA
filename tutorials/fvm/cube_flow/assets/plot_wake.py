@@ -36,15 +36,13 @@ def main():
 
     final = latest_vtu(SOLUTION_DIR)
     if final is None:
-        print(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
-        return
+        raise SystemExit(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
     u = mesh.point_data.get("velocity")
     if u is None:
-        print("  WARNING: No velocity field 'velocity' found in VTU.")
-        return
+        raise SystemExit("  WARNING: No velocity field 'velocity' found in VTU.")
     pts = mesh.points
 
     on_plane = np.abs(pts[:, 2]) < 1e-9
@@ -53,8 +51,7 @@ def main():
     near_axis = np.abs(pts[:, 1]) < 0.04
     sel = on_plane & near_axis & (pts[:, 0] > 0.5)
     if not sel.any():
-        print("  WARNING: No centreline points behind the cylinder.")
-        return
+        raise SystemExit("  WARNING: No centreline points behind the cylinder.")
 
     order = np.argsort(pts[sel, 0])
     x = pts[sel, 0][order]
