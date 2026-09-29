@@ -15,7 +15,7 @@ the first stage that disagrees.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any, cast
 
 import numpy as np
@@ -63,6 +63,40 @@ def _quad_signature(values: Sequence[int] | np.ndarray) -> tuple[int, int, int, 
     if len(ordered) != 4:
         raise ValueError(f"Expected four Cartesian face vertices, received {len(ordered)}")
     return ordered[0], ordered[1], ordered[2], ordered[3]
+
+
+_FACE_LOOKUP_CHUNK_SIZE = 16_384
+
+
+def _matching_face_id_chunks(
+    encoded_faces: np.ndarray,
+    ordered_octree_faces: Sequence[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]],
+    *,
+    chunk_size: int = _FACE_LOOKUP_CHUNK_SIZE,
+) -> Iterator[np.ndarray]:
+    """Match octree signatures with compact keys, retaining last-face-wins."""
+    key_dtype = np.dtype([(f"vertex_{index}", np.int64) for index in range(4)])
+    face_keys = (
+        np.ascontiguousarray(np.sort(encoded_faces.astype(np.int64, copy=False), axis=1))
+        .view(key_dtype)
+        .reshape(-1)
+    )
+    # Stable sorting makes searchsorted(right) select the final face ID
+    # when signatures repeat.
+    permutation = np.argsort(face_keys, kind="stable")
+    sorted_keys = face_keys[permutation]
+    for start in range(0, len(ordered_octree_faces), chunk_size):
+        records = ordered_octree_faces[start : start + chunk_size]
+        signatures = np.fromiter(
+            (vertex for signature, _internal, _cells in records for vertex in signature),
+            dtype=np.int64,
+            count=4 * len(records),
+        ).reshape(-1, 4)
+        query_keys = np.sort(signatures, axis=1).view(key_dtype).reshape(-1)
+        positions = np.searchsorted(sorted_keys, query_keys, side="right") - 1
+        if np.any(positions < 0) or not np.array_equal(sorted_keys[positions], query_keys):
+            raise RuntimeError("cfMesh cell-face ordering references an absent octree face")
+        yield permutation[positions]
 
 
 def _root_cube(domain: SurfaceBounds, max_cell_size: float) -> tuple[SurfaceBounds, int]:
@@ -347,17 +381,27 @@ def _extract_mesh(
         permutation = np.argsort(boundary_order, kind="stable")
         encoded_faces[n_internal:] = encoded_faces[n_internal:][permutation]
         owners[n_internal:] = owners[n_internal:][permutation]
+        del boundary_order, permutation
 
-    face_by_octree_signature = {
-        _quad_signature(face): face_id for face_id, face in enumerate(encoded_faces)
-    }
+    face_order_entries = len(face_order)
+    del (
+        internal_to_change,
+        boundary_to_change,
+        reordered_octree_faces,
+        final_boundary_keys,
+        face_order,
+    )
     cfmesh_cell_face_order: list[list[int]] = [[] for _cell in leaves]
-    for signature, _internal, attached_cells in ordered_octree_faces:
-        face_id = face_by_octree_signature.get(signature)
-        if face_id is None:
-            raise RuntimeError("cfMesh cell-face ordering references an absent octree face")
-        for cell_id in attached_cells:
-            cfmesh_cell_face_order[cell_id].append(face_id)
+    records = ()
+    for chunk_index, face_ids in enumerate(
+        _matching_face_id_chunks(encoded_faces, ordered_octree_faces)
+    ):
+        start = chunk_index * _FACE_LOOKUP_CHUNK_SIZE
+        records = ordered_octree_faces[start : start + len(face_ids)]
+        for face_id, (_signature, _internal, attached_cells) in zip(face_ids, records, strict=True):
+            for cell_id in attached_cells:
+                cfmesh_cell_face_order[cell_id].append(int(face_id))
+    del records, ordered_octree_faces
     if any(not face_ids for face_ids in cfmesh_cell_face_order):
         raise RuntimeError("cfMesh cell-face ordering left an empty mesh cell")
 
@@ -491,7 +535,7 @@ def _extract_mesh(
             "surface_patch_refinement_levels": {},
             "finest_cell_size": finest_size,
             "ordered_boundary_faces": matched_boundary_order,
-            "octree_boundary_face_order_entries": len(face_order),
+            "octree_boundary_face_order_entries": face_order_entries,
             "coarse_faces_with_hanging_perimeter_points": expanded_face_count,
             "workflow_checkpoint": "templateGeneration",
         },
