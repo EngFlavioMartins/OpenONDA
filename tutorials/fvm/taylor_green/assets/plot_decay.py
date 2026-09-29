@@ -39,7 +39,7 @@ def main() -> None:
         label="total kinetic energy",
     )
     axes[1].semilogy(
-        time, np.maximum(data["total_enstrophy_relative_error"], 1e-16), label="total_enstrophy"
+        time, np.maximum(data["total_enstrophy_relative_error"], 1e-16), label="total enstrophy"
     )
     axes[1].semilogy(
         time,

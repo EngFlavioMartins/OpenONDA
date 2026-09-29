@@ -203,8 +203,12 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         for axis in axes:
             axis.clear()
         axes[0].scatter(
-            centres[:, 1], centres[:, 2], c=circulation, s=7,
-            cmap=circulation_cmap, norm=circulation_norm
+            centres[:, 1],
+            centres[:, 2],
+            c=circulation,
+            s=7,
+            cmap=circulation_cmap,
+            norm=circulation_norm,
         )
         axes[0].set(xlabel="rotor y [m]", ylabel="rotor z [m]", title="coupled VPM+VLM rotor disk")
         axes[0].set_aspect("equal", adjustable="box")

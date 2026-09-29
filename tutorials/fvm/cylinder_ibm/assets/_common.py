@@ -76,6 +76,8 @@ def load_ibm_forces_csv(solution_dir):
     for name in data:
         for k in data[name]:
             data[name][k] = np.array(data[name][k])
+    if not data:
+        raise ValueError(f"Required plotting input has no records: {csv_path}")
     return data
 
 

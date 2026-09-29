@@ -10,7 +10,7 @@ items must not be described as complete.
 - [x] Canonical and legacy VPM backup discovery, numeric ordering, and RWM member reuse implemented.
 - [ ] Repeat the original completed Lamb–Oseen CS/DVH/GBD/RWM continuation paths with the installed final package.
 - [x] Restore native FVM, VPM and coupled state from latest backups; initial mode ignores prior state; launchers distinguish cleanup from continuation.
-- [ ] Repeat representative real initial/latest/completed-run execution across all three solver families after the final changes.
+- [x] Repeat real coupled initial/latest/completed-run execution in serial and on two MPI ranks, exercising both native solver states and sampled output clocks. Standalone installed-package verification is also repeated below.
 - [x] Remove stale particle-capacity values from restart identity where they do not define the numerical model.
 - [x] Exercise the original DVH/treecode allocation failure on the actual CUDA device and check repeated evaluation memory.
 - [x] Implement transactional subdivision for excessive coupled wall corrections, preserving the accepted macro step.
@@ -60,7 +60,7 @@ candidates. They are not replaced by this shorter ledger.
 - [ ] Repeat final wheel installation, package tests and direct tutorial entrypoints after cleanup.
 - [ ] Obtain real macOS CI evidence; Linux execution alone does not establish it.
 - [x] Commit completed solver/package/archive work locally; retain unrelated work and generated figures.
-- [ ] Commit this final cleanup and its measured evidence. Publishing remains separate from the explicitly local-only archive approval.
+- [x] Commit this final cleanup and its measured evidence. Publishing remains separate from the explicitly local-only archive approval.
 
 ## Execution constraints
 
@@ -98,3 +98,12 @@ geometry's declared tolerance. The original 126-test VPM sweep had one fixture
 that depended on the removed node truncation; the corrected uninterrupted versus
 restarted GBD comparison passes with sufficient declared particle capacity.
 The 56 installation/archive/style/cadence contracts also pass.
+
+The coupled manifest now uses the same canonical VPM compatibility rules as
+standalone restoration, after authenticating the original saved configuration.
+The original cube step-440 manifest validates against current VPM settings.
+Thirteen coupled backup regressions and fifteen standalone compatibility checks
+pass. Full initial/latest/completed-run coupled lifecycles pass both serially
+and on two MPI ranks, including particle fields and CSV/PVD sample clocks.
+The serial comparison uses tolerances scaled to float32 particle traces and
+physical flow units; solver tolerances were not changed.

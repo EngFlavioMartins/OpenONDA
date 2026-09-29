@@ -72,6 +72,8 @@ def load_forces_csv(solution_dir):
     for pname in data:
         for k in data[pname]:
             data[pname][k] = np.array(data[pname][k])
+    if not data:
+        raise ValueError(f"Required plotting input has no records: {csv_path}")
     return data
 
 

@@ -73,6 +73,8 @@ def load_csv_columns(path):
         for row in reader:
             for key, value in row.items():
                 data.setdefault(key, []).append(float(value))
+    if not data:
+        raise ValueError(f"Required plotting input has no records: {path}")
     return {key: np.asarray(vals) for key, vals in data.items()}
 
 
