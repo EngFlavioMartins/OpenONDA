@@ -1,0 +1,57 @@
+{
+  "source_commit": "685c2d8a",
+  "started_utc": "2026-09-29T18:10:47.258321+00:00",
+  "status": "passed",
+  "dependency_environment": "venv with system-site-packages from the development CPython 3.11 environment; OpenONDA wheel installed into the new venv",
+  "returncode": 0,
+  "pip_check_returncode": 0,
+  "wall_seconds": 238.29064509599993,
+  "wheel_sha256": "7e62d19935d4c952cc64a608c9a96c5df86e3e386b97e4dfe69348a61cc9d39d",
+  "report": {
+    "cartesian_mesher": {
+      "balancing_backend": "numba",
+      "n_cells": 1392,
+      "n_faces": 5208
+    },
+    "direct_tutorial_scripts": 10,
+    "distribution": {
+      "latex_rendering": false,
+      "matplotlib_backend": "Agg",
+      "tutorial_count": 19,
+      "typed_package": true
+    },
+    "native_coupled": {
+      "fvm_step": 4,
+      "n_cells": 64,
+      "vpm_step": 2
+    },
+    "native_fvm": {
+      "max_absolute_kinematic_pressure": 73.86390080487497,
+      "max_continuity_error": 1.4519897964526686e-08,
+      "max_courant_number": 0.03000000027779594,
+      "max_velocity_magnitude": 1.3583564749277715,
+      "n_cells": 56,
+      "n_linear_solves": 4
+    },
+    "native_vpm": {
+      "backend": "CPU",
+      "n_particles": 2,
+      "restart_step": 2,
+      "steps": 1
+    },
+    "numba": {
+      "active_threads": 1,
+      "version": "0.66.0"
+    },
+    "openonda_version": "0.1.1",
+    "package_path": "/home/flavio-martins/Projects/OpenONDA/build/wheel-verification-685c2d8a/lib/python3.11/site-packages/openonda/__init__.py",
+    "taichi_arch": "Arch.x64",
+    "taichi_version": "1.7.4"
+  },
+  "command": "python -I -m openonda.verify_install --require-site-packages",
+  "working_directory": "/tmp",
+  "pip_check": "No broken requirements found.",
+  "support_python_file_count": 26,
+  "no_archives_or_local_phase_benchmark_scripts": true,
+  "original_readme_animation_sha256": "3cd7b47adb8bd1ca1e49de323122414340b3d8d559e92a7fb14d2c0ffe9a04c5"
+}

@@ -65,7 +65,8 @@ candidates. They are not replaced by this shorter ledger.
 ## Execution constraints
 
 The host suffered an OOM during earlier verification. Subsequent work uses
-disk-backed scratch and one numerical/rendering workload at a time. Existing
+disk-backed scratch, isolated runs and memory monitoring. Additional trials wait
+for headroom; shared-host timings are not treated as idle-machine benchmarks. Existing
 delta-wing, rotor and cylinder benchmark processes are user workloads and must
 not be killed, restarted, or have their input/output trees rewritten by checks.
 Run verification in isolated copied cases. Never fabricate missing production
@@ -221,3 +222,22 @@ The airfoil setup's finest spacing now applies to the airfoil surface rather
 than every outer domain plane. A bounded native mesh regression confirms that
 scope. The full default corrected mesh is still running; neither its final cost
 nor full-airfoil plotting is yet qualified.
+
+The NACA 4412 scalar force history now samples every accepted FVM step while
+large field snapshots retain their 0.8 s schedule. Its actual sampler schedule
+and CSV writer passed the focused regression; full-case portable input remains
+outstanding.
+
+The cfMesh face lookup uses compact integer keys and releases ordering scratch
+after its last use. Thirteen exact/native checks cover face order, duplicates,
+missing faces, integer widths and array layouts. An isolated 100,000-face
+comparison reduced the lookup's peak RSS increment from 29,588 to 10,372 KiB and
+time from 0.579 to 0.323 s; this does not establish full-mesher gains. See the
+[lookup evidence](../../studies/cfmesh_face_lookup_verification_2026-09-29.json).
+
+The rebuilt `685c2d8a` wheel passed the complete outside-checkout verifier and
+`pip check` in a separate CPython 3.11 virtual environment, including native
+coupled continuation and the updated mesher. The wheel was installed locally
+while dependencies came from the development environment; this complements the
+earlier independent dependency environment. See the
+[installation record](../../studies/installed_wheel_verification_685c2d8a.json).
