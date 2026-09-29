@@ -97,9 +97,22 @@ time 6.576 s. The published candidate archive remains the earlier, internally
 consistent 6.552 s snapshot. Future verification on this host must use disk-backed
 scratch space and run serially without competing with production simulations.
 
-Implementation code is committed as `20e9577c`. The nine dataset archives and
-manifests remain staged: automatic approval review requires explicit confirmation
-of their 4.82 GB inclusion before their commit. Nothing has been pushed or uploaded.
+Implementation code is committed as `20e9577c`. After explicit approval of the
+4.82 GB dataset, the nine archives and manifests were committed as `51f9ebf9`.
+Nothing has been pushed or uploaded.
+
+A separate disk-backed local clone of `51f9ebf9` retrieved all nine LFS payloads
+automatically. Streaming SHA-256 verification matched every archive against its
+manifest: 4,822,718,770 bytes in total. The clone shares ordinary Git objects with
+the local source repository, but has its own checkout and hydrated LFS payloads.
+This verifies local clone transport; remote availability still requires publishing
+the commit and LFS objects.
+
+From that clone, Taylor–Green's unmodified `./allplot.sh` restored its archived
+solution and generated `figures/taylor_green_decay.png` successfully using the
+installed wheel in a normally activated Python 3.11 environment. Imports resolved
+to `site-packages`; no source-path overrides were used. The regenerated figure was
+also visually inspected. Full plotting coverage remains limited as recorded above.
 
 ## Implementation checklist
 
@@ -110,8 +123,10 @@ of their 4.82 GB inclusion before their commit. Nothing has been pushed or uploa
 - [x] Fix rotor plotting of newer live CSV tails without modifying data.
 - [x] Produce and plot the default Taylor–Green result.
 - [x] Build and restore checksum-verified archives of all available scientific results.
-- [ ] Verify plotting from a separate Git clone with an installed wheel.
-- [ ] Commit the verified implementation and LFS pointers.
+- [x] Verify a complete plotting launcher from a separate Git clone with an installed wheel.
+- [ ] Complete fresh-clone plotting verification for every archived tutorial.
+- [x] Verify automatic LFS hydration and archive checksums in a separate local clone.
+- [x] Commit the verified implementation and LFS pointers.
 - [ ] Publish the commit and associated LFS objects before another machine clones from GitHub.
 
 ## Earlier requests retained
