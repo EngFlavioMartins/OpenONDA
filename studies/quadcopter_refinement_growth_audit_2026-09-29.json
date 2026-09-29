@@ -1,0 +1,225 @@
+{
+  "date": "2026-09-29",
+  "kind": "read_only_native_refinement_growth_audit",
+  "source_identity": {
+    "qualification_wheel_source_commit": "91b668b5",
+    "audit_tree_head": "660edb5db5f6d9dc667f732456cfdc940bff0710",
+    "note": "Current source inspected for algorithm; qualification data originated from isolated installed 91b668b5 wheel."
+  },
+  "calculation": "For each genuine H5: stretch=norm(vortex_strength)/filament_reference_vortex_strength; estimated material line length=filament_reference_length*stretch; divide by saved core_radius. Quantiles use NumPy default linear method; counts include every saved particle. SHA256 hashes are entire H5 bytes.",
+  "checkpoints": [
+    {
+      "step": 3,
+      "accepted_time_s": 0.00046875,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000003.h5",
+      "sha256": "0383fcdd6179e0d5549438f82324926ae7422b32357f524525ae66df1fbcc283",
+      "particles": 600,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.0000000555887472,
+        1.0040871676157208,
+        1.004622264711076,
+        1.0046501776395256
+      ],
+      "count_stretch_ge_1_8": 0,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.6830424666404724,
+      "estimated_material_line_over_core_median": 0.6846432417881674,
+      "estimated_material_line_under_one_core_count": 600,
+      "particle_volume_min": 2.03869817028135e-07,
+      "position_min_xyz": [
+        -0.17801885306835175,
+        -0.3102896809577942,
+        -0.004425560124218464
+      ],
+      "position_max_xyz": [
+        0.17801885306835175,
+        0.3102896809577942,
+        -0.0012630675919353962
+      ]
+    },
+    {
+      "step": 150,
+      "accepted_time_s": 0.0234375,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000150.h5",
+      "sha256": "0a08195789261518e0dc325bee8816aac618dd4380b9e82b688372c50737c8c3",
+      "particles": 31158,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.0503930053622739,
+        1.4661052329714848,
+        1.8453982563736875,
+        1.9993630465146917
+      ],
+      "count_stretch_ge_1_8": 482,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.6296831369400024,
+      "estimated_material_line_over_core_median": 0.6977736073367953,
+      "estimated_material_line_under_one_core_count": 29874,
+      "particle_volume_min": 2.8643311722476028e-08,
+      "position_min_xyz": [
+        -0.3227772116661072,
+        -0.3243929445743561,
+        -0.08193927258253098
+      ],
+      "position_max_xyz": [
+        0.3227774500846863,
+        0.3243926465511322,
+        0.016836009919643402
+      ]
+    },
+    {
+      "step": 180,
+      "accepted_time_s": 0.028125,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000180.h5",
+      "sha256": "fabd885a35dc530f1d34c8372e0285a3047c5ad83509cc3f390bd041505ebcba",
+      "particles": 38802,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.0589018913752182,
+        1.5305876755889123,
+        1.9271564464461726,
+        1.9995923993616442
+      ],
+      "count_stretch_ge_1_8": 1266,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.6196428537368774,
+      "estimated_material_line_over_core_median": 0.6918858537662987,
+      "estimated_material_line_under_one_core_count": 36682,
+      "particle_volume_min": 1.4321655861238014e-08,
+      "position_min_xyz": [
+        -0.32669392228126526,
+        -0.3284831643104553,
+        -0.09686145186424255
+      ],
+      "position_max_xyz": [
+        0.3266941010951996,
+        0.3284829556941986,
+        0.017840253189206123
+      ]
+    },
+    {
+      "step": 240,
+      "accepted_time_s": 0.0375,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000240.h5",
+      "sha256": "2552bffb82aa68452b447d638019637d785fc2183f0a52ab3089d3cf476a61cd",
+      "particles": 59197,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.0874588772778266,
+        1.5795421726607306,
+        1.9409333047534556,
+        1.9998662373254557
+      ],
+      "count_stretch_ge_1_8": 2314,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.5936931371688843,
+      "estimated_material_line_over_core_median": 0.6749852801408947,
+      "estimated_material_line_under_one_core_count": 55378,
+      "particle_volume_min": 3.5338074688695542e-09,
+      "position_min_xyz": [
+        -0.33363255858421326,
+        -0.33926597237586975,
+        -0.12437979131937027
+      ],
+      "position_max_xyz": [
+        0.33363279700279236,
+        0.339265912771225,
+        0.0237940214574337
+      ]
+    },
+    {
+      "step": 288,
+      "accepted_time_s": 0.045,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000288.h5",
+      "sha256": "7f99fe79b9ca6eb7a32c84f802ed2442b9d869c77dca3b260546deb4807c4a59",
+      "particles": 83676,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.127301600213974,
+        1.6549764108820941,
+        1.9529958733929238,
+        1.9998878565307447
+      ],
+      "count_stretch_ge_1_8": 4292,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.5820626020431519,
+      "estimated_material_line_over_core_median": 0.6746876273480398,
+      "estimated_material_line_under_one_core_count": 76868,
+      "particle_volume_min": 8.834518672173886e-10,
+      "position_min_xyz": [
+        -0.34156620502471924,
+        -0.3484995663166046,
+        -0.14706817269325256
+      ],
+      "position_max_xyz": [
+        0.3415659964084625,
+        0.34849944710731506,
+        0.030425572767853737
+      ]
+    },
+    {
+      "step": 327,
+      "accepted_time_s": 0.05109375,
+      "path": "build/quad-refinement-qualification-91b668b5/tutorials/vpm/07_quadcopter/solution/vpm/vpm_000327.h5",
+      "sha256": "485f100ac0ffe1b1d2c711ce79ecf52abf9e0993358d575c5552a87dea8e228a",
+      "particles": 116807,
+      "stretch_ratio_quantiles_50_90_99_max": [
+        1.1674623948511806,
+        1.688190815692269,
+        1.9565979504987525,
+        1.9998951611125315
+      ],
+      "count_stretch_ge_1_8": 6719,
+      "count_stretch_ge_2": 0,
+      "reference_length_over_core_median": 0.5747004151344299,
+      "estimated_material_line_over_core_median": 0.6788245144268993,
+      "estimated_material_line_under_one_core_count": 106107,
+      "particle_volume_min": 7.968481985365372e-10,
+      "position_min_xyz": [
+        -0.34325799345970154,
+        -0.3518448770046234,
+        -0.1635647863149643
+      ],
+      "position_max_xyz": [
+        0.343258261680603,
+        0.35184574127197266,
+        0.03887854143977165
+      ]
+    }
+  ],
+  "algorithm": "Split is selected at stretch>=2 (or absolute threshold if configured; neither tutorial configures one). One parent is replaced by two children, each half vortex strength and volume; child reference strength is half current parent magnitude, child reference length half current estimated line; core radius is retained. This resets each child stretch ratio to one. New emitted particles receive fresh references. Hard capacity failure is explicit.",
+  "case_settings": {
+    "quad": {
+      "interval_steps": 1,
+      "max_stretch_factor": 2,
+      "max_n_particles": 500000,
+      "full_steps": 2304,
+      "emission_particles_per_step": 200,
+      "removal_bounds": [
+        -1.5,
+        1.5,
+        -1.5,
+        1.5,
+        -3,
+        1
+      ]
+    },
+    "rotor": {
+      "interval_steps": 5,
+      "max_stretch_factor": 2,
+      "max_n_particles": 600000,
+      "selective_eddy_viscosity_coefficient": 0.5,
+      "viscous_particle_spacing": "wake_spacing"
+    }
+  },
+  "interpretation": [
+    "Saved ratios remain below two immediately after refinement, so current evidence does not show an immediate repeat-split or lineage reset bug.",
+    "Many material line estimates are shorter than the fixed Gaussian core radius even as descendants continue to split. This suggests possible numerical over-resolution, but the core-length proxy does not establish field accuracy or authorize suppressing splits.",
+    "The quad removal bounds have not been reached in saved step327; full-horizon capacity and stability remain unproved. Increasing the cap alone would not prove stability."
+  ],
+  "diagnostic_cost": {
+    "function": "gaussian_refinement_integral_transfer",
+    "source": "source/solvers/vpm/stabilization/filament_refinement.py",
+    "algorithmic_cost": "O(split_count * total_particles) Gaussian pair evaluation in chunked NumPy/SciPy",
+    "callsite_audit": "rg over source and tests found only function definition and __all__ export; not called in the quad/rotor step path. Do not attribute observed wall time to it.",
+    "active_refinement_work": "split_stretched_filaments computes O(N) moments and O(split_count) isolated self/sibling energy; manager health/accept checks are O(N).",
+    "step336_observed_wall_s": 161.43
+  },
+  "next_validation": "Before changing physical split eligibility, compare direct velocity and full velocity gradient at representative child/parent neighborhoods plus conserved quantities and accepted trajectories under any core-scale condition. No such paired validation was run here."
+}
