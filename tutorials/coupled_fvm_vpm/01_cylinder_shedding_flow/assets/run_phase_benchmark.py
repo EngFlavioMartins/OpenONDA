@@ -14,9 +14,9 @@ def parse_args(argv=None):
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--pilot", action="store_true")
-    # The case uses FMM beneath SlipSlabInduction. CUDA is not a qualified
-    # backend for that evaluator; keep the default aligned with coupled_case.
-    parser.add_argument("--device", choices=("CPU", "VULKAN", "METAL"), default="CPU")
+    # f32 FMM (including its SlipSlab wrapper) is now CUDA-qualified. Keep
+    # the portable default, but permit an explicit GPU execution request.
+    parser.add_argument("--device", choices=("CPU", "CUDA", "VULKAN", "METAL"), default="CPU")
     args = parser.parse_args(argv)
     if args.kind == "reference" and args.pilot:
         parser.error("The reference runs the full declared horizon")

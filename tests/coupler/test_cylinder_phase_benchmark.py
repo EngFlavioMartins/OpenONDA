@@ -30,11 +30,12 @@ def test_phase_driver_defaults_to_supported_backend(tmp_path):
     assert args.device in particles.numerics.induction.supported_devices
 
 
-def test_phase_driver_rejects_unsupported_cuda_before_startup(tmp_path):
+def test_phase_driver_accepts_qualified_cuda_without_starting_solver(tmp_path):
     driver = load("run_phase_benchmark")
-    with pytest.raises(SystemExit) as exc:
-        driver.parse_args(["coupled", "--root", str(tmp_path), "--device", "CUDA"])
-    assert exc.value.code == 2
+    args = driver.parse_args(["coupled", "--root", str(tmp_path), "--device", "CUDA"])
+    assert args.device == "CUDA"
+    _, particles, _, _ = case.coupled_case(device=args.device)
+    assert args.device in particles.numerics.induction.supported_devices
     assert list(tmp_path.iterdir()) == []
 
 
