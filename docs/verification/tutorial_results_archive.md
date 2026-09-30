@@ -166,7 +166,10 @@ also visually inspected. Subsequent plotting coverage is recorded above.
 - [x] Complete plotting verification for every archived tutorial from a separate Git clone or export.
 - [x] Verify automatic LFS hydration and archive checksums in a separate local clone.
 - [x] Commit the verified implementation and LFS pointers.
-- [ ] Publish the commit and associated LFS objects before another machine clones from GitHub.
+- [x] Publish the commits and result payloads for other machines: release assets
+  replaced LFS distribution on 30 September, preserving every original commit
+  ID. A normal fresh clone and complete sample download passed verification;
+  see the [publication record](../../studies/samples_snapshot_2026-09-30/verification.json).
 
 ## Earlier requests retained
 

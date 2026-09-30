@@ -48,3 +48,25 @@ Use a separate destination: these newer samples must not be combined with older
 numerical solutions from the per-case archives. The normal `./allplot.sh` workflow
 continues to restore its matched samples and solution fields. This snapshot
 contains samples only and cannot by itself resume a numerical simulation.
+
+## Publication verification
+
+All 18 result assets (9,122,205,342 bytes, including the existing case bundles
+and superseded delta-wing archive) were uploaded and checked against GitHub's
+SHA-256 digests. This sample snapshot occupies 3,154,626,364 compressed bytes.
+
+A separate network clone retrieved and restored all 8,145 sample files through
+anonymous HTTPS downloads. Archive and member checksums and VTK collection
+dependencies passed. A second, ordinary shallow clone of `development` succeeded
+without LFS skip flags or a recovery bundle; its Taylor–Green archive downloaded
+and restored automatically. VTK readers opened both restored VPM sample data
+and FVM volume data. The 45 archive tests and 16 cylinder workflow tests passed.
+See [the verification record](verification.json).
+
+The 62 initially unpublished commits were published with their original hashes.
+Four historical archive commits used GitHub's Git data API, checking both tree
+and commit hashes before non-forced fast-forward updates. Normal Git pushes
+published the remaining commits. No history rewrite or billing change was
+required. The release also retains a verified bundle of those original commits.
+Old commits still contain their original LFS pointers and are subject to the
+account's existing LFS budget; their result payloads are mirrored in the release.
