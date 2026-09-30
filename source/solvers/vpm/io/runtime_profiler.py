@@ -190,7 +190,7 @@ class RuntimeProfiler:
         unchanged. The optional breakdown is controlled by ``detailed``.
         """
         detailed = self._last if self.detailed else None
-        Logging.step_timing(self.step_time, detailed)
+        Logging.step_timing(self.step_time, detailed, label="Evolution wall time")
 
     def format_report(self) -> list[str]:
         """Render cumulative host timers in the common quantity/unit layout."""

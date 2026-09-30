@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "d971710736669c1915d53ebda15695421fc22ad84723ddcbc88393c5974636da",
+  "archive_size": 153190189,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/coupled_fvm_vpm-02_cube_flow-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

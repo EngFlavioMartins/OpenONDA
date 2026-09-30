@@ -1,0 +1,40 @@
+{
+  "unique_pytest_checks_passed_across_runs": 342,
+  "primary_suite": {
+    "initial_passed": 222,
+    "initial_failed": 2,
+    "resolved_by_targeted_reruns": [
+      "stale regularization capacity expectation",
+      "writer-only fixture missing new preparation helper"
+    ]
+  },
+  "targeted_final_runs": {
+    "cache_and_capacity_checks": 10,
+    "final_event_reuse": 1,
+    "vlm_velocity_reuse": 1,
+    "vlm_surface_backups": 6,
+    "tutorial_launchers": 19,
+    "serial_and_two_rank_history_and_launcher_checks": {
+      "passed": 22,
+      "stale_campaign_launcher_expectation_then_resolved": 1
+    },
+    "native_fvm_vpm_smoke": 7
+  },
+  "tutorial_suite": {
+    "initial_passed": 87,
+    "initial_failed": 21,
+    "resolved_by_targeted_reruns": [
+      "19 stale launcher preamble/campaign expectations",
+      "2 MPI socket failures in sandbox; local MPI rerun passed"
+    ]
+  },
+  "additional_checks": [
+    "CPU saved-cloud numerical benchmark",
+    "native CUDA Gaussian vorticity parity",
+    "Fourier benchmark parity",
+    "ruff check",
+    "ruff format check",
+    "git diff --check"
+  ],
+  "scope": "Short native restart/continuation regressions and component benchmarks; full production-duration tutorials were not rerun."
+}

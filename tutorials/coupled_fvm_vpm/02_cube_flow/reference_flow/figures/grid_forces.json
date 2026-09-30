@@ -1,0 +1,111 @@
+{
+  "statistics_window": [
+    15.0,
+    30.0
+  ],
+  "grids": [
+    {
+      "name": "grid_h010125",
+      "h": 0.10125,
+      "cells": 68271,
+      "mean_drag": 1.0206926251988442,
+      "rms_drag": 0.016829534820158757,
+      "rms_lift": 5.2126628762137146e-05,
+      "rms_side": 5.390145759193953e-05,
+      "strouhal": 0.06644518272425155,
+      "complete_cycles": 0,
+      "uncertainty_95": {
+        "mean_drag": null,
+        "rms_lift": null,
+        "strouhal": null
+      },
+      "qualified_statistics": false,
+      "qualification_reasons": [
+        "fewer than ten complete force cycles"
+      ],
+      "repeated_history_segments": 1
+    },
+    {
+      "name": "grid_h00675",
+      "h": 0.0675,
+      "cells": 242668,
+      "mean_drag": 0.998802860070356,
+      "rms_drag": 0.031388884853080196,
+      "rms_lift": 6.115900916463116e-05,
+      "rms_side": 6.412951491754992e-05,
+      "strouhal": 0.06644518272425155,
+      "complete_cycles": 0,
+      "uncertainty_95": {
+        "mean_drag": null,
+        "rms_lift": null,
+        "strouhal": null
+      },
+      "qualified_statistics": false,
+      "qualification_reasons": [
+        "fewer than ten complete force cycles"
+      ],
+      "repeated_history_segments": 1
+    },
+    {
+      "name": "grid_h0045",
+      "h": 0.045,
+      "cells": 744588,
+      "mean_drag": 0.9686513821143976,
+      "rms_drag": 0.06976364578215506,
+      "rms_lift": 7.992182459705269e-05,
+      "rms_side": 8.271582583100092e-05,
+      "strouhal": 0.06644518272425155,
+      "complete_cycles": 0,
+      "uncertainty_95": {
+        "mean_drag": null,
+        "rms_lift": null,
+        "strouhal": null
+      },
+      "qualified_statistics": false,
+      "qualification_reasons": [
+        "fewer than ten complete force cycles"
+      ],
+      "repeated_history_segments": 1
+    }
+  ],
+  "convergence": {
+    "mean_drag": {
+      "valid": false,
+      "order": null,
+      "extrapolated": null,
+      "fine_gci": null,
+      "reason": "differences do not decrease with refinement"
+    },
+    "rms_drag": {
+      "valid": false,
+      "order": null,
+      "extrapolated": null,
+      "fine_gci": null,
+      "reason": "differences do not decrease with refinement"
+    },
+    "rms_lift": {
+      "valid": false,
+      "order": null,
+      "extrapolated": null,
+      "fine_gci": null,
+      "reason": "differences do not decrease with refinement"
+    },
+    "rms_side": {
+      "valid": false,
+      "order": null,
+      "extrapolated": null,
+      "fine_gci": null,
+      "reason": "differences do not decrease with refinement"
+    },
+    "strouhal": {
+      "valid": false,
+      "order": null,
+      "extrapolated": null,
+      "fine_gci": null,
+      "reason": "mesh ratios or differences are not monotone"
+    }
+  },
+  "statistics_qualified": false,
+  "force_grid_qualified": false,
+  "scope": "Force-grid statistics only; temporal, domain and profile convergence remain separate gates."
+}

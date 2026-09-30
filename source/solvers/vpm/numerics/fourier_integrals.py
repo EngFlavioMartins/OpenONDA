@@ -142,6 +142,53 @@ def _wave_numbers(
     return np.broadcast_arrays(kx, ky, kz)
 
 
+def _spectral_blocks(shape):
+    """Bound quadratic-reduction scratch to 65,536 spectral cells."""
+    for i in range(0, shape[0], 16):
+        for j in range(0, shape[1], 32):
+            for k in range(0, shape[2], 128):
+                yield (slice(i, i + 16), slice(j, j + 32), slice(k, k + 128))
+
+
+def _quadratic_integrals(spectrum, wave_numbers, padded_shape, spacing, viscosity_spectrum=None):
+    """Reduce the unchanged Fourier quadratic forms using bounded scratch.
+
+    Full-volume curls, velocities and conjugate products can each exceed
+    hundreds of MB for long wakes. Only the spectra need to stay resident.
+    The block reduction changes summation order, not the grid or precision.
+    """
+    multiplicity = np.full(spectrum[0].shape[2], 2.0)
+    multiplicity[0] = 1.0
+    if padded_shape[2] % 2 == 0:
+        multiplicity[-1] = 1.0
+    totals = np.zeros(5, dtype=np.float64)
+    for block in _spectral_blocks(spectrum[0].shape):
+        waves = tuple(component[block] for component in wave_numbers)
+        norm_sq = sum(component * component for component in waves)
+        inverse = np.divide(1.0, norm_sq, out=np.zeros_like(norm_sq), where=norm_sq > 0.0)
+        test_filter = np.exp(-(spacing**2) * norm_sq)
+        weight = multiplicity[block[2]][None, None, :]
+        values = tuple(component[block] for component in spectrum)
+        for axis in range(3):
+            squared = np.abs(values[axis]) ** 2
+            totals[1] += np.sum(weight * squared, dtype=np.float64)
+            totals[2] += np.sum(weight * squared * test_filter, dtype=np.float64)
+            first, second = (axis + 1) % 3, (axis + 2) % 3
+            velocity = (
+                1j * (waves[first] * values[second] - waves[second] * values[first]) * inverse
+            )
+            totals[0] += np.sum(weight * np.abs(velocity) ** 2, dtype=np.float64)
+            totals[3] += np.sum(weight * np.real(velocity * values[axis].conj()), dtype=np.float64)
+            if viscosity_spectrum is not None:
+                totals[4] -= np.sum(
+                    weight * np.real(values[axis] * viscosity_spectrum[axis][block].conj()),
+                    dtype=np.float64,
+                )
+    totals /= float(np.prod(padded_shape) * spacing**3)
+    totals[0] *= 0.5
+    return tuple(float(value) for value in totals)
+
+
 def _free_space_energy_and_power(compact, spacing, core_radius, viscosity):
     """Linear correlations with the unbounded Gaussian transverse Green tensor.
 
@@ -309,7 +356,7 @@ def gaussian_fourier_integrals(
         if effective_viscosity is not None and not uniform_viscosity
         else None
     )
-    transformed_previous: list[np.ndarray] | None = None
+    previous_integrals = None
     factorial = 1
     for order in range(1 if common_radius else radius_expansion_order + 1):
         if order > 0:
@@ -332,79 +379,43 @@ def gaussian_fourier_integrals(
             # padded components explicitly consumes eight times the compact
             # grid storage. The omitted translation is one common spectral
             # phase, which cancels from every quadratic integral below.
-            transformed[axis] += (
-                fft.rfftn(compact[..., axis], s=padded_shape, workers=-1) * multiplier
-            )
+            component = fft.rfftn(compact[..., axis], s=padded_shape, workers=-1)
+            component *= multiplier
+            transformed[axis] += component
+            del component
             if viscosity_transformed is not None and viscosity_compact is not None:
-                viscosity_transformed[axis] += (
-                    fft.rfftn(viscosity_compact[..., axis], s=padded_shape, workers=-1) * multiplier
-                )
-        if common_radius or order == radius_expansion_order - 1:
-            transformed_previous = [component.copy() for component in transformed]
-    assert transformed_previous is not None
-
-    del multiplier, reference_gaussian, viscosity_compact
-    # Only the last Fourier axis has conjugate-pair multiplicity. Broadcasting
-    # its weights avoids another full diagnostic-volume allocation.
-    multiplicity = np.ones((1, 1, transformed[0].shape[2]), dtype=np.float64)
-    multiplicity[:, :, 1:] = 2.0
-    if padded_shape[2] % 2 == 0:
-        multiplicity[:, :, -1] = 1.0
-    domain_volume = float(np.prod(padded_shape) * spacing**3)
-    inverse_norm_sq = np.divide(1.0, norm_sq, out=np.zeros_like(norm_sq), where=norm_sq > 0.0)
-    test_filter = np.exp(-(spacing**2) * norm_sq)
-    wave_numbers = (kx, ky, kz)
-
-    def quadratic_integrals(
-        spectrum: list[np.ndarray],
-    ) -> tuple[float, float, float, float]:
-        # Accumulate one component at a time; keeping three curl and three
-        # velocity volumes simultaneously dominates the memory of long wakes.
-        energy = enstrophy = enstrophy_test = helicity = 0.0
-        for axis in range(3):
-            squared = np.abs(spectrum[axis]) ** 2
-            enstrophy += np.sum(multiplicity * squared, dtype=np.float64)
-            enstrophy_test += np.sum(multiplicity * squared * test_filter, dtype=np.float64)
-            del squared
-            first, second = (axis + 1) % 3, (axis + 2) % 3
-            curl = wave_numbers[first] * spectrum[second] - wave_numbers[second] * spectrum[first]
-            velocity = 1j * curl * inverse_norm_sq
-            energy += np.sum(multiplicity * np.abs(velocity) ** 2, dtype=np.float64)
-            helicity += np.sum(
-                multiplicity * np.real(velocity * np.conjugate(spectrum[axis])),
-                dtype=np.float64,
+                component = fft.rfftn(viscosity_compact[..., axis], s=padded_shape, workers=-1)
+                component *= multiplier
+                viscosity_transformed[axis] += component
+                del component
+        if not common_radius and order == radius_expansion_order - 1:
+            # Retain five scalars instead of copying three full complex grids.
+            previous_integrals = _quadratic_integrals(
+                transformed, (kx, ky, kz), padded_shape, spacing
             )
-        return (
-            float(energy / (2.0 * domain_volume)),
-            float(enstrophy / domain_volume),
-            float(enstrophy_test / domain_volume),
-            float(helicity / domain_volume),
-        )
 
-    total_kinetic_energy, total_enstrophy, test_filtered_enstrophy, total_helicity = (
-        quadratic_integrals(transformed)
+    del multiplier, reference_gaussian, viscosity_compact, norm_sq
+    integrals = _quadratic_integrals(
+        transformed, (kx, ky, kz), padded_shape, spacing, viscosity_transformed
+    )
+    total_kinetic_energy, total_enstrophy, test_filtered_enstrophy, total_helicity, power = (
+        integrals
     )
     viscous_kinetic_energy_rate = None
     if uniform_viscosity:
         viscous_kinetic_energy_rate = -float(effective_viscosity[0]) * total_enstrophy
-    if viscosity_transformed is not None:
-        viscous_kinetic_energy_rate = -float(
-            sum(
-                np.sum(
-                    multiplicity
-                    * np.real(transformed[axis] * np.conjugate(viscosity_transformed[axis])),
-                    dtype=np.float64,
-                )
-                for axis in range(3)
-            )
-            / domain_volume
-        )
+    elif viscosity_transformed is not None:
+        viscous_kinetic_energy_rate = power
+    if common_radius:
+        previous_integrals = integrals
+    assert previous_integrals is not None
     (
         previous_order_total_kinetic_energy,
         previous_order_total_enstrophy,
         _,
         previous_order_total_helicity,
-    ) = quadratic_integrals(transformed_previous)
+        _,
+    ) = previous_integrals
     if free_space:
         total_kinetic_energy, viscous_kinetic_energy_rate = _free_space_energy_and_power(
             compact, spacing, float(core_radius[0]), float(effective_viscosity[0])

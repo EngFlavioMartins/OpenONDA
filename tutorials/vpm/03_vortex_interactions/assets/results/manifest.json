@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "b6312774990d8a02bd70f39665172713f9cacdc6850a362c7fc1389ad7792e9f",
+  "archive_size": 312909900,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/vpm-03_vortex_interactions-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

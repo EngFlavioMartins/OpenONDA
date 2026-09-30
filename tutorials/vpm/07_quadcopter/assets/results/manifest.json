@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "86bf58edc732334123283a8a7255da3f6722840b6627a78dfdeb6955f8a1319f",
+  "archive_size": 32824405,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/vpm-07_quadcopter-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

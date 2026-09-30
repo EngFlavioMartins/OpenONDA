@@ -92,12 +92,22 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
 
     fresh = commands(directory / "allrun.sh")
     continuing = commands(directory / "allcontinue.sh")
-    assert fresh[1] == "./allclean.sh"
-    assert fresh[:1] + fresh[2:] == continuing
-    assert all(
-        shlex.split(command)[:2] in (["python", "setup.py"], ["python", "assets/rwm_ensemble.py"])
-        for command in continuing[1:]
-    )
+    assert fresh[:2] == continuing[:2] == ["set -e", 'cd -- "$(dirname -- "$0")"']
+    assert fresh[2] == "./allclean.sh"
+    fresh_runs = [shlex.split(command) for command in fresh[3:]]
+    continuing_runs = [shlex.split(command) for command in continuing[2:]]
+    assert len(fresh_runs) == len(continuing_runs) > 0
+    for fresh_run, continuing_run in zip(fresh_runs, continuing_runs, strict=True):
+        if fresh_run[:2] == ["python", "assets/run_pipeline.py"]:
+            # The multi-stage campaign resumes its stage ledger as well as
+            # the native checkpoints selected by its setup invocations.
+            assert continuing_run == fresh_run + ["--resume"]
+        else:
+            assert fresh_run == continuing_run
+            assert continuing_run[:2] in (
+                ["python", "setup.py"],
+                ["python", "assets/rwm_ensemble.py"],
+            )
     assert os.access(directory / "allcontinue.sh", os.X_OK)
     tree = ast.parse((directory / "setup.py").read_text())
     assert any(

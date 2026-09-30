@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Surface pressure distribution -Cp(x/c) from solution/surface_cp.csv
-(written by airfoil_flow_setup.py at the end of the run)."""
+"""Plot the surface pressure distribution saved by setup.py."""
 
 if not __package__:
     from pathlib import Path as _CasePath

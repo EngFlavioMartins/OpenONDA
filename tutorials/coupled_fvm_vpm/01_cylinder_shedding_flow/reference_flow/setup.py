@@ -43,14 +43,14 @@ CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
 
 
-def create_solver(
+def build_case(
     name: str,
     h: float,
     *,
-    output_root: Path | None = None,
     end_time: float | None = None,
     cores: int | None = None,
-) -> fvm.FVMSolver:
+):
+    """Return the reference configuration and mesh without allocating a solver."""
     refinement_request = 4.0 * h / 3.0
     source_half_span = 16.0 * refinement_request
     span_layers = max(4, math.ceil(SPAN / h))
@@ -164,6 +164,18 @@ def create_solver(
         ],
         initial_velocity=VELOCITY,
     )
+    return setup, mesh
+
+
+def create_solver(
+    name: str,
+    h: float,
+    *,
+    output_root: Path | None = None,
+    end_time: float | None = None,
+    cores: int | None = None,
+) -> fvm.FVMSolver:
+    setup, mesh = build_case(name, h, end_time=end_time, cores=cores)
     artifact_root = CASE_DIR if output_root is None else Path(output_root)
     return fvm.create_fvm_solver(
         setup,

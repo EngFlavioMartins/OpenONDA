@@ -1,0 +1,89 @@
+{
+  "description": "Final moving-flat-plate wake rendering",
+  "input": {
+    "particles": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vpm/vpm_000197.h5",
+    "particles_sha256": "5c8f89fb69d9da4cfd85710f7b61a4cf3c57610ebe60f6fe87af3f982a94d4ce",
+    "vlm_surface": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp",
+    "vlm_surface_sha256": "9a3eb4cb930a42d526555f9b9dbfb576e8889077f080363bf2a98daf4f4260a3"
+  },
+  "state": {
+    "step": 197,
+    "time_s": 2.4625,
+    "particle_count": 11032,
+    "panel_count": 224,
+    "plate_velocity_m_per_s": [
+      -10.0,
+      0.0,
+      0.0
+    ],
+    "vorticity_magnitude_range_per_s": [
+      0.01698406426371142,
+      28.33898336308089
+    ]
+  },
+  "glyphs": {
+    "meaning": "visual particle spheres, not particle core radii",
+    "field": "kernel-reconstructed vorticity at particle positions",
+    "radius_m": "0.012 + 0.065*(|omega|/max(|omega|))^0.55",
+    "radius_range_m": [
+      0.013098057047464997,
+      0.077
+    ],
+    "colour_map": "viridis, linear in |omega|"
+  },
+  "motion_arrows": {
+    "direction": [
+      -1.0,
+      0.0,
+      0.0
+    ],
+    "starts_m": [
+      [
+        -21.496852111816406,
+        -5.5,
+        0.55
+      ],
+      [
+        -21.496852111816406,
+        0.0,
+        0.55
+      ],
+      [
+        -21.496852111816406,
+        5.5,
+        0.55
+      ]
+    ],
+    "length_m": 1.8
+  },
+  "camera": {
+    "projection": "parallel",
+    "focal_point_m": [
+      -11.6,
+      0.0,
+      -0.75
+    ],
+    "position_m": [
+      -11.6,
+      -28.0,
+      12.0
+    ],
+    "view_up": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "parallel_scale": 7.0,
+    "image_pixels": [
+      1800,
+      900
+    ]
+  },
+  "output": {
+    "raw_png": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake_raw.png",
+    "raw_png_sha256": "8dfac849b73014c2797d9df51ab1b9f09667555fecdb2e409da91920c37c1ccc",
+    "overlay_tex": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.tex",
+    "final_png": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.png",
+    "final_png_sha256": "5afff25e80c482fae42ecfe09c9c8137f00c83bdec1d414e1572ade025c5fc31"
+  }
+}

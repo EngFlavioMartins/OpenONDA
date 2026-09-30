@@ -72,6 +72,36 @@ Tutorials with custom FVM histories use `solver.reconcile_history(filename)`
 before appending their own rows. Unrecognized files in shared sample directories
 are left alone. Regenerate plots after continuation to reflect the active data.
 
+## Backup preparation and performance
+
+The optimized VPM writer keeps the existing HDF5 schema (10.1), full restart
+precision, VPM VTU files, VLM VTP files and PVD collections. Directory names,
+frame numbers, output arrays, cadence and atomic commit ordering are unchanged;
+existing checkpoints require no conversion. FVM serialization and the coupled
+manifest contract are unchanged. Coupled saves use the same VPM field preparation.
+
+Within a scheduled or final output event, VPM can reuse the accepted velocity
+already evaluated for health/diagnostics. This is a single-use preparation:
+particle revision, clock, background velocity and provider identity must match.
+The preparation expires when the event ends, including on failure. Independent
+manual saves and coupled coordinator saves evaluate their current transport
+field, so changes in external boundary data cannot reuse a previous event's
+velocity.
+
+For large float32 Gaussian clouds, backup vorticity uses the source hierarchy to
+skip contributions beyond 12 pair-mean core radii, where the Gaussian density
+already underflows to zero. All remaining contributions, including self terms,
+use the existing Gaussian kernel and individual source/target core sizes.
+Summation order can change float32 rounding. Other kernels, float64 and planar
+induction keep their existing calculations. Fourier diagnostics retain the same
+grid, expansion order and double precision, but reduce quadratic integrals in
+bounded blocks and retain penultimate-order scalars instead of duplicate spectra.
+
+Logs distinguish evolution time, accepted-state health, diagnostics, backups and
+samplers, and total standalone step time. Each successful backup reports field
+preparation and file-writing time separately. The total step includes scheduled
+output; evolution time alone does not measure the time between steps.
+
 ## Compatibility and explicit control
 
 The mesh and numerical configuration must remain compatible with the saved

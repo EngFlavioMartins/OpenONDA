@@ -89,6 +89,7 @@ class PhysicsBase:
         # Cached treecode instance (to avoid memory leak from repeated allocations)
         self._treecode = None
         self._treecode_max_particles = 0
+        self._vorticity_tree = None
         # A target-query phase often asks for blending and coupling-face
         # fields from one immutable particle state.  Keep one source-tree key so
         # those traversals share the LBVH instead of rebuilding it per caller.
@@ -1630,6 +1631,9 @@ class PhysicsBase:
                 N,
             )
             return
+        if self.particle_kernel == "GAUSSIAN" and self.accumulator_dtype == ti.f32 and N >= 2048:
+            self._compute_gaussian_vorticities(particles)
+            return
         self.compute_vorticities_kernel(
             particles.position,
             particles.vortex_strength,
@@ -1637,6 +1641,46 @@ class PhysicsBase:
             particles.vorticity,
             N,
         )
+
+    def _compute_gaussian_vorticities(self, particles):
+        """Reuse induction hierarchy storage, or allocate bounded diagnostic scratch."""
+        from .induction.fmm.device import FMMInduction
+        from .induction.treecode.lbvh import TaichiTreecode
+
+        count = len(particles)
+        backend = getattr(self, "induction", None)
+        if isinstance(backend, FMMInduction):
+            # Stage fields can have the same identity with different contents.
+            # Always rebuild at the accepted state, without another FMM solve.
+            with backend.fixed_source_targets(
+                particles.position, particles.vortex_strength, particles.core_radius, count
+            ):
+                backend.workspace.tree.compute_gaussian_particle_vorticity(
+                    particles.vorticity, count
+                )
+            return
+        if self.velocity_method == "TREECODE":
+            tree = self._ensure_target_tree_current(particles, self.velocity_theta)
+        else:
+            tree = self._vorticity_tree
+            if tree is None or count > tree.max_n_particles:
+                capacity = min(
+                    self.max_n_particles, max(count, 2 * tree.max_n_particles if tree else 2048)
+                )
+                if tree is not None:
+                    ti.sync()
+                    tree.destroy()
+                    self._vorticity_tree = None
+                tree = TaichiTreecode(
+                    max_n_particles=capacity,
+                    max_nodes=2 * capacity,
+                    kernel_type="GAUSSIAN",
+                    hierarchy_only=True,
+                    max_evaluation_points=min(4096, self.max_evaluation_points),
+                )
+                self._vorticity_tree = tree
+            tree.build(particles.position, particles.vortex_strength, particles.core_radius, count)
+        tree.compute_gaussian_particle_vorticity(particles.vorticity, count)
 
     def compute_target_vorticity(self, particles, target_position: np.ndarray) -> np.ndarray:
         """

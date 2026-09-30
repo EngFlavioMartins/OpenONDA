@@ -57,6 +57,118 @@ def test_roundtrip_and_existing_results(tmp_path):
     assert restore_results(target, output) == []
 
 
+def test_cli_restores_explicit_bundle_without_touching_source(tmp_path):
+    from openonda.results import main
+
+    source, output = bundle(tmp_path)
+    target = tmp_path / "relocated"
+    assert main(["restore", str(target), "--bundle", str(output)]) == 0
+    for relative in ("samples/history.csv", "solution/state.bin"):
+        assert (target / relative).read_bytes() == (source / relative).read_bytes()
+    (target / "samples/history.csv").write_bytes(b"new local run")
+    assert main(["restore", str(target), "--bundle", str(output)]) == 0
+    assert (target / "samples/history.csv").read_bytes() == b"new local run"
+
+
+@pytest.mark.parametrize("sharded", [False, True])
+@pytest.mark.parametrize("pointer", [False, True])
+def test_release_download_restore_and_offline_cache(tmp_path, monkeypatch, sharded, pointer):
+    from openonda import results
+
+    if sharded:
+        monkeypatch.setattr(results, "_ARCHIVE_PART_BYTES", 100)
+    source, output = bundle(tmp_path)
+    manifest = json.loads((output / "manifest.json").read_text())
+    records = manifest.get("archive_parts") or [{"name": "data.tar.gz"}]
+    payloads = {}
+    for record in records:
+        path = output / record["name"]
+        url = "https://example.org/" + path.name
+        payloads[url] = path.read_bytes()
+        if sharded:
+            record["url"] = url
+        else:
+            manifest.update(archive_url=url, archive_size=path.stat().st_size)
+        if pointer:
+            path.write_text("version https://git-lfs.github.com/spec/v1\n")
+        else:
+            path.unlink()
+    (output / "manifest.json").write_text(json.dumps(manifest))
+    calls = []
+
+    def fetch(request, timeout):
+        calls.append(request.full_url)
+        stream = io.BytesIO(payloads[request.full_url])
+        stream.geturl = lambda: request.full_url
+        return stream
+
+    monkeypatch.setattr(results, "urlopen", fetch)
+    target = tmp_path / "downloaded"
+    assert restore_results(target, output) == manifest["restore_roots"]
+    assert len(calls) == len(payloads)
+    for relative in ("samples/history.csv", "solution/state.bin"):
+        assert (target / relative).read_bytes() == (source / relative).read_bytes()
+    calls.clear()
+    assert restore_results(tmp_path / "offline", output) == manifest["restore_roots"]
+    assert not calls
+
+
+@pytest.mark.parametrize("damage", ["oversize", "truncated", "checksum", "disconnect", "redirect"])
+def test_failed_download_leaves_no_cache_or_results(tmp_path, monkeypatch, damage):
+    from openonda import results
+
+    _, output = bundle(tmp_path)
+    manifest = json.loads((output / "manifest.json").read_text())
+    archive = output / "data.tar.gz"
+    payload = archive.read_bytes()
+    manifest.update(archive_url="https://example.org/data.tar.gz", archive_size=len(payload))
+    (output / "manifest.json").write_text(json.dumps(manifest))
+    archive.unlink()
+    if damage == "oversize":
+        payload += b"extra"
+    elif damage == "truncated":
+        payload = payload[:-1]
+    elif damage == "checksum":
+        payload = b"X" * len(payload)
+
+    def fetch(request, timeout):
+        if damage == "disconnect":
+            raise OSError("connection interrupted")
+        stream = io.BytesIO(payload)
+        stream.geturl = lambda: (
+            "http://example.org/file" if damage == "redirect" else request.full_url
+        )
+        return stream
+
+    monkeypatch.setattr(results, "urlopen", fetch)
+    target = tmp_path / "downloaded"
+    with pytest.raises((ResultsError, OSError)):
+        restore_results(target, output)
+    assert not archive.exists()
+    assert not target.exists()
+    assert not list(output.glob(".results-download-*"))
+
+
+def test_download_preserves_existing_local_results_and_corrupt_cache(tmp_path, monkeypatch):
+    from openonda import results
+
+    _, output = bundle(tmp_path)
+    manifest = json.loads((output / "manifest.json").read_text())
+    archive = output / "data.tar.gz"
+    manifest.update(
+        archive_url="https://example.org/data.tar.gz", archive_size=archive.stat().st_size
+    )
+    (output / "manifest.json").write_text(json.dumps(manifest))
+    archive.write_bytes(b"corrupt local archive")
+    monkeypatch.setattr(results, "urlopen", lambda *a, **kw: pytest.fail("Unexpected download"))
+    target = tmp_path / "local"
+    (target / "samples").mkdir(parents=True)
+    assert restore_results(target, output) == []
+    with pytest.raises(ResultsError, match="archive"):
+        restore_results(tmp_path / "empty", output)
+    assert archive.read_bytes() == b"corrupt local archive"
+
+
 def test_deterministic_and_explicit_superseded(tmp_path):
     source, output = bundle(tmp_path)
     second = tmp_path / "second"

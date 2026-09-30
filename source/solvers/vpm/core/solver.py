@@ -8,7 +8,7 @@ License: GPL-3.0-or-later
 """
 
 from collections.abc import Callable, Iterator
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from numbers import Real
 from pathlib import Path
 from time import perf_counter
@@ -757,6 +757,7 @@ class VPMSolver:
         if not getattr(self, "_initial_conditions_built", True):
             self._build_initial_conditions()
         self._log_configuration_once()
+        step_started = perf_counter()
         try:
             self.stepper.advance(defer_output=defer_output)
         except BaseException as exc:
@@ -766,14 +767,8 @@ class VPMSolver:
         self._sync_restart_state()
         if defer_output:
             return
-        self._refresh_accepted_step_health()
-        if self.vlm_solver is not None:
-            self._record_vlm_diagnostics()
-        if self.output_manager.flow_integrals_due(self.step, self.time):
-            # Accepted-step health already refreshed velocity, gradients and
-            # LES viscosity at this exact state. Reuse those fields for output.
-            self._update_all_flow_integrals()
-        self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
+        self.execute_scheduled_samplers()
+        Logging.section("STEP TIMING", ("Step total wall time", perf_counter() - step_started, "s"))
 
     def start_from(self, selection="latest") -> bool:
         """Restore a native VPM/VLM checkpoint and target ``RunPlan.steps``.
@@ -943,9 +938,10 @@ class VPMSolver:
                 status = "unstable"
                 failure = invalid_health_failure
             else:
-                self._refresh_diagnostics_for_output()
-                if self.case.run.final_backup:
-                    self._save_final_backup()
+                with self._output_preparation():
+                    self._refresh_diagnostics_for_output()
+                    if self.case.run.final_backup:
+                        self._save_final_backup()
                 try:
                     if budget_exhausted or health_limit_failure is not None:
                         self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
@@ -1078,11 +1074,44 @@ class VPMSolver:
             raise primary_failure
         self._closed = True
 
+    @contextmanager
+    def _output_preparation(self):
+        """Allow one backup to reuse fields within a framework-owned event.
+
+        Nothing survives the event: manual saves, coupling exchanges, changed
+        callbacks and restart loads must evaluate their current transport field.
+        Consuming the token before writing also prevents sampler callbacks from
+        reusing it for a second save with externally changed boundary data.
+        """
+        self._preparing_output = True
+        self._prepared_backup_velocity = None
+        try:
+            yield
+        finally:
+            self._preparing_output = False
+            self._prepared_backup_velocity = None
+
+    def _backup_velocity_key(self):
+        return (
+            self.step,
+            self.time,
+            self.particles.state_revision,
+            self.particles.n_particles_total,
+            tuple(self.freestream_velocity),
+            id(self.stage_rhs),
+            id(self.stage_rhs.position_guard),
+            tuple(id(provider) for provider in self.stage_rhs.providers),
+            id(getattr(self.physics, "velocity_override", None)),
+            id(getattr(self.physics, "velocity_override_gradient", None)),
+        )
+
     def _refresh_particle_diagnostic_fields(self) -> None:
         """Refresh derived diagnostic fields without changing future evolution."""
         if self.particles.n_particles_total:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
+        if getattr(self, "_preparing_output", False):
+            self._prepared_backup_velocity = self._backup_velocity_key()
 
     def _refresh_accepted_step_health(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
@@ -1123,12 +1152,22 @@ class VPMSolver:
         # Coupled drivers call this after replacing their authoritative part of
         # the particle cloud, so the accepted health state must be measured
         # here rather than before that synchronization.
-        self._refresh_accepted_step_health()
-        if self.vlm_solver is not None:
-            self._record_vlm_diagnostics()
-        if self.output_manager.flow_integrals_due(self.step, self.time):
-            self._update_all_flow_integrals()
-        self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
+        started = perf_counter()
+        with self._output_preparation():
+            self._refresh_accepted_step_health()
+            health_finished = perf_counter()
+            if self.vlm_solver is not None:
+                self._record_vlm_diagnostics()
+            if self.output_manager.flow_integrals_due(self.step, self.time):
+                self._update_all_flow_integrals()
+            diagnostics_finished = perf_counter()
+            self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
+        Logging.section(
+            "OUTPUT TIMING",
+            ("Accepted-state health", health_finished - started, "s"),
+            ("Flow and VLM diagnostics", diagnostics_finished - health_finished, "s"),
+            ("Backups and samplers", perf_counter() - diagnostics_finished, "s"),
+        )
 
     def execute_final_samples(self) -> None:
         """Execute samplers carrying a final-only schedule."""
@@ -2392,8 +2431,9 @@ class VPMSolver:
 
     def _save_backup_to(self, filename: str) -> None:
         """Write numerical state to a path owned by an internal coordinator."""
-        self._refresh_backup_particle_fields()
-        _BackupIO.save(self, filename, append_step=False, verbose=False)
+        self._write_prepared_backup(
+            lambda: _BackupIO.save(self, filename, append_step=False, verbose=False)
+        )
 
     def _load_backup_from(
         self,
@@ -2483,31 +2523,61 @@ class VPMSolver:
         the solution.
         """
         self._sync_restart_state()
-        self._refresh_backup_particle_fields()
-        self.io.write_backup()
+        self._write_prepared_backup(self.io.write_backup)
         self._write_run_manifest("running" if self._run_started else "partial", None)
         self._last_backup_state = (self.step, self.time, self.particles.state_revision)
 
+    def _write_prepared_backup(self, writer) -> None:
+        started = perf_counter()
+        self._refresh_backup_particle_fields()
+        # Serialization must download these fields anyway. Put its required
+        # device barrier here so GPU computation is charged to preparation.
+        ti.sync()
+        prepared = perf_counter()
+        writer()
+        self.last_backup_timing = {
+            "preparation": prepared - started,
+            "writing": perf_counter() - prepared,
+        }
+        Logging.section(
+            "BACKUP TIMING",
+            ("Field preparation", self.last_backup_timing["preparation"], "s"),
+            ("File writing", self.last_backup_timing["writing"], "s"),
+        )
+
     def _write_backup(self) -> None:
         """Write the backup selected by the sole output-schedule owner."""
-        self.save_backup()
+        self._allow_backup_velocity_reuse = True
+        try:
+            self.save_backup()
+        finally:
+            self._allow_backup_velocity_reuse = False
 
     def _save_final_backup(self) -> None:
         """Do not rewrite a scheduled checkpoint of the identical final state."""
         previous = getattr(self, "_last_backup_state", None)
         if previous is None or previous != (self.step, self.time, self.particles.state_revision):
-            self.save_backup()
+            self._write_backup()
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh derived fields before writing a numerical restart backup.
 
         A backup stores velocity and vorticity, so its correctness cannot
-        depend on cloud size or on an earlier diagnostic query. Evaluate the
-        complete transport field (including bound VLM and external sources)
+        depend on cloud size. Reuse only a matching, single-use preparation
+        from the current output event; otherwise evaluate the complete
+        transport field (including bound VLM and external sources)
         at the accepted time, without publishing stretching/exchange rates.
         """
         N = self.particles.n_particles_total
-        if N > 0:
+        prepared = getattr(self, "_prepared_backup_velocity", None)
+        self._prepared_backup_velocity = None
+        reuse_velocity = (
+            getattr(self, "_preparing_output", False)
+            and getattr(self, "_allow_backup_velocity_reuse", False)
+            and prepared is not None
+            and prepared == self._backup_velocity_key()
+        )
+        if N > 0 and not reuse_velocity:
             self.stage_rhs.evaluate(
                 StageState(
                     position=self.particles.position,

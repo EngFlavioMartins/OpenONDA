@@ -218,6 +218,9 @@ def test_scheduled_and_manual_backups_share_surface_writer(tmp_path, monkeypatch
         _run_started=True,
     )
     solver.io = SolverIO(solver)
+    solver._write_prepared_backup = lambda writer: VPMSolver._write_prepared_backup(solver, writer)
+    # This writer-only fixture has no live Taichi fields to synchronize.
+    monkeypatch.setattr("source.solvers.vpm.core.solver.ti.sync", lambda: None)
     monkeypatch.setattr(
         "source.solvers.vpm.io.solver_io._BackupIO.save", lambda *a, **k: calls.append(solver.step)
     )

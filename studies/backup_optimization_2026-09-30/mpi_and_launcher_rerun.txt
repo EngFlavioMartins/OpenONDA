@@ -1,0 +1,31 @@
+................F......                                                  [100%]
+=================================== FAILURES ===================================
+_ test_launchers_clean_only_for_fresh_runs_and_setups_select_latest[coupled_fvm_vpm/01_cylinder_shedding_flow] _
+
+relative = PosixPath('coupled_fvm_vpm/01_cylinder_shedding_flow')
+
+    @pytest.mark.parametrize("relative", CASES, ids=str)
+    def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
+        directory = ROOT / relative
+    
+        def commands(path):
+            return [
+                line
+                for line in path.read_text().splitlines()
+                if line.strip() and not line.startswith("#")
+            ]
+    
+        fresh = commands(directory / "allrun.sh")
+        continuing = commands(directory / "allcontinue.sh")
+        assert fresh[:2] == continuing[:2] == ["set -e", 'cd -- "$(dirname -- "$0")"']
+        assert fresh[2] == "./allclean.sh"
+>       assert fresh[:2] + fresh[3:] == continuing
+E       AssertionError: assert ['set -e', 'c...nder/default'] == ['set -e', 'c...ult --resume']
+E         
+E         At index 2 diff: 'python assets/run_pipeline.py --run-dir study_results/cylinder/default' != 'python assets/run_pipeline.py --run-dir study_results/cylinder/default --resume'
+E         Use -v to get more diff
+
+tests/tutorials/test_continuation.py:97: AssertionError
+=========================== short test summary info ============================
+FAILED tests/tutorials/test_continuation.py::test_launchers_clean_only_for_fresh_runs_and_setups_select_latest[coupled_fvm_vpm/01_cylinder_shedding_flow]
+1 failed, 22 passed, 72 deselected in 90.43s (0:01:30)

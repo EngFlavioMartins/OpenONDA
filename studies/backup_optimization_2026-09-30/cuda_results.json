@@ -1,0 +1,6 @@
+{
+  "device": "Arch.cuda",
+  "particles": 3073,
+  "relative_l2_error": 2.8716955924323884e-08,
+  "max_absolute_error": 0.000244140625
+}

@@ -2,13 +2,21 @@
 
 ## Storage and use
 
+The [30 September sample snapshot](../../studies/samples_snapshot_2026-09-30/README.md)
+additionally preserves every current tutorial sample file, including study
+histories and superseded branches. It restores into a separate destination using
+`python -m openonda.results restore DESTINATION --bundle BUNDLE_DIRECTORY`.
+The per-case bundles below remain matched plotting snapshots.
+
 Each archived case stores `assets/results/manifest.json` in Git and a lossless
-`data.tar.gz` (automatically split for large new archives) in Git LFS. The manifest records source revision, scientific status,
+`data.tar.gz` (automatically split for large new archives) as versioned GitHub
+release assets. Missing payloads download automatically on restoration and are
+verified against the manifest before being cached locally. The manifest records source revision, scientific status,
 saved solver clocks and SHA-256 hashes of every file. Current samples are retained
 without temporal or spatial decimation. Unreferenced superseded restart histories
 remain local; accepted continuation segments must remain in any published archive.
 
-Install Git LFS before cloning, install OpenONDA and the documented rendering
+Clone the `development` branch, install OpenONDA and the documented rendering
 dependencies, then run the case's `./allplot.sh`. The first command restores missing
 result directories. It verifies the archive and every member before publishing
 directories. Existing local result directories prevent restoration of the entire
@@ -21,12 +29,17 @@ templates remain small and produce their own results through `allrun.sh`.
 restoration is confined to `allplot.sh`. Plot archives contain the saved states
 needed by their figures, not necessarily every state required for a new simulation.
 
-Git stores small LFS pointers rather than multi-gigabyte binary history. Frozen
+Git stores checksum manifests rather than multi-gigabyte payloads. Frozen
 archives should be published at meaningful result milestones, never after each
-solver step. LFS still stores each changed archive version in full; its remote
-storage and transfer allowances must cover published snapshots. See
-[GitHub's LFS storage model](https://docs.github.com/en/billing/concepts/product-billing/git-lfs).
-No history rewriting or deletion is required by this scheme.
+solver step. On 30 September, GitHub rejected LFS publication because the
+repository exceeded its LFS budget. The current checkout therefore uses
+[versioned release assets](https://github.com/EngFlavioMartins/OpenONDA/releases/tag/tutorial-results-2026-09-30),
+and has no LFS pointers that could make cloning fail. Existing commits retain
+their original identities and historical LFS pointers. The superseded delta-wing
+archive from the outgoing history is also mirrored in the data release.
+GitHub supports [large binary release assets](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases);
+all uploaded assets are below its 2 GiB per-file limit. No history rewrite or
+account billing change is required.
 
 The archive packer is `openonda.results.pack_results`: it accepts a source
 directory, bundle destination, explicit case-relative files, scientific status
@@ -35,7 +48,10 @@ Freeze files from running simulations before packing. Record metadata first and
 include only accepted checkpoints through that recorded clock. Live sample tails
 remain stored; plots select accepted history where their validation requires it.
 
-## Coverage and verification
+## Earlier archive coverage and verification
+
+The measurements below describe the original LFS packaging and its local tests.
+The same payload bytes are now distributed by the release mechanism above.
 
 The twelve frozen bundles contain 4,614 files: 6,644,037,070 bytes before
 compression and 4,838,433,580 bytes stored in LFS. Git tracks small LFS pointers

@@ -116,3 +116,49 @@ def test_componentwise_fft_padding_preserves_mixed_core_and_viscosity_integrals(
             np.testing.assert_allclose(value, expected, rtol=2e-12, atol=1e-12, err_msg=name)
         else:
             assert value == expected
+
+
+@pytest.mark.parametrize("padded_shape", [(35, 37, 263), (34, 36, 262)])
+def test_blocked_fourier_reductions_match_full_volume_quadratic_forms(padded_shape):
+    """Exercise block boundaries, zero mode, Nyquist and variable viscosity."""
+    from source.solvers.vpm.numerics.fourier_integrals import _quadratic_integrals, _wave_numbers
+
+    rng = np.random.default_rng(902)
+    shape = (*padded_shape[:2], padded_shape[2] // 2 + 1)
+    spectra = [rng.normal(size=shape) + 1j * rng.normal(size=shape) for _ in range(3)]
+    viscosity = [rng.normal(size=shape) + 1j * rng.normal(size=shape) for _ in range(3)]
+    spacing = 0.13
+    waves = _wave_numbers(padded_shape, spacing)
+    k2 = sum(k * k for k in waves)
+    inverse = np.divide(1.0, k2, out=np.zeros_like(k2), where=k2 > 0)
+    weight = np.full((1, 1, shape[2]), 2.0)
+    weight[..., 0] = 1.0
+    if padded_shape[2] % 2 == 0:
+        weight[..., -1] = 1.0
+    velocities = [
+        1j
+        * (waves[(a + 1) % 3] * spectra[(a + 2) % 3] - waves[(a + 2) % 3] * spectra[(a + 1) % 3])
+        * inverse
+        for a in range(3)
+    ]
+    volume = np.prod(padded_shape) * spacing**3
+    expected = (
+        np.array(
+            [
+                0.5 * sum(np.sum(weight * abs(u) ** 2) for u in velocities),
+                sum(np.sum(weight * abs(w) ** 2) for w in spectra),
+                sum(np.sum(weight * abs(w) ** 2 * np.exp(-(spacing**2) * k2)) for w in spectra),
+                sum(
+                    np.sum(weight * (u * w.conj()).real)
+                    for u, w in zip(velocities, spectra, strict=True)
+                ),
+                -sum(
+                    np.sum(weight * (w * nu.conj()).real)
+                    for w, nu in zip(spectra, viscosity, strict=True)
+                ),
+            ]
+        )
+        / volume
+    )
+    actual = _quadratic_integrals(spectra, waves, padded_shape, spacing, viscosity)
+    np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=1e-14)

@@ -733,7 +733,7 @@ class Logging:
         )
 
     @staticmethod
-    def step_timing(step_elapsed, detailed_timing=None):
+    def step_timing(step_elapsed, detailed_timing=None, *, label="Step wall time"):
         """
         Log timing information for a completed simulation step.
 
@@ -741,7 +741,7 @@ class Logging:
             step_elapsed: Time taken for the current step [s]
             detailed_timing: Optional dictionary with per-operation durations
         """
-        rows: list[log_style.Row] = [("Step wall time", step_elapsed, "s")]
+        rows: list[log_style.Row] = [(label, step_elapsed, "s")]
         detailed_timing = detailed_timing or {}
         for operation, duration in detailed_timing.items():
             fraction = duration / step_elapsed if step_elapsed > 0 else 0.0

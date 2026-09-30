@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "41f333662a4ce4b4502906e7d7d078a0922bd41eeb3f54eca859aa36dff8729e",
+  "archive_size": 88646684,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/vpm-04_flat_plate-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

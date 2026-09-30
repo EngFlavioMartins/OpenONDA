@@ -4,12 +4,14 @@
     {
       "name": "data.tar.gz.part000",
       "sha256": "b365ddcc434a91f8249a79de34a9f2ac595d61c81bd5c145c40d18e6c44b6d9d",
-      "size": 1073741824
+      "size": 1073741824,
+      "url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/vpm-05_delta_wing-data.tar.gz.part000"
     },
     {
       "name": "data.tar.gz.part001",
       "sha256": "6f8b04352497733aef078e123e97a0eff9bef806f18819da4194946cbba35c5a",
-      "size": 42288413
+      "size": 42288413,
+      "url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/vpm-05_delta_wing-data.tar.gz.part001"
     }
   ],
   "archive_sha256": "564be1aef5c825aa0f5054698221fab2f19cbab1310f8f709c889446779aa17c",

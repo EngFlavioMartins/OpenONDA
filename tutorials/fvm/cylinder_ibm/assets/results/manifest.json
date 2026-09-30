@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "285adfe89127f57dafae1883d6be66adafb9d07404ac12fe79dbdcabec3a8ecf",
+  "archive_size": 13256587,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/fvm-cylinder_ibm-data.tar.gz",
   "excluded_superseded": [
     "samples/restart-branches/before-caduyjlz/ibm_forces_history.csv.superseded",
     "solution/restart-branches/before-49spnn4l/diagnostics.jsonl.superseded",

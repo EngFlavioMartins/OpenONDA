@@ -159,10 +159,14 @@ tutorials/vpm/05_delta_wing/figures/delta_wing_30fps.json
 !tutorials/**/*.sh
 tests/**/reference_flow/**
 
-# Working output stays local; approved lossless snapshots use assets/results and Git LFS.
+# Working output stays local; published lossless snapshots use release assets.
 # See docs/verification/tutorial_results_archive.md.
 **/samples/
 **/study_results/
+**/assets/results/data.tar.gz
+**/assets/results/data.tar.gz.part[0-9]*
+**/assets/results/.results-pack-*/
+**/assets/results/.results-download-*/
 
 # direnv
 .envrc

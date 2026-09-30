@@ -17,6 +17,8 @@ from pathlib import Path, PurePosixPath
 import shutil
 import tarfile
 import tempfile
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
@@ -236,12 +238,59 @@ def _verify_archive_file(path: Path, sha256: str, size: int | None = None) -> No
         pointer = stream.read(128).startswith(b"version https://git-lfs.github.com/spec/v1\n")
     if pointer:
         raise ResultsError(
-            f"Result archive is a Git LFS pointer: {path}. Run git lfs pull --include='**/assets/results/data.tar.gz*' from the checkout, then retry."
+            f"Result archive is a Git LFS pointer: {path}. Run git lfs pull from the checkout, then retry."
         )
     if size is not None and (not isinstance(size, int) or size <= 0 or path.stat().st_size != size):
         raise ResultsError(f"Result archive size mismatch: {path}")
     if _sha256(path) != sha256:
         raise ResultsError(f"Result archive SHA-256 mismatch: {path}")
+
+
+def _ensure_archive_file(
+    path: Path, sha256: str, size: int | None = None, url: str | None = None
+) -> None:
+    """Fetch an absent published archive, then verify it before caching it."""
+    pointer = False
+    if path.is_file() and not path.is_symlink():
+        with path.open("rb") as stream:
+            pointer = stream.read(128).startswith(b"version https://git-lfs.github.com/spec/v1\n")
+    if url is None or (os.path.lexists(path) and not pointer):
+        _verify_archive_file(path, sha256, size)
+        return
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise ResultsError(f"Result archive requires an HTTPS download URL: {url!r}")
+    if not isinstance(size, int) or size <= 0:
+        raise ResultsError(f"Published result archive requires a positive size: {path}")
+    if (
+        not isinstance(sha256, str)
+        or len(sha256) != 64
+        or any(c not in "0123456789abcdef" for c in sha256)
+    ):
+        raise ResultsError(f"Published result archive requires a SHA-256 checksum: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading tutorial results: {path.name} ({size:,} bytes)", flush=True)
+    with tempfile.TemporaryDirectory(prefix=".results-download-", dir=path.parent) as temporary:
+        download = Path(temporary) / path.name
+        digest = hashlib.sha256()
+        received = 0
+        request = Request(url, headers={"User-Agent": "OpenONDA-results"})
+        with urlopen(request, timeout=60) as response, download.open("wb") as destination:
+            if urlparse(response.geturl()).scheme != "https":
+                raise ResultsError("Result archive download redirected away from HTTPS")
+            for block in iter(lambda: response.read(1024 * 1024), b""):
+                received += len(block)
+                if received > size:
+                    raise ResultsError(f"Result archive size mismatch: {path}")
+                destination.write(block)
+                digest.update(block)
+        if received != size or digest.hexdigest() != sha256:
+            raise ResultsError(f"Result archive download checksum or size mismatch: {path}")
+        # Another restore may have populated the cache during the download.
+        if path.exists() and not pointer:
+            _verify_archive_file(path, sha256, size)
+        else:
+            os.replace(download, path)
 
 
 def find_bundle(case_dir: Path) -> Path:
@@ -283,15 +332,23 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
     archive = bundle_dir / manifest["archive"]
     parts = manifest.get("archive_parts")
     if parts is None:
-        _verify_archive_file(archive, manifest.get("archive_sha256"))
+        _ensure_archive_file(
+            archive,
+            manifest.get("archive_sha256"),
+            manifest.get("archive_size"),
+            manifest.get("archive_url"),
+        )
     else:
         if not isinstance(parts, list) or not parts:
             raise ResultsError("Archive parts must be a nonempty list")
         for index, record in enumerate(parts):
             if record.get("name") != f"data.tar.gz.part{index:03d}":
                 raise ResultsError("Archive parts must have consecutive canonical names")
-            _verify_archive_file(
-                bundle_dir / record["name"], record.get("sha256"), record.get("size")
+            _ensure_archive_file(
+                bundle_dir / record["name"],
+                record.get("sha256"),
+                record.get("size"),
+                record.get("url"),
             )
     case_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".results-restore-", dir=case_dir) as temporary:
@@ -378,9 +435,12 @@ def main(argv: list[str] | None = None) -> int:
     subcommands = parser.add_subparsers(dest="command", required=True)
     restore = subcommands.add_parser("restore", help="Restore absent tutorial result directories")
     restore.add_argument("case_dir", type=Path, nargs="?", default=Path.cwd())
+    restore.add_argument(
+        "--bundle", type=Path, help="Bundle directory (defaults to CASE_DIR/assets/results)"
+    )
     args = parser.parse_args(argv)
     try:
-        restored = restore_results(args.case_dir)
+        restored = restore_results(args.case_dir, args.bundle)
     except (
         ResultsError,
         OSError,

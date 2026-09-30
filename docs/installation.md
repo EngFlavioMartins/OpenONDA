@@ -7,17 +7,19 @@ and Intel macOS. All 3.11 security patch updates are supported. This single
 minor version covers the available Taichi wheels on these platforms, including
 Taichi 1.7.1 on Intel macOS. Windows is not currently qualified.
 
-The [README clone command](../README.md#installation) uses shallow Git history
-and Git LFS for lossless tutorial result archives. Install Git LFS before cloning.
+The [README clone command](../README.md#installation) uses shallow Git history.
+The current checkout does not require Git LFS. Lossless tutorial result archives
+are downloaded from versioned GitHub releases and checked against Git-tracked hashes.
 To retrieve the full `development` history later, run `git fetch --unshallow origin`.
 Working `samples/` and `solution/` directories remain local; approved result
 snapshots are versioned in `assets/results` with file hashes and provenance.
 `allplot.sh` restores archived inputs only when its result directories are absent.
 It does not overwrite or combine an archive with an existing local run.
 
-For an existing clone made without LFS downloads, run
-`git lfs pull --include='**/assets/results/data.tar.gz*'` once. Git LFS is needed
-for archived results, not for numerical solver installation. See the
+Missing archives download automatically on the first `allplot.sh` run; cached
+archives and restored results remain usable offline. For the complete newer
+sample snapshot, follow the [sample retrieval instructions](../studies/samples_snapshot_2026-09-30/README.md).
+See the
 [archive checklist](verification/tutorial_results_archive.md) for case coverage.
 
 ## Normal installation

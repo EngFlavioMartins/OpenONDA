@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "732535f4d2a9ef959d7f78f65eff55360c7e1c112bb79e783f4fe39a3616f153",
+  "archive_size": 112400,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/fvm-taylor_green-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

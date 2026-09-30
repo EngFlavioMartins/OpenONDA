@@ -1,0 +1,7184 @@
+[
+  {
+    "step": 1,
+    "seconds": 16.524,
+    "elapsed": 18.4,
+    "particles": 144
+  },
+  {
+    "step": 10,
+    "seconds": 0.52634,
+    "elapsed": 49.3,
+    "particles": 1440
+  },
+  {
+    "step": 20,
+    "seconds": 0.7791,
+    "elapsed": 64.0,
+    "particles": 2880
+  },
+  {
+    "step": 30,
+    "seconds": 0.90802,
+    "elapsed": 77.8,
+    "particles": 4321
+  },
+  {
+    "step": 40,
+    "seconds": 1.1668,
+    "elapsed": 94.5,
+    "particles": 5761
+  },
+  {
+    "step": 50,
+    "seconds": 1.2233,
+    "elapsed": 112.1,
+    "particles": 7201
+  },
+  {
+    "step": 60,
+    "seconds": 1.3882,
+    "elapsed": 132.1,
+    "particles": 8641
+  },
+  {
+    "step": 70,
+    "seconds": 1.67,
+    "elapsed": 156.4,
+    "particles": 10081
+  },
+  {
+    "step": 80,
+    "seconds": 2.0315,
+    "elapsed": 186.3,
+    "particles": 11521
+  },
+  {
+    "step": 90,
+    "seconds": 1.975,
+    "elapsed": 215.9,
+    "particles": 12961
+  },
+  {
+    "step": 100,
+    "seconds": 2.2691,
+    "elapsed": 250.5,
+    "particles": 14403
+  },
+  {
+    "step": 110,
+    "seconds": 2.2768,
+    "elapsed": 285.5,
+    "particles": 15843
+  },
+  {
+    "step": 120,
+    "seconds": 2.6367,
+    "elapsed": 318.0,
+    "particles": 17283
+  },
+  {
+    "step": 129,
+    "seconds": 2.666,
+    "elapsed": 354.1,
+    "particles": 18579
+  },
+  {
+    "step": 130,
+    "seconds": 2.5385,
+    "elapsed": 363.9,
+    "particles": 18723
+  },
+  {
+    "step": 139,
+    "seconds": 2.8429,
+    "elapsed": 396.0,
+    "particles": 20021
+  },
+  {
+    "step": 140,
+    "seconds": 2.7041,
+    "elapsed": 405.9,
+    "particles": 20166
+  },
+  {
+    "step": 148,
+    "seconds": 2.883,
+    "elapsed": 437.2,
+    "particles": 21319
+  },
+  {
+    "step": 150,
+    "seconds": 3.2937,
+    "elapsed": 452.1,
+    "particles": 21607
+  },
+  {
+    "step": 157,
+    "seconds": 3.5481,
+    "elapsed": 482.6,
+    "particles": 22616
+  },
+  {
+    "step": 160,
+    "seconds": 3.0668,
+    "elapsed": 505.2,
+    "particles": 23049
+  },
+  {
+    "step": 168,
+    "seconds": 3.3754,
+    "elapsed": 539.7,
+    "particles": 24206
+  },
+  {
+    "step": 170,
+    "seconds": 3.2105,
+    "elapsed": 557.6,
+    "particles": 24494
+  },
+  {
+    "step": 177,
+    "seconds": 3.7836,
+    "elapsed": 590.7,
+    "particles": 25503
+  },
+  {
+    "step": 180,
+    "seconds": 3.5295,
+    "elapsed": 616.1,
+    "particles": 25937
+  },
+  {
+    "step": 186,
+    "seconds": 3.6765,
+    "elapsed": 646.6,
+    "particles": 26801
+  },
+  {
+    "step": 190,
+    "seconds": 3.8062,
+    "elapsed": 676.4,
+    "particles": 27377
+  },
+  {
+    "step": 196,
+    "seconds": 4.2562,
+    "elapsed": 708.1,
+    "particles": 28243
+  },
+  {
+    "step": 200,
+    "seconds": 4.675,
+    "elapsed": 739.0,
+    "particles": 28821
+  },
+  {
+    "step": 206,
+    "seconds": 4.1658,
+    "elapsed": 773.8,
+    "particles": 29689
+  },
+  {
+    "step": 210,
+    "seconds": 4.4518,
+    "elapsed": 806.7,
+    "particles": 30268
+  },
+  {
+    "step": 215,
+    "seconds": 4.6429,
+    "elapsed": 837.1,
+    "particles": 30989
+  },
+  {
+    "step": 220,
+    "seconds": 5.0874,
+    "elapsed": 869.5,
+    "particles": 31711
+  },
+  {
+    "step": 225,
+    "seconds": 4.8874,
+    "elapsed": 924.0,
+    "particles": 32433
+  },
+  {
+    "step": 230,
+    "seconds": 5.0423,
+    "elapsed": 957.8,
+    "particles": 33156
+  },
+  {
+    "step": 235,
+    "seconds": 5.4096,
+    "elapsed": 1008.1,
+    "particles": 33877
+  },
+  {
+    "step": 240,
+    "seconds": 5.8588,
+    "elapsed": 1045.2,
+    "particles": 34599
+  },
+  {
+    "step": 245,
+    "seconds": 5.5477,
+    "elapsed": 1095.9,
+    "particles": 35319
+  },
+  {
+    "step": 249,
+    "seconds": 6.0346,
+    "elapsed": 1126.3,
+    "particles": 35897
+  },
+  {
+    "step": 250,
+    "seconds": 6.0642,
+    "elapsed": 1150.9,
+    "particles": 36042
+  },
+  {
+    "step": 254,
+    "seconds": 6.1956,
+    "elapsed": 1182.4,
+    "particles": 36618
+  },
+  {
+    "step": 258,
+    "seconds": 5.9955,
+    "elapsed": 1214.5,
+    "particles": 37194
+  },
+  {
+    "step": 260,
+    "seconds": 5.7943,
+    "elapsed": 1251.7,
+    "particles": 37482
+  },
+  {
+    "step": 264,
+    "seconds": 6.0948,
+    "elapsed": 1283.2,
+    "particles": 38058
+  },
+  {
+    "step": 268,
+    "seconds": 6.9176,
+    "elapsed": 1317.5,
+    "particles": 38634
+  },
+  {
+    "step": 270,
+    "seconds": 7.1763,
+    "elapsed": 1358.1,
+    "particles": 38922
+  },
+  {
+    "step": 274,
+    "seconds": 6.6517,
+    "elapsed": 1393.0,
+    "particles": 39498
+  },
+  {
+    "step": 278,
+    "seconds": 7.1842,
+    "elapsed": 1428.1,
+    "particles": 40075
+  },
+  {
+    "step": 280,
+    "seconds": 6.8629,
+    "elapsed": 1469.2,
+    "particles": 40363
+  },
+  {
+    "step": 284,
+    "seconds": 6.8151,
+    "elapsed": 1506.0,
+    "particles": 40939
+  },
+  {
+    "step": 288,
+    "seconds": 7.1293,
+    "elapsed": 1543.1,
+    "particles": 41515
+  },
+  {
+    "step": 290,
+    "seconds": 6.9321,
+    "elapsed": 1580.8,
+    "particles": 41804
+  },
+  {
+    "step": 294,
+    "seconds": 7.8577,
+    "elapsed": 1619.7,
+    "particles": 42380
+  },
+  {
+    "step": 297,
+    "seconds": 7.3817,
+    "elapsed": 1649.8,
+    "particles": 42812
+  },
+  {
+    "step": 300,
+    "seconds": 7.0137,
+    "elapsed": 1708.7,
+    "particles": 43244
+  },
+  {
+    "step": 304,
+    "seconds": 7.8707,
+    "elapsed": 1749.1,
+    "particles": 43820
+  },
+  {
+    "step": 307,
+    "seconds": 8.4627,
+    "elapsed": 1781.8,
+    "particles": 44252
+  },
+  {
+    "step": 310,
+    "seconds": 7.6328,
+    "elapsed": 1829.9,
+    "particles": 44684
+  },
+  {
+    "step": 313,
+    "seconds": 8.0996,
+    "elapsed": 1860.4,
+    "particles": 45116
+  },
+  {
+    "step": 316,
+    "seconds": 7.5929,
+    "elapsed": 1893.4,
+    "particles": 45548
+  },
+  {
+    "step": 319,
+    "seconds": 8.8206,
+    "elapsed": 1928.4,
+    "particles": 45980
+  },
+  {
+    "step": 320,
+    "seconds": 7.81,
+    "elapsed": 1962.2,
+    "particles": 46124
+  },
+  {
+    "step": 323,
+    "seconds": 8.3288,
+    "elapsed": 1993.6,
+    "particles": 46556
+  },
+  {
+    "step": 326,
+    "seconds": 9.3723,
+    "elapsed": 2027.5,
+    "particles": 46988
+  },
+  {
+    "step": 329,
+    "seconds": 8.3331,
+    "elapsed": 2062.7,
+    "particles": 47420
+  },
+  {
+    "step": 330,
+    "seconds": 8.7712,
+    "elapsed": 2113.7,
+    "particles": 47564
+  },
+  {
+    "step": 333,
+    "seconds": 8.1597,
+    "elapsed": 2145.8,
+    "particles": 47996
+  },
+  {
+    "step": 336,
+    "seconds": 8.8001,
+    "elapsed": 2181.1,
+    "particles": 48428
+  },
+  {
+    "step": 339,
+    "seconds": 8.9043,
+    "elapsed": 2217.9,
+    "particles": 48860
+  },
+  {
+    "step": 340,
+    "seconds": 9.257,
+    "elapsed": 2264.6,
+    "particles": 49004
+  },
+  {
+    "step": 343,
+    "seconds": 8.2266,
+    "elapsed": 2297.0,
+    "particles": 49436
+  },
+  {
+    "step": 346,
+    "seconds": 8.7676,
+    "elapsed": 2333.1,
+    "particles": 49868
+  },
+  {
+    "step": 349,
+    "seconds": 9.4256,
+    "elapsed": 2370.3,
+    "particles": 50300
+  },
+  {
+    "step": 350,
+    "seconds": 9.2487,
+    "elapsed": 2413.0,
+    "particles": 50444
+  },
+  {
+    "step": 353,
+    "seconds": 8.872,
+    "elapsed": 2447.3,
+    "particles": 50876
+  },
+  {
+    "step": 356,
+    "seconds": 9.7764,
+    "elapsed": 2485.5,
+    "particles": 51308
+  },
+  {
+    "step": 359,
+    "seconds": 10.071,
+    "elapsed": 2524.6,
+    "particles": 51740
+  },
+  {
+    "step": 360,
+    "seconds": 8.8379,
+    "elapsed": 2572.2,
+    "particles": 51884
+  },
+  {
+    "step": 363,
+    "seconds": 9.7241,
+    "elapsed": 2607.1,
+    "particles": 52316
+  },
+  {
+    "step": 366,
+    "seconds": 9.9907,
+    "elapsed": 2645.4,
+    "particles": 52748
+  },
+  {
+    "step": 369,
+    "seconds": 9.3593,
+    "elapsed": 2684.3,
+    "particles": 53180
+  },
+  {
+    "step": 370,
+    "seconds": 9.5928,
+    "elapsed": 2755.9,
+    "particles": 53324
+  },
+  {
+    "step": 373,
+    "seconds": 9.8676,
+    "elapsed": 2794.8,
+    "particles": 53756
+  },
+  {
+    "step": 376,
+    "seconds": 10.431,
+    "elapsed": 2835.5,
+    "particles": 54188
+  },
+  {
+    "step": 379,
+    "seconds": 9.5908,
+    "elapsed": 2874.3,
+    "particles": 54620
+  },
+  {
+    "step": 380,
+    "seconds": 9.6899,
+    "elapsed": 2922.1,
+    "particles": 54764
+  },
+  {
+    "step": 383,
+    "seconds": 10.482,
+    "elapsed": 2961.8,
+    "particles": 55196
+  },
+  {
+    "step": 386,
+    "seconds": 9.912,
+    "elapsed": 3003.1,
+    "particles": 55628
+  },
+  {
+    "step": 389,
+    "seconds": 10.267,
+    "elapsed": 3042.4,
+    "particles": 56060
+  },
+  {
+    "step": 390,
+    "seconds": 9.7576,
+    "elapsed": 3085.7,
+    "particles": 56204
+  },
+  {
+    "step": 393,
+    "seconds": 10.579,
+    "elapsed": 3127.7,
+    "particles": 56636
+  },
+  {
+    "step": 396,
+    "seconds": 10.948,
+    "elapsed": 3169.8,
+    "particles": 57068
+  },
+  {
+    "step": 399,
+    "seconds": 10.429,
+    "elapsed": 3211.4,
+    "particles": 57500
+  },
+  {
+    "step": 400,
+    "seconds": 10.526,
+    "elapsed": 3260.6,
+    "particles": 57644
+  },
+  {
+    "step": 403,
+    "seconds": 10.428,
+    "elapsed": 3302.6,
+    "particles": 58076
+  },
+  {
+    "step": 406,
+    "seconds": 10.95,
+    "elapsed": 3346.6,
+    "particles": 58508
+  },
+  {
+    "step": 409,
+    "seconds": 11.745,
+    "elapsed": 3392.0,
+    "particles": 58940
+  },
+  {
+    "step": 410,
+    "seconds": 12.175,
+    "elapsed": 3446.4,
+    "particles": 59084
+  },
+  {
+    "step": 413,
+    "seconds": 11.71,
+    "elapsed": 3488.9,
+    "particles": 59516
+  },
+  {
+    "step": 416,
+    "seconds": 10.75,
+    "elapsed": 3532.1,
+    "particles": 59948
+  },
+  {
+    "step": 418,
+    "seconds": 11.965,
+    "elapsed": 3562.4,
+    "particles": 60236
+  },
+  {
+    "step": 420,
+    "seconds": 12.641,
+    "elapsed": 3594.8,
+    "particles": 60524
+  },
+  {
+    "step": 423,
+    "seconds": 10.811,
+    "elapsed": 3668.6,
+    "particles": 60956
+  },
+  {
+    "step": 425,
+    "seconds": 11.62,
+    "elapsed": 3699.5,
+    "particles": 61244
+  },
+  {
+    "step": 427,
+    "seconds": 12.078,
+    "elapsed": 3731.5,
+    "particles": 61532
+  },
+  {
+    "step": 429,
+    "seconds": 11.934,
+    "elapsed": 3763.6,
+    "particles": 61820
+  },
+  {
+    "step": 430,
+    "seconds": 11.401,
+    "elapsed": 3813.0,
+    "particles": 61964
+  },
+  {
+    "step": 433,
+    "seconds": 12.092,
+    "elapsed": 3857.9,
+    "particles": 62396
+  },
+  {
+    "step": 435,
+    "seconds": 12.684,
+    "elapsed": 3890.6,
+    "particles": 62684
+  },
+  {
+    "step": 437,
+    "seconds": 12.087,
+    "elapsed": 3923.3,
+    "particles": 62972
+  },
+  {
+    "step": 439,
+    "seconds": 11.682,
+    "elapsed": 3955.2,
+    "particles": 63260
+  },
+  {
+    "step": 440,
+    "seconds": 11.793,
+    "elapsed": 4006.1,
+    "particles": 63404
+  },
+  {
+    "step": 442,
+    "seconds": 13.077,
+    "elapsed": 4038.2,
+    "particles": 63692
+  },
+  {
+    "step": 444,
+    "seconds": 11.502,
+    "elapsed": 4070.9,
+    "particles": 63980
+  },
+  {
+    "step": 446,
+    "seconds": 11.764,
+    "elapsed": 4102.4,
+    "particles": 64268
+  },
+  {
+    "step": 448,
+    "seconds": 12.65,
+    "elapsed": 4134.7,
+    "particles": 64556
+  },
+  {
+    "step": 450,
+    "seconds": 13.283,
+    "elapsed": 4168.9,
+    "particles": 64844
+  },
+  {
+    "step": 452,
+    "seconds": 12.343,
+    "elapsed": 4244.1,
+    "particles": 65132
+  },
+  {
+    "step": 454,
+    "seconds": 12.237,
+    "elapsed": 4277.0,
+    "particles": 65420
+  },
+  {
+    "step": 456,
+    "seconds": 12.755,
+    "elapsed": 4310.0,
+    "particles": 65708
+  },
+  {
+    "step": 458,
+    "seconds": 13.206,
+    "elapsed": 4344.1,
+    "particles": 65996
+  },
+  {
+    "step": 460,
+    "seconds": 13.474,
+    "elapsed": 4380.5,
+    "particles": 66284
+  },
+  {
+    "step": 462,
+    "seconds": 12.672,
+    "elapsed": 4443.5,
+    "particles": 66572
+  },
+  {
+    "step": 464,
+    "seconds": 13.291,
+    "elapsed": 4479.1,
+    "particles": 66860
+  },
+  {
+    "step": 466,
+    "seconds": 14.006,
+    "elapsed": 4516.4,
+    "particles": 67148
+  },
+  {
+    "step": 468,
+    "seconds": 12.427,
+    "elapsed": 4551.2,
+    "particles": 67437
+  },
+  {
+    "step": 470,
+    "seconds": 12.637,
+    "elapsed": 4585.9,
+    "particles": 67725
+  },
+  {
+    "step": 472,
+    "seconds": 13.335,
+    "elapsed": 4655.2,
+    "particles": 68013
+  },
+  {
+    "step": 474,
+    "seconds": 12.664,
+    "elapsed": 4691.6,
+    "particles": 68301
+  },
+  {
+    "step": 476,
+    "seconds": 13.129,
+    "elapsed": 4726.3,
+    "particles": 68589
+  },
+  {
+    "step": 478,
+    "seconds": 13.9,
+    "elapsed": 4762.8,
+    "particles": 68877
+  },
+  {
+    "step": 480,
+    "seconds": 14.547,
+    "elapsed": 4800.6,
+    "particles": 69165
+  },
+  {
+    "step": 482,
+    "seconds": 14.252,
+    "elapsed": 4879.2,
+    "particles": 69453
+  },
+  {
+    "step": 484,
+    "seconds": 13.976,
+    "elapsed": 4915.2,
+    "particles": 69741
+  },
+  {
+    "step": 486,
+    "seconds": 13.994,
+    "elapsed": 4952.6,
+    "particles": 70029
+  },
+  {
+    "step": 488,
+    "seconds": 15.097,
+    "elapsed": 4992.1,
+    "particles": 70317
+  },
+  {
+    "step": 490,
+    "seconds": 14.256,
+    "elapsed": 5029.3,
+    "particles": 70605
+  },
+  {
+    "step": 492,
+    "seconds": 14.498,
+    "elapsed": 5102.3,
+    "particles": 70894
+  },
+  {
+    "step": 494,
+    "seconds": 15.068,
+    "elapsed": 5141.9,
+    "particles": 71182
+  },
+  {
+    "step": 496,
+    "seconds": 14.376,
+    "elapsed": 5182.0,
+    "particles": 71470
+  },
+  {
+    "step": 498,
+    "seconds": 13.561,
+    "elapsed": 5219.4,
+    "particles": 71758
+  },
+  {
+    "step": 500,
+    "seconds": 15.427,
+    "elapsed": 5259.2,
+    "particles": 72046
+  },
+  {
+    "step": 502,
+    "seconds": 13.912,
+    "elapsed": 5331.9,
+    "particles": 72334
+  },
+  {
+    "step": 504,
+    "seconds": 14.305,
+    "elapsed": 5370.5,
+    "particles": 72622
+  },
+  {
+    "step": 506,
+    "seconds": 14.772,
+    "elapsed": 5409.5,
+    "particles": 72910
+  },
+  {
+    "step": 508,
+    "seconds": 16.496,
+    "elapsed": 5451.8,
+    "particles": 73198
+  },
+  {
+    "step": 510,
+    "seconds": 14.396,
+    "elapsed": 5492.8,
+    "particles": 73486
+  },
+  {
+    "step": 512,
+    "seconds": 15.358,
+    "elapsed": 5601.0,
+    "particles": 73774
+  },
+  {
+    "step": 514,
+    "seconds": 15.592,
+    "elapsed": 5642.4,
+    "particles": 74062
+  },
+  {
+    "step": 516,
+    "seconds": 14.669,
+    "elapsed": 5683.0,
+    "particles": 74350
+  },
+  {
+    "step": 518,
+    "seconds": 15.978,
+    "elapsed": 5725.3,
+    "particles": 74638
+  },
+  {
+    "step": 520,
+    "seconds": 17.499,
+    "elapsed": 5770.0,
+    "particles": 74926
+  },
+  {
+    "step": 522,
+    "seconds": 16.774,
+    "elapsed": 5892.7,
+    "particles": 75214
+  },
+  {
+    "step": 524,
+    "seconds": 17.126,
+    "elapsed": 5937.2,
+    "particles": 75502
+  },
+  {
+    "step": 526,
+    "seconds": 15.344,
+    "elapsed": 5978.3,
+    "particles": 75790
+  },
+  {
+    "step": 528,
+    "seconds": 16.89,
+    "elapsed": 6020.8,
+    "particles": 76078
+  },
+  {
+    "step": 530,
+    "seconds": 16.202,
+    "elapsed": 6064.1,
+    "particles": 76367
+  },
+  {
+    "step": 532,
+    "seconds": 15.05,
+    "elapsed": 6154.4,
+    "particles": 76655
+  },
+  {
+    "step": 534,
+    "seconds": 16.221,
+    "elapsed": 6197.6,
+    "particles": 76943
+  },
+  {
+    "step": 536,
+    "seconds": 16.553,
+    "elapsed": 6242.4,
+    "particles": 77231
+  },
+  {
+    "step": 538,
+    "seconds": 16.375,
+    "elapsed": 6285.1,
+    "particles": 77519
+  },
+  {
+    "step": 540,
+    "seconds": 16.116,
+    "elapsed": 6328.3,
+    "particles": 77807
+  },
+  {
+    "step": 542,
+    "seconds": 15.733,
+    "elapsed": 6426.0,
+    "particles": 78096
+  },
+  {
+    "step": 544,
+    "seconds": 16.544,
+    "elapsed": 6470.3,
+    "particles": 78385
+  },
+  {
+    "step": 546,
+    "seconds": 18.066,
+    "elapsed": 6516.3,
+    "particles": 78673
+  },
+  {
+    "step": 548,
+    "seconds": 16.905,
+    "elapsed": 6562.3,
+    "particles": 78961
+  },
+  {
+    "step": 550,
+    "seconds": 15.601,
+    "elapsed": 6605.6,
+    "particles": 79249
+  },
+  {
+    "step": 552,
+    "seconds": 16.923,
+    "elapsed": 6694.6,
+    "particles": 79537
+  },
+  {
+    "step": 554,
+    "seconds": 15.907,
+    "elapsed": 6740.1,
+    "particles": 79825
+  },
+  {
+    "step": 556,
+    "seconds": 17.435,
+    "elapsed": 6786.1,
+    "particles": 80113
+  },
+  {
+    "step": 558,
+    "seconds": 17.309,
+    "elapsed": 6832.6,
+    "particles": 80401
+  },
+  {
+    "step": 560,
+    "seconds": 17.979,
+    "elapsed": 6879.4,
+    "particles": 80689
+  },
+  {
+    "step": 562,
+    "seconds": 17.796,
+    "elapsed": 6969.1,
+    "particles": 80977
+  },
+  {
+    "step": 564,
+    "seconds": 17.365,
+    "elapsed": 7017.4,
+    "particles": 81265
+  },
+  {
+    "step": 566,
+    "seconds": 17.088,
+    "elapsed": 7064.3,
+    "particles": 81553
+  },
+  {
+    "step": 568,
+    "seconds": 17.812,
+    "elapsed": 7109.7,
+    "particles": 81841
+  },
+  {
+    "step": 570,
+    "seconds": 18.046,
+    "elapsed": 7158.5,
+    "particles": 82129
+  },
+  {
+    "step": 572,
+    "seconds": 17.28,
+    "elapsed": 7249.6,
+    "particles": 82417
+  },
+  {
+    "step": 574,
+    "seconds": 18.158,
+    "elapsed": 7298.0,
+    "particles": 82705
+  },
+  {
+    "step": 576,
+    "seconds": 17.244,
+    "elapsed": 7346.4,
+    "particles": 82993
+  },
+  {
+    "step": 578,
+    "seconds": 17.286,
+    "elapsed": 7392.3,
+    "particles": 83281
+  },
+  {
+    "step": 580,
+    "seconds": 17.58,
+    "elapsed": 7438.3,
+    "particles": 83569
+  },
+  {
+    "step": 582,
+    "seconds": 17.053,
+    "elapsed": 7533.0,
+    "particles": 83857
+  },
+  {
+    "step": 584,
+    "seconds": 19.167,
+    "elapsed": 7581.3,
+    "particles": 84145
+  },
+  {
+    "step": 586,
+    "seconds": 19.258,
+    "elapsed": 7632.4,
+    "particles": 84433
+  },
+  {
+    "step": 588,
+    "seconds": 18.387,
+    "elapsed": 7682.0,
+    "particles": 84721
+  },
+  {
+    "step": 590,
+    "seconds": 18.632,
+    "elapsed": 7730.1,
+    "particles": 85009
+  },
+  {
+    "step": 592,
+    "seconds": 18.957,
+    "elapsed": 7844.6,
+    "particles": 85297
+  },
+  {
+    "step": 594,
+    "seconds": 18.827,
+    "elapsed": 7892.2,
+    "particles": 85585
+  },
+  {
+    "step": 596,
+    "seconds": 19.757,
+    "elapsed": 7944.5,
+    "particles": 85873
+  },
+  {
+    "step": 598,
+    "seconds": 19.131,
+    "elapsed": 7994.2,
+    "particles": 86161
+  },
+  {
+    "step": 600,
+    "seconds": 19.878,
+    "elapsed": 8044.1,
+    "particles": 86449
+  },
+  {
+    "step": 602,
+    "seconds": 18.8,
+    "elapsed": 8162.6,
+    "particles": 86738
+  },
+  {
+    "step": 604,
+    "seconds": 18.989,
+    "elapsed": 8213.2,
+    "particles": 87026
+  },
+  {
+    "step": 606,
+    "seconds": 19.763,
+    "elapsed": 8265.9,
+    "particles": 87314
+  },
+  {
+    "step": 608,
+    "seconds": 18.735,
+    "elapsed": 8316.2,
+    "particles": 87602
+  },
+  {
+    "step": 610,
+    "seconds": 19.375,
+    "elapsed": 8367.0,
+    "particles": 87890
+  },
+  {
+    "step": 612,
+    "seconds": 17.663,
+    "elapsed": 8474.6,
+    "particles": 88178
+  },
+  {
+    "step": 614,
+    "seconds": 19.055,
+    "elapsed": 8526.1,
+    "particles": 88466
+  },
+  {
+    "step": 616,
+    "seconds": 19.57,
+    "elapsed": 8579.1,
+    "particles": 88754
+  },
+  {
+    "step": 618,
+    "seconds": 21.424,
+    "elapsed": 8634.3,
+    "particles": 89032
+  },
+  {
+    "step": 620,
+    "seconds": 19.721,
+    "elapsed": 8687.3,
+    "particles": 89296
+  },
+  {
+    "step": 622,
+    "seconds": 20.063,
+    "elapsed": 8793.9,
+    "particles": 89564
+  },
+  {
+    "step": 624,
+    "seconds": 19.593,
+    "elapsed": 8847.7,
+    "particles": 89826
+  },
+  {
+    "step": 626,
+    "seconds": 18.798,
+    "elapsed": 8899.5,
+    "particles": 90080
+  },
+  {
+    "step": 628,
+    "seconds": 20.296,
+    "elapsed": 8953.1,
+    "particles": 90336
+  },
+  {
+    "step": 630,
+    "seconds": 21.365,
+    "elapsed": 9007.9,
+    "particles": 90576
+  },
+  {
+    "step": 632,
+    "seconds": 20.621,
+    "elapsed": 9122.0,
+    "particles": 90774
+  },
+  {
+    "step": 634,
+    "seconds": 20.341,
+    "elapsed": 9176.2,
+    "particles": 90964
+  },
+  {
+    "step": 636,
+    "seconds": 20.283,
+    "elapsed": 9230.6,
+    "particles": 91148
+  },
+  {
+    "step": 638,
+    "seconds": 21.452,
+    "elapsed": 9286.5,
+    "particles": 91329
+  },
+  {
+    "step": 640,
+    "seconds": 20.757,
+    "elapsed": 9341.7,
+    "particles": 91507
+  },
+  {
+    "step": 642,
+    "seconds": 20.647,
+    "elapsed": 9452.9,
+    "particles": 91671
+  },
+  {
+    "step": 644,
+    "seconds": 19.731,
+    "elapsed": 9506.6,
+    "particles": 91819
+  },
+  {
+    "step": 646,
+    "seconds": 20.888,
+    "elapsed": 9560.1,
+    "particles": 91924
+  },
+  {
+    "step": 648,
+    "seconds": 20.925,
+    "elapsed": 9615.3,
+    "particles": 92046
+  },
+  {
+    "step": 650,
+    "seconds": 19.322,
+    "elapsed": 9668.8,
+    "particles": 92168
+  },
+  {
+    "step": 652,
+    "seconds": 21.046,
+    "elapsed": 9778.9,
+    "particles": 92292
+  },
+  {
+    "step": 654,
+    "seconds": 19.556,
+    "elapsed": 9833.6,
+    "particles": 92418
+  },
+  {
+    "step": 656,
+    "seconds": 22.023,
+    "elapsed": 9888.9,
+    "particles": 92547
+  },
+  {
+    "step": 658,
+    "seconds": 21.388,
+    "elapsed": 9945.9,
+    "particles": 92685
+  },
+  {
+    "step": 660,
+    "seconds": 20.144,
+    "elapsed": 10000.3,
+    "particles": 92827
+  },
+  {
+    "step": 662,
+    "seconds": 21.282,
+    "elapsed": 10105.4,
+    "particles": 92977
+  },
+  {
+    "step": 664,
+    "seconds": 19.876,
+    "elapsed": 10159.4,
+    "particles": 93123
+  },
+  {
+    "step": 666,
+    "seconds": 21.944,
+    "elapsed": 10216.1,
+    "particles": 93279
+  },
+  {
+    "step": 668,
+    "seconds": 20.462,
+    "elapsed": 10272.1,
+    "particles": 93421
+  },
+  {
+    "step": 670,
+    "seconds": 19.744,
+    "elapsed": 10325.4,
+    "particles": 93575
+  },
+  {
+    "step": 672,
+    "seconds": 19.963,
+    "elapsed": 10444.7,
+    "particles": 93729
+  },
+  {
+    "step": 674,
+    "seconds": 20.598,
+    "elapsed": 10498.7,
+    "particles": 93881
+  },
+  {
+    "step": 676,
+    "seconds": 20.846,
+    "elapsed": 10554.4,
+    "particles": 94037
+  },
+  {
+    "step": 678,
+    "seconds": 20.954,
+    "elapsed": 10610.8,
+    "particles": 94183
+  },
+  {
+    "step": 680,
+    "seconds": 21.148,
+    "elapsed": 10665.8,
+    "particles": 94323
+  },
+  {
+    "step": 682,
+    "seconds": 19.785,
+    "elapsed": 10779.2,
+    "particles": 94475
+  },
+  {
+    "step": 684,
+    "seconds": 21.166,
+    "elapsed": 10836.0,
+    "particles": 94623
+  },
+  {
+    "step": 686,
+    "seconds": 20.594,
+    "elapsed": 10892.5,
+    "particles": 94763
+  },
+  {
+    "step": 688,
+    "seconds": 17.463,
+    "elapsed": 10940.5,
+    "particles": 94917
+  },
+  {
+    "step": 690,
+    "seconds": 16.727,
+    "elapsed": 10985.5,
+    "particles": 95055
+  },
+  {
+    "step": 692,
+    "seconds": 17.163,
+    "elapsed": 11065.0,
+    "particles": 95201
+  },
+  {
+    "step": 694,
+    "seconds": 16.845,
+    "elapsed": 11109.1,
+    "particles": 95347
+  },
+  {
+    "step": 696,
+    "seconds": 16.9,
+    "elapsed": 11153.9,
+    "particles": 95489
+  },
+  {
+    "step": 698,
+    "seconds": 17.094,
+    "elapsed": 11198.2,
+    "particles": 95635
+  },
+  {
+    "step": 700,
+    "seconds": 17.018,
+    "elapsed": 11244.0,
+    "particles": 95777
+  },
+  {
+    "step": 702,
+    "seconds": 16.862,
+    "elapsed": 11320.9,
+    "particles": 95920
+  },
+  {
+    "step": 704,
+    "seconds": 16.412,
+    "elapsed": 11365.6,
+    "particles": 96057
+  },
+  {
+    "step": 706,
+    "seconds": 16.881,
+    "elapsed": 11410.7,
+    "particles": 96207
+  },
+  {
+    "step": 708,
+    "seconds": 17.116,
+    "elapsed": 11456.9,
+    "particles": 96351
+  },
+  {
+    "step": 710,
+    "seconds": 16.555,
+    "elapsed": 11501.1,
+    "particles": 96501
+  },
+  {
+    "step": 712,
+    "seconds": 17.297,
+    "elapsed": 11579.6,
+    "particles": 96641
+  },
+  {
+    "step": 714,
+    "seconds": 17.236,
+    "elapsed": 11625.0,
+    "particles": 96795
+  },
+  {
+    "step": 716,
+    "seconds": 17.626,
+    "elapsed": 11671.2,
+    "particles": 96939
+  },
+  {
+    "step": 718,
+    "seconds": 16.994,
+    "elapsed": 11715.7,
+    "particles": 97085
+  },
+  {
+    "step": 720,
+    "seconds": 16.667,
+    "elapsed": 11761.4,
+    "particles": 97235
+  },
+  {
+    "step": 722,
+    "seconds": 16.541,
+    "elapsed": 11889.6,
+    "particles": 97377
+  },
+  {
+    "step": 724,
+    "seconds": 17.408,
+    "elapsed": 11935.1,
+    "particles": 97527
+  },
+  {
+    "step": 726,
+    "seconds": 17.041,
+    "elapsed": 11981.2,
+    "particles": 97677
+  },
+  {
+    "step": 728,
+    "seconds": 17.328,
+    "elapsed": 12027.6,
+    "particles": 97826
+  },
+  {
+    "step": 730,
+    "seconds": 16.97,
+    "elapsed": 12073.1,
+    "particles": 97973
+  },
+  {
+    "step": 732,
+    "seconds": 16.833,
+    "elapsed": 12188.5,
+    "particles": 98123
+  },
+  {
+    "step": 734,
+    "seconds": 16.381,
+    "elapsed": 12234.2,
+    "particles": 98275
+  },
+  {
+    "step": 736,
+    "seconds": 17.197,
+    "elapsed": 12279.4,
+    "particles": 98430
+  },
+  {
+    "step": 738,
+    "seconds": 17.458,
+    "elapsed": 12325.1,
+    "particles": 98569
+  },
+  {
+    "step": 740,
+    "seconds": 17.533,
+    "elapsed": 12371.6,
+    "particles": 98723
+  },
+  {
+    "step": 742,
+    "seconds": 16.946,
+    "elapsed": 12459.1,
+    "particles": 98870
+  },
+  {
+    "step": 744,
+    "seconds": 16.804,
+    "elapsed": 12503.0,
+    "particles": 99022
+  },
+  {
+    "step": 746,
+    "seconds": 16.765,
+    "elapsed": 12548.1,
+    "particles": 99173
+  },
+  {
+    "step": 748,
+    "seconds": 16.1,
+    "elapsed": 12593.0,
+    "particles": 99335
+  },
+  {
+    "step": 750,
+    "seconds": 16.667,
+    "elapsed": 12638.5,
+    "particles": 99479
+  },
+  {
+    "step": 752,
+    "seconds": 17.103,
+    "elapsed": 12726.3,
+    "particles": 99637
+  },
+  {
+    "step": 754,
+    "seconds": 16.478,
+    "elapsed": 12771.2,
+    "particles": 99784
+  },
+  {
+    "step": 756,
+    "seconds": 16.604,
+    "elapsed": 12815.9,
+    "particles": 99938
+  },
+  {
+    "step": 758,
+    "seconds": 17.144,
+    "elapsed": 12861.1,
+    "particles": 100090
+  },
+  {
+    "step": 760,
+    "seconds": 17.263,
+    "elapsed": 12907.3,
+    "particles": 100242
+  },
+  {
+    "step": 762,
+    "seconds": 17.092,
+    "elapsed": 12996.2,
+    "particles": 100391
+  },
+  {
+    "step": 764,
+    "seconds": 16.762,
+    "elapsed": 13041.3,
+    "particles": 100531
+  },
+  {
+    "step": 766,
+    "seconds": 16.166,
+    "elapsed": 13086.5,
+    "particles": 100677
+  },
+  {
+    "step": 768,
+    "seconds": 16.862,
+    "elapsed": 13132.0,
+    "particles": 100825
+  },
+  {
+    "step": 770,
+    "seconds": 17.223,
+    "elapsed": 13178.3,
+    "particles": 100973
+  },
+  {
+    "step": 772,
+    "seconds": 17.34,
+    "elapsed": 13275.9,
+    "particles": 101133
+  },
+  {
+    "step": 774,
+    "seconds": 17.671,
+    "elapsed": 13323.2,
+    "particles": 101281
+  },
+  {
+    "step": 776,
+    "seconds": 17.999,
+    "elapsed": 13370.4,
+    "particles": 101443
+  },
+  {
+    "step": 778,
+    "seconds": 17.873,
+    "elapsed": 13417.5,
+    "particles": 101601
+  },
+  {
+    "step": 780,
+    "seconds": 17.348,
+    "elapsed": 13465.1,
+    "particles": 101747
+  },
+  {
+    "step": 782,
+    "seconds": 16.784,
+    "elapsed": 13556.3,
+    "particles": 101913
+  },
+  {
+    "step": 784,
+    "seconds": 17.155,
+    "elapsed": 13600.7,
+    "particles": 102067
+  },
+  {
+    "step": 786,
+    "seconds": 17.294,
+    "elapsed": 13647.6,
+    "particles": 102225
+  },
+  {
+    "step": 788,
+    "seconds": 16.599,
+    "elapsed": 13692.4,
+    "particles": 102381
+  },
+  {
+    "step": 790,
+    "seconds": 18.081,
+    "elapsed": 13740.0,
+    "particles": 102533
+  },
+  {
+    "step": 792,
+    "seconds": 17.838,
+    "elapsed": 13828.6,
+    "particles": 102700
+  },
+  {
+    "step": 794,
+    "seconds": 16.933,
+    "elapsed": 13875.6,
+    "particles": 102860
+  },
+  {
+    "step": 796,
+    "seconds": 17.215,
+    "elapsed": 13921.4,
+    "particles": 103017
+  },
+  {
+    "step": 798,
+    "seconds": 18.497,
+    "elapsed": 13969.5,
+    "particles": 103177
+  },
+  {
+    "step": 800,
+    "seconds": 17.001,
+    "elapsed": 14014.7,
+    "particles": 103341
+  },
+  {
+    "step": 802,
+    "seconds": 18.321,
+    "elapsed": 14105.4,
+    "particles": 103515
+  },
+  {
+    "step": 804,
+    "seconds": 18.333,
+    "elapsed": 14153.3,
+    "particles": 103691
+  },
+  {
+    "step": 806,
+    "seconds": 18.134,
+    "elapsed": 14201.5,
+    "particles": 103859
+  },
+  {
+    "step": 808,
+    "seconds": 18.391,
+    "elapsed": 14251.5,
+    "particles": 104031
+  },
+  {
+    "step": 810,
+    "seconds": 18.729,
+    "elapsed": 14300.5,
+    "particles": 104213
+  },
+  {
+    "step": 812,
+    "seconds": 18.254,
+    "elapsed": 14394.1,
+    "particles": 104381
+  },
+  {
+    "step": 814,
+    "seconds": 18.833,
+    "elapsed": 14443.0,
+    "particles": 104553
+  },
+  {
+    "step": 816,
+    "seconds": 17.839,
+    "elapsed": 14491.9,
+    "particles": 104730
+  },
+  {
+    "step": 818,
+    "seconds": 17.907,
+    "elapsed": 14540.7,
+    "particles": 104899
+  },
+  {
+    "step": 820,
+    "seconds": 17.606,
+    "elapsed": 14588.4,
+    "particles": 105082
+  },
+  {
+    "step": 822,
+    "seconds": 17.432,
+    "elapsed": 14682.5,
+    "particles": 105246
+  },
+  {
+    "step": 824,
+    "seconds": 17.943,
+    "elapsed": 14731.6,
+    "particles": 105393
+  },
+  {
+    "step": 826,
+    "seconds": 18.623,
+    "elapsed": 14782.0,
+    "particles": 105511
+  },
+  {
+    "step": 828,
+    "seconds": 18.487,
+    "elapsed": 14830.8,
+    "particles": 105634
+  },
+  {
+    "step": 830,
+    "seconds": 18.357,
+    "elapsed": 14879.9,
+    "particles": 105743
+  },
+  {
+    "step": 832,
+    "seconds": 18.741,
+    "elapsed": 14973.8,
+    "particles": 105858
+  },
+  {
+    "step": 834,
+    "seconds": 18.481,
+    "elapsed": 15023.5,
+    "particles": 105950
+  },
+  {
+    "step": 836,
+    "seconds": 17.839,
+    "elapsed": 15072.4,
+    "particles": 106058
+  },
+  {
+    "step": 838,
+    "seconds": 18.533,
+    "elapsed": 15121.3,
+    "particles": 106176
+  },
+  {
+    "step": 840,
+    "seconds": 17.938,
+    "elapsed": 15169.4,
+    "particles": 106291
+  },
+  {
+    "step": 842,
+    "seconds": 18.669,
+    "elapsed": 15262.4,
+    "particles": 106452
+  },
+  {
+    "step": 844,
+    "seconds": 18.171,
+    "elapsed": 15311.5,
+    "particles": 106599
+  },
+  {
+    "step": 846,
+    "seconds": 18.543,
+    "elapsed": 15360.8,
+    "particles": 106763
+  },
+  {
+    "step": 848,
+    "seconds": 17.998,
+    "elapsed": 15410.1,
+    "particles": 106918
+  },
+  {
+    "step": 850,
+    "seconds": 18.047,
+    "elapsed": 15459.4,
+    "particles": 107066
+  },
+  {
+    "step": 852,
+    "seconds": 17.9,
+    "elapsed": 15549.9,
+    "particles": 107231
+  },
+  {
+    "step": 854,
+    "seconds": 17.714,
+    "elapsed": 15598.6,
+    "particles": 107406
+  },
+  {
+    "step": 856,
+    "seconds": 18.573,
+    "elapsed": 15648.3,
+    "particles": 107571
+  },
+  {
+    "step": 858,
+    "seconds": 18.533,
+    "elapsed": 15697.7,
+    "particles": 107718
+  },
+  {
+    "step": 860,
+    "seconds": 18.2,
+    "elapsed": 15746.6,
+    "particles": 107879
+  },
+  {
+    "step": 862,
+    "seconds": 18.519,
+    "elapsed": 15841.5,
+    "particles": 108013
+  },
+  {
+    "step": 864,
+    "seconds": 18.843,
+    "elapsed": 15891.4,
+    "particles": 108118
+  },
+  {
+    "step": 866,
+    "seconds": 18.395,
+    "elapsed": 15940.3,
+    "particles": 108159
+  },
+  {
+    "step": 868,
+    "seconds": 19.046,
+    "elapsed": 15989.8,
+    "particles": 108200
+  },
+  {
+    "step": 870,
+    "seconds": 17.957,
+    "elapsed": 16039.6,
+    "particles": 108241
+  },
+  {
+    "step": 872,
+    "seconds": 18.569,
+    "elapsed": 16148.1,
+    "particles": 108226
+  },
+  {
+    "step": 874,
+    "seconds": 17.892,
+    "elapsed": 16196.7,
+    "particles": 108166
+  },
+  {
+    "step": 876,
+    "seconds": 18.432,
+    "elapsed": 16244.8,
+    "particles": 108147
+  },
+  {
+    "step": 878,
+    "seconds": 18.671,
+    "elapsed": 16293.9,
+    "particles": 108106
+  },
+  {
+    "step": 880,
+    "seconds": 18.55,
+    "elapsed": 16342.8,
+    "particles": 108067
+  },
+  {
+    "step": 882,
+    "seconds": 18.884,
+    "elapsed": 16524.0,
+    "particles": 108083
+  },
+  {
+    "step": 884,
+    "seconds": 17.882,
+    "elapsed": 16571.9,
+    "particles": 108088
+  },
+  {
+    "step": 886,
+    "seconds": 18.151,
+    "elapsed": 16620.3,
+    "particles": 108070
+  },
+  {
+    "step": 888,
+    "seconds": 18.164,
+    "elapsed": 16668.2,
+    "particles": 108038
+  },
+  {
+    "step": 890,
+    "seconds": 18.458,
+    "elapsed": 16717.4,
+    "particles": 108017
+  },
+  {
+    "step": 892,
+    "seconds": 18.933,
+    "elapsed": 16867.7,
+    "particles": 107985
+  },
+  {
+    "step": 894,
+    "seconds": 17.961,
+    "elapsed": 16916.0,
+    "particles": 107910
+  },
+  {
+    "step": 896,
+    "seconds": 17.825,
+    "elapsed": 16964.4,
+    "particles": 107772
+  },
+  {
+    "step": 898,
+    "seconds": 17.699,
+    "elapsed": 17012.3,
+    "particles": 107592
+  },
+  {
+    "step": 900,
+    "seconds": 18.287,
+    "elapsed": 17060.7,
+    "particles": 107353
+  },
+  {
+    "step": 902,
+    "seconds": 17.25,
+    "elapsed": 17217.2,
+    "particles": 107125
+  },
+  {
+    "step": 904,
+    "seconds": 17.725,
+    "elapsed": 17265.1,
+    "particles": 106895
+  },
+  {
+    "step": 906,
+    "seconds": 18.195,
+    "elapsed": 17312.9,
+    "particles": 106659
+  },
+  {
+    "step": 908,
+    "seconds": 17.526,
+    "elapsed": 17359.3,
+    "particles": 106425
+  },
+  {
+    "step": 910,
+    "seconds": 17.941,
+    "elapsed": 17407.3,
+    "particles": 106254
+  },
+  {
+    "step": 912,
+    "seconds": 16.761,
+    "elapsed": 17546.2,
+    "particles": 106081
+  },
+  {
+    "step": 914,
+    "seconds": 17.192,
+    "elapsed": 17592.4,
+    "particles": 105942
+  },
+  {
+    "step": 916,
+    "seconds": 18.129,
+    "elapsed": 17639.8,
+    "particles": 105833
+  },
+  {
+    "step": 918,
+    "seconds": 18.202,
+    "elapsed": 17687.6,
+    "particles": 105705
+  },
+  {
+    "step": 920,
+    "seconds": 17.587,
+    "elapsed": 17735.0,
+    "particles": 105579
+  },
+  {
+    "step": 922,
+    "seconds": 18.343,
+    "elapsed": 17875.4,
+    "particles": 105446
+  },
+  {
+    "step": 924,
+    "seconds": 17.701,
+    "elapsed": 17922.7,
+    "particles": 105300
+  },
+  {
+    "step": 926,
+    "seconds": 17.773,
+    "elapsed": 17971.7,
+    "particles": 105162
+  },
+  {
+    "step": 928,
+    "seconds": 18.16,
+    "elapsed": 18020.1,
+    "particles": 105047
+  },
+  {
+    "step": 930,
+    "seconds": 18.7,
+    "elapsed": 18069.5,
+    "particles": 104870
+  },
+  {
+    "step": 932,
+    "seconds": 18.377,
+    "elapsed": 18204.4,
+    "particles": 104734
+  },
+  {
+    "step": 934,
+    "seconds": 18.633,
+    "elapsed": 18253.1,
+    "particles": 104601
+  },
+  {
+    "step": 936,
+    "seconds": 18.858,
+    "elapsed": 18302.1,
+    "particles": 104411
+  },
+  {
+    "step": 938,
+    "seconds": 19.27,
+    "elapsed": 18352.0,
+    "particles": 104315
+  },
+  {
+    "step": 940,
+    "seconds": 18.498,
+    "elapsed": 18401.7,
+    "particles": 104254
+  },
+  {
+    "step": 942,
+    "seconds": 18.755,
+    "elapsed": 18531.5,
+    "particles": 104183
+  },
+  {
+    "step": 944,
+    "seconds": 18.412,
+    "elapsed": 18581.1,
+    "particles": 104135
+  },
+  {
+    "step": 946,
+    "seconds": 18.471,
+    "elapsed": 18630.6,
+    "particles": 104118
+  },
+  {
+    "step": 948,
+    "seconds": 18.379,
+    "elapsed": 18680.6,
+    "particles": 104093
+  },
+  {
+    "step": 950,
+    "seconds": 18.085,
+    "elapsed": 18729.3,
+    "particles": 104076
+  },
+  {
+    "step": 952,
+    "seconds": 18.527,
+    "elapsed": 18857.2,
+    "particles": 104048
+  },
+  {
+    "step": 954,
+    "seconds": 18.932,
+    "elapsed": 18906.8,
+    "particles": 103998
+  },
+  {
+    "step": 956,
+    "seconds": 19.085,
+    "elapsed": 18957.3,
+    "particles": 103967
+  },
+  {
+    "step": 958,
+    "seconds": 18.07,
+    "elapsed": 19006.3,
+    "particles": 103932
+  },
+  {
+    "step": 960,
+    "seconds": 18.519,
+    "elapsed": 19055.5,
+    "particles": 103927
+  },
+  {
+    "step": 962,
+    "seconds": 18.984,
+    "elapsed": 19189.0,
+    "particles": 103911
+  },
+  {
+    "step": 964,
+    "seconds": 18.241,
+    "elapsed": 19237.4,
+    "particles": 103909
+  },
+  {
+    "step": 966,
+    "seconds": 18.141,
+    "elapsed": 19286.5,
+    "particles": 103907
+  },
+  {
+    "step": 968,
+    "seconds": 19.036,
+    "elapsed": 19336.6,
+    "particles": 103908
+  },
+  {
+    "step": 970,
+    "seconds": 18.049,
+    "elapsed": 19386.5,
+    "particles": 103905
+  },
+  {
+    "step": 972,
+    "seconds": 18.396,
+    "elapsed": 19508.9,
+    "particles": 103910
+  },
+  {
+    "step": 974,
+    "seconds": 18.584,
+    "elapsed": 19559.0,
+    "particles": 103924
+  },
+  {
+    "step": 976,
+    "seconds": 18.897,
+    "elapsed": 19609.3,
+    "particles": 103930
+  },
+  {
+    "step": 978,
+    "seconds": 18.906,
+    "elapsed": 19660.7,
+    "particles": 103933
+  },
+  {
+    "step": 980,
+    "seconds": 18.33,
+    "elapsed": 19710.5,
+    "particles": 103945
+  },
+  {
+    "step": 982,
+    "seconds": 18.403,
+    "elapsed": 19828.1,
+    "particles": 103945
+  },
+  {
+    "step": 984,
+    "seconds": 18.638,
+    "elapsed": 19877.5,
+    "particles": 103966
+  },
+  {
+    "step": 986,
+    "seconds": 18.443,
+    "elapsed": 19927.6,
+    "particles": 103971
+  },
+  {
+    "step": 988,
+    "seconds": 19.31,
+    "elapsed": 19977.9,
+    "particles": 103981
+  },
+  {
+    "step": 990,
+    "seconds": 18.636,
+    "elapsed": 20028.1,
+    "particles": 103989
+  },
+  {
+    "step": 992,
+    "seconds": 18.645,
+    "elapsed": 20153.8,
+    "particles": 103991
+  },
+  {
+    "step": 994,
+    "seconds": 18.952,
+    "elapsed": 20204.4,
+    "particles": 104004
+  },
+  {
+    "step": 996,
+    "seconds": 18.914,
+    "elapsed": 20255.1,
+    "particles": 104013
+  },
+  {
+    "step": 998,
+    "seconds": 18.743,
+    "elapsed": 20304.7,
+    "particles": 104030
+  },
+  {
+    "step": 1000,
+    "seconds": 18.658,
+    "elapsed": 20355.0,
+    "particles": 104031
+  },
+  {
+    "step": 1002,
+    "seconds": 18.98,
+    "elapsed": 20477.5,
+    "particles": 104045
+  },
+  {
+    "step": 1004,
+    "seconds": 18.683,
+    "elapsed": 20527.4,
+    "particles": 104062
+  },
+  {
+    "step": 1006,
+    "seconds": 19.151,
+    "elapsed": 20577.2,
+    "particles": 104071
+  },
+  {
+    "step": 1008,
+    "seconds": 19.068,
+    "elapsed": 20627.3,
+    "particles": 104085
+  },
+  {
+    "step": 1010,
+    "seconds": 19.154,
+    "elapsed": 20678.6,
+    "particles": 104107
+  },
+  {
+    "step": 1012,
+    "seconds": 17.931,
+    "elapsed": 20798.2,
+    "particles": 104120
+  },
+  {
+    "step": 1014,
+    "seconds": 18.557,
+    "elapsed": 20848.1,
+    "particles": 104146
+  },
+  {
+    "step": 1016,
+    "seconds": 17.805,
+    "elapsed": 20896.9,
+    "particles": 104166
+  },
+  {
+    "step": 1018,
+    "seconds": 19.044,
+    "elapsed": 20946.7,
+    "particles": 104196
+  },
+  {
+    "step": 1020,
+    "seconds": 19.86,
+    "elapsed": 20997.3,
+    "particles": 104222
+  },
+  {
+    "step": 1022,
+    "seconds": 18.169,
+    "elapsed": 21118.8,
+    "particles": 104246
+  },
+  {
+    "step": 1024,
+    "seconds": 18.128,
+    "elapsed": 21167.6,
+    "particles": 104272
+  },
+  {
+    "step": 1026,
+    "seconds": 18.939,
+    "elapsed": 21217.4,
+    "particles": 104296
+  },
+  {
+    "step": 1028,
+    "seconds": 19.286,
+    "elapsed": 21268.4,
+    "particles": 104320
+  },
+  {
+    "step": 1030,
+    "seconds": 18.876,
+    "elapsed": 21319.0,
+    "particles": 104353
+  },
+  {
+    "step": 1032,
+    "seconds": 18.551,
+    "elapsed": 21424.8,
+    "particles": 104392
+  },
+  {
+    "step": 1034,
+    "seconds": 18.72,
+    "elapsed": 21475.0,
+    "particles": 104411
+  },
+  {
+    "step": 1036,
+    "seconds": 18.538,
+    "elapsed": 21525.0,
+    "particles": 104447
+  },
+  {
+    "step": 1038,
+    "seconds": 18.182,
+    "elapsed": 21574.8,
+    "particles": 104473
+  },
+  {
+    "step": 1040,
+    "seconds": 18.431,
+    "elapsed": 21624.2,
+    "particles": 104504
+  },
+  {
+    "step": 1042,
+    "seconds": 18.712,
+    "elapsed": 21762.3,
+    "particles": 104550
+  },
+  {
+    "step": 1044,
+    "seconds": 17.956,
+    "elapsed": 21811.4,
+    "particles": 104580
+  },
+  {
+    "step": 1046,
+    "seconds": 19.136,
+    "elapsed": 21861.4,
+    "particles": 104614
+  },
+  {
+    "step": 1048,
+    "seconds": 18.91,
+    "elapsed": 21912.8,
+    "particles": 104648
+  },
+  {
+    "step": 1050,
+    "seconds": 19.224,
+    "elapsed": 21962.0,
+    "particles": 104671
+  },
+  {
+    "step": 1052,
+    "seconds": 18.688,
+    "elapsed": 22087.1,
+    "particles": 104711
+  },
+  {
+    "step": 1054,
+    "seconds": 19.462,
+    "elapsed": 22136.8,
+    "particles": 104751
+  },
+  {
+    "step": 1056,
+    "seconds": 18.945,
+    "elapsed": 22187.4,
+    "particles": 104780
+  },
+  {
+    "step": 1058,
+    "seconds": 18.527,
+    "elapsed": 22237.5,
+    "particles": 104811
+  },
+  {
+    "step": 1060,
+    "seconds": 18.557,
+    "elapsed": 22287.5,
+    "particles": 104850
+  },
+  {
+    "step": 1062,
+    "seconds": 18.581,
+    "elapsed": 22418.5,
+    "particles": 104878
+  },
+  {
+    "step": 1064,
+    "seconds": 18.503,
+    "elapsed": 22468.1,
+    "particles": 104916
+  },
+  {
+    "step": 1066,
+    "seconds": 18.468,
+    "elapsed": 22517.9,
+    "particles": 104949
+  },
+  {
+    "step": 1068,
+    "seconds": 19.405,
+    "elapsed": 22570.3,
+    "particles": 104986
+  },
+  {
+    "step": 1070,
+    "seconds": 18.797,
+    "elapsed": 22621.1,
+    "particles": 105027
+  },
+  {
+    "step": 1072,
+    "seconds": 18.36,
+    "elapsed": 22759.4,
+    "particles": 105055
+  },
+  {
+    "step": 1074,
+    "seconds": 19.276,
+    "elapsed": 22809.5,
+    "particles": 105108
+  },
+  {
+    "step": 1076,
+    "seconds": 18.463,
+    "elapsed": 22858.8,
+    "particles": 105133
+  },
+  {
+    "step": 1078,
+    "seconds": 19.375,
+    "elapsed": 22909.3,
+    "particles": 105168
+  },
+  {
+    "step": 1080,
+    "seconds": 18.83,
+    "elapsed": 22959.8,
+    "particles": 105210
+  },
+  {
+    "step": 1082,
+    "seconds": 18.33,
+    "elapsed": 23077.0,
+    "particles": 105236
+  },
+  {
+    "step": 1084,
+    "seconds": 18.996,
+    "elapsed": 23128.1,
+    "particles": 105283
+  },
+  {
+    "step": 1086,
+    "seconds": 19.134,
+    "elapsed": 23179.0,
+    "particles": 105322
+  },
+  {
+    "step": 1088,
+    "seconds": 18.997,
+    "elapsed": 23229.3,
+    "particles": 105366
+  },
+  {
+    "step": 1090,
+    "seconds": 19.232,
+    "elapsed": 23280.3,
+    "particles": 105389
+  },
+  {
+    "step": 1092,
+    "seconds": 19.569,
+    "elapsed": 23409.1,
+    "particles": 105441
+  },
+  {
+    "step": 1094,
+    "seconds": 18.633,
+    "elapsed": 23459.5,
+    "particles": 105485
+  },
+  {
+    "step": 1096,
+    "seconds": 18.515,
+    "elapsed": 23509.7,
+    "particles": 105515
+  },
+  {
+    "step": 1098,
+    "seconds": 18.535,
+    "elapsed": 23559.1,
+    "particles": 105571
+  },
+  {
+    "step": 1100,
+    "seconds": 19.111,
+    "elapsed": 23610.4,
+    "particles": 105605
+  },
+  {
+    "step": 1102,
+    "seconds": 18.929,
+    "elapsed": 23731.7,
+    "particles": 105652
+  },
+  {
+    "step": 1104,
+    "seconds": 20.185,
+    "elapsed": 23783.6,
+    "particles": 105697
+  },
+  {
+    "step": 1106,
+    "seconds": 19.305,
+    "elapsed": 23835.1,
+    "particles": 105733
+  },
+  {
+    "step": 1108,
+    "seconds": 19.862,
+    "elapsed": 23887.3,
+    "particles": 105777
+  },
+  {
+    "step": 1110,
+    "seconds": 19.29,
+    "elapsed": 23938.9,
+    "particles": 105827
+  },
+  {
+    "step": 1112,
+    "seconds": 18.765,
+    "elapsed": 24053.4,
+    "particles": 105872
+  },
+  {
+    "step": 1114,
+    "seconds": 18.852,
+    "elapsed": 24104.4,
+    "particles": 105913
+  },
+  {
+    "step": 1116,
+    "seconds": 19.092,
+    "elapsed": 24156.6,
+    "particles": 105962
+  },
+  {
+    "step": 1118,
+    "seconds": 19.469,
+    "elapsed": 24208.6,
+    "particles": 106006
+  },
+  {
+    "step": 1120,
+    "seconds": 18.64,
+    "elapsed": 24258.7,
+    "particles": 106052
+  },
+  {
+    "step": 1122,
+    "seconds": 19.025,
+    "elapsed": 24377.5,
+    "particles": 106098
+  },
+  {
+    "step": 1124,
+    "seconds": 18.838,
+    "elapsed": 24428.6,
+    "particles": 106146
+  },
+  {
+    "step": 1126,
+    "seconds": 18.323,
+    "elapsed": 24479.0,
+    "particles": 106166
+  },
+  {
+    "step": 1128,
+    "seconds": 19.857,
+    "elapsed": 24532.1,
+    "particles": 106196
+  },
+  {
+    "step": 1130,
+    "seconds": 19.423,
+    "elapsed": 24583.2,
+    "particles": 106242
+  },
+  {
+    "step": 1132,
+    "seconds": 20.187,
+    "elapsed": 24712.4,
+    "particles": 106274
+  },
+  {
+    "step": 1134,
+    "seconds": 18.759,
+    "elapsed": 24762.8,
+    "particles": 106320
+  },
+  {
+    "step": 1136,
+    "seconds": 19.002,
+    "elapsed": 24814.0,
+    "particles": 106338
+  },
+  {
+    "step": 1138,
+    "seconds": 19.021,
+    "elapsed": 24865.6,
+    "particles": 106374
+  },
+  {
+    "step": 1140,
+    "seconds": 19.516,
+    "elapsed": 24917.4,
+    "particles": 106412
+  },
+  {
+    "step": 1142,
+    "seconds": 19.514,
+    "elapsed": 25045.7,
+    "particles": 106441
+  },
+  {
+    "step": 1144,
+    "seconds": 19.486,
+    "elapsed": 25097.2,
+    "particles": 106454
+  },
+  {
+    "step": 1146,
+    "seconds": 19.333,
+    "elapsed": 25148.3,
+    "particles": 106467
+  },
+  {
+    "step": 1148,
+    "seconds": 19.298,
+    "elapsed": 25200.2,
+    "particles": 106466
+  },
+  {
+    "step": 1150,
+    "seconds": 19.975,
+    "elapsed": 25251.5,
+    "particles": 106485
+  },
+  {
+    "step": 1152,
+    "seconds": 19.452,
+    "elapsed": 25392.7,
+    "particles": 106490
+  },
+  {
+    "step": 1154,
+    "seconds": 18.352,
+    "elapsed": 25443.8,
+    "particles": 106492
+  },
+  {
+    "step": 1156,
+    "seconds": 19.841,
+    "elapsed": 25495.1,
+    "particles": 106470
+  },
+  {
+    "step": 1158,
+    "seconds": 19.302,
+    "elapsed": 25547.8,
+    "particles": 106470
+  },
+  {
+    "step": 1160,
+    "seconds": 18.892,
+    "elapsed": 25599.8,
+    "particles": 106480
+  },
+  {
+    "step": 1162,
+    "seconds": 19.063,
+    "elapsed": 25724.2,
+    "particles": 106491
+  },
+  {
+    "step": 1164,
+    "seconds": 19.418,
+    "elapsed": 25776.6,
+    "particles": 106491
+  },
+  {
+    "step": 1166,
+    "seconds": 18.982,
+    "elapsed": 25829.0,
+    "particles": 106486
+  },
+  {
+    "step": 1168,
+    "seconds": 19.177,
+    "elapsed": 25881.6,
+    "particles": 106499
+  },
+  {
+    "step": 1170,
+    "seconds": 20.027,
+    "elapsed": 25933.9,
+    "particles": 106474
+  },
+  {
+    "step": 1172,
+    "seconds": 19.604,
+    "elapsed": 26054.7,
+    "particles": 106397
+  },
+  {
+    "step": 1174,
+    "seconds": 19.685,
+    "elapsed": 26106.8,
+    "particles": 106333
+  },
+  {
+    "step": 1176,
+    "seconds": 19.747,
+    "elapsed": 26158.7,
+    "particles": 106303
+  },
+  {
+    "step": 1178,
+    "seconds": 19.418,
+    "elapsed": 26211.4,
+    "particles": 106317
+  },
+  {
+    "step": 1180,
+    "seconds": 18.541,
+    "elapsed": 26263.3,
+    "particles": 106334
+  },
+  {
+    "step": 1182,
+    "seconds": 19.347,
+    "elapsed": 26386.0,
+    "particles": 106313
+  },
+  {
+    "step": 1184,
+    "seconds": 19.149,
+    "elapsed": 26437.2,
+    "particles": 106337
+  },
+  {
+    "step": 1186,
+    "seconds": 19.208,
+    "elapsed": 26489.4,
+    "particles": 106375
+  },
+  {
+    "step": 1188,
+    "seconds": 19.142,
+    "elapsed": 26541.4,
+    "particles": 106421
+  },
+  {
+    "step": 1190,
+    "seconds": 19.066,
+    "elapsed": 26593.0,
+    "particles": 106460
+  },
+  {
+    "step": 1192,
+    "seconds": 19.714,
+    "elapsed": 26719.0,
+    "particles": 106468
+  },
+  {
+    "step": 1194,
+    "seconds": 19.72,
+    "elapsed": 26770.7,
+    "particles": 106457
+  },
+  {
+    "step": 1196,
+    "seconds": 18.697,
+    "elapsed": 26821.6,
+    "particles": 106463
+  },
+  {
+    "step": 1198,
+    "seconds": 18.78,
+    "elapsed": 26873.4,
+    "particles": 106461
+  },
+  {
+    "step": 1200,
+    "seconds": 19.073,
+    "elapsed": 26924.9,
+    "particles": 106426
+  },
+  {
+    "step": 1202,
+    "seconds": 18.886,
+    "elapsed": 27047.7,
+    "particles": 106392
+  },
+  {
+    "step": 1204,
+    "seconds": 19.39,
+    "elapsed": 27098.9,
+    "particles": 106368
+  },
+  {
+    "step": 1206,
+    "seconds": 20.033,
+    "elapsed": 27151.4,
+    "particles": 106350
+  },
+  {
+    "step": 1208,
+    "seconds": 19.37,
+    "elapsed": 27203.1,
+    "particles": 106354
+  },
+  {
+    "step": 1210,
+    "seconds": 18.742,
+    "elapsed": 27253.7,
+    "particles": 106364
+  },
+  {
+    "step": 1212,
+    "seconds": 19.0,
+    "elapsed": 27376.7,
+    "particles": 106382
+  },
+  {
+    "step": 1214,
+    "seconds": 18.809,
+    "elapsed": 27428.0,
+    "particles": 106405
+  },
+  {
+    "step": 1216,
+    "seconds": 19.529,
+    "elapsed": 27480.9,
+    "particles": 106384
+  },
+  {
+    "step": 1218,
+    "seconds": 19.488,
+    "elapsed": 27532.6,
+    "particles": 106345
+  },
+  {
+    "step": 1220,
+    "seconds": 19.416,
+    "elapsed": 27583.1,
+    "particles": 106278
+  },
+  {
+    "step": 1222,
+    "seconds": 18.67,
+    "elapsed": 27715.7,
+    "particles": 106249
+  },
+  {
+    "step": 1224,
+    "seconds": 18.718,
+    "elapsed": 27767.0,
+    "particles": 106215
+  },
+  {
+    "step": 1226,
+    "seconds": 19.365,
+    "elapsed": 27818.4,
+    "particles": 106175
+  },
+  {
+    "step": 1228,
+    "seconds": 18.649,
+    "elapsed": 27869.5,
+    "particles": 106134
+  },
+  {
+    "step": 1230,
+    "seconds": 18.969,
+    "elapsed": 27921.0,
+    "particles": 106098
+  },
+  {
+    "step": 1232,
+    "seconds": 18.874,
+    "elapsed": 28045.3,
+    "particles": 106019
+  },
+  {
+    "step": 1234,
+    "seconds": 18.841,
+    "elapsed": 28095.5,
+    "particles": 105949
+  },
+  {
+    "step": 1236,
+    "seconds": 20.194,
+    "elapsed": 28147.7,
+    "particles": 105869
+  },
+  {
+    "step": 1238,
+    "seconds": 18.821,
+    "elapsed": 28197.2,
+    "particles": 105795
+  },
+  {
+    "step": 1240,
+    "seconds": 18.862,
+    "elapsed": 28247.8,
+    "particles": 105741
+  },
+  {
+    "step": 1242,
+    "seconds": 18.144,
+    "elapsed": 28375.2,
+    "particles": 105699
+  },
+  {
+    "step": 1244,
+    "seconds": 18.392,
+    "elapsed": 28425.4,
+    "particles": 105661
+  },
+  {
+    "step": 1246,
+    "seconds": 18.793,
+    "elapsed": 28475.2,
+    "particles": 105623
+  },
+  {
+    "step": 1248,
+    "seconds": 18.815,
+    "elapsed": 28526.6,
+    "particles": 105585
+  },
+  {
+    "step": 1250,
+    "seconds": 18.594,
+    "elapsed": 28577.2,
+    "particles": 105535
+  },
+  {
+    "step": 1252,
+    "seconds": 18.578,
+    "elapsed": 28704.1,
+    "particles": 105489
+  },
+  {
+    "step": 1254,
+    "seconds": 18.389,
+    "elapsed": 28753.5,
+    "particles": 105438
+  },
+  {
+    "step": 1256,
+    "seconds": 18.637,
+    "elapsed": 28804.0,
+    "particles": 105369
+  },
+  {
+    "step": 1258,
+    "seconds": 19.031,
+    "elapsed": 28854.2,
+    "particles": 105317
+  },
+  {
+    "step": 1260,
+    "seconds": 18.067,
+    "elapsed": 28903.3,
+    "particles": 105256
+  },
+  {
+    "step": 1262,
+    "seconds": 17.936,
+    "elapsed": 29020.1,
+    "particles": 105189
+  },
+  {
+    "step": 1264,
+    "seconds": 18.446,
+    "elapsed": 29069.9,
+    "particles": 105127
+  },
+  {
+    "step": 1266,
+    "seconds": 18.909,
+    "elapsed": 29120.6,
+    "particles": 105069
+  },
+  {
+    "step": 1268,
+    "seconds": 18.692,
+    "elapsed": 29170.1,
+    "particles": 105019
+  },
+  {
+    "step": 1270,
+    "seconds": 18.056,
+    "elapsed": 29218.7,
+    "particles": 104957
+  },
+  {
+    "step": 1272,
+    "seconds": 18.266,
+    "elapsed": 29334.7,
+    "particles": 104873
+  },
+  {
+    "step": 1274,
+    "seconds": 18.615,
+    "elapsed": 29383.5,
+    "particles": 104820
+  },
+  {
+    "step": 1276,
+    "seconds": 19.04,
+    "elapsed": 29433.1,
+    "particles": 104763
+  },
+  {
+    "step": 1278,
+    "seconds": 18.272,
+    "elapsed": 29482.7,
+    "particles": 104708
+  },
+  {
+    "step": 1280,
+    "seconds": 18.314,
+    "elapsed": 29532.6,
+    "particles": 104638
+  },
+  {
+    "step": 1282,
+    "seconds": 19.029,
+    "elapsed": 29665.0,
+    "particles": 104587
+  },
+  {
+    "step": 1284,
+    "seconds": 18.615,
+    "elapsed": 29714.2,
+    "particles": 104530
+  },
+  {
+    "step": 1286,
+    "seconds": 18.819,
+    "elapsed": 29763.1,
+    "particles": 104464
+  },
+  {
+    "step": 1288,
+    "seconds": 18.491,
+    "elapsed": 29812.7,
+    "particles": 104404
+  },
+  {
+    "step": 1290,
+    "seconds": 19.526,
+    "elapsed": 29863.2,
+    "particles": 104343
+  },
+  {
+    "step": 1292,
+    "seconds": 17.541,
+    "elapsed": 29978.6,
+    "particles": 104257
+  },
+  {
+    "step": 1294,
+    "seconds": 18.554,
+    "elapsed": 30027.4,
+    "particles": 104209
+  },
+  {
+    "step": 1296,
+    "seconds": 18.153,
+    "elapsed": 30076.4,
+    "particles": 104175
+  },
+  {
+    "step": 1298,
+    "seconds": 19.452,
+    "elapsed": 30126.4,
+    "particles": 104159
+  },
+  {
+    "step": 1300,
+    "seconds": 18.03,
+    "elapsed": 30174.2,
+    "particles": 104187
+  },
+  {
+    "step": 1302,
+    "seconds": 18.503,
+    "elapsed": 30308.7,
+    "particles": 104200
+  },
+  {
+    "step": 1304,
+    "seconds": 19.71,
+    "elapsed": 30359.0,
+    "particles": 104211
+  },
+  {
+    "step": 1306,
+    "seconds": 18.757,
+    "elapsed": 30408.0,
+    "particles": 104203
+  },
+  {
+    "step": 1308,
+    "seconds": 17.881,
+    "elapsed": 30456.7,
+    "particles": 104189
+  },
+  {
+    "step": 1310,
+    "seconds": 18.731,
+    "elapsed": 30505.1,
+    "particles": 104162
+  },
+  {
+    "step": 1312,
+    "seconds": 17.675,
+    "elapsed": 30633.8,
+    "particles": 104138
+  },
+  {
+    "step": 1314,
+    "seconds": 17.712,
+    "elapsed": 30682.8,
+    "particles": 104104
+  },
+  {
+    "step": 1316,
+    "seconds": 17.864,
+    "elapsed": 30731.5,
+    "particles": 104069
+  },
+  {
+    "step": 1318,
+    "seconds": 17.777,
+    "elapsed": 30780.2,
+    "particles": 104029
+  },
+  {
+    "step": 1320,
+    "seconds": 18.337,
+    "elapsed": 30829.8,
+    "particles": 103981
+  },
+  {
+    "step": 1322,
+    "seconds": 18.258,
+    "elapsed": 30945.7,
+    "particles": 103960
+  },
+  {
+    "step": 1324,
+    "seconds": 18.389,
+    "elapsed": 30994.7,
+    "particles": 103897
+  },
+  {
+    "step": 1326,
+    "seconds": 18.596,
+    "elapsed": 31043.9,
+    "particles": 103795
+  },
+  {
+    "step": 1328,
+    "seconds": 18.618,
+    "elapsed": 31093.6,
+    "particles": 103723
+  },
+  {
+    "step": 1330,
+    "seconds": 18.041,
+    "elapsed": 31142.8,
+    "particles": 103619
+  },
+  {
+    "step": 1332,
+    "seconds": 18.496,
+    "elapsed": 31264.7,
+    "particles": 103558
+  },
+  {
+    "step": 1334,
+    "seconds": 18.08,
+    "elapsed": 31314.0,
+    "particles": 103477
+  },
+  {
+    "step": 1336,
+    "seconds": 18.11,
+    "elapsed": 31363.0,
+    "particles": 103454
+  },
+  {
+    "step": 1338,
+    "seconds": 17.912,
+    "elapsed": 31411.7,
+    "particles": 103443
+  },
+  {
+    "step": 1340,
+    "seconds": 18.031,
+    "elapsed": 31460.9,
+    "particles": 103430
+  },
+  {
+    "step": 1342,
+    "seconds": 18.252,
+    "elapsed": 31589.2,
+    "particles": 103423
+  },
+  {
+    "step": 1344,
+    "seconds": 18.506,
+    "elapsed": 31639.2,
+    "particles": 103463
+  },
+  {
+    "step": 1346,
+    "seconds": 19.04,
+    "elapsed": 31689.5,
+    "particles": 103489
+  },
+  {
+    "step": 1348,
+    "seconds": 18.356,
+    "elapsed": 31738.7,
+    "particles": 103509
+  },
+  {
+    "step": 1350,
+    "seconds": 18.173,
+    "elapsed": 31787.3,
+    "particles": 103529
+  },
+  {
+    "step": 1352,
+    "seconds": 18.552,
+    "elapsed": 31902.1,
+    "particles": 103556
+  },
+  {
+    "step": 1354,
+    "seconds": 18.656,
+    "elapsed": 31952.9,
+    "particles": 103570
+  },
+  {
+    "step": 1356,
+    "seconds": 19.039,
+    "elapsed": 32002.6,
+    "particles": 103578
+  },
+  {
+    "step": 1358,
+    "seconds": 19.257,
+    "elapsed": 32053.1,
+    "particles": 103592
+  },
+  {
+    "step": 1360,
+    "seconds": 18.362,
+    "elapsed": 32102.2,
+    "particles": 103598
+  },
+  {
+    "step": 1362,
+    "seconds": 18.203,
+    "elapsed": 32223.1,
+    "particles": 103610
+  },
+  {
+    "step": 1364,
+    "seconds": 18.464,
+    "elapsed": 32271.9,
+    "particles": 103625
+  },
+  {
+    "step": 1366,
+    "seconds": 18.879,
+    "elapsed": 32321.7,
+    "particles": 103644
+  },
+  {
+    "step": 1368,
+    "seconds": 18.499,
+    "elapsed": 32371.2,
+    "particles": 103666
+  },
+  {
+    "step": 1370,
+    "seconds": 18.524,
+    "elapsed": 32421.1,
+    "particles": 103678
+  },
+  {
+    "step": 1372,
+    "seconds": 18.931,
+    "elapsed": 32550.3,
+    "particles": 103707
+  },
+  {
+    "step": 1374,
+    "seconds": 18.784,
+    "elapsed": 32600.0,
+    "particles": 103722
+  },
+  {
+    "step": 1376,
+    "seconds": 18.678,
+    "elapsed": 32649.1,
+    "particles": 103730
+  },
+  {
+    "step": 1378,
+    "seconds": 18.768,
+    "elapsed": 32699.1,
+    "particles": 103749
+  },
+  {
+    "step": 1380,
+    "seconds": 18.209,
+    "elapsed": 32748.2,
+    "particles": 103779
+  },
+  {
+    "step": 1382,
+    "seconds": 18.391,
+    "elapsed": 32864.6,
+    "particles": 103788
+  },
+  {
+    "step": 1384,
+    "seconds": 19.764,
+    "elapsed": 32915.0,
+    "particles": 103811
+  },
+  {
+    "step": 1386,
+    "seconds": 18.825,
+    "elapsed": 32964.6,
+    "particles": 103823
+  },
+  {
+    "step": 1388,
+    "seconds": 18.446,
+    "elapsed": 33014.6,
+    "particles": 103845
+  },
+  {
+    "step": 1390,
+    "seconds": 18.585,
+    "elapsed": 33064.1,
+    "particles": 103852
+  },
+  {
+    "step": 1392,
+    "seconds": 18.487,
+    "elapsed": 33174.4,
+    "particles": 103875
+  },
+  {
+    "step": 1394,
+    "seconds": 18.272,
+    "elapsed": 33223.5,
+    "particles": 103899
+  },
+  {
+    "step": 1396,
+    "seconds": 18.676,
+    "elapsed": 33273.2,
+    "particles": 103901
+  },
+  {
+    "step": 1398,
+    "seconds": 18.766,
+    "elapsed": 33324.4,
+    "particles": 103931
+  },
+  {
+    "step": 1400,
+    "seconds": 18.559,
+    "elapsed": 33375.0,
+    "particles": 103945
+  },
+  {
+    "step": 1402,
+    "seconds": 17.811,
+    "elapsed": 33492.7,
+    "particles": 103959
+  },
+  {
+    "step": 1404,
+    "seconds": 18.952,
+    "elapsed": 33543.1,
+    "particles": 103971
+  },
+  {
+    "step": 1406,
+    "seconds": 18.1,
+    "elapsed": 33592.3,
+    "particles": 104001
+  },
+  {
+    "step": 1408,
+    "seconds": 18.987,
+    "elapsed": 33641.6,
+    "particles": 104019
+  },
+  {
+    "step": 1410,
+    "seconds": 18.398,
+    "elapsed": 33690.8,
+    "particles": 104039
+  },
+  {
+    "step": 1412,
+    "seconds": 18.108,
+    "elapsed": 33822.6,
+    "particles": 104067
+  },
+  {
+    "step": 1414,
+    "seconds": 18.464,
+    "elapsed": 33872.2,
+    "particles": 104087
+  },
+  {
+    "step": 1416,
+    "seconds": 18.739,
+    "elapsed": 33922.2,
+    "particles": 104117
+  },
+  {
+    "step": 1418,
+    "seconds": 18.066,
+    "elapsed": 33971.1,
+    "particles": 104137
+  },
+  {
+    "step": 1420,
+    "seconds": 18.603,
+    "elapsed": 34020.5,
+    "particles": 104167
+  },
+  {
+    "step": 1422,
+    "seconds": 18.328,
+    "elapsed": 34176.9,
+    "particles": 104197
+  },
+  {
+    "step": 1424,
+    "seconds": 19.146,
+    "elapsed": 34227.1,
+    "particles": 104225
+  },
+  {
+    "step": 1426,
+    "seconds": 18.115,
+    "elapsed": 34276.2,
+    "particles": 104257
+  },
+  {
+    "step": 1428,
+    "seconds": 19.019,
+    "elapsed": 34326.0,
+    "particles": 104291
+  },
+  {
+    "step": 1430,
+    "seconds": 18.003,
+    "elapsed": 34375.7,
+    "particles": 104313
+  },
+  {
+    "step": 1432,
+    "seconds": 18.348,
+    "elapsed": 34527.1,
+    "particles": 104347
+  },
+  {
+    "step": 1434,
+    "seconds": 18.5,
+    "elapsed": 34576.7,
+    "particles": 104381
+  },
+  {
+    "step": 1436,
+    "seconds": 18.372,
+    "elapsed": 34627.0,
+    "particles": 104421
+  },
+  {
+    "step": 1438,
+    "seconds": 18.714,
+    "elapsed": 34676.4,
+    "particles": 104449
+  },
+  {
+    "step": 1440,
+    "seconds": 18.855,
+    "elapsed": 34726.8,
+    "particles": 104497
+  },
+  {
+    "step": 1442,
+    "seconds": 18.293,
+    "elapsed": 34876.7,
+    "particles": 104523
+  },
+  {
+    "step": 1444,
+    "seconds": 18.316,
+    "elapsed": 34925.9,
+    "particles": 104549
+  },
+  {
+    "step": 1446,
+    "seconds": 18.679,
+    "elapsed": 34975.9,
+    "particles": 104585
+  },
+  {
+    "step": 1448,
+    "seconds": 19.114,
+    "elapsed": 35025.5,
+    "particles": 104615
+  },
+  {
+    "step": 1450,
+    "seconds": 18.652,
+    "elapsed": 35075.6,
+    "particles": 104655
+  },
+  {
+    "step": 1452,
+    "seconds": 18.509,
+    "elapsed": 35218.4,
+    "particles": 104691
+  },
+  {
+    "step": 1454,
+    "seconds": 19.357,
+    "elapsed": 35268.5,
+    "particles": 104721
+  },
+  {
+    "step": 1456,
+    "seconds": 18.028,
+    "elapsed": 35317.9,
+    "particles": 104763
+  },
+  {
+    "step": 1458,
+    "seconds": 18.861,
+    "elapsed": 35368.9,
+    "particles": 104796
+  },
+  {
+    "step": 1460,
+    "seconds": 19.957,
+    "elapsed": 35419.8,
+    "particles": 104829
+  },
+  {
+    "step": 1462,
+    "seconds": 18.707,
+    "elapsed": 35568.5,
+    "particles": 104862
+  },
+  {
+    "step": 1464,
+    "seconds": 18.499,
+    "elapsed": 35617.8,
+    "particles": 104898
+  },
+  {
+    "step": 1466,
+    "seconds": 18.299,
+    "elapsed": 35666.7,
+    "particles": 104938
+  },
+  {
+    "step": 1468,
+    "seconds": 18.71,
+    "elapsed": 35716.8,
+    "particles": 104972
+  },
+  {
+    "step": 1470,
+    "seconds": 18.774,
+    "elapsed": 35766.7,
+    "particles": 105007
+  },
+  {
+    "step": 1472,
+    "seconds": 20.271,
+    "elapsed": 35899.1,
+    "particles": 105038
+  },
+  {
+    "step": 1474,
+    "seconds": 19.268,
+    "elapsed": 35951.0,
+    "particles": 105076
+  },
+  {
+    "step": 1476,
+    "seconds": 20.1,
+    "elapsed": 36003.3,
+    "particles": 105117
+  },
+  {
+    "step": 1477,
+    "seconds": 24.055,
+    "elapsed": 36034.0,
+    "particles": 105144
+  },
+  {
+    "step": 1478,
+    "seconds": 24.199,
+    "elapsed": 36066.6,
+    "particles": 105165
+  },
+  {
+    "step": 1479,
+    "seconds": 25.116,
+    "elapsed": 36100.2,
+    "particles": 105176
+  },
+  {
+    "step": 1480,
+    "seconds": 23.443,
+    "elapsed": 36131.5,
+    "particles": 105191
+  },
+  {
+    "step": 1481,
+    "seconds": 33.158,
+    "elapsed": 36249.1,
+    "particles": 105217
+  },
+  {
+    "step": 1482,
+    "seconds": 23.383,
+    "elapsed": 36280.7,
+    "particles": 105233
+  },
+  {
+    "step": 1483,
+    "seconds": 22.701,
+    "elapsed": 36310.7,
+    "particles": 105253
+  },
+  {
+    "step": 1485,
+    "seconds": 21.84,
+    "elapsed": 36369.0,
+    "particles": 105290
+  },
+  {
+    "step": 1486,
+    "seconds": 22.132,
+    "elapsed": 36399.1,
+    "particles": 105314
+  },
+  {
+    "step": 1488,
+    "seconds": 22.672,
+    "elapsed": 36458.6,
+    "particles": 105351
+  },
+  {
+    "step": 1490,
+    "seconds": 22.506,
+    "elapsed": 36518.3,
+    "particles": 105394
+  },
+  {
+    "step": 1492,
+    "seconds": 19.701,
+    "elapsed": 36646.9,
+    "particles": 105427
+  },
+  {
+    "step": 1494,
+    "seconds": 19.553,
+    "elapsed": 36700.4,
+    "particles": 105485
+  },
+  {
+    "step": 1496,
+    "seconds": 19.746,
+    "elapsed": 36754.0,
+    "particles": 105513
+  },
+  {
+    "step": 1498,
+    "seconds": 19.619,
+    "elapsed": 36806.8,
+    "particles": 105566
+  },
+  {
+    "step": 1500,
+    "seconds": 19.489,
+    "elapsed": 36858.8,
+    "particles": 105600
+  },
+  {
+    "step": 1502,
+    "seconds": 23.389,
+    "elapsed": 36987.2,
+    "particles": 105640
+  },
+  {
+    "step": 1503,
+    "seconds": 23.556,
+    "elapsed": 37018.2,
+    "particles": 105666
+  },
+  {
+    "step": 1504,
+    "seconds": 23.307,
+    "elapsed": 37049.9,
+    "particles": 105694
+  },
+  {
+    "step": 1505,
+    "seconds": 23.503,
+    "elapsed": 37081.7,
+    "particles": 105710
+  },
+  {
+    "step": 1506,
+    "seconds": 23.32,
+    "elapsed": 37112.7,
+    "particles": 105728
+  },
+  {
+    "step": 1507,
+    "seconds": 24.285,
+    "elapsed": 37144.7,
+    "particles": 105750
+  },
+  {
+    "step": 1508,
+    "seconds": 24.91,
+    "elapsed": 37177.7,
+    "particles": 105769
+  },
+  {
+    "step": 1509,
+    "seconds": 24.465,
+    "elapsed": 37209.5,
+    "particles": 105800
+  },
+  {
+    "step": 1510,
+    "seconds": 24.245,
+    "elapsed": 37241.6,
+    "particles": 105826
+  },
+  {
+    "step": 1512,
+    "seconds": 24.859,
+    "elapsed": 37393.1,
+    "particles": 105869
+  },
+  {
+    "step": 1513,
+    "seconds": 23.443,
+    "elapsed": 37424.5,
+    "particles": 105891
+  },
+  {
+    "step": 1514,
+    "seconds": 23.73,
+    "elapsed": 37455.7,
+    "particles": 105911
+  },
+  {
+    "step": 1515,
+    "seconds": 23.193,
+    "elapsed": 37487.0,
+    "particles": 105935
+  },
+  {
+    "step": 1516,
+    "seconds": 23.721,
+    "elapsed": 37518.6,
+    "particles": 105952
+  },
+  {
+    "step": 1517,
+    "seconds": 25.906,
+    "elapsed": 37552.8,
+    "particles": 105988
+  },
+  {
+    "step": 1518,
+    "seconds": 27.625,
+    "elapsed": 37589.2,
+    "particles": 106004
+  },
+  {
+    "step": 1519,
+    "seconds": 25.753,
+    "elapsed": 37623.8,
+    "particles": 106022
+  },
+  {
+    "step": 1520,
+    "seconds": 24.553,
+    "elapsed": 37656.6,
+    "particles": 106054
+  },
+  {
+    "step": 1521,
+    "seconds": 27.907,
+    "elapsed": 37794.0,
+    "particles": 106062
+  },
+  {
+    "step": 1522,
+    "seconds": 24.615,
+    "elapsed": 37827.6,
+    "particles": 106087
+  },
+  {
+    "step": 1523,
+    "seconds": 24.154,
+    "elapsed": 37860.1,
+    "particles": 106116
+  },
+  {
+    "step": 1524,
+    "seconds": 24.258,
+    "elapsed": 37892.7,
+    "particles": 106128
+  },
+  {
+    "step": 1525,
+    "seconds": 22.482,
+    "elapsed": 37922.8,
+    "particles": 106149
+  },
+  {
+    "step": 1526,
+    "seconds": 24.356,
+    "elapsed": 37954.5,
+    "particles": 106151
+  },
+  {
+    "step": 1527,
+    "seconds": 25.29,
+    "elapsed": 37988.0,
+    "particles": 106175
+  },
+  {
+    "step": 1528,
+    "seconds": 26.165,
+    "elapsed": 38022.6,
+    "particles": 106191
+  },
+  {
+    "step": 1529,
+    "seconds": 25.015,
+    "elapsed": 38056.0,
+    "particles": 106209
+  },
+  {
+    "step": 1530,
+    "seconds": 24.195,
+    "elapsed": 38088.6,
+    "particles": 106231
+  },
+  {
+    "step": 1532,
+    "seconds": 25.247,
+    "elapsed": 38237.7,
+    "particles": 106256
+  },
+  {
+    "step": 1533,
+    "seconds": 25.335,
+    "elapsed": 38271.2,
+    "particles": 106274
+  },
+  {
+    "step": 1534,
+    "seconds": 25.834,
+    "elapsed": 38305.2,
+    "particles": 106291
+  },
+  {
+    "step": 1535,
+    "seconds": 27.14,
+    "elapsed": 38340.7,
+    "particles": 106319
+  },
+  {
+    "step": 1536,
+    "seconds": 23.884,
+    "elapsed": 38373.4,
+    "particles": 106331
+  },
+  {
+    "step": 1537,
+    "seconds": 23.964,
+    "elapsed": 38405.2,
+    "particles": 106345
+  },
+  {
+    "step": 1538,
+    "seconds": 24.733,
+    "elapsed": 38438.3,
+    "particles": 106368
+  },
+  {
+    "step": 1539,
+    "seconds": 23.266,
+    "elapsed": 38469.5,
+    "particles": 106383
+  },
+  {
+    "step": 1540,
+    "seconds": 23.938,
+    "elapsed": 38500.9,
+    "particles": 106389
+  },
+  {
+    "step": 1542,
+    "seconds": 34.653,
+    "elapsed": 38673.5,
+    "particles": 106423
+  },
+  {
+    "step": 1543,
+    "seconds": 31.42,
+    "elapsed": 38715.1,
+    "particles": 106433
+  },
+  {
+    "step": 1544,
+    "seconds": 38.793,
+    "elapsed": 38767.6,
+    "particles": 106448
+  },
+  {
+    "step": 1545,
+    "seconds": 34.941,
+    "elapsed": 38813.5,
+    "particles": 106434
+  },
+  {
+    "step": 1546,
+    "seconds": 33.848,
+    "elapsed": 38858.6,
+    "particles": 106445
+  },
+  {
+    "step": 1547,
+    "seconds": 32.833,
+    "elapsed": 38902.6,
+    "particles": 106453
+  },
+  {
+    "step": 1548,
+    "seconds": 32.977,
+    "elapsed": 38947.7,
+    "particles": 106460
+  },
+  {
+    "step": 1549,
+    "seconds": 35.595,
+    "elapsed": 38994.7,
+    "particles": 106453
+  },
+  {
+    "step": 1550,
+    "seconds": 34.449,
+    "elapsed": 39044.3,
+    "particles": 106466
+  },
+  {
+    "step": 1551,
+    "seconds": 33.885,
+    "elapsed": 39219.4,
+    "particles": 106463
+  },
+  {
+    "step": 1552,
+    "seconds": 36.264,
+    "elapsed": 39267.7,
+    "particles": 106478
+  },
+  {
+    "step": 1553,
+    "seconds": 33.462,
+    "elapsed": 39312.5,
+    "particles": 106485
+  },
+  {
+    "step": 1554,
+    "seconds": 35.349,
+    "elapsed": 39359.0,
+    "particles": 106481
+  },
+  {
+    "step": 1555,
+    "seconds": 36.421,
+    "elapsed": 39406.9,
+    "particles": 106462
+  },
+  {
+    "step": 1556,
+    "seconds": 36.819,
+    "elapsed": 39456.8,
+    "particles": 106469
+  },
+  {
+    "step": 1557,
+    "seconds": 33.338,
+    "elapsed": 39503.8,
+    "particles": 106470
+  },
+  {
+    "step": 1558,
+    "seconds": 33.393,
+    "elapsed": 39546.1,
+    "particles": 106467
+  },
+  {
+    "step": 1559,
+    "seconds": 33.227,
+    "elapsed": 39590.7,
+    "particles": 106474
+  },
+  {
+    "step": 1560,
+    "seconds": 33.486,
+    "elapsed": 39636.2,
+    "particles": 106480
+  },
+  {
+    "step": 1561,
+    "seconds": 29.573,
+    "elapsed": 39808.8,
+    "particles": 106493
+  },
+  {
+    "step": 1562,
+    "seconds": 29.403,
+    "elapsed": 39848.1,
+    "particles": 106488
+  },
+  {
+    "step": 1563,
+    "seconds": 25.153,
+    "elapsed": 39881.6,
+    "particles": 106484
+  },
+  {
+    "step": 1564,
+    "seconds": 28.83,
+    "elapsed": 39920.1,
+    "particles": 106490
+  },
+  {
+    "step": 1565,
+    "seconds": 28.856,
+    "elapsed": 39959.2,
+    "particles": 106490
+  },
+  {
+    "step": 1566,
+    "seconds": 31.558,
+    "elapsed": 40000.9,
+    "particles": 106497
+  },
+  {
+    "step": 1567,
+    "seconds": 30.892,
+    "elapsed": 40042.5,
+    "particles": 106504
+  },
+  {
+    "step": 1568,
+    "seconds": 29.023,
+    "elapsed": 40081.2,
+    "particles": 106507
+  },
+  {
+    "step": 1569,
+    "seconds": 26.851,
+    "elapsed": 40118.4,
+    "particles": 106502
+  },
+  {
+    "step": 1570,
+    "seconds": 26.963,
+    "elapsed": 40154.0,
+    "particles": 106490
+  },
+  {
+    "step": 1571,
+    "seconds": 27.585,
+    "elapsed": 40305.7,
+    "particles": 106460
+  },
+  {
+    "step": 1572,
+    "seconds": 22.219,
+    "elapsed": 40336.5,
+    "particles": 106429
+  },
+  {
+    "step": 1574,
+    "seconds": 20.891,
+    "elapsed": 40393.2,
+    "particles": 106356
+  },
+  {
+    "step": 1576,
+    "seconds": 22.658,
+    "elapsed": 40451.0,
+    "particles": 106346
+  },
+  {
+    "step": 1578,
+    "seconds": 20.22,
+    "elapsed": 40505.8,
+    "particles": 106343
+  },
+  {
+    "step": 1580,
+    "seconds": 26.65,
+    "elapsed": 40570.0,
+    "particles": 106358
+  },
+  {
+    "step": 1581,
+    "seconds": 26.473,
+    "elapsed": 40691.4,
+    "particles": 106358
+  },
+  {
+    "step": 1582,
+    "seconds": 25.832,
+    "elapsed": 40726.0,
+    "particles": 106325
+  },
+  {
+    "step": 1583,
+    "seconds": 26.368,
+    "elapsed": 40760.6,
+    "particles": 106332
+  },
+  {
+    "step": 1584,
+    "seconds": 25.999,
+    "elapsed": 40795.6,
+    "particles": 106357
+  },
+  {
+    "step": 1585,
+    "seconds": 26.997,
+    "elapsed": 40831.4,
+    "particles": 106368
+  },
+  {
+    "step": 1586,
+    "seconds": 27.364,
+    "elapsed": 40868.4,
+    "particles": 106397
+  },
+  {
+    "step": 1587,
+    "seconds": 25.06,
+    "elapsed": 40902.5,
+    "particles": 106412
+  },
+  {
+    "step": 1588,
+    "seconds": 25.609,
+    "elapsed": 40937.0,
+    "particles": 106430
+  },
+  {
+    "step": 1590,
+    "seconds": 20.397,
+    "elapsed": 40991.7,
+    "particles": 106438
+  },
+  {
+    "step": 1592,
+    "seconds": 19.331,
+    "elapsed": 41124.7,
+    "particles": 106436
+  },
+  {
+    "step": 1594,
+    "seconds": 19.765,
+    "elapsed": 41178.2,
+    "particles": 106433
+  },
+  {
+    "step": 1596,
+    "seconds": 20.704,
+    "elapsed": 41231.9,
+    "particles": 106435
+  },
+  {
+    "step": 1598,
+    "seconds": 19.549,
+    "elapsed": 41284.4,
+    "particles": 106424
+  },
+  {
+    "step": 1600,
+    "seconds": 19.293,
+    "elapsed": 41336.6,
+    "particles": 106398
+  },
+  {
+    "step": 1602,
+    "seconds": 19.595,
+    "elapsed": 41467.1,
+    "particles": 106381
+  },
+  {
+    "step": 1604,
+    "seconds": 19.902,
+    "elapsed": 41518.3,
+    "particles": 106357
+  },
+  {
+    "step": 1606,
+    "seconds": 19.248,
+    "elapsed": 41569.6,
+    "particles": 106338
+  },
+  {
+    "step": 1608,
+    "seconds": 18.845,
+    "elapsed": 41623.0,
+    "particles": 106347
+  },
+  {
+    "step": 1610,
+    "seconds": 19.055,
+    "elapsed": 41673.6,
+    "particles": 106370
+  },
+  {
+    "step": 1612,
+    "seconds": 19.616,
+    "elapsed": 41808.0,
+    "particles": 106395
+  },
+  {
+    "step": 1614,
+    "seconds": 19.228,
+    "elapsed": 41859.2,
+    "particles": 106385
+  },
+  {
+    "step": 1616,
+    "seconds": 19.897,
+    "elapsed": 41911.3,
+    "particles": 106358
+  },
+  {
+    "step": 1618,
+    "seconds": 18.829,
+    "elapsed": 41962.9,
+    "particles": 106291
+  },
+  {
+    "step": 1620,
+    "seconds": 19.132,
+    "elapsed": 42014.7,
+    "particles": 106216
+  },
+  {
+    "step": 1622,
+    "seconds": 18.786,
+    "elapsed": 42144.9,
+    "particles": 106189
+  },
+  {
+    "step": 1624,
+    "seconds": 18.65,
+    "elapsed": 42196.0,
+    "particles": 106150
+  },
+  {
+    "step": 1626,
+    "seconds": 19.487,
+    "elapsed": 42247.4,
+    "particles": 106111
+  },
+  {
+    "step": 1628,
+    "seconds": 18.887,
+    "elapsed": 42299.0,
+    "particles": 106047
+  },
+  {
+    "step": 1630,
+    "seconds": 18.72,
+    "elapsed": 42350.5,
+    "particles": 105984
+  },
+  {
+    "step": 1632,
+    "seconds": 19.126,
+    "elapsed": 42471.9,
+    "particles": 105923
+  },
+  {
+    "step": 1634,
+    "seconds": 19.54,
+    "elapsed": 42523.5,
+    "particles": 105866
+  },
+  {
+    "step": 1636,
+    "seconds": 18.454,
+    "elapsed": 42574.1,
+    "particles": 105797
+  },
+  {
+    "step": 1638,
+    "seconds": 19.162,
+    "elapsed": 42626.0,
+    "particles": 105745
+  },
+  {
+    "step": 1640,
+    "seconds": 18.725,
+    "elapsed": 42677.2,
+    "particles": 105702
+  },
+  {
+    "step": 1642,
+    "seconds": 19.689,
+    "elapsed": 42828.8,
+    "particles": 105654
+  },
+  {
+    "step": 1644,
+    "seconds": 18.816,
+    "elapsed": 42879.5,
+    "particles": 105619
+  },
+  {
+    "step": 1646,
+    "seconds": 18.859,
+    "elapsed": 42930.2,
+    "particles": 105583
+  },
+  {
+    "step": 1648,
+    "seconds": 19.245,
+    "elapsed": 42980.1,
+    "particles": 105532
+  },
+  {
+    "step": 1650,
+    "seconds": 19.054,
+    "elapsed": 43031.3,
+    "particles": 105490
+  },
+  {
+    "step": 1652,
+    "seconds": 17.745,
+    "elapsed": 43176.2,
+    "particles": 105443
+  },
+  {
+    "step": 1654,
+    "seconds": 19.363,
+    "elapsed": 43226.9,
+    "particles": 105392
+  },
+  {
+    "step": 1656,
+    "seconds": 18.869,
+    "elapsed": 43276.6,
+    "particles": 105331
+  },
+  {
+    "step": 1658,
+    "seconds": 18.896,
+    "elapsed": 43327.9,
+    "particles": 105267
+  },
+  {
+    "step": 1660,
+    "seconds": 19.345,
+    "elapsed": 43378.7,
+    "particles": 105203
+  },
+  {
+    "step": 1662,
+    "seconds": 18.987,
+    "elapsed": 43531.0,
+    "particles": 105144
+  },
+  {
+    "step": 1664,
+    "seconds": 18.799,
+    "elapsed": 43580.3,
+    "particles": 105079
+  },
+  {
+    "step": 1666,
+    "seconds": 18.715,
+    "elapsed": 43629.8,
+    "particles": 105030
+  },
+  {
+    "step": 1668,
+    "seconds": 19.438,
+    "elapsed": 43680.0,
+    "particles": 104967
+  },
+  {
+    "step": 1670,
+    "seconds": 18.72,
+    "elapsed": 43729.8,
+    "particles": 104902
+  },
+  {
+    "step": 1672,
+    "seconds": 18.631,
+    "elapsed": 43853.2,
+    "particles": 104823
+  },
+  {
+    "step": 1674,
+    "seconds": 19.027,
+    "elapsed": 43904.0,
+    "particles": 104775
+  },
+  {
+    "step": 1676,
+    "seconds": 18.915,
+    "elapsed": 43954.1,
+    "particles": 104722
+  },
+  {
+    "step": 1678,
+    "seconds": 18.39,
+    "elapsed": 44003.5,
+    "particles": 104670
+  },
+  {
+    "step": 1680,
+    "seconds": 18.986,
+    "elapsed": 44054.0,
+    "particles": 104599
+  },
+  {
+    "step": 1682,
+    "seconds": 18.694,
+    "elapsed": 44204.7,
+    "particles": 104534
+  },
+  {
+    "step": 1684,
+    "seconds": 18.99,
+    "elapsed": 44255.3,
+    "particles": 104509
+  },
+  {
+    "step": 1686,
+    "seconds": 18.652,
+    "elapsed": 44306.3,
+    "particles": 104437
+  },
+  {
+    "step": 1688,
+    "seconds": 18.589,
+    "elapsed": 44356.0,
+    "particles": 104386
+  },
+  {
+    "step": 1690,
+    "seconds": 18.521,
+    "elapsed": 44405.6,
+    "particles": 104324
+  },
+  {
+    "step": 1692,
+    "seconds": 17.781,
+    "elapsed": 44555.0,
+    "particles": 104221
+  },
+  {
+    "step": 1694,
+    "seconds": 18.478,
+    "elapsed": 44604.4,
+    "particles": 104187
+  },
+  {
+    "step": 1696,
+    "seconds": 18.949,
+    "elapsed": 44654.8,
+    "particles": 104145
+  },
+  {
+    "step": 1698,
+    "seconds": 18.236,
+    "elapsed": 44703.9,
+    "particles": 104116
+  },
+  {
+    "step": 1700,
+    "seconds": 19.113,
+    "elapsed": 44754.5,
+    "particles": 104144
+  },
+  {
+    "step": 1702,
+    "seconds": 19.074,
+    "elapsed": 44888.9,
+    "particles": 104157
+  },
+  {
+    "step": 1704,
+    "seconds": 19.111,
+    "elapsed": 44938.7,
+    "particles": 104159
+  },
+  {
+    "step": 1706,
+    "seconds": 18.461,
+    "elapsed": 44988.6,
+    "particles": 104167
+  },
+  {
+    "step": 1708,
+    "seconds": 18.746,
+    "elapsed": 45038.8,
+    "particles": 104150
+  },
+  {
+    "step": 1710,
+    "seconds": 19.368,
+    "elapsed": 45089.4,
+    "particles": 104125
+  },
+  {
+    "step": 1712,
+    "seconds": 18.599,
+    "elapsed": 45232.0,
+    "particles": 104098
+  },
+  {
+    "step": 1714,
+    "seconds": 18.559,
+    "elapsed": 45281.4,
+    "particles": 104059
+  },
+  {
+    "step": 1716,
+    "seconds": 18.476,
+    "elapsed": 45331.0,
+    "particles": 104027
+  },
+  {
+    "step": 1718,
+    "seconds": 18.836,
+    "elapsed": 45382.2,
+    "particles": 103986
+  },
+  {
+    "step": 1720,
+    "seconds": 18.968,
+    "elapsed": 45432.6,
+    "particles": 103941
+  },
+  {
+    "step": 1722,
+    "seconds": 18.833,
+    "elapsed": 45591.9,
+    "particles": 103911
+  },
+  {
+    "step": 1724,
+    "seconds": 19.381,
+    "elapsed": 45642.7,
+    "particles": 103853
+  },
+  {
+    "step": 1726,
+    "seconds": 17.679,
+    "elapsed": 45691.1,
+    "particles": 103785
+  },
+  {
+    "step": 1728,
+    "seconds": 18.694,
+    "elapsed": 45741.8,
+    "particles": 103707
+  },
+  {
+    "step": 1730,
+    "seconds": 18.322,
+    "elapsed": 45790.5,
+    "particles": 103598
+  },
+  {
+    "step": 1732,
+    "seconds": 18.384,
+    "elapsed": 45936.7,
+    "particles": 103540
+  },
+  {
+    "step": 1734,
+    "seconds": 18.13,
+    "elapsed": 45985.6,
+    "particles": 103452
+  },
+  {
+    "step": 1736,
+    "seconds": 18.109,
+    "elapsed": 46034.7,
+    "particles": 103418
+  },
+  {
+    "step": 1738,
+    "seconds": 17.698,
+    "elapsed": 46083.4,
+    "particles": 103409
+  },
+  {
+    "step": 1740,
+    "seconds": 18.198,
+    "elapsed": 46132.9,
+    "particles": 103404
+  },
+  {
+    "step": 1742,
+    "seconds": 18.002,
+    "elapsed": 46282.7,
+    "particles": 103399
+  },
+  {
+    "step": 1744,
+    "seconds": 18.709,
+    "elapsed": 46332.7,
+    "particles": 103421
+  },
+  {
+    "step": 1746,
+    "seconds": 18.998,
+    "elapsed": 46383.3,
+    "particles": 103449
+  },
+  {
+    "step": 1748,
+    "seconds": 19.702,
+    "elapsed": 46434.1,
+    "particles": 103471
+  },
+  {
+    "step": 1750,
+    "seconds": 19.01,
+    "elapsed": 46484.3,
+    "particles": 103495
+  },
+  {
+    "step": 1752,
+    "seconds": 18.216,
+    "elapsed": 46624.9,
+    "particles": 103509
+  },
+  {
+    "step": 1754,
+    "seconds": 18.328,
+    "elapsed": 46674.9,
+    "particles": 103531
+  },
+  {
+    "step": 1756,
+    "seconds": 18.623,
+    "elapsed": 46724.7,
+    "particles": 103539
+  },
+  {
+    "step": 1758,
+    "seconds": 19.067,
+    "elapsed": 46775.2,
+    "particles": 103549
+  },
+  {
+    "step": 1760,
+    "seconds": 18.361,
+    "elapsed": 46824.7,
+    "particles": 103559
+  },
+  {
+    "step": 1762,
+    "seconds": 18.576,
+    "elapsed": 46963.7,
+    "particles": 103573
+  },
+  {
+    "step": 1764,
+    "seconds": 18.421,
+    "elapsed": 47012.8,
+    "particles": 103586
+  },
+  {
+    "step": 1766,
+    "seconds": 19.121,
+    "elapsed": 47063.8,
+    "particles": 103605
+  },
+  {
+    "step": 1768,
+    "seconds": 18.764,
+    "elapsed": 47114.7,
+    "particles": 103623
+  },
+  {
+    "step": 1770,
+    "seconds": 19.275,
+    "elapsed": 47165.5,
+    "particles": 103638
+  },
+  {
+    "step": 1772,
+    "seconds": 19.789,
+    "elapsed": 47298.3,
+    "particles": 103660
+  },
+  {
+    "step": 1774,
+    "seconds": 19.353,
+    "elapsed": 47349.5,
+    "particles": 103685
+  },
+  {
+    "step": 1776,
+    "seconds": 18.745,
+    "elapsed": 47401.1,
+    "particles": 103690
+  },
+  {
+    "step": 1778,
+    "seconds": 18.934,
+    "elapsed": 47451.7,
+    "particles": 103705
+  },
+  {
+    "step": 1780,
+    "seconds": 19.096,
+    "elapsed": 47503.1,
+    "particles": 103733
+  },
+  {
+    "step": 1782,
+    "seconds": 18.51,
+    "elapsed": 47640.6,
+    "particles": 103743
+  },
+  {
+    "step": 1784,
+    "seconds": 19.108,
+    "elapsed": 47691.3,
+    "particles": 103757
+  },
+  {
+    "step": 1786,
+    "seconds": 18.819,
+    "elapsed": 47742.5,
+    "particles": 103777
+  },
+  {
+    "step": 1788,
+    "seconds": 18.463,
+    "elapsed": 47792.8,
+    "particles": 103792
+  },
+  {
+    "step": 1790,
+    "seconds": 19.32,
+    "elapsed": 47843.0,
+    "particles": 103806
+  },
+  {
+    "step": 1792,
+    "seconds": 18.629,
+    "elapsed": 47981.2,
+    "particles": 103826
+  },
+  {
+    "step": 1794,
+    "seconds": 18.651,
+    "elapsed": 48031.4,
+    "particles": 103850
+  },
+  {
+    "step": 1796,
+    "seconds": 19.413,
+    "elapsed": 48084.0,
+    "particles": 103847
+  },
+  {
+    "step": 1798,
+    "seconds": 18.956,
+    "elapsed": 48136.3,
+    "particles": 103874
+  },
+  {
+    "step": 1800,
+    "seconds": 18.478,
+    "elapsed": 48187.0,
+    "particles": 103883
+  },
+  {
+    "step": 1802,
+    "seconds": 19.447,
+    "elapsed": 48325.1,
+    "particles": 103898
+  },
+  {
+    "step": 1804,
+    "seconds": 19.187,
+    "elapsed": 48375.9,
+    "particles": 103901
+  },
+  {
+    "step": 1806,
+    "seconds": 19.072,
+    "elapsed": 48426.7,
+    "particles": 103931
+  },
+  {
+    "step": 1808,
+    "seconds": 18.825,
+    "elapsed": 48477.5,
+    "particles": 103945
+  },
+  {
+    "step": 1810,
+    "seconds": 19.107,
+    "elapsed": 48528.1,
+    "particles": 103963
+  },
+  {
+    "step": 1812,
+    "seconds": 18.845,
+    "elapsed": 48638.5,
+    "particles": 103991
+  },
+  {
+    "step": 1814,
+    "seconds": 18.491,
+    "elapsed": 48688.2,
+    "particles": 104008
+  },
+  {
+    "step": 1816,
+    "seconds": 19.016,
+    "elapsed": 48738.5,
+    "particles": 104036
+  },
+  {
+    "step": 1818,
+    "seconds": 19.546,
+    "elapsed": 48789.6,
+    "particles": 104055
+  },
+  {
+    "step": 1820,
+    "seconds": 18.765,
+    "elapsed": 48840.1,
+    "particles": 104084
+  },
+  {
+    "step": 1822,
+    "seconds": 18.453,
+    "elapsed": 48968.6,
+    "particles": 104115
+  },
+  {
+    "step": 1824,
+    "seconds": 19.183,
+    "elapsed": 49019.8,
+    "particles": 104142
+  },
+  {
+    "step": 1826,
+    "seconds": 18.689,
+    "elapsed": 49070.3,
+    "particles": 104170
+  },
+  {
+    "step": 1828,
+    "seconds": 18.618,
+    "elapsed": 49121.6,
+    "particles": 104210
+  },
+  {
+    "step": 1830,
+    "seconds": 18.564,
+    "elapsed": 49173.1,
+    "particles": 104232
+  },
+  {
+    "step": 1832,
+    "seconds": 19.534,
+    "elapsed": 49308.0,
+    "particles": 104262
+  },
+  {
+    "step": 1834,
+    "seconds": 18.725,
+    "elapsed": 49358.3,
+    "particles": 104300
+  },
+  {
+    "step": 1836,
+    "seconds": 20.016,
+    "elapsed": 49410.4,
+    "particles": 104338
+  },
+  {
+    "step": 1838,
+    "seconds": 19.516,
+    "elapsed": 49461.2,
+    "particles": 104368
+  },
+  {
+    "step": 1840,
+    "seconds": 18.567,
+    "elapsed": 49512.3,
+    "particles": 104408
+  },
+  {
+    "step": 1842,
+    "seconds": 18.457,
+    "elapsed": 49645.1,
+    "particles": 104440
+  },
+  {
+    "step": 1844,
+    "seconds": 18.626,
+    "elapsed": 49695.6,
+    "particles": 104466
+  },
+  {
+    "step": 1846,
+    "seconds": 18.157,
+    "elapsed": 49744.6,
+    "particles": 104499
+  },
+  {
+    "step": 1848,
+    "seconds": 19.093,
+    "elapsed": 49795.3,
+    "particles": 104527
+  },
+  {
+    "step": 1850,
+    "seconds": 19.065,
+    "elapsed": 49846.4,
+    "particles": 104569
+  },
+  {
+    "step": 1852,
+    "seconds": 18.925,
+    "elapsed": 49978.6,
+    "particles": 104607
+  },
+  {
+    "step": 1854,
+    "seconds": 19.557,
+    "elapsed": 50029.8,
+    "particles": 104635
+  },
+  {
+    "step": 1856,
+    "seconds": 18.713,
+    "elapsed": 50080.0,
+    "particles": 104673
+  },
+  {
+    "step": 1858,
+    "seconds": 19.311,
+    "elapsed": 50130.6,
+    "particles": 104705
+  },
+  {
+    "step": 1860,
+    "seconds": 19.988,
+    "elapsed": 50182.7,
+    "particles": 104746
+  },
+  {
+    "step": 1862,
+    "seconds": 18.771,
+    "elapsed": 50302.0,
+    "particles": 104774
+  },
+  {
+    "step": 1864,
+    "seconds": 18.828,
+    "elapsed": 50352.0,
+    "particles": 104814
+  },
+  {
+    "step": 1866,
+    "seconds": 19.182,
+    "elapsed": 50403.0,
+    "particles": 104848
+  },
+  {
+    "step": 1868,
+    "seconds": 18.54,
+    "elapsed": 50453.5,
+    "particles": 104890
+  },
+  {
+    "step": 1870,
+    "seconds": 18.795,
+    "elapsed": 50505.4,
+    "particles": 104926
+  },
+  {
+    "step": 1872,
+    "seconds": 19.311,
+    "elapsed": 50627.7,
+    "particles": 104954
+  },
+  {
+    "step": 1874,
+    "seconds": 19.317,
+    "elapsed": 50678.9,
+    "particles": 104992
+  },
+  {
+    "step": 1876,
+    "seconds": 18.731,
+    "elapsed": 50730.3,
+    "particles": 105034
+  },
+  {
+    "step": 1878,
+    "seconds": 19.909,
+    "elapsed": 50782.1,
+    "particles": 105084
+  },
+  {
+    "step": 1880,
+    "seconds": 20.222,
+    "elapsed": 50834.3,
+    "particles": 105110
+  },
+  {
+    "step": 1882,
+    "seconds": 19.57,
+    "elapsed": 50960.1,
+    "particles": 105150
+  },
+  {
+    "step": 1884,
+    "seconds": 20.134,
+    "elapsed": 51012.5,
+    "particles": 105185
+  },
+  {
+    "step": 1886,
+    "seconds": 18.681,
+    "elapsed": 51064.1,
+    "particles": 105232
+  },
+  {
+    "step": 1888,
+    "seconds": 19.577,
+    "elapsed": 51116.4,
+    "particles": 105271
+  },
+  {
+    "step": 1890,
+    "seconds": 19.052,
+    "elapsed": 51167.7,
+    "particles": 105311
+  },
+  {
+    "step": 1892,
+    "seconds": 18.842,
+    "elapsed": 51287.5,
+    "particles": 105351
+  },
+  {
+    "step": 1894,
+    "seconds": 18.969,
+    "elapsed": 51338.4,
+    "particles": 105405
+  },
+  {
+    "step": 1896,
+    "seconds": 20.055,
+    "elapsed": 51391.4,
+    "particles": 105437
+  },
+  {
+    "step": 1898,
+    "seconds": 19.229,
+    "elapsed": 51443.6,
+    "particles": 105489
+  },
+  {
+    "step": 1900,
+    "seconds": 18.901,
+    "elapsed": 51495.4,
+    "particles": 105525
+  },
+  {
+    "step": 1902,
+    "seconds": 19.66,
+    "elapsed": 51613.0,
+    "particles": 105563
+  },
+  {
+    "step": 1904,
+    "seconds": 19.461,
+    "elapsed": 51665.5,
+    "particles": 105619
+  },
+  {
+    "step": 1906,
+    "seconds": 19.674,
+    "elapsed": 51718.1,
+    "particles": 105649
+  },
+  {
+    "step": 1908,
+    "seconds": 19.83,
+    "elapsed": 51770.9,
+    "particles": 105691
+  },
+  {
+    "step": 1910,
+    "seconds": 19.905,
+    "elapsed": 51824.5,
+    "particles": 105750
+  },
+  {
+    "step": 1912,
+    "seconds": 19.887,
+    "elapsed": 51942.6,
+    "particles": 105794
+  },
+  {
+    "step": 1914,
+    "seconds": 19.464,
+    "elapsed": 51994.3,
+    "particles": 105834
+  },
+  {
+    "step": 1916,
+    "seconds": 19.999,
+    "elapsed": 52047.4,
+    "particles": 105884
+  },
+  {
+    "step": 1918,
+    "seconds": 19.412,
+    "elapsed": 52099.1,
+    "particles": 105930
+  },
+  {
+    "step": 1920,
+    "seconds": 21.565,
+    "elapsed": 52154.7,
+    "particles": 105979
+  },
+  {
+    "step": 1922,
+    "seconds": 21.748,
+    "elapsed": 52283.4,
+    "particles": 106017
+  },
+  {
+    "step": 1924,
+    "seconds": 23.38,
+    "elapsed": 52343.4,
+    "particles": 106059
+  },
+  {
+    "step": 1925,
+    "seconds": 23.277,
+    "elapsed": 52374.9,
+    "particles": 106071
+  },
+  {
+    "step": 1926,
+    "seconds": 22.682,
+    "elapsed": 52405.4,
+    "particles": 106081
+  },
+  {
+    "step": 1927,
+    "seconds": 22.972,
+    "elapsed": 52436.3,
+    "particles": 106105
+  },
+  {
+    "step": 1928,
+    "seconds": 23.998,
+    "elapsed": 52468.5,
+    "particles": 106117
+  },
+  {
+    "step": 1929,
+    "seconds": 22.6,
+    "elapsed": 52499.4,
+    "particles": 106143
+  },
+  {
+    "step": 1930,
+    "seconds": 23.51,
+    "elapsed": 52530.4,
+    "particles": 106161
+  },
+  {
+    "step": 1932,
+    "seconds": 28.261,
+    "elapsed": 52683.2,
+    "particles": 106192
+  },
+  {
+    "step": 1933,
+    "seconds": 28.436,
+    "elapsed": 52721.8,
+    "particles": 106206
+  },
+  {
+    "step": 1934,
+    "seconds": 29.544,
+    "elapsed": 52760.2,
+    "particles": 106225
+  },
+  {
+    "step": 1935,
+    "seconds": 30.133,
+    "elapsed": 52801.0,
+    "particles": 106249
+  },
+  {
+    "step": 1936,
+    "seconds": 29.519,
+    "elapsed": 52840.3,
+    "particles": 106259
+  },
+  {
+    "step": 1937,
+    "seconds": 30.163,
+    "elapsed": 52881.0,
+    "particles": 106275
+  },
+  {
+    "step": 1938,
+    "seconds": 30.616,
+    "elapsed": 52922.2,
+    "particles": 106299
+  },
+  {
+    "step": 1939,
+    "seconds": 29.871,
+    "elapsed": 52961.9,
+    "particles": 106315
+  },
+  {
+    "step": 1940,
+    "seconds": 29.196,
+    "elapsed": 53001.9,
+    "particles": 106329
+  },
+  {
+    "step": 1941,
+    "seconds": 28.748,
+    "elapsed": 53159.1,
+    "particles": 106345
+  },
+  {
+    "step": 1942,
+    "seconds": 30.323,
+    "elapsed": 53199.1,
+    "particles": 106363
+  },
+  {
+    "step": 1943,
+    "seconds": 28.517,
+    "elapsed": 53236.9,
+    "particles": 106373
+  },
+  {
+    "step": 1944,
+    "seconds": 28.362,
+    "elapsed": 53274.7,
+    "particles": 106383
+  },
+  {
+    "step": 1945,
+    "seconds": 28.276,
+    "elapsed": 53313.4,
+    "particles": 106373
+  },
+  {
+    "step": 1946,
+    "seconds": 29.187,
+    "elapsed": 53352.8,
+    "particles": 106383
+  },
+  {
+    "step": 1947,
+    "seconds": 29.652,
+    "elapsed": 53391.4,
+    "particles": 106391
+  },
+  {
+    "step": 1948,
+    "seconds": 28.307,
+    "elapsed": 53429.1,
+    "particles": 106395
+  },
+  {
+    "step": 1949,
+    "seconds": 30.007,
+    "elapsed": 53468.6,
+    "particles": 106401
+  },
+  {
+    "step": 1950,
+    "seconds": 29.004,
+    "elapsed": 53507.3,
+    "particles": 106407
+  },
+  {
+    "step": 1951,
+    "seconds": 27.716,
+    "elapsed": 53665.4,
+    "particles": 106404
+  },
+  {
+    "step": 1952,
+    "seconds": 29.113,
+    "elapsed": 53703.8,
+    "particles": 106415
+  },
+  {
+    "step": 1953,
+    "seconds": 29.574,
+    "elapsed": 53743.2,
+    "particles": 106425
+  },
+  {
+    "step": 1954,
+    "seconds": 27.864,
+    "elapsed": 53781.0,
+    "particles": 106422
+  },
+  {
+    "step": 1955,
+    "seconds": 29.703,
+    "elapsed": 53820.8,
+    "particles": 106408
+  },
+  {
+    "step": 1956,
+    "seconds": 27.556,
+    "elapsed": 53857.3,
+    "particles": 106414
+  },
+  {
+    "step": 1957,
+    "seconds": 27.876,
+    "elapsed": 53895.3,
+    "particles": 106414
+  },
+  {
+    "step": 1958,
+    "seconds": 29.123,
+    "elapsed": 53933.9,
+    "particles": 106418
+  },
+  {
+    "step": 1959,
+    "seconds": 28.424,
+    "elapsed": 53972.1,
+    "particles": 106418
+  },
+  {
+    "step": 1960,
+    "seconds": 28.642,
+    "elapsed": 54010.9,
+    "particles": 106422
+  },
+  {
+    "step": 1961,
+    "seconds": 29.338,
+    "elapsed": 54153.7,
+    "particles": 106434
+  },
+  {
+    "step": 1962,
+    "seconds": 30.722,
+    "elapsed": 54193.9,
+    "particles": 106428
+  },
+  {
+    "step": 1963,
+    "seconds": 27.719,
+    "elapsed": 54231.2,
+    "particles": 106426
+  },
+  {
+    "step": 1964,
+    "seconds": 28.504,
+    "elapsed": 54269.1,
+    "particles": 106438
+  },
+  {
+    "step": 1965,
+    "seconds": 29.806,
+    "elapsed": 54308.5,
+    "particles": 106434
+  },
+  {
+    "step": 1966,
+    "seconds": 27.918,
+    "elapsed": 54345.9,
+    "particles": 106433
+  },
+  {
+    "step": 1967,
+    "seconds": 29.671,
+    "elapsed": 54385.7,
+    "particles": 106443
+  },
+  {
+    "step": 1968,
+    "seconds": 29.533,
+    "elapsed": 54424.3,
+    "particles": 106447
+  },
+  {
+    "step": 1969,
+    "seconds": 28.648,
+    "elapsed": 54463.6,
+    "particles": 106443
+  },
+  {
+    "step": 1970,
+    "seconds": 30.283,
+    "elapsed": 54503.7,
+    "particles": 106432
+  },
+  {
+    "step": 1971,
+    "seconds": 29.423,
+    "elapsed": 54656.7,
+    "particles": 106402
+  },
+  {
+    "step": 1972,
+    "seconds": 28.251,
+    "elapsed": 54694.1,
+    "particles": 106366
+  },
+  {
+    "step": 1973,
+    "seconds": 29.185,
+    "elapsed": 54732.6,
+    "particles": 106325
+  },
+  {
+    "step": 1974,
+    "seconds": 28.863,
+    "elapsed": 54770.6,
+    "particles": 106295
+  },
+  {
+    "step": 1975,
+    "seconds": 27.592,
+    "elapsed": 54807.6,
+    "particles": 106292
+  },
+  {
+    "step": 1976,
+    "seconds": 29.351,
+    "elapsed": 54846.8,
+    "particles": 106290
+  },
+  {
+    "step": 1977,
+    "seconds": 28.715,
+    "elapsed": 54884.2,
+    "particles": 106279
+  },
+  {
+    "step": 1978,
+    "seconds": 28.143,
+    "elapsed": 54922.3,
+    "particles": 106282
+  },
+  {
+    "step": 1979,
+    "seconds": 28.863,
+    "elapsed": 54961.4,
+    "particles": 106281
+  },
+  {
+    "step": 1980,
+    "seconds": 29.096,
+    "elapsed": 55000.3,
+    "particles": 106302
+  },
+  {
+    "step": 1981,
+    "seconds": 31.134,
+    "elapsed": 55152.7,
+    "particles": 106298
+  },
+  {
+    "step": 1982,
+    "seconds": 27.999,
+    "elapsed": 55190.1,
+    "particles": 106273
+  },
+  {
+    "step": 1983,
+    "seconds": 30.237,
+    "elapsed": 55230.2,
+    "particles": 106273
+  },
+  {
+    "step": 1984,
+    "seconds": 29.761,
+    "elapsed": 55270.1,
+    "particles": 106300
+  },
+  {
+    "step": 1985,
+    "seconds": 28.447,
+    "elapsed": 55308.6,
+    "particles": 106314
+  },
+  {
+    "step": 1986,
+    "seconds": 30.121,
+    "elapsed": 55347.5,
+    "particles": 106338
+  },
+  {
+    "step": 1987,
+    "seconds": 28.112,
+    "elapsed": 55384.7,
+    "particles": 106364
+  },
+  {
+    "step": 1988,
+    "seconds": 30.287,
+    "elapsed": 55424.1,
+    "particles": 106385
+  },
+  {
+    "step": 1989,
+    "seconds": 27.564,
+    "elapsed": 55462.2,
+    "particles": 106390
+  },
+  {
+    "step": 1990,
+    "seconds": 28.528,
+    "elapsed": 55500.2,
+    "particles": 106388
+  },
+  {
+    "step": 1991,
+    "seconds": 28.461,
+    "elapsed": 55641.7,
+    "particles": 106394
+  },
+  {
+    "step": 1992,
+    "seconds": 27.18,
+    "elapsed": 55678.9,
+    "particles": 106377
+  },
+  {
+    "step": 1993,
+    "seconds": 28.171,
+    "elapsed": 55716.4,
+    "particles": 106377
+  },
+  {
+    "step": 1994,
+    "seconds": 28.673,
+    "elapsed": 55754.8,
+    "particles": 106383
+  },
+  {
+    "step": 1995,
+    "seconds": 30.242,
+    "elapsed": 55795.0,
+    "particles": 106382
+  },
+  {
+    "step": 1996,
+    "seconds": 28.554,
+    "elapsed": 55833.5,
+    "particles": 106392
+  },
+  {
+    "step": 1997,
+    "seconds": 28.125,
+    "elapsed": 55871.8,
+    "particles": 106383
+  },
+  {
+    "step": 1998,
+    "seconds": 28.198,
+    "elapsed": 55908.9,
+    "particles": 106377
+  },
+  {
+    "step": 1999,
+    "seconds": 26.861,
+    "elapsed": 55945.3,
+    "particles": 106374
+  },
+  {
+    "step": 2000,
+    "seconds": 28.579,
+    "elapsed": 55983.4,
+    "particles": 106343
+  },
+  {
+    "step": 2001,
+    "seconds": 27.952,
+    "elapsed": 56120.0,
+    "particles": 106342
+  },
+  {
+    "step": 2002,
+    "seconds": 28.324,
+    "elapsed": 56157.2,
+    "particles": 106336
+  },
+  {
+    "step": 2003,
+    "seconds": 29.409,
+    "elapsed": 56196.5,
+    "particles": 106307
+  },
+  {
+    "step": 2004,
+    "seconds": 27.419,
+    "elapsed": 56232.4,
+    "particles": 106306
+  },
+  {
+    "step": 2005,
+    "seconds": 26.92,
+    "elapsed": 56268.6,
+    "particles": 106300
+  },
+  {
+    "step": 2006,
+    "seconds": 28.384,
+    "elapsed": 56305.7,
+    "particles": 106296
+  },
+  {
+    "step": 2007,
+    "seconds": 27.359,
+    "elapsed": 56342.1,
+    "particles": 106297
+  },
+  {
+    "step": 2008,
+    "seconds": 28.156,
+    "elapsed": 56379.7,
+    "particles": 106300
+  },
+  {
+    "step": 2009,
+    "seconds": 28.912,
+    "elapsed": 56418.0,
+    "particles": 106305
+  },
+  {
+    "step": 2010,
+    "seconds": 27.21,
+    "elapsed": 56454.4,
+    "particles": 106327
+  },
+  {
+    "step": 2011,
+    "seconds": 27.026,
+    "elapsed": 56594.9,
+    "particles": 106330
+  },
+  {
+    "step": 2012,
+    "seconds": 28.113,
+    "elapsed": 56632.7,
+    "particles": 106347
+  },
+  {
+    "step": 2013,
+    "seconds": 27.582,
+    "elapsed": 56670.3,
+    "particles": 106357
+  },
+  {
+    "step": 2014,
+    "seconds": 29.032,
+    "elapsed": 56708.7,
+    "particles": 106355
+  },
+  {
+    "step": 2015,
+    "seconds": 27.094,
+    "elapsed": 56744.3,
+    "particles": 106341
+  },
+  {
+    "step": 2016,
+    "seconds": 27.821,
+    "elapsed": 56781.2,
+    "particles": 106322
+  },
+  {
+    "step": 2017,
+    "seconds": 27.209,
+    "elapsed": 56817.1,
+    "particles": 106295
+  },
+  {
+    "step": 2018,
+    "seconds": 28.627,
+    "elapsed": 56855.6,
+    "particles": 106261
+  },
+  {
+    "step": 2019,
+    "seconds": 28.834,
+    "elapsed": 56895.2,
+    "particles": 106223
+  },
+  {
+    "step": 2020,
+    "seconds": 26.616,
+    "elapsed": 56931.6,
+    "particles": 106193
+  },
+  {
+    "step": 2021,
+    "seconds": 28.324,
+    "elapsed": 57063.5,
+    "particles": 106180
+  },
+  {
+    "step": 2022,
+    "seconds": 27.673,
+    "elapsed": 57100.2,
+    "particles": 106151
+  },
+  {
+    "step": 2023,
+    "seconds": 28.181,
+    "elapsed": 57137.9,
+    "particles": 106135
+  },
+  {
+    "step": 2024,
+    "seconds": 29.055,
+    "elapsed": 57177.1,
+    "particles": 106117
+  },
+  {
+    "step": 2025,
+    "seconds": 26.399,
+    "elapsed": 57213.6,
+    "particles": 106096
+  },
+  {
+    "step": 2026,
+    "seconds": 29.903,
+    "elapsed": 57254.1,
+    "particles": 106072
+  },
+  {
+    "step": 2027,
+    "seconds": 26.97,
+    "elapsed": 57290.9,
+    "particles": 106052
+  },
+  {
+    "step": 2028,
+    "seconds": 29.163,
+    "elapsed": 57329.9,
+    "particles": 106024
+  },
+  {
+    "step": 2029,
+    "seconds": 27.439,
+    "elapsed": 57367.4,
+    "particles": 105994
+  },
+  {
+    "step": 2030,
+    "seconds": 31.387,
+    "elapsed": 57408.7,
+    "particles": 105957
+  },
+  {
+    "step": 2031,
+    "seconds": 26.58,
+    "elapsed": 57574.2,
+    "particles": 105918
+  },
+  {
+    "step": 2032,
+    "seconds": 27.491,
+    "elapsed": 57610.6,
+    "particles": 105898
+  },
+  {
+    "step": 2033,
+    "seconds": 27.644,
+    "elapsed": 57647.9,
+    "particles": 105865
+  },
+  {
+    "step": 2034,
+    "seconds": 28.24,
+    "elapsed": 57685.2,
+    "particles": 105838
+  },
+  {
+    "step": 2035,
+    "seconds": 26.921,
+    "elapsed": 57721.6,
+    "particles": 105812
+  },
+  {
+    "step": 2036,
+    "seconds": 28.025,
+    "elapsed": 57758.0,
+    "particles": 105767
+  },
+  {
+    "step": 2037,
+    "seconds": 27.5,
+    "elapsed": 57795.0,
+    "particles": 105743
+  },
+  {
+    "step": 2038,
+    "seconds": 27.309,
+    "elapsed": 57831.1,
+    "particles": 105718
+  },
+  {
+    "step": 2039,
+    "seconds": 26.549,
+    "elapsed": 57867.0,
+    "particles": 105690
+  },
+  {
+    "step": 2040,
+    "seconds": 27.166,
+    "elapsed": 57903.0,
+    "particles": 105667
+  },
+  {
+    "step": 2042,
+    "seconds": 27.608,
+    "elapsed": 58070.2,
+    "particles": 105619
+  },
+  {
+    "step": 2043,
+    "seconds": 25.358,
+    "elapsed": 58105.2,
+    "particles": 105607
+  },
+  {
+    "step": 2044,
+    "seconds": 27.47,
+    "elapsed": 58141.6,
+    "particles": 105590
+  },
+  {
+    "step": 2045,
+    "seconds": 25.211,
+    "elapsed": 58176.3,
+    "particles": 105573
+  },
+  {
+    "step": 2046,
+    "seconds": 28.045,
+    "elapsed": 58213.3,
+    "particles": 105550
+  },
+  {
+    "step": 2047,
+    "seconds": 28.435,
+    "elapsed": 58251.2,
+    "particles": 105531
+  },
+  {
+    "step": 2048,
+    "seconds": 27.985,
+    "elapsed": 58288.7,
+    "particles": 105504
+  },
+  {
+    "step": 2049,
+    "seconds": 28.314,
+    "elapsed": 58326.4,
+    "particles": 105489
+  },
+  {
+    "step": 2050,
+    "seconds": 26.976,
+    "elapsed": 58362.2,
+    "particles": 105459
+  },
+  {
+    "step": 2052,
+    "seconds": 28.466,
+    "elapsed": 58529.8,
+    "particles": 105415
+  },
+  {
+    "step": 2053,
+    "seconds": 27.536,
+    "elapsed": 58566.7,
+    "particles": 105394
+  },
+  {
+    "step": 2054,
+    "seconds": 27.32,
+    "elapsed": 58603.2,
+    "particles": 105362
+  },
+  {
+    "step": 2055,
+    "seconds": 26.087,
+    "elapsed": 58638.8,
+    "particles": 105330
+  },
+  {
+    "step": 2056,
+    "seconds": 27.446,
+    "elapsed": 58675.7,
+    "particles": 105300
+  },
+  {
+    "step": 2057,
+    "seconds": 27.723,
+    "elapsed": 58712.9,
+    "particles": 105271
+  },
+  {
+    "step": 2058,
+    "seconds": 28.161,
+    "elapsed": 58750.6,
+    "particles": 105237
+  },
+  {
+    "step": 2059,
+    "seconds": 25.817,
+    "elapsed": 58785.4,
+    "particles": 105208
+  },
+  {
+    "step": 2060,
+    "seconds": 26.971,
+    "elapsed": 58820.9,
+    "particles": 105172
+  },
+  {
+    "step": 2061,
+    "seconds": 27.031,
+    "elapsed": 58965.0,
+    "particles": 105141
+  },
+  {
+    "step": 2062,
+    "seconds": 26.407,
+    "elapsed": 59000.1,
+    "particles": 105107
+  },
+  {
+    "step": 2063,
+    "seconds": 27.198,
+    "elapsed": 59036.2,
+    "particles": 105074
+  },
+  {
+    "step": 2064,
+    "seconds": 27.59,
+    "elapsed": 59072.8,
+    "particles": 105047
+  },
+  {
+    "step": 2065,
+    "seconds": 26.068,
+    "elapsed": 59108.1,
+    "particles": 105018
+  },
+  {
+    "step": 2066,
+    "seconds": 27.488,
+    "elapsed": 59145.0,
+    "particles": 104993
+  },
+  {
+    "step": 2067,
+    "seconds": 26.405,
+    "elapsed": 59180.8,
+    "particles": 104963
+  },
+  {
+    "step": 2068,
+    "seconds": 26.992,
+    "elapsed": 59216.6,
+    "particles": 104933
+  },
+  {
+    "step": 2069,
+    "seconds": 27.789,
+    "elapsed": 59254.4,
+    "particles": 104904
+  },
+  {
+    "step": 2070,
+    "seconds": 26.61,
+    "elapsed": 59289.9,
+    "particles": 104869
+  },
+  {
+    "step": 2071,
+    "seconds": 28.32,
+    "elapsed": 59435.5,
+    "particles": 104822
+  },
+  {
+    "step": 2072,
+    "seconds": 28.239,
+    "elapsed": 59472.7,
+    "particles": 104792
+  },
+  {
+    "step": 2073,
+    "seconds": 25.867,
+    "elapsed": 59507.9,
+    "particles": 104768
+  },
+  {
+    "step": 2074,
+    "seconds": 26.729,
+    "elapsed": 59543.6,
+    "particles": 104741
+  },
+  {
+    "step": 2075,
+    "seconds": 27.926,
+    "elapsed": 59580.3,
+    "particles": 104715
+  },
+  {
+    "step": 2076,
+    "seconds": 26.921,
+    "elapsed": 59617.3,
+    "particles": 104687
+  },
+  {
+    "step": 2077,
+    "seconds": 26.72,
+    "elapsed": 59653.2,
+    "particles": 104657
+  },
+  {
+    "step": 2078,
+    "seconds": 26.901,
+    "elapsed": 59689.7,
+    "particles": 104636
+  },
+  {
+    "step": 2079,
+    "seconds": 27.131,
+    "elapsed": 59725.3,
+    "particles": 104591
+  },
+  {
+    "step": 2080,
+    "seconds": 27.923,
+    "elapsed": 59762.5,
+    "particles": 104562
+  },
+  {
+    "step": 2081,
+    "seconds": 28.714,
+    "elapsed": 59912.2,
+    "particles": 104530
+  },
+  {
+    "step": 2082,
+    "seconds": 26.671,
+    "elapsed": 59947.6,
+    "particles": 104503
+  },
+  {
+    "step": 2083,
+    "seconds": 28.158,
+    "elapsed": 59986.3,
+    "particles": 104491
+  },
+  {
+    "step": 2084,
+    "seconds": 26.313,
+    "elapsed": 60022.0,
+    "particles": 104475
+  },
+  {
+    "step": 2085,
+    "seconds": 27.048,
+    "elapsed": 60057.6,
+    "particles": 104447
+  },
+  {
+    "step": 2086,
+    "seconds": 27.69,
+    "elapsed": 60094.8,
+    "particles": 104393
+  },
+  {
+    "step": 2087,
+    "seconds": 26.944,
+    "elapsed": 60130.9,
+    "particles": 104380
+  },
+  {
+    "step": 2088,
+    "seconds": 28.023,
+    "elapsed": 60168.4,
+    "particles": 104348
+  },
+  {
+    "step": 2089,
+    "seconds": 25.523,
+    "elapsed": 60203.0,
+    "particles": 104323
+  },
+  {
+    "step": 2090,
+    "seconds": 28.175,
+    "elapsed": 60240.1,
+    "particles": 104289
+  },
+  {
+    "step": 2091,
+    "seconds": 27.814,
+    "elapsed": 60396.6,
+    "particles": 104214
+  },
+  {
+    "step": 2092,
+    "seconds": 27.269,
+    "elapsed": 60433.2,
+    "particles": 104189
+  },
+  {
+    "step": 2093,
+    "seconds": 26.736,
+    "elapsed": 60468.2,
+    "particles": 104172
+  },
+  {
+    "step": 2094,
+    "seconds": 27.487,
+    "elapsed": 60504.6,
+    "particles": 104158
+  },
+  {
+    "step": 2095,
+    "seconds": 26.365,
+    "elapsed": 60540.3,
+    "particles": 104140
+  },
+  {
+    "step": 2096,
+    "seconds": 26.471,
+    "elapsed": 60576.3,
+    "particles": 104108
+  },
+  {
+    "step": 2097,
+    "seconds": 25.837,
+    "elapsed": 60612.0,
+    "particles": 104090
+  },
+  {
+    "step": 2098,
+    "seconds": 26.688,
+    "elapsed": 60647.7,
+    "particles": 104080
+  },
+  {
+    "step": 2099,
+    "seconds": 28.34,
+    "elapsed": 60685.2,
+    "particles": 104092
+  },
+  {
+    "step": 2100,
+    "seconds": 27.098,
+    "elapsed": 60720.9,
+    "particles": 104108
+  },
+  {
+    "step": 2102,
+    "seconds": 28.281,
+    "elapsed": 60916.2,
+    "particles": 104122
+  },
+  {
+    "step": 2103,
+    "seconds": 26.68,
+    "elapsed": 60951.9,
+    "particles": 104130
+  },
+  {
+    "step": 2104,
+    "seconds": 28.368,
+    "elapsed": 60989.3,
+    "particles": 104132
+  },
+  {
+    "step": 2105,
+    "seconds": 27.813,
+    "elapsed": 61026.7,
+    "particles": 104134
+  },
+  {
+    "step": 2106,
+    "seconds": 27.511,
+    "elapsed": 61063.0,
+    "particles": 104132
+  },
+  {
+    "step": 2107,
+    "seconds": 26.873,
+    "elapsed": 61098.9,
+    "particles": 104120
+  },
+  {
+    "step": 2108,
+    "seconds": 26.62,
+    "elapsed": 61135.2,
+    "particles": 104114
+  },
+  {
+    "step": 2109,
+    "seconds": 26.412,
+    "elapsed": 61170.7,
+    "particles": 104102
+  },
+  {
+    "step": 2110,
+    "seconds": 27.565,
+    "elapsed": 61207.2,
+    "particles": 104086
+  },
+  {
+    "step": 2112,
+    "seconds": 26.828,
+    "elapsed": 61367.0,
+    "particles": 104064
+  },
+  {
+    "step": 2113,
+    "seconds": 24.031,
+    "elapsed": 61399.6,
+    "particles": 104029
+  },
+  {
+    "step": 2114,
+    "seconds": 25.43,
+    "elapsed": 61433.6,
+    "particles": 104015
+  },
+  {
+    "step": 2115,
+    "seconds": 24.652,
+    "elapsed": 61467.3,
+    "particles": 103999
+  },
+  {
+    "step": 2116,
+    "seconds": 26.944,
+    "elapsed": 61502.5,
+    "particles": 103993
+  },
+  {
+    "step": 2117,
+    "seconds": 25.682,
+    "elapsed": 61537.4,
+    "particles": 103973
+  },
+  {
+    "step": 2118,
+    "seconds": 24.92,
+    "elapsed": 61569.9,
+    "particles": 103963
+  },
+  {
+    "step": 2119,
+    "seconds": 25.98,
+    "elapsed": 61604.7,
+    "particles": 103934
+  },
+  {
+    "step": 2120,
+    "seconds": 25.831,
+    "elapsed": 61638.9,
+    "particles": 103911
+  },
+  {
+    "step": 2121,
+    "seconds": 26.513,
+    "elapsed": 61767.7,
+    "particles": 103899
+  },
+  {
+    "step": 2122,
+    "seconds": 27.197,
+    "elapsed": 61803.9,
+    "particles": 103876
+  },
+  {
+    "step": 2123,
+    "seconds": 25.25,
+    "elapsed": 61837.7,
+    "particles": 103848
+  },
+  {
+    "step": 2124,
+    "seconds": 24.561,
+    "elapsed": 61870.9,
+    "particles": 103820
+  },
+  {
+    "step": 2125,
+    "seconds": 25.554,
+    "elapsed": 61904.2,
+    "particles": 103796
+  },
+  {
+    "step": 2126,
+    "seconds": 26.546,
+    "elapsed": 61938.9,
+    "particles": 103737
+  },
+  {
+    "step": 2127,
+    "seconds": 24.944,
+    "elapsed": 61972.4,
+    "particles": 103699
+  },
+  {
+    "step": 2128,
+    "seconds": 26.559,
+    "elapsed": 62007.9,
+    "particles": 103660
+  },
+  {
+    "step": 2129,
+    "seconds": 25.442,
+    "elapsed": 62042.3,
+    "particles": 103609
+  },
+  {
+    "step": 2130,
+    "seconds": 27.622,
+    "elapsed": 62078.4,
+    "particles": 103568
+  },
+  {
+    "step": 2131,
+    "seconds": 27.311,
+    "elapsed": 62218.5,
+    "particles": 103533
+  },
+  {
+    "step": 2132,
+    "seconds": 26.312,
+    "elapsed": 62253.9,
+    "particles": 103503
+  },
+  {
+    "step": 2133,
+    "seconds": 25.791,
+    "elapsed": 62288.0,
+    "particles": 103459
+  },
+  {
+    "step": 2134,
+    "seconds": 26.916,
+    "elapsed": 62322.9,
+    "particles": 103423
+  },
+  {
+    "step": 2135,
+    "seconds": 25.007,
+    "elapsed": 62357.0,
+    "particles": 103392
+  },
+  {
+    "step": 2136,
+    "seconds": 27.786,
+    "elapsed": 62392.7,
+    "particles": 103391
+  },
+  {
+    "step": 2137,
+    "seconds": 26.636,
+    "elapsed": 62428.2,
+    "particles": 103388
+  },
+  {
+    "step": 2138,
+    "seconds": 25.066,
+    "elapsed": 62461.2,
+    "particles": 103374
+  },
+  {
+    "step": 2139,
+    "seconds": 26.582,
+    "elapsed": 62496.0,
+    "particles": 103371
+  },
+  {
+    "step": 2140,
+    "seconds": 25.311,
+    "elapsed": 62530.2,
+    "particles": 103372
+  },
+  {
+    "step": 2142,
+    "seconds": 25.512,
+    "elapsed": 62691.4,
+    "particles": 103369
+  },
+  {
+    "step": 2143,
+    "seconds": 26.121,
+    "elapsed": 62726.0,
+    "particles": 103362
+  },
+  {
+    "step": 2144,
+    "seconds": 26.051,
+    "elapsed": 62762.6,
+    "particles": 103390
+  },
+  {
+    "step": 2145,
+    "seconds": 24.678,
+    "elapsed": 62796.0,
+    "particles": 103409
+  },
+  {
+    "step": 2146,
+    "seconds": 26.085,
+    "elapsed": 62830.5,
+    "particles": 103421
+  },
+  {
+    "step": 2147,
+    "seconds": 26.757,
+    "elapsed": 62866.8,
+    "particles": 103429
+  },
+  {
+    "step": 2148,
+    "seconds": 25.603,
+    "elapsed": 62900.5,
+    "particles": 103441
+  },
+  {
+    "step": 2149,
+    "seconds": 25.69,
+    "elapsed": 62935.5,
+    "particles": 103447
+  },
+  {
+    "step": 2150,
+    "seconds": 25.475,
+    "elapsed": 62970.0,
+    "particles": 103467
+  },
+  {
+    "step": 2152,
+    "seconds": 24.669,
+    "elapsed": 63140.9,
+    "particles": 103481
+  },
+  {
+    "step": 2153,
+    "seconds": 26.076,
+    "elapsed": 63175.2,
+    "particles": 103494
+  },
+  {
+    "step": 2154,
+    "seconds": 25.481,
+    "elapsed": 63209.3,
+    "particles": 103501
+  },
+  {
+    "step": 2155,
+    "seconds": 24.918,
+    "elapsed": 63242.2,
+    "particles": 103500
+  },
+  {
+    "step": 2156,
+    "seconds": 26.029,
+    "elapsed": 63276.5,
+    "particles": 103507
+  },
+  {
+    "step": 2157,
+    "seconds": 26.098,
+    "elapsed": 63310.7,
+    "particles": 103520
+  },
+  {
+    "step": 2158,
+    "seconds": 24.426,
+    "elapsed": 63343.7,
+    "particles": 103519
+  },
+  {
+    "step": 2159,
+    "seconds": 25.812,
+    "elapsed": 63377.9,
+    "particles": 103524
+  },
+  {
+    "step": 2160,
+    "seconds": 26.982,
+    "elapsed": 63413.7,
+    "particles": 103529
+  },
+  {
+    "step": 2162,
+    "seconds": 24.348,
+    "elapsed": 63575.5,
+    "particles": 103544
+  },
+  {
+    "step": 2163,
+    "seconds": 26.339,
+    "elapsed": 63610.2,
+    "particles": 103547
+  },
+  {
+    "step": 2164,
+    "seconds": 26.577,
+    "elapsed": 63645.9,
+    "particles": 103556
+  },
+  {
+    "step": 2165,
+    "seconds": 24.793,
+    "elapsed": 63678.6,
+    "particles": 103565
+  },
+  {
+    "step": 2166,
+    "seconds": 26.316,
+    "elapsed": 63713.4,
+    "particles": 103576
+  },
+  {
+    "step": 2167,
+    "seconds": 26.537,
+    "elapsed": 63748.4,
+    "particles": 103587
+  },
+  {
+    "step": 2168,
+    "seconds": 25.636,
+    "elapsed": 63783.5,
+    "particles": 103596
+  },
+  {
+    "step": 2169,
+    "seconds": 24.555,
+    "elapsed": 63815.8,
+    "particles": 103603
+  },
+  {
+    "step": 2170,
+    "seconds": 25.458,
+    "elapsed": 63849.5,
+    "particles": 103614
+  },
+  {
+    "step": 2171,
+    "seconds": 26.383,
+    "elapsed": 63990.6,
+    "particles": 103622
+  },
+  {
+    "step": 2172,
+    "seconds": 26.661,
+    "elapsed": 64026.1,
+    "particles": 103637
+  },
+  {
+    "step": 2173,
+    "seconds": 26.961,
+    "elapsed": 64061.8,
+    "particles": 103648
+  },
+  {
+    "step": 2174,
+    "seconds": 26.911,
+    "elapsed": 64098.0,
+    "particles": 103660
+  },
+  {
+    "step": 2175,
+    "seconds": 27.143,
+    "elapsed": 64133.9,
+    "particles": 103662
+  },
+  {
+    "step": 2176,
+    "seconds": 25.257,
+    "elapsed": 64167.5,
+    "particles": 103668
+  },
+  {
+    "step": 2177,
+    "seconds": 25.171,
+    "elapsed": 64200.9,
+    "particles": 103683
+  },
+  {
+    "step": 2178,
+    "seconds": 26.977,
+    "elapsed": 64236.5,
+    "particles": 103685
+  },
+  {
+    "step": 2179,
+    "seconds": 24.112,
+    "elapsed": 64268.9,
+    "particles": 103695
+  },
+  {
+    "step": 2180,
+    "seconds": 25.964,
+    "elapsed": 64303.6,
+    "particles": 103711
+  },
+  {
+    "step": 2182,
+    "seconds": 25.139,
+    "elapsed": 64468.2,
+    "particles": 103725
+  },
+  {
+    "step": 2183,
+    "seconds": 25.099,
+    "elapsed": 64502.4,
+    "particles": 103727
+  },
+  {
+    "step": 2184,
+    "seconds": 25.003,
+    "elapsed": 64536.2,
+    "particles": 103738
+  },
+  {
+    "step": 2185,
+    "seconds": 26.746,
+    "elapsed": 64571.0,
+    "particles": 103754
+  },
+  {
+    "step": 2186,
+    "seconds": 25.544,
+    "elapsed": 64605.4,
+    "particles": 103761
+  },
+  {
+    "step": 2187,
+    "seconds": 25.57,
+    "elapsed": 64639.0,
+    "particles": 103767
+  },
+  {
+    "step": 2188,
+    "seconds": 26.75,
+    "elapsed": 64674.4,
+    "particles": 103776
+  },
+  {
+    "step": 2189,
+    "seconds": 25.347,
+    "elapsed": 64707.8,
+    "particles": 103784
+  },
+  {
+    "step": 2190,
+    "seconds": 27.101,
+    "elapsed": 64743.6,
+    "particles": 103790
+  },
+  {
+    "step": 2192,
+    "seconds": 26.322,
+    "elapsed": 64906.3,
+    "particles": 103812
+  },
+  {
+    "step": 2193,
+    "seconds": 24.957,
+    "elapsed": 64940.2,
+    "particles": 103828
+  },
+  {
+    "step": 2194,
+    "seconds": 25.864,
+    "elapsed": 64974.6,
+    "particles": 103838
+  },
+  {
+    "step": 2195,
+    "seconds": 26.266,
+    "elapsed": 65010.0,
+    "particles": 103833
+  },
+  {
+    "step": 2196,
+    "seconds": 25.667,
+    "elapsed": 65044.1,
+    "particles": 103833
+  },
+  {
+    "step": 2197,
+    "seconds": 26.548,
+    "elapsed": 65079.8,
+    "particles": 103846
+  },
+  {
+    "step": 2198,
+    "seconds": 25.942,
+    "elapsed": 65114.3,
+    "particles": 103861
+  },
+  {
+    "step": 2199,
+    "seconds": 24.704,
+    "elapsed": 65146.8,
+    "particles": 103863
+  },
+  {
+    "step": 2200,
+    "seconds": 25.72,
+    "elapsed": 65181.2,
+    "particles": 103871
+  },
+  {
+    "step": 2202,
+    "seconds": 24.752,
+    "elapsed": 65341.1,
+    "particles": 103885
+  },
+  {
+    "step": 2203,
+    "seconds": 26.428,
+    "elapsed": 65376.0,
+    "particles": 103882
+  },
+  {
+    "step": 2204,
+    "seconds": 28.245,
+    "elapsed": 65413.5,
+    "particles": 103888
+  },
+  {
+    "step": 2205,
+    "seconds": 26.743,
+    "elapsed": 65449.0,
+    "particles": 103905
+  },
+  {
+    "step": 2206,
+    "seconds": 24.339,
+    "elapsed": 65481.8,
+    "particles": 103916
+  },
+  {
+    "step": 2207,
+    "seconds": 24.258,
+    "elapsed": 65513.8,
+    "particles": 103929
+  },
+  {
+    "step": 2208,
+    "seconds": 25.936,
+    "elapsed": 65548.0,
+    "particles": 103931
+  },
+  {
+    "step": 2209,
+    "seconds": 25.821,
+    "elapsed": 65582.4,
+    "particles": 103939
+  },
+  {
+    "step": 2210,
+    "seconds": 23.512,
+    "elapsed": 65613.8,
+    "particles": 103949
+  },
+  {
+    "step": 2212,
+    "seconds": 24.981,
+    "elapsed": 65776.8,
+    "particles": 103978
+  },
+  {
+    "step": 2213,
+    "seconds": 27.058,
+    "elapsed": 65812.7,
+    "particles": 103987
+  },
+  {
+    "step": 2214,
+    "seconds": 24.159,
+    "elapsed": 65844.5,
+    "particles": 103997
+  },
+  {
+    "step": 2215,
+    "seconds": 23.704,
+    "elapsed": 65876.1,
+    "particles": 104013
+  },
+  {
+    "step": 2216,
+    "seconds": 25.188,
+    "elapsed": 65909.6,
+    "particles": 104027
+  },
+  {
+    "step": 2217,
+    "seconds": 26.23,
+    "elapsed": 65943.7,
+    "particles": 104034
+  },
+  {
+    "step": 2218,
+    "seconds": 24.932,
+    "elapsed": 65976.5,
+    "particles": 104046
+  },
+  {
+    "step": 2219,
+    "seconds": 25.71,
+    "elapsed": 66010.6,
+    "particles": 104056
+  },
+  {
+    "step": 2220,
+    "seconds": 25.152,
+    "elapsed": 66044.3,
+    "particles": 104074
+  },
+  {
+    "step": 2222,
+    "seconds": 27.035,
+    "elapsed": 66209.5,
+    "particles": 104105
+  },
+  {
+    "step": 2223,
+    "seconds": 22.757,
+    "elapsed": 66240.9,
+    "particles": 104125
+  },
+  {
+    "step": 2224,
+    "seconds": 25.533,
+    "elapsed": 66273.7,
+    "particles": 104133
+  },
+  {
+    "step": 2225,
+    "seconds": 25.934,
+    "elapsed": 66307.4,
+    "particles": 104147
+  },
+  {
+    "step": 2226,
+    "seconds": 24.789,
+    "elapsed": 66340.1,
+    "particles": 104161
+  },
+  {
+    "step": 2227,
+    "seconds": 25.094,
+    "elapsed": 66373.7,
+    "particles": 104183
+  },
+  {
+    "step": 2228,
+    "seconds": 25.205,
+    "elapsed": 66407.7,
+    "particles": 104201
+  },
+  {
+    "step": 2229,
+    "seconds": 23.857,
+    "elapsed": 66439.8,
+    "particles": 104213
+  },
+  {
+    "step": 2230,
+    "seconds": 26.171,
+    "elapsed": 66474.5,
+    "particles": 104223
+  },
+  {
+    "step": 2231,
+    "seconds": 26.9,
+    "elapsed": 66610.3,
+    "particles": 104239
+  },
+  {
+    "step": 2232,
+    "seconds": 24.729,
+    "elapsed": 66643.0,
+    "particles": 104253
+  },
+  {
+    "step": 2233,
+    "seconds": 25.324,
+    "elapsed": 66677.2,
+    "particles": 104271
+  },
+  {
+    "step": 2234,
+    "seconds": 24.517,
+    "elapsed": 66710.1,
+    "particles": 104291
+  },
+  {
+    "step": 2235,
+    "seconds": 25.875,
+    "elapsed": 66744.1,
+    "particles": 104317
+  },
+  {
+    "step": 2236,
+    "seconds": 25.63,
+    "elapsed": 66778.6,
+    "particles": 104329
+  },
+  {
+    "step": 2237,
+    "seconds": 25.456,
+    "elapsed": 66813.0,
+    "particles": 104339
+  },
+  {
+    "step": 2238,
+    "seconds": 27.903,
+    "elapsed": 66850.0,
+    "particles": 104359
+  },
+  {
+    "step": 2239,
+    "seconds": 27.511,
+    "elapsed": 66886.0,
+    "particles": 104375
+  },
+  {
+    "step": 2240,
+    "seconds": 26.674,
+    "elapsed": 66922.1,
+    "particles": 104399
+  }
+]

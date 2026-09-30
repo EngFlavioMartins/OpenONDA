@@ -1,0 +1,24 @@
+{
+  "mode": "before",
+  "grid": [
+    160,
+    72,
+    64
+  ],
+  "particles": 6000,
+  "fft_workers": 2,
+  "seconds": 10.198357845001738,
+  "peak_rss_mib": 661.01171875,
+  "result": {
+    "total_kinetic_energy": 0.018371227518132055,
+    "total_enstrophy": 1.6877377247760508,
+    "test_filtered_enstrophy": 0.7873876714808687,
+    "total_helicity": -0.00043309628210586894,
+    "previous_order_total_kinetic_energy": 0.018192847906925474,
+    "previous_order_total_enstrophy": 1.5839402243046674,
+    "previous_order_total_helicity": -0.00045384740849196644,
+    "radius_expansion_order": 3,
+    "viscous_kinetic_energy_rate": -0.0016877377247760507,
+    "energy_measurement": "periodic_fourier_energy"
+  }
+}

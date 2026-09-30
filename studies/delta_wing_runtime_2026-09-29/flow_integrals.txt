@@ -1,0 +1,73 @@
+         20678 function calls (20611 primitive calls) in 181.280 seconds
+
+   Ordered by: cumulative time
+   List reduced from 327 to 65 due to restriction <65>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.001    0.001  181.281  181.281 profile_case.py:21(timed)
+        1    0.001    0.001  181.280  181.280 solver.py:1226(_update_all_flow_integrals)
+        1    0.001    0.001  177.034  177.034 evaluation.py:939(compute_flow_integrals)
+        1    0.008    0.008  177.031  177.031 evaluation.py:1088(_compute_fourier_flow_integrals)
+        1    0.526    0.526  176.863  176.863 evaluation.py:1218(_fourier_integrals_on_persistent_grid)
+        1   19.437   19.437  176.129  176.129 fourier_integrals.py:195(gaussian_fourier_integrals)
+        2  114.204   57.102  115.521   57.760 fourier_integrals.py:358(quadratic_integrals)
+       12    0.000    0.000   18.860    1.572 _backend.py:19(__ua_function__)
+       12    0.000    0.000   18.859    1.572 _basic_backend.py:136(rfftn)
+       12    0.065    0.005   18.859    1.572 _basic_backend.py:52(_execute_nD)
+       12    0.001    0.000   18.794    1.566 basic.py:157(r2cn)
+       12   16.436    1.370   16.437    1.370 {built-in method scipy.fft._pocketfft.pypocketfft.r2c}
+        4    5.205    1.301   15.560    3.890 fourier_integrals.py:84(_scatter_vortex_strength_m4)
+      256    9.797    0.038    9.797    0.038 {method 'at' of 'numpy.ufunc' objects}
+        1    0.000    0.000    6.635    6.635 fourier_integrals.py:343(<listcomp>)
+        3    6.635    2.212    6.635    2.212 {method 'copy' of 'numpy.ndarray' objects}
+        1    0.015    0.015    4.225    4.225 solver.py:1236(_update_discretization_health)
+        1    0.153    0.153    4.150    4.150 resolution.py:99(discretization_health)
+        1    1.855    1.855    3.025    3.025 resolution.py:57(_vorticity_gradient_metrics)
+       12    2.352    0.196    2.353    0.196 helper.py:146(_fix_shape)
+      588    1.590    0.003    1.590    0.003 {method 'reduce' of 'numpy.ufunc' objects}
+       30    0.002    0.000    1.345    0.045 fromnumeric.py:66(_wrapreduction)
+       24    0.001    0.000    1.316    0.055 fromnumeric.py:2304(sum)
+        2    0.002    0.001    0.846    0.423 _arraysetops_impl.py:145(unique)
+        2    0.056    0.028    0.839    0.419 _arraysetops_impl.py:350(_unique1d)
+     1537    0.006    0.000    0.698    0.000 einsumfunc.py:1244(einsum)
+     1537    0.692    0.000    0.692    0.000 {built-in method numpy._core._multiarray_umath.c_einsum}
+       16    0.001    0.000    0.540    0.034 fourier_integrals.py:98(<genexpr>)
+       12    0.041    0.003    0.493    0.041 fourier_integrals.py:99(<listcomp>)
+       48    0.440    0.009    0.452    0.009 fourier_integrals.py:58(_m4_prime)
+        1    0.421    0.421    0.421    0.421 {method 'sort' of 'numpy.ndarray' objects}
+      599    0.415    0.001    0.415    0.001 {built-in method numpy.asarray}
+        2    0.347    0.173    0.347    0.173 {method 'argsort' of 'numpy.ndarray' objects}
+        1    0.001    0.001    0.202    0.202 evaluation.py:1184(_fit_fourier_grid)
+       49    0.118    0.002    0.119    0.002 numeric.py:97(zeros_like)
+        3    0.049    0.016    0.104    0.035 numeric.py:1567(cross)
+       13    0.000    0.000    0.090    0.007 {method 'sum' of 'numpy.ndarray' objects}
+       13    0.000    0.000    0.090    0.007 _methods.py:47(_sum)
+       20    0.078    0.004    0.078    0.004 {method 'astype' of 'numpy.ndarray' objects}
+        3    0.000    0.000    0.069    0.023 {method 'min' of 'numpy.ndarray' objects}
+        3    0.000    0.000    0.069    0.023 _methods.py:43(_amin)
+        6    0.000    0.000    0.058    0.010 {method 'max' of 'numpy.ndarray' objects}
+        6    0.000    0.000    0.058    0.010 _methods.py:39(_amax)
+        1    0.013    0.013    0.058    0.058 _function_base_impl.py:439(average)
+       11    0.000    0.000    0.048    0.004 state.py:23(wrapper)
+        1    0.000    0.000    0.047    0.047 container.py:812(velocity_gradient_cpu)
+       12    0.046    0.004    0.046    0.004 shape_base.py:378(stack)
+        1    0.004    0.004    0.046    0.046 container.py:317(_extract_matrix)
+        6    0.040    0.007    0.040    0.007 {built-in method numpy.ascontiguousarray}
+        2    0.000    0.000    0.040    0.020 kernel_impl.py:1170(__call__)
+        2    0.002    0.001    0.039    0.020 kernel_impl.py:1016(__call__)
+      512    0.007    0.000    0.035    0.000 fromnumeric.py:1806(trace)
+        6    0.011    0.002    0.032    0.005 _linalg.py:2599(norm)
+        1    0.002    0.002    0.030    0.030 fourier_integrals.py:68(_grid_for_particles)
+        2    0.003    0.002    0.029    0.015 kernel_impl.py:685(launch_kernel)
+      512    0.026    0.000    0.026    0.000 {method 'trace' of 'numpy.ndarray' objects}
+       20    0.001    0.000    0.022    0.001 threading.py:945(start)
+        1    0.001    0.001    0.019    0.019 solver.py:1288(_record_vortex_centroid_history)
+        1    0.003    0.003    0.018    0.018 evaluation.py:877(record_vortex_centroid_history)
+       20    0.007    0.000    0.018    0.001 threading.py:856(__init__)
+        1    0.000    0.000    0.015    0.015 fromnumeric.py:3127(amax)
+        1    0.000    0.000    0.014    0.014 fromnumeric.py:3265(amin)
+   153/98    0.007    0.000    0.013    0.000 kernel_impl.py:1214(_getattr)
+        2    0.013    0.006    0.013    0.006 {built-in method taichi._lib.core.taichi_python.launch_kernel}
+        2    0.012    0.006    0.012    0.006 _shape_base_impl.py:625(column_stack)
+
+

@@ -1,0 +1,91 @@
+...............................F........................................ [ 32%]
+...........................................F............................ [ 64%]
+........................................................................ [ 96%]
+........                                                                 [100%]
+=================================== FAILURES ===================================
+_ test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations[remesh] _
+
+tmp_path = PosixPath('/tmp/pytest-of-flavio-martins/pytest-108/test_restart_keeps_capacity_ch1')
+policy = 'remesh'
+
+    @pytest.mark.parametrize("policy", ("smaller", "remesh"))
+    def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_path, policy):
+        stabilization = StabilizationConfig.disabled()
+        if policy == "remesh":
+            stabilization = StabilizationConfig(
+                regularization_interval_steps=1, regularization_grid_spacing=0.1
+            )
+        writer = _solver(tmp_path / "writer", stabilization=stabilization)
+        try:
+            _add_counter_rotating_pair(writer)
+            writer.save_backup()
+        finally:
+            writer.close()
+        reader = _solver(
+            tmp_path / "reader",
+            max_n_particles=32 if policy == "smaller" else 128,
+            stabilization=stabilization,
+        )
+        try:
+>           with pytest.raises(ValueError, match="max_n_particles"):
+E           Failed: DID NOT RAISE ValueError
+
+tests/vpm/test_backup_storage.py:746: Failed
+____________ test_scheduled_and_manual_backups_share_surface_writer ____________
+
+tmp_path = PosixPath('/tmp/pytest-of-flavio-martins/pytest-108/test_scheduled_and_manual_back0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a43c06762d0>
+
+    def test_scheduled_and_manual_backups_share_surface_writer(tmp_path, monkeypatch):
+        _, fields, _ = _checkpoint(tmp_path, 4)
+        calls = []
+    
+        def save_results(filename, *, time):
+            return write_lattice_vtk(fields, f"{filename}.vtp", reference_speed=2.0, time=time)
+    
+        solver = SimpleNamespace(
+            _backup_path=tmp_path,
+            step=4,
+            time=0.5,
+            particles=SimpleNamespace(state_revision=0),
+            vlm_solver=SimpleNamespace(save_results=save_results),
+            _sync_restart_state=lambda: None,
+            _refresh_backup_particle_fields=lambda: None,
+            _write_run_manifest=lambda *args: None,
+            _run_started=True,
+        )
+        solver.io = SolverIO(solver)
+        monkeypatch.setattr(
+            "source.solvers.vpm.io.solver_io._BackupIO.save", lambda *a, **k: calls.append(solver.step)
+        )
+        solver.io.write_backup()
+        solver.step, solver.time = 9, 1.125
+>       VPMSolver.save_backup(solver)
+
+tests/vpm/test_vlm_surface_backup.py:226: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = namespace(_backup_path=PosixPath('/tmp/pytest-of-flavio-martins/pytest-108/test_scheduled_and_manual_back0'), step=9, ...<lambda> at 0x7a43c05b0e00>, _run_started=True, io=<source.solvers.vpm.io.solver_io.SolverIO object at 0x7a43c0676750>)
+
+    def save_backup(self) -> None:
+        """Write HDF5 state and its ParaView companions to the backup directory.
+    
+        The accepted clock and derived velocity/vorticity fields are refreshed
+        before serialization. This mutates output files but does not advance
+        the solution.
+        """
+        self._sync_restart_state()
+>       self._write_prepared_backup(self.io.write_backup)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'types.SimpleNamespace' object has no attribute '_write_prepared_backup'
+
+source/solvers/vpm/core/solver.py:2526: AttributeError
+=============================== warnings summary ===============================
+../../anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/_lib/utils.py:70
+  /home/flavio-martins/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/_lib/utils.py:70: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.
+    return path.encode(locale.getdefaultlocale()[1])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/vpm/test_backup_storage.py::test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations[remesh]
+FAILED tests/vpm/test_vlm_surface_backup.py::test_scheduled_and_manual_backups_share_surface_writer

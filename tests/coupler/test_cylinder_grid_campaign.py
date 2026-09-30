@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 from types import SimpleNamespace
 
@@ -69,7 +70,15 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
     assert samplers["forces_history"].schedule.every_time == 0.04
 
 
-def test_allrun_dispatches_the_safe_campaign_pipeline(tmp_path):
+def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):
+    # Never execute a tutorial launcher in the checkout: allrun invokes
+    # allclean, which would delete the user's generated simulation data.
+    case_copy = tmp_path / "case"
+    case_copy.mkdir()
+    shutil.copy2(CASE / "allrun.sh", case_copy / "allrun.sh")
+    cleanup = case_copy / "allclean.sh"
+    cleanup.write_text('#!/bin/bash\nprintf "clean\\n" >> "$SHELL_TEST_LOG"\n')
+    cleanup.chmod(0o755)
     stub = tmp_path / "python"
     stub.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> "$SHELL_TEST_LOG"\n')
     stub.chmod(0o755)
@@ -78,10 +87,10 @@ def test_allrun_dispatches_the_safe_campaign_pipeline(tmp_path):
         PATH=str(tmp_path) + os.pathsep + os.environ["PATH"],
         SHELL_TEST_LOG=str(tmp_path / "calls"),
     )
-    subprocess.run(["/bin/bash", str(CASE / "allrun.sh")], env=environment, check=True)
+    subprocess.run(["/bin/bash", str(case_copy / "allrun.sh")], env=environment, check=True)
 
     calls = [shlex.split(line) for line in (tmp_path / "calls").read_text().splitlines()]
-    assert calls == [["../assets/run_pipeline.py", "--reference-only", "--root", "study_results"]]
+    assert calls == [["clean"], ["setup.py"]]
 
 
 def test_setup_exposes_only_name_and_spacing():

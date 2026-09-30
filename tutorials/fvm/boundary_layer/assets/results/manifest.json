@@ -1,6 +1,8 @@
 {
   "archive": "data.tar.gz",
   "archive_sha256": "602c7e517294567f8a0caf07d1942a1cf5ed6026a875b590ae2d28b2d7da2d9b",
+  "archive_size": 1369920,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/fvm-boundary_layer-data.tar.gz",
   "excluded_superseded": [],
   "files": [
     {

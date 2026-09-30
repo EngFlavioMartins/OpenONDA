@@ -2367,6 +2367,71 @@ class TaichiTreecode:
         """Clear the external-target stack-overflow signal before a query."""
         self._external_target_traversal_error[None] = 0
 
+    @ti.kernel
+    def _gaussian_particle_vorticity(self, output: ti.template(), start: ti.i32, count: ti.i32):
+        for local in range(count):
+            target = start + local
+            position = self.position[target]
+            radius = self.core_radius[target]
+            value = ti.Vector.zero(ti.f32, 3)
+            self.target_traversal_stack[local, 0] = self._root[None]
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.target_traversal_stack[local, stack_ptr]
+                distance = ti.max(
+                    ti.max(
+                        self._node_aabb_min[node] - position, position - self._node_aabb_max[node]
+                    ),
+                    0.0,
+                )
+                # exp(-12**2) is zero in f32, including subnormals. Using
+                # the largest source radius gives a conservative bound for
+                # the pair-mean core convention. No multipole approximation
+                # or user-selected tail tolerance enters this diagnostic.
+                reach = 6.0 * (radius + self.node_max_radius[node])
+                if distance.dot(distance) > reach * reach:
+                    continue
+                if self.node_particle_count[node] <= 32:
+                    first = self.node_particle_start[node]
+                    for offset in range(self.node_particle_count[node]):
+                        source = self.sorted_indices[first + offset]
+                        delta = position - self.position[source]
+                        sigma = 0.5 * (radius + self.core_radius[source])
+                        rho = ti.sqrt(delta.dot(delta)) / sigma
+                        if rho < 12.0:
+                            value += (
+                                self._gaussian_zeta(rho)
+                                / (sigma * sigma * sigma)
+                                * self.vortex_strength[source]
+                            )
+                elif stack_ptr + 2 <= self.max_stack_depth:
+                    self.target_traversal_stack[local, stack_ptr] = self.node_right[node]
+                    self.target_traversal_stack[local, stack_ptr + 1] = self.node_left[node]
+                    stack_ptr += 2
+                else:
+                    ti.atomic_max(self._external_target_traversal_error[None], 1)
+            output[target] = value
+
+    def compute_gaussian_particle_vorticity(self, output, count: int) -> None:
+        """Sum f32 Gaussian density at source centres, including self terms.
+
+        The caller must build the hierarchy for the current accepted state.
+        Output retains the original particle ordering and pair-mean radii.
+        Only contributions that underflow to zero are pruned; the nonzero
+        terms differ from direct summation only in accumulation order.
+        """
+        if count != self._built_n:
+            raise ValueError("Vorticity targets must match the built source hierarchy")
+        self._reset_external_target_traversal_error()
+        batch = min(self.max_evaluation_points, _TRAVERSAL_BATCH_SIZE)
+        for start in range(0, count, batch):
+            self._gaussian_particle_vorticity(output, start, min(batch, count - start))
+        if int(self._external_target_traversal_error[None]):
+            raise RuntimeError(
+                f"Gaussian vorticity traversal exceeded stack depth {self.max_stack_depth}"
+            )
+
     # INFO
 
     def info(self) -> str:

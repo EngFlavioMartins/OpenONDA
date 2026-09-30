@@ -29,7 +29,6 @@ Only the 3.11 release series is supported; 3.11 security and bug-fix updates
 remain allowed. Create a virtual environment with that interpreter:
 
 ```bash
-git lfs install
 git clone --depth 1 --branch development \
   https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
@@ -46,13 +45,30 @@ to work on the source without reinstalling after edits. Ordinary
 See [installation details](docs/installation.md) for environment setup,
 optional mesh import and MPI/PETSc support.
 
-To reproduce archived tutorial figures, install [Git LFS](https://git-lfs.com/)
-before cloning and the [rendering dependencies](docs/installation.md#optional-external-software).
+To reproduce archived tutorial figures, install the
+[rendering dependencies](docs/installation.md#optional-external-software).
 Run `./allplot.sh` inside the case. Its lossless result archive restores missing
-plot inputs; existing local runs are preserved. Archives record whether their
+plot inputs, downloading checksum-verified release assets as needed; existing
+local runs are preserved. Git LFS is not required. Archives record whether their
 results are complete, partial or stopped on a numerical health check. See the
 [archive checklist](docs/verification/tutorial_results_archive.md) for coverage
 and remaining numerical work. Result archives are separate from the pip package.
+
+The [30 September sample snapshot](studies/samples_snapshot_2026-09-30/README.md)
+also preserves every current tutorial `samples/` file, including study histories
+and restart branches. To retrieve it from another machine:
+
+```bash
+git clone --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+cd OpenONDA
+python -m openonda.results restore build/published-samples \
+  --bundle studies/samples_snapshot_2026-09-30/assets/results
+```
+
+Run the Python command in the installed OpenONDA environment. The restored files
+retain their original `tutorials/.../samples/...` paths under
+`build/published-samples`; they remain separate from local simulations and the
+older, matched solution bundles used by `allplot.sh`.
 
 ## Two small examples
 
@@ -121,9 +137,9 @@ openonda tutorial create vpm/vortex_ring ./ring-workspace
 ```
 
 Working samples and restart checkpoints remain local. Published result snapshots
-are versioned losslessly through Git LFS under each case's `assets/results`;
+are published losslessly as versioned release assets, with manifests under each case's `assets/results`;
 `allplot.sh` restores them in a fresh clone. The pip package contains tutorial
-inputs and scripts; result archives are distributed with the Git repository.
+inputs and scripts; result archives are downloaded separately from GitHub releases.
 
 Each case includes its own instructions and input assets. See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 

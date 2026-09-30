@@ -725,7 +725,7 @@ def test_larger_restart_capacity_preserves_the_particle_trajectory(tmp_path, ind
 
 
 @pytest.mark.parametrize("policy", ("smaller", "remesh"))
-def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_path, policy):
+def test_restart_capacity_can_grow_with_regularization_but_cannot_shrink(tmp_path, policy):
     stabilization = StabilizationConfig.disabled()
     if policy == "remesh":
         stabilization = StabilizationConfig(
@@ -743,9 +743,18 @@ def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_p
         stabilization=stabilization,
     )
     try:
-        with pytest.raises(ValueError, match="max_n_particles"):
-            reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
-        assert reader.particles.n_particles_total == 0
+        checkpoint = tmp_path / "writer/solution/vpm/vpm_000000.h5"
+        if policy == "smaller":
+            with pytest.raises(ValueError, match="max_n_particles"):
+                reader.load_backup(checkpoint)
+            assert reader.particles.n_particles_total == 0
+        else:
+            # Regularization now rejects proposals exceeding storage instead
+            # of truncating them. Increasing storage preserves the algorithm.
+            reader.load_backup(checkpoint)
+            assert reader.particles.n_particles_total == 2
+            np.testing.assert_allclose(reader.particle_position, [[-0.25, 0, 0], [0.25, 0, 0]])
+            np.testing.assert_allclose(reader.particle_vortex_strength, [[0, 0.1, 0], [0, -0.1, 0]])
     finally:
         reader.close()
 
@@ -817,7 +826,9 @@ def test_regularization_capacity_can_increase_after_rejected_remap(tmp_path):
             regularize(writer.stabilization.ctx, stabilization)
         np.testing.assert_array_equal(writer.particle_position, before_position)
         np.testing.assert_array_equal(writer.particle_vortex_strength, before_strength)
-        np.testing.assert_array_equal(writer.stabilization.reference_vortex_strength, before_reference)
+        np.testing.assert_array_equal(
+            writer.stabilization.reference_vortex_strength, before_reference
+        )
         np.testing.assert_array_equal(writer.stabilization.reference_lengths, before_lengths)
         assert (writer.step, writer.time) == (0, 0.0)
     finally:
@@ -828,7 +839,9 @@ def test_regularization_capacity_can_increase_after_rejected_remap(tmp_path):
         reader.load_backup(tmp_path / "writer/solution/vpm/vpm_000000.h5")
         np.testing.assert_array_equal(reader.particle_position, before_position)
         np.testing.assert_array_equal(reader.particle_vortex_strength, before_strength)
-        np.testing.assert_array_equal(reader.stabilization.reference_vortex_strength, before_reference)
+        np.testing.assert_array_equal(
+            reader.stabilization.reference_vortex_strength, before_reference
+        )
         remapped = gaussian_core_remesh(
             reader.particles,
             spacing=stabilization.regularization_grid_spacing,
@@ -857,9 +870,12 @@ def test_regularization_capacity_increase_rejects_changed_physical_model():
     current = json.loads(json.dumps(saved))
     current["max_n_particles"] = 128
     current["stabilization"].pop("regularization_max_particles")
-    assert _configuration_mismatches(
-        canonical_restart_configuration(current), canonical_restart_configuration(saved)
-    ) == []
+    assert (
+        _configuration_mismatches(
+            canonical_restart_configuration(current), canonical_restart_configuration(saved)
+        )
+        == []
+    )
     current["stabilization"]["regularization_grid_spacing"] = 0.11
     assert _configuration_mismatches(
         canonical_restart_configuration(current), canonical_restart_configuration(saved)
@@ -1401,3 +1417,194 @@ def test_restart_retired_stabilization_policies_preserve_algorithm_identity(acti
         assert "stabilization.filament_refinement.late_interval_steps" in mismatches
     else:
         assert mismatches == []
+
+
+@pytest.mark.parametrize("with_vlm", [False, True])
+def test_scheduled_backup_reuses_only_its_accepted_state_velocity(tmp_path, monkeypatch, with_vlm):
+    if with_vlm:
+        from dataclasses import replace
+
+        from _flat_plate_geometry import create_flat_plate
+
+        from source.solvers.vpm import VLMSetup, VLMSurfaceSetup
+
+        case = _case(tmp_path)
+        plate = create_flat_plate(
+            chord=1,
+            span=2,
+            angle_of_attack_degrees=5,
+            n_chordwise_panels=1,
+            n_spanwise_panels=2,
+        )
+        vlm = VLMSetup(
+            surfaces=(VLMSurfaceSetup(plate),),
+            freestream_velocity=(1, 0, 0),
+            kinematic_viscosity=0.01,
+        )
+        solver = VPMSolver(replace(case, numerics=replace(case.numerics, vlm=vlm)))
+    else:
+        solver = _solver(tmp_path)
+    try:
+        _add_counter_rotating_pair(solver)
+        evaluate = solver.stage_rhs.evaluate
+        diagnostic_calls = []
+
+        def counted(state, time, rates):
+            if not rates.strength_rate_enabled:
+                diagnostic_calls.append(time)
+            return evaluate(state, time, rates)
+
+        monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
+        monkeypatch.setattr(solver.output_manager, "_backup_due", lambda: True)
+        solver.advance()
+        assert len(diagnostic_calls) == 1  # health already evaluated transport
+        assert set(solver.last_backup_timing) == {"preparation", "writing"}
+        saved = solver.particle_velocity.copy()
+        solver.save_backup()  # a separate manual event must refresh external data
+        assert len(diagnostic_calls) == 2
+        np.testing.assert_allclose(solver.particle_velocity, saved)
+    finally:
+        solver.close()
+
+
+@pytest.mark.parametrize(
+    "change", ["particles", "clock", "background", "provider", "exception", "consumed"]
+)
+def test_prepared_backup_velocity_cannot_survive_state_changes(tmp_path, monkeypatch, change):
+    solver = _solver(tmp_path)
+    monkeypatch.setattr(solver, "_allow_backup_velocity_reuse", True, raising=False)
+    try:
+        _add_counter_rotating_pair(solver)
+        with solver._output_preparation():
+            solver._refresh_particle_diagnostic_fields()
+            if change == "particles":
+                solver.particles.touch_state()
+            elif change == "clock":
+                solver.time += 0.1
+            elif change == "background":
+                solver._set_freestream_velocity([0.1, 0.2, 0.0])
+            elif change == "provider":
+                solver.stage_rhs.position_guard = lambda state: None
+            elif change == "exception":
+                try:
+                    with solver._output_preparation():
+                        raise RuntimeError("interrupted output")
+                except RuntimeError:
+                    pass
+            elif change == "consumed":
+                solver._refresh_backup_particle_fields()
+            calls = []
+            original = solver.stage_rhs.evaluate
+
+            def counted(*args):
+                calls.append(1)
+                return original(*args)
+
+            monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
+            solver._refresh_backup_particle_fields()
+            assert calls == [1]
+        assert solver._prepared_backup_velocity is None
+    finally:
+        solver.close()
+
+
+@pytest.mark.parametrize("backend", ["direct", "treecode", "fmm"])
+def test_large_gaussian_backup_vorticity_matches_direct_mixed_core_sum(tmp_path, backend):
+    induction = {"direct": DirectInduction, "treecode": TreecodeInduction, "fmm": FMMInduction}[
+        backend
+    ]()
+    solver = _solver(tmp_path, max_n_particles=4096, induction=induction)
+    try:
+        rng = np.random.default_rng(691)
+        count = 2051  # non-power-of-two LBVH and traversal tail
+        position = rng.uniform(-0.9, 0.9, (count, 3))
+        position[:2] = 0.0  # coincident sources, with distinct cores
+        radius = rng.uniform(0.004, 0.03, count)
+        radius[:3] = [0.01, 0.2, 0.45]  # wide cores cannot be pruned using a mean
+        strength = rng.normal(size=(count, 3)) * 1e-3
+        solver.add_vortex_particles(
+            position=position,
+            velocity=np.zeros_like(position),
+            vortex_strength=strength,
+            core_radius=radius,
+            particle_volume=radius**3,
+            kinematic_viscosity=np.full(count, 0.01),
+        )
+        physics, particles = solver.physics, solver.particles
+        physics.compute_vorticities_kernel(
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            particles.vorticity,
+            count,
+        )
+        expected = particles.vorticity.to_numpy()[:count].copy()
+        physics.compute_vorticities(particles)
+        actual = particles.vorticity.to_numpy()[:count].copy()
+        np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-5)
+        # Moving sources must rebuild the hierarchy even at the same clock.
+        solver.set_particles_properties(position=position * 0.5)
+        physics.compute_vorticities(particles)
+        moved = particles.vorticity.to_numpy()[:count].copy()
+        physics.compute_vorticities_kernel(
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            particles.vorticity,
+            count,
+        )
+        np.testing.assert_allclose(
+            moved, particles.vorticity.to_numpy()[:count], rtol=2e-5, atol=2e-5
+        )
+    finally:
+        solver.close()
+
+
+def test_manual_backup_inside_sampler_scope_refreshes_external_data(tmp_path, monkeypatch):
+    solver = _solver(tmp_path)
+    try:
+        _add_counter_rotating_pair(solver)
+        with solver._output_preparation():
+            solver._refresh_particle_diagnostic_fields()
+            original = solver.stage_rhs.evaluate
+            calls = []
+
+            def counted(*args):
+                calls.append(1)
+                return original(*args)
+
+            monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
+            # A custom sampler can change state held inside a provider and
+            # call save_backup even when no periodic backup is scheduled.
+            solver.save_backup()
+            assert calls == [1]
+    finally:
+        solver.close()
+
+
+def test_final_backup_reuses_final_diagnostic_velocity(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from source.solvers.vpm import RunPlan
+
+    case = replace(_case(tmp_path), run=RunPlan(steps=1, initial_samples=False, final_backup=True))
+    solver = VPMSolver(case)
+    try:
+        _add_counter_rotating_pair(solver)
+        original = solver.stage_rhs.evaluate
+        calls = []
+
+        def counted(state, time, rates):
+            if not rates.strength_rate_enabled:
+                calls.append(time)
+            return original(state, time, rates)
+
+        monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
+        solver.run()
+        # Accepted-step health, then final diagnostics; no third transport
+        # evaluation just to serialize the already-prepared final state.
+        assert calls == [0.01, 0.01]
+        with h5py.File(tmp_path / "solution/vpm/vpm_000001.h5") as backup:
+            assert backup["solver"].attrs["step"] == 1
+    finally:
+        solver.close()
