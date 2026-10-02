@@ -303,8 +303,11 @@ def _verify_tutorial_source_paths(tutorial_root: Path) -> None:
     path_markers = ("/" + "Users/", "/" + "home/")
     for source in tutorial_root.rglob("*"):
         relative = PurePosixPath(source.relative_to(tutorial_root).as_posix())
-        if (not source.is_file() or source.suffix not in {".py", ".sh"}
-                or not _include_resource(relative)):
+        if (
+            not source.is_file()
+            or source.suffix not in {".py", ".sh"}
+            or not _include_resource(relative)
+        ):
             continue
         text = source.read_text(encoding="utf-8")
         if any(marker in text for marker in path_markers):
@@ -427,13 +430,19 @@ def _verify_environment() -> dict[str, object]:
     from openonda import plotting as theme
 
     commands = ("latex", "pdflatex", "dvipng", "pdftoppm", "pvpython", "mpiexec")
-    missing = [command for command in commands if shutil.which(command) is None]
+    executables = {command: shutil.which(command) for command in commands}
+    missing = [command for command, path in executables.items() if path is None]
     if missing:
         raise RuntimeError(f"OpenONDA environment is missing commands: {', '.join(missing)}")
-    outside = [command for command in commands
-               if not Path(shutil.which(command)).resolve().is_relative_to(Path(sys.prefix).resolve())]
+    outside = [
+        command
+        for command, path in executables.items()
+        if path is not None and not Path(path).resolve().is_relative_to(Path(sys.prefix).resolve())
+    ]
     if outside:
-        raise RuntimeError(f"Commands resolve outside the OpenONDA environment: {', '.join(outside)}")
+        raise RuntimeError(
+            f"Commands resolve outside the OpenONDA environment: {', '.join(outside)}"
+        )
     with tempfile.TemporaryDirectory(prefix="openonda-environment-") as directory:
         workspace = Path(directory)
         theme.set_thesis_style()
@@ -444,8 +453,9 @@ def _verify_environment() -> dict[str, object]:
         theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
         theme.fit_thesis_y_label_margins(figure, (axes,))
         for figure_format in ("pdf", "png"):
-            theme.save_fig(figure, workspace / f"thesis.{figure_format}",
-                           figure_format=figure_format, dpi=72)
+            theme.save_fig(
+                figure, workspace / f"thesis.{figure_format}", figure_format=figure_format, dpi=72
+            )
         plt.close(figure)
         (workspace / "overlay.tex").write_text(
             r"\documentclass{standalone}\usepackage{tikz}\usepackage{newpxtext}"
@@ -454,14 +464,18 @@ def _verify_environment() -> dict[str, object]:
         )
         latex = subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "overlay.tex"],
-            cwd=workspace, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=workspace,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
         )
         if latex.returncode:
             raise RuntimeError(f"TeX overlay verification failed:\n{latex.stdout}")
         subprocess.run(
             ["pdftoppm", "-png", "-singlefile", "-scale-to", "256", "overlay.pdf", "overlay"],
-            cwd=workspace, check=True,
+            cwd=workspace,
+            check=True,
         )
         (workspace / "scene.py").write_text(
             "from paraview.simple import (Sphere, Show, CreateView, SaveScreenshot, "
@@ -474,7 +488,9 @@ def _verify_environment() -> dict[str, object]:
             "assert SaveScreenshot('scene.png', layout, ImageResolution=[256, 256])\n"
         )
         subprocess.run(
-            ["pvpython", "--force-offscreen-rendering", "scene.py"], cwd=workspace, check=True,
+            ["pvpython", "--force-offscreen-rendering", "scene.py"],
+            cwd=workspace,
+            check=True,
         )
         # Use two real MPI processes and a PETSc solve, not just import checks.
         parallel = (
@@ -490,7 +506,8 @@ def _verify_environment() -> dict[str, object]:
         )
         subprocess.run(
             ["mpiexec", "--oversubscribe", "-n", "2", sys.executable, "-I", "-c", parallel],
-            cwd=workspace, check=True,
+            cwd=workspace,
+            check=True,
             env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"},
         )
         for name in ("thesis.png", "thesis.pdf", "overlay.pdf", "overlay.png", "scene.png"):
@@ -538,14 +555,15 @@ def main() -> int:
         "--with-meshing", action="store_true", help="also exercise optional Gmsh geometry"
     )
     parser.add_argument(
-        "--with-environment", action="store_true",
+        "--with-environment",
+        action="store_true",
         help="also render thesis/ParaView figures and exercise MPI/PETSc",
     )
     args = parser.parse_args()
 
     # Initialize Numba before FVM runtime setup, as in a mixed-solver process.
     numba.get_num_threads()
-    report = {
+    report: dict[str, object] = {
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
         "distribution": _verify_distribution_resources(),

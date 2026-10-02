@@ -15,7 +15,10 @@ import tarfile
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("install_tex", ROOT / "scripts/install/install_tex.py")
+spec = importlib.util.spec_from_file_location(
+    "install_tex", ROOT / "scripts/install/install_tex.py"
+)
+assert spec is not None and spec.loader is not None
 tex = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tex)
 
@@ -26,14 +29,21 @@ def executable(path, content):
     path.chmod(0o755)
 
 
-@pytest.mark.parametrize("system,architecture,checksum", [
-    ("Linux", "x86_64", "sha256sum"),
-    ("Darwin", "x86_64", "shasum"),
-    ("Darwin", "arm64", "shasum"),
-])
+@pytest.mark.parametrize(
+    "system,architecture,checksum",
+    [
+        ("Linux", "x86_64", "sha256sum"),
+        ("Darwin", "x86_64", "shasum"),
+        ("Darwin", "arm64", "shasum"),
+    ],
+)
 @pytest.mark.parametrize("valid_digest", [False, True])
 def test_fresh_bootstrap_uses_pinned_asset_and_checks_before_execution(
-    tmp_path, system, architecture, checksum, valid_digest,
+    tmp_path,
+    system,
+    architecture,
+    checksum,
+    valid_digest,
 ):
     commands = tmp_path / "bin"
     commands.mkdir()
@@ -42,13 +52,18 @@ def test_fresh_bootstrap_uses_pinned_asset_and_checks_before_execution(
         if binary is None:
             pytest.skip(f"{name} is not installed")
         (commands / name).symlink_to(binary)
-    executable(commands / "uname", f'''#!/bin/bash
+    executable(
+        commands / "uname",
+        f"""#!/bin/bash
 case "$1" in -s) echo {system};; -m) echo {architecture};; esac
-''')
+""",
+    )
     payload = b'#!/bin/bash\nprintf installed > "$INSTALL_TEST_MARKER"\nexit 37\n'
     archive = tmp_path / "fixture.sh"
     archive.write_bytes(payload)
-    executable(commands / "curl", '''#!/bin/bash
+    executable(
+        commands / "curl",
+        """#!/bin/bash
 while [[ $# -gt 0 ]]; do
     case "$1" in --output) destination="$2"; shift;; esac
     url="$1"
@@ -56,19 +71,30 @@ while [[ $# -gt 0 ]]; do
 done
 printf '%s\n' "$url" >> "$INSTALL_TEST_LOG"
 cat "$INSTALL_TEST_ARCHIVE" > "$destination"
-''')
+""",
+    )
     source = (ROOT / "scripts/install/install_conda.sh").read_text()
     if valid_digest:
-        source = re.sub(r"MINIFORGE_SHA256=[0-9a-f]{64}",
-                        "MINIFORGE_SHA256=" + hashlib.sha256(payload).hexdigest(), source)
+        source = re.sub(
+            r"MINIFORGE_SHA256=[0-9a-f]{64}",
+            "MINIFORGE_SHA256=" + hashlib.sha256(payload).hexdigest(),
+            source,
+        )
     worker = tmp_path / "scripts/install/install_conda.sh"
     executable(worker, source)
     marker, log = tmp_path / "installed", tmp_path / "downloads"
     result = subprocess.run(
         [str(commands / "bash"), str(worker), str(tmp_path / "activation")],
-        env={"HOME": str(tmp_path), "PATH": str(commands),
-             "INSTALL_TEST_ARCHIVE": str(archive), "INSTALL_TEST_MARKER": str(marker),
-             "INSTALL_TEST_LOG": str(log)}, capture_output=True, text=True, check=False,
+        env={
+            "HOME": str(tmp_path),
+            "PATH": str(commands),
+            "INSTALL_TEST_ARCHIVE": str(archive),
+            "INSTALL_TEST_MARKER": str(marker),
+            "INSTALL_TEST_LOG": str(log),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
     )
     platform = "Linux" if system == "Linux" else "MacOSX"
     assert log.read_text().splitlines() == [
@@ -94,16 +120,19 @@ def test_sourced_install_activates_only_after_success(tmp_path, failure, shell):
     conda_root = tmp_path / "conda with spaces"
     environment = conda_root / "envs/OpenONDA"
     log = tmp_path / "calls.log"
-    executable(conda_root / "bin/conda", '''#!/bin/bash
+    executable(
+        conda_root / "bin/conda",
+        """#!/bin/bash
 printf 'conda:%s\n' "$*" >> "$INSTALL_TEST_LOG"
 case "$1" in
   info) printf '%s\n' "$INSTALL_TEST_ROOT" ;;
   env) if [[ "$INSTALL_TEST_FAILURE" == conda ]]; then exit 17; fi ;;
 esac
-''')
+""",
+    )
     hook = conda_root / "etc/profile.d/conda.sh"
     hook.parent.mkdir(parents=True)
-    hook.write_text('''conda() {
+    hook.write_text("""conda() {
   if [[ "$1" == activate ]]; then
     export PATH="$INSTALL_TEST_ENV/bin:$PATH"
     export CONDA_DEFAULT_ENV="$2"
@@ -115,17 +144,24 @@ esac
     "$CONDA_EXE" "$@"
   fi
 }
-''')
-    executable(environment / "bin/python", '''#!/bin/bash
+""")
+    executable(
+        environment / "bin/python",
+        """#!/bin/bash
 printf 'python:%s\n' "$*" >> "$INSTALL_TEST_LOG"
 if [[ "$1" == -c ]]; then exec "$INSTALL_TEST_PYTHON" "$@"; fi
 case "$1:$INSTALL_TEST_FAILURE" in
   */install_tex.py:tex) exit 18 ;;
   */install.py:package) exit 19 ;;
 esac
-''')
+""",
+    )
     result = subprocess.run(
-        [shell_executable, "-f", "-c", '''
+        [
+            shell_executable,
+            "-f",
+            "-c",
+            """
 before_flags=$-
 source "$1/install.sh"
 install_exit=$?
@@ -133,13 +169,25 @@ printf 'status=%s env=%s cwd=%s flags=%s/%s\n' "$install_exit" "$CONDA_DEFAULT_E
 printf 'first_path=%s\n' "${PATH%%:*}"
 type _openonda_install >/dev/null 2>&1 && exit 80
 exit "$install_exit"
-''', shell, str(checkout)],
-        cwd=tmp_path, capture_output=True, text=True, check=False,
-        env={**os.environ, "CONDA_EXE": str(conda_root / "bin/conda"),
-             "CONDA_DEFAULT_ENV": "previous", "SHELL": f"/bin/{shell}",
-             "INSTALL_TEST_ROOT": str(conda_root), "INSTALL_TEST_ENV": str(environment),
-             "INSTALL_TEST_LOG": str(log), "INSTALL_TEST_FAILURE": failure,
-             "INSTALL_TEST_PYTHON": sys.executable},
+""",
+            shell,
+            str(checkout),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            **os.environ,
+            "CONDA_EXE": str(conda_root / "bin/conda"),
+            "CONDA_DEFAULT_ENV": "previous",
+            "SHELL": f"/bin/{shell}",
+            "INSTALL_TEST_ROOT": str(conda_root),
+            "INSTALL_TEST_ENV": str(environment),
+            "INSTALL_TEST_LOG": str(log),
+            "INSTALL_TEST_FAILURE": failure,
+            "INSTALL_TEST_PYTHON": sys.executable,
+        },
     )
     calls = log.read_text()
     assert "env update --name OpenONDA --file" in calls
@@ -184,10 +232,19 @@ def prepare_tex(monkeypatch, tmp_path, *, bad_digest=False, member=None):
         downloads.append(url)
         if destination.suffix == ".json":
             digest = "0" * 64 if bad_digest else hashlib.sha256(payload).hexdigest()
-            destination.write_text(json.dumps({"assets": [{
-                "name": "TinyTeX-1-linux-x86_64-v2026.10.tar.xz",
-                "digest": "sha256:" + digest, "browser_download_url": "https://example.invalid/tex",
-            }]}))
+            destination.write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "name": "TinyTeX-1-linux-x86_64-v2026.10.tar.xz",
+                                "digest": "sha256:" + digest,
+                                "browser_download_url": "https://example.invalid/tex",
+                            }
+                        ]
+                    }
+                )
+            )
         else:
             destination.write_bytes(payload)
 

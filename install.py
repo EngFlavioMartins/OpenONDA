@@ -13,9 +13,7 @@ import tempfile
 
 def main(arguments=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--dev", action="store_true", help=argparse.SUPPRESS
-    )
+    parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--with-environment", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(arguments)
     if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):

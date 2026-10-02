@@ -14,10 +14,17 @@ import tempfile
 PACKAGES = (
     # TeX Live records dependencies at collection level; installing newpx
     # alone does not install the LaTeX packages used by its style files.
-    "collection-latexrecommended", "collection-latexextra", "collection-fontsrecommended",
-    "collection-mathscience", "collection-plaingeneric",
+    "collection-latexrecommended",
+    "collection-latexextra",
+    "collection-fontsrecommended",
+    "collection-mathscience",
+    "collection-plaingeneric",
     # NewPX shares font encodings with NewTX even when newtxtext is not loaded.
-    "newpx", "newtx", "type1cm", "cm-super", "dvipng",
+    "newpx",
+    "newtx",
+    "type1cm",
+    "cm-super",
+    "dvipng",
 )
 
 
@@ -40,11 +47,16 @@ def install_tex(prefix: Path) -> None:
         with tempfile.TemporaryDirectory(prefix="openonda-tex-", dir=prefix) as directory:
             staging = Path(directory)
             metadata = staging / "release.json"
-            download("https://api.github.com/repos/rstudio/tinytex-releases/releases/latest", metadata)
+            download(
+                "https://api.github.com/repos/rstudio/tinytex-releases/releases/latest", metadata
+            )
             release = json.loads(metadata.read_text())
-            assets = [asset for asset in release["assets"]
-                      if asset["name"].startswith(f"TinyTeX-1-{system}-v")
-                      and asset["name"].endswith(".tar.xz")]
+            assets = [
+                asset
+                for asset in release["assets"]
+                if asset["name"].startswith(f"TinyTeX-1-{system}-v")
+                and asset["name"].endswith(".tar.xz")
+            ]
             if len(assets) != 1:
                 raise RuntimeError(f"No unique TinyTeX release for {system}")
             asset = assets[0]

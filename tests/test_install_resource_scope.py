@@ -8,12 +8,19 @@ from openonda.tutorials import _include_resource
 from openonda.verify_install import _verify_tutorial_source_paths
 
 
-@pytest.mark.parametrize("relative", [
-    "case/study_results/old/worker.py", "case/solution/restart-branches/setup.py",
-    "case/samples/generated.py", "case/figures/postprocess.sh",
-    "case/__pycache__/generated.py", "case/results/generated.py",
-    "case/paraview_state.py", "case/paraview_tracer.py",
-])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "case/study_results/old/worker.py",
+        "case/solution/restart-branches/setup.py",
+        "case/samples/generated.py",
+        "case/figures/postprocess.sh",
+        "case/__pycache__/generated.py",
+        "case/results/generated.py",
+        "case/paraview_state.py",
+        "case/paraview_tracer.py",
+    ],
+)
 def test_generated_excluded_source_does_not_block_install_verification(tmp_path, relative):
     assert not _include_resource(PurePosixPath(relative))
     path = tmp_path / relative
@@ -24,10 +31,16 @@ def test_generated_excluded_source_does_not_block_install_verification(tmp_path,
     _verify_tutorial_source_paths(tmp_path)
 
 
-@pytest.mark.parametrize("relative", [
-    "case/setup.py", "case/allrun.sh", "case/assets/worker.py",
-    "case/reference_flow/setup.py", "case/results.py",
-])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "case/setup.py",
+        "case/allrun.sh",
+        "case/assets/worker.py",
+        "case/reference_flow/setup.py",
+        "case/results.py",
+    ],
+)
 @pytest.mark.parametrize("marker", ["/home/example/project", "/Users/example/project"])
 def test_included_source_still_rejects_machine_specific_paths(tmp_path, relative, marker):
     assert _include_resource(PurePosixPath(relative))
