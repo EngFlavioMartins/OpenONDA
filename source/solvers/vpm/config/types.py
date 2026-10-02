@@ -1,8 +1,7 @@
 """Aggregate imports for VPM configuration and state types.
 
-Subsystem modules remain the canonical definition sites. This module exists only
-as a convenient import surface inside the VPM package; it does not provide
-legacy-name aliases.
+Subsystem modules remain the canonical definition sites. This module provides
+one import surface inside the VPM package.
 """
 
 from .case import Numerics, RestartState, RunPlan, VPMCase

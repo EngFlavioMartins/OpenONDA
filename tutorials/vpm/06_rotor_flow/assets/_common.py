@@ -243,9 +243,16 @@ def rotor_subplots(nrows, *, height_cm, sharex=False):
 
 
 def save_rotor_figure(fig, path, *, figure_format="both", dpi=None):
-    outer = {"rotor_performance": 0.100, "rotor_loading_validation": 0.116,
-             "rotor_wake_planes": 0.113, "rotor_streamwise": 0.139}[Path(path).stem]
-    theme.centered_subplots_adjust(fig, outer=outer, top=1 - 0.11 / (fig.get_figheight() / theme.CM))
+    outer = {
+        "rotor_performance": 0.100,
+        "rotor_loading_validation": 0.129,
+        "rotor_wake_planes": 0.113,
+        "rotor_streamwise": 0.139,
+    }[Path(path).stem]
+    top_padding_cm = 0.17 if Path(path).stem == "rotor_loading_validation" else 0.11
+    theme.centered_subplots_adjust(
+        fig, outer=outer, top=1 - top_padding_cm / (fig.get_figheight() / theme.CM)
+    )
     theme.validate_thesis_figure(fig, fig.axes)
     return theme.export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 

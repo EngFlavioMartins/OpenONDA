@@ -64,12 +64,10 @@ def main(directory):
     )
     policy = coupler.CouplerSetup(
         freestream_velocity=[1, 0, 0],
-        transfer_method="buffered_m4_renewal",
         transfer_region_bounds=(-0.375, 0.375, -0.375, 0.375, -0.875, 0.875),
         eta_blend_width=0.25,
         vpm_only_width=0,
         transfer_vorticity_cutoff=0.001,
-        boundary_condition_mode="vorticity_mixed",
         interface_iterations=1,
         backup_interval_steps=0,
     )

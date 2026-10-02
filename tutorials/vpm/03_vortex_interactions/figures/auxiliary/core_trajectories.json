@@ -1,7 +1,7 @@
 {
   "figure": "core_trajectories",
   "generator": "plot_core_trajectories.py",
-  "generator_sha256": "13f2b6259f6084c98fa4cc5217241a1b34ba3bbfb68b8a3dfc5e3d19c3c9362b",
+  "generator_sha256": "fe7479dbe91c9a3b422340b2765a0e3587ce002de2dfa013d7356829fa85855f",
   "reference": "assets/references/leapfrogging_lbm_trajectory.csv",
   "reference_sha256": "b8773d273276de1d55f807e280fe3ceb57fda7a15c3fa83c5fc79b5c909baf01",
   "core_definition": "positive curl(u)_z maxima on the saved z=0, y>=0 plane",
@@ -982,11 +982,11 @@
   "exports": [
     {
       "file": "core_trajectories.pdf",
-      "sha256": "530fe1ea177134bb8327e2a374ae27b5ae411abcfc1a23cee3245c9e21ece34e"
+      "sha256": "556f548fb13b47de26b5f39988c28ff1b200c97d251ef66b03d1f1c8f72888d6"
     },
     {
       "file": "core_trajectories.png",
-      "sha256": "88e8f153a794017ff7646babf1d53077d8bd758ae2c197e95cf220465dd87c15"
+      "sha256": "359b4d38582fcca4279cd4d4d29f24f6c9a096065bb6c82757036099d72fe8d7"
     }
   ]
 }

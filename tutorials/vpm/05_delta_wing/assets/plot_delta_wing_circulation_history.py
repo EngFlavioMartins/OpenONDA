@@ -37,7 +37,7 @@ def plot_circulation(
     data = flow_integrals(samples_arg)
     fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.0 * _theme.CM))
     _theme.centered_subplots_adjust(fig, outer=0.101, bottom=0.20, top=0.915)
-    ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_theme.COLORS["VPMpurple"])
+    ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_theme.COLORS["vpm"])
     ax.set(
         xlabel="Time [s]",
         ylabel=r"$\sum_p |\boldsymbol{\Gamma}_p|$ [m$^3$/s]",

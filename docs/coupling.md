@@ -41,7 +41,7 @@ Static, consistently oriented wall triangles and geometrically represented immer
 
 The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses FVM slip planes and `vpm.SlipSlabInduction` at the same two physical $z$ coordinates. Match the FVM slip faces, VPM domain limits and transfer-region span exactly. Free-space induction describes a different boundary condition and is appropriate for the cube and finite-span airfoil cases.
 
-The slab model retains all three velocity and vorticity components. It currently supports laminar GBD diffusion or inviscid `NONE`, without LES, core spreading, random-walk diffusion or DVH. For GBD, use M4-prime remeshing, at least three grid cells of padding, and a spacing placing the slip planes on grid nodes or half nodes. The coupler anchors its slab lattice half a particle spacing above the lower plane.
+The slab model retains all three velocity and vorticity components. Coupled runs use laminar GBD diffusion in the slab, without LES. Use M4-prime remeshing, at least three grid cells of padding, and a spacing placing the slip planes on grid nodes or half nodes. The coupler anchors its slab lattice half a particle spacing above the lower plane.
 
 `tail_tolerance` and `max_shells` control image-sum convergence. Check sensitivity to these settings on a developed wake. Images enforce slip conditions; they are not physical particles or part of the force reference area.
 
@@ -49,26 +49,13 @@ The slab model retains all three velocity and vorticity components. It currently
 
 `coupling_patch` selects the outer FVM patch. Keep the [solid and slip boundary conditions](fvm.md#boundary-conditions) separate from this patch.
 
-| `boundary_condition_mode` | Trace supplied by VPM |
-| --- | --- |
-| `dirichlet` | Velocity; default, used by the NACA case. |
-| `vorticity_mixed` | Normal velocity and tangential normal velocity derivative; used by cylinder and cube, with `fixedFluxPressure`. |
-| `directional_outflow` | Constrains incoming flow while allowing outgoing flow. |
-| `characteristic` | Incoming/outgoing characteristic information. |
-| `pressure_gradient` | Velocity and pressure gradient. |
-| `vorticity_mixed_pressure_gradient` | Mixed velocity trace and pressure gradient. |
-
-The prescribed-pressure modes depend on VPM acceleration, temporal history and viscous data. Check their pressure-gradient accuracy for the intended flow before replacing the tutorial boundary choice.
+VPM supplies normal velocity and the tangential normal velocity derivative. The FVM pressure condition is `fixedFluxPressure`. This mixed trace is used by every coupled case.
 
 ## Vorticity transfer
 
-| `transfer_method` | Representation and requirements |
-| --- | --- |
-| `buffered_m4_renewal` | M4-prime renewal with an advective release buffer; requires GBD. Used by cylinder and cube. |
-| `common_lattice` | Maps FVM cell strengths onto a particle lattice and blends with VPM; default experimental path, used by NACA. |
-| `projected_renewal` | Experimental sparse Gaussian projection; requires explicit transfer bounds and `eta_blend_width=0`. |
+Every coupled case uses M4-prime particle renewal with an advective release buffer and GBD diffusion. Set the particle and GBD grid spacings equal, use M4-prime remeshing and choose an absolute vorticity pruning threshold. FVM replaces the inner particle representation while VPM retains the released wake.
 
-`eta_blend_width` is the inward width, in metres, over which FVM authority increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. Cylinder and cube use widths $6h$ and $2h$, respectively.
+`eta_blend_width` is the inward width, in metres, over which FVM authority increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. The tutorials use widths $6h$ and $2h$, respectively.
 
 Buffered renewal provides a release buffer of length
 
@@ -82,9 +69,9 @@ $$
 
 Coupled runs require fixed steps with an integer ratio $n=\Delta t_\mathrm{VPM}/\Delta t_\mathrm{FVM}$. Each exchange advances VPM, applies its boundary trace during $n$ FVM substeps, then renews the inner particles while retaining the outer wake.
 
-Cylinder and cube set `interface_iterations=3`: repeat the FVM solve and renewal at the same physical endpoint, up to three sweeps. Iteration requires `vorticity_mixed`, `buffered_m4_renewal`, no consistency band, and output times aligned with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
+`interface_iterations` limits repeated FVM solves and renewal at the same physical endpoint. Cylinder and cube allow three sweeps. The initial interface estimate uses accepted trace history; a rejected estimate is retried from the unpredicted trace. Output times must align with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
 
-Edit the physical constants, mesh and solver configurations in a tutorial's `setup.py`. Its `FVM_SETUP`, `VPM_CASE` and `FVM_MESH` supply the flow models and mesh; `CouplerSetup` supplies the exchange choices. For example, the cube configuration uses:
+Edit the physical constants, mesh and solver configurations in a tutorial's `setup.py`. `FVMSetup`, `VPMCase` and the mesh define the flow problem; `CouplerSetup` supplies the overlap, convergence tolerances and output schedule. The cylinder constructs these objects in `build_case()`. For example, the cube configuration uses:
 
 ```python
 from openonda import coupler
@@ -93,8 +80,6 @@ cfg = coupler.CouplerSetup(
     freestream_velocity=[1.0, 0.0, 0.0],
     coupling_patch="numericalBoundary",
     transfer_region_bounds=(-1.45, 1.45, -1.45, 1.45, -1.45, 1.45),
-    transfer_method="buffered_m4_renewal",
-    boundary_condition_mode="vorticity_mixed",
     eta_blend_width=6 * 0.045,
     vpm_only_width=2 * 0.045,
     interface_iterations=3,

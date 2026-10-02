@@ -67,7 +67,7 @@ def _nested_tail():
                 "passes_seconds": {"traversal": np.float32(0.125)},
                 "remaining": np.array([1, 2], dtype=np.int64),
                 "optional": None,
-                "used_legacy": np.bool_(True),
+                "rebuilt_targets": np.bool_(True),
                 "reason": "bounded scratch",
                 "empty": [],
             }
@@ -92,7 +92,7 @@ def test_nested_decline_evidence_is_copied_without_loss():
                 "passes_seconds": {"traversal": 0.125},
                 "remaining": [1, 2],
                 "optional": None,
-                "used_legacy": True,
+                "rebuilt_targets": True,
                 "reason": "bounded scratch",
                 "empty": [],
             }

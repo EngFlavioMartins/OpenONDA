@@ -100,7 +100,7 @@ def test_filament_velocity_and_jacobian_match_independent_quadrature():
     np.testing.assert_allclose(np.trace(gradient, axis1=1, axis2=2), 0.0, atol=2e-13)
 
 
-def _plate(angle=5.0, motion=None, placement=None, name=None, nc=8, ns=14, wake_core_overlap=None):
+def _plate(angle=5.0, motion=None, placement=None, name=None, nc=8, ns=14, wake_core_overlap=2.5):
     plate = create_flat_plate(
         chord=1.0,
         span=10.0,
@@ -297,7 +297,7 @@ def test_lifting_line_reference_matches_independent_full_span_collocation():
     assert cl_minus == -cl and cd_minus == cd
 
 
-@pytest.mark.parametrize("overlap", [None, 2.5])
+@pytest.mark.parametrize("overlap", [1.25, 2.5])
 def test_asymmetric_wing_halves_shed_one_shared_root_filament(overlap):
     """A newborn closed row must preserve strength under unequal half-wing loads."""
     solver = _plate(nc=1, ns=2, wake_core_overlap=overlap)
@@ -324,10 +324,9 @@ def test_asymmetric_wing_halves_shed_one_shared_root_filament(overlap):
     root = np.linalg.norm(position - root_midpoint, axis=1) < 1e-13
     assert root.sum() == 1
     np.testing.assert_allclose(strength[root][0], -(gamma[0] + gamma[2]) * displacement)
-    if overlap is not None:
-        # Every element in this uniform 2.5 m span grid must have the
-        # requested overlap, including trailing, root and starting elements.
-        np.testing.assert_allclose(lattice.wake_core_radius.to_numpy()[:count], overlap * 2.5)
+    # Every element in this uniform 2.5 m span grid has the declared overlap,
+    # including trailing, root and starting elements.
+    np.testing.assert_allclose(lattice.wake_core_radius.to_numpy()[:count], overlap * 2.5)
 
 
 @pytest.mark.parametrize("body_rotation", [0.0, 0.23])

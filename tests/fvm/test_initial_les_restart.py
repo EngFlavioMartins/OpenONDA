@@ -7,8 +7,8 @@ import pytest
 
 from source.solvers.fvm import FVMSolver, TurbulenceConfig
 from source.solvers.fvm.io.backup import decode_state, encode_state
-from source.solvers.fvm.mesh.cartesian import structured_box
 from tests.fvm.test_restart_and_diagnostics import _setup
+from tests.support.fvm_mesh import structured_box
 
 
 def _solver(directory):

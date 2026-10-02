@@ -223,7 +223,7 @@ def create_fvm_solver(
         Case root. ``None`` uses the current working directory.
     solution_dir, samples_dir : str or pathlib.Path or None, optional
         Artifact destinations. Relative paths are resolved below ``case_dir``;
-        omitted paths use the legacy ``solution/`` and canonical ``samples/``
+        omitted paths use the configured ``solution/`` and ``samples/``
         locations.
     mesh : path-like, mapping, BuildableMesh, callable, or None, optional
         Mesh source. ``.npz`` and Gmsh ``.msh`` files are supported. A callable

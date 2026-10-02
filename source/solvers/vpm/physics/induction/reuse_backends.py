@@ -211,10 +211,10 @@ class StandardFMMReuseContract:
         ):
             return None
         slab = self.backend if type(self.backend) is SlipSlabInduction else None
-        if slab is not None and slab.gaussian_mesh_policy is not None:
-            # The new session owns role-specific exact-source reuse and extra
-            # admission gates. The legacy complete-field contract covers none
-            # of these controls and must not bypass them.
+        if slab is not None and (
+            slab.physics is None or slab.physics.particle_kernel == "GAUSSIAN"
+        ):
+            # Gaussian images require their own source/tail/lifecycle guards.
             return None
         base = slab.base if slab is not None else self.backend
         if not _standard_methods(base, FMMInduction):
@@ -327,9 +327,15 @@ class StandardFMMReuseContract:
         if geometry is not None:
             storage = geometry.storage
             geometry_key = (
-                id(geometry), geometry.max_bytes,
-                None if storage is None else (
-                    id(storage), id(storage.owner.tree), storage.capacity, storage.bytes,
+                id(geometry),
+                geometry.max_bytes,
+                None
+                if storage is None
+                else (
+                    id(storage),
+                    id(storage.owner.tree),
+                    storage.capacity,
+                    storage.bytes,
                     _field_layout(storage, geometry_module._STORAGE_FIELDS),
                 ),
                 _constants(geometry_module),
@@ -363,7 +369,7 @@ class StandardFMMReuseContract:
                     _scalars(
                         target,
                         (
-                            "legacy_radial_kernel",
+                            "monopole_radial_kernel",
                             "source_separation",
                             "target_core_cutoff",
                             "max_targets",

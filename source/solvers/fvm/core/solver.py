@@ -154,7 +154,7 @@ def _enforce_velocity_boundary_constraints(
 class FVMSolver(CouplerInterfaceMixin):
     """Run a constant-density, incompressible finite-volume simulation.
 
-    The solver accepts the immutable high-level :class:`FVMCase` or the legacy
+    The solver accepts the immutable high-level :class:`FVMCase` or the
     mutable :class:`FVMSetup`. It materializes a face-based mesh, computes and
     caches geometry, reconstructs boundary ghost cells, assembles the selected
     SIMPLE/PISO/PIMPLE equations, and owns the accepted physical clock and
@@ -164,8 +164,8 @@ class FVMSolver(CouplerInterfaceMixin):
     Attributes
     ----------
     case or config : FVMCase or FVMSetup
-        Construction policy. ``config`` is the resolved low-level setup kept
-        for compatibility; a public case is available as ``case`` when used.
+        Construction policy. ``config`` is the resolved low-level setup;
+        a public case is available as ``case`` when used.
     case_dir, solution_dir, samples_dir : pathlib.Path
         Case and framework-owned artifact roots.
     mesh_data : dict[str, object]
@@ -299,7 +299,6 @@ class FVMSolver(CouplerInterfaceMixin):
         courant = self._derived_fields.get(key)
         if courant is None:
             courant = diagnostics.compute_courant_number(
-                self.velocity,
                 self.volumetric_face_flux,
                 time_step_size,
                 self.mesh_data,
@@ -344,7 +343,7 @@ class FVMSolver(CouplerInterfaceMixin):
         Parameters
         ----------
         setup : FVMCase or FVMSetup
-            Preferred immutable case or legacy low-level setup. A case is
+            Immutable case or low-level setup. A case is
             converted to a setup copy; neither input object is mutated.
         case_dir : str or None
             Case root. For ``FVMCase`` this defaults to ``setup.directory``;
@@ -357,7 +356,7 @@ class FVMSolver(CouplerInterfaceMixin):
             mesh source is materialized. In distributed execution the required
             rank/collective ownership is enforced by the selected backend.
         logger : object or None
-            Optional logger supplied by a legacy/coupled caller.
+            Optional logger supplied by the caller.
 
         Raises
         ------
@@ -1610,7 +1609,7 @@ class FVMSolver(CouplerInterfaceMixin):
         try:
             self._timer.start("Continuity diagnostics")
             continuity_error = diagnostics.compute_continuity_error(
-                self.volumetric_face_flux, self.mesh_data, self.geo_data
+                self.volumetric_face_flux, self.mesh_data
             )
             cell_volume = self.geo_data["cell_volume"]
             n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(cell_volume)
@@ -1772,15 +1771,7 @@ class FVMSolver(CouplerInterfaceMixin):
             raise FloatingPointError("FVM step contains negative turbulent viscosity")
 
         limits = self._resolved_setup.acceptance
-        max_velocity = getattr(diagnostics, "max_velocity_magnitude", None)
-        if max_velocity is None:
-            # Compatibility for manually constructed diagnostic records.  New
-            # solver records always carry the true cell-wise maximum norm.
-            max_velocity = max(
-                float(np.linalg.norm(diagnostics.min_velocity)),
-                float(np.linalg.norm(diagnostics.max_velocity)),
-            )
-        max_velocity = float(max_velocity)
+        max_velocity = float(diagnostics.max_velocity_magnitude)
         metrics = {
             "max_continuity_error": diagnostics.max_continuity_error,
             "max_equation_residual": max(
@@ -2365,9 +2356,14 @@ class FVMSolver(CouplerInterfaceMixin):
         flushed first, so an asynchronous writer failure prevents a false
         successful checkpoint. A candidate state cannot be saved.
         """
-        self._ensure_evolution_usable()
-        if self._step_phase != "accepted":
-            raise RuntimeError("Cannot save a restart while an uncommitted FVM candidate exists")
+        from source.simulation.parallel import collective_phase
+
+        with collective_phase(self.parallel.comm, "FVM backup accepted state"):
+            self._ensure_evolution_usable()
+            if self._step_phase != "accepted":
+                raise RuntimeError(
+                    "Cannot save a restart while an uncommitted FVM candidate exists"
+                )
         flush_error = None
         try:
             self.flush_output()
@@ -2453,7 +2449,7 @@ class FVMSolver(CouplerInterfaceMixin):
         Parameters
         ----------
         path : str or pathlib.Path
-            Restart written by :meth:`save_state` or a compatible legacy writer.
+            Restart written by :meth:`save_state` using the current schema.
         allow_config_change : bool, default=False
             Permit explicitly classified configuration differences. Mesh and
             shape identity remain mandatory; use this only when the changed

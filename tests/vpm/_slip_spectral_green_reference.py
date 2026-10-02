@@ -1,4 +1,4 @@
-"""UNWIRED continuous-Fourier reference for a smooth Gaussian slip operator.
+"""Independent continuous-Fourier reference for a smooth Gaussian slip operator.
 
 This qualifies mathematics, NOT an FFT implementation or its padding error.
 Fourier convention: fhat(k)=integral f(x)exp(-ik.x)dx; inverse /(2*pi)^d.

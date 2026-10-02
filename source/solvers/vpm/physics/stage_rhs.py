@@ -230,7 +230,6 @@ class VLMStageContribution:
         self._gradient = None
         self._native_rates = physics is not None and hasattr(vlm_solver, "add_stage_rates")
         self._stage_weights = None
-        self._stage_weight_cursor = 0
         self._consumed_stage_indices: set[int] = set()
         self._integration_epoch = 0
         if physics is not None:
@@ -249,15 +248,13 @@ class VLMStageContribution:
         Exchange weights are indexed by the explicit RK stage identity supplied
         in :class:`StageState`.  A repeated field query at the same stage can
         still evaluate the VLM field, but it cannot publish a second exchange
-        contribution.  The sequential cursor is retained only for legacy
-        callers that construct a ``StageState`` without ``stage_index``.
+        contribution. Published exchange requires an explicit stage index.
         """
         if not self._native_rates:
             yield
             return
         scale = time_step_size if strength_enabled else 0.0
         self._stage_weights = tuple(scale * weight for weight in tableau.b)
-        self._stage_weight_cursor = 0
         self._consumed_stage_indices = set()
         self._integration_epoch += 1
         try:
@@ -265,20 +262,15 @@ class VLMStageContribution:
                 yield
         finally:
             self._stage_weights = None
-            self._stage_weight_cursor = 0
             self._consumed_stage_indices.clear()
 
     def _weight_for_stage(self, stage_state: StageState, *, publish: bool) -> float:
         """Return one quadrature weight for a stage, at most once per trial."""
         if not publish or self._stage_weights is None:
             return 0.0
-        stage_index = getattr(stage_state, "stage_index", None)
+        stage_index = stage_state.stage_index
         if stage_index is None:
-            # Compatibility path for direct/manual provider users.  Production
-            # RK calls always carry an explicit stage index and never use this
-            # order-dependent fallback.
-            stage_index = self._stage_weight_cursor
-            self._stage_weight_cursor += 1
+            raise ValueError("VLM exchange requires an explicit RK stage_index")
         stage_index = int(stage_index)
         if stage_index < 0 or stage_index >= len(self._stage_weights):
             return 0.0
@@ -496,14 +488,15 @@ class StageRHS:
                 self.induction,
                 max_particles=capacity,
                 contract_provider=StandardFMMReuseContract(self.induction)
-                if not mesh else self._gaussian_reuse_contract(),
+                if not mesh
+                else self._gaussian_reuse_contract(),
             )
             self._induction_reuse = cache
             self._induction_reuse_kind = kind
         return cache
 
     def _gaussian_reuse_contract(self):
-        # Distinct capability; the legacy FMM adapter still declines mesh
+        # Distinct capability; the FMM adapter still declines mesh
         # policies and cannot silently skip their additional admission gates.
         from .induction.gaussian_mesh.reuse_contract import StandardGaussianSlabReuseContract
 

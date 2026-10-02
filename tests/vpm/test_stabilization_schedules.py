@@ -21,9 +21,7 @@ from source.solvers.vpm.stabilization.regularization import _regularization_trig
 
 def test_divergence_grid_uses_physical_spacing_and_adjoint_transfer():
     position = np.array([[0.0, 0.0, 0.0], [0.2, 0.1, -0.1]])
-    operator = GaussianParticleGridOperator(
-        position, np.full(2, 0.1), np.ones(2), spacing=0.05
-    )
+    operator = GaussianParticleGridOperator(position, np.full(2, 0.1), np.ones(2), spacing=0.05)
     vectors = np.array([[1.0, 0.2, -0.1], [0.1, -0.4, 0.3]])
     grid_field = np.random.default_rng(4).normal(size=(*operator.shape, 3))
     assert operator.spacing == 0.05
@@ -434,7 +432,6 @@ def test_selective_eddy_viscosity_coefficient_is_fixed_despite_energy_changes():
     manager.operators = SimpleNamespace(
         apply_selective_eddy_viscosity=lambda particles, coefficient: applied.append(coefficient)
     )
-    manager.selective_eddy_viscosity_coefficient = 8.0  # Retired checkpoint diagnostic.
 
     manager.update_selective_eddy_viscosity()
     manager.update_selective_eddy_viscosity()

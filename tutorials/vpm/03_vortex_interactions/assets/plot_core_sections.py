@@ -84,13 +84,13 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         sharex=True,
         sharey=True,
         squeeze=False,
-        figsize=figure_size(12.5),
+        figsize=figure_size(11.5),
     )
     fig.subplots_adjust(
         left=0.11,
         right=0.79,
-        bottom=0.12,
-        top=0.82,
+        bottom=0.105,
+        top=0.888,
         wspace=0.04,
         hspace=0.06,
     )
@@ -132,7 +132,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
                         1,
                         1,
                         transform=ax.transAxes,
-                        facecolor=theme.COLORS["MaskGray"],
+                        facecolor=theme.COLORS["light_gray"],
                         edgecolor="none",
                         clip_on=False,
                     )
@@ -155,8 +155,9 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
                     r,
                     omega.T,
                     levels=available_contours,
-                    colors=case_style(run)["color"],
-                    linewidths=0.35,
+                    colors="white",
+                    alpha=0.55,
+                    linewidths=0.6,
                 )
 
             source = record["path"]
@@ -182,8 +183,8 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         print("No requested core-section times are available.")
         return
 
-    fig.supxlabel(r"$(x-x_c)/R_0$", y=0.045)
-    fig.supylabel(r"$r/R_0$", x=0.020)
+    fig.supxlabel(r"$(x-x_c)/R_0$", y=0.008)
+    fig.supylabel(r"$r/R_0$", x=0.006)
     left_plot_edge = min(axis.get_position().x0 for axis in axes.flat)
     colorbar_width = 0.014
     cax = fig.add_axes([1.0 - left_plot_edge - colorbar_width, 0.31, colorbar_width, 0.38])
@@ -191,11 +192,11 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
     fig.canvas.draw()
     fig.text(
         0.83,
-        0.835,
+        0.903,
         r"$t\Gamma_0/R_0^2$",
         ha="center",
         va="bottom",
-        color=theme.COLORS["DarkText"],
+        color=theme.COLORS["text"],
     )
     for row, time in enumerate(times):
         position = axes[row, -1].get_position()
@@ -206,7 +207,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
             rf"${nondimensional_time:.2g}$",
             ha="center",
             va="center",
-            color=theme.COLORS["DarkText"],
+            color=theme.COLORS["text"],
         )
     stem = "core_sections"
     save_figure(fig, output / stem, (*axes.flat, cax), formats, fit_margins=False)
@@ -223,7 +224,15 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         "style": plot_style_metadata(),
         "generator": "assets/plot_core_sections.py",
         "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "layout": {"rows": len(times), "columns": len(runs), "runs": runs, "times": times},
+        "layout": {
+            "rows": len(times),
+            "columns": len(runs),
+            "runs": runs,
+            "times": times,
+            "height_mm": 115,
+            "contour_color": "white",
+            "contour_alpha": 0.55,
+        },
         "coordinate": "(x - vorticity-weighted section centre) / R0",
         "panels": panels,
         "exports": exports,

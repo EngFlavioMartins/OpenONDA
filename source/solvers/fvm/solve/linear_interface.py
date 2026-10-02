@@ -553,42 +553,21 @@ def _solve_petsc(
 
 
 def _cache_key_from_matrix(A_csc, ilu_key=None):
-    """Generate a hashable cache key for an ILU preconditioner.
-
-    A short *ilu_key* (e.g. the momentum component ``"x"``) namespaces the
-    entry without hashing the pattern bytes every solve, but the matrix
-    ``shape`` is always part of the key so a cache built for one mesh cannot
-    be handed to a differently-sized system — the failure mode when two
-    solvers of different resolution share a process (mesh-refinement study,
-    test suite).  Without a key, the full structural pattern is hashed.
-
-    Args:
-        A_csc:   Matrix in CSC format.
-        ilu_key: Optional user-defined key.
-
-    Returns:
-        A tuple usable as a dict key.
-    """
+    """Return an owner-scoped ILU key, or decline caching without an owner."""
     if ilu_key is not None:
         return ("key", ilu_key, A_csc.shape)
-    return ("pattern", A_csc.shape, A_csc.indptr.tobytes(), A_csc.indices.tobytes())
+    return None
 
 
 def _amg_cache_key(A, amg_key=None):
-    """Return a topology-only key for an AMG hierarchy."""
+    """Return an owner-scoped AMG key, or decline caching without an owner."""
     if amg_key is not None:
         return ("key", amg_key, A.shape)
-    csr = A.tocsr()
-    return (csr.shape, csr.indptr.tobytes(), csr.indices.tobytes())
+    return None
 
 
 def clear_linear_solver_caches(cache_namespace=None) -> None:
-    """Clear transient global preconditioner entries, optionally by namespace.
-
-    Production solvers pass a short workspace namespace and call this from
-    their lifecycle.  The bounded global fallback remains for standalone
-    compatibility calls that have no owner.
-    """
+    """Clear preconditioner entries for one owner namespace, or all owners."""
     if cache_namespace is None:
         _ILU_CACHE.clear()
         _AMG_CACHE.clear()
@@ -607,7 +586,7 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False, amg_key=Non
     the current matrix, preserving the exact current linear system.
     """
     key = _amg_cache_key(A, amg_key)
-    cached = _AMG_CACHE.get(key)
+    cached = _AMG_CACHE.get(key) if key is not None else None
     diagonal = A.diagonal()
     rebuild = force_rebuild or cached is None
     if cached is not None and not rebuild:
@@ -623,9 +602,10 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False, amg_key=Non
             hierarchy = pyamg.smoothed_aggregation_solver(A)
         finally:
             np.random.set_state(_rng_state)
-        if len(_AMG_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES and key not in _AMG_CACHE:
-            _AMG_CACHE.pop(next(iter(_AMG_CACHE)))
-        _AMG_CACHE[key] = (hierarchy, diagonal.copy())
+        if key is not None:
+            if len(_AMG_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES and key not in _AMG_CACHE:
+                _AMG_CACHE.pop(next(iter(_AMG_CACHE)))
+            _AMG_CACHE[key] = (hierarchy, diagonal.copy())
         return hierarchy, True
     if cached is None:
         raise RuntimeError("AMG cache entry disappeared before reuse")
@@ -794,7 +774,7 @@ def _get_or_build_ilu(
     Returns:
         An ``spilu`` factorisation object.
     """
-    if not reuse_ilu:
+    if not reuse_ilu or ilu_key is None:
         ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
         return ilu, True
 

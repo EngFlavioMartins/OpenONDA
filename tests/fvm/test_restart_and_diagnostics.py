@@ -28,9 +28,9 @@ from source.solvers.fvm import (
 from source.solvers.fvm.factory import create_fvm_solver
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
-from source.solvers.fvm.mesh.cartesian import structured_box
 from source.solvers.fvm.mesh.validation import validate_topology
 from source.solvers.fvm.sampling.base import write_pvd
+from tests.support.fvm_mesh import structured_box
 
 
 def _setup() -> FVMSetup:

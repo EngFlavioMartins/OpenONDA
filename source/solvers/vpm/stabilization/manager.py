@@ -174,7 +174,6 @@ class StabilizationManager:
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
         self.lagrangian_cfl = 0.0
-        self.selective_eddy_viscosity_coefficient = self.config.selective_eddy_viscosity_coefficient
         # Lineage and reference state the workers need across events.  It is
         # part of the restart state, so the backup reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
@@ -279,33 +278,17 @@ class StabilizationManager:
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "max_stabilization_vorticity_growth": self.max_vorticity_growth,
             "lagrangian_cfl": self.lagrangian_cfl,
-            "selective_eddy_viscosity_feedback_coefficient": (
-                self.selective_eddy_viscosity_coefficient
-            ),
         }
 
     def restore_diagnostics(self, values: dict) -> None:
-        """Reload the master's record from a backup."""
-        self.events = int(values.get("n_stabilization_events", self.events))
+        """Restore the complete current diagnostic ledger."""
+        self.events = int(values["n_stabilization_events"])
         for row, quantity in enumerate(("vortex_strength", "linear_impulse", "angular_impulse")):
             for column, axis in enumerate("xyz"):
                 key = f"pedrizzetti_cumulative_{quantity}_transfer_{axis}"
-                # A legacy run with enabled relaxation and accepted events has
-                # unknown prior transfer. Never present that missing history as zero.
-                missing = (
-                    np.nan if self.events and self.config.pedrizzetti_relaxation_enabled else 0.0
-                )
-                self.pedrizzetti_moment_transfer[row, column] = float(values.get(key, missing))
-        self.regularization_events = int(
-            values.get("n_regularization_events", self.regularization_events)
-        )
-        self.last_mechanism = str(values.get("last_stabilization_mechanism", self.last_mechanism))
-        self.selective_eddy_viscosity_coefficient = float(
-            values.get(
-                "selective_eddy_viscosity_feedback_coefficient",
-                self.selective_eddy_viscosity_coefficient,
-            )
-        )
+                self.pedrizzetti_moment_transfer[row, column] = float(values[key])
+        self.regularization_events = int(values["n_regularization_events"])
+        self.last_mechanism = str(values["last_stabilization_mechanism"])
         for key, attribute in (
             (
                 "regularization_cumulative_total_kinetic_energy_transfer",
@@ -321,23 +304,7 @@ class StabilizationManager:
             ("max_stabilization_vorticity_growth", "max_vorticity_growth"),
             ("lagrangian_cfl", "lagrangian_cfl"),
         ):
-            if key in values:
-                setattr(self, attribute, float(values[key]))
-        if self.regularization_events:
-            for key, attribute in (
-                (
-                    "regularization_cumulative_total_kinetic_energy_transfer",
-                    "regularization_energy_transfer",
-                ),
-                (
-                    "regularization_cumulative_total_enstrophy_transfer",
-                    "regularization_enstrophy_transfer",
-                ),
-            ):
-                if key not in values:
-                    # An older checkpoint may contain events without their
-                    # transfer ledger. Unknown prior loss is not zero loss.
-                    setattr(self, attribute, float("nan"))
+            setattr(self, attribute, float(values[key]))
 
     def active_mechanisms(self) -> tuple[str, ...]:
         """Names of the mechanisms this configuration switches on."""

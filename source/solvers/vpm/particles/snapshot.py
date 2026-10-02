@@ -53,8 +53,7 @@ def _copy_fields(source: ti.template(), target: ti.template(), count: int, valid
 
 @ti.kernel
 def _rebuild_replacement_fields(particles: ti.template(), count: int):
-    # Match replace_from_numpy: these two fields were not part of the old
-    # host rollback payload, but reconstructed on publication.
+    # Rebuild these two derived fields when publishing the restored cloud.
     for i in range(count):
         particles.vorticity[i] = particles.vortex_strength[i] / particles.particle_volume[i]
         particles.effective_viscosity[i] = (
@@ -134,7 +133,7 @@ class ParticleSnapshot:
             self.finite_validated = True
 
     def prepare_lineage(self) -> tuple[np.ndarray, np.ndarray]:
-        """Preserve legacy replacement bookkeeping only when lineage is active.
+        """Preserve refinement bookkeeping only when lineage is active.
 
         Normal coupling needs no particle downloads. Optional refinement lineage
         still lives on the host, so its two inputs use the existing float64 norm

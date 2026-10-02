@@ -16,8 +16,7 @@ class StabilizationConfig:
     ----------
     selective_eddy_viscosity_coefficient : float, default=0
         Selective eddy-viscosity coefficient C=2*C_w**2 (Winckelmans 1995,
-        Eq. 26, positive-production version, with h=V**(1/3)). Persisted old
-        configuration keys are translated by the backup reader.
+        Eq. 26, positive-production version, with h=V**(1/3)).
     selective_eddy_viscosity_start_step : int, default=0
         First accepted step on which selective eddy viscosity may act.
     pedrizzetti_relaxation_factor : float, default=0

@@ -27,9 +27,6 @@ _TRACE_FIELDS = (
     "normal_velocity_boundary_condition",
     "tangential_gradient_boundary_condition",
 )
-_ACCELERATION_MIN = 0.5
-_ACCELERATION_MAX = 1.5
-_ACCELERATION_DENOMINATOR_FLOOR = 1.0e-12
 _ROLLBACK_ATTRIBUTES = (
     "_last_vpm_boundary_condition_flux_diagnostics",
     "_last_fvm_boundary_trace_diagnostics",
@@ -58,9 +55,6 @@ class IterationRow(TypedDict):
     gradient_residual_rms: float
     scaled_residual: float
     converged: bool
-    acceleration_alpha: float | None
-    acceleration_rejected: bool
-    next_acceleration_alpha: float | None
     accepted: bool
     prediction_probe: NotRequired[bool]
     prediction_rejected: NotRequired[bool]
@@ -83,7 +77,6 @@ class TrialFallback(TypedDict):
     coupler_attributes: dict[str, Any]
     input_trace: BoundaryTrace
     output_trace: BoundaryTrace
-    result: Any
 
 
 def validate_output_schedules(coupler) -> None:
@@ -127,86 +120,10 @@ def _write_trace(coupler, values, *, old=False):
             setattr(coupler, "_" + name + suffix, value.copy())
 
 
-def _scaled_residual_norm(residual, areas, normal_tolerance, gradient_tolerance):
-    """Area-weighted, dimensionless norm of velocity and gradient increments."""
-    weights = np.asarray(areas, dtype=np.float64)
-    if weights.ndim != 1 or not len(weights) or not np.all(np.isfinite(weights)):
-        return float("nan")
-    if np.any(weights < 0.0) or float(np.sum(weights)) <= 0.0:
-        return float("nan")
-    velocity, _, gradient = residual
-    values = (
-        np.sum(np.asarray(velocity) ** 2, axis=1) / normal_tolerance**2
-        + np.sum(np.asarray(gradient) ** 2, axis=1) / gradient_tolerance**2
-    )
-    return float(np.sqrt(np.average(values, weights=weights)))
-
-
-def _trace_difference(left, right):
-    return tuple(a - b for a, b in zip(left, right, strict=True))
-
-
-def _aitken_candidate(
-    previous_input,
-    previous_output,
-    current_input,
-    current_output,
-    previous_alpha,
-    face_normal,
-    face_area,
-    normal_tolerance,
-    gradient_tolerance,
-):
-    """Bound a scalar Aitken step on the complete physical boundary trace.
-
-    One coefficient for velocity and tangential gradient keeps the two FVM
-    inputs synchronized. Reconstructing normal velocity from the mixed
-    velocity makes its discrete flux exactly consistent with that field.
-    Each source velocity has already passed the flux check and correction in
-    ``evaluate_vpm_velocity``; their affine combination has the same net flux.
-    """
-    previous_residual = _trace_difference(previous_output, previous_input)
-    current_residual = _trace_difference(current_output, current_input)
-    delta = _trace_difference(current_residual, previous_residual)
-    previous_norm = _scaled_residual_norm(
-        previous_residual, face_area, normal_tolerance, gradient_tolerance
-    )
-    delta_norm = _scaled_residual_norm(delta, face_area, normal_tolerance, gradient_tolerance)
-    if (
-        not np.isfinite(previous_norm)
-        or not np.isfinite(delta_norm)
-        or delta_norm <= _ACCELERATION_DENOMINATOR_FLOOR * max(previous_norm, 1.0)
-    ):
-        return None, None
-    weights = np.asarray(face_area, dtype=np.float64)
-    previous_velocity, _, previous_gradient = previous_residual
-    delta_velocity, _, delta_gradient = delta
-    product = np.sum(previous_velocity * delta_velocity, axis=1) / normal_tolerance**2
-    product += np.sum(previous_gradient * delta_gradient, axis=1) / gradient_tolerance**2
-    numerator = float(np.average(product, weights=weights))
-    alpha = -previous_alpha * numerator / delta_norm**2
-    if not np.isfinite(alpha) or alpha <= 0.0:
-        return None, None
-    alpha = float(np.clip(alpha, _ACCELERATION_MIN, _ACCELERATION_MAX))
-    velocity = current_input[0] + alpha * current_residual[0]
-    normal = np.einsum("ij,ij->i", velocity, face_normal)
-    gradient = current_input[2] + alpha * current_residual[2]
-    if not all(np.all(np.isfinite(value)) for value in (velocity, normal, gradient)):
-        return None, None
-    return (velocity, normal, gradient), alpha
-
-
-def _capture_particles(vpm, slot):
-    """Keep predictor, accelerated trial and transfer rollback slots independent."""
-    if callable(getattr(vpm, "capture_particle_snapshot", None)):
-        return _particle_state_snapshot(vpm, slot=slot)
-    return _particle_state_snapshot(vpm)
-
-
 def _capture_trial_fallback(
-    coupler, result, input_trace: BoundaryTrace, output_trace: BoundaryTrace
+    coupler, input_trace: BoundaryTrace, output_trace: BoundaryTrace
 ) -> TrialFallback:
-    """Save the last coherent endpoint before risking an accelerated sweep."""
+    """Save the coherent endpoint before probing a predicted trace."""
     transfer = coupler.vorticity_transfer
     fvm = coupler.fvm_solver
     vpm = coupler.vpm_solver if coupler._is_master else None
@@ -232,7 +149,9 @@ def _capture_trial_fallback(
             if hasattr(fvm, name)
         },
         "fvm_patch": deepcopy(patch) if patch is not None else None,
-        "particles": _capture_particles(vpm, "coupler-trial") if vpm is not None else None,
+        "particles": _particle_state_snapshot(vpm, slot="coupler-trial")
+        if vpm is not None
+        else None,
         "physics_attributes": {
             name: deepcopy(getattr(physics, name))
             for name in _VPM_PHYSICS_ROLLBACK_ATTRIBUTES
@@ -256,7 +175,6 @@ def _capture_trial_fallback(
         },
         "input_trace": input_trace,
         "output_trace": output_trace,
-        "result": result,
     }
 
 
@@ -291,7 +209,6 @@ def _restore_trial_fallback(coupler, fallback: TrialFallback):
         setattr(coupler, name, value)
     _write_trace(coupler, fallback["input_trace"])
     _write_trace(coupler, fallback["output_trace"], old=True)
-    return fallback["result"]
 
 
 @discard_interface_prediction_on_failure
@@ -308,7 +225,9 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     snapshot_started = perf_counter()
     with collective_phase(comm, "interface initial state capture"):
         fvm_start = capture_restart_payload(fvm)
-        predictor = _capture_particles(vpm, "coupler-predictor") if coupler._is_master else None
+        predictor = (
+            _particle_state_snapshot(vpm, slot="coupler-predictor") if coupler._is_master else None
+        )
         old = _read_trace(coupler, old=True)
         candidate: BoundaryTrace = _read_trace(coupler, velocity=next_velocity)
     phase_seconds = {
@@ -330,7 +249,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         if seed is not None:
             snapshot_started = perf_counter()
             with collective_phase(comm, "interface seed snapshot and installation"):
-                seed_fallback = _capture_trial_fallback(coupler, None, raw_predictor, old)
+                seed_fallback = _capture_trial_fallback(coupler, raw_predictor, old)
                 candidate = seed
                 # Unlike later sweeps, a seed must install its matching
                 # normal/gradient fields before the first FVM call.
@@ -342,18 +261,11 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     fvm_seconds = transfer_seconds = 0.0
     records = []
     previous_candidate = None
-    acceleration_enabled = getattr(coupler.setup, "interface_acceleration", "none") == "aitken"
-    acceleration_disabled = False
-    previous_pair = None
-    applied_alpha = 1.0
-    trial_accelerated = False
-    fallback: TrialFallback | None = None
     accepted_row = None
     accepted_sweep = 0
     for sweep in range(1, coupler.setup.interface_iterations + 1 + int(probing)):
         prediction_probe = probing and sweep == 1
         picard_sweep = sweep - int(probing)
-        input_trace = candidate
         if picard_sweep > 1:
             started = perf_counter()
             publish_restart_payload(fvm, fvm_start)
@@ -393,9 +305,6 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                     normal <= coupler.setup.interface_normal_tolerance
                     and gradient <= coupler.setup.interface_gradient_tolerance
                 ),
-                "acceleration_alpha": applied_alpha if trial_accelerated else None,
-                "acceleration_rejected": False,
-                "next_acceleration_alpha": None,
                 "accepted": True,
             }
             if history is not None:
@@ -425,60 +334,10 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                 previous_candidate = candidate
             if prediction_probe and not row["converged"]:
                 # This speculative solve is outside the original allowance.
-                # It never becomes the next Picard input or an Aitken pair.
+                # A rejected probe never supplies the next Picard input.
                 row["accepted"] = False
-            elif (
-                trial_accelerated
-                and accepted_row is not None
-                and (
-                    not np.isfinite(row["normal_residual_rms"])
-                    or not np.isfinite(row["gradient_residual_rms"])
-                    or row["normal_residual_rms"]
-                    > accepted_row["normal_residual_rms"] * (1.0 + 1.0e-12)
-                    or row["gradient_residual_rms"]
-                    > accepted_row["gradient_residual_rms"] * (1.0 + 1.0e-12)
-                )
-            ):
-                row["acceleration_rejected"] = True
-                row["accepted"] = False
-                acceleration_disabled = True
-                # A failed trial never supplies the accepted endpoint or the
-                # input to another Aitken estimate.
-                assert fallback is not None
-                candidate = fallback["output_trace"]
-                previous_pair = None
-                applied_alpha = 1.0
             else:
-                row["accepted"] = True
-                if (
-                    acceleration_enabled
-                    and not acceleration_disabled
-                    and not row["converged"]
-                    and picard_sweep < coupler.setup.interface_iterations
-                    and previous_pair is not None
-                ):
-                    accelerated, alpha = _aitken_candidate(
-                        previous_pair[0],
-                        previous_pair[1],
-                        input_trace,
-                        post,
-                        applied_alpha,
-                        geometry[1],
-                        geometry[2],
-                        coupler.setup.interface_normal_tolerance,
-                        coupler.setup.interface_gradient_tolerance,
-                    )
-                    if accelerated is not None:
-                        candidate = accelerated
-                        row["next_acceleration_alpha"] = alpha
-                        applied_alpha = alpha
-                    else:
-                        candidate = post
-                        applied_alpha = 1.0
-                else:
-                    candidate = post
-                    applied_alpha = 1.0
-                previous_pair = (input_trace, post)
+                candidate = post
         if fvm.parallel.is_parallel:
             row = fvm.parallel.comm.bcast(row, root=0)
         assert row is not None
@@ -490,7 +349,6 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                 _restore_trial_fallback(coupler, seed_fallback)
             candidate = raw_predictor
             previous_candidate = None
-            previous_pair = None
             elapsed = perf_counter() - started
             phase_seconds["state_restore"] += elapsed
             transfer_seconds += elapsed
@@ -499,30 +357,8 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
             continue
         if prediction_probe:
             prediction["accepted"] = True
-        if row["acceleration_rejected"]:
-            started = perf_counter()
-            assert fallback is not None
-            result = _restore_trial_fallback(coupler, fallback)
-            elapsed = perf_counter() - started
-            phase_seconds["state_restore"] += elapsed
-            transfer_seconds += elapsed
-            fallback = None
-            if not coupler._is_master:
-                candidate = _read_trace(coupler, old=True)
-        else:
-            accepted_row = row
-            accepted_sweep = sweep
-        trial_accelerated = row["next_acceleration_alpha"] is not None
-        if trial_accelerated:
-            started = perf_counter()
-            fallback = _capture_trial_fallback(
-                coupler,
-                result,
-                input_trace,
-                _read_trace(coupler, old=True),
-            )
-            elapsed = perf_counter() - started
-            phase_seconds["state_capture"] += elapsed
+        accepted_row = row
+        accepted_sweep = sweep
         if accepted_row is not None and accepted_row["converged"]:
             break
     assert accepted_row is not None

@@ -132,21 +132,8 @@ parity, one-ULP-distinct starts, and outside-domain queries. Ruff and
 
 Machine-readable results are in
 [cylinder_cuda_profile_2026-09-30.json](cylinder_cuda_profile_2026-09-30.json).
-The complete local evidence, checkpoints, profiles, logs, source snapshots,
-and profiling driver are retained in
-`tmp/cylinder_cuda_profile_20260930/`. No existing tutorial output was cleaned
-or overwritten. Initial instrumentation errors were corrected before the measured
-advancement run; the separate cold-start log records the aborted wrapper.
-
-To repeat the bounded workflow from this repository in the OpenONDA environment:
-
-```bash
-profile_output=$(mktemp -d /tmp/openonda-cylinder.XXXXXX)
-python tmp/cylinder_cuda_profile_20260930/profile_cylinder.py --output "$profile_output" --steps 6 --detailed --mesh tmp/cylinder_cuda_profile_20260930/default-cylinder-mesh.npz
-python tmp/cylinder_cuda_profile_20260930/profile_cylinder.py --output "$profile_output" --steps 3 --unprofiled --label ordinary_restart --mesh tmp/cylinder_cuda_profile_20260930/default-cylinder-mesh.npz
-python tmp/cylinder_cuda_profile_20260930/benchmark_geometry_snapshots.py --repo "$PWD"
-```
-
-The first command uses the current solver code and the exact saved mesh. Omit
-`--mesh` to regenerate the tutorial mesh. The benchmark independently uses the
-frozen before/after geometry snapshots.
+The checkpoint, profile, log and source-snapshot paths in the JSON record
+identify the original measurement environment. The one-off profiling drivers
+have since been retired; these observations remain historical numerical
+evidence. Initial instrumentation errors were corrected before the measured
+advancement run, and the separate cold-start log records the aborted wrapper.

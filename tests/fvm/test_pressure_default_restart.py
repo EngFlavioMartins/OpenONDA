@@ -1,4 +1,4 @@
-"""The pressure AMG default preserves strict legacy BiCGStab restarts."""
+"""Current pressure settings are restored with strict numerical identity."""
 
 import contextlib
 from dataclasses import replace
@@ -20,10 +20,10 @@ from source.solvers.fvm import (
     TransportConfig,
 )
 from source.solvers.fvm.io.backup import config_hash
-from source.solvers.fvm.mesh.cartesian import structured_box
+from tests.support.fvm_mesh import structured_box
 
 
-def _setup(*, legacy: bool = False) -> FVMSetup:
+def _setup() -> FVMSetup:
     return FVMSetup(
         case_name="pressure_default_restart",
         time=TimeConfig(
@@ -32,7 +32,7 @@ def _setup(*, legacy: bool = False) -> FVMSetup:
             output_schedule=RunSchedule(every_n_steps=100),
         ),
         schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
-        linear=LinearSolverConfig(pressure_solver=None if legacy else "amg"),
+        linear=LinearSolverConfig(pressure_solver="amg"),
         pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
@@ -57,23 +57,26 @@ def _solver(setup: FVMSetup, directory) -> FVMSolver:
 def test_pressure_amg_is_default_and_explicit_bicgstab_remains_available():
     assert LinearSolverConfig().pressure_solver == "amg"
     assert LinearSolverConfig(pressure_solver="bicgstab").pressure_solver == "bicgstab"
-    assert config_hash(_setup(legacy=True)) != config_hash(_setup())
+    setup = _setup()
+    assert config_hash(
+        replace(setup, linear=LinearSolverConfig(pressure_solver="bicgstab"))
+    ) != config_hash(setup)
 
 
-def test_authenticated_legacy_pressure_backup_continues_with_amg(tmp_path):
-    old = _solver(_setup(legacy=True), tmp_path / "old")
+def test_current_pressure_backup_continues_with_identical_amg_settings(tmp_path):
+    writer = _solver(_setup(), tmp_path / "writer")
     uninterrupted = _solver(_setup(), tmp_path / "uninterrupted")
     with contextlib.redirect_stdout(io.StringIO()):
-        old.advance()
+        writer.advance()
         uninterrupted.advance()
         uninterrupted.advance()
-    backup = old.save_state(tmp_path / "old_accepted.npz")
+    backup = writer.save_state(tmp_path / "accepted.npz")
     resumed = _solver(_setup(), tmp_path / "resumed")
     resumed.load_state(backup)
-    assert resumed.step == old.step == 1
-    assert resumed.time == old.time
+    assert resumed.step == writer.step == 1
+    assert resumed.time == writer.time
     for name in ("velocity", "kinematic_pressure", "volumetric_face_flux"):
-        np.testing.assert_array_equal(getattr(resumed, name), getattr(old, name))
+        np.testing.assert_array_equal(getattr(resumed, name), getattr(writer, name))
     with contextlib.redirect_stdout(io.StringIO()):
         resumed.advance()
     assert resumed.step == uninterrupted.step == 2
@@ -84,15 +87,15 @@ def test_authenticated_legacy_pressure_backup_continues_with_amg(tmp_path):
         np.testing.assert_allclose(
             getattr(resumed, name), getattr(uninterrupted, name), rtol=2e-5, atol=2e-5
         )
-    for solver in (old, uninterrupted, resumed):
+    for solver in (writer, uninterrupted, resumed):
         solver.close()
 
 
-def test_legacy_migration_rejects_tampered_hash_and_changed_controls(tmp_path):
-    old = _solver(_setup(legacy=True), tmp_path / "old")
+def test_restart_rejects_tampered_hash_and_changed_numerical_controls(tmp_path):
+    writer = _solver(_setup(), tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
-        old.advance()
-    backup = old.save_state(tmp_path / "old_accepted.npz")
+        writer.advance()
+    backup = writer.save_state(tmp_path / "accepted.npz")
     with np.load(backup, allow_pickle=False) as archive:
         content = {name: np.array(archive[name], copy=True) for name in archive.files}
     metadata = json.loads(str(content["metadata"].item()))
@@ -109,7 +112,7 @@ def test_legacy_migration_rejects_tampered_hash_and_changed_controls(tmp_path):
         ),
         (
             "time_scheme",
-            replace(_setup(), schemes=replace(_setup().schemes, time_scheme="euler")),
+            replace(_setup(), schemes=replace(_setup().schemes, time_scheme="euler_implicit")),
             backup,
         ),
     ):
@@ -118,4 +121,4 @@ def test_legacy_migration_rejects_tampered_hash_and_changed_controls(tmp_path):
             solver.load_state(candidate)
         assert solver.step == 0
         solver.close()
-    old.close()
+    writer.close()

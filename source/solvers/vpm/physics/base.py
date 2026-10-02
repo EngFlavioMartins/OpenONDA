@@ -96,8 +96,8 @@ class PhysicsBase:
         self._target_tree_key = None
 
         # Velocity-evaluation method — the single source of truth for how the
-        # self-induced velocity is computed (see compute_self_induced_velocity()).  Set once by
-        # the solver via configure_velocity(); defaults to direct O(N²) summation.
+        # target-query fields are computed. Bound once through configure_velocity();
+        # standalone workspaces default to direct O(N²) summation.
         # DIRECT: exact O(N²); select TreecodeInduction for large clouds.
         self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
         self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
@@ -110,11 +110,6 @@ class PhysicsBase:
         # contract when available; standalone PhysicsEngine users retain the
         # direct-kernel fallback below.
         self.induction = None
-
-        # Reuse the stage-1 LBVH topology across later coupled stages when the
-        # low-level evaluator can safely refit it. A full rebuild remains the
-        # fallback whenever the supplied stage state changes incompatibly.
-        self.reuse_tree_topology = True
 
         # Cached filtered particle fields for zone-aware BC computation
         self._filtered_field_size = self.max_n_particles
@@ -900,73 +895,6 @@ class PhysicsBase:
         """Copy the first N entries of one 3×3 matrix field into another."""
         for i in range(N):
             dst[i] = src[i]
-
-    def compute_self_induced_velocity(
-        self,
-        position,
-        vortex_strength,
-        core_radius,
-        velocity,
-        background_velocity,
-        n_particles_total: int,
-        reuse_tree: bool = False,
-    ) -> None:
-        """Self-induced velocity of a particle set, evaluated at its own position.
-
-        Writes the result into the ``velocity`` Taichi vec3 field. Honors the method
-        set by :meth:`configure_velocity` — this is the ONLY place that decides
-        between direct summation and the treecode for legacy field-query and
-        backup helpers. Coupled RK stages use the selected induction object
-        directly, so backend selection is not repeated in the integrator.
-
-        In vortex advection all particles move together, so at each RK stage the
-        sources and evaluation points are the same displaced set; the treecode is
-        built from ``position`` and evaluated at ``position``.
-
-        Args:
-            position: Particle position.
-            vortex_strength: Particle vortex-strength vectors.
-            core_radius: Particle core radius.
-            velocity: Field receiving the induced velocity.
-            background_velocity: Background or freestream velocity.
-            n_particles_total: Number of active particles.
-            reuse_tree: when True, reuse the LBVH topology from the previous
-                build and only refit its position-dependent multipoles (valid
-                for RK stages ≥ 2, where vortex_strength/core_radius are unchanged and
-                particles have moved < h).  Falls back to a full build if no
-                compatible tree exists.
-        """
-        if n_particles_total == 0:
-            return
-        if self.velocity_method == "TREECODE":
-            tree = self._get_or_create_treecode(n_particles_total, self.velocity_theta)
-            # Reuse the stage-1 topology when asked; otherwise (or on any
-            # mismatch) do a full build. A refit is valid only when the supplied
-            # source state is compatible with the cached topology.
-            if reuse_tree and self.reuse_tree_topology:
-                try:
-                    tree.refit(position, n_particles_total)
-                except RuntimeError:
-                    tree.build(position, vortex_strength, core_radius, n_particles_total)
-            else:
-                tree.build(position, vortex_strength, core_radius, n_particles_total)
-            # The shared tree now represents a possibly intermediate RK state.
-            # A target caller must rebuild from the published particle state
-            # instead of trusting a pre-existing revision key.
-            self._target_tree_key = None
-            # On-device traversal + field-to-field copy.  The freestream is passed
-            # as a field so nothing crosses to the host inside an RK stage.
-            tree.compute_velocities_gpu(background_field=background_velocity)
-            self._copy_vec3(tree.velocity, velocity, n_particles_total)
-        else:
-            self.compute_velocities_kernel(
-                position,
-                vortex_strength,
-                core_radius,
-                velocity,
-                background_velocity,
-                n_particles_total,
-            )
 
     def _ensure_target_tree_current(self, particles, theta: float):
         """Return a tree built for the current particle source revision.

@@ -36,18 +36,26 @@ def plot_forces(samples_arg=None, destination=FIGURES_DIR, figure_format="png", 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.5 * _theme.CM, 10.5 * _theme.CM))
     _theme.centered_subplots_adjust(fig, outer=0.120, bottom=0.13, top=0.89, hspace=0.20)
     for surface, color, label in (
-        ("front_wing", _theme.COLORS["TUDcyan"], "Front"),
-        ("rear_wing", _theme.COLORS["VPMpurple"], "Rear"),
+        ("front_wing", _theme.COLORS["teal"], "Front"),
+        ("rear_wing", _theme.COLORS["vpm"], "Rear"),
     ):
         rows = data[data.surface == surface]
         for ax, values in zip(axes, (rows.force_z, rows.centroid_z, -rows.power), strict=True):
             ax.plot(rows.time, values, color=color, label=label)
     for ax, label in zip(axes, (r"$F_z$ [N]", r"$z_c$ [m]", r"$P_{\mathrm{in}}$ [W]"), strict=True):
         ax.set_ylabel(label)
-        ax.axhline(0, color=_theme.COLORS["RefGray"], lw=0.4, linestyle="--")
+        ax.axhline(0, color=_theme.COLORS["reference"], lw=0.6, linestyle="--")
         ax.locator_params(axis="y", nbins=3)
     axes[-1].set_xlabel("Time [s]")
-    axes[0].legend(loc="best", ncol=2, frameon=True, edgecolor="none")
+    axes[0].legend(
+        loc="best",
+        ncol=2,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
+    )
     fig.subplots_adjust(top=0.989)
     if partial:
         print("Partial run: figure stored in the partial diagnostics directory.")

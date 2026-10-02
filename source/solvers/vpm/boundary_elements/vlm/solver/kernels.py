@@ -125,7 +125,6 @@ def _append_wake_particle(
 @ti.kernel
 def shed_wake_particles_kernel(
     n_panels: ti.i32,
-    sigma_factor: float,
     core_overlap: float,
     shedding_threshold: float,
     relative_cancellation_tolerance: float,
@@ -164,13 +163,9 @@ def shed_wake_particles_kernel(
             span = (right - left).norm()
             length = 0.5 * (dl.norm() + dr.norm())
             if span > 1e-12 and length > 1e-12:
-                left_radius = ti.max(dl.norm(), span)
-                right_radius = ti.max(dr.norm(), span)
-                transverse_radius = ti.max(sigma_factor * length, span / 3)
-                if core_overlap > 0:
-                    left_radius *= core_overlap
-                    right_radius *= core_overlap
-                    transverse_radius = core_overlap * ti.max(length, span)
+                left_radius = core_overlap * ti.max(dl.norm(), span)
+                right_radius = core_overlap * ti.max(dr.norm(), span)
+                transverse_radius = core_overlap * ti.max(length, span)
                 volume = 3.141592653589793 * (span / 2) ** 2 * length
                 left_index = neighbor_indices[i, 0]
                 right_index = neighbor_indices[i, 1]

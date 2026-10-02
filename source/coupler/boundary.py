@@ -7,13 +7,10 @@ import time
 
 import numpy as np
 
-from source.coupler.consistency import evaluate_active_vpm_velocity
 from source.coupler.reporting import format_coupler_log
 
 logger = logging.getLogger("coupler")
 
-_MIXED_VELOCITY_MODES = frozenset({"vorticity_mixed", "vorticity_mixed_pressure_gradient"})
-_PRESSURE_GRADIENT_MODES = frozenset({"pressure_gradient", "vorticity_mixed_pressure_gradient"})
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
 
 
@@ -218,25 +215,14 @@ def evaluate_vpm_boundary(
     with collective_phase(comm, "VPM boundary evaluation"):
         if coupler._is_master:
             assert coupler.vpm_solver is not None
-            if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-                vpm_boundary_condition_velocity, tangential_normal_gradient = (
-                    coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                        face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
-                    )
+            vpm_boundary_condition_velocity, tangential_normal_gradient = (
+                coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
+                    face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
                 )
-                vpm_boundary_condition_velocity = np.asarray(
-                    vpm_boundary_condition_velocity, dtype=np.float64
-                ).reshape(-1, 3)
-            else:
-                vpm_boundary_condition_velocity = np.asarray(
-                    coupler.vpm_solver.compute_velocity_at_points(
-                        face_centre,
-                        include_freestream=True,
-                        zone_mask=None,
-                        include_body=True,
-                    ),
-                    dtype=np.float64,
-                ).reshape(-1, 3)
+            )
+            vpm_boundary_condition_velocity = np.asarray(
+                vpm_boundary_condition_velocity, dtype=np.float64
+            ).reshape(-1, 3)
             if vpm_boundary_condition_velocity.shape != face_centre.shape:
                 raise RuntimeError(
                     "VPM target evaluation returned an invalid shape: "
@@ -256,80 +242,6 @@ def evaluate_vpm_boundary(
                     "nonzero freestream; aborting before the corrupted VPM boundary-condition data reaches the FVM"
                 )
         if coupler._is_master:
-            if coupler.setup.boundary_condition_mode in _PRESSURE_GRADIENT_MODES:
-                assert coupler.vpm_solver is not None
-                assert coupler.density is not None
-                assert coupler.kinematic_viscosity is not None
-                assert coupler.vpm_time_step_size is not None
-                pressure_result, pressure_velocity = (
-                    coupler.vpm_solver.compute_pressure_gradient_at_points(
-                        face_centre,
-                        density=coupler.density,
-                        kinematic_viscosity=coupler.kinematic_viscosity,
-                        include_viscous=(
-                            coupler.setup.boundary_condition_mode
-                            == "vorticity_mixed_pressure_gradient"
-                        ),
-                        include_temporal=coupler._pressure_velocity_snapshot is not None,
-                        include_freestream=True,
-                        include_body=True,
-                        particle_spacing=coupler.vpm_particle_spacing,
-                        temporal_method="eulerian",
-                        velocity_previous=coupler._pressure_velocity_snapshot,
-                        time_step_size=coupler.vpm_time_step_size,
-                        return_velocity=True,
-                    )
-                )
-                pressure_gradient = (
-                    np.asarray(pressure_result["pressure_gradient"], dtype=np.float64).reshape(
-                        -1, 3
-                    )
-                    / coupler.density
-                )
-                pressure_velocity = np.asarray(pressure_velocity, dtype=np.float64).reshape(-1, 3)
-                if pressure_gradient.shape != face_centre.shape or not np.all(
-                    np.isfinite(pressure_gradient)
-                ):
-                    raise RuntimeError(
-                        "VPM pressure-gradient VPM boundary condition returned invalid data"
-                    )
-                if pressure_velocity.shape != face_centre.shape or not np.all(
-                    np.isfinite(pressure_velocity)
-                ):
-                    raise RuntimeError(
-                        "VPM pressure-gradient VPM boundary condition returned invalid velocity data"
-                    )
-                # Form velocity and pressure-gradient Cauchy data from one
-                # body-complete velocity field.
-                vpm_boundary_condition_velocity = pressure_velocity
-                pressure_norm = np.linalg.norm(pressure_gradient, axis=1)
-                logger.info(
-                    format_coupler_log(
-                        "boundary pressure gradient",
-                        (
-                            "temporal term",
-                            "active"
-                            if coupler._pressure_velocity_snapshot is not None
-                            else "inactive",
-                        ),
-                        (
-                            "acceleration, rms",
-                            f"{float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0:.3e}",
-                            "m/s^2",
-                        ),
-                        (
-                            "acceleration, max",
-                            f"{float(np.max(pressure_norm)) if len(pressure_norm) else 0.0:.3e}",
-                            "m/s^2",
-                        ),
-                    )
-                )
-                coupler._pressure_velocity_snapshot = pressure_velocity.copy()
-                coupler._kinematic_pressure_gradient_boundary_condition = pressure_gradient
-                if coupler._kinematic_pressure_gradient_boundary_condition_old is None:
-                    coupler._kinematic_pressure_gradient_boundary_condition_old = (
-                        pressure_gradient.copy()
-                    )
             assert coupler.fvm_box is not None
             velocity_boundary_condition, coupler._last_vpm_boundary_condition_flux_diagnostics = (
                 evaluate_vpm_velocity(
@@ -345,50 +257,37 @@ def evaluate_vpm_boundary(
             )
             if coupler._velocity_boundary_condition_old is None:
                 coupler._velocity_boundary_condition_old = velocity_boundary_condition.copy()
-            if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-                assert tangential_normal_gradient is not None
-                normal_velocity_boundary_condition = np.einsum(
-                    "ij,ij->i", velocity_boundary_condition, face_normal
+            assert tangential_normal_gradient is not None
+            normal_velocity_boundary_condition = np.einsum(
+                "ij,ij->i", velocity_boundary_condition, face_normal
+            )
+            tangential_gradient_boundary_condition = tangential_normal_gradient
+            coupler._normal_velocity_boundary_condition = normal_velocity_boundary_condition
+            coupler._tangential_gradient_boundary_condition = tangential_gradient_boundary_condition
+            if coupler._normal_velocity_boundary_condition_old is None:
+                coupler._normal_velocity_boundary_condition_old = (
+                    normal_velocity_boundary_condition.copy()
                 )
-                tangential_gradient_boundary_condition = tangential_normal_gradient
-                coupler._normal_velocity_boundary_condition = normal_velocity_boundary_condition
-                coupler._tangential_gradient_boundary_condition = (
-                    tangential_gradient_boundary_condition
+            if coupler._tangential_gradient_boundary_condition_old is None:
+                coupler._tangential_gradient_boundary_condition_old = (
+                    tangential_gradient_boundary_condition.copy()
                 )
-                if coupler._normal_velocity_boundary_condition_old is None:
-                    coupler._normal_velocity_boundary_condition_old = (
-                        normal_velocity_boundary_condition.copy()
-                    )
-                if coupler._tangential_gradient_boundary_condition_old is None:
-                    coupler._tangential_gradient_boundary_condition_old = (
-                        tangential_gradient_boundary_condition.copy()
-                    )
         else:
             velocity_boundary_condition = np.zeros_like(face_centre)
             if coupler._velocity_boundary_condition_old is None:
                 coupler._velocity_boundary_condition_old = np.zeros_like(face_centre)
-            if coupler.setup.boundary_condition_mode in _PRESSURE_GRADIENT_MODES:
-                coupler._kinematic_pressure_gradient_boundary_condition = np.zeros_like(face_centre)
-                if coupler._kinematic_pressure_gradient_boundary_condition_old is None:
-                    coupler._kinematic_pressure_gradient_boundary_condition_old = np.zeros_like(
-                        face_centre
-                    )
-            if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-                coupler._normal_velocity_boundary_condition = np.zeros(
-                    len(face_centre), dtype=np.float64
+            coupler._normal_velocity_boundary_condition = np.zeros(
+                len(face_centre), dtype=np.float64
+            )
+            coupler._tangential_gradient_boundary_condition = np.zeros_like(face_centre)
+            if coupler._normal_velocity_boundary_condition_old is None:
+                coupler._normal_velocity_boundary_condition_old = (
+                    coupler._normal_velocity_boundary_condition.copy()
                 )
-                coupler._tangential_gradient_boundary_condition = np.zeros_like(face_centre)
-                if coupler._normal_velocity_boundary_condition_old is None:
-                    coupler._normal_velocity_boundary_condition_old = (
-                        coupler._normal_velocity_boundary_condition.copy()
-                    )
-                if coupler._tangential_gradient_boundary_condition_old is None:
-                    coupler._tangential_gradient_boundary_condition_old = (
-                        coupler._tangential_gradient_boundary_condition.copy()
-                    )
-    if getattr(coupler, "fvm_consistency_band", None) is not None:
-        active_velocity = evaluate_active_vpm_velocity(coupler)
-        coupler.fvm_consistency_band.update_target(active_velocity)
+            if coupler._tangential_gradient_boundary_condition_old is None:
+                coupler._tangential_gradient_boundary_condition_old = (
+                    coupler._tangential_gradient_boundary_condition.copy()
+                )
     boundary_condition_wall_time = time.perf_counter() - boundary_condition_wall_time
     return (
         coupler._velocity_boundary_condition_old,
@@ -405,27 +304,15 @@ def initialize_vpm_boundary_history(
 ) -> None:
     """Evaluate the physical ``t_n`` trace before the first VPM advance."""
     needs_boundary_history = coupler._velocity_boundary_condition_old is None
-    band = getattr(coupler, "fvm_consistency_band", None)
-    needs_consistency_history = band is not None and not band.is_initialized
-    # Only the VPM owner restores the global boundary trace from a coupled
-    # checkpoint. Nonowners intentionally retain empty history placeholders.
-    # All ranks must nevertheless enter the same collective evaluations: a
-    # local decision here shifts the MPI collectives after restart and hangs
-    # the first boundary scatter in advance_fvm.
+    # Every rank enters the same boundary evaluation after restart.
     comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
     if comm is not None and comm.Get_size() > 1:
-        needs_boundary_history, needs_consistency_history = comm.bcast(
-            (needs_boundary_history, needs_consistency_history) if coupler._is_master else None,
-            root=0,
+        needs_boundary_history = comm.bcast(
+            needs_boundary_history if coupler._is_master else None, root=0
         )
-    if not needs_boundary_history and not needs_consistency_history:
+    if not needs_boundary_history:
         return
-    if needs_boundary_history:
-        evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
-    else:
-        active_velocity = evaluate_active_vpm_velocity(coupler)
-        assert band is not None
-        band.update_target(active_velocity)
+    evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
     logger.info(format_coupler_log("coupling history, initial time level stored"))
 
 
@@ -447,8 +334,6 @@ def advance_fvm(
         face_area,
         velocity_boundary_condition_old,
         velocity_boundary_condition,
-        coupler._kinematic_pressure_gradient_boundary_condition_old,
-        coupler._kinematic_pressure_gradient_boundary_condition,
         coupler._normal_velocity_boundary_condition_old,
         coupler._normal_velocity_boundary_condition,
         coupler._tangential_gradient_boundary_condition_old,
@@ -462,10 +347,6 @@ def advance_fvm(
     )
     if coupler._is_master:
         coupler._velocity_boundary_condition_old = velocity_boundary_condition
-        if coupler._kinematic_pressure_gradient_boundary_condition is not None:
-            coupler._kinematic_pressure_gradient_boundary_condition_old = (
-                coupler._kinematic_pressure_gradient_boundary_condition
-            )
         if coupler._normal_velocity_boundary_condition is not None:
             coupler._normal_velocity_boundary_condition_old = (
                 coupler._normal_velocity_boundary_condition
@@ -488,24 +369,15 @@ def update_boundary_history_after_replacement(
     Otherwise each interval starts from a stale prediction. Not a Picard
     sweep: the FVM is not re-solved.
     """
-    active_velocity = None
     if coupler._is_master:
         assert coupler.vpm_solver is not None
         tangential_normal_gradient: np.ndarray | None = None
-        if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-            corrected_boundary, tangential_normal_gradient = (
-                coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                    face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
-                )
+        corrected_boundary, tangential_normal_gradient = (
+            coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
+                face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
             )
-            corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
-        else:
-            corrected_boundary = np.asarray(
-                coupler.vpm_solver.compute_velocity_at_points(
-                    face_centre, include_freestream=True, zone_mask=None, include_body=True
-                ),
-                dtype=np.float64,
-            ).reshape(-1, 3)
+        )
+        corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
         if corrected_boundary.shape != face_centre.shape or not np.all(
             np.isfinite(corrected_boundary)
         ):
@@ -540,27 +412,17 @@ def update_boundary_history_after_replacement(
             else 0.0
         )
         coupler._velocity_boundary_condition_old = corrected_boundary
-        if coupler.setup.boundary_condition_mode in _PRESSURE_GRADIENT_MODES:
-            # The FVM-to-VPM transfer replaces the particle representation at
-            # fixed physical time. Refresh the Eulerian pressure history so
-            # that the next backward difference does not interpret that
-            # representation jump as a physical temporal acceleration.
-            coupler._pressure_velocity_snapshot = corrected_boundary.copy()
-        if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-            assert tangential_normal_gradient is not None
-            coupler._normal_velocity_boundary_condition_old = np.einsum(
-                "ij,ij->i", corrected_boundary, face_normal
-            )
-            coupler._tangential_gradient_boundary_condition_old = tangential_normal_gradient
+        assert tangential_normal_gradient is not None
+        coupler._normal_velocity_boundary_condition_old = np.einsum(
+            "ij,ij->i", corrected_boundary, face_normal
+        )
+        coupler._tangential_gradient_boundary_condition_old = tangential_normal_gradient
         logger.info(
             format_coupler_log(
                 "boundary update, post transfer",
                 ("velocity difference, max", f"{drift:.3e}", "U_inf"),
             )
         )
-        active_velocity = evaluate_active_vpm_velocity(coupler)
-    if getattr(coupler, "fvm_consistency_band", None) is not None:
-        coupler.fvm_consistency_band.update_endpoint(active_velocity)
 
 
 def _record_fvm_boundary_trace(
@@ -632,7 +494,6 @@ def apply_fvm_boundary(
     coupler,
     patch: str,
     prescribed_velocity: np.ndarray,
-    pressure_gradient: np.ndarray | None = None,
     normal_velocity: np.ndarray | None = None,
     tangential_gradient: np.ndarray | None = None,
 ) -> None:
@@ -640,42 +501,17 @@ def apply_fvm_boundary(
     assert coupler.fvm_solver is not None
     freestream_velocity = np.asarray(coupler.setup.freestream_velocity, dtype=np.float64)
     freestream_speed = float(np.linalg.norm(freestream_velocity)) + 1e-30
-    boundary_mode = coupler.setup.boundary_condition_mode
     prescribed_velocity = np.ascontiguousarray(prescribed_velocity, dtype=np.float64)
-    if boundary_mode in _PRESSURE_GRADIENT_MODES and pressure_gradient is None:
+    if normal_velocity is None or tangential_gradient is None:
         raise RuntimeError(
-            f"{boundary_mode} VPM boundary-condition mode requires pressure-gradient data"
+            "Mixed vorticity boundaries require normal velocity and tangential gradient"
         )
-    if boundary_mode in _MIXED_VELOCITY_MODES:
-        if normal_velocity is None or tangential_gradient is None:
-            raise RuntimeError(
-                "vorticity_mixed VPM boundary-condition mode requires normal velocity and "
-                "tangential-gradient data"
-            )
-        coupler.fvm_solver.set_normal_velocity_tangential_gradient_boundary_condition(
-            np.ascontiguousarray(normal_velocity, dtype=np.float64),
-            np.ascontiguousarray(tangential_gradient, dtype=np.float64),
-            patch,
-        )
-        if boundary_mode in _PRESSURE_GRADIENT_MODES:
-            coupler.fvm_solver.set_neumann_pressure_boundary_condition(pressure_gradient, patch)
-        else:
-            coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
-    elif boundary_mode == "characteristic":
-        coupler.fvm_solver.set_freestream_velocity_boundary_condition_vec(
-            prescribed_velocity, patch
-        )
-        coupler.fvm_solver.set_freestream_pressure_boundary_condition(patch, value=0.0)
-    elif boundary_mode == "directional_outflow":
-        coupler.fvm_solver.set_directional_freestream_velocity_boundary_condition_vec(
-            prescribed_velocity, patch, coupler.setup.freestream_velocity
-        )
-        coupler.fvm_solver.set_directional_freestream_pressure_boundary_condition(patch, value=0.0)
-    elif boundary_mode == "pressure_gradient":
-        coupler.fvm_solver.set_dirichlet_velocity_boundary_condition_vec(prescribed_velocity, patch)
-        coupler.fvm_solver.set_neumann_pressure_boundary_condition(pressure_gradient, patch)
-    else:
-        coupler.fvm_solver.set_dirichlet_velocity_boundary_condition_vec(prescribed_velocity, patch)
+    coupler.fvm_solver.set_normal_velocity_tangential_gradient_boundary_condition(
+        np.ascontiguousarray(normal_velocity, dtype=np.float64),
+        np.ascontiguousarray(tangential_gradient, dtype=np.float64),
+        patch,
+    )
+    coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
 
     step_time_step_size = coupler.fvm_solver.time_step_size
     step_wall_time_start = time.perf_counter()
@@ -724,8 +560,6 @@ def advance_fvm_substeps(
     face_area: np.ndarray,
     previous_velocity: np.ndarray,
     next_velocity: np.ndarray,
-    previous_kinematic_pressure_gradient: np.ndarray | None = None,
-    next_kinematic_pressure_gradient: np.ndarray | None = None,
     previous_normal_velocity: np.ndarray | None = None,
     next_normal_velocity: np.ndarray | None = None,
     previous_tangential_gradient: np.ndarray | None = None,
@@ -760,38 +594,24 @@ def advance_fvm_substeps(
 
     for substep in range(n_substeps):
         alpha = (substep + 1) / n_substeps
-        if getattr(coupler, "fvm_consistency_band", None) is not None:
-            coupler.fvm_consistency_band.push_target(alpha)
         interpolated_velocity = (1.0 - alpha) * previous_velocity + alpha * next_velocity
-        pressure_gradient = None
-        if (
-            previous_kinematic_pressure_gradient is not None
-            and next_kinematic_pressure_gradient is not None
-        ):
-            pressure_gradient = (
-                1.0 - alpha
-            ) * previous_kinematic_pressure_gradient + alpha * next_kinematic_pressure_gradient
         normal_velocity = None
         interpolated_tangential_gradient = None
-        if coupler.setup.boundary_condition_mode in _MIXED_VELOCITY_MODES:
-            if (
-                previous_normal_velocity is None
-                or next_normal_velocity is None
-                or previous_tangential_gradient is None
-                or next_tangential_gradient is None
-            ):
-                raise RuntimeError("vorticity_mixed subcycling received an incomplete trace")
-            normal_velocity = (
-                1.0 - alpha
-            ) * previous_normal_velocity + alpha * next_normal_velocity
-            interpolated_tangential_gradient = (
-                1.0 - alpha
-            ) * previous_tangential_gradient + alpha * next_tangential_gradient
+        if (
+            previous_normal_velocity is None
+            or next_normal_velocity is None
+            or previous_tangential_gradient is None
+            or next_tangential_gradient is None
+        ):
+            raise RuntimeError("vorticity_mixed subcycling received an incomplete trace")
+        normal_velocity = (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity
+        interpolated_tangential_gradient = (
+            1.0 - alpha
+        ) * previous_tangential_gradient + alpha * next_tangential_gradient
         apply_fvm_boundary(
             coupler,
             patch,
             interpolated_velocity,
-            pressure_gradient,
             normal_velocity=normal_velocity,
             tangential_gradient=interpolated_tangential_gradient,
         )

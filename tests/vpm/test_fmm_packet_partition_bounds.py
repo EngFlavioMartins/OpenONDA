@@ -1,4 +1,4 @@
-"""Packet decisions must never change the legacy pointwise source partition.
+"""Packet decisions must never change the pointwise source partition.
 
 These tests only build tiny hierarchies and evaluate admissibility. They do
 not compile the expensive FMM field kernels or use a GPU.
@@ -25,8 +25,8 @@ def _classify_roots(evaluator: ti.template(), packet: ti.template(), points: ti.
         squared = displacement.dot(displacement)
         distance = ti.sqrt(squared)
         diameter = 2.0 * evaluator.source.tree.node_half_size[source_root]
-        # Deliberately spell out the old LBVH condition independently of the
-        # packet implementation's _legacy_accept helper.
+        # Deliberately spell out the LBVH condition independently of the
+        # packet implementation's _pointwise_accept helper.
         points[point] = ti.cast(
             distance > ti.max(1e-8, evaluator.source.tree.node_avg_radius[source_root])
             and diameter * diameter / squared < evaluator.source.tree.theta_sq
@@ -61,12 +61,12 @@ def _compare_image_pair_fields(
         velocity[3, point] = evaluator.source.tree._target_leaf_velocity_sum(root, query)
         gradient[3, point] = evaluator.source.tree._target_leaf_gradient_sum(root, query)
         if evaluator.image_odd[0]:
-            for legacy in ti.static((1, 3)):
-                velocity[legacy, point][2] = -velocity[legacy, point][2]
-                gradient[legacy, point][0, 2] = -gradient[legacy, point][0, 2]
-                gradient[legacy, point][1, 2] = -gradient[legacy, point][1, 2]
-                gradient[legacy, point][2, 0] = -gradient[legacy, point][2, 0]
-                gradient[legacy, point][2, 1] = -gradient[legacy, point][2, 1]
+            for reference in ti.static((1, 3)):
+                velocity[reference, point][2] = -velocity[reference, point][2]
+                gradient[reference, point][0, 2] = -gradient[reference, point][0, 2]
+                gradient[reference, point][1, 2] = -gradient[reference, point][1, 2]
+                gradient[reference, point][2, 0] = -gradient[reference, point][2, 0]
+                gradient[reference, point][2, 1] = -gradient[reference, point][2, 1]
 
 
 @pytest.fixture(scope="module")
@@ -140,8 +140,8 @@ def test_translated_midpoint_roundoff_cannot_change_partition(classifier, failur
         sources = [[99999928.0, 24.0, 0.0], [99999928.0, 32.0, 0.0]]
     packet, pointwise = evaluate(sources, targets, [1.0, 1.0], shift=shift, odd=odd)
     assert pointwise.any() and not pointwise.all(), pointwise
-    assert not packet[0], "ALL must not merge a legacy-rejected source node"
-    assert not packet[2], "NONE must not open a legacy-accepted source node"
+    assert not packet[0], "ALL must not merge a pointwise-rejected source node"
+    assert not packet[2], "NONE must not open a pointwise-accepted source node"
 
 
 @pytest.mark.parametrize("boundary", ["strict_mac", "mean_core", "mixed_core_tail"])
@@ -189,10 +189,10 @@ def test_image_near_fields_preserve_inverse_query_rounding(classifier, odd):
         shift=100000000.0,
         odd=odd,
     )
-    # The legacy evaluates (target_z-shift)-source_z, not
+    # Pointwise evaluation computes (target_z-shift)-source_z, not
     # target_z-f32(source_z+shift). The latter loses a four-unit displacement.
     velocity, gradient = image_fields()
     assert np.linalg.norm(velocity[1]) > 0
-    for actual, legacy in ((0, 1), (2, 3)):
-        np.testing.assert_allclose(velocity[actual], velocity[legacy], rtol=2e-6, atol=1e-10)
-        np.testing.assert_allclose(gradient[actual], gradient[legacy], rtol=2e-6, atol=1e-10)
+    for actual, reference in ((0, 1), (2, 3)):
+        np.testing.assert_allclose(velocity[actual], velocity[reference], rtol=2e-6, atol=1e-10)
+        np.testing.assert_allclose(gradient[actual], gradient[reference], rtol=2e-6, atol=1e-10)

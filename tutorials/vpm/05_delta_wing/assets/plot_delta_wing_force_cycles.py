@@ -51,7 +51,7 @@ def plot_force_cycles(
     for ax, surface, color, label in zip(
         axes,
         ("front_wing", "rear_wing"),
-        (_theme.COLORS["TUDcyan"], _theme.COLORS["VPMpurple"]),
+        (_theme.COLORS["teal"], _theme.COLORS["vpm"]),
         ("Front", "Rear"),
         strict=True,
     ):

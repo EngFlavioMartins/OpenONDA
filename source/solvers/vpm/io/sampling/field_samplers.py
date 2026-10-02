@@ -117,10 +117,8 @@ class SurfaceSampler:
     canonical scalar CSV columns, while ``save_vtp`` preserves the structured
     grid topology in a VTS file.
 
-    Fresh grids use ``bounded_uniform_v1``. Native continuation may restore
-    ``legacy_arange_v0`` only by exact reconstruction of an existing frame
-    from the configured geometry. Old, metadata-free frames establish their
-    observed coordinates, not otherwise unrecorded constructor parameters.
+    Grids use ``bounded_uniform_v1``. Continuation requires the current
+    frame metadata and exactly matching declared geometry and coordinates.
 
     Attributes
     ----------
@@ -220,12 +218,10 @@ class SurfaceSampler:
 
     def _build_grid(self):
         """Build the 2D grid of sample points on the plane."""
-        self._install_grid(self.grid_layout, self._make_grid(self.grid_layout))
+        self._install_grid(self._make_grid())
 
-    def _make_grid(self, layout):
-        """Reconstruct a known layout without changing the live sampler."""
-        if not isinstance(layout, str) or layout not in {"bounded_uniform_v1", "legacy_arange_v0"}:
-            raise ValueError(f"Unknown surface sampling grid layout {layout!r}")
+    def _make_grid(self):
+        """Construct the bounded grid without changing the live sampler."""
         # Determine which axis is the normal direction
         abs_normal = np.abs(self.normal)
         normal_axis = np.argmax(abs_normal)
@@ -235,11 +231,6 @@ class SurfaceSampler:
 
         # Create coordinate arrays for the two in-plane axes
         def bounded_axis(lower, upper):
-            if layout == "legacy_arange_v0":
-                # Keep the historical scalar dtypes and operations exactly.
-                # In particular, do not replace this with an f32 arange or
-                # round the stored coordinates to the new bounded grid.
-                return np.arange(lower, upper + self.spacing / 2, self.spacing)
             # Accumulate in f64, then cast the points once. arange in f32
             # drifts and may overshoot a bound by up to half a spacing.
             intervals = max(1, int(np.ceil((float(upper) - float(lower)) / self.spacing)))
@@ -270,11 +261,10 @@ class SurfaceSampler:
 
         return grid_points, C1.shape, axes
 
-    def _install_grid(self, layout, grid):
+    def _install_grid(self, grid):
         self.grid_points, self._grid_shape, axes = grid
         self._axis1_name, self._axis2_name = axes
         self._n_points = len(self.grid_points)
-        self.grid_layout = layout
 
     @staticmethod
     def _vtk_points(grid):
@@ -292,11 +282,11 @@ class SurfaceSampler:
         # even a difference smaller than one f32 ULP is a different grid.
         return np.ascontiguousarray(values, dtype="<f8").tobytes()
 
-    def _grid_metadata(self, layout, grid):
+    def _grid_metadata(self, grid):
         return {
             "kind": "openonda.surface_sampling_grid",
             "format_version": 1,
-            "grid_layout": layout,
+            "grid_layout": self.grid_layout,
             "configuration": {
                 "point": self.point.tolist(),
                 "normal": self.normal.tolist(),
@@ -313,7 +303,7 @@ class SurfaceSampler:
     def _read_grid_metadata(previous):
         key = "openonda_sampling_grid"
         if key not in previous.field_data:
-            return None
+            raise ValueError("Surface sampling frame is missing current grid metadata")
         values = np.asarray(previous.field_data[key])
         if values.shape != (1,) or not isinstance(values[0], str):
             raise ValueError("Invalid surface sampling grid metadata encoding")
@@ -338,65 +328,11 @@ class SurfaceSampler:
         previous = pv.read(filepath)
         grid = (self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name))
         metadata = self._read_grid_metadata(previous)
-        if not self._matches_grid(previous, grid) or (
-            metadata is not None and metadata != self._grid_metadata(self.grid_layout, grid)
-        ):
+        if not self._matches_grid(previous, grid) or (metadata != self._grid_metadata(grid)):
             raise ValueError(
                 f"sampling grid differs from existing frame {filepath}; "
                 "use a fresh sample directory or the original sampling geometry"
             )
-
-    def prepare_existing_vtk(self, filepath: Path) -> None:
-        """Admit a resumed series by exact, versioned geometry reconstruction.
-
-        Explicit frame metadata is authoritative and cannot be bypassed by a
-        fallback layout. Without metadata, only the known bounded and legacy
-        constructions are tried. An exact match proves the old observations'
-        geometry, not unrecorded parameters that produced identical points
-        (for example, reversing the sign of an axis-aligned normal).
-
-        No files are modified. The effective grid and provenance are published
-        only after the entire admission succeeds; fresh construction is never
-        changed by this compatibility path.
-        """
-        import pyvista as pv
-
-        filepath = Path(filepath)
-        with filepath.open("rb") as stream:
-            before = hashlib.file_digest(stream, "sha256").hexdigest()
-        previous = pv.read(filepath)
-        metadata = self._read_grid_metadata(previous)
-        layouts = (
-            (metadata.get("grid_layout"),)
-            if metadata is not None
-            else ("bounded_uniform_v1", "legacy_arange_v0")
-        )
-        for layout in layouts:
-            grid = self._make_grid(layout)
-            if not self._matches_grid(previous, grid):
-                continue
-            if metadata is not None and metadata != self._grid_metadata(layout, grid):
-                raise ValueError(f"Surface sampling grid metadata conflicts with {filepath}")
-            with filepath.open("rb") as stream:
-                after = hashlib.file_digest(stream, "sha256").hexdigest()
-            if before != after:
-                raise ValueError(f"Surface sampling frame changed during admission: {filepath}")
-            admission = {
-                "frame": str(filepath.resolve()),
-                "frame_sha256": before,
-                "effective_grid_layout": layout,
-                "provenance": "versioned_frame_metadata" if metadata is not None else (
-                    "metadata_free_exact_geometry_reconstruction; "
-                    "unrecorded parameter identity is not established"
-                ),
-            }
-            self._install_grid(layout, grid)
-            self.grid_resume_admission = admission
-            return
-        raise ValueError(
-            f"sampling grid differs from existing frame {filepath}; "
-            "neither its explicit policy nor exact historical geometry is compatible"
-        )
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """Evaluate the solver field at every generated grid point.
@@ -541,8 +477,7 @@ class SurfaceSampler:
         filepath : str or pathlib.Path
             Destination path. The suffix is replaced with ``.vts``.
         time : float or None, default=None
-            Accepted physical time in seconds; retained for protocol
-            compatibility and not embedded by this writer.
+            Accepted physical time in seconds, recorded in the frame when supplied.
 
         Returns
         -------
@@ -585,15 +520,19 @@ class SurfaceSampler:
 
         # Create StructuredGrid with dimensions (ni, nj, 1)
         grid = pv.StructuredGrid(x_3d, y_3d, z_3d)
-        live_grid = (
-            self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name)
-        )
+        live_grid = (self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name))
         if not self._matches_grid(grid, live_grid):
             raise ValueError("Surface sample coordinates differ from the admitted grid")
-        grid.field_data["openonda_sampling_grid"] = np.array([
-            json.dumps(self._grid_metadata(self.grid_layout, live_grid), sort_keys=True,
-                       separators=(",", ":"), allow_nan=False)
-        ])
+        grid.field_data["openonda_sampling_grid"] = np.array(
+            [
+                json.dumps(
+                    self._grid_metadata(live_grid),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+            ]
+        )
 
         # Reshape field data to match grid point ordering
         # PyVista uses Fortran-order for StructuredGrid point data
@@ -647,6 +586,12 @@ class SurfaceSampler:
                 write_precision,
             )
 
+        if time is not None:
+            sample_time = float(time)
+            if not np.isfinite(sample_time):
+                raise ValueError("Surface sampling time must be finite")
+            for name in ("time", "TimeValue"):
+                grid.field_data[name] = np.array([sample_time], dtype=np.float64)
         write_vtk_dataset(grid, filepath)
 
         return filepath

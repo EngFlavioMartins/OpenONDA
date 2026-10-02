@@ -27,7 +27,9 @@ def test_ties_larger_than_one_extra_donor_are_complete():
     positions = np.column_stack((np.cos(angle), np.sin(angle), np.zeros(32)))
     field = positions.copy()
     trace = FVMVelocityInterpolator(positions, cKDTree(positions), neighbour_count=4)
-    np.testing.assert_allclose(trace.sample_cell_field(np.zeros((1, 3)), field), 0, atol=1e-14)
+    np.testing.assert_allclose(
+        trace.sample(np.zeros((1, 3)), field, np.zeros((len(field), 3, 3))), 0, atol=1e-14
+    )
 
 
 def test_untied_stencil_keeps_original_inverse_distance_taylor_value():
@@ -86,7 +88,7 @@ def test_fused_reconstruction_matches_vectorized_taylor_sum(dtype, batch_size, m
 
 
 @pytest.mark.parametrize("batch_size", [1, 17, 100_000])
-def test_cell_field_batches_preserve_every_target_and_stencil_cache(batch_size, monkeypatch):
+def test_velocity_batches_preserve_every_target_and_stencil_cache(batch_size, monkeypatch):
     monkeypatch.setattr(interpolation_module, "_INTERPOLATION_BATCH_SIZE", batch_size)
     rng = np.random.default_rng(428)
     positions = rng.normal(size=(31, 3))
@@ -95,9 +97,11 @@ def test_cell_field_batches_preserve_every_target_and_stencil_cache(batch_size, 
     trace = FVMVelocityInterpolator(positions, cKDTree(positions))
     indices, weights = trace._stencil(points)
     expected = np.einsum("nk,nkj->nj", weights, field[indices])
-    np.testing.assert_allclose(trace.sample_cell_field(points, field), expected, atol=1e-14)
+    np.testing.assert_allclose(
+        trace.sample(points, field, np.zeros((len(field), 3, 3))), expected, atol=1e-14
+    )
     assert trace._stencil(points)[0] is indices
-    assert trace.sample_cell_field(np.empty((0, 3)), field).shape == (0, 3)
+    assert trace.sample(np.empty((0, 3)), field, np.zeros((len(field), 3, 3))).shape == (0, 3)
 
 
 @pytest.mark.parametrize("velocity_count,gradient_count", [(3, 4), (4, 3)])

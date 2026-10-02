@@ -22,7 +22,6 @@ from .mesh.cartesian import (
     SizeField,
     SphereRefinement,
     STLSurface,
-    structured_box,
 )
 from .mesh.cartesian.report import GenerationReport, SizeReport
 from .mesh.gmsh_importer import GmshImporter
@@ -55,6 +54,5 @@ __all__ = [
     "geometry",
     "periodic_square_mesh",
     "stretched",
-    "structured_box",
     "wall_refined_axis",
 ]

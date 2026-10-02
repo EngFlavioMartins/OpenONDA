@@ -55,8 +55,31 @@ def validation_subplots(*args, **kwargs):
     return _load().validation_subplots(*args, **kwargs)
 
 
-def validation_legend(*args, **kwargs):
-    return _load().validation_legend(*args, **kwargs)
+def validation_legend(fig, axis, *, ncol=2, outside=False):
+    """Keep the rounded legend frame; reserve exterior spacing in each plotter."""
+    _load()
+    if outside:
+        handles, labels = axis.get_legend_handles_labels()
+        return fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.025),
+            ncol=ncol,
+            frameon=True,
+            fancybox=True,
+            framealpha=0.9,
+            facecolor="white",
+            edgecolor="0.8",
+            borderaxespad=0,
+            handlelength=1.5,
+            columnspacing=0.8,
+            handletextpad=0.4,
+        )
+    legend = _load().validation_legend(fig, axis, ncol=ncol)
+    legend.get_frame().set_edgecolor("0.8")
+    legend.get_frame().set_facecolor("white")
+    return legend
 
 
 def export_formats() -> tuple[str, ...]:

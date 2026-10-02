@@ -19,7 +19,6 @@ from openonda.plotting import (
     COLORS,
     LINE_WIDTH,
     centered_subplots_adjust,
-    fit_thesis_y_label_margins,
     set_thesis_style,
 )
 
@@ -73,15 +72,14 @@ def main() -> None:
 
     set_thesis_style()
     figure, axes = plt.subplots(2, 1, figsize=(12.5 * CM, 8.3 * CM), sharex=True)
-    axes[0].plot(time, drag, color=COLORS["FVMorange"], linewidth=LINE_WIDTH)
-    axes[1].plot(time, lift, color=COLORS["TUDcyan"], linewidth=LINE_WIDTH)
+    axes[0].plot(time, drag, color=COLORS["hybrid"], linewidth=LINE_WIDTH)
+    axes[1].plot(time, lift, color=COLORS["teal"], linewidth=LINE_WIDTH)
     axes[0].set_ylabel(r"$C_D$")
     axes[1].set_ylabel(r"$C_L$")
     axes[1].set_xlabel(r"$tU_\infty/D$")
     for axis in axes:
         axis.grid(False)
-    centered_subplots_adjust(figure, outer=0.17, bottom=0.17, top=0.96, hspace=0.12)
-    centered_subplots_adjust(figure, outer=0.135, top=0.987)
+    centered_subplots_adjust(figure, outer=0.135, bottom=0.17, top=0.93, hspace=0.12)
     data.save_figure(figure, axes, "cylinder_forces", arguments.format)
 
 

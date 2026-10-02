@@ -83,7 +83,7 @@ def _write_backup(path: Path, step: int, time: float) -> None:
     with h5py.File(path, "w") as archive:
         solver = archive.create_group("solver")
         numerical_configuration = FIXTURE_NATIVE_CONFIG
-        solver.attrs["backup_format_version"] = "10.1"
+        solver.attrs["backup_format_version"] = "10.2"
         solver.attrs["numerical_configuration"] = numerical_configuration
         solver.attrs["numerical_configuration_sha256"] = hashlib.sha256(
             numerical_configuration.encode("utf-8")

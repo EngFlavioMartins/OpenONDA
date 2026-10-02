@@ -19,12 +19,12 @@ Edit [setup.py](setup.py): chord $c=1$ m, span $b=10$ m, reference speed $U=10$ 
 
 The generated surface has 8 chordwise and 14 spanwise panels per half-span, with geometric spacing ratio 4 toward the end. Change these counts, chord and span to create a new rectangular wing. The static plate remains at $x=0$ to 1 m while flow travels toward positive $x$. The moving plate accelerates toward negative $x$, with a 0.12 s ramp, and leaves the wake behind its trailing edge.
 
-The wake uses Gaussian particles, direct induction, transposed stretching, core spreading and Smagorinsky LES with $C_s=0.30$. `sigma_factor=2.5` scales transverse wake-element cores. The step is 0.0125 s; each plate travels 24 chord lengths (2.4 s static, approximately 2.46 s moving). Loads include the unsteady pressure contribution from changing bound potential jump.
+The wake uses Gaussian particles, direct induction, transposed stretching, core spreading and Smagorinsky LES with $C_s=0.30$. `wake_core_overlap=2.5` sets trailing and transverse wake cores from the larger span spacing or convected row length. The step is 0.0125 s; each plate travels 24 chord lengths (2.4 s static, approximately 2.46 s moving). Loads include the unsteady pressure contribution from changing bound potential jump.
 
 ## Results and reference
 
 Force, spanwise/chordwise loading and flow-integral CSVs are in `samples/exp_<mode>_aoa<angle>/`. For geometry and wakes, open `solution/<case>/vlm.pvd` and `vpm.pvd` in ParaView; coupled checkpoints occur every 0.5 s.
 
-Figures compare lift and induced drag, spanwise circulation, downwash, startup loads, moving/static agreement, vector-strength closure and force/impulse balance. The steady polar averages the final five chord lengths. The reference is rectangular-wing lifting-line theory, an attached-flow, small-incidence, high-aspect-ratio approximation. Elliptic loading is a shape reference.
+Figures show settled lift, induced drag and pitching moment, spanwise loading and induced velocity, moving/static load histories, and the saved particle wake. The steady polar averages the final five chord lengths. The reference is rectangular-wing lifting-line theory, an attached-flow, small-incidence, high-aspect-ratio approximation. The wake uses a higher perspective view with the projected motion horizontal, the saved plate surface shaded in neutral grey, blue particle glyphs and one light-grey motion arrow. Editable geometry and its ParaView state are saved under `figures/auxiliary/flat_plate_wake/`.
 
 Run `python assets/validate_results.py --pre-plot` to check native samples, completion, symmetry, frame agreement and bound/wake closure. Coupled mesh/time/core refinement is still needed to establish physical accuracy. VLM does not resolve skin friction, boundary layers, stall or separation; the 15° case does not validate those effects.

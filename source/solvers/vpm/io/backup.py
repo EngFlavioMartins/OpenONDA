@@ -18,22 +18,13 @@ from source.solution_layout import collection_path, component_directory
 from source.write_precision import DEFAULT_WRITE_PRECISION
 
 from ..config.fingerprint import numerical_configuration
-from ..config.restart import (
-    _configuration_mismatches as _configuration_mismatches,
-)
-from ..config.restart import (
-    _normalize_capacity_aliases as _normalize_capacity_aliases,
-)
-from ..config.restart import (
-    canonical_restart_configuration as canonical_restart_configuration,
-)
 from ..config.restart_changes import admit_configuration_changes
 from .logging import Logging
 
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "10.1"
+_BACKUP_FORMAT_VERSION = "10.2"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -56,7 +47,6 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "stabilization_vorticity_growth",
     "max_stabilization_vorticity_growth",
     "lagrangian_cfl",
-    "selective_eddy_viscosity_feedback_coefficient",
 )
 _FRAME_NAME = re.compile(r"vpm_(\d{6})\.vtu")
 
@@ -809,21 +799,6 @@ class _BackupIO:
                     saved_reference_length,
                     dtype=np.float64,
                 )
-            elif solver.stabilization_config.filament_refinement.enabled:
-                references = getattr(
-                    stabilization,
-                    "reference_vortex_strength",
-                    None,
-                )
-                lengths = getattr(
-                    stabilization,
-                    "reference_lengths",
-                    None,
-                )
-                if references is None or lengths is None or len(references) != n_particles_total:
-                    raise ValueError(
-                        "Backup has no filament-lineage state compatible with this refined cloud"
-                    )
 
     @staticmethod
     def _validate_hdf5_structure(
@@ -843,7 +818,9 @@ class _BackupIO:
         """
         path = str(hdf5_file)
         configuration_changes: tuple[dict[str, Any], ...] = ()
-        if expected_configuration is None and (allowed_config_differences or expected_config_differences):
+        if expected_configuration is None and (
+            allowed_config_differences or expected_config_differences
+        ):
             raise ValueError("configuration permissions require a current numerical configuration")
 
         def invalid(reason: str) -> NoReturn:
@@ -868,6 +845,7 @@ class _BackupIO:
                     "is_particle_regeneration_pending",
                     "n_particles_total",
                 }
+                required_solver_attributes.update(_STABILIZATION_DIAGNOSTIC_NAMES)
                 solver_attribute_names = set(solver_group.attrs.keys())
                 if not required_solver_attributes <= solver_attribute_names:
                     missing = sorted(required_solver_attributes - solver_attribute_names)
@@ -1011,6 +989,15 @@ class _BackupIO:
                 }
                 if len(particle_field_names & filament_fields) == 1:
                     invalid("filament-lineage fields must be stored together")
+                refinement = stored_configuration.get("stabilization", {}).get(
+                    "filament_refinement", {}
+                )
+                if (
+                    n_particles_total > 0
+                    and refinement.get("interval_steps", 0) > 0
+                    and not filament_fields <= particle_field_names
+                ):
+                    invalid("enabled filament refinement requires its lineage fields")
                 vector_fields = (
                     "position",
                     "velocity",

@@ -98,7 +98,7 @@ def _checkpoint(path):
         **_encode({"velocity": np.ones((2, 3)), "has_velocity": np.asarray(True)}),
     )
     manifest = {
-        "format_version": 11,
+        "format_version": 12,
         "kind": "openonda.coupled_backup",
         "config": config,
         "config_sha256": comparison.mapping_digest(config),

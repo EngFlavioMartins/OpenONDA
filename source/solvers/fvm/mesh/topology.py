@@ -149,7 +149,7 @@ class MeshTopology:
 
     @classmethod
     def from_mesh_data(cls, mesh_data) -> MeshTopology:
-        """Normalize legacy mesh data into read-only CSR-style array views.
+        """Convert native mesh mappings into read-only CSR-style array views.
 
         Already-contiguous arrays share memory with ``mesh_data`` without
         making the source arrays read-only.

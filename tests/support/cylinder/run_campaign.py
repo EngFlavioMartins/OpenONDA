@@ -10,20 +10,21 @@ import os
 from pathlib import Path
 import sys
 
+from openonda.cylinder_campaign import initialize_cylinder_perturbation
 from openonda.cylinder_case import (
     DEFAULT_CYLINDER_CASE,
     as_config,
     file_hash,
     new_run_directory,
+    software_fingerprint,
     write_complete_marker,
     write_manifest,
-    software_fingerprint,
 )
 from openonda.tutorial_runner import load_case_module
-from openonda.cylinder_campaign import initialize_cylinder_perturbation
 
-
-CASE_DIR = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+CASE_DIR = (
+    Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+)
 REFERENCE_DIR = CASE_DIR / "reference_flow"
 INPUTS = (CASE_DIR / "setup.py", CASE_DIR / "assets" / "cylinder_long.stl")
 REFERENCE_INPUTS = (
@@ -296,15 +297,9 @@ def _resolved_coupled_config(
     numerics = vpm_case.numerics
     viscous = numerics.viscous
     induction = numerics.induction
-    midspan = next(
-        sampler
-        for sampler in fvm_setup.samplers
-        if getattr(sampler, "file_name", None) == "fvm_midspan"
-    )
-    hxy = float(midspan.spacing / 2.0)
+    hxy = float(mesh.source.max_cell_size)
     span = float(induction.z_max - induction.z_min)
-    dz_target = float(overrides.get("dz", hxy))
-    axial_layers = max(4, math.ceil(span / dz_target))
+    axial_layers = len(mesh.levels) - 1
     return {
         "kind": "coupled",
         "overrides": dict(overrides),
@@ -322,10 +317,7 @@ def _resolved_coupled_config(
         "compute_device": str(numerics.compute_device),
         "particle_limit": int(numerics.max_n_particles),
         "transfer_region_bounds": list(coupler_setup.transfer_region_bounds),
-        "transfer_method": str(coupler_setup.transfer_method),
-        "boundary_condition_mode": str(coupler_setup.boundary_condition_mode),
         "interface_iterations": int(coupler_setup.interface_iterations),
-        "interface_acceleration": coupler_setup.interface_acceleration,
         "source_hash": file_hash(CASE_DIR / "setup.py"),
         "geometry_hash": file_hash(CASE_DIR / "assets" / "cylinder_long.stl"),
         "software_fingerprint": software_fingerprint(),
@@ -400,7 +392,7 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
             solver.run(start_from="latest")
             module.fvm.update_grid_study(solver, spacing, profiles=("centreline",))
         _collective_root_action(
-            lambda: _write_grid_record(
+            lambda name=name, spacing=spacing: _write_grid_record(
                 run_dir, _grid_config(module, name, spacing, end_time, cores)
             )
         )

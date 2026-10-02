@@ -35,8 +35,8 @@ def main():
     # Keep the native history and operating-window calculations unchanged.
     displayed = data.iloc[1:]
     for key, ink, reference_key, reference_style in [
-        ("CT", colors["VPMpurple"], "thrust_coefficient", "--"),
-        ("CP", colors["TUDcyan"], "power_coefficient", ":"),
+        ("CT", colors["vpm"], "thrust_coefficient", "--"),
+        ("CP", colors["teal"], "power_coefficient", ":"),
     ]:
         reference = bem.attrs[reference_key]
         axes[0].plot(
@@ -54,7 +54,11 @@ def main():
     axes[0].legend(
         loc="lower right",
         ncol=2,
-        frameon=False,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
         columnspacing=0.8,
         handlelength=1.5,
         handletextpad=0.5,
@@ -67,12 +71,19 @@ def main():
         color=colors["reference"],
         label="Ideal actuator disk",
     )
-    axes[1].plot(tail.CT, tail.CP, color=colors["VPMpurple"], lw=1)
-    axes[1].plot(*mean, "o", color=colors["VPMpurple"], zorder=5, label="VLM+VPM")
+    axes[1].plot(tail.CT, tail.CP, color=colors["vpm"], lw=1)
+    axes[1].plot(*mean, "o", color=colors["vpm"], zorder=5, label="VLM+VPM")
     reference = (bem.attrs["thrust_coefficient"], bem.attrs["power_coefficient"])
     axes[1].plot(*reference, "x", color=colors["reference"], zorder=5, label="BEM", linestyle="--")
     axes[1].set(xlabel=r"$C_T$", ylabel=r"$C_P$")
-    axes[1].legend(loc="upper left", frameon=False)
+    axes[1].legend(
+        loc="lower right",
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
+    )
     save_rotor_figure(
         fig, FIGURES_DIR / "rotor_performance.png", figure_format=args.format, dpi=args.dpi
     )

@@ -99,9 +99,15 @@ def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):
     assert calls == [["setup.py", "-h", "0.04"]]
 
 
-def test_setup_exposes_only_name_and_spacing():
+def test_setup_exposes_only_name_spacing_and_help(monkeypatch, capsys):
     source = (CASE / "setup.py").read_text()
-    assert source.count("parser.add_argument") == 2
+    setup = load_setup()
+    monkeypatch.setattr("sys.argv", ["setup.py", "--help"])
+    with pytest.raises(SystemExit) as exit_info:
+        setup.main()
+    assert exit_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--name" in help_text and "-h" in help_text
     for removed_option in (
         "--campaign",
         "--output-root",

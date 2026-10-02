@@ -281,23 +281,12 @@ class OutputManager:
 
     @staticmethod
     def _prepare_vtk_geometry(sampler, filepath):
-        prepare = getattr(sampler, "prepare_existing_vtk", None)
-        if callable(prepare):
-            prior_layout = getattr(sampler, "grid_layout", None)
-            prepare(filepath)
-            layout = getattr(sampler, "grid_layout", None)
-            if layout != prior_layout:
-                Logging.info(
-                    f"Sampler {OutputManager._name(sampler)!r}: preserving exact stored "
-                    f"geometry with grid layout {layout!r} from {filepath}"
-                )
-        else:
-            validate = getattr(sampler, "validate_existing_vtk", None)
-            if callable(validate):
-                validate(filepath)
+        validate = getattr(sampler, "validate_existing_vtk", None)
+        if callable(validate):
+            validate(filepath)
 
     def _prepare_existing_vtk_series(self, directory, *, through_time=None):
-        """Validate/admit existing fixed geometry without evaluating fields."""
+        """Validate existing fixed geometry without evaluating fields."""
         for sampler in self.samplers.samples:
             if not isinstance(sampler, _VtkSampler):
                 continue
@@ -505,9 +494,7 @@ class OutputManager:
                     else []
                 )
                 if existing:
-                    self._prepare_vtk_geometry(
-                        sampler, context.output_directory / existing[-1][1]
-                    )
+                    self._prepare_vtk_geometry(sampler, context.output_directory / existing[-1][1])
                 self._runtime.pvd_entries[prefix] = existing
             entries = self._runtime.pvd_entries[prefix]
             temp_path = context.output_directory / f".{filename}.tmp{extension}"
@@ -571,7 +558,7 @@ class OutputManager:
 
     @staticmethod
     def _read_csv_rows(filepath: Path, expected_header: list[str]) -> list[list[object]]:
-        """Read compatible time-series rows; reject legacy snapshots before append."""
+        """Read current time-series rows before append."""
         if not filepath.exists() or filepath.stat().st_size == 0:
             return []
         with filepath.open(newline="", encoding="utf-8") as stream:

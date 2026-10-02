@@ -113,7 +113,7 @@ def test_public_load_backup_rejects_unsupported_vlm_schema_before_mutation(tmp_p
 
 @pytest.mark.parametrize("kernel", ["GAUSSIAN", "WINCKELMANS"])
 @pytest.mark.parametrize("scale", [1.0, 0.02])
-@pytest.mark.parametrize("core_overlap", [None, 2.5])
+@pytest.mark.parametrize("core_overlap", [1.25, 2.5])
 def test_newborn_wake_satisfies_the_solved_boundary_condition(
     tmp_path, kernel, scale, core_overlap
 ):
@@ -168,7 +168,7 @@ def test_newborn_wake_satisfies_the_solved_boundary_condition(
         solver.close()
 
 
-@pytest.mark.parametrize("core_overlap", [None, 2.5])
+@pytest.mark.parametrize("core_overlap", [1.25, 2.5])
 @pytest.mark.parametrize("restart_capacity", [256, 512])
 def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
     tmp_path, core_overlap, restart_capacity

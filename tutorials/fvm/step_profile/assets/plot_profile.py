@@ -42,7 +42,7 @@ def main():
     )
     x_columns = np.unique(np.round(x, 10))
     stations = (1.0, 3.0, 6.0, 10.0)
-    colors = ("TUDdark", "FVMorange", "TUDcyan", "VPMpurple")
+    colors = ("dark", "hybrid", "teal", "vpm")
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
     for station, color_name in zip(stations, colors, strict=True):
@@ -62,7 +62,7 @@ def main():
     ax.set_ylim(0.0, 2.0)
     ax.legend()
     ax.grid(False)
-    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.968)
+    centered_subplots_adjust(fig, outer=0.100, bottom=0.20, top=0.968)
     save_fig(fig, "step_evolution.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

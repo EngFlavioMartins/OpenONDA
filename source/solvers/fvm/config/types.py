@@ -430,13 +430,7 @@ class DiscretizationConfig:
         if gradient not in {"gauss", "lsq"}:
             raise ValueError(f"Unsupported gradient_scheme={self.gradient_scheme!r}")
         time_scheme = str(self.time_scheme).lower()
-        if time_scheme not in {
-            "euler",
-            "euler_implicit",
-            "backward_euler",
-            "backward",
-            "bdf2",
-        }:
+        if time_scheme not in {"euler_implicit", "backward"}:
             raise ValueError(f"Unsupported time_scheme={self.time_scheme!r}")
         self.convection_scheme = convection
         self.gradient_scheme = gradient

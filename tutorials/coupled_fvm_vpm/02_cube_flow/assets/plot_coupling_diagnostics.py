@@ -22,15 +22,15 @@ from . import postprocess as util  # noqa: E402
 
 FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI
-FIGURE_HEIGHT_CM = 10.5
+FIGURE_HEIGHT_CM = 11.5
 FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
 
 # Manual layout controls (fractions of the fixed 12.5 cm canvas).
-LAYOUT_LEFT = 0.132
-LAYOUT_RIGHT = 0.868
-LAYOUT_BOTTOM = 0.13
-LAYOUT_TOP = 0.945
-LAYOUT_HSPACE = 0.42
+LAYOUT_LEFT = 0.138
+LAYOUT_RIGHT = 0.862
+LAYOUT_BOTTOM = 0.25
+LAYOUT_TOP = 0.95
+LAYOUT_HSPACE = 0.35
 LEGEND_FONT_SIZE = util.FONT_SIZE_PT
 
 
@@ -141,16 +141,6 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         ylabel="Cost [s]",
         title="(a) Cost per FVM step",
     )
-    timing.legend(
-        loc="upper left",
-        bbox_to_anchor=(0.01, 0.99),
-        ncol=3,
-        frameon=False,
-        fontsize=LEGEND_FONT_SIZE,
-        handlelength=1.5,
-        borderpad=0.3,
-        labelspacing=0.25,
-    )
 
     population = axes[1]
     population.plot(
@@ -166,15 +156,23 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         label="injected",
     )
     population.set(ylabel=r"$N$ [million]", title="(b) Particle population")
-    population.legend(
-        loc="upper left",
-        bbox_to_anchor=(0.01, 0.99),
-        ncol=2,
-        frameon=False,
-        fontsize=LEGEND_FONT_SIZE,
+    cost_handles, cost_labels = timing.get_legend_handles_labels()
+    count_handles, count_labels = population.get_legend_handles_labels()
+    fig.legend(
+        cost_handles + count_handles,
+        cost_labels + count_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=3,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
+        borderaxespad=0,
         handlelength=1.5,
-        borderpad=0.3,
-        labelspacing=0.25,
+        columnspacing=0.8,
+        handletextpad=0.4,
     )
 
     fidelity = axes[2]

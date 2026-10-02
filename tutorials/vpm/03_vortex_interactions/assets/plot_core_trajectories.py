@@ -50,7 +50,7 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
         ax.plot(
             values.x_over_R0 - 2.5,
             values.R_over_R0,
-            color=plotting.COLORS["RefGray"],
+            color=plotting.COLORS["reference"],
             lw=1.0,
             linestyle="--" if core == 1 else ":",
         )
@@ -119,14 +119,14 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
         Line2D(
             [0],
             [0],
-            color=plotting.COLORS["RefGray"],
+            color=plotting.COLORS["reference"],
             linestyle="--",
             lw=1,
             label="LBM (Cheng et al., 2015)",
         )
     )
     comparison_legend(fig, handles, location="bottom")
-    plotting.centered_subplots_adjust(fig, outer=0.100, bottom=0.39, top=0.96)
+    plotting.centered_subplots_adjust(fig, outer=0.113, bottom=0.45, top=0.96)
     figure_path = output / FIGURE_NAME
     save_figure(fig, figure_path, ax, formats)
     plt.close(fig)

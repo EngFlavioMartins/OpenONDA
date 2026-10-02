@@ -53,11 +53,11 @@ COMPARISON = SAMPLES / "comparison"
 COLORS = dict(_THEME.COLORS)
 COLORS.update(
     {
-        "fvm": COLORS["TUDcyan"],
+        "fvm": COLORS["teal"],
         "vpm": COLORS["vpm"],
         "cd": COLORS["hybrid"],
         "cl": COLORS["vpm"],
-        "accent": COLORS["DarkText"],
+        "accent": COLORS["text"],
         "box": COLORS["background_strong"],
     }
 )

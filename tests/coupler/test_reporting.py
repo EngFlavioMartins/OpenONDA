@@ -8,33 +8,6 @@ from source.coupler.reporting import compute_diagnostics
 from source.coupler.vorticity_transfer import TransferResult, _transfer_log_record
 
 
-def test_projected_renewal_log_reports_field_gates_and_runtime_gbd_guard() -> None:
-    result = TransferResult(
-        n_particles_before=120,
-        n_particles_retained=120,
-        n_particles_removed=0,
-        n_particles_blended=96,
-        n_particles_injected=4,
-        n_particles_after=124,
-        injected_vortex_strength_l1=2.0e-4,
-        transfer_method="projected_gbd_renewal",
-        projection_vorticity_relative_error=4.0e-4,
-        projection_velocity_relative_error=7.0e-5,
-        projection_condition_number=12.5,
-        selective_support_births=4,
-        renewal_guard_width=0.09375,
-        renewal_diffusion_substeps=1,
-    )
-
-    record = str(_transfer_log_record(3, result)).lower()
-
-    assert "projection error, omega" in record and "4.000e-04" in record
-    assert "projection error, normal velocity" in record and "7.0000e-05" in record
-    assert "gbd guard width" in record and "0.09375" in record
-    assert "gbd diffusion substeps" in record
-    assert "selective support births" in record
-
-
 def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None:
     result = TransferResult(
         n_particles_before=12,
@@ -44,7 +17,6 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
         n_particles_injected=10,
         n_particles_after=13,
         injected_vortex_strength_l1=1.0,
-        transfer_method="buffered_m4_renewal",
         coalesced_outer_particles=1,
         renewal_raw_vortex_strength_error=0.4,
         renewal_applied_vortex_strength_correction=0.4,
@@ -117,8 +89,6 @@ def test_buffered_renewal_serializes_raw_applied_and_corrected_closure() -> None
     assert transfer["renewal_linear_impulse_error"] == 3.0e-14
     assert transfer["renewal_linear_impulse_tolerance"] == 6.0e-8
     assert transfer["renewal_applied_particle_strength_fraction"] == 0.047
-    assert transfer["fvm_mapping_vortex_strength_error"] is None
-    assert transfer["fvm_mapping_first_moment_error"] is None
     assert diagnostics["gbd_moment_recovery"] == {
         "applied": True,
         "nonzero_node_count": 120,

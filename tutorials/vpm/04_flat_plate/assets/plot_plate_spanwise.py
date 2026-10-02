@@ -19,7 +19,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import numpy as np
-from scipy.integrate import trapezoid
 import pandas as pd
 
 from ._plot_theme import (
@@ -27,7 +26,6 @@ from ._plot_theme import (
     validation_legend,
     FIG_DIR,
     SAMPLES_DIR,
-    cm,
     color,
     save_fig,
 )
@@ -41,18 +39,14 @@ args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-C_MOVING = color("TUDcyan")
+C_MOVING = color("teal")
 C_STATIC = color("vpm")
-C_LL = color("ref")
-C_ELL = color("literature")
-
-CM = cm()
+C_LL = color("reference")
 
 # -- Physical constants ---------------------------------------------------------
 physics = parameters(SAMPLES_DIR.parent)
 CHORD = physics["chord"]
 SPAN = physics["span"]
-aspect_ratio = SPAN / CHORD
 FREESTREAM_SPEED = physics["speed"]
 ANGLE_OF_ATTACK = 5.0
 angle_of_attack_radians = np.radians(ANGLE_OF_ATTACK)
@@ -71,20 +65,6 @@ df_ll = spanwise_reference(
 )
 cl_ll = df_ll["section_lift_coefficient"].to_numpy()
 y_ll_over_b = df_ll["span_coordinate_normalized"].to_numpy()
-
-CL_ll = float(trapezoid(cl_ll * CHORD, y_theory) / (SPAN * CHORD))
-
-df_ell = spanwise_reference(
-    "elliptic",
-    y_theory,
-    SPAN,
-    CHORD,
-    angle_of_attack_radians,
-    FREESTREAM_SPEED,
-    total_lift_coefficient=CL_ll,
-    aspect_ratio=aspect_ratio,
-)
-cl_ell = df_ell["section_lift_coefficient"].to_numpy()
 
 
 # -- Load simulation data -------------------------------------------------------
@@ -112,7 +92,9 @@ moving_data = load_spanwise_csv("exp_moving_aoa05")
 static_data = load_spanwise_csv("exp_static_aoa05")
 
 # -- Figure ---------------------------------------------------------------------
-fig, axes = validation_subplots(1, height_cm=11, outer=0.100, top_padding_cm=0.20)
+fig, axes = validation_subplots(
+    1, height_cm=5.6, outer=0.100, top_padding_cm=0.20, bottom_padding_cm=2.15
+)
 ax = axes[0]
 
 if moving_data is not None:
@@ -142,14 +124,13 @@ if static_data is not None:
 
 # Theory curves
 ax.plot(y_ll_over_b, cl_ll, "--", color=C_LL, lw=1.0, label="Lifting-line")
-ax.plot(y_ll_over_b, cl_ell, ":", color=C_ELL, lw=1.0, label="Elliptic shape")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift, $c_\ell$")
 ax.set_xlim(-1, 1)
 ax.margins(y=0.08)
-validation_legend(fig, ax)
-print("Final sampled loading; elliptic curve is a shape comparison")
+validation_legend(fig, ax, ncol=3, outside=True)
+print("Final sampled loading compared with rectangular-wing lifting-line theory")
 
 out = FIG_DIR / "plate_spanwise.png"
 save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

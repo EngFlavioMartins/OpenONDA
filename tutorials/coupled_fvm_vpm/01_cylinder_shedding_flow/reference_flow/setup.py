@@ -7,9 +7,9 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
-from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
 from openonda.cylinder_campaign import initialize_cylinder_perturbation
-from openonda.tutorial_runner import load_case_module
+from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
+from openonda.tutorial_support import cylinder_sampling as observations
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
@@ -34,12 +34,7 @@ WAKE = (-2.5, 12.0, -2.5, 2.5)
 CORES = 6
 END_TIME = DEFAULT_CYLINDER_CASE.reference_end_time
 TIME_STEP_SIZE = 0.008
-MAXIMUM_TIME_STEP_SIZE = 0.01
-MAXIMUM_COURANT_NUMBER = 0.7
-OUTPUT_INTERVAL = 4.0
-FORCE_SAMPLE_INTERVAL = 0.04
-PROFILE_SAMPLE_INTERVAL = 0.1
-PROFILE_SPACING = 0.08
+EXCHANGE_TIME_STEP_SIZE = 0.04
 
 CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
@@ -94,18 +89,25 @@ def build_case(
         levels=tuple(DOMAIN[4] + layer * SPAN / span_layers for layer in range(span_layers + 1)),
     )
 
+    physical_end = END_TIME if end_time is None else end_time
+    clocks = dict(
+        end=physical_end, exchange_dt=EXCHANGE_TIME_STEP_SIZE, fvm_time_step=TIME_STEP_SIZE
+    )
+    sampling = observations.sampling_plan(observations.PROFILES, **clocks)
+    backups = observations.sampling_plan(observations.BACKUPS, **clocks)
     setup = fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_n_steps=backups.fvm_sample_steps), write_at_end=True
+        ),
         case_name=name,
         cores=CORES if cores is None else cores,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
-            end_time=END_TIME if end_time is None else end_time,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL),
-            adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAXIMUM_COURANT_NUMBER,
-                maximum_time_step_size=MAXIMUM_TIME_STEP_SIZE,
-            ),
+            end_time=physical_end,
+            output_schedule=fvm.RunSchedule(every_n_steps=sampling.fvm_output_steps),
+        ),
+        schemes=fvm.DiscretizationConfig(
+            convection_scheme="limitedLinear", gradient_scheme="lsq", time_scheme="backward"
         ),
         linear=fvm.LinearSolverConfig(
             pressure_solver="amg",
@@ -114,41 +116,11 @@ def build_case(
             momentum_tolerance=1.0e-6,
             momentum_relative_tolerance=0.05,
         ),
-        pimple=fvm.PimpleControl(algorithm="PISO"),
-        samplers=(
-            fvm.ForceSampler(
-                patch_names=["cylinder"],
-                reference_velocity=FREESTREAM_VELOCITY,
-                reference_area=DIAMETER * SPAN,
-                reference_length=DIAMETER,
-                file_name="forces_history",
-                schedule=fvm.RunSchedule(every_time=FORCE_SAMPLE_INTERVAL),
-            ),
-            fvm.LineSampler(
-                start=[-2.0, 0.0, 0.0],
-                end=[12.0, 0.0, 0.0],
-                spacing=PROFILE_SPACING,
-                k=12,
-                reconstruction="affine",
-                file_name="centreline",
-                schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
-            ),
-            *(
-                fvm.LineSampler(
-                    start=[1.0, -1.0, z],
-                    end=[1.0, 1.0, z],
-                    spacing=PROFILE_SPACING,
-                    k=12,
-                    reconstruction="affine",
-                    file_name=name,
-                    schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
-                )
-                for name, z in (
-                    ("span_lower", -SPAN / 4),
-                    ("span_middle", 0.0),
-                    ("span_upper", SPAN / 4),
-                )
-            ),
+        pimple=fvm.PimpleControl(
+            n_outer_correctors=2, n_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
+        ),
+        samplers=observations.fvm_samplers(
+            True, span=SPAN, freestream_speed=FREESTREAM_VELOCITY, diameter=DIAMETER, **clocks
         ),
         transport=fvm.TransportConfig(
             density=DENSITY,
@@ -166,8 +138,7 @@ def build_case(
         ],
         initial_velocity=VELOCITY,
     )
-    observations = load_case_module(CASE_DIR.parent, "assets.sampling")
-    return observations.configure_fvm(setup, True, END_TIME if end_time is None else end_time), mesh
+    return setup, mesh
 
 
 def create_solver(
@@ -190,7 +161,8 @@ def create_solver(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(description=__doc__, add_help=False)
+    parser.add_argument("--help", action="help", help="Show this help message and exit.")
     parser.add_argument("--name", default="phase_h004")
     parser.add_argument("-h", type=float, default=0.04)
     arguments = parser.parse_args()

@@ -6,8 +6,8 @@ import json
 import numpy as np
 
 from openonda import fvm
-from source.solvers.fvm.mesh.cartesian import structured_box
 from tests.fvm.test_restart_and_diagnostics import _setup
+from tests.support.fvm_mesh import structured_box
 
 
 def _solver(directory, *, end_time=0.03):

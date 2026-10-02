@@ -82,7 +82,7 @@ def main():
 
     for name, label, values, cmap, clim in fields:
         fig = plt.figure(figsize=(125 / 25.4, 78 / 25.4))
-        ax = fig.add_axes([.110, .305, .780, .673077])
+        ax = fig.add_axes([0.110, 0.305, 0.780, 0.673077])
         image = PolyCollection(footprints, cmap=cmap, edgecolors="none", antialiased=False)
         image.set_array(values)
         if clim is not None:
@@ -94,7 +94,7 @@ def main():
                     markers[:, :2],
                     closed=True,
                     facecolor="white",
-                    edgecolor=COLORS["AxisBlack"],
+                    edgecolor=COLORS["black"],
                     linewidth=0.8,
                     zorder=3,
                 )
@@ -105,7 +105,7 @@ def main():
         ax.set_xlabel("x / D")
         ax.set_ylabel("y / D")
         ax.tick_params(axis="y", pad=8)
-        cax = fig.add_axes([.110, .15, .780, .025])
+        cax = fig.add_axes([0.110, 0.15, 0.780, 0.025])
         fig.colorbar(image, cax=cax, orientation="horizontal", label=label)
         save_fig(fig, name, FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 

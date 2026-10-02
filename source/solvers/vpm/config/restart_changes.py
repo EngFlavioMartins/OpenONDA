@@ -63,8 +63,9 @@ def _admit(
     protected_paths: Collection[str] = (),
 ) -> tuple[dict[str, Any], ...]:
     """Apply exact permissions to an independently computed difference set."""
-    if (isinstance(allowed_config_differences, str | bytes)
-            or not isinstance(allowed_config_differences, Collection)):
+    if isinstance(allowed_config_differences, str | bytes) or not isinstance(
+        allowed_config_differences, Collection
+    ):
         raise TypeError("allowed_config_differences must be a collection of exact paths")
     paths = tuple(allowed_config_differences)
     if any(type(path) is not str or not _PATH.fullmatch(path) for path in paths):
@@ -73,7 +74,9 @@ def _admit(
         raise ValueError("duplicate configuration permission paths")
     allowed = set(paths)
     if "time_step_size" in allowed and "time_step_size" in protected_paths:
-        raise ValueError("time_step_size requires the explicit time_step_size continuation override")
+        raise ValueError(
+            "time_step_size requires the explicit time_step_size continuation override"
+        )
     if expected_config_differences is None:
         expectations = {}
     elif not isinstance(expected_config_differences, Mapping):
@@ -90,7 +93,9 @@ def _admit(
 
     unused = allowed - mismatches
     if unused:
-        raise ValueError("configuration permission is not an exact changed path: " + ", ".join(sorted(unused)))
+        raise ValueError(
+            "configuration permission is not an exact changed path: " + ", ".join(sorted(unused))
+        )
     unpermitted = mismatches - allowed
     if unpermitted:
         raise ValueError("numerical configuration mismatch at " + ", ".join(sorted(unpermitted)))
@@ -98,11 +103,18 @@ def _admit(
     evidence = []
     for path in sorted(allowed):
         old, new = _value_at(stored, path), _value_at(current, path)
-        structural = any(value is MISSING_CONFIGURATION_VALUE or isinstance(value, dict | list)
-                         for value in (old, new))
+        structural = any(
+            value is MISSING_CONFIGURATION_VALUE or isinstance(value, dict | list)
+            for value in (old, new)
+        )
         if structural and path not in frozen_expectations:
-            raise ValueError(f"structured configuration difference {path!r} requires exact stored/current expectations")
-        if path in frozen_expectations and frozen_expectations[path] != (_identity(old), _identity(new)):
+            raise ValueError(
+                f"structured configuration difference {path!r} requires exact stored/current expectations"
+            )
+        if path in frozen_expectations and frozen_expectations[path] != (
+            _identity(old),
+            _identity(new),
+        ):
             raise ValueError(f"configuration expectation mismatch at {path}")
         evidence.append({"path": path, "stored": _evidence(old), "current": _evidence(new)})
     return tuple(evidence)
@@ -124,15 +136,21 @@ def admit_configuration_changes(
     path must be an actual incompatible path; parent paths, wildcard grants,
     unused permissions and expectations without permission are rejected.
     ``time_step_size`` is reserved for the separate explicit step-size API.
-    Only this VPM-specific entry point applies operational-capacity aliases.
+    Execution placement and hard storage capacity are operational.
     """
     current = canonical_restart_configuration(expected)
     stored = canonical_restart_configuration(found)
     mismatches = set(_configuration_mismatches(current, stored))
     if allow_time_step_size_mismatch:
         mismatches.discard("time_step_size")
-    return _admit(current, stored, mismatches, allowed_config_differences=allowed_config_differences,
-                  expected_config_differences=expected_config_differences, protected_paths={"time_step_size"})
+    return _admit(
+        current,
+        stored,
+        mismatches,
+        allowed_config_differences=allowed_config_differences,
+        expected_config_differences=expected_config_differences,
+        protected_paths={"time_step_size"},
+    )
 
 
 def _exact_mismatches(current: object, stored: object, path: str = "") -> set[str]:
@@ -160,10 +178,18 @@ def admit_exact_configuration_changes(
     allowed_config_differences: Collection[str] = (),
     expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Generic exact admission with NO VPM aliases or operational exemptions."""
-    return _admit(expected, found, _exact_mismatches(expected, found),
-                  allowed_config_differences=allowed_config_differences,
-                  expected_config_differences=expected_config_differences)
+    """Generic exact admission without operational exemptions."""
+    return _admit(
+        expected,
+        found,
+        _exact_mismatches(expected, found),
+        allowed_config_differences=allowed_config_differences,
+        expected_config_differences=expected_config_differences,
+    )
 
 
-__all__ = ["MISSING_CONFIGURATION_VALUE", "admit_configuration_changes", "admit_exact_configuration_changes"]
+__all__ = [
+    "MISSING_CONFIGURATION_VALUE",
+    "admit_configuration_changes",
+    "admit_exact_configuration_changes",
+]

@@ -10,12 +10,12 @@ import pytest
 
 from openonda import fvm
 from source.solvers.fvm.core.solver import FVMSolver
-from source.solvers.fvm.mesh.cartesian import structured_box
 from source.solvers.fvm.solve.simple_solver import (
     _pressure_interior_flux_scalar,
     _pressure_interior_flux_vector,
     _process_boundary_faces_jit,
 )
+from tests.support.fvm_mesh import structured_box
 
 
 @pytest.mark.parametrize(

@@ -120,7 +120,7 @@ def test_each_strip_reaction_matches_independent_filtered_line_integrals(scheme,
         scheme
     ]
     provider = _provider(vlm, scheme)
-    state = StageState(position, strength, radius, 2, 0.0)
+    state = StageState(position, strength, radius, 2, 0.0, stage_index=0)
     rates = StageRates(velocity, rate, gradient)
     with provider.integration_step(RK2(), 0.02, True):
         old = vlm._transported_bound.to_numpy().copy()

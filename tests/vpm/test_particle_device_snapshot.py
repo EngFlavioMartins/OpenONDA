@@ -121,7 +121,7 @@ def test_grown_slot_releases_old_allocation_and_empty_snapshot_restores_count(ow
         owner.restore_particle_snapshot(empty)
 
 
-def test_snapshot_keeps_legacy_lineage_replacement_semantics(owner):
+def test_snapshot_preserves_refinement_lineage(owner):
     original = _payload(6)
     owner.particles.replace_from_numpy(**original)
     owner.stabilization.reference_vortex_strength = np.full(6, 100.0)

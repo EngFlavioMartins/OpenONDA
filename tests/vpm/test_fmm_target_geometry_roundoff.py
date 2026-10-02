@@ -6,6 +6,8 @@ spread, compare both paths to the same independent finite-image pair oracle,
 and separately require every saved/restored geometry component to be bitwise.
 The 16-epsilon absolute-conditioning allowance is the existing target-operator
 qualification budget, not a relative tolerance inflated at cancelled values.
+WINCKELMANS exercises reflected FMM targets; Gaussian slab fields have separate
+finite mesh qualifications.
 """
 
 import json
@@ -14,7 +16,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from tests.vpm.test_fmm_target_geometry_bank_device import Harness
+from tests.vpm._fmm_geometry_harness import Harness
 from tests.vpm.test_fmm_targets import _slab_oracle
 
 
@@ -49,15 +51,19 @@ def _geometry_snapshot(target, count):
     paths = target.target_path.to_numpy()
     for slot, length in enumerate(result["path_length"]):
         result[f"path_{slot}"] = paths[:length, slot].copy()
-    result["counts"] = np.array([
-        target._prepared_count, int(target.tree.n_particles_total[None]), leaves,
-        int(target.target_path_error[None]),
-    ])
+    result["counts"] = np.array(
+        [
+            target._prepared_count,
+            int(target.tree.n_particles_total[None]),
+            leaves,
+            int(target.target_path_error[None]),
+        ]
+    )
     return result
 
 
 def test_all_geometry_and_paths_restore_bitwise_across_interleaved_remainder_tiles():
-    h = Harness("GAUSSIAN")
+    h = Harness("WINCKELMANS")
     try:
         h.run()
         base = h.slab.base
@@ -72,7 +78,9 @@ def test_all_geometry_and_paths_restore_bitwise_across_interleaved_remainder_til
                 cache.prepare(target, h.x, count, target_start=start)
                 actual = _geometry_snapshot(target, count)
                 for name, expected in originals[start].items():
-                    np.testing.assert_array_equal(actual[name], expected, err_msg=f"tile={start}, {name}")
+                    np.testing.assert_array_equal(
+                        actual[name], expected, err_msg=f"tile={start}, {name}"
+                    )
             assert base.diagnostics.image_target_geometry_restores - before == 4
     finally:
         h.slab.base.close()
@@ -91,9 +99,13 @@ def field_repeat_evidence(h, kernel, controls, candidates):
         assert tail["relative"] <= h.slab.tail_tolerance
     gamma = h.gamma.to_numpy().astype(np.float64)
     exact, conditioning = _slab_oracle(
-        kernel, h.positions.astype(np.float64), gamma,
-        h.radius.to_numpy().astype(np.float64), h.positions.astype(np.float64),
-        reference_tail["shell"], stage=True,
+        kernel,
+        h.positions.astype(np.float64),
+        gamma,
+        h.radius.to_numpy().astype(np.float64),
+        h.positions.astype(np.float64),
+        reference_tail["shell"],
+        stage=True,
     )
     assert h.slab.stretching_scheme == "TRANSPOSED"
     exact.append(np.einsum("nji,nj->ni", exact[1], gamma))
@@ -103,7 +115,9 @@ def field_repeat_evidence(h, kernel, controls, candidates):
         control_errors = [_norm(fields[index] - exact[index]) for fields, _ in controls]
         candidate_errors = [_norm(fields[index] - exact[index]) for fields, _ in candidates]
         control_spread = max(_norm(a[0][index] - b[0][index]) for a in controls for b in controls)
-        candidate_delta = max(_norm(a[0][index] - b[0][index]) for a in controls for b in candidates)
+        candidate_delta = max(
+            _norm(a[0][index] - b[0][index]) for a in controls for b in candidates
+        )
         allowance = float(16 * np.finfo(np.float32).eps * _norm(conditioning[index]))
         assert max(candidate_errors) <= min(control_errors) + allowance
         assert candidate_delta <= control_spread + allowance
@@ -126,7 +140,7 @@ def field_repeat_evidence(h, kernel, controls, candidates):
     return evidence
 
 
-@pytest.mark.parametrize("kernel", ["GAUSSIAN", "WINCKELMANS"])
+@pytest.mark.parametrize("kernel", ["WINCKELMANS"])
 def test_repeated_rebuild_and_bank_fields_remain_inside_same_direct_error_envelope(kernel):
     h = Harness(kernel)
     try:

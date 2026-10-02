@@ -15,6 +15,8 @@ import pandas as pd
 from ._plot_theme import (
     validation_subplots,
     validation_legend,
+    centered_subplots_adjust,
+    cm,
     FIG_DIR,
     SAMPLES_DIR,
     color,
@@ -30,9 +32,12 @@ args = parser.parse_args()
 
 physics = parameters(SAMPLES_DIR.parent)
 span, chord, speed = physics["span"], physics["chord"], physics["speed"]
-fig, axes = validation_subplots(2, height_cm=14, sharex=True, outer=0.135, top_padding_cm=0.13)
+fig, axes = validation_subplots(
+    2, height_cm=9.2, sharex=True, outer=0.135, top_padding_cm=0.13, bottom_padding_cm=2.15
+)
+fig.set_size_inches(12.5 * cm(), 10.0 * cm(), forward=False)
 
-for mode, ink, marker in [("moving", color("TUDcyan"), "o"), ("static", color("vpm"), "s")]:
+for mode, ink, marker in [("moving", color("teal"), "o"), ("static", color("vpm"), "s")]:
     name = f"exp_{mode}_aoa05"
     data = pd.read_csv(SAMPLES_DIR / name / "vlm_chordwise_flat_plate.csv")
     data = data[data.step == data.step.max()]
@@ -65,15 +70,16 @@ for mode, ink, marker in [("moving", color("TUDcyan"), "o"), ("static", color("v
 y = np.linspace(-0.5 * span, 0.5 * span, 401)
 reference = lifting_line_circulation(y, span, chord, np.radians(5), speed)
 axes[0].plot(
-    2 * y / span, reference.induced_velocity_z, "--", color=color("ref"), label="Lifting-line"
+    2 * y / span, reference.induced_velocity_z, "--", color=color("reference"), label="Lifting-line"
 )
-axes[1].axhline(0, ls="--", lw=1, color=color("ref"), label="Lifting-line")
+axes[1].axhline(0, ls="--", lw=1, color=color("reference"), label="Lifting-line")
 axes[0].set_ylabel(r"Downwash, $w$ [m/s]")
 axes[1].set_ylabel(r"Streamwise, $u_i$ [m/s]")
 axes[1].set_xlabel(r"Spanwise position, $2y/b$")
 for axis in axes:
     axis.set_xlim(-1, 1)
-validation_legend(fig, axes[0], ncol=3)
+centered_subplots_adjust(fig, outer=0.135, bottom=2.15 / 10.0, top=1 - 0.13 / 10.0, hspace=0.18)
+validation_legend(fig, axes[0], ncol=3, outside=True)
 print("Final sampled bound-point velocity, weighted by circulation")
 print("Finite chord and wake cores affect tip downwash")
 save_fig(fig, FIG_DIR / "plate_velocity.png", figure_format=args.format, dpi=args.dpi)

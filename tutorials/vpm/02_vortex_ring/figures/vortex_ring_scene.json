@@ -8,16 +8,36 @@
   ],
   "sphere_radius_rule": "0.025 R0 (|alpha|/max|alpha_0|)^0.65",
   "camera_position": [
-    5,
-    0,
-    7
+    4.1542459111177585,
+    -4.872651177025555,
+    1.0197604704011871
   ],
   "camera_up": [
     0,
     0,
     1
   ],
-  "parallel_scale": 0.82,
+  "parallel_scale": 1.18,
+  "focal_offset_up": 0.02,
+  "focal_offset_right": 0.2,
+  "snapshot_panel_mm": [
+    62.5,
+    40.0
+  ],
+  "snapshot_view_size_px": [
+    2500,
+    1600
+  ],
+  "motion_arrow_direction": [
+    1,
+    0,
+    0
+  ],
+  "arrow_color": [
+    0.64,
+    0.64,
+    0.64
+  ],
   "normalized_times": [
     0,
     188.49555921538757
@@ -301,6 +321,26 @@
     8772
   ],
   "schematic_only": false,
+  "camera_focal_point": [
+    0.15424591111775854,
+    0.12734882297444428,
+    0.019760470401187075
+  ],
+  "motion_arrow_start": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "motion_arrow_length_over_R0": 1.5,
+  "snapshot_scale_bar_mm": 8.474576271186441,
+  "motion_arrow_tip_mm": [
+    47.71276634177195,
+    22.78964081039939
+  ],
+  "motion_arrow_label_mm": [
+    46.912766341771956,
+    19.28964081039939
+  ],
   "schematic": {
     "camera_position": [
       5,

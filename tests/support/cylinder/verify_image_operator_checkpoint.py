@@ -236,13 +236,8 @@ def error_summary(actual, exact, sum_absolute, extraction_allowance):
     }
 
 
-def load_saved_oracle(prefix, identity, position, strength, images, *, expected_sha256=None):
-    """Admit immutable direct evidence without importing or initializing Taichi.
-
-    Older reports did not embed an archive digest. Those require an explicit
-    expected NPZ digest supplied by the caller; merely computing a new digest
-    from the file being admitted is not an integrity check.
-    """
+def load_saved_oracle(prefix, identity, position, strength, images):
+    """Admit authenticated immutable direct evidence without device work."""
     report_path = prefix.with_suffix(".json")
     archive_path = prefix.with_suffix(".npz")
     report = json.loads(report_path.read_text())
@@ -252,17 +247,10 @@ def load_saved_oracle(prefix, identity, position, strength, images, *, expected_
     if report.get("status") != "complete" or report.get("precision") != "f64":
         raise ValueError("Saved oracle must be a completed f64 direct audit")
     recorded_hash = report.get("archive_sha256")
-    if (
-        recorded_hash is not None
-        and expected_sha256 is not None
-        and recorded_hash != expected_sha256
-    ):
-        raise ValueError("Supplied oracle archive digest differs from its report")
-    expected_hash = recorded_hash if recorded_hash is not None else expected_sha256
-    if expected_hash is None:
-        raise ValueError("Legacy saved oracle requires --saved-oracle-sha256")
+    if not isinstance(recorded_hash, str) or len(recorded_hash) != 64:
+        raise ValueError("Saved oracle report must embed its archive SHA256")
     archive_hash = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-    if archive_hash != expected_hash:
+    if archive_hash != recorded_hash:
         raise ValueError("Saved oracle archive SHA256 mismatch")
     if report.get("images") != len(images) or 1 + 4 * int(report.get("last_shell", -1)) != len(
         images
@@ -319,9 +307,7 @@ def load_saved_oracle(prefix, identity, position, strength, images, *, expected_
         "prefix": str(prefix.resolve()),
         "archive_sha256": archive_hash,
         "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
-        "digest_admission": "embedded report"
-        if recorded_hash is not None
-        else "caller-supplied legacy digest",
+        "digest_admission": "embedded report",
     }
     return report, archive, provenance
 
@@ -375,10 +361,6 @@ def main():
         type=Path,
         help="Reuse an existing direct JSON/NPZ prefix without GPU work",
     )
-    parser.add_argument(
-        "--saved-oracle-sha256",
-        help="Expected NPZ SHA256; required for legacy reports without an embedded digest",
-    )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument(
         "--profile-prefixes",
@@ -395,7 +377,14 @@ def main():
     parser.add_argument("--source-tile", type=int, default=256)
     args = parser.parse_args()
     output = args.output.resolve()
-    if output.parent != (Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow") / "solution":
+    if (
+        output.parent
+        != (
+            Path(__file__).resolve().parents[3]
+            / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+        )
+        / "solution"
+    ):
         raise ValueError("Audit reports must stay in this tutorial's ordinary solution directory")
     if output.with_suffix(".json").exists() or output.with_suffix(".npz").exists():
         raise FileExistsError(f"Refusing to overwrite evidence: {output}")
@@ -433,7 +422,6 @@ def main():
             position,
             strength,
             images,
-            expected_sha256=args.saved_oracle_sha256,
         )
         indices = archive["indices"]
         exact, absolute = archive["direct"], archive["sum_absolute"]
@@ -455,12 +443,16 @@ def main():
         root = args.source_root.resolve()
         sys.path.insert(0, str(root))
         import taichi as ti
+
         from source.solvers.vpm.kernels.base import make_device_vortex_kernels
 
         for name, module in tuple(sys.modules.items()):
-            if name.startswith(("source.", "openonda.")) and getattr(module, "__file__", None):
-                if not Path(module.__file__).resolve().is_relative_to(root):
-                    raise RuntimeError(f"Wrong oracle source root: {module.__file__}")
+            if (
+                name.startswith(("source.", "openonda."))
+                and getattr(module, "__file__", None)
+                and not Path(module.__file__).resolve().is_relative_to(root)
+            ):
+                raise RuntimeError(f"Wrong oracle source root: {module.__file__}")
         indices = select_targets(position, strength, args.target_count, args.seed)
         ti.init(arch=ti.cuda, default_fp=ti.f64, offline_cache=False, cpu_max_num_threads=2)
         if ti.lang.impl.current_cfg().arch != ti.cuda:

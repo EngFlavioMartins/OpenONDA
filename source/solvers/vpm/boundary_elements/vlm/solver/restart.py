@@ -57,9 +57,6 @@ def _identity_controls(vlm, *, include_output_controls=True):
     field_contract = getattr(vlm, "field_contract", None)
     if field_contract is not None and hasattr(field_contract, "as_dict"):
         controls["field_contract"] = field_contract.as_dict()
-    # Omission retains the previous shedding rule and restart identity.
-    if controls["wake_core_overlap"] is None:
-        controls.pop("wake_core_overlap")
     for surface in controls["surfaces"]:
         # Geometry and reference values are hashed below; a moved case retains
         # the same numerical identity without depending on an absolute filename.

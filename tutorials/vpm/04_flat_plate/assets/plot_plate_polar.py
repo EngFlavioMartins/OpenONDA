@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Settled flat-plate polar and signed differences from lifting-line theory."""
+"""Settled flat-plate lift, drag and quarter-chord moment coefficients."""
 
 if not __package__:
     from pathlib import Path
@@ -16,6 +16,7 @@ from ._plot_theme import (
     save_fig,
     validation_subplots,
     validation_legend,
+    centered_subplots_adjust,
 )
 from .results import parameters, settled_coefficients
 from .theoretical_model import lifting_line_polar
@@ -37,12 +38,16 @@ for mode in ("moving", "static"):
             for angle in angles
         ]
     )
-fig, axes = validation_subplots(4, height_cm=23, sharex=True, outer=0.1215, top_padding_cm=0.11)
+fig, axes = validation_subplots(
+    3, height_cm=12.8, sharex=True, outer=0.129, top_padding_cm=0.11, bottom_padding_cm=2.25
+)
 reference_angles = np.linspace(angles.min(), angles.max(), 200)
 reference = lifting_line_polar(reference_angles, ar)
 for i in range(2):
-    axes[i].plot(reference_angles, reference[i], "--", color=color("ref"), label="Lifting-line")
-for mode, marker, ink in [("moving", "o", color("TUDcyan")), ("static", "s", color("vpm"))]:
+    axes[i].plot(
+        reference_angles, reference[i], "--", color=color("reference"), label="Lifting-line"
+    )
+for mode, marker, ink in [("moving", "o", color("teal")), ("static", "s", color("vpm"))]:
     for i in range(3):
         axes[i].plot(
             angles,
@@ -53,30 +58,15 @@ for mode, marker, ink in [("moving", "o", color("TUDcyan")), ("static", "s", col
             mfc="none" if mode == "moving" else ink,
             label=mode.capitalize(),
         )
-ref = np.asarray(lifting_line_polar(angles, ar)).T
-nonzero = angles != 0
-for i, label, marker in [(0, "Lift", "o"), (1, "Drag", "s")]:
-    error = 100 * (curves["static"][nonzero, i] / ref[nonzero, i] - 1)
-    axes[3].plot(
-        angles[nonzero],
-        error,
-        marker + "-",
-        ms=3,
-        color=color("vpm" if i == 0 else "TUDcyan"),
-        label=label,
-    )
-for i, label in [(0, "Lift"), (1, "Drag")]:
-    error = 100 * (curves["static"][-1, i] / ref[-1, i] - 1)
-    axes[3].text(16, error, label, va="center", color=color("vpm" if i == 0 else "TUDcyan"))
-for axis, label in zip(
-    axes, [r"$C_L$", r"$C_D$", r"$C_{m,c/4}$", r"Theory difference [\%]"], strict=True
-):
+for axis, label in zip(axes, [r"$C_L$", r"$C_D$", r"$C_{m,c/4}$"], strict=True):
     axis.set_ylabel(label)
     axis.axhline(0, color="0.6", lw=0.6)
-    axis.set_xlim(-11, 20)
-axes[3].margins(y=0.15)
-axes[3].set_xlabel(r"Angle of attack, $\alpha$ [degrees]")
-validation_legend(fig, axes[0], ncol=3)
-print("Final five chord lengths; zero-incidence ratios omitted")
+    axis.set_xlim(-11, 16)
+for axis, letter in zip(axes, "abc", strict=True):
+    axis.text(0.035, 0.93, f"({letter})", transform=axis.transAxes, va="top")
+axes[-1].set_xlabel(r"Angle of attack, $\alpha$ [degrees]")
+centered_subplots_adjust(fig, outer=0.129, bottom=2.25 / 12.8, top=1 - 0.11 / 12.8, hspace=0.24)
+validation_legend(fig, axes[0], ncol=3, outside=True)
+print("Final five chord lengths; lift, drag and quarter-chord moment")
 print("Lifting-line is a small-angle, high-AR approximation")
 save_fig(fig, FIG_DIR / "plate_polar.png", figure_format=args.format, dpi=args.dpi)

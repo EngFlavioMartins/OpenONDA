@@ -17,7 +17,6 @@ from openonda.plotting import (
     LINE_WIDTH,
     REFERENCE_LINE_WIDTH,
     centered_subplots_adjust,
-    fit_thesis_y_label_margins,
     set_thesis_style,
 )
 
@@ -58,7 +57,7 @@ def main() -> None:
         axis.plot(
             time,
             reference_values[:, index],
-            color=COLORS["RefGray"],
+            color=COLORS["reference"],
             linewidth=REFERENCE_LINE_WIDTH,
             label="Reference FVM",
             linestyle="--",
@@ -66,7 +65,7 @@ def main() -> None:
         axis.plot(
             time,
             coupled_values[:, index],
-            color=COLORS["FVMorange"],
+            color=COLORS["hybrid"],
             linewidth=LINE_WIDTH,
             label="Coupled FVM",
         )
@@ -79,11 +78,14 @@ def main() -> None:
         loc="lower center",
         ncol=2,
         bbox_to_anchor=(0.5, 0.025),
-        frameon=False,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
     )
     axes[1].set_xlabel(r"$tU_\infty/D$")
-    centered_subplots_adjust(figure, outer=0.17, bottom=0.245, top=0.97, hspace=0.12)
-    centered_subplots_adjust(figure, outer=0.135, top=0.987)
+    centered_subplots_adjust(figure, outer=0.135, bottom=0.28, top=0.93, hspace=0.12)
     data.save_figure(figure, axes, "reference_forces", arguments.format)
 
 

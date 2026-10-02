@@ -63,7 +63,6 @@ def evaluate(solver, callback, *args, **kwargs):
         continuity = compute_continuity_error(
             solver.volumetric_face_flux,
             mesh,
-            solver.geo_data,
         )[:n_owned] / (solver.geo_data["cell_volume"][:n_owned] + 1e-30)
         ids = parallel.partition.owned_global_ids if parallel.is_partitioned else np.arange(n_cells)
         payload = (

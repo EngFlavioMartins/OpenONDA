@@ -191,7 +191,7 @@ def compute_ddt_flux_correction(
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
 
-    if str(ddt_scheme).lower() in ("backward", "bdf2") and (
+    if str(ddt_scheme).lower() == "backward" and (
         velocity_older is not None
         and volumetric_face_flux_older is not None
         and previous_time_step_size is not None
@@ -2265,7 +2265,7 @@ class SIMPLESolver:
             default=0.0,
         )
         continuity = field_diagnostics.compute_continuity_error(
-            volumetric_face_flux, self.mesh_data, self.geo_data
+            volumetric_face_flux, self.mesh_data
         )
         volumes = self.geo_data["cell_volume"]
         max_continuity_error = float(np.max(np.abs(continuity) / (volumes + 1e-30)))

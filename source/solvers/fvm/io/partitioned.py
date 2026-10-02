@@ -26,7 +26,7 @@ def _prune_partitioned_generations(target: Path, current: dict, previous: dict |
     """Keep current and previous committed generations after manifest publication.
 
     Only this writer's UUID-named rank archives are eligible; unrelated files,
-    temporary writes, symlinks, and legacy backups remain untouched.
+    temporary writes and symlinks remain untouched.
     """
     keep = set(current["files"])
     if previous is not None:

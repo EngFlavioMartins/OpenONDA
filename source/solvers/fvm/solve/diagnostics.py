@@ -110,8 +110,8 @@ class StepDiagnostics:
     n_nonfinite_values: int
     total_kinetic_energy: float
     total_enstrophy: float
+    max_velocity_magnitude: float
     min_eddy_viscosity: float | None = None
     max_eddy_viscosity: float | None = None
     state_projection: dict[str, float] = field(default_factory=dict)
     warnings: tuple[str, ...] = field(default_factory=tuple)
-    max_velocity_magnitude: float | None = None

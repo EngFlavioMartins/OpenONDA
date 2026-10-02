@@ -118,26 +118,17 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         initial_velocity=[1, 0, 0],
     )
     with create_fvm_solver(setup, case_dir=output / f"{mode}_{n}", mesh=mesh) as solver:
-        coupler = SimpleNamespace(
-            fvm_solver=solver, setup=CouplerSetup(boundary_condition_mode=mode)
-        )
+        coupler = SimpleNamespace(fvm_solver=solver, setup=CouplerSetup())
         centre = solver.get_cell_centre_coordinates()
         face = solver.get_boundary_face_centre_coordinates("numericalBoundary")
         normal = solver.get_boundary_face_normal("numericalBoundary")
         initial, _, pressure = _taylor_green_fields(centre, 0)
         velocity, jacobian, _ = _taylor_green_fields(face, 0)
-        if mode in {"vorticity_mixed", "vorticity_mixed_pressure_gradient"}:
-            solver.set_normal_velocity_tangential_gradient_boundary_condition(
-                np.einsum("ij,ij->i", velocity, normal),
-                tangential_normal_velocity_gradient(jacobian, normal),
-                "numericalBoundary",
-            )
-        else:
-            solver.set_dirichlet_velocity_boundary_condition_vec(velocity, "numericalBoundary")
-        if mode == "vorticity_mixed_pressure_gradient":
-            solver.set_neumann_pressure_boundary_condition(
-                _taylor_green_pressure_gradient(face, 0), "numericalBoundary"
-            )
+        solver.set_normal_velocity_tangential_gradient_boundary_condition(
+            np.einsum("ij,ij->i", velocity, normal),
+            tangential_normal_velocity_gradient(jacobian, normal),
+            "numericalBoundary",
+        )
         solver.kinematic_pressure[: len(centre)] = pressure
         solver.set_initial_velocity(initial)
         for step in range(1, steps + 1):
@@ -148,7 +139,6 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
                 velocity,
                 normal_velocity=np.einsum("ij,ij->i", velocity, normal),
                 tangential_gradient=tangential_normal_velocity_gradient(jacobian, normal),
-                pressure_gradient=_taylor_green_pressure_gradient(face, step * dt),
             )
         assert solver.step == steps
         assert solver.time == pytest.approx(steps * dt, rel=0.0, abs=1e-14)
@@ -182,9 +172,7 @@ def test_invariant_recovery_resolves_small_and_large_circulation(strength_scale)
     assert np.linalg.norm(actual.linear_impulse - target.linear_impulse) < tolerance
 
 
-@pytest.mark.parametrize(
-    "mode", ["dirichlet", "vorticity_mixed", "vorticity_mixed_pressure_gradient"]
-)
+@pytest.mark.parametrize("mode", ["vorticity_mixed"])
 def test_exact_unsteady_boundary_data_converges_under_fvm_refinement(
     tmp_path, mode, record_property
 ):
@@ -208,7 +196,6 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
     axes = [np.arange(-1.0 + d / 2, 1.0, d) for d in cell_spacing]
     position = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
     setup = CouplerSetup(
-        transfer_method="buffered_m4_renewal",
         transfer_region_bounds=tuple(box),
         transfer_vorticity_cutoff=0.0,
     )
@@ -330,9 +317,7 @@ def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     axis = np.arange(-0.875, 1, 0.25)
     donors = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
     donors = donors[np.linalg.norm(donors[:, :2], axis=1) > 0.5]
-    cfg = CouplerSetup(
-        transfer_method="buffered_m4_renewal", transfer_region_bounds=(-0.9, 0.9) * 3
-    )
+    cfg = CouplerSetup(transfer_region_bounds=(-0.9, 0.9) * 3)
     coupler = SimpleNamespace(
         setup=cfg,
         kinematic_viscosity=0.01,

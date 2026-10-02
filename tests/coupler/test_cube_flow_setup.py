@@ -57,12 +57,10 @@ def test_cube_recommended_formulation_uses_the_declared_uniform_resolution():
     assert setup.TRANSFER_REGION_BOX == (-1.45, 1.45) * 3
     assert setup.FVM_MESH.patch_refinements == ()
     assert setup.COUPLER_SETUP.interface_iterations == 3
-    assert setup.COUPLER_SETUP.fvm_consistency_width == 0
     assert setup.COUPLER_SETUP.eta_blend_width == pytest.approx(6.0 * 0.045)
     assert setup.COUPLER_SETUP.vpm_only_width == pytest.approx(2.0 * 0.045)
     assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
     assert pytest.approx(0.003) == setup.GBD_VORTICITY_FLOOR
-    assert setup.COUPLER_SETUP.boundary_condition_mode == "vorticity_mixed"
     assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
     assert isinstance(setup.VPM_CASE.numerics.induction, setup.vpm.FMMInduction)
     assert setup.VPM_CASE.numerics.compute_device == "AUTO"

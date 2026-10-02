@@ -12,7 +12,9 @@ from openonda.cylinder_campaign import collect_cost, compare_profiles, profile_s
 from openonda.cylinder_case import new_run_directory
 from openonda.tutorial_runner import load_case_module
 
-CASE_DIR = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+CASE_DIR = (
+    Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+)
 LAUNCHER = Path(__file__).with_name("run_campaign.py")
 
 
@@ -25,11 +27,11 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
 
     from openonda.plotting import (
         COLORS,
-        DEFAULT_DPI,
-        export_figure,
         centered_subplots_adjust,
+        export_figure,
         figure_size,
         fit_thesis_y_label_margins,
+        prepare_figure,
         set_thesis_style,
         validate_thesis_figure,
     )
@@ -42,7 +44,10 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
         ("FVM–VPM", report["coupled_grids"], COLORS["hybrid"]),
     ):
         for axis, metric, title in zip(
-            axes, ("mean_drag", "rms_lift", "strouhal"), ("Mean drag", "Lift RMS", "Strouhal")
+            axes,
+            ("mean_drag", "rms_lift", "strouhal"),
+            ("Mean drag", "Lift RMS", "Strouhal"),
+            strict=True,
         ):
             axis.errorbar(
                 [row["h"] for row in grids],
@@ -55,16 +60,18 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
                 linestyle="--" if "reference" in label else "-",
             )
             axis.set(xlabel="h/D", title=title)
+            axis.margins(x=0.1)
             axis.grid(False)
     axes[0].legend()
     print("Grid comparison: 95% cycle-block sampling intervals")
     centered_subplots_adjust(figure, outer=0.15, bottom=0.12, top=0.94, hspace=0.85)
+    prepare_figure(figure)
     fit_thesis_y_label_margins(figure, axes)
     validate_thesis_figure(figure, axes)
     export_figure(figure, directory / "grid_comparison", figure_format=output_format)
     plt.close(figure)
     figure, axes = plt.subplots(3, 1, figsize=figure_size("stacked"))
-    for axis, (name, row) in zip(axes, report["span_profiles"].items()):
+    for axis, (name, row) in zip(axes, report["span_profiles"].items(), strict=True):
         for label, color in (("reference", COLORS["reference"]), ("coupled", COLORS["hybrid"])):
             profile = row[label]
             axis.plot(
@@ -79,6 +86,7 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
     axes[0].legend()
     print("Mean velocity at x/D=1; tU/D=40–100")
     centered_subplots_adjust(figure, outer=0.15, bottom=0.12, top=0.94, hspace=0.85)
+    prepare_figure(figure)
     fit_thesis_y_label_margins(figure, axes)
     validate_thesis_figure(figure, axes)
     export_figure(figure, directory / "span_profiles", figure_format=output_format)
@@ -106,7 +114,7 @@ def main() -> int:
     if (
         len(args.grids) < 3
         or any(h <= 0 for h in args.grids)
-        or any(a <= b for a, b in zip(args.grids[:-1], args.grids[1:]))
+        or any(a <= b for a, b in zip(args.grids[:-1], args.grids[1:], strict=True))
     ):
         raise ValueError("provide at least three positive, strictly decreasing mesh spacings")
     root = (

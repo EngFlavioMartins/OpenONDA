@@ -17,7 +17,9 @@ from openonda.cylinder_case import (
 )
 from openonda.tutorial_runner import load_case_module
 
-CASE_DIR = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+CASE_DIR = (
+    Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+)
 LAUNCHER = Path(__file__).with_name("run_campaign.py")
 FACTORS = {
     "particle_spacing_ratio": (1.25, 1.5),
@@ -25,7 +27,7 @@ FACTORS = {
     "blend_width_ratio": (4.0, 7.0),
     "release_width_ratio": (1.0, 3.0),
     "transfer_amplification_cap": (1.4, 2.2),
-    "exchange_dt": (0.02, 0.08),
+    "exchange_dt": (0.016, 0.08),
     "span": (0.48, 1.92),
     "dz": (0.04, 0.16),
 }
@@ -138,8 +140,7 @@ def main() -> int:
         and json.loads(prior_report.read_text()).get("schema") != "openonda-cylinder-sensitivity/3"
     ):
         raise ValueError(
-            "Existing sensitivity cohort used hp-relative core and widths; its spacing results "
-            "are confounded. Preserve it and use a new run directory for independent factors."
+            "Existing report must use the current openonda-cylinder-sensitivity/3 schema"
         )
     post = load_case_module(Path(__file__).resolve().parent, "postprocess_grid_study")
     variants = [("baseline", {}, "baseline")]
@@ -246,7 +247,6 @@ def main() -> int:
             "schema": "openonda-cylinder-sensitivity/3",
             "screen_only": args.screen,
             "spacing_policy": "Particle spacing varies independently of physical core radius, blend width and release width; span quantization and sigma/hp are recorded per run.",
-            "legacy_cohorts": "Reports without schema /3 used hp-relative widths and core radius; particle-spacing effects there are confounded and cannot qualify an isolated spacing recommendation.",
             "scope": "Matched initial inflow with a controlled 3D perturbation; exchange_dt changes the exchange clock, not a standalone particle emission rate. Interface iteration limits and tolerances are fixed. Short screens do not qualify shedding accuracy.",
             "runs": records,
             "rejected_interactions": rejected_interactions,

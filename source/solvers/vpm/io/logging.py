@@ -12,6 +12,7 @@ from datetime import datetime
 import os
 import platform
 from typing import Any, TextIO
+import warnings
 
 import taichi as ti
 
@@ -206,6 +207,11 @@ class Logging:
         if Logging._active_step is not None:
             rows.insert(0, ("VPM step", Logging._active_step))
         print(log_style.block_section("warnings", rows), flush=True)
+
+    @staticmethod
+    def runtime_warning(text: str, *, stacklevel: int = 2) -> None:
+        """Report an operator warning through Python's warning filters."""
+        warnings.warn(text, RuntimeWarning, stacklevel=stacklevel + 1)
 
     @staticmethod
     def error(text: str, *args) -> None:

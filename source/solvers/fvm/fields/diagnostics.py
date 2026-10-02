@@ -16,14 +16,11 @@ from source._numba import cacheable_njit as njit
 from . import gradients
 
 
-def compute_courant_number(velocity, volumetric_face_flux, time_step_size, mesh_data, geo_data):
+def compute_courant_number(volumetric_face_flux, time_step_size, mesh_data, geo_data):
     """Compute the cell Courant number from oriented face fluxes.
 
     Parameters
     ----------
-    velocity : numpy.ndarray
-        Cell/face velocity in m/s. Accepted for a common diagnostic signature;
-        this implementation uses the supplied face flux directly.
     volumetric_face_flux : numpy.ndarray
         Face flux ``U · Sf``, shape ``(n_faces,)``, in m³/s. Interior entries
         are owner-to-neighbour oriented; boundary entries point outward.
@@ -73,7 +70,6 @@ def compute_courant_number(velocity, volumetric_face_flux, time_step_size, mesh_
 def compute_continuity_error(
     volumetric_face_flux: np.ndarray,
     mesh_data: dict,
-    geo_data: dict,
 ) -> np.ndarray:
     """Compute the signed net volumetric flux for every finite-volume cell.
 
@@ -90,8 +86,6 @@ def compute_continuity_error(
     mesh_data : dict
         Mesh mapping containing ``n_cells``, ``n_interior_faces``, ``owners``,
         and ``neighbours``.
-    geo_data : dict
-        Accepted for diagnostic-call signature compatibility; not read.
 
     Returns
     -------

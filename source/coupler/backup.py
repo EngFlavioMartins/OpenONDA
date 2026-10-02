@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 import logging
+from numbers import Integral
 import os
 from pathlib import Path
 import shutil
@@ -17,6 +18,7 @@ import h5py
 import numpy as np
 
 from source import log_style
+from source.simulation.parallel import collective_phase
 from source.solution_layout import component_directory
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.vpm.config.case import Numerics
@@ -34,7 +36,7 @@ from source.solvers.vpm.io.backup import _BackupIO
 from source.solvers.vpm.io.vlm_backup import export_vlm_backup
 
 BACKUP_DIRECTORY = "backups"
-BACKUP_FORMAT_VERSION = 11
+BACKUP_FORMAT_VERSION = 12
 
 
 def config_mapping_digest(config: dict) -> str:
@@ -184,20 +186,28 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
         raise ValueError("coupled restart requires stored and current VPM configuration mappings")
     try:
         vpm_changes = admit_configuration_changes(
-            new_vpm, old_vpm,
+            new_vpm,
+            old_vpm,
             allowed_config_differences=tuple(path[4:] for path in paths if path.startswith("vpm.")),
-            expected_config_differences={path[4:]: value for path, value in expectations.items() if path.startswith("vpm.")},
+            expected_config_differences={
+                path[4:]: value for path, value in expectations.items() if path.startswith("vpm.")
+            },
         )
     except (TypeError, ValueError) as exc:
-        changed = _configuration_mismatches(canonical_restart_configuration(new_vpm),
-                                            canonical_restart_configuration(old_vpm))
-        detail = ", ".join("vpm."+path for path in changed)
+        changed = _configuration_mismatches(
+            canonical_restart_configuration(new_vpm), canonical_restart_configuration(old_vpm)
+        )
+        detail = ", ".join("vpm." + path for path in changed)
         raise type(exc)(f"{exc}; coupled VPM difference paths: {detail}") from exc
+    new_other = {key: value for key, value in current.items() if key != "vpm"}
+    old_other = {key: value for key, value in stored.items() if key != "vpm"}
     other_changes = admit_exact_configuration_changes(
-        {key: value for key, value in current.items() if key != "vpm"},
-        {key: value for key, value in stored.items() if key != "vpm"},
+        new_other,
+        old_other,
         allowed_config_differences=tuple(path for path in paths if not path.startswith("vpm.")),
-        expected_config_differences={path: value for path, value in expectations.items() if not path.startswith("vpm.")},
+        expected_config_differences={
+            path: value for path, value in expectations.items() if not path.startswith("vpm.")
+        },
     )
     # The detached admitted values, rather than the caller's mutable map,
     # become the exact permission snapshot forwarded to the real VPM reader.
@@ -209,7 +219,10 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
         )
         for change in vpm_changes
     }
-    changes = (*other_changes, *({**change, "path": "vpm."+change["path"]} for change in vpm_changes))
+    changes = (
+        *other_changes,
+        *({**change, "path": "vpm." + change["path"]} for change in vpm_changes),
+    )
     return changes, vpm_paths, vpm_expectations
 
 
@@ -217,28 +230,42 @@ def _inspect_coupled_vpm_checkpoint(coupler, path, manifest, allowed, expectatio
     """Read real native VPM admission before any coupled state/history load."""
     solver = coupler.vpm_solver
     step, time, dt, _count = _BackupIO.inspect(
-        solver, path, allowed_config_differences=allowed,
+        solver,
+        path,
+        allowed_config_differences=allowed,
         expected_config_differences=expectations,
     )
     with h5py.File(path, "r") as archive:
         stored_config = json.loads(archive["solver"].attrs["numerical_configuration"])
     manifest_vpm = manifest["config"]["vpm"]
     if config_mapping_digest(stored_config) != config_mapping_digest(manifest_vpm):
-        raise ValueError("authenticated VPM HDF5 configuration differs from coupled manifest VPM configuration")
+        raise ValueError(
+            "authenticated VPM HDF5 configuration differs from coupled manifest VPM configuration"
+        )
     for name in ("coupling_step", "vpm_step", "fvm_step", "n_fvm_substeps"):
         value = manifest[name]
         if type(value) is not int or value < (1 if name == "n_fvm_substeps" else 0):
             raise ValueError(f"invalid coupled backup clock {name}")
-    if (manifest["vpm_step"] != step or manifest["coupling_step"] != step
-            or manifest["n_fvm_substeps"] != coupler.n_fvm_substeps
-            or manifest["fvm_step"] != step*manifest["n_fvm_substeps"]):
+    if (
+        manifest["vpm_step"] != step
+        or manifest["coupling_step"] != step
+        or manifest["n_fvm_substeps"] != coupler.n_fvm_substeps
+        or manifest["fvm_step"] != step * manifest["n_fvm_substeps"]
+    ):
         raise ValueError("coupled backup step/subcycle clocks do not match native VPM checkpoint")
     clock = manifest["time"]
-    if (isinstance(clock, bool) or not isinstance(clock, int | float)
-            or not np.isfinite(clock) or clock < 0 or not np.isclose(clock, time, rtol=0., atol=1.e-12)):
+    if (
+        isinstance(clock, bool)
+        or not isinstance(clock, int | float)
+        or not np.isfinite(clock)
+        or clock < 0
+        or not np.isclose(clock, time, rtol=0.0, atol=1.0e-12)
+    ):
         raise ValueError("coupled backup time does not match native VPM checkpoint")
     if dt != manifest_vpm.get("time_step_size"):
-        raise ValueError("native VPM checkpoint time-step attribute differs from authenticated configuration")
+        raise ValueError(
+            "native VPM checkpoint time-step attribute differs from authenticated configuration"
+        )
 
 
 def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = None) -> None:
@@ -302,34 +329,76 @@ def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = 
         ]
 
 
-def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None) -> Path:
-    """Write both solvers and the boundary-history state, committing the manifest last."""
-    if coupler.fvm_solver is None:
-        raise RuntimeError("Initialize the coupler before saving a backup")
+def _same_coupled_time(left: float, right: float, fvm_step: int) -> bool:
+    """Compare physical clocks allowing only accumulated float64 roundoff."""
+    if not np.isfinite(left) or not np.isfinite(right):
+        return False
+    # FVM adds each accepted substep; VPM rounds its macro-step clock.
+    rounding = fvm_step * np.finfo(np.float64).eps
+    tolerance = 1e-12 + rounding / (1.0 - rounding) * max(abs(left), abs(right))
+    return abs(left - right) <= tolerance
 
+
+def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None) -> Path:
+    """Save one synchronized state without overwriting the committed generation."""
+    comm = getattr(coupler, "_comm", None)
+    with collective_phase(comm, "coupled backup clock validation"):
+        if coupler.fvm_solver is None or (coupler._is_master and coupler.vpm_solver is None):
+            raise RuntimeError("Initialize the coupler before saving a backup")
+        step = (
+            coupling_step
+            if coupling_step is not None
+            else coupler.fvm_solver.step // coupler.n_fvm_substeps
+        )
+        if isinstance(step, bool) or not isinstance(step, Integral) or step < 0:
+            raise ValueError("Backup coupling_step must be a non-negative integer")
+        step = int(step)
+        if coupler.fvm_solver.step != step * coupler.n_fvm_substeps:
+            raise ValueError("FVM backup step is not a completed coupling exchange")
+        clock = float(coupler.fvm_solver.time)
+        if not np.isfinite(clock) or clock < 0:
+            raise ValueError("FVM backup time must be finite and non-negative")
+        if coupler._is_master and (
+            coupler.vpm_solver.step != step
+            or not _same_coupled_time(clock, coupler.vpm_solver.time, coupler.fvm_solver.step)
+        ):
+            raise ValueError("FVM and VPM backup steps/times are not synchronized")
+    if comm is not None and comm.Get_size() > 1:
+        clocks = comm.allgather((step, clock))
+        root_step, root_clock = clocks[0]
+        if any(
+            s != root_step
+            or not _same_coupled_time(t, root_clock, root_step * coupler.n_fvm_substeps)
+            for s, t in clocks
+        ):
+            raise ValueError("FVM backup steps/times differ across MPI ranks")
     target = Path(directory)
-    target.mkdir(parents=True, exist_ok=True)
-    step = (
-        int(coupling_step)
-        if coupling_step is not None
-        else int(coupler.fvm_solver.step // coupler.n_fvm_substeps)
-    )
+    generation: str | None = None
+    with collective_phase(comm, "coupled backup directory creation"):
+        if coupler._is_master:
+            target.mkdir(parents=True, exist_ok=True)
+            generation = Path(tempfile.mkdtemp(prefix="checkpoint-", dir=target)).name
+    if comm is not None and comm.Get_size() > 1:
+        generation = comm.bcast(generation, root=0)
+    if generation is None:
+        raise RuntimeError("Coupled backup directory was not created")
+    staging = target / generation
     suffix = f"{step:06d}"
     partitioned = coupler.fvm_solver.parallel.is_partitioned
     fvm_artifact = f"fvm_{suffix}" if partitioned else f"fvm_{suffix}.npz"
 
     # Partitioned FVM backups are collective; every rank must enter first.
-    coupler.fvm_solver.save_state(target / fvm_artifact)
+    coupler.fvm_solver.save_state(staging / fvm_artifact)
     if not coupler._is_master:
         return target
     if coupler.vpm_solver is None:
         raise RuntimeError("Initialize the coupler before saving a backup")
 
-    coupler.vpm_solver._save_backup_to(str(target / f"vpm_{suffix}"))
+    coupler.vpm_solver._save_backup_to(str(staging / f"vpm_{suffix}"))
     boundary_artifact = f"vpm_boundary_condition_{suffix}.npz"
-    boundary_temporary = target / f".{boundary_artifact}.tmp"
+    boundary_temporary = staging / f".{boundary_artifact}.tmp"
     boundary_state = {
-        "boundary_schema_version": np.asarray(3, dtype=np.int64),
+        "boundary_schema_version": np.asarray(4, dtype=np.int64),
         "has_velocity": np.asarray(coupler._velocity_boundary_condition_old is not None),
         "velocity": (
             np.empty((0, 3))
@@ -352,29 +421,13 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
             if coupler._tangential_gradient_boundary_condition_old is None
             else coupler._tangential_gradient_boundary_condition_old
         ),
-        "has_kinematic_pressure_gradient": np.asarray(
-            coupler._kinematic_pressure_gradient_boundary_condition_old is not None
-        ),
-        "kinematic_pressure_gradient": (
-            np.empty((0, 3))
-            if coupler._kinematic_pressure_gradient_boundary_condition_old is None
-            else coupler._kinematic_pressure_gradient_boundary_condition_old
-        ),
-        "has_pressure_velocity_snapshot": np.asarray(
-            coupler._pressure_velocity_snapshot is not None
-        ),
-        "pressure_velocity_snapshot": (
-            np.empty((0, 3))
-            if coupler._pressure_velocity_snapshot is None
-            else coupler._pressure_velocity_snapshot
-        ),
     }
     try:
         with open(boundary_temporary, "wb") as stream:
             np.savez_compressed(stream, **encode_state(boundary_state))
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(boundary_temporary, target / boundary_artifact)
+        os.replace(boundary_temporary, staging / boundary_artifact)
     finally:
         boundary_temporary.unlink(missing_ok=True)
 
@@ -392,10 +445,10 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
         "vpm_step": int(coupler.vpm_solver.step),
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "artifacts": {
-            "fvm": fvm_artifact,
-            "vpm": f"vpm_{suffix}.h5",
-            "vpm_vtu": f"vpm_{suffix}.vtu",
-            "vpm_boundary_condition": boundary_artifact,
+            "fvm": f"{generation}/{fvm_artifact}",
+            "vpm": f"{generation}/vpm_{suffix}.h5",
+            "vpm_vtu": f"{generation}/vpm_{suffix}.vtu",
+            "vpm_boundary_condition": f"{generation}/{boundary_artifact}",
         },
     }
     manifest["artifact_sha256"] = {
@@ -408,8 +461,9 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
         os.fsync(stream.fileno())
     os.replace(manifest_temporary, target / "manifest.json")
 
-    keep = {"manifest.json", *manifest["artifacts"].values()}
+    keep = {"manifest.json", generation}
     stale = {
+        *target.glob("checkpoint-*"),
         *target.glob("fvm_*"),
         *target.glob("vpm_*"),
         *target.glob("vpm_boundary_condition_*"),
@@ -602,15 +656,23 @@ def load_coupled_backup(
                     try:
                         current_config = _backup_config(coupler)
                         changes, vpm_allowed, vpm_expectations = _admit_coupled_configuration(
-                            stored_config, current_config, allowed_config_differences, expected_config_differences,
+                            stored_config,
+                            current_config,
+                            allowed_config_differences,
+                            expected_config_differences,
                         )
                         _inspect_coupled_vpm_checkpoint(
-                            coupler, artifact_paths["vpm"], manifest, vpm_allowed, vpm_expectations,
+                            coupler,
+                            artifact_paths["vpm"],
+                            manifest,
+                            vpm_allowed,
+                            vpm_expectations,
                         )
                         if changes:
                             logging.getLogger("coupler").warning(
                                 "Loading a coupled backup with explicitly allowed "
-                                "configuration differences: " + ", ".join(sorted(change["path"] for change in changes))
+                                "configuration differences: "
+                                + ", ".join(sorted(change["path"] for change in changes))
                             )
                     except BaseException as exc:
                         error = f"Coupled restart admission failed: {type(exc).__name__}: {exc}"
@@ -636,7 +698,8 @@ def load_coupled_backup(
         try:
             assert coupler.vpm_solver is not None
             coupler.vpm_solver._load_backup_from(
-                str(target / artifacts["vpm"]), allowed_config_differences=vpm_allowed,
+                str(target / artifacts["vpm"]),
+                allowed_config_differences=vpm_allowed,
                 expected_config_differences=vpm_expectations,
             )
             with np.load(
@@ -650,10 +713,6 @@ def load_coupled_backup(
                     "normal_velocity",
                     "has_tangential_gradient",
                     "tangential_gradient",
-                    "has_kinematic_pressure_gradient",
-                    "kinematic_pressure_gradient",
-                    "has_pressure_velocity_snapshot",
-                    "pressure_velocity_snapshot",
                     "storage_layout",
                 }
                 if set(boundary.files) != expected_boundary_keys:
@@ -663,7 +722,7 @@ def load_coupled_backup(
                 )
                 if (
                     "boundary_schema_version" not in boundary_state
-                    or int(boundary_state["boundary_schema_version"]) != 3
+                    or int(boundary_state["boundary_schema_version"]) != 4
                 ):
                     raise ValueError("Unsupported coupled boundary backup schema")
                 coupler._velocity_boundary_condition_old = (
@@ -681,21 +740,10 @@ def load_coupled_backup(
                     if bool(boundary_state["has_tangential_gradient"])
                     else None
                 )
-                coupler._kinematic_pressure_gradient_boundary_condition_old = (
-                    boundary_state["kinematic_pressure_gradient"].copy()
-                    if bool(boundary_state["has_kinematic_pressure_gradient"])
-                    else None
-                )
-                coupler._pressure_velocity_snapshot = (
-                    boundary_state["pressure_velocity_snapshot"].copy()
-                    if bool(boundary_state["has_pressure_velocity_snapshot"])
-                    else None
-                )
                 coupler._normal_velocity_boundary_condition = None
                 coupler._tangential_gradient_boundary_condition = None
-                coupler._kinematic_pressure_gradient_boundary_condition = None
-            if not np.isclose(
-                coupler.fvm_solver.time, coupler.vpm_solver.time, rtol=0.0, atol=1e-12
+            if not _same_coupled_time(
+                coupler.fvm_solver.time, coupler.vpm_solver.time, coupler.fvm_solver.step
             ):
                 error = f"Coupled backup time mismatch: FVM={coupler.fvm_solver.time}, VPM={coupler.vpm_solver.time}"
             if error is None and getattr(coupler, "solution_dir", None) is not None:

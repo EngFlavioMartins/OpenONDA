@@ -8,6 +8,8 @@ This finite-span airfoil uses an immersed-boundary FVM near field and a VPM wake
 | Freestream $\mathbf{U}_\infty$ | $(\cos10^\circ,\sin10^\circ,0)$ m/s |
 | Density $\rho$; viscosity $\nu$ | 1 kg/m³; 0.001 m²/s |
 | FVM box | $[-1.2,1.4]\times[-0.8,0.8]\times[-3.3,3.3]$ m |
+| Transfer region | $[-1.12,1.32]\times[-0.72,0.72]\times[-3.2,3.2]$ m |
+| Blend / VPM-owned band | 0.24 m / 0.08 m |
 | VPM domain | $[-2.5,10]\times[-2,2]\times[-4,4]$ m |
 | FVM/particle spacing | 0.04 m |
 | Immersed-marker spacing | $2.5h=0.10$ m |
@@ -18,7 +20,9 @@ This finite-span airfoil uses an immersed-boundary FVM near field and a VPM wake
 
 `setup.py` generates the section analytically with `naca4_vertices` and creates a capped `ImmersedBody.extruded_polygon_z` on a [Cartesian mesh](../../../docs/fvm.md#mesh-setup). Direct forcing imposes no-slip on the airfoil; all FVM box faces form `numericalBoundary`. The default marker separation avoids an ill-conditioned quadrature near the thin section and end caps.
 
-FVM uses [Smagorinsky LES](../../../docs/fvm.md#turbulence-and-les) with $C_s=0.17$. VPM uses the same coefficient, RK2, [core-spreading diffusion and LES](../../../docs/vpm.md#diffusion-and-les), Gaussian particles and free-space treecode induction. The [coupler](../../../docs/coupling.md#vorticity-transfer) uses `common_lattice` transfer with a sharp authority boundary (`eta_blend_width=0`) and [Dirichlet velocity](../../../docs/coupling.md#boundary-conditions). Edit the geometry, physical constants and mesh spacing in `setup.py` for other cases.
+FVM uses [Smagorinsky LES](../../../docs/fvm.md#turbulence-and-les) with $C_s=0.17$. VPM uses the same coefficient, RK2, [GBD diffusion and LES](../../../docs/vpm.md#diffusion-and-les), Gaussian particles and free-space treecode induction. The [coupler](../../../docs/coupling.md#vorticity-transfer) uses buffered M4-prime renewal and supplies [normal velocity and tangential normal derivative](../../../docs/coupling.md#boundary-conditions). Edit the geometry, physical constants and mesh spacing in `setup.py` for other cases.
+
+GBD replaces the former core-spreading discretization of the same viscous term. Start a fresh run when moving from that configuration; its backups use a different numerical model.
 
 ## Run and inspect
 

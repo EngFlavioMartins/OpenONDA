@@ -15,11 +15,11 @@ from contextlib import contextmanager
 import math
 import time
 from typing import Self
-import warnings
 
 import numpy as np
 import taichi as ti
 
+from ....io.logging import Logging
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ..base import _STRETCHING_MODES, normalize_stretching_scheme
 from ..stretching import stretching_rate
@@ -1476,13 +1476,17 @@ class FMMInduction:
             and _standard_methods(target.tree, TaichiTreecode)
         )
         writable = tuple(write_fields) + scratch_fields(
-            self, self.workspace, getattr(self.workspace, "tree", None),
-            target, getattr(target, "tree", None),
+            self,
+            self.workspace,
+            getattr(self.workspace, "tree", None),
+            target,
+            getattr(target, "tree", None),
         )
         cache = self._image_geometry_cache
         retained = scratch_fields(None if cache is None else cache.storage)
         if (
-            not standard_target or StandardFMMReuseContract(self)() is None
+            not standard_target
+            or StandardFMMReuseContract(self)() is None
             or not disjoint_fields(read_fields, writable + retained)
             or not disjoint_fields(retained, writable)
         ):
@@ -1523,10 +1527,9 @@ class FMMInduction:
         )
         if proposed > _MAX_PAIR_CAPACITY:
             raise RuntimeError("FMM interaction lists exceed the safe i32 capacity") from error
-        warnings.warn(
+        Logging.runtime_warning(
             f"Growing FMM interaction-list storage from {current.max_pairs} to {proposed} "
             "pairs per list; retrying the unchanged particle stage",
-            RuntimeWarning,
             stacklevel=2,
         )
         self._replace_workspace(current.max_n_particles, proposed)
@@ -1587,7 +1590,7 @@ class FMMInduction:
         active_schedule_bytes = (node_count + 2 * capacity + 3 * _MAX_TREE_LEVELS + 2) * 4
         output_bytes = capacity * (3 + 9 + 3) * 4
         # ``hierarchy_only`` retains only source-tree state plus the target
-        # traversal stack.  The legacy particle stack and target outputs are
+        # traversal stack.  The unused particle stack and target outputs are
         # one-element stubs, so they are intentionally not capacity-scaled.
         source_particle_bytes = capacity * (3 + 3 + 1) * 4
         node_metadata_bytes = node_count * (3 + 1 + 3 + 3 + 3 + 6 + 2 + 6) * 4
@@ -1800,7 +1803,9 @@ class FMMInduction:
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before image evaluation")
         if not self.supports_image_blocks:
-            raise NotImplementedError("This kernel retains its existing exact image target operator")
+            raise NotImplementedError(
+                "This kernel retains its existing exact image target operator"
+            )
         count, start, sources = int(target_count), int(target_start), int(source_count)
         images = tuple(images)
         if count < 0 or start < 0 or not 0 <= sources <= self.max_n_particles:
@@ -1884,10 +1889,9 @@ class FMMInduction:
                 pairs = min(pairs, _MAX_IMAGE_PAIR_CAPACITY)
                 if pairs > _MAX_PAIR_CAPACITY:
                     raise RuntimeError("FMM image lists exceed the safe i32 capacity") from error
-                warnings.warn(
+                Logging.runtime_warning(
                     f"Growing FMM image-list storage from {target.max_pairs} to {pairs} "
                     "pairs per list; retrying the unchanged image block",
-                    RuntimeWarning,
                     stacklevel=2,
                 )
                 target = self._replace_target_workspace(

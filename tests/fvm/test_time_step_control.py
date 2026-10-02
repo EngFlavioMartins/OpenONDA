@@ -12,7 +12,7 @@ from openonda import fvm
 from source.solvers.fvm.assemble.time_integration import backward_coefficients
 from source.solvers.fvm.core.solver import FVMSolver
 from source.solvers.fvm.core.time_step import maximum_courant_time_step_size
-from source.solvers.fvm.mesh.cartesian import structured_box
+from tests.support.fvm_mesh import structured_box
 
 
 def test_maximum_courant_control_reduces_immediately_and_limits_growth() -> None:

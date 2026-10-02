@@ -85,8 +85,9 @@ def test_stage_images_and_stretching_match_independent_pair_sum():
                     gamma = strength[j]
                 for i in range(2):
                     delta = source[i] - image
-                    expected_u[i] += kernel.velocity_pair(delta, gamma, radius[i], radius[j])
-                    expected_j[i] += kernel.gradient_pair(delta, gamma, radius[i], radius[j])
+                    target_core = radius[i] if k == 0 and not odd else radius[j]
+                    expected_u[i] += kernel.velocity_pair(delta, gamma, target_core, radius[j])
+                    expected_j[i] += kernel.gradient_pair(delta, gamma, target_core, radius[j])
     np.testing.assert_allclose(u.to_numpy()[:2], expected_u, atol=3e-5, rtol=2e-4)
     np.testing.assert_allclose(jacobian.to_numpy()[:2], expected_j, atol=3e-5, rtol=2e-4)
     np.testing.assert_allclose(
@@ -174,7 +175,7 @@ def test_unconverged_image_tail_fails_closed():
     x.from_numpy(np.array([[0.0, 0.0, 0.1]]))
     g.from_numpy(np.array([[0.2, 0.4, 1.0]]))
     r.fill(0.05)
-    with pytest.raises(RuntimeError, match="tail did not converge"):
+    with pytest.raises(RuntimeError, match="truncation exceeds"):
         induction.evaluate_stage(
             position=x,
             vortex_strength=g,
@@ -341,7 +342,7 @@ def test_fmm_slab_targets_agree_with_direct_on_3d_cloud():
         )
         results.append((u.to_numpy(), jacobian.to_numpy()))
         if backend is FMMInduction:
-            assert len(hierarchy_builds) == 1
+            assert len(hierarchy_builds) == 0  # Gaussian queries include their own primary field.
     np.testing.assert_allclose(results[1][0], results[0][0], atol=3e-3, rtol=3e-3)
     np.testing.assert_allclose(results[1][1], results[0][1], atol=1e-2, rtol=1e-2)
     assert np.max(np.abs(results[1][0][[0, -1], 2])) < 2e-3

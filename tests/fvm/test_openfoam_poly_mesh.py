@@ -24,8 +24,8 @@ def test_import_counts_cells_that_appear_only_as_neighbours(tmp_path):
     assert read_poly_mesh(tmp_path / "polyMesh")["n_cells"] == 2
 
 
-@pytest.mark.parametrize("legacy_neighbours", [False, True])
-def test_export_sorts_internal_faces_and_reverses_swapped_owners(tmp_path, legacy_neighbours):
+@pytest.mark.parametrize("full_neighbour_list", [False, True])
+def test_export_sorts_internal_faces_and_reverses_swapped_owners(tmp_path, full_neighbour_list):
     points = np.array(
         [(x, y, z) for x in range(4) for y in range(2) for z in range(2)], dtype=float
     )
@@ -66,7 +66,7 @@ def test_export_sorts_internal_faces_and_reverses_swapped_owners(tmp_path, legac
     original_faces = [f.copy() for f in mesh["faces"]]
     destination = tmp_path / "polyMesh"
     write_poly_mesh(mesh, destination)
-    if legacy_neighbours:
+    if full_neighbour_list:
         from source.solvers.fvm.io.openfoam_poly_mesh import _foam_list
 
         (destination / "neighbour").write_text(

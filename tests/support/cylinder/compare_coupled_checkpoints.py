@@ -31,7 +31,6 @@ _FVM_FIELDS = (
     "eddy_viscosity",
 )
 _CLOCK_ATOL = 1e-10
-_MESH_POLICY_PATH = "vpm.induction.gaussian_mesh_policy"
 
 
 def mapping_digest(value):
@@ -94,8 +93,8 @@ def load_checkpoint(directory):
     manifest_path = directory / "manifest.json"
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes)
-    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 11:
-        raise ValueError("Unsupported coupled checkpoint schema; require native v11")
+    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 12:
+        raise ValueError("Unsupported coupled checkpoint schema; require native v12")
     if mapping_digest(manifest["config"]) != manifest["config_sha256"]:
         raise ValueError("Coupled numerical configuration digest mismatch")
     if set(manifest["artifacts"]) != set(manifest["artifact_sha256"]):
@@ -178,121 +177,7 @@ def _json_identity(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def _configuration_changes(left, right, path=""):
-    """Describe differences without deleting/replacing any configuration keys."""
-    if isinstance(left, dict) and isinstance(right, dict):
-        result = []
-        for key in sorted(set(left) | set(right)):
-            child = f"{path}.{key}" if path else key
-            if key not in left or key not in right:
-                result.append({"path": child,
-                               "stored": {"present": True, "value": left[key]}
-                               if key in left else {"present": False},
-                               "current": {"present": True, "value": right[key]}
-                               if key in right else {"present": False}})
-            else:
-                result.extend(_configuration_changes(left[key], right[key], child))
-        return result
-    if _json_identity(left) == _json_identity(right):
-        return []
-    return [{"path": path, "stored": {"present": True, "value": left},
-             "current": {"present": True, "value": right}}]
-
-
-def _sha256(value):
-    if (type(value) is not str or len(value) != 64
-            or any(character not in "0123456789abcdef" for character in value)):
-        raise ValueError("Explicit lowercase SHA-256 digest required")
-    return value
-
-
-def admit_mesh_transition(control, candidate, report_path, expected_report_sha256):
-    """Authenticate one recorded missing-to-policy transition, never a waiver.
-
-    The independently pinned completed benchmark report authenticates its
-    original source manifest/artifacts and immutable implementation inventory.
-    Both comparison checkpoints retain their own native config/digest/clock
-    admission. This is evidence of the recorded transition, not an accuracy
-    pass or a cryptographic claim about which process wrote the candidate.
-    """
-    report_path = Path(report_path).resolve(strict=True)
-    raw = report_path.read_bytes()
-    report_sha = hashlib.sha256(raw).hexdigest()
-    if report_sha != _sha256(expected_report_sha256):
-        raise ValueError("Transition benchmark report SHA-256 mismatch")
-    report = json.loads(raw)
-    evidence = report.get("restart_admission")
-    if (report.get("status") != "complete" or report.get("source_checkpoint_unchanged") is not True
-            or report.get("qualification_controls", {}).get("gaussian_mesh_explicit_opt_in") is not True
-            or report.get("loaded_source_files_changed_during_run") != []
-            or not isinstance(evidence, dict)):
-        raise ValueError("Require completed, explicit, immutable mesh-transition benchmark evidence")
-    before, after = (report.get(name) for name in
-                     ("source_hashes_before_initialization", "source_inventory_at_completion"))
-    loaded = report.get("source_hashes_at_completion")
-    if (not isinstance(before, dict) or not before or not isinstance(after, dict)
-            or _json_identity(before) != _json_identity(after) or not isinstance(loaded, dict)
-            or not loaded or any(before.get(path) != digest for path, digest in loaded.items())):
-        raise ValueError("Transition implementation inventories disagree or are incomplete")
-    for digest in before.values():
-        _sha256(digest)
-
-    left, right = control["manifest"], candidate["manifest"]
-    changes = _configuration_changes(left["config"], right["config"])
-    if (len(changes) != 1 or changes[0]["path"] != _MESH_POLICY_PATH
-            or changes[0]["stored"] != {"present": False}
-            or changes[0]["current"].get("present") is not True
-            or not isinstance(changes[0]["current"].get("value"), dict)
-            or not changes[0]["current"]["value"]
-            or _json_identity(evidence.get("permissions")) != _json_identity(changes)):
-        raise ValueError("Only the exact recorded missing-to-mesh-policy delta is comparable")
-
-    source_path = Path(evidence["manifest_path"]).resolve(strict=True)
-    if (source_path.name != "manifest.json"
-            or Path(report["checkpoint"]).resolve() != source_path.parent):
-        raise ValueError("Transition source checkpoint path disagrees")
-    source = load_checkpoint(source_path.parent)
-    original = source["manifest"]
-    if (source["manifest_sha256"] != _sha256(evidence["manifest_sha256"])
-            or source["manifest_sha256"] != _sha256(evidence["expected_manifest_sha256"])
-            or original.get("backend") != "fvm"
-            or _json_identity(original["config"]) != _json_identity(left["config"])
-            or evidence["source_configuration_sha256"] != original["config_sha256"]
-            or evidence["source_vpm_configuration_sha256"] != mapping_digest(original["config"]["vpm"])
-            or evidence["current_vpm_configuration_sha256"] != mapping_digest(right["config"]["vpm"])):
-        raise ValueError("Transition source/configuration identity disagrees")
-    artifacts = {name: {"path": str(contained_path(source_path.parent, relative)),
-                        "sha256": original["artifact_sha256"][name]}
-                 for name, relative in original["artifacts"].items()}
-    if (not {"fvm", "vpm", "vpm_vtu", "vpm_boundary_condition"} <= set(artifacts)
-            or _json_identity(evidence.get("source_artifacts")) != _json_identity(artifacts)):
-        raise ValueError("Transition source artifact evidence disagrees")
-    exchanges = report.get("exchanges")
-    final, start = right["coupling_step"], original["coupling_step"]
-    if (type(report.get("final_step")) is not int or report["final_step"] != final
-            or type(report.get("max_coupling_steps")) is not int
-            or not 0 < final-start <= report["max_coupling_steps"]
-            or original["n_fvm_substeps"] != right["n_fvm_substeps"]
-            or not isinstance(exchanges, list)
-            or [item.get("step") for item in exchanges] != list(range(start+1, final+1))
-            or not _clock_equal(exchanges[-1].get("time", np.nan), right["time"])
-            or not np.isfinite(original["time"]) or not original["time"] < right["time"]):
-        raise ValueError("Transition benchmark accepted clock/step does not match candidate")
-    if report_path.read_bytes() != raw:
-        raise ValueError("Transition benchmark report changed while being read")
-    return {"report": str(report_path), "report_sha256": report_sha,
-            "configuration_changes": changes,
-            "source_manifest_sha256": source["manifest_sha256"],
-            "source_artifacts": artifacts,
-            "source_configuration_sha256": original["config_sha256"],
-            "candidate_configuration_sha256": right["config_sha256"],
-            "implementation_inventory_sha256": mapping_digest(before),
-            "implementation_files": len(before), "accepted_final_step": final,
-            "scope": "Authenticated recorded numerical transition; no accuracy pass inferred"}
-
-
-def admit_comparison_identity(control, candidate, *, transition_report=None,
-                              expected_transition_report_sha256=None):
+def admit_comparison_identity(control, candidate):
     left, right = control["manifest"], candidate["manifest"]
     for manifest in (left, right):
         if mapping_digest(manifest["config"]) != manifest["config_sha256"]:
@@ -302,17 +187,9 @@ def admit_comparison_identity(control, candidate, *, transition_report=None,
             raise ValueError(f"Unmatched coupled checkpoints: {key}")
     if not _clock_equal(left["time"], right["time"]):
         raise ValueError("Unmatched coupled checkpoint times")
-    if transition_report is None:
-        if expected_transition_report_sha256 is not None:
-            raise ValueError("Transition report digest requires an explicit report")
-        for key in ("config", "config_sha256"):
-            if _json_identity(left[key]) != _json_identity(right[key]):
-                raise ValueError(f"Unmatched coupled checkpoints: {key}")
-        return None
-    if expected_transition_report_sha256 is None:
-        raise ValueError("Transition comparison requires the explicit report SHA-256")
-    return admit_mesh_transition(control, candidate, transition_report,
-                                 expected_transition_report_sha256)
+    for key in ("config", "config_sha256"):
+        if _json_identity(left[key]) != _json_identity(right[key]):
+            raise ValueError(f"Unmatched coupled checkpoints: {key}")
 
 
 def field_difference(reference, candidate):
@@ -668,15 +545,9 @@ def compare_checkpoints(
     candidate_samples,
     control_diagnostics,
     candidate_diagnostics,
-    *,
-    transition_report=None,
-    expected_transition_report_sha256=None,
 ):
     left, right = control["manifest"], candidate["manifest"]
-    transition = admit_comparison_identity(
-        control, candidate, transition_report=transition_report,
-        expected_transition_report_sha256=expected_transition_report_sha256,
-    )
+    admit_comparison_identity(control, candidate)
     boundary = {
         key: field_difference(control["boundary"][key], candidate["boundary"][key])
         for key in sorted(set(control["boundary"]) & set(candidate["boundary"]))
@@ -698,7 +569,6 @@ def compare_checkpoints(
         "time": left["time"],
         "coupling_step": left["coupling_step"],
         "config_sha256": left["config_sha256"],
-        "configuration_transition": transition,
         "control": {
             "directory": str(control["directory"]),
             "manifest_sha256": control["manifest_sha256"],
@@ -739,14 +609,15 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--control-diagnostics", type=Path)
     parser.add_argument("--candidate-diagnostics", type=Path)
-    parser.add_argument("--transition-report", type=Path,
-                        help="Explicit completed mesh-transition benchmark report; default is identical config only")
-    parser.add_argument("--expected-transition-report-sha256",
-                        help="Required exact SHA-256 of --transition-report")
     args = parser.parse_args()
     output = args.output.resolve()
     if (
-        output.parent != (Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow") / "solution"
+        output.parent
+        != (
+            Path(__file__).resolve().parents[3]
+            / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+        )
+        / "solution"
         or output.suffix != ".json"
     ):
         raise ValueError("Comparison JSON must stay in this tutorial's ordinary solution directory")
@@ -761,8 +632,6 @@ def main():
         args.candidate_samples,
         args.control_diagnostics or args.control_backup.parent / "coupler_diagnostics.jsonl",
         args.candidate_diagnostics or args.candidate_backup.parent / "coupler_diagnostics.jsonl",
-        transition_report=args.transition_report,
-        expected_transition_report_sha256=args.expected_transition_report_sha256,
     )
     with output.open("x") as stream:
         json.dump(report, stream, indent=2, allow_nan=False)
@@ -774,7 +643,6 @@ def main():
                 "output": str(output),
                 "time": report["time"],
                 "particle_alignment": report["vpm"]["alignment"],
-                "configuration_transition": report["configuration_transition"],
             }
         ),
         flush=True,

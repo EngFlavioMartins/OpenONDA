@@ -167,7 +167,7 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
         ax.set_facecolor(util.COLORS["background_light"])
         ax.xaxis.labelpad = 1.0
         ax.add_patch(
-            plt.Rectangle((-0.5, -0.5), 1, 1, facecolor="white", edgecolor="black", lw=0.5)
+            plt.Rectangle((-0.5, -0.5), 1, 1, facecolor="white", edgecolor="black", lw=0.6)
         )
     axes[0].set_ylabel(r"$y/D$")
     axes[2].set_ylabel(r"$y/D$")

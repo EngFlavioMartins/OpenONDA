@@ -82,38 +82,28 @@ COUPLED_OVERRIDE_NAMES = frozenset(
         "cores",
         "compute_device",
         "particle_limit",
-        "boundary_condition_mode",
-        "transfer_method",
         "transfer_region_scale",
         "transfer_amplification_cap",
-        "fvm_consistency_width",
         "interface_iterations",
-        "interface_acceleration",
     }
 )
 
 
 def normalize_coupled_overrides(overrides: dict[str, object] | None) -> dict[str, object]:
-    """Validate the small set of sensitivity knobs exposed by the campaign."""
+    """Validate mesh, resolution and convergence controls for cylinder studies."""
     values = {} if overrides is None else dict(overrides)
     unknown = set(values) - COUPLED_OVERRIDE_NAMES
     if unknown:
         raise ValueError(f"unsupported coupled override(s): {sorted(unknown)}")
     normalized = dict(values)
-    if "interface_acceleration" in normalized and normalized["interface_acceleration"] not in {
-        "none",
-        "aitken",
-    }:
-        raise ValueError("interface_acceleration must be 'none' or 'aitken'")
     if "transfer_region_scale" in normalized:
         normalized["transfer_region_scale"] = float(normalized["transfer_region_scale"])
         if normalized["transfer_region_scale"] <= 0.0:
             raise ValueError("transfer_region_scale must be positive")
-    for name in ("transfer_amplification_cap", "fvm_consistency_width"):
-        if name in normalized:
-            normalized[name] = float(normalized[name])
-            if normalized[name] < 0.0:
-                raise ValueError(f"{name} must be non-negative")
+    if "transfer_amplification_cap" in normalized:
+        normalized["transfer_amplification_cap"] = float(normalized["transfer_amplification_cap"])
+        if normalized["transfer_amplification_cap"] < 1.0:
+            raise ValueError("transfer_amplification_cap must be at least one")
     if "interface_iterations" in normalized:
         normalized["interface_iterations"] = int(normalized["interface_iterations"])
         if normalized["interface_iterations"] < 1:

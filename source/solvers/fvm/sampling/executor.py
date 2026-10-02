@@ -37,9 +37,8 @@ class FVMSamplerExecutor:
     def execute(solver, *, strict: bool = True, event: str = "accepted") -> None:
         """Execute samplers for one lifecycle event.
 
-        ``accepted`` is also used for the initial state for backwards
-        compatibility: ordinary step/time schedules are evaluated at the
-        current accepted state, including step zero.  ``final`` selects only
+        ``initial`` and ``accepted`` evaluate ordinary step/time schedules at
+        the current state, including step zero. ``final`` selects only
         schedules declared with ``final_only=True`` and never replays a
         periodic sampler a second time.
         """

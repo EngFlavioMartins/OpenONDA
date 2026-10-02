@@ -56,8 +56,8 @@ def solver(monkeypatch):
 
 
 def test_writer_keeps_two_committed_generations_and_unrelated_files(tmp_path, solver):
-    unrelated = tmp_path / "rank-00000-legacy.npz"
-    unrelated.write_text("legacy data")
+    unrelated = tmp_path / "notes.txt"
+    unrelated.write_text("unrelated data")
     generations = []
     for step in range(4):
         solver.step = step
@@ -68,7 +68,7 @@ def test_writer_keeps_two_committed_generations_and_unrelated_files(tmp_path, so
         assert all((tmp_path / name).is_file() for name in manifest["files"])
     for manifest in generations[:-2]:
         assert all(not (tmp_path / name).exists() for name in manifest["files"])
-    assert unrelated.read_text() == "legacy data"
+    assert unrelated.read_text() == "unrelated data"
 
 
 def test_failed_archive_preserves_current_and_previous(tmp_path, solver, monkeypatch):

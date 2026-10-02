@@ -5,10 +5,10 @@ from pathlib import Path
 import shutil
 
 from matplotlib.axes import Axes
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
-from matplotlib.lines import Line2D
-from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 import numpy as np
 
 from source.solution_layout import collection_path
@@ -167,13 +167,12 @@ MARK_EVERY = {
     "trajectory": 5,
 }
 
-# Approved Thesis/thesis_visuals palette (2026-10-02). Legacy colour names
-# are compatibility aliases: purple is now light blue and orange is amber.
+# Approved Thesis/thesis_visuals palette (2026-10-02).
 PALETTE = {
     "dark": "#0D3D45",
     "teal": "#156074",
-    "purple": "#41A6C4",
-    "orange": "#EF9C1F",
+    "blue": "#41A6C4",
+    "amber": "#EF9C1F",
     "green": "#629B42",
     "red": "#BF2326",
     "gray": "#60686C",
@@ -183,61 +182,22 @@ PALETTE = {
     "white": "#ffffff",
     "black": "#000000",
 }
-COLOR_CYCLE = (
-    PALETTE["teal"],
-    PALETTE["purple"],
-    PALETTE["orange"],
-    PALETTE["red"],
-    PALETTE["green"],
-    PALETTE["gray"],
-    PALETTE["dark"],
+COLOR_CYCLE = tuple(
+    PALETTE[name] for name in ("teal", "blue", "amber", "red", "green", "gray", "dark")
 )
 BACKGROUND_LIGHT = PALETTE["light_gray"]
 BACKGROUND_STRONG = PALETTE["strong_gray"]
-# Neutral references remain distinct from the coloured numerical series.
-REFERENCE_GRAY = "#60686C"
+REFERENCE_GRAY = PALETTE["gray"]
 
 COLORS = {
-    # Named thesis colours and compatibility aliases.
-    "TUDdark": PALETTE["dark"],
-    "TUDcyan": PALETTE["teal"],
-    "TUDred": PALETTE["red"],
-    "VPMpurple": PALETTE["purple"],
-    "FVMorange": PALETTE["orange"],
-    "AccentGreen": PALETTE["green"],
-    "AccentRed": PALETTE["red"],
-    "BackgroundLight": BACKGROUND_LIGHT,
-    "BackgroundGray": BACKGROUND_STRONG,
-    "ReferenceGray": REFERENCE_GRAY,
-    "RefGray": REFERENCE_GRAY,
-    "DarkText": PALETTE["text"],
-    "LightBG": "#F5F6F5",
-    "LightCyan": "#DBEDF2",
-    "LightPurple": "#E4F2F7",
-    "LightOrange": "#FCEDD2",
-    "LightGreen": "#E7F0DF",
-    "LightText": PALETTE["white"],
-    "AxisBlack": PALETTE["black"],
-    "MaskGray": PALETTE["light_gray"],
-    "DNSblue": PALETTE["dark"],
-    "DNSorange": PALETTE["orange"],
-    "LESteal": PALETTE["teal"],
-    "LESpurple": PALETTE["purple"],
-    "LBMgray": REFERENCE_GRAY,
-    "TheoryGray": REFERENCE_GRAY,
-    "background": BACKGROUND_LIGHT,
+    **PALETTE,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
-    "decor_light": BACKGROUND_LIGHT,
     "reference": REFERENCE_GRAY,
     "reference_fill": BACKGROUND_LIGHT,
-    # Semantic aliases used by existing tutorials.
-    "vpm": PALETTE["purple"],
-    "hybrid": PALETTE["orange"],
+    "vpm": PALETTE["blue"],
+    "hybrid": PALETTE["amber"],
     "fvm": PALETTE["teal"],
-    "of": REFERENCE_GRAY,
-    "ref": REFERENCE_GRAY,
-    "literature": REFERENCE_GRAY,
     "dvh": PALETTE["green"],
     "dvhr": PALETTE["teal"],
     "dns": PALETTE["dark"],
@@ -278,7 +238,7 @@ METHOD_STYLE = {
     "vpm": {"color": COLORS["vpm"], "marker": "o", "linestyle": "-"},
     "hybrid": {"color": COLORS["hybrid"], "marker": "D", "linestyle": "-"},
     "reference": {"color": COLORS["reference"], "linestyle": "--"},
-    "reference_secondary": {"color": COLORS["DarkText"], "linestyle": ":"},
+    "reference_secondary": {"color": COLORS["text"], "linestyle": ":"},
 }
 
 
@@ -295,11 +255,11 @@ def method_style(method, *, markers=True):
 # Vortex-interaction ladder. The two interaction families are plotted in
 # separate panels, so each method keeps the same style in both panels.
 VORTEX_INTERACTION_VARIANT_STYLE = {
-    "dns": {"label": "DNS", "color": COLORS["TUDdark"], "marker": "o"},
-    "les": {"label": "LES", "color": COLORS["TUDcyan"], "marker": "s"},
+    "dns": {"label": "DNS", "color": COLORS["dark"], "marker": "o"},
+    "les": {"label": "LES", "color": COLORS["teal"], "marker": "s"},
     "les_stabilized": {
         "label": "LES + stabilization",
-        "color": COLORS["VPMpurple"],
+        "color": COLORS["vpm"],
         "marker": "D",
     },
 }
@@ -313,13 +273,13 @@ INTENDED_CASE_ORDER = {
 }
 
 VORTEX_RING_VARIANT_STYLE = {
-    "dns_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "-"},
-    "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "-"},
-    "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "-"},
-    "les_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
+    "dns_direct": {"color": COLORS["dark"], "marker": "o", "linestyle": "-"},
+    "dns_transposed": {"color": COLORS["vpm"], "marker": "s", "linestyle": "-"},
+    "dns_mixed": {"color": PALETTE["amber"], "marker": "^", "linestyle": "-"},
+    "les_transposed": {"color": COLORS["teal"], "marker": "v", "linestyle": "-"},
     # Saved schema-2 case names use the corresponding transposed styles.
-    "dns_treecode": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "-"},
-    "les_treecode": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
+    "dns_treecode": {"color": COLORS["vpm"], "marker": "s", "linestyle": "-"},
+    "les_treecode": {"color": COLORS["teal"], "marker": "v", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["linewidth"] = LINE_WIDTH
@@ -335,10 +295,10 @@ VORTEX_RING_VARIANT_LABEL = {
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {
-    "cs": {"label": "CS", "color": COLORS["FVMorange"], "marker": "o"},
-    "rwm": {"label": "RWM", "color": COLORS["TUDdark"], "marker": "^"},
-    "dvh": {"label": "DVH", "color": COLORS["TUDcyan"], "marker": "v"},
-    "gbd": {"label": "GBD", "color": COLORS["VPMpurple"], "marker": "D"},
+    "cs": {"label": "CS", "color": COLORS["hybrid"], "marker": "o"},
+    "rwm": {"label": "RWM", "color": COLORS["dark"], "marker": "^"},
+    "dvh": {"label": "DVH", "color": COLORS["teal"], "marker": "v"},
+    "gbd": {"label": "GBD", "color": COLORS["vpm"], "marker": "D"},
 }
 
 ROTOR_STYLE = {
@@ -553,9 +513,15 @@ def prepare_figure(fig):
     for ax in fig.axes:
         for axis in (ax.xaxis, ax.yaxis):
             formatter = axis.get_major_formatter()
-            if isinstance(formatter, ScalarFormatter) and not isinstance(formatter, TwoSignificantDigitsFormatter):
+            if isinstance(formatter, ScalarFormatter) and not isinstance(
+                formatter, TwoSignificantDigitsFormatter
+            ):
                 new = TwoSignificantDigitsFormatter(useMathText=True)
-                new.set_powerlimits(formatter.get_powerlimits() if hasattr(formatter, "get_powerlimits") else (-3, 2))
+                new.set_powerlimits(
+                    formatter.get_powerlimits()
+                    if hasattr(formatter, "get_powerlimits")
+                    else (-3, 2)
+                )
                 lo, hi = sorted(axis.get_view_interval())
                 # A compact additive offset preserves visible variation near 1,
                 # e.g. ring-circulation values 0.996--1.000, without long labels.
@@ -834,7 +800,9 @@ def set_thesis_style():
     )
 
 
-def validation_subplots(nrows, *, height_cm=None, sharex=False, outer=0.17, top_padding_cm=0.65):
+def validation_subplots(
+    nrows, *, height_cm=None, sharex=False, outer=0.17, top_padding_cm=0.65, bottom_padding_cm=1.35
+):
     """Compact boxed panels at the thesis width, with no caption gutters."""
     set_thesis_style()
     height = min(height_cm or (2 + 3.6 * nrows), 2 + 3.6 * nrows)
@@ -844,7 +812,7 @@ def validation_subplots(nrows, *, height_cm=None, sharex=False, outer=0.17, top_
     centered_subplots_adjust(
         fig,
         outer=outer,
-        bottom=1.35 / height,
+        bottom=bottom_padding_cm / height,
         top=1 - top_padding_cm / height,
         hspace=0.12 if sharex else 0.48,
     )
@@ -858,7 +826,9 @@ def validation_legend(fig, axis, *, ncol=2):
         ncol=ncol,
         frameon=True,
         framealpha=0.9,
-        edgecolor="none",
+        edgecolor="0.8",
+        fancybox=True,
+        facecolor="white",
         handlelength=1.5,
         columnspacing=0.8,
         handletextpad=0.4,

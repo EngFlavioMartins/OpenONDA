@@ -3,11 +3,7 @@
 import numpy as np
 import pytest
 
-from tests._tutorial_helpers import load_tutorial_module
-
-create_rotor_blade = load_tutorial_module(
-    "vpm/quadcopter", "assets.generate_blade"
-).create_rotor_blade
+from openonda.tutorial_support.vpm_quadcopter.generate_blade import create_rotor_blade
 
 
 @pytest.mark.parametrize("clockwise", [False, True])

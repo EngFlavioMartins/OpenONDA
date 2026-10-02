@@ -160,9 +160,8 @@ def _same_identity(left, right):
 class SafeguardedInterfacePredictor:
     """Reuse only the last accepted renewal correction as an initial guess.
 
-    ``enabled`` is a general execution/qualification control, not a numerical
-    setup parameter. Disabling, resetting, loading or beginning a solve clears
-    history. A seed failing the residual gates gets one provisional probe and
+    Resetting, loading or beginning a solve clears history. A seed failing
+    the residual gates gets one provisional probe and
     then the *complete* original Picard allowance. Execution exceptions remain
     fail-fast: arbitrary numerical, allocation or MPI failures are not retried.
     No history is saved in native checkpoints;
@@ -170,21 +169,8 @@ class SafeguardedInterfacePredictor:
     equivalence between different initial guesses of the same interface solve.
     """
 
-    def __init__(self, *, enabled=True):
-        self._enabled = bool(enabled)
+    def __init__(self):
         self.reset()
-
-    @property
-    def enabled(self):
-        return self._enabled
-
-    @enabled.setter
-    def enabled(self, value):
-        if not isinstance(value, bool):
-            raise TypeError("Interface prediction enabled must be a bool")
-        if value != self._enabled:
-            self.reset()
-        self._enabled = value
 
     def reset(self):
         """Discard optimization history without touching any physical state."""
@@ -201,11 +187,10 @@ class SafeguardedInterfacePredictor:
         comm = getattr(coupler.fvm_solver.parallel, "comm", None)
         parallel = bool(coupler.fvm_solver.parallel.is_parallel)
         with collective_phase(comm, "interface predictor identity"):
-            identity = _identity(coupler, geometry) if self.enabled else None
+            identity = _identity(coupler, geometry)
             self._active_identity = identity
             local = bool(
-                self.enabled
-                and previous is not None
+                previous is not None
                 and _same_identity(identity, previous["identity"])
                 and _clock(coupler) == previous["clock"]
             )
@@ -215,9 +200,7 @@ class SafeguardedInterfacePredictor:
         with collective_phase(comm, "interface predictor seed construction"):
             if coupler._is_master:
                 reason = "cold_or_changed_identity"
-                if not self.enabled:
-                    reason = "disabled"
-                elif identity is None:
+                if identity is None:
                     reason = "unsupported_identity"
                 elif valid and _same_arrays(old, previous["endpoint"]):
                     correction = previous["correction"]
@@ -227,7 +210,7 @@ class SafeguardedInterfacePredictor:
                     if all(np.all(np.isfinite(value)) for value in (velocity, normal, gradient)):
                         seed = velocity, normal, gradient
                         reason = "previous_accepted_correction"
-                info = {"enabled": self.enabled, "attempted": seed is not None, "reason": reason}
+                info = {"enabled": True, "attempted": seed is not None, "reason": reason}
             elif valid:
                 # Root owns the global trace; advance_fvm scatters it. Copy
                 # the worker's placeholder before collective error admission,
@@ -244,7 +227,7 @@ class SafeguardedInterfacePredictor:
     def stage(self, coupler, geometry, raw, endpoint, *, converged):
         """Stage history only; the driver commits it after health and output."""
         self._pending = None
-        if not self.enabled or not converged or self._active_identity is None:
+        if not converged or self._active_identity is None:
             self._history = None
             return
         # Recheck after callbacks/trials: changed operators cannot seed the

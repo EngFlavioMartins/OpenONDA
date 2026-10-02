@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.fvm.mesh.cartesian import BoxDomain, BoxPatches, structured_box
+from source.solvers.fvm.mesh.cartesian import BoxDomain, BoxPatches
 from source.solvers.fvm.mesh.cartesian.extrusion import extrude_mesh_section
 from source.solvers.fvm.mesh.cartesian.surface_recovery import _face_fluid_polygons
 from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
@@ -18,6 +18,7 @@ from source.solvers.fvm.mesh.validation import (
     validate_topology,
 )
 from tests.fvm.cartesian_acceptance_fixtures import make_acceptance_fixtures
+from tests.support.fvm_mesh import structured_box
 
 VALID_FIXTURE_NAMES = (
     "rotated_box",

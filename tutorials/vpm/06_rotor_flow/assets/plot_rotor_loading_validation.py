@@ -8,6 +8,7 @@ if not __package__:
     __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
 
 import numpy as np
+from openonda.plotting import centered_subplots_adjust
 import pandas as pd
 from openonda.validation import time_mean
 from ._common import (
@@ -257,17 +258,35 @@ def main():
             actual,
             "o-",
             ms=3,
-            color=colors["VPMpurple"],
+            color=colors["vpm"],
             label="VLM+VPM",
         )
         axis.plot(
             bem.normalized_radial_position, reference, "--", color=colors["reference"], label="BEM"
         )
         axis.set_xlim(inputs.hub_radius / inputs.rotor_radius, 1)
-        axis.legend(loc="lower right" if axis is axes[0] else "lower left", frameon=False)
+
     axes[0].set_ylabel(r"$\Gamma/(U_\infty R)$")
     axes[1].set_ylabel(r"$c_l$")
     axes[-1].set_xlabel(r"Radius, $r/R$")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.025),
+        ncol=2,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
+        borderaxespad=0,
+        handlelength=1.5,
+        columnspacing=0.8,
+        handletextpad=0.4,
+    )
+    centered_subplots_adjust(fig, outer=0.129, bottom=0.23, top=0.983, hspace=0.10)
     save_rotor_figure(
         fig,
         FIGURES_DIR / "rotor_loading_validation.png",

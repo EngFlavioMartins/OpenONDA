@@ -168,13 +168,13 @@ def _add_transient_term(
     velocity_current_component,
     velocity_older_component=None,
     previous_time_step_size=None,
-    scheme="euler",
+    scheme="euler_implicit",
 ):
     """Apply the implicit transient ``∂velocity/∂t`` term (only called when
     ``time_step_size`` is not None).
 
     Schemes:
-      * ``"euler"`` / ``"backward_euler"`` — BDF1, first order:
+      * ``"euler_implicit"`` — BDF1, first order:
         ``(V/Δt)(uⁿ⁺¹ − uⁿ)``.
       * ``"backward"`` — variable-step BDF2.  Equal consecutive steps reduce
         to ``(V/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  It falls back to BDF1 on
@@ -315,7 +315,7 @@ def assemble_momentum_equation(
     velocity_old=None,
     velocity_older=None,
     previous_time_step_size=None,
-    ddt_scheme="euler",
+    ddt_scheme="euler_implicit",
     source_explicit=None,
     source_implicit=None,
     matrix_workspace=None,
@@ -581,7 +581,7 @@ def solve_momentum_predictor(
     velocity_old=None,
     velocity_older=None,
     previous_time_step_size=None,
-    ddt_scheme="euler",
+    ddt_scheme="euler_implicit",
     source_explicit=None,
     source_implicit=None,
     return_diagnostics=False,

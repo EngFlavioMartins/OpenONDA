@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the prepared flat-plate particle, VLM, and motion-arrow geometry."""
+"""Render the saved flat-plate surface, wake particles and motion arrow."""
 
 from __future__ import annotations
 
@@ -16,9 +16,53 @@ from paraview.simple import (  # type: ignore[import-not-found]
     HideScalarBarIfNotNeeded,
     ResetSession,
     SaveScreenshot,
+    SaveState,
     Show,
     XMLPolyDataReader,
 )
+
+
+def reference_lighting(view):
+    """Use the author's schematic light kit and filmic tone mapping."""
+    for name, value in {
+        "UseEnvironmentLighting": 0,
+        "UseLight": 1,
+        "UseToneMapping": 1,
+        "ToneMappingType": 3,
+        "UseFXAA": 1,
+        "Exposure": 1.5,
+        "Contrast": 1.6773,
+        "Shoulder": 0.9714,
+        "MidIn": 0.18,
+        "MidOut": 0.18,
+        "KeyLightIntensity": 0.75,
+        "KeyLightAzimuth": 10,
+        "KeyLightElevation": 50,
+        "KeyLightWarmth": 0.6,
+        "FillLightAzimuth": -10,
+        "FillLightElevation": -75,
+        "FillLightWarmth": 0.4,
+        "BackLightAzimuth": 110,
+        "BackLightElevation": 0,
+        "BackLightWarmth": 0.5,
+        "HeadLightWarmth": 0.5,
+        "FillLightKFRatio": 3,
+        "BackLightKBRatio": 3.5,
+        "HeadLightKHRatio": 3,
+    }.items():
+        setattr(view, name, value)
+
+
+def shaded_material(display, colour=None):
+    display.Representation = "Surface"
+    display.Interpolation = "PBR"
+    display.Metallic = 0.0
+    display.Roughness = 0.3
+    display.CoatStrength = 0.0
+    if colour is not None:
+        display.ColorArrayName = [None, ""]
+        display.DiffuseColor = colour
+        display.AmbientColor = colour
 
 
 def main() -> None:
@@ -27,6 +71,7 @@ def main() -> None:
     parser.add_argument("--surface", required=True)
     parser.add_argument("--arrows", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--state-output", required=True)
     parser.add_argument("--omega-min", required=True, type=float)
     parser.add_argument("--omega-max", required=True, type=float)
     parser.add_argument("--camera", required=True)
@@ -39,15 +84,16 @@ def main() -> None:
     view = CreateView("RenderView")
     layout = CreateLayout("Flat plate render")
     AssignViewToLayout(view=view, layout=layout)
-    view.ViewSize = [1800, 900]
+    view.ViewSize = camera["image_pixels"]
     view.Background = [1.0, 1.0, 1.0]
     view.UseColorPaletteForBackground = 0
     view.OrientationAxesVisibility = 0
-    view.CameraParallelProjection = 1
+    reference_lighting(view)
+    view.CameraParallelProjection = 0
     view.CameraFocalPoint = camera["focal_point_m"]
     view.CameraPosition = camera["position_m"]
     view.CameraViewUp = camera["view_up"]
-    view.CameraParallelScale = camera["parallel_scale"]
+    view.CameraViewAngle = camera["view_angle_degrees"]
 
     particles = XMLPolyDataReader(FileName=[args.particles])
     glyphs = Glyph(Input=particles, GlyphType="Sphere")
@@ -56,10 +102,10 @@ def main() -> None:
     glyphs.ScaleFactor = 1.0
     glyphs.GlyphMode = "All Points"
     glyphs.GlyphType.Radius = 1.0
-    glyphs.GlyphType.ThetaResolution = 8
-    glyphs.GlyphType.PhiResolution = 8
+    glyphs.GlyphType.ThetaResolution = 16
+    glyphs.GlyphType.PhiResolution = 12
     particle_display = Show(glyphs, view)
-    particle_display.Representation = "Surface"
+    shaded_material(particle_display)
     ColorBy(particle_display, ("POINTS", "vorticity_magnitude"))
     omega_lut = GetColorTransferFunction("vorticity_magnitude")
     span = args.omega_max - args.omega_min
@@ -74,30 +120,23 @@ def main() -> None:
 
     surface = XMLPolyDataReader(FileName=[args.surface])
     surface_display = Show(surface, view)
-    surface_display.Representation = "Surface With Edges"
-    surface_display.ColorArrayName = [None, ""]
-    surface_display.DiffuseColor = [191 / 255, 35 / 255, 38 / 255]
-    surface_display.AmbientColor = [191 / 255, 35 / 255, 38 / 255]
-    surface_display.EdgeColor = [0.22, 0.24, 0.27]
-    surface_display.LineWidth = 3.1
+    shaded_material(surface_display, [96 / 255, 104 / 255, 108 / 255])
 
     arrows = XMLPolyDataReader(FileName=[args.arrows])
     arrow_display = Show(arrows, view)
-    arrow_display.Representation = "Surface"
-    arrow_display.ColorArrayName = [None, ""]
-    arrow_display.DiffuseColor = [239 / 255, 156 / 255, 31 / 255]
-    arrow_display.AmbientColor = [239 / 255, 156 / 255, 31 / 255]
+    shaded_material(arrow_display, [0.64, 0.64, 0.64])
 
     view.Update()
     written = SaveScreenshot(
         args.output,
         layout,
-        ImageResolution=[1800, 900],
+        ImageResolution=camera["image_pixels"],
         TransparentBackground=0,
         CompressionLevel=0,
     )
     if not written:
         raise RuntimeError(f"ParaView failed to save screenshot: {args.output}")
+    SaveState(args.state_output)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,6 @@ from openonda.plotting import (
     LINE_WIDTH,
     REFERENCE_LINE_WIDTH,
     centered_subplots_adjust,
-    fit_thesis_y_label_margins,
     set_thesis_style,
 )
 
@@ -76,7 +75,7 @@ def main() -> None:
     for column, (x_position, reference_path, vpm_path, fvm_path) in enumerate(profiles):
         reference = data.profile(reference_path, time)
         vpm = data.profile(vpm_path, time)
-        candidates = [("VPM", vpm, COLORS["VPMpurple"])]
+        candidates = [("VPM", vpm, COLORS["vpm"])]
         if fvm_path is not None:
             candidates.insert(0, ("Coupled FVM", data.profile(fvm_path, time), COLORS["fvm"]))
         for row, velocity in enumerate(data.VELOCITY_COLUMNS[:2]):
@@ -84,7 +83,7 @@ def main() -> None:
             axis.plot(
                 reference.position_y,
                 reference[velocity],
-                color=COLORS["RefGray"],
+                color=COLORS["reference"],
                 linewidth=REFERENCE_LINE_WIDTH,
                 label="Reference FVM",
                 linestyle="--",
@@ -126,7 +125,11 @@ def main() -> None:
         loc="lower center",
         ncol=3,
         bbox_to_anchor=(0.5, 0.025),
-        frameon=False,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
     )
     data.write_json(
         "reference_profile_errors.json",
@@ -142,7 +145,7 @@ def main() -> None:
     centered_subplots_adjust(
         figure,
         outer=0.1205,
-        bottom=0.18,
+        bottom=0.205,
         top=0.99,
         hspace=0.18,
         wspace=0.16,

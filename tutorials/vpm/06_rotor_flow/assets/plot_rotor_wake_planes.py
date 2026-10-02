@@ -12,6 +12,7 @@ if not __package__:
 from defusedxml import ElementTree
 import h5py
 import numpy as np
+from openonda.plotting import centered_subplots_adjust
 from scipy.integrate import trapezoid
 from matplotlib.legend_handler import HandlerTuple
 
@@ -676,7 +677,7 @@ def main():
         axis.plot(
             row["mean"],
             row["radius"],
-            color=theme.COLORS["VPMpurple"],
+            color=theme.COLORS["vpm"],
             ls="-",
             marker="o",
             markevery=4,
@@ -709,23 +710,26 @@ def main():
 
     handles, _ = axes[0].get_legend_handles_labels()
     # One row, two columns: numerical results and the two reference limits.
-    axes[0].legend(
+    fig.legend(
         [handles[0], (handles[1], handles[2])],
         ["VLM+VPM", r"$1-a$, $1-2a$"],
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0.4)},
-        loc="lower left",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.025),
+        borderaxespad=0,
         ncol=2,
         frameon=True,
-        framealpha=1.0,
-        edgecolor="none",
+        fancybox=True,
+        framealpha=0.9,
+        edgecolor="0.8",
         facecolor="white",
         handlelength=1.5,
         handletextpad=0.4,
         columnspacing=0.6,
     )
 
-    # Share scales, retain all native values and leave space inside the axes for
-    # the legends. Disk and far-wake limits are not exact 1D/2D predictions.
+    # Share scales and retain all native values. Disk and far-wake limits
+    # are not exact 1D/2D predictions.
     low = min(0, *(axis.get_xlim()[0] for axis in axes))
     high = max(1.08, *(axis.get_xlim()[1] for axis in axes))
     for axis in axes:
@@ -733,6 +737,7 @@ def main():
         axis.set_ylim(0, extent)
     axes[-1].set_xlabel(r"$u_x/U_\infty$")
     print(f"BEM disk reference: CT={ct:.6f}, a={induction:.6f}, Rw/R={wake_radius:.6f}")
+    centered_subplots_adjust(fig, outer=0.113, bottom=0.22, top=0.99, hspace=0.10)
     save_rotor_figure(
         fig, FIGURES_DIR / "rotor_wake_planes.png", figure_format=args.format, dpi=args.dpi
     )

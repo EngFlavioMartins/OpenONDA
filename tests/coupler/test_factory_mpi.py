@@ -45,12 +45,11 @@ particles = vpm.VPMCase(
         time_step_size=.01, compute_device="CPU", max_n_particles=1000,
         domain_bounds=(-1.,1.,-1.,1.,-1.,1.),
         freestream_velocity=[1.,0.,0.],
-        viscous=vpm.ViscousConfig.cs(kinematic_viscosity=.01, particle_spacing=.25),
+        viscous=vpm.ViscousConfig.gbd(kinematic_viscosity=.01, particle_spacing=.25, threshold=1e-5, threshold_mode="absolute"),
     ),
     backup=vpm.Backup(interval_steps=0),
 )
-policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0,
-    boundary_condition_mode="vorticity_mixed")
+policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0)
 mesh = lambda: coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5),.25)
 with coupler.create_coupler(flow, particles, policy, mesh=mesh,
         case_dir=directory / "first") as first:
@@ -123,7 +122,7 @@ particle_case = vpm.VPMCase(
         time_step_size=.01, compute_device="CPU", max_n_particles=1000,
         domain_bounds=(-1.,1.,-1.,1.,-1.,1.),
         freestream_velocity=[1.,0.,0.],
-        viscous=vpm.ViscousConfig.cs(kinematic_viscosity=.01,particle_spacing=.25),
+        viscous=vpm.ViscousConfig.gbd(kinematic_viscosity=.01,particle_spacing=.25, threshold=1e-5, threshold_mode="absolute"),
     ),
     backup=vpm.Backup(interval_steps=0),
 )

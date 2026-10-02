@@ -188,7 +188,7 @@ class TaichiTreecode:
             raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
         self.traversal_block_dim = int(traversal_block_dim)
         # Production FMM uses the hierarchy only.  It cannot accept the
-        # defensive NumPy sorting fallback used by the legacy treecode because
+        # NumPy sorting fallback used by standalone treecode evaluation because
         # an RK stage must remain device-resident.  When enabled, a sort or
         # backend failure is surfaced to the caller instead of downloading
         # Morton keys.
@@ -407,9 +407,7 @@ class TaichiTreecode:
 
     # BUILD — On-GPU LBVH construction
 
-    def build(
-        self, position=None, vortex_strength=None, core_radius=None, N=None, force: bool = False
-    ) -> None:
+    def build(self, position=None, vortex_strength=None, core_radius=None, N=None) -> None:
         """
         Build LBVH binary tree from particle data.
 
@@ -423,15 +421,13 @@ class TaichiTreecode:
         2. NumPy arrays::
             tree.build(pos_np, strg_np, rad_np)
 
-        When called with the same *N* (and no *force*) repeatedly, the build
-        is skipped — the tree is already valid.
+        The hierarchy is rebuilt on every call.
 
         Args:
             position:  Taichi vec3 field *or* NumPy array [N,3] of position.
             vortex_strength: Taichi vec3 field or NumPy array [N, 3] [m³/s].
             core_radius: Taichi scalar field or NumPy array [N] [m].
             N:  Number of active particles (required for field API).
-            force:  Accepted for API compatibility; the tree is always rebuilt.
         """
         # The tree is rebuilt on every call.
         t_start = time.perf_counter()
@@ -1925,8 +1921,8 @@ class TaichiTreecode:
     ) -> None:
         """Run the velocity traversal on-device; the result stays in
         ``self.velocity`` (a Taichi field).  No ``to_numpy`` download — callers
-        that keep the data on the GPU (e.g. ``base.compute_self_induced_velocity`` via a
-        field-to-field copy) use this to avoid a per-step N×3 round-trip.
+        that keep the data on the GPU use a field-to-field copy to avoid a
+        per-step N×3 round-trip.
 
         Pass ``background_field`` (a 0-d vec3 field) rather than
         ``freestream_velocity`` to keep the freestream on device too; reading it

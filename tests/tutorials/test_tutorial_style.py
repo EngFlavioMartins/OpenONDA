@@ -24,7 +24,7 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
     for script in TUTORIALS.rglob("all*.sh"):
         assert script.name in {"allrun.sh", "allplot.sh", "allclean.sh", "allcontinue.sh"}, script
         for line in script.read_text().splitlines():
-            if not line or line.startswith("#"):
+            if not line or line.startswith("#") or line == "set -e":
                 continue
             if line == 'cd -- "$(dirname -- "$0")"':
                 # Resolve direct commands relative to the tutorial, even when
@@ -39,7 +39,7 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
             assert line.startswith("python "), (script, line)
             command = shlex.split(line)
             assert "||" not in command, (script, line)
-            if script.name == "allplot.sh" and command == [
+            if script.name == "allplot.sh" and command[:4] == [
                 "python",
                 "-m",
                 "openonda.results",

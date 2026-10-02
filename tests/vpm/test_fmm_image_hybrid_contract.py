@@ -164,7 +164,10 @@ def numpy_slab(monkeypatch):
         slab.velocity_scale = slab.gradient_scale = 1.0
         slab.stretching_scheme = mode
         slab.physics = SimpleNamespace(
-            max_evaluation_points=4, accumulator_dtype=slip_slab.ti.f32, _zero_velocity=np.zeros(3)
+            particle_kernel="WINCKELMANS",
+            max_evaluation_points=4,
+            accumulator_dtype=slip_slab.ti.f32,
+            _zero_velocity=np.zeros(3),
         )
         slab._image_velocity = np.zeros((4, 3))
         slab._image_gradient = np.zeros((4, 3, 3))
@@ -176,7 +179,7 @@ def numpy_slab(monkeypatch):
 
         def evaluate_targets(**args):
             count = args["target_count"]
-            calls.append(("legacy", count))
+            calls.append(("pointwise", count))
             v, j = _fields(args["target_position"][:count])
             args["target_velocity"][:count] = v
             args["target_velocity_gradient"][:count] = j
@@ -248,31 +251,32 @@ def _run(slab, *, outputs="both", stage=False):
         ("DIRECT", "gradient", False),
     ],
 )
-def test_mixed_declined_and_accepted_tiles_preserve_complete_legacy_operator(
+def test_mixed_declined_and_accepted_tiles_preserve_complete_pointwise_operator(
     numpy_slab, mode, outputs, stage
 ):
-    legacy, _ = numpy_slab(False, mode)
+    pointwise, _ = numpy_slab(False, mode)
     hybrid, calls = numpy_slab(True, mode)
-    before = _run(legacy, outputs=outputs, stage=stage)
+    before = _run(pointwise, outputs=outputs, stage=stage)
     after = _run(hybrid, outputs=outputs, stage=stage)
     for expected, actual in zip(before, after, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=2e-8, atol=2e-8)
     for key in ("shell", "block_start", "relative", "velocity", "gradient", "target_evaluations"):
         np.testing.assert_allclose(
-            hybrid.last_tail[key], legacy.last_tail[key], rtol=2e-8, atol=2e-8
+            hybrid.last_tail[key], pointwise.last_tail[key], rtol=2e-8, atol=2e-8
         )
     assert len(hybrid.last_tail["declined_blocks"]) == 4
     assert calls[0][0] == "declined"
     assert any(call[0] == "accepted" and len(call[2]) >= 8 for call in calls)
     assert (
-        hybrid.last_tail["target_local_evaluations"] < legacy.last_tail["target_local_evaluations"]
+        hybrid.last_tail["target_local_evaluations"]
+        < pointwise.last_tail["target_local_evaluations"]
     )
 
 
 @pytest.mark.parametrize(
     "fatal", [RuntimeError("incomplete traversal"), TargetInteractionCapacityError(4, 5)]
 )
-def test_non_cost_failures_are_not_swallowed_as_legacy_fallback(numpy_slab, fatal):
+def test_non_cost_failures_are_not_swallowed_as_pointwise_fallback(numpy_slab, fatal):
     slab, calls = numpy_slab(True, fatal=fatal)
     with pytest.raises(type(fatal), match=str(fatal)):
         _run(slab)
@@ -293,7 +297,7 @@ def _streaming_rig(*, fail_last=False):
         direct_work={None: 0},
         monopole_work={None: 0},
         monopole_pair_count={None: 0},
-        legacy_subtree_work={None: 0},
+        subtree_work={None: 0},
         frontier_count={None: 0},
         max_pairs=1,
         batch_capacity=1,

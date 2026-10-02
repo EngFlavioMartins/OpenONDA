@@ -110,6 +110,7 @@ def test_worker_receives_local_phase_failure():
 
     comm = SimpleNamespace(
         Get_size=lambda: 2,
+        Ibarrier=lambda: SimpleNamespace(Test=lambda: True),
         allgather=lambda value: ["HealthError: strain limit exceeded", value],
     )
     with (

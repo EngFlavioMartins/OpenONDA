@@ -150,15 +150,10 @@ class VLMSetup:
         Non-negative viscosity in m²/s assigned to shed wake particles.
     density : float, default=1
         Positive fluid density in kg/m³ used to dimensionalize forces.
-    sigma_factor : float, default=2.5
-        Legacy transverse-element radius factor on the convected row length.
-        Used when ``wake_core_overlap`` is omitted; trailing cores retain
-        their legacy local-spacing radius.
-    wake_core_overlap : float or None, optional
-        Common core radius divided by the larger local span spacing and
-        convected row length, for both trailing and transverse elements.
-        A supplied value replaces the legacy radius rule; values above one
-        provide overlapping blobs in a thin, high-Reynolds-number wake.
+    wake_core_overlap : float, default=2.5
+        Core radius divided by the larger local span spacing and convected
+        row length, for both trailing and transverse wake elements.
+        Positive values above one provide overlapping blobs.
     boundary_response : {'lagged', 'responsive'}, default='lagged'
         Coupled VPM boundary-response policy. ``'lagged'`` preserves the
         historical accepted-step solve. ``'responsive'`` solves a pure
@@ -191,12 +186,11 @@ class VLMSetup:
     circulation_relaxation: float = 1.0
     kinematic_viscosity: float = 1.0
     density: float = 1.0
-    sigma_factor: float = 2.5
     freestream_velocity: tuple[float, float, float] | None = None
     logging_interval_steps: int = 1
     force: ForceConfig = field(default_factory=ForceConfig.kutta_joukowski)
     sample_surface_forces: bool = True
-    wake_core_overlap: float | None = None
+    wake_core_overlap: float = 2.5
     boundary_response: Literal["lagged", "responsive"] = "lagged"
 
     def __post_init__(self) -> None:
@@ -220,11 +214,7 @@ class VLMSetup:
             raise ValueError("VLM kinematic_viscosity must be non-negative")
         if not math.isfinite(self.density) or self.density <= 0:
             raise ValueError("VLM density must be positive")
-        if not math.isfinite(self.sigma_factor) or self.sigma_factor <= 0:
-            raise ValueError("VLM sigma_factor must be positive")
-        if self.wake_core_overlap is not None and (
-            not math.isfinite(self.wake_core_overlap) or self.wake_core_overlap <= 0
-        ):
+        if not math.isfinite(self.wake_core_overlap) or self.wake_core_overlap <= 0:
             raise ValueError("VLM wake_core_overlap must be finite and positive")
         if self.boundary_response not in {"lagged", "responsive"}:
             raise ValueError("boundary_response must be 'lagged' or 'responsive'")

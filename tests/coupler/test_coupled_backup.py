@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 import re
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ import pytest
 from source.coupler import boundary as boundary_module
 from source.coupler.backup import (
     _backup_config,
-    config_diff,
+    artifact_digest,
     config_difference_paths,
     load_coupled_backup,
     publish_vpm_snapshot,
@@ -23,7 +24,7 @@ from source.coupler.backup import (
 
 
 def test_backup_config_records_stable_wall_geometry_revision():
-    setup = _MappingSetup({"coupler": {"transfer_method": "common_lattice"}})
+    setup = _MappingSetup({"coupler": {}})
     vpm = SimpleNamespace(setup=_MappingSetup({"viscous": {"scheme": "GBD"}}))
     transfer = SimpleNamespace(_solid_bodies=(SimpleNamespace(revision="wall-a"),))
     coupler = SimpleNamespace(setup=setup, vpm_solver=vpm, vorticity_transfer=transfer)
@@ -34,7 +35,7 @@ def test_backup_config_records_stable_wall_geometry_revision():
 
 
 def test_backup_config_records_transfer_lattice_phase():
-    setup = _MappingSetup({"coupler": {"transfer_method": "common_lattice"}})
+    setup = _MappingSetup({"coupler": {}})
     vpm = SimpleNamespace(setup=_MappingSetup({"viscous": {"scheme": "GBD"}}))
     transfer = SimpleNamespace(_lattice_anchor=np.array([0.1, 0.2, 0.3]))
     coupler = SimpleNamespace(setup=setup, vpm_solver=vpm, vorticity_transfer=transfer)
@@ -67,16 +68,8 @@ class _MappingSetup:
 
 
 class _CouplerSetup(_MappingSetup):
-    def __init__(self, *, transfer_method: str = "common_lattice"):
-        super().__init__(
-            {
-                "coupler": {
-                    "boundary_condition_mode": "pressure_gradient",
-                    "transfer_method": transfer_method,
-                }
-            }
-        )
-        self.boundary_condition_mode = "pressure_gradient"
+    def __init__(self, *, interface_normal_tolerance=1e-6):
+        super().__init__({"coupler": {"interface_normal_tolerance": interface_normal_tolerance}})
         self.coupling_patch = "numericalBoundary"
         self.freestream_velocity = [1.0, 0.0, 0.0]
 
@@ -104,7 +97,6 @@ class _VPM:
         gbd_threshold: float,
         backup_directory: str,
         velocity: np.ndarray,
-        pressure_gradient: np.ndarray,
     ):
         self.setup = _MappingSetup(
             {
@@ -127,9 +119,6 @@ class _VPM:
         self.step = 1
         self.time = 0.1
         self.current_velocity = np.asarray(velocity, dtype=np.float64).copy()
-        self.base_pressure_gradient = np.asarray(pressure_gradient, dtype=np.float64).copy()
-        self.last_include_temporal: bool | None = None
-        self.last_velocity_previous: np.ndarray | None = None
 
     def _save_backup_to(self, filename: str) -> None:
         import h5py
@@ -157,51 +146,30 @@ class _VPM:
         writer.EncodeAppendedDataOff()
         writer.Write()
 
-    def _load_backup_from(self, filename: str, *, allowed_config_differences=(), expected_config_differences=None) -> None:
+    def _load_backup_from(
+        self, filename: str, *, allowed_config_differences=(), expected_config_differences=None
+    ) -> None:
         assert Path(filename).is_file()
 
     def compute_velocity_at_points(self, points: np.ndarray, **_kwargs) -> np.ndarray:
         assert len(points) == len(self.current_velocity)
         return self.current_velocity.copy()
 
-    def compute_pressure_gradient_at_points(
-        self,
-        points: np.ndarray,
-        *,
-        density: float,
-        include_temporal: bool,
-        velocity_previous: np.ndarray | None,
-        time_step_size: float,
-        **_kwargs,
-    ) -> tuple[dict[str, np.ndarray], np.ndarray]:
-        assert len(points) == len(self.current_velocity)
-        self.last_include_temporal = include_temporal
-        self.last_velocity_previous = (
-            None if velocity_previous is None else np.asarray(velocity_previous).copy()
-        )
-        pressure_gradient = self.base_pressure_gradient.copy()
-        if include_temporal:
-            assert velocity_previous is not None
-            pressure_gradient += (self.current_velocity - velocity_previous) / time_step_size
-        return {"pressure_gradient": density * pressure_gradient}, self.current_velocity.copy()
-
 
 def _make_coupler(
     *,
     gbd_threshold: float = 1.0e-5,
-    transfer_method: str = "common_lattice",
+    interface_normal_tolerance: float = 1e-6,
     backup_directory: str = "original-output",
 ):
     previous_velocity = np.array([[1.0, 0.1, 0.0], [1.0, 0.1, 0.0]])
-    previous_pressure_gradient = np.array([[0.2, -0.1, 0.0], [0.3, -0.2, 0.0]])
     vpm = _VPM(
         gbd_threshold=gbd_threshold,
         backup_directory=backup_directory,
         velocity=previous_velocity,
-        pressure_gradient=np.array([[0.4, 0.2, 0.0], [0.5, 0.1, 0.0]]),
     )
     coupler = SimpleNamespace(
-        setup=_CouplerSetup(transfer_method=transfer_method),
+        setup=_CouplerSetup(interface_normal_tolerance=interface_normal_tolerance),
         fvm_solver=_FVM(),
         vpm_solver=vpm,
         vorticity_transfer=SimpleNamespace(step=0),
@@ -212,9 +180,6 @@ def _make_coupler(
         _normal_velocity_boundary_condition=np.ones(2),
         _tangential_gradient_boundary_condition_old=None,
         _tangential_gradient_boundary_condition=np.ones((2, 3)),
-        _kinematic_pressure_gradient_boundary_condition_old=(previous_pressure_gradient.copy()),
-        _kinematic_pressure_gradient_boundary_condition=np.full((2, 3), 99.0),
-        _pressure_velocity_snapshot=previous_velocity.copy(),
         density=1.0,
         kinematic_viscosity=0.01,
         fvm_time_step_size=0.05,
@@ -227,11 +192,8 @@ def _make_coupler(
     return coupler
 
 
-def _make_mixed_pressure_coupler():
+def _make_mixed_coupler():
     coupler = _make_coupler()
-    mode = "vorticity_mixed_pressure_gradient"
-    coupler.setup.boundary_condition_mode = mode
-    coupler.setup.mapping["coupler"]["boundary_condition_mode"] = mode
     coupler._normal_velocity_boundary_condition_old = np.array([-1.0, 1.0])
     coupler._tangential_gradient_boundary_condition_old = np.tile([0.0, 0.2, 0.0], (2, 1))
 
@@ -242,37 +204,24 @@ def _make_mixed_pressure_coupler():
         tangent[:, 1] = 2 * velocity[:, 1]
         return velocity, tangent
 
-    pressure = coupler.vpm_solver.compute_pressure_gradient_at_points
-
-    def pressure_trace(points, **kwargs):
-        coupler.vpm_solver.last_include_viscous = kwargs["include_viscous"]
-        return pressure(points, **kwargs)
-
     coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points = mixed_trace
-    coupler.vpm_solver.compute_pressure_gradient_at_points = pressure_trace
     return coupler
 
 
-def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replacement(
-    tmp_path, monkeypatch
-):
-    uninterrupted = _make_mixed_pressure_coupler()
+def test_mixed_history_survives_restart_subcycling_and_replacement(tmp_path, monkeypatch):
+    uninterrupted = _make_mixed_coupler()
     backup = tmp_path / "combined"
     save_coupled_backup(uninterrupted, backup, coupling_step=1)
-    restarted = _make_mixed_pressure_coupler()
+    restarted = _make_mixed_coupler()
     for field in (
         "_normal_velocity_boundary_condition_old",
         "_tangential_gradient_boundary_condition_old",
-        "_kinematic_pressure_gradient_boundary_condition_old",
-        "_pressure_velocity_snapshot",
     ):
         setattr(restarted, field, None)
     load_coupled_backup(restarted, backup)
     for field in (
         "_normal_velocity_boundary_condition_old",
         "_tangential_gradient_boundary_condition_old",
-        "_kinematic_pressure_gradient_boundary_condition_old",
-        "_pressure_velocity_snapshot",
     ):
         np.testing.assert_array_equal(getattr(restarted, field), getattr(uninterrupted, field))
 
@@ -281,13 +230,11 @@ def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replace
     area = np.ones(2)
     captured = []
 
-    def capture(
-        _coupler, _patch, velocity, pressure_gradient, *, normal_velocity, tangential_gradient
-    ):
+    def capture(_coupler, _patch, velocity, *, normal_velocity, tangential_gradient):
         captured.append(
             tuple(
                 np.array(value, copy=True)
-                for value in (velocity, pressure_gradient, normal_velocity, tangential_gradient)
+                for value in (velocity, normal_velocity, tangential_gradient)
             )
         )
 
@@ -295,7 +242,6 @@ def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replace
     for coupler in (uninterrupted, restarted):
         coupler.vpm_solver.current_velocity = np.tile([1.2, 0.15, 0], (2, 1))
         previous, current, _ = boundary_module.evaluate_vpm_boundary(coupler, points, normals, area)
-        assert coupler.vpm_solver.last_include_viscous is True
         boundary_module.advance_fvm_substeps(
             coupler,
             "numericalBoundary",
@@ -304,8 +250,6 @@ def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replace
             area,
             previous,
             current,
-            coupler._kinematic_pressure_gradient_boundary_condition_old,
-            coupler._kinematic_pressure_gradient_boundary_condition,
             coupler._normal_velocity_boundary_condition_old,
             coupler._normal_velocity_boundary_condition,
             coupler._tangential_gradient_boundary_condition_old,
@@ -315,49 +259,43 @@ def test_combined_mixed_pressure_history_survives_restart_subcycling_and_replace
     for left, right in zip(captured[:2], captured[2:], strict=True):
         for a, b in zip(left, right, strict=True):
             np.testing.assert_array_equal(a, b)
-    np.testing.assert_allclose(captured[0][2], [-1.1, 1.1])
-    np.testing.assert_allclose(captured[0][3], np.tile([0, 0.25, 0], (2, 1)))
-    np.testing.assert_allclose(captured[1][2], [-1.2, 1.2])
-    np.testing.assert_allclose(captured[1][3], np.tile([0, 0.3, 0], (2, 1)))
+    np.testing.assert_allclose(captured[0][1], [-1.1, 1.1])
+    np.testing.assert_allclose(captured[0][2], np.tile([0, 0.25, 0], (2, 1)))
+    np.testing.assert_allclose(captured[1][1], [-1.2, 1.2])
+    np.testing.assert_allclose(captured[1][2], np.tile([0, 0.3, 0], (2, 1)))
 
     restarted.vpm_solver.current_velocity[:, 1] = 0.25
     boundary_module.update_boundary_history_after_replacement(restarted, points, normals, area)
-    np.testing.assert_array_equal(
-        restarted._pressure_velocity_snapshot, restarted.vpm_solver.current_velocity
-    )
     np.testing.assert_allclose(
         restarted._tangential_gradient_boundary_condition_old, np.tile([0, 0.5, 0], (2, 1))
     )
 
 
-def test_combined_boundary_initializes_both_histories_on_worker():
-    coupler = _make_mixed_pressure_coupler()
+def test_mixed_boundary_initializes_both_histories_on_worker():
+    coupler = _make_mixed_coupler()
     coupler._is_master = False
     coupler.vpm_solver = None
     for field in (
         "_velocity_boundary_condition_old",
         "_normal_velocity_boundary_condition_old",
         "_tangential_gradient_boundary_condition_old",
-        "_kinematic_pressure_gradient_boundary_condition_old",
     ):
         setattr(coupler, field, None)
     boundary_module.evaluate_vpm_boundary(coupler, np.empty((0, 3)), np.empty((0, 3)), np.empty(0))
     assert coupler._normal_velocity_boundary_condition_old.shape == (0,)
     assert coupler._tangential_gradient_boundary_condition_old.shape == (0, 3)
-    assert coupler._kinematic_pressure_gradient_boundary_condition_old.shape == (0, 3)
 
 
-def test_combined_boundary_rejects_missing_pressure_before_changing_fvm_state():
-    coupler = _make_mixed_pressure_coupler()
+def test_mixed_boundary_rejects_missing_trace_before_changing_fvm_state():
+    coupler = _make_mixed_coupler()
     # This minimal FVM has no setters: entering one before rejecting an
     # incomplete pressure trace would fail with AttributeError instead.
-    with pytest.raises(RuntimeError, match="requires pressure-gradient data"):
+    with pytest.raises(RuntimeError, match="require normal velocity and tangential gradient"):
         boundary_module.apply_fvm_boundary(
             coupler,
             "numericalBoundary",
             np.ones((2, 3)),
             normal_velocity=np.ones(2),
-            tangential_gradient=np.zeros((2, 3)),
         )
 
 
@@ -367,6 +305,7 @@ def test_post_renewal_particle_history_is_published_outside_the_rolling_backup(t
     coupler = _make_coupler()
     for step in (1, 2):
         coupler.fvm_solver.step = 2 * step
+        coupler.fvm_solver.time = 0.1 * step
         coupler.vpm_solver.step = step
         coupler.vpm_solver.time = 0.1 * step
         save_coupled_backup(coupler, backup, coupling_step=step)
@@ -386,11 +325,100 @@ def test_post_renewal_particle_history_is_published_outside_the_rolling_backup(t
         (0.1, "vpm/vpm_000001.vtu"),
         (0.2, "vpm/vpm_000002.vtu"),
     ]
-    assert sorted(path.name for path in backup.glob("vpm_*.h5")) == ["vpm_000002.h5"]
-    assert sorted(path.name for path in backup.glob("fvm_*")) == ["fvm_000002.npz"]
-    assert sorted(path.name for path in backup.glob("vpm_boundary_condition_*")) == [
+    generations = list(backup.glob("checkpoint-*"))
+    assert len(generations) == 1
+    assert sorted(path.name for path in generations[0].glob("vpm_*.h5")) == ["vpm_000002.h5"]
+    assert sorted(path.name for path in generations[0].glob("fvm_*")) == ["fvm_000002.npz"]
+    assert sorted(path.name for path in generations[0].glob("vpm_boundary_condition_*")) == [
         "vpm_boundary_condition_000002.npz"
     ]
+
+
+@pytest.mark.parametrize("defect", ["fvm_time", "fvm_step", "vpm_time", "vpm_step", "nan_time"])
+def test_backup_rejects_unsynchronized_state_before_writing(tmp_path, defect):
+    coupler = _make_coupler()
+    save_coupled_backup(coupler, tmp_path, coupling_step=1)
+    before = artifact_digest(tmp_path)
+    if defect == "fvm_time":
+        coupler.fvm_solver.time += 0.05
+    elif defect == "fvm_step":
+        coupler.fvm_solver.step += 1
+    elif defect == "vpm_time":
+        coupler.vpm_solver.time += 0.1
+    elif defect == "vpm_step":
+        coupler.vpm_solver.step += 1
+    else:
+        coupler.fvm_solver.time = np.nan
+    with pytest.raises(ValueError, match="backup"):
+        save_coupled_backup(coupler, tmp_path, coupling_step=1)
+    assert artifact_digest(tmp_path) == before
+
+
+@pytest.mark.parametrize("step", [-1, 0, 1.5, True])
+def test_backup_rejects_wrong_exchange_label(tmp_path, step):
+    destination = tmp_path / "backup"
+    with pytest.raises(ValueError):
+        save_coupled_backup(_make_coupler(), destination, coupling_step=step)
+    assert not destination.exists()
+
+
+def test_long_run_clock_roundoff_survives_save_and_restart(tmp_path):
+    coupler = _make_coupler()
+    coupler.n_fvm_substeps = 5
+    coupler.fvm_solver.step, coupler.vpm_solver.step = 12500, 2500
+    coupler.fvm_solver.time = 0.0
+    for _ in range(coupler.fvm_solver.step):
+        coupler.fvm_solver.time += 0.008
+    coupler.vpm_solver.time = 100.0
+    assert abs(coupler.fvm_solver.time - coupler.vpm_solver.time) > 1e-12
+    save_coupled_backup(coupler, tmp_path, coupling_step=2500)
+    assert load_coupled_backup(coupler, tmp_path) == 2500
+    before = artifact_digest(tmp_path)
+    coupler.fvm_solver.time += 1e-8
+    with pytest.raises(ValueError, match="not synchronized"):
+        save_coupled_backup(coupler, tmp_path, coupling_step=2500)
+    assert artifact_digest(tmp_path) == before
+
+
+@pytest.mark.parametrize("step", [1, 2])
+@pytest.mark.parametrize("failure", ["vpm", "manifest"])
+def test_failed_save_preserves_committed_pair_even_at_same_step(
+    tmp_path, monkeypatch, step, failure
+):
+    import source.coupler.backup as backup_module
+
+    coupler = _make_coupler()
+    save_coupled_backup(coupler, tmp_path, coupling_step=1)
+    original_manifest = (tmp_path / "manifest.json").read_bytes()
+    manifest = json.loads(original_manifest)
+    coupler.fvm_solver.step = 2 * step
+    coupler.vpm_solver.step = step
+    coupler.fvm_solver.time = coupler.vpm_solver.time = 0.1 * step
+    with monkeypatch.context() as patch:
+        if failure == "vpm":
+
+            def fail_vpm(filename):
+                Path(f"{filename}.h5").write_bytes(b"incomplete")
+                raise OSError("injected VPM write failure")
+
+            patch.setattr(coupler.vpm_solver, "_save_backup_to", fail_vpm)
+        else:
+            replace = backup_module.os.replace
+
+            def fail_manifest(source, destination):
+                if Path(destination) == tmp_path / "manifest.json":
+                    raise OSError("injected manifest commit failure")
+                return replace(source, destination)
+
+            patch.setattr(backup_module.os, "replace", fail_manifest)
+        with pytest.raises(OSError, match="injected"):
+            save_coupled_backup(coupler, tmp_path, coupling_step=step)
+    assert (tmp_path / "manifest.json").read_bytes() == original_manifest
+    for name, relative in manifest["artifacts"].items():
+        assert artifact_digest(tmp_path / relative) == manifest["artifact_sha256"][name]
+    assert load_coupled_backup(_make_coupler(), tmp_path) == 1
+    save_coupled_backup(coupler, tmp_path, coupling_step=step)
+    assert len(list(tmp_path.glob("checkpoint-*"))) == 1
 
 
 def test_config_difference_paths_are_recursive_and_distinguish_missing_from_none():
@@ -445,110 +473,11 @@ def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path
         load_coupled_backup(reader, tmp_path)
 
 
-def _retired_vpm_controls():
-    return {
-        "max_n_particles": 100,
-        "compute_device": "CUDA",
-        "device_memory_fraction": 0.4,
-        "stabilization": {
-            "regularization_interval_steps": 0,
-            "regularization_capacity_fraction": 0.8,
-            "filament_refinement": {"interval_steps": 0, "max_n_particles": 100},
-        },
-    }
-
-
-def test_coupled_restart_canonicalization_preserves_inputs_and_physical_paths():
-    from source.solvers.vpm.config.restart import canonical_restart_configuration
-
-    old_vpm = {
-        **_retired_vpm_controls(),
-        "time_step_size": 0.1,
-        "precision": "f32",
-        "viscous": {"scheme": "GBD", "gbd_max_nodes": 20, "kinematic_viscosity": 0.01},
-    }
-    stored = {"vpm": old_vpm}
-    current = {"vpm": canonical_restart_configuration(old_vpm)}
-    current["vpm"]["compute_device"] = "CPU"
-    original_stored, original_current = deepcopy(stored), deepcopy(current)
-    assert config_difference_paths(stored, current) == set()
-    assert config_diff(stored, current) == []
-    assert stored == original_stored
-    assert current == original_current
-
-    current["vpm"]["time_step_size"] = 0.05
-    assert config_difference_paths(stored, current) == {"vpm.time_step_size"}
-    current["vpm"]["precision"] = "f64"
-    current["vpm"]["viscous"]["kinematic_viscosity"] = 0.02
-    stored["vpm"]["stabilization"]["regularization_interval_steps"] = 1
-    current["vpm"]["stabilization"]["regularization_interval_steps"] = 1
-    assert config_difference_paths(stored, current) == {
-        "vpm.time_step_size",
-        "vpm.precision",
-        "vpm.viscous.kinematic_viscosity",
-        "vpm.stabilization.regularization_capacity_fraction",
-    }
-
-
-def test_authenticated_old_coupled_manifest_uses_original_checksum(tmp_path, monkeypatch):
-    import json
-
-    from source.coupler.backup import config_mapping_digest
-    from source.solvers.vpm.config.restart import canonical_restart_configuration
-
-    writer = _make_coupler()
-    writer.vpm_solver.setup.mapping.update(_retired_vpm_controls())
-    writer.vpm_solver.setup.mapping["viscous"]["gbd_max_nodes"] = 20
-    save_coupled_backup(writer, tmp_path, coupling_step=1)
-    reader = _make_coupler()
-    reader.vpm_solver.setup.mapping = canonical_restart_configuration(
-        writer.vpm_solver.setup.mapping
-    )
-    reader.vpm_solver.setup.mapping["compute_device"] = "CPU"
-    manifest_path = tmp_path / "manifest.json"
-    original_text = manifest_path.read_text()
-    assert load_coupled_backup(reader, tmp_path) == 1
-    assert manifest_path.read_text() == original_text
-
-    manifest = json.loads(original_text)
-    manifest["config"]["vpm"]["device_memory_fraction"] = 0.5
-    # Even ignored operational fields are authenticated before normalization.
-    manifest_path.write_text(json.dumps(manifest))
-    with monkeypatch.context() as patch:
-        patch.setattr(reader.fvm_solver, "load_state", lambda *args: pytest.fail("premature load"))
-        with pytest.raises(ValueError, match="stored configuration hash mismatch"):
-            load_coupled_backup(reader, tmp_path)
-    manifest["config_sha256"] = config_mapping_digest(manifest["config"])
-    manifest_path.write_text(json.dumps(manifest))
-    assert load_coupled_backup(reader, tmp_path) == 1
-
-
-def test_interface_acceleration_restart_identity_precedes_state_publication(tmp_path, monkeypatch):
-    writer = _make_coupler()
-    writer.setup.mapping["coupler"]["interface_acceleration"] = "aitken"
-    save_coupled_backup(writer, tmp_path, coupling_step=1)
-
-    matching = _make_coupler()
-    matching.setup.mapping["coupler"]["interface_acceleration"] = "aitken"
-    assert load_coupled_backup(matching, tmp_path) == 1
-
-    mismatched = _make_coupler()
-    mismatched.setup.mapping["coupler"]["interface_acceleration"] = "none"
-    monkeypatch.setattr(
-        mismatched.fvm_solver, "load_state", lambda *args: pytest.fail("premature FVM load")
-    )
-    monkeypatch.setattr(
-        mismatched.vpm_solver, "_load_backup_from", lambda *args: pytest.fail("premature VPM load")
-    )
-    with pytest.raises(ValueError, match="coupler.interface_acceleration"):
-        load_coupled_backup(mismatched, tmp_path)
-
-
 @pytest.mark.parametrize(
     ("path", "changed"),
     [
         ("vpm.viscous.gbd_threshold", {"gbd_threshold": 2.0e-5}),
-        ("coupler.transfer_method", {"transfer_method": "buffered_m4_renewal"}),
+        ("coupler.interface_normal_tolerance", {"interface_normal_tolerance": 2e-6}),
     ],
 )
 def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path, changed, caplog):
@@ -565,98 +494,3 @@ def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path,
     assert path in caplog.text
     assert restored_step == 1
     assert allowed.vorticity_transfer.step == 2
-
-
-def test_pressure_gradient_restart_matches_uninterrupted_continuation(tmp_path, monkeypatch):
-    backup = tmp_path / "backup"
-    uninterrupted = _make_coupler()
-    expected_previous_velocity = uninterrupted._pressure_velocity_snapshot.copy()
-    expected_previous_gradient = (
-        uninterrupted._kinematic_pressure_gradient_boundary_condition_old.copy()
-    )
-    save_coupled_backup(uninterrupted, backup, coupling_step=1)
-
-    restarted = _make_coupler(backup_directory="relocated-output")
-    restarted._pressure_velocity_snapshot = None
-    restarted._kinematic_pressure_gradient_boundary_condition_old = None
-    load_coupled_backup(restarted, backup)
-
-    np.testing.assert_array_equal(restarted._pressure_velocity_snapshot, expected_previous_velocity)
-    np.testing.assert_array_equal(
-        restarted._kinematic_pressure_gradient_boundary_condition_old,
-        expected_previous_gradient,
-    )
-    assert restarted._kinematic_pressure_gradient_boundary_condition is None
-    assert restarted._normal_velocity_boundary_condition is None
-    assert restarted._tangential_gradient_boundary_condition is None
-
-    next_velocity = np.array([[1.2, 0.15, 0.0], [1.2, 0.15, 0.0]])
-    uninterrupted.vpm_solver.current_velocity = next_velocity.copy()
-    restarted.vpm_solver.current_velocity = next_velocity.copy()
-    face_centre = np.array([[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    face_normal = np.array([[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    face_area = np.ones(2)
-
-    uninterrupted_trace = boundary_module.evaluate_vpm_boundary(
-        uninterrupted, face_centre, face_normal, face_area
-    )
-    restarted_trace = boundary_module.evaluate_vpm_boundary(
-        restarted, face_centre, face_normal, face_area
-    )
-
-    assert uninterrupted.vpm_solver.last_include_temporal is True
-    assert restarted.vpm_solver.last_include_temporal is True
-    np.testing.assert_array_equal(
-        restarted.vpm_solver.last_velocity_previous,
-        uninterrupted.vpm_solver.last_velocity_previous,
-    )
-    np.testing.assert_allclose(
-        restarted._kinematic_pressure_gradient_boundary_condition,
-        uninterrupted._kinematic_pressure_gradient_boundary_condition,
-        rtol=0.0,
-        atol=0.0,
-    )
-    np.testing.assert_allclose(restarted_trace[0], uninterrupted_trace[0], rtol=0.0, atol=0.0)
-    np.testing.assert_allclose(restarted_trace[1], uninterrupted_trace[1], rtol=0.0, atol=0.0)
-
-    applied_gradients: list[np.ndarray] = []
-
-    def capture_pressure_gradient(
-        _coupler,
-        _patch,
-        _velocity,
-        pressure_gradient,
-        **_kwargs,
-    ) -> None:
-        applied_gradients.append(np.asarray(pressure_gradient).copy())
-
-    monkeypatch.setattr(boundary_module, "apply_fvm_boundary", capture_pressure_gradient)
-    boundary_module.advance_fvm_substeps(
-        uninterrupted,
-        "numericalBoundary",
-        face_centre,
-        face_normal,
-        face_area,
-        uninterrupted_trace[0],
-        uninterrupted_trace[1],
-        uninterrupted._kinematic_pressure_gradient_boundary_condition_old,
-        uninterrupted._kinematic_pressure_gradient_boundary_condition,
-    )
-    expected_applied_gradients = [value.copy() for value in applied_gradients]
-    applied_gradients.clear()
-    boundary_module.advance_fvm_substeps(
-        restarted,
-        "numericalBoundary",
-        face_centre,
-        face_normal,
-        face_area,
-        restarted_trace[0],
-        restarted_trace[1],
-        restarted._kinematic_pressure_gradient_boundary_condition_old,
-        restarted._kinematic_pressure_gradient_boundary_condition,
-    )
-    assert len(applied_gradients) == len(expected_applied_gradients) == 2
-    for restarted_gradient, uninterrupted_gradient in zip(
-        applied_gradients, expected_applied_gradients, strict=True
-    ):
-        np.testing.assert_allclose(restarted_gradient, uninterrupted_gradient, rtol=0.0, atol=0.0)

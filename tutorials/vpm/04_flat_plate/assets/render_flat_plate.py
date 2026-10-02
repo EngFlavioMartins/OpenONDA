@@ -31,7 +31,7 @@ PDF_OUTPUT = FIGURE_DIR / "flat_plate_wake.pdf"
 PNG_OUTPUT = FIGURE_DIR / "flat_plate_wake.png"
 MANIFEST_OUTPUT = FIGURE_DIR / "flat_plate_wake_scene.json"
 FIGURE_WIDTH_MM = 125.0
-FIGURE_HEIGHT_MM = 62.5
+FIGURE_HEIGHT_MM = 45.0
 
 
 def native_inputs() -> tuple[Path, Path]:
@@ -39,8 +39,6 @@ def native_inputs() -> tuple[Path, Path]:
     metadata = json.loads((SOLUTION_DIR / "vpm_metadata.json").read_text())
     accepted_step = int(metadata["state"]["step"])
     vlm_directory = SOLUTION_DIR / "vlm"
-    if not vlm_directory.is_dir():
-        vlm_directory = SOLUTION_DIR
     for particle_path in reversed(vpm_backup_files(SOLUTION_DIR)):
         step = int(particle_path.stem.removeprefix("vpm_"))
         if step <= accepted_step:
@@ -120,6 +118,7 @@ def read_native_state(particle_input: Path, surface_input: Path) -> dict[str, ob
         "position": position,
         "omega": omega,
         "plate_bounds": plate_bounds,
+        "plate_corners": corners.reshape(-1, 3),
         "kinematic_velocity": plate_velocity,
         "particle_count": len(position),
         "panel_count": len(corners),
@@ -147,56 +146,93 @@ def prepare_geometry(state: dict[str, object], directory: Path) -> tuple[Path, P
     velocity = np.asarray(state["kinematic_velocity"])
     direction = velocity / np.linalg.norm(velocity)
     plate_centre = bounds.mean(axis=0)
-    offset = np.array([0.0, 0.0, 0.055 * span])
-    arrow_origin = plate_centre - direction * (0.2 * span) + offset
-    arrows = []
-    arrow_starts = []
-    for span_fraction in (-0.55, 0.0, 0.55):
-        start = arrow_origin + np.array([0.0, span_fraction * span, 0.0])
-        arrow_starts.append(start.tolist())
-        arrows.append(
-            pv.Arrow(
-                start=start,
-                direction=direction,
-                tip_length=0.28,
-                tip_radius=0.11,
-                shaft_radius=0.045,
-                scale=0.18 * span,
-            )
-        )
-    merged = arrows[0].merge(arrows[1:])
-    arrow_path = directory / "motion_arrows.vtp"
-    merged.save(arrow_path, binary=True)
-    state["arrow_starts"] = arrow_starts
+    # One substantial physical vector above the plate, pointing into its motion.
+    start = plate_centre + direction * (0.03 * span) + [0.0, 0.0, 0.12 * span]
+    arrow_length = 0.24 * span
+    arrow = pv.Arrow(
+        start=start,
+        direction=direction,
+        tip_length=0.26,
+        tip_radius=0.10,
+        shaft_radius=0.045,
+        scale=arrow_length,
+    )
+    arrow_path = directory / "motion_arrow.vtp"
+    arrow.save(arrow_path, binary=True)
+    state["arrow_starts"] = [start.tolist()]
+    state["arrow_ends"] = [(start + arrow_length * direction).tolist()]
     state["glyph_radius_range"] = [float(glyph_radius.min()), float(glyph_radius.max())]
-    state["arrow_length"] = 0.18 * span
+    state["arrow_length"] = arrow_length
+    state["arrow_shaft_radius"] = 0.045 * arrow_length
     return particle_path, arrow_path
 
 
 def camera_for_state(state: dict[str, object]) -> dict[str, object]:
     points = np.asarray(state["position"])
-    plate_bounds = np.asarray(state["plate_bounds"])
-    corners = np.array(np.meshgrid(*zip(*plate_bounds))).T.reshape(-1, 3)
-    all_points = np.vstack((points, corners, np.asarray(state["arrow_starts"])))
+    all_points = np.vstack(
+        (points, state["plate_corners"], state["arrow_starts"], state["arrow_ends"])
+    )
+    # Include sphere and arrow radii in the perspective framing, without cropping.
+    margin = max(state["glyph_radius_range"][-1], 0.10 * state["arrow_length"])
+    offsets = np.array(np.meshgrid(*[[-margin, margin]] * 3)).T.reshape(-1, 3)
+    all_points = (all_points[:, None, :] + offsets).reshape(-1, 3)
     centre = 0.5 * (all_points.min(axis=0) + all_points.max(axis=0))
-    extent = np.ptp(all_points, axis=0)
-    span = max(float(extent.max()), 1e-6)
-    position = centre + span * np.array([0.0, -1.1, 0.5])
-    view_direction = centre - position
-    view_direction /= np.linalg.norm(view_direction)
-    screen_right = np.cross(view_direction, [0.0, 0.0, 1.0])
+    # View from ahead of the moving plate and above its near-side tip.
+    toward_camera = np.array([-0.55, -1.0, 0.70])
+    toward_camera /= np.linalg.norm(toward_camera)
+    view_direction = -toward_camera
+    # Keep the projected chord/motion axis horizontal as the camera rises.
+    # This fills the wide canvas without cropping the span or the wake.
+    screen_right = np.array([1.0, 0.0, 0.0]) - toward_camera[0] * toward_camera
     screen_right /= np.linalg.norm(screen_right)
     screen_up = np.cross(screen_right, view_direction)
-    projected_width = np.ptp(all_points @ screen_right)
-    projected_height = np.ptp(all_points @ screen_up)
-    scale = 1.12 * max(projected_height / 2, projected_width / 4)
+    relative = all_points - centre
+    horizontal = relative @ screen_right
+    vertical = relative @ screen_up
+    depth = relative @ toward_camera
+    view_angle = 24.0
+    tangent = np.tan(np.radians(view_angle / 2))
+    # Explicit scene windows on the shorter canvas: x=3..97%, y=24..94%.
+    # The lower band holds the vector colour bar; the upper edge stays compact.
+    aspect = FIGURE_WIDTH_MM / FIGURE_HEIGHT_MM
+    distance = 1.015 * max(
+        np.max(depth + np.abs(horizontal) / (aspect * tangent * 0.94)),
+        np.max((vertical / tangent + 0.88 * depth) / 0.63),
+        np.max((-vertical / tangent + 0.52 * depth) / 0.70),
+    )
+
+    # A Cartesian bounding-box centre leaves the long perspective wake off-centre
+    # in projection. Fit the focal point within the same authored scene window.
+    def focus_intervals(distance):
+        remaining = distance - depth
+        return (
+            np.max(horizontal - 0.94 * aspect * tangent * remaining),
+            np.min(horizontal + 0.94 * aspect * tangent * remaining),
+            np.max(vertical - 0.88 * tangent * remaining),
+            np.min(vertical + 0.52 * tangent * remaining),
+        )
+
+    near = float(depth.max()) + margin
+    far = distance
+    for _ in range(60):
+        candidate = (near + far) / 2
+        left, right, bottom, top = focus_intervals(candidate)
+        if left <= right and bottom <= top:
+            far = candidate
+        else:
+            near = candidate
+    distance = far * 1.015
+    left, right, bottom, top = focus_intervals(distance)
+    assert left <= right and bottom <= top
+    focal_point = centre + 0.5 * (left + right) * screen_right + 0.5 * (bottom + top) * screen_up
+    position = focal_point + distance * toward_camera
     return {
-        "projection": "parallel",
-        "focal_point_m": centre.tolist(),
+        "projection": "perspective",
+        "focal_point_m": focal_point.tolist(),
         "position_m": position.tolist(),
-        "view_up": [0.0, 0.0, 1.0],
-        "parallel_scale": float(scale),
-        "image_pixels": [1800, 900],
+        "view_up": screen_up.tolist(),
+        "view_angle_degrees": view_angle,
+        "image_pixels": [2500, 900],
     }
 
 
@@ -214,27 +250,35 @@ def plate_velocity_tex(velocity: np.ndarray) -> str:
     return "".join(terms).lstrip("+")
 
 
-def write_overlay(
-    omega_min: float, omega_max: float, velocity: np.ndarray, *, time: float | None = None
-) -> None:
+def write_overlay(omega_min: float, omega_max: float, camera: dict, arrow_tip: np.ndarray) -> None:
+    position = np.asarray(camera["position_m"])
+    forward = np.asarray(camera["focal_point_m"]) - position
+    forward /= np.linalg.norm(forward)
+    right = np.cross(forward, camera["view_up"])
+    right /= np.linalg.norm(right)
+    up = np.cross(right, forward)
+    relative = arrow_tip - position
+    tangent = np.tan(np.radians(camera["view_angle_degrees"] / 2))
+    depth = relative @ forward
+    aspect = FIGURE_WIDTH_MM / FIGURE_HEIGHT_MM
+    label_x = FIGURE_WIDTH_MM * (0.5 + (relative @ right) / (2 * aspect * depth * tangent))
+    label_y = FIGURE_HEIGHT_MM * (0.5 + (relative @ up) / (2 * depth * tangent)) + 4.0
+    label_y = min(label_y, FIGURE_HEIGHT_MM - 6.5)
     colormap = vorticity_colormap()
-    bar_bottom = 7.7
-    bar_top = 10.3
-    bar_label_y = 11.1
-    tick_y = 7.1
+    bar_bottom = 6.5
+    bar_top = 9.1
+    tick_y = 5.9
     segments = []
     for index in range(48):
         red, green, blue, _ = colormap((index + 0.5) / 48.0)
         name = f"omega{index:02d}"
-        x0 = 80.0 + 39.0 * index / 48.0
-        x1 = 80.0 + 39.0 * (index + 1) / 48.0
+        x0 = 3.0 + 39.0 * index / 48.0
+        x1 = 3.0 + 39.0 * (index + 1) / 48.0
         segments.append(f"\\definecolor{{{name}}}{{rgb}}{{{red:.6f},{green:.6f},{blue:.6f}}}")
         segments.append(
             f"\\fill[{name}] ({x0:.4f},{bar_bottom:.1f}) rectangle ({x1:.4f},{bar_top:.1f});"
         )
     bar = "\n".join(segments)
-    # Glyph interpretation is recorded in the scene JSON; retain only physical time.
-    caption = rf"$t={time:.2g}$ s" if time is not None else ""
     source = rf"""\documentclass[tikz,border=0pt]{{standalone}}
 \usepackage[T1]{{fontenc}}
 \usepackage{{newpxtext,newpxmath}}
@@ -244,17 +288,13 @@ def write_overlay(
 \begin{{tikzpicture}}[x=1mm,y=1mm,font=\fontsize{{10.95}}{{13.1}}\selectfont]
   \node[anchor=south west,inner sep=0] at (0,0)
     {{\includegraphics[width={FIGURE_WIDTH_MM:.1f}mm]{{flat_plate_wake_raw.png}}}};
-  \node[anchor=north west,fill=white,fill opacity=0.90,text opacity=1,
-        rounded corners=0.8mm,inner xsep=2.2mm,inner ysep=1.5mm]
-        at (2.8,{FIGURE_HEIGHT_MM - 2.8:.1f})
-        {{ $\mathbf{{U}}_{{\mathrm{{plate}}}}={plate_velocity_tex(velocity)}\;\mathrm{{m\,s^{{-1}}}}$}};
-  \node[anchor=south west,fill=white,inner sep=1.2mm] at (2.8,2.8) {{{caption}}};
-  \fill[white,fill opacity=0.90] (76.8,3.5) rectangle (122.3,14.5);
-  \node[anchor=south] at (99.5,{bar_label_y:.1f}) {{$\lvert\boldsymbol{{\omega}}\rvert\;[\mathrm{{s}}^{{-1}}]$}};
+  \node[anchor=south,inner sep=0.7mm]
+        at ({label_x:.3f},{label_y:.3f}) {{$\mathbf{{U}}_{{\mathrm{{plate}}}}$}};
+  \node[anchor=west] at (45.0,7.8) {{$\lvert\boldsymbol{{\omega}}\rvert\;[\mathrm{{s}}^{{-1}}]$}};
 {bar}
-  \draw[line width=0.6pt] (80.0,{bar_bottom:.1f}) rectangle (119.0,{bar_top:.1f});
-  \node[anchor=north west] at (80.0,{tick_y:.1f}) {{{omega_min:.2g}}};
-  \node[anchor=north east] at (119.0,{tick_y:.1f}) {{{omega_max:.2g}}};
+  \draw[line width=0.6pt] (3.0,{bar_bottom:.1f}) rectangle (42.0,{bar_top:.1f});
+  \node[anchor=north west] at (3.0,{tick_y:.1f}) {{{omega_min:.2g}}};
+  \node[anchor=north east] at (42.0,{tick_y:.1f}) {{{omega_max:.2g}}};
 \end{{tikzpicture}}
 \end{{document}}
 """
@@ -306,40 +346,40 @@ def main() -> None:
     omega_min = float(omega.min())
     omega_max = float(omega.max())
     pvpython = find_pvpython()
-    with tempfile.TemporaryDirectory(prefix="flat-plate-render-") as temporary:
-        temporary_path = Path(temporary)
-        particles, arrows = prepare_geometry(state, temporary_path)
-        camera = camera_for_state(state)
-        colormap = vorticity_colormap()
-        color_points = [[fraction, *colormap(fraction)[:3]] for fraction in np.linspace(0, 1, 9)]
-        subprocess.run(
-            [
-                str(pvpython),
-                str(ASSETS_DIR / "render_flat_plate_paraview.py"),
-                "--particles",
-                str(particles),
-                "--surface",
-                str(surface_input),
-                "--arrows",
-                str(arrows),
-                "--output",
-                str(RAW_OUTPUT),
-                "--omega-min",
-                repr(omega_min),
-                "--omega-max",
-                repr(omega_max),
-                "--camera",
-                json.dumps(camera),
-                "--color-points",
-                json.dumps(color_points),
-            ],
-            check=True,
-        )
+    geometry_directory = FIGURE_DIR / "auxiliary" / "flat_plate_wake"
+    geometry_directory.mkdir(parents=True, exist_ok=True)
+    particles, arrows = prepare_geometry(state, geometry_directory)
+    camera = camera_for_state(state)
+    colormap = vorticity_colormap()
+    color_points = [[fraction, *colormap(fraction)[:3]] for fraction in np.linspace(0, 1, 9)]
+    subprocess.run(
+        [
+            str(pvpython),
+            str(ASSETS_DIR / "render_flat_plate_paraview.py"),
+            "--particles",
+            str(particles),
+            "--surface",
+            str(surface_input),
+            "--arrows",
+            str(arrows),
+            "--output",
+            str(RAW_OUTPUT),
+            "--state-output",
+            str(geometry_directory / "flat_plate_wake.pvsm"),
+            "--omega-min",
+            repr(omega_min),
+            "--omega-max",
+            repr(omega_max),
+            "--camera",
+            json.dumps(camera),
+            "--color-points",
+            json.dumps(color_points),
+        ],
+        check=True,
+    )
     if not RAW_OUTPUT.is_file():
         raise FileNotFoundError(f"ParaView did not produce {RAW_OUTPUT}.")
-    write_overlay(
-        omega_min, omega_max, np.asarray(state["kinematic_velocity"]), time=float(state["time"])
-    )
+    write_overlay(omega_min, omega_max, camera, np.asarray(state["arrow_ends"][0]))
     compile_overlay(args.format)
 
     manifest = {
@@ -369,18 +409,34 @@ def main() -> None:
             "colour_map": f"{theme.get_colormap('field_vorticity')}, linear in |omega|",
         },
         "motion_arrows": {
+            "count": 1,
+            "colour_rgb": [0.64, 0.64, 0.64],
             "direction": (
                 np.asarray(state["kinematic_velocity"])
                 / np.linalg.norm(state["kinematic_velocity"])
             ).tolist(),
             "starts_m": state["arrow_starts"],
             "length_m": state["arrow_length"],
+            "shaft_radius_m": state["arrow_shaft_radius"],
+        },
+        "surface": {
+            "visible": True,
+            "color_rgb": [0.3764705882, 0.4078431373, 0.4235294118],
+            "meaning": "Saved VLM plate surface, shown with shaded neutral material.",
+        },
+        "lighting": {
+            "reference": "author's vortex_stretching.pvsm light kit",
+            "shading": True,
+            "tone_mapping": "filmic",
         },
         "camera": camera,
         "output": {
             "raw_png": str(RAW_OUTPUT),
             "raw_png_sha256": sha256(RAW_OUTPUT),
             "overlay_tex": str(TEX_OUTPUT),
+            "paraview_state": str(geometry_directory / "flat_plate_wake.pvsm"),
+            "particle_glyph_input": str(particles),
+            "motion_arrow_input": str(arrows),
         },
     }
     final_output = PNG_OUTPUT if args.format == "png" else PDF_OUTPUT

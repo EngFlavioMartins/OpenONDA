@@ -17,8 +17,6 @@ import pytest
 QUALIFICATION_MODULES = frozenset(
     {
         "test_cube_reference_grid_study.py",
-        "test_flux_handoff_vpm_integration.py",
-        "test_gbd_projected_renewal.py",
         "test_interpolation_qualification.py",
         "test_transfer_representation_qualification.py",
         "test_core_numerical_qualification.py",
@@ -29,12 +27,9 @@ QUALIFICATION_MODULES = frozenset(
 INTEGRATION_MODULES = frozenset(
     {
         "test_arbitrary_wall_lifecycle.py",
-        "test_common_m4_viscous_lifecycle.py",
         "test_coupled_backup.py",
         "test_cube_start_latest.py",
-        "test_flux_handoff.py",
         "test_fvm_vpm_smoke.py",
-        "test_lattice_transfer.py",
         "test_physical_coupling.py",
         "test_stable_renewal.py",
     }
@@ -44,7 +39,6 @@ SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
     {
         "test_arbitrary_wall_lifecycle.py",
         "test_backup_storage.py",
-        "test_common_m4_viscous_lifecycle.py",
         "test_cube_start_latest.py",
     }
 )

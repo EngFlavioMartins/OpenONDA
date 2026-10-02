@@ -42,7 +42,7 @@ def _write_native(directory: Path, step: int, time: float) -> Path:
             time=time,
             time_step_size=0.0025,
             n_particles_total=1,
-            backup_format_version="10.0",
+            backup_format_version="10.2",
             numerical_configuration="{}",
             numerical_configuration_sha256=hashlib.sha256(b"{}").hexdigest(),
         )
@@ -62,7 +62,9 @@ def _write_native(directory: Path, step: int, time: float) -> Path:
         ):
             particles.create_dataset(name, data=np.zeros((1, 3)))
         vlm = solver.create_group("vlm")
-        vlm.attrs.update(version=7, time=time, identity="fixture")
+        vlm.attrs.update(
+            version=7, time=time, identity="fixture", physics_identity="fixture-physics"
+        )
         vlm.create_group("motion")
         for name in (
             "panel_corner_position",
@@ -131,7 +133,7 @@ def _checkpoint(directory: Path, step: int = 1600) -> Path:
     return directory / "vpm" / f"vpm_{step:06d}.h5"
 
 
-def test_rejects_legacy_160_surface_frames_on_four_native_backups(tmp_path):
+def test_rejects_160_surface_frames_on_four_native_backups(tmp_path):
     for step, time in CLOCKS:
         _write_native(tmp_path, step, time)
     _write_surfaces(tmp_path, [(step, step * 0.0025) for step in range(10, 1601, 10)])

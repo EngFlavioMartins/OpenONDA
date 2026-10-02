@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 import os
@@ -156,20 +156,6 @@ def _solver_setup(solver):
 def config_hash(setup) -> str:
     """Return a deterministic hash of equation-affecting FVM controls."""
     return _hash(_setup_dict(setup, numerical_only=True))
-
-
-def _matches_legacy_default_pressure_hash(setup, stored_hash: object) -> bool:
-    """Admit only the historical default BiCGStab pressure method upgrade.
-
-    The stored digest must authenticate the complete current numerical setup
-    with the one historical default method restored. Matrix equations, time
-    policy, tolerances, and all other controls remain hash-checked.
-    """
-    linear = setup.linear
-    if linear.pressure_solver != "amg" or linear.linear_solver != "bicgstab":
-        return False
-    legacy = replace(setup, linear=replace(linear, pressure_solver=None))
-    return stored_hash == config_hash(legacy)
 
 
 def full_config_hash(setup) -> str:
@@ -539,9 +525,7 @@ def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> Re
         if not allow_config_change:
             active_setup = _solver_setup(solver)
             stored_hash = metadata.get("config_hash")
-            if stored_hash != config_hash(
-                active_setup
-            ) and not _matches_legacy_default_pressure_hash(active_setup, stored_hash):
+            if stored_hash != config_hash(active_setup):
                 raise ValueError("FVM backup configuration hash does not match the active case")
         archived_viscosity = metadata.get("kinematic_viscosity")
         if (

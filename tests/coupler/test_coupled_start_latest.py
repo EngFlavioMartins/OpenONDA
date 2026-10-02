@@ -46,7 +46,12 @@ def _coupler(directory):
                 domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
                 freestream_velocity=velocity,
                 induction=DirectInduction(),
-                viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.25),
+                viscous=ViscousConfig.gbd(
+                    kinematic_viscosity=0.01,
+                    particle_spacing=0.25,
+                    threshold=1e-5,
+                    threshold_mode="absolute",
+                ),
             ),
         )
     )

@@ -1,6 +1,6 @@
-"""Optional finite Gaussian fields with explicit private GPU ownership.
+"""Finite Gaussian fields with private GPU ownership.
 
-Used by the explicitly opted-in SlipSlab session. Finite mesh/core accuracy and
+Used by Gaussian SlipSlab sessions. Finite mesh/core accuracy and
 infinite-tail admission remain separate caller responsibilities; this storage
 owner alone grants neither. No CuPy import at module load.
 """
@@ -36,24 +36,49 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
     miss. The actual GPU stencil builder remains authoritative on evaluation.
     """
     points, offset = np.asarray(lattice, dtype=np.float64), np.asarray(origin, dtype=np.float64)
-    if (points.ndim != 2 or points.shape[1:] != (3,) or offset.shape != (3,)
-            or not np.isfinite(points).all() or not np.isfinite(offset).all()):
+    if (
+        points.ndim != 2
+        or points.shape[1:] != (3,)
+        or offset.shape != (3,)
+        or not np.isfinite(points).all()
+        or not np.isfinite(offset).all()
+    ):
         raise ValueError("finite normalized query points and logical origin required")
-    if (type(order) is not int or order not in (4, 6, 8, 10)
-            or len(shape) != 3 or len(fft_shape) != 3
-            or any(type(n) is not int or not order <= n <= 2**30 for n in shape)
-            or any(type(f) is not int or f < 2*n-1 for n, f in zip(shape, fft_shape, strict=True))):
+    if (
+        type(order) is not int
+        or order not in (4, 6, 8, 10)
+        or len(shape) != 3
+        or len(fft_shape) != 3
+        or any(type(n) is not int or not order <= n <= 2**30 for n in shape)
+        or any(type(f) is not int or f < 2 * n - 1 for n, f in zip(shape, fft_shape, strict=True))
+    ):
         raise RuntimeError("invalid logical/linear-convolution domain metadata")
     with np.errstate(over="ignore", invalid="ignore"):
-        coordinate = points-offset
+        coordinate = points - offset
     if not np.isfinite(coordinate).all() or np.any(np.abs(coordinate) > 2**30):
         return False
-    first_lower = np.floor(np.nextafter(coordinate, -np.inf))-order//2+1
-    first_upper = np.floor(np.nextafter(coordinate, np.inf))-order//2+1
-    return bool(np.all(first_lower >= 0) and np.all(first_upper+order <= np.asarray(shape)))
+    first_lower = np.floor(np.nextafter(coordinate, -np.inf)) - order // 2 + 1
+    first_upper = np.floor(np.nextafter(coordinate, np.inf)) - order // 2 + 1
+    return bool(np.all(first_lower >= 0) and np.all(first_upper + order <= np.asarray(shape)))
 
 
-_CUDA = r'''
+_GAUSSIAN_RADIAL_CUDA = r"""    if(rho2<(real)1) {
+      real term=1,sa=0,sb=0;
+      for(int n=0;n<24;++n) {
+        sa+=term/(real)(2*n+3); sb+=2*term/(real)(2*n+5);
+        term*=(-rho2)/(real)(n+1);
+      }
+      a=pi15*sa/(tau*tau*tau); b=pi15*sb/(tau*tau*tau*tau*tau);
+    } else {
+      real radius=SQRT(r2),rho=radius/tau,e=EXP(-rho2);
+      real q=(ERF(rho)-2*rho*e/SQRT(pi))/(4*pi);
+      a=q/(r2*radius); b=3*q/(r2*r2*radius)-pi15*e/(tau*tau*tau*r2);
+    }
+"""
+
+
+_CUDA = (
+    r"""
 typedef REAL real;
 extern "C" __global__ void scatter(
     const long long total, const int order, const int *first, const real *weights,
@@ -90,19 +115,9 @@ extern "C" __global__ void gaussian_kernel(
   for(int image=0;image<images;++image) {
     real r[3]={(real)lx*hx,(real)ly*hy,(real)((long long)lz-shifts[image])*hz};
     real r2=r[0]*r[0]+r[1]*r[1]+r[2]*r[2], rho2=r2/(tau*tau), a,b;
-    if(rho2<(real)1) {
-      real term=1,sa=0,sb=0;
-      for(int n=0;n<24;++n) {
-        sa+=term/(real)(2*n+3); sb+=2*term/(real)(2*n+5);
-        term*=(-rho2)/(real)(n+1);
-      }
-      a=pi15*sa/(tau*tau*tau); b=pi15*sb/(tau*tau*tau*tau*tau);
-    } else {
-      real radius=SQRT(r2),rho=radius/tau,e=EXP(-rho2);
-      real q=(ERF(rho)-2*rho*e/SQRT(pi))/(4*pi);
-      a=q/(r2*radius); b=3*q/(r2*r2*radius)-pi15*e/(tau*tau*tau*r2);
-    }
-    value+=derivative<0 ? -a*r[axis] : b*r[axis]*r[derivative]-(axis==derivative?a:0);
+"""
+    + _GAUSSIAN_RADIAL_CUDA
+    + r"""    value+=derivative<0 ? -a*r[axis] : b*r[axis]*r[derivative]-(axis==derivative?a:0);
   }
   kernel[lane]=value;
 }
@@ -129,15 +144,12 @@ extern "C" __global__ void gather(
   }
   output[12*(long long)target+component]=(real)value;
 }
-'''
+"""
+)
 
 
-_FUSED_CUDA = r'''
-extern "C" __global__ void gaussian_kernel_fused(
-    const long long volume, const int nx,const int ny,const int nz,
-    const int fx,const int fy,const int fz, const real hx,const real hy,const real hz,
-    const long long *shifts,const int images,const real tau,real *kernel) {
-  long long lane=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+_GAUSSIAN_CHANNEL_BODY = (
+    r"""  long long lane=(long long)blockIdx.x*blockDim.x+threadIdx.x;
   if(lane>=volume) return;
   int iz=lane%fz, iy=(lane/fz)%fy, ix=lane/((long long)fy*fz);
   real values[9]={0,0,0,0,0,0,0,0,0};
@@ -148,31 +160,41 @@ extern "C" __global__ void gaussian_kernel_fused(
     for(int image=0;image<images;++image) {
       real r[3]={(real)lx*hx,(real)ly*hy,(real)((long long)lz-shifts[image])*hz};
       real r2=r[0]*r[0]+r[1]*r[1]+r[2]*r[2], rho2=r2/(tau*tau), a,b;
-      if(rho2<(real)1) {
-        real term=1,sa=0,sb=0;
-        for(int n=0;n<24;++n) {
-          sa+=term/(real)(2*n+3); sb+=2*term/(real)(2*n+5);
-          term*=(-rho2)/(real)(n+1);
-        }
-        a=pi15*sa/(tau*tau*tau); b=pi15*sb/(tau*tau*tau*tau*tau);
-      } else {
-        real radius=SQRT(r2),rho=radius/tau,e=EXP(-rho2);
-        real q=(ERF(rho)-2*rho*e/SQRT(pi))/(4*pi);
-        a=q/(r2*radius); b=3*q/(r2*r2*radius)-pi15*e/(tau*tau*tau*r2);
-      }
-      values[0]+=-a*r[0]; values[1]+=-a*r[1]; values[2]+=-a*r[2];
+"""
+    + _GAUSSIAN_RADIAL_CUDA
+    + r"""      values[0]+=-a*r[0]; values[1]+=-a*r[1]; values[2]+=-a*r[2];
       values[3]+=b*r[0]*r[0]-a;
       values[4]+=b*r[0]*r[1]; values[5]+=b*r[0]*r[2];
       values[6]+=b*r[1]*r[1]-a;
       values[7]+=b*r[1]*r[2]; values[8]+=b*r[2]*r[2]-a;
     }
   }
-  for(int channel=0;channel<9;++channel) kernel[channel*volume+lane]=values[channel];
-}
-'''
+"""
+)
 
 
-_STREAM_CUDA = r'''
+def _gaussian_channel_kernel(name, *, batch):
+    arguments = "const int *channels,const int channel_count," if batch else ""
+    publication = (
+        "  for(int slot=0;slot<channel_count;++slot) kernel[slot*volume+lane]=values[channels[slot]];\n"
+        if batch
+        else "  for(int channel=0;channel<9;++channel) kernel[channel*volume+lane]=values[channel];\n"
+    )
+    return (
+        f'extern "C" __global__ void {name}(\n'
+        "    const long long volume, const int nx,const int ny,const int nz,\n"
+        "    const int fx,const int fy,const int fz, const real hx,const real hy,const real hz,\n"
+        f"    const long long *shifts,const int images,const real tau,{arguments}real *kernel) {{\n"
+        + _GAUSSIAN_CHANNEL_BODY
+        + publication
+        + "}\n"
+    )
+
+
+_FUSED_CUDA = _gaussian_channel_kernel("gaussian_kernel_fused", batch=False)
+
+
+_STREAM_CUDA = r"""
 extern "C" __global__ void scatter_component(
     const long long total, const int order, const int *first, const real *weights,
     const real *gamma, const int fy, const int fz, const int component, real *grid) {
@@ -189,23 +211,36 @@ extern "C" __global__ void scatter_component(
   long long index=((long long)(base[0]+a)*fy+base[1]+b)*fz+base[2]+c;
   atomicAdd(grid+index, factor*gamma[3*particle+component]);
 }
-'''
+"""
 
 
-# Share the exact same radial arithmetic with the full fused kernel. Only
-# publication selects a bounded channel subset; no different approximation
-# or per-channel transcendental evaluation is introduced.
-_BATCH_CUDA = (_FUSED_CUDA
-    .replace("gaussian_kernel_fused", "gaussian_kernel_batch")
-    .replace("const real tau,real *kernel", "const real tau,const int *channels,const int channel_count,real *kernel")
-    .replace("for(int channel=0;channel<9;++channel) kernel[channel*volume+lane]=values[channel];",
-             "for(int slot=0;slot<channel_count;++slot) kernel[slot*volume+lane]=values[channels[slot]];"))
+_BATCH_CUDA = _gaussian_channel_kernel("gaussian_kernel_batch", batch=True)
+
+
+def _cuda_source(dtype):
+    scalar = "float" if dtype == "float32" else "double"
+    suffix = "f" if dtype == "float32" else ""
+    definitions = (
+        f"#define REAL {scalar}\n"
+        f"#define SQRT sqrt{suffix}\n"
+        f"#define EXP exp{suffix}\n"
+        f"#define ERF erf{suffix}\n"
+    )
+    return definitions + _CUDA + _FUSED_CUDA + _STREAM_CUDA + _BATCH_CUDA
 
 
 # Each pair is (gradient axis, differentiation axis); -1 denotes velocity.
-_CHANNEL_COMPONENTS = (((0, -1),), ((1, -1),), ((2, -1),),
-                       ((0, 0),), ((0, 1), (1, 0)), ((0, 2), (2, 0)),
-                       ((1, 1),), ((1, 2), (2, 1)), ((2, 2),))
+_CHANNEL_COMPONENTS = (
+    ((0, -1),),
+    ((1, -1),),
+    ((2, -1),),
+    ((0, 0),),
+    ((0, 1), (1, 0)),
+    ((0, 2), (2, 0)),
+    ((1, 1),),
+    ((1, 2), (2, 1)),
+    ((2, 2),),
+)
 
 
 def channel_routes(channel):
@@ -216,7 +251,7 @@ def channel_routes(channel):
             if axis in (a, b):
                 source = b if axis == a else a
                 sign = 1 if axis == a else -1
-                column = component if derivative < 0 else 3+3*component+derivative
+                column = component if derivative < 0 else 3 + 3 * component + derivative
                 routes.append((column, source, sign))
     return tuple(routes)
 
@@ -233,12 +268,30 @@ class GaussianImageFields:
     Dimensional tau, spacing and cutoff are deliberately explicit here.
     """
 
-    def __init__(self, source_x, source_gamma, source_sigma, initial_targets, *,
-                 zmin, zmax, tau, spacing, cutoff, order=10, dtype="float32",
-                 correction_dtype="float32", max_scratch_bytes=2*1024**3,
-                 max_correction_bytes=256*1024**2, max_plan_bytes=128*1024**2,
-                 max_total_bytes=2304*1024**2, max_images=513,
-                 max_query_points=1_000_000, source_only_primary=False, profile=False):
+    def __init__(
+        self,
+        source_x,
+        source_gamma,
+        source_sigma,
+        initial_targets,
+        *,
+        zmin,
+        zmax,
+        tau,
+        spacing,
+        cutoff,
+        order=10,
+        dtype="float32",
+        correction_dtype="float32",
+        max_scratch_bytes=2 * 1024**3,
+        max_correction_bytes=256 * 1024**2,
+        max_plan_bytes=128 * 1024**2,
+        max_total_bytes=2304 * 1024**2,
+        max_images=513,
+        max_query_points=1_000_000,
+        source_only_primary=False,
+        profile=False,
+    ):
         self._owner = self._plans = self._correction = None
         self._compact_fields = self._kernel_scratch = self._inverse = None
         self._result_spectra = ()
@@ -258,7 +311,7 @@ class GaussianImageFields:
         self.max_correction_bytes = positive_integer(max_correction_bytes, "max_correction_bytes")
         self.max_plan_bytes = positive_integer(max_plan_bytes, "max_plan_bytes")
         self.max_total_bytes = positive_integer(max_total_bytes, "max_total_bytes")
-        if self.max_scratch_bytes+self.max_correction_bytes > self.max_total_bytes:
+        if self.max_scratch_bytes + self.max_correction_bytes > self.max_total_bytes:
             raise MemoryError("combined array-pool limits exceed total cap")
         if self.max_plan_bytes >= self.max_scratch_bytes:
             raise ValueError("plan reserve must be smaller than smooth pool")
@@ -279,13 +332,17 @@ class GaussianImageFields:
         if hasattr(source_sigma, "__cuda_array_interface__") or np.iscomplexobj(source_sigma):
             raise ValueError("real host source cores required")
         self._host_sigma = self._immutable_snapshot(
-            np.array(source_sigma, dtype=np.float64, copy=True, order="C"))
+            np.array(source_sigma, dtype=np.float64, copy=True, order="C")
+        )
         count = len(self.host_x)
-        if (not 1 <= count <= np.iinfo(np.int32).max
-                or self.host_gamma.shape != self.host_x.shape
-                or self._host_sigma.shape != (count,)
-                or not np.isfinite(self._host_sigma).all()
-                or np.any(self._host_sigma <= 0) or np.any(self._host_sigma > self.tau)):
+        if (
+            not 1 <= count <= np.iinfo(np.int32).max
+            or self.host_gamma.shape != self.host_x.shape
+            or self._host_sigma.shape != (count,)
+            or not np.isfinite(self._host_sigma).all()
+            or np.any(self._host_sigma <= 0)
+            or np.any(self._host_sigma > self.tau)
+        ):
             raise ValueError("matching finite sources and 0<source core<=tau required")
         if not 1 <= len(self.host_targets) <= self.max_query_points:
             raise ValueError("nonempty bounded initial target envelope required")
@@ -296,19 +353,30 @@ class GaussianImageFields:
         reflected = x.copy()
         reflected[:, 2] *= -1
         points = np.concatenate((x, reflected, q))
-        self.origin = np.floor(points.min(axis=0))-order
-        dimensions = np.ceil(points.max(axis=0)-self.origin)+order+1
-        if not np.isfinite(dimensions).all() or np.any(dimensions < 1) or np.any(dimensions > 2**20):
+        self.origin = np.floor(points.min(axis=0)) - order
+        dimensions = np.ceil(points.max(axis=0) - self.origin) + order + 1
+        if (
+            not np.isfinite(dimensions).all()
+            or np.any(dimensions < 1)
+            or np.any(dimensions > 2**20)
+        ):
             raise ValueError("auxiliary logical shape exceeds bounds")
         self.shape = tuple(dimensions.astype(np.int64).tolist())
-        self.fft_shape = tuple(next_fast_len(2*n-1) for n in self.shape)
+        self.fft_shape = tuple(next_fast_len(2 * n - 1) for n in self.shape)
         self.volume = math.prod(self.fft_shape)
-        self.spectrum_shape = (*self.fft_shape[:2], self.fft_shape[2]//2+1)
+        self.spectrum_shape = (*self.fft_shape[:2], self.fft_shape[2] // 2 + 1)
         self.spectrum_count = math.prod(self.spectrum_shape)
-        self.compact_bytes = 12*math.prod(self.shape)*self.dtype.itemsize
+        self.compact_bytes = 12 * math.prod(self.shape) * self.dtype.itemsize
         self.execution_plan = field_execution_plan(
-            self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-            self.max_scratch_bytes, self.max_plan_bytes)
+            self.shape,
+            self.fft_shape,
+            count,
+            len(q),
+            order,
+            self.dtype.itemsize,
+            self.max_scratch_bytes,
+            self.max_plan_bytes,
+        )
         self.estimated_payload_bytes = self.execution_plan.payload_bytes
         started = time.perf_counter()
         try:
@@ -317,36 +385,64 @@ class GaussianImageFields:
             self.stream = self._owner.stream
             free, total = self.cp.cuda.runtime.memGetInfo()
             self.execution_plan, self.effective_smooth_pool_cap = device_field_execution_plan(
-                self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-                self.max_scratch_bytes, self.max_plan_bytes, self.max_correction_bytes, int(free))
+                self.shape,
+                self.fft_shape,
+                count,
+                len(q),
+                order,
+                self.dtype.itemsize,
+                self.max_scratch_bytes,
+                self.max_plan_bytes,
+                self.max_correction_bytes,
+                int(free),
+            )
             self.estimated_payload_bytes = self.execution_plan.payload_bytes
             self.pool.set_limit(size=self.effective_smooth_pool_cap)
-            self.device_admission = {"free_device_bytes": int(free), "total_device_bytes": int(total),
-                                     "configured_smooth_pool_cap": self.max_scratch_bytes,
-                                     "effective_smooth_pool_cap": self.effective_smooth_pool_cap,
-                                     "correction_reserve_bytes": self.max_correction_bytes}
-            code = (_CUDA+_FUSED_CUDA+_STREAM_CUDA+_BATCH_CUDA).replace("REAL", "float" if dtype == "float32" else "double")
-            for name in ("SQRT", "EXP", "ERF"):
-                code = code.replace(name, name.lower()+("f" if dtype == "float32" else ""))
+            self.device_admission = {
+                "free_device_bytes": int(free),
+                "total_device_bytes": int(total),
+                "configured_smooth_pool_cap": self.max_scratch_bytes,
+                "effective_smooth_pool_cap": self.effective_smooth_pool_cap,
+                "correction_reserve_bytes": self.max_correction_bytes,
+            }
+            code = _cuda_source(dtype)
             self._program = self.cp.RawModule(code=code, options=("--std=c++11",), backend="nvrtc")
             for odd, points in ((False, x), (True, reflected)):
                 first, weights, _ = cardinal_stencil_gpu(
-                    points, self.origin, order, self.shape, dtype=self.dtype, pool=self.pool,
-                    max_points=count, max_new_bytes=self.max_scratch_bytes)
+                    points,
+                    self.origin,
+                    order,
+                    self.shape,
+                    dtype=self.dtype,
+                    pool=self.pool,
+                    max_points=count,
+                    max_new_bytes=self.max_scratch_bytes,
+                )
                 self._source_stencils[odd] = first, weights
             self._correction = GaussianCoreCorrectionGPU(
-                self.host_x, self.host_gamma, self._host_sigma, tau=tau, cutoff=cutoff,
-                accumulation_dtype=correction_dtype, max_scratch_bytes=self.max_correction_bytes,
-                max_images=self.max_images)
+                self.host_x,
+                self.host_gamma,
+                self._host_sigma,
+                tau=tau,
+                cutoff=cutoff,
+                accumulation_dtype=correction_dtype,
+                max_scratch_bytes=self.max_correction_bytes,
+                max_images=self.max_images,
+            )
         except BaseException as error:
             try:
                 self.close()
             except BaseException as cleanup_error:
-                error.add_note(f"Gaussian field construction cleanup also failed: {cleanup_error!r}")
+                error.add_note(
+                    f"Gaussian field construction cleanup also failed: {cleanup_error!r}"
+                )
                 raise error from cleanup_error
             raise
-        self.initial_diagnostics = {"setup_seconds": time.perf_counter()-started,
-                                    "runtime_admissible": False, "tail_certified": False}
+        self.initial_diagnostics = {
+            "setup_seconds": time.perf_counter() - started,
+            "runtime_admissible": False,
+            "tail_certified": False,
+        }
 
     @staticmethod
     def _immutable_snapshot(array):
@@ -368,8 +464,8 @@ class GaussianImageFields:
         # The CUDA kernel casts the DIFFERENCE lz-shift, not shift alone.
         # Signed logical convolution lags span [-(nz-1), nz-1]. Check its
         # entire range before the cast so every integer remains representable.
-        exact_limit = 2**(24 if self.dtype == np.dtype("float32") else 53)
-        if any(abs(shift)+self.shape[2]-1 > exact_limit for shift, _ in integer):
+        exact_limit = 2 ** (24 if self.dtype == np.dtype("float32") else 53)
+        if any(abs(shift) + self.shape[2] - 1 > exact_limit for shift, _ in integer):
             raise ValueError("image lags exceed exact kernel-coordinate qualification")
 
     def _admit(self):
@@ -391,8 +487,14 @@ class GaussianImageFields:
         self._admit()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
-        _, world, _ = finite_images(self._prepared_images, self.zmin, self.zmax, self.cells,
-                                    self.max_images, include_primary=self.source_only_primary)
+        _, world, _ = finite_images(
+            self._prepared_images,
+            self.zmin,
+            self.zmax,
+            self.cells,
+            self.max_images,
+            include_primary=self.source_only_primary,
+        )
         if world != self._prepared_world_images:
             raise RuntimeError("prepared Gaussian field image descriptors changed")
         if hasattr(targets, "__cuda_array_interface__"):
@@ -400,8 +502,12 @@ class GaussianImageFields:
         if np.iscomplexobj(targets):
             raise ValueError("real target coordinates required")
         query = np.asarray(targets, dtype=np.float64)
-        if (query.ndim != 2 or query.shape[1:] != (3,) or len(query) > self.max_query_points
-                or not np.isfinite(query).all()):
+        if (
+            query.ndim != 2
+            or query.shape[1:] != (3,)
+            or len(query) > self.max_query_points
+            or not np.isfinite(query).all()
+        ):
             raise ValueError("bounded finite targets (N,3) required")
         lattice, _, _ = slab_coordinates(query, self.zmin, self.zmax, float(self.steps[0]))
         return _logical_stencils_fit(lattice, self.origin, self.order, self.shape, self.fft_shape)
@@ -417,11 +523,11 @@ class GaussianImageFields:
             yield
         finally:
             self.stream.synchronize()
-            diagnostics.setdefault("passes", {}).setdefault(name, 0.)
-            diagnostics["passes"][name] += time.perf_counter()-started
+            diagnostics.setdefault("passes", {}).setdefault(name, 0.0)
+            diagnostics["passes"][name] += time.perf_counter() - started
 
     def _launch(self, name, count, arguments):
-        self._program.get_function(name)(((count+255)//256,), (256,), arguments)
+        self._program.get_function(name)(((count + 255) // 256,), (256,), arguments)
 
     def _prepare_family(self, odd, diagnostics):
         if odd in self.spectra:
@@ -434,8 +540,15 @@ class GaussianImageFields:
                 if odd:
                     points[:, 2] *= -1
                 first, weights, _ = cardinal_stencil_gpu(
-                    points, self.origin, self.order, self.shape, dtype=self.dtype, pool=self.pool,
-                    max_points=len(points), max_new_bytes=self.max_scratch_bytes)
+                    points,
+                    self.origin,
+                    self.order,
+                    self.shape,
+                    dtype=self.dtype,
+                    pool=self.pool,
+                    max_points=len(points),
+                    max_new_bytes=self.max_scratch_bytes,
+                )
                 self._source_stencils[odd] = first, weights
             first, weights = self._source_stencils[odd]
             strengths = self.host_gamma.copy()
@@ -451,22 +564,48 @@ class GaussianImageFields:
                     # radial grids instead of adding an unbudgeted 3V peak.
                     grid = self._kernel_scratch[:3]
                     grid.fill(0)
-                self._launch("scatter", len(first)*self.order**3, (
-                    np.int64(len(first)*self.order**3), np.int32(self.order), first, weights, gamma,
-                    np.int32(self.fft_shape[1]), np.int32(self.fft_shape[2]), np.int64(self.volume), grid))
-                self.spectra[odd] = tuple(self._plans.rfft(grid[c], aligned_scratch=self._inverse)
-                                         for c in range(3))
+                self._launch(
+                    "scatter",
+                    len(first) * self.order**3,
+                    (
+                        np.int64(len(first) * self.order**3),
+                        np.int32(self.order),
+                        first,
+                        weights,
+                        gamma,
+                        np.int32(self.fft_shape[1]),
+                        np.int32(self.fft_shape[2]),
+                        np.int64(self.volume),
+                        grid,
+                    ),
+                )
+                self.spectra[odd] = tuple(
+                    self._plans.rfft(grid[c], aligned_scratch=self._inverse) for c in range(3)
+                )
             else:
                 if self._kernel_scratch is None:
                     self._kernel_scratch = self.cp.empty(
-                        (self.execution_plan.kernel_channels, *self.fft_shape), dtype=self.dtype)
+                        (self.execution_plan.kernel_channels, *self.fft_shape), dtype=self.dtype
+                    )
                 grid = self._kernel_scratch[0]
                 spectra = []
                 for component in range(3):
                     grid.fill(0)
-                    self._launch("scatter_component", len(first)*self.order**3, (
-                        np.int64(len(first)*self.order**3), np.int32(self.order), first, weights, gamma,
-                        np.int32(self.fft_shape[1]), np.int32(self.fft_shape[2]), np.int32(component), grid))
+                    self._launch(
+                        "scatter_component",
+                        len(first) * self.order**3,
+                        (
+                            np.int64(len(first) * self.order**3),
+                            np.int32(self.order),
+                            first,
+                            weights,
+                            gamma,
+                            np.int32(self.fft_shape[1]),
+                            np.int32(self.fft_shape[2]),
+                            np.int32(component),
+                            grid,
+                        ),
+                    )
                     spectra.append(self._plans.rfft(grid, aligned_scratch=self._inverse))
                 self.spectra[odd] = tuple(spectra)
             del first, weights, gamma, grid
@@ -484,10 +623,14 @@ class GaussianImageFields:
         one_family = self.execution_plan.source_families == 1
         if one_family:
             self._compact_fields.fill(0)
-        outer_families = [((odd, shifts),) for odd, shifts in families.items()] if one_family else [tuple(families.items())]
+        outer_families = (
+            [((odd, shifts),) for odd, shifts in families.items()]
+            if one_family
+            else [tuple(families.items())]
+        )
         for active in outer_families:
             for first in range(0, 12, batch):
-                columns = tuple(range(first, min(first+batch, 12)))
+                columns = tuple(range(first, min(first + batch, 12)))
                 for spectrum in self._result_spectra:
                     spectrum.fill(0)
                 for odd, shifts in active:
@@ -495,25 +638,47 @@ class GaussianImageFields:
                     needed = required_channels(columns)
                     capacity = self.execution_plan.kernel_channels
                     for start in range(0, len(needed), capacity):
-                        selected = needed[start:start+capacity]
+                        selected = needed[start : start + capacity]
                         device_channels = cp.asarray(selected, dtype=cp.int32)
                         with self._phase(diagnostics, "streamed_kernel_build"):
-                            self._launch("gaussian_kernel_batch", self.volume, (np.int64(self.volume),
-                                *(np.int32(n) for n in self.shape), *(np.int32(n) for n in self.fft_shape),
-                                *(self.real_type(h) for h in self.steps), shifts, np.int32(len(shifts)),
-                                self.real_type(self.tau), device_channels, np.int32(len(selected)),
-                                self._kernel_scratch))
+                            self._launch(
+                                "gaussian_kernel_batch",
+                                self.volume,
+                                (
+                                    np.int64(self.volume),
+                                    *(np.int32(n) for n in self.shape),
+                                    *(np.int32(n) for n in self.fft_shape),
+                                    *(self.real_type(h) for h in self.steps),
+                                    shifts,
+                                    np.int32(len(shifts)),
+                                    self.real_type(self.tau),
+                                    device_channels,
+                                    np.int32(len(selected)),
+                                    self._kernel_scratch,
+                                ),
+                            )
                             diagnostics["radial_kernel_launches"] += 1
                         for slot, channel in enumerate(selected):
                             with self._phase(diagnostics, "kernel_fft"):
-                                kernel_hat = self._plans.rfft(self._kernel_scratch[slot],
-                                                             aligned_scratch=self._inverse)
+                                kernel_hat = self._plans.rfft(
+                                    self._kernel_scratch[slot], aligned_scratch=self._inverse
+                                )
                                 diagnostics["kernel_forward_transforms"] += 1
-                            routes = [route for route in channel_routes(channel) if route[0] in columns]
+                            routes = [
+                                route for route in channel_routes(channel) if route[0] in columns
+                            ]
                             for column, source, sign in routes:
-                                self._launch("product_add", self.spectrum_count,
-                                    (np.int64(self.spectrum_count), kernel_hat, self.spectra[odd][source],
-                                     self.real_type(sign), self._result_spectra[column-first]))
+                                self._launch(
+                                    "product_add",
+                                    self.spectrum_count,
+                                    (
+                                        np.int64(self.spectrum_count),
+                                        kernel_hat,
+                                        self.spectra[odd][source],
+                                        self.real_type(sign),
+                                        self._result_spectra[column - first],
+                                    ),
+                                )
                             del kernel_hat
                         del device_channels
                 for index, column in enumerate(columns):
@@ -534,10 +699,20 @@ class GaussianImageFields:
         for odd, shifts in families.items():
             with self._phase(diagnostics, "fused_kernel_build"):
                 kernels = self._kernel_scratch
-                self._launch("gaussian_kernel_fused", self.volume, (np.int64(self.volume),
-                    *(np.int32(n) for n in self.shape), *(np.int32(n) for n in self.fft_shape),
-                    *(self.real_type(h) for h in self.steps), shifts, np.int32(len(shifts)),
-                    self.real_type(self.tau), kernels))
+                self._launch(
+                    "gaussian_kernel_fused",
+                    self.volume,
+                    (
+                        np.int64(self.volume),
+                        *(np.int32(n) for n in self.shape),
+                        *(np.int32(n) for n in self.fft_shape),
+                        *(self.real_type(h) for h in self.steps),
+                        shifts,
+                        np.int32(len(shifts)),
+                        self.real_type(self.tau),
+                        kernels,
+                    ),
+                )
                 diagnostics["radial_kernel_launches"] += 1
             for channel in range(9):
                 with self._phase(diagnostics, "kernel_fft"):
@@ -545,9 +720,17 @@ class GaussianImageFields:
                     diagnostics["kernel_forward_transforms"] += 1
                 with self._phase(diagnostics, "spectral_product"):
                     for column, source, sign in channel_routes(channel):
-                        self._launch("product_add", self.spectrum_count,
-                            (np.int64(self.spectrum_count), kernel_hat, self.spectra[odd][source],
-                             self.real_type(sign), result_hat[column]))
+                        self._launch(
+                            "product_add",
+                            self.spectrum_count,
+                            (
+                                np.int64(self.spectrum_count),
+                                kernel_hat,
+                                self.spectra[odd][source],
+                                self.real_type(sign),
+                                result_hat[column],
+                            ),
+                        )
                     del kernel_hat
         for column in range(12):
             with self._phase(diagnostics, "inverse_fft_and_gather"):
@@ -561,23 +744,44 @@ class GaussianImageFields:
         self._admit()
         cp = self.cp
         self._prepared_images = self._prepared_world_images = None
-        descriptors, world, integer = finite_images(images, self.zmin, self.zmax, self.cells,
-                                                    self.max_images, include_primary=self.source_only_primary)
+        descriptors, world, integer = finite_images(
+            images,
+            self.zmin,
+            self.zmax,
+            self.cells,
+            self.max_images,
+            include_primary=self.source_only_primary,
+        )
         self._admit_integer_images(integer)
-        diagnostics = {"runtime_admissible": False, "dtype": self.dtype.name,
-                       "variant": "fused-nine-radial-channels", "finite_image_count": len(integer),
-                       "world_images": world, "integer_images": integer, "shape": self.shape,
-                       "fft_shape": self.fft_shape, "spacing": self.steps.tolist(),
-                       "estimated_payload_bytes": self.estimated_payload_bytes, "passes": {},
-                       "inverse_transforms": 0, "kernel_forward_transforms": 0,
-                       "radial_kernel_launches": 0, "core_correction_included": False}
+        diagnostics = {
+            "runtime_admissible": False,
+            "dtype": self.dtype.name,
+            "variant": "fused-nine-radial-channels",
+            "finite_image_count": len(integer),
+            "world_images": world,
+            "integer_images": integer,
+            "shape": self.shape,
+            "fft_shape": self.fft_shape,
+            "spacing": self.steps.tolist(),
+            "estimated_payload_bytes": self.estimated_payload_bytes,
+            "passes": {},
+            "inverse_transforms": 0,
+            "kernel_forward_transforms": 0,
+            "radial_kernel_launches": 0,
+            "core_correction_included": False,
+        }
         diagnostics["execution_plan"] = vars(self.execution_plan).copy()
         diagnostics["device_admission"] = self.device_admission.copy()
         started = time.perf_counter()
         with self._owner.allocation_scope():
             if self._plans is None:
-                self._plans = FFTPlanPair(self._owner, self.fft_shape, self.dtype, self.max_plan_bytes,
-                                         single_workspace=self.execution_plan.mode == "streamed")
+                self._plans = FFTPlanPair(
+                    self._owner,
+                    self.fft_shape,
+                    self.dtype,
+                    self.max_plan_bytes,
+                    single_workspace=self.execution_plan.mode == "streamed",
+                )
             alignment_before = (self._plans.alignment_copies, self._plans.alignment_copy_bytes)
             # This real grid was already included in every execution plan.
             # Allocate it before family FFTs as well: both three-component
@@ -598,10 +802,14 @@ class GaussianImageFields:
             # These buffers are never returned to callers; output owns its
             # allocation and remains valid after later evaluations.
             if self._kernel_scratch is None:
-                self._kernel_scratch = cp.empty((self.execution_plan.kernel_channels, *self.fft_shape), dtype=self.dtype)
+                self._kernel_scratch = cp.empty(
+                    (self.execution_plan.kernel_channels, *self.fft_shape), dtype=self.dtype
+                )
             if not self._result_spectra:
-                self._result_spectra = tuple(cp.empty(self.spectrum_shape, dtype=self.complex_type)
-                                             for _ in range(self.execution_plan.output_batch))
+                self._result_spectra = tuple(
+                    cp.empty(self.spectrum_shape, dtype=self.complex_type)
+                    for _ in range(self.execution_plan.output_batch)
+                )
             if self._compact_fields is None:
                 self._compact_fields = cp.empty((12, *self.shape), dtype=self.dtype)
             if self.execution_plan.mode == "all_channels":
@@ -612,14 +820,19 @@ class GaussianImageFields:
             if not bool(cp.isfinite(self._compact_fields).all()):
                 raise FloatingPointError("nonfinite fused smooth GPU output; nothing published")
             free, total = cp.cuda.runtime.memGetInfo()
-            diagnostics.update(seconds=time.perf_counter()-started, pool_used_bytes=self.pool.used_bytes(),
-                               pool_reserved_bytes=self.pool.total_bytes(), plan_bytes=self._plans.work_bytes,
-                               plan_peak_work_bytes=self._plans.peak_work_bytes,
-                               plan_builds=self._plans.plan_builds,
-                               plan_build_seconds=self._plans.plan_build_seconds,
-                               fft_alignment_copies=self._plans.alignment_copies-alignment_before[0],
-                               fft_alignment_copy_bytes=self._plans.alignment_copy_bytes-alignment_before[1],
-                               device_free_bytes=free, device_total_bytes=total)
+            diagnostics.update(
+                seconds=time.perf_counter() - started,
+                pool_used_bytes=self.pool.used_bytes(),
+                pool_reserved_bytes=self.pool.total_bytes(),
+                plan_bytes=self._plans.work_bytes,
+                plan_peak_work_bytes=self._plans.peak_work_bytes,
+                plan_builds=self._plans.plan_builds,
+                plan_build_seconds=self._plans.plan_build_seconds,
+                fft_alignment_copies=self._plans.alignment_copies - alignment_before[0],
+                fft_alignment_copy_bytes=self._plans.alignment_copy_bytes - alignment_before[1],
+                device_free_bytes=free,
+                device_total_bytes=total,
+            )
             self._prepared_images, self._prepared_world_images = descriptors, world
             diagnostics.update(tail_certified=False, compact_bytes=self.compact_bytes)
             return diagnostics
@@ -645,39 +858,65 @@ class GaussianImageFields:
         started = time.perf_counter()
         free, _ = self.cp.cuda.runtime.memGetInfo()
         batch = query_batch_size(
-            len(q), self.order, self.dtype.itemsize, self._correction.dtype.itemsize,
-            smooth_cap=self.pool.get_limit(), smooth_used=self.pool.used_bytes(),
+            len(q),
+            self.order,
+            self.dtype.itemsize,
+            self._correction.dtype.itemsize,
+            smooth_cap=self.pool.get_limit(),
+            smooth_used=self.pool.used_bytes(),
             correction_cap=self._correction.pool.get_limit(),
             correction_used=self._correction.pool.used_bytes(),
-            device_available=int(free)+self.pool.free_bytes()+self._correction.pool.free_bytes())
+            device_available=int(free)
+            + self.pool.free_bytes()
+            + self._correction.pool.free_bytes(),
+        )
         with self._owner.allocation_scope():
             output = self.cp.empty((len(q), 12), dtype=self.dtype)
-            gather_seconds, batches, retries, first_target = 0., 0, 0, 0
+            gather_seconds, batches, retries, first_target = 0.0, 0, 0, 0
             stencil, correction = None, None
             evaluated_images = set()
             try:
                 while first_target < len(q):
-                    count = min(batch, len(q)-first_target)
-                    last_target = first_target+count
+                    count = min(batch, len(q) - first_target)
+                    last_target = first_target + count
                     chunk = output[first_target:last_target]
                     first = weight = correction_u = correction_j = None
                     retry = False
                     try:
                         first, weight, current_stencil = cardinal_stencil_gpu(
-                            lattice[first_target:last_target], self.origin, self.order, self.shape,
-                            dtype=self.dtype, pool=self.pool, max_points=count,
-                            max_new_bytes=self.max_scratch_bytes)
+                            lattice[first_target:last_target],
+                            self.origin,
+                            self.order,
+                            self.shape,
+                            dtype=self.dtype,
+                            pool=self.pool,
+                            max_points=count,
+                            max_new_bytes=self.max_scratch_bytes,
+                        )
                         gather_started = time.perf_counter()
                         for column in range(12):
-                            self._launch("gather", count, (np.int32(count), np.int32(self.order),
-                                first, weight, np.int32(self.shape[1]), np.int32(self.shape[2]),
-                                self._compact_fields[column], np.int32(column), chunk))
+                            self._launch(
+                                "gather",
+                                count,
+                                (
+                                    np.int32(count),
+                                    np.int32(self.order),
+                                    first,
+                                    weight,
+                                    np.int32(self.shape[1]),
+                                    np.int32(self.shape[2]),
+                                    self._compact_fields[column],
+                                    np.int32(column),
+                                    chunk,
+                                ),
+                            )
                         self.stream.synchronize()
-                        current_gather_seconds = time.perf_counter()-gather_started
+                        current_gather_seconds = time.perf_counter() - gather_started
                         # Stencils and corrections do not need to coexist.
                         first = weight = None
                         correction_u, correction_j, current_correction = self._correction.evaluate(
-                            q[first_target:last_target], self._prepared_world_images)
+                            q[first_target:last_target], self._prepared_world_images
+                        )
                         chunk[:, :3] += correction_u
                         chunk[:, 3:] += correction_j.reshape(-1, 9)
                         correction_u = correction_j = None
@@ -691,7 +930,7 @@ class GaussianImageFields:
                         # despite scalar admission. Retry this unpublished
                         # chunk after reducing only its execution batch. Every
                         # gather overwrites all columns before correction.
-                        batch, retry = max(1, count//2), True
+                        batch, retry = max(1, count // 2), True
                         retries += 1
                     finally:
                         first = weight = correction_u = correction_j = None
@@ -708,20 +947,29 @@ class GaussianImageFields:
                         stencil.update(point_count=len(q), max_batch_points=count)
                     else:
                         stencil["max_batch_points"] = max(stencil["max_batch_points"], count)
-                        for name in ("copy_seconds", "kernel_and_admission_seconds", "wall_seconds"):
+                        for name in (
+                            "copy_seconds",
+                            "kernel_and_admission_seconds",
+                            "wall_seconds",
+                        ):
                             stencil[name] += current_stencil[name]
                         stencil["declared_new_bytes"] = max(
-                            stencil["declared_new_bytes"], current_stencil["declared_new_bytes"])
+                            stencil["declared_new_bytes"], current_stencil["declared_new_bytes"]
+                        )
                     if correction is None:
                         correction = current_correction.copy()
-                        correction.update(target_count=len(q), candidate_pairs=0,
-                                          accepted_pairs=0, query_seconds=0.)
+                        correction.update(
+                            target_count=len(q),
+                            candidate_pairs=0,
+                            accepted_pairs=0,
+                            query_seconds=0.0,
+                        )
                     for name in ("candidate_pairs", "accepted_pairs", "query_seconds"):
                         correction[name] += current_correction[name]
                     for name in ("pool_high_water_bytes", "pool_reserved_bytes", "pool_used_bytes"):
                         correction[name] = max(correction[name], current_correction[name])
                     evaluated_images.update(current_correction["evaluated_images"])
-                    first_target, batches = last_target, batches+1
+                    first_target, batches = last_target, batches + 1
             except ValueError:
                 # Rejected target stencils never mutate the prepared fields;
                 # any partial query output is private and is not published.
@@ -734,30 +982,47 @@ class GaussianImageFields:
             if correction is None:
                 # Empty queries keep the usual diagnostic shape without
                 # allocating coordinate/stencil or correction workspaces.
-                correction = {**self._correction.diagnostics, "target_count": 0,
-                              "images": self._prepared_world_images, "candidate_pairs": 0,
-                              "accepted_pairs": 0, "query_seconds": 0.}
+                correction = {
+                    **self._correction.diagnostics,
+                    "target_count": 0,
+                    "images": self._prepared_world_images,
+                    "candidate_pairs": 0,
+                    "accepted_pairs": 0,
+                    "query_seconds": 0.0,
+                }
                 stencil = {"point_count": 0, "max_batch_points": 0, "declared_new_bytes": 0}
-            correction["evaluated_images"] = [image for image in correction["images"]
-                                               if image in evaluated_images]
-            correction["aabb_skipped_images"] = [image for image in correction["images"]
-                                                  if image not in evaluated_images]
+            correction["evaluated_images"] = [
+                image for image in correction["images"] if image in evaluated_images
+            ]
+            correction["aabb_skipped_images"] = [
+                image for image in correction["images"] if image not in evaluated_images
+            ]
             correction["query_batches"] = batches
-            return output[:, :3], output[:, 3:].reshape(-1, 3, 3), {
-                "runtime_admissible": False, "tail_certified": False,
-                "core_correction_included": True,
-                "source_replaced": False, "target_count": len(q),
-                "finite_image_count": len(self._prepared_images),
-                "compact_bytes": self.compact_bytes, "stencil": stencil,
-                "gather_seconds": gather_seconds, "correction": correction,
-                "query_seconds": time.perf_counter()-started,
-                "query_batches": batches, "query_batch_size": batch,
-                "query_allocation_retries": retries,
-                "inverse_transforms": 0, "source_scatters": 0,
-                "smooth_pool_reserved_bytes": self.pool.total_bytes(),
-                "correction_pool_reserved_bytes": self._correction.pool.total_bytes(),
-                "combined_pool_cap": self.max_total_bytes,
-            }
+            return (
+                output[:, :3],
+                output[:, 3:].reshape(-1, 3, 3),
+                {
+                    "runtime_admissible": False,
+                    "tail_certified": False,
+                    "core_correction_included": True,
+                    "source_replaced": False,
+                    "target_count": len(q),
+                    "finite_image_count": len(self._prepared_images),
+                    "compact_bytes": self.compact_bytes,
+                    "stencil": stencil,
+                    "gather_seconds": gather_seconds,
+                    "correction": correction,
+                    "query_seconds": time.perf_counter() - started,
+                    "query_batches": batches,
+                    "query_batch_size": batch,
+                    "query_allocation_retries": retries,
+                    "inverse_transforms": 0,
+                    "source_scatters": 0,
+                    "smooth_pool_reserved_bytes": self.pool.total_bytes(),
+                    "correction_pool_reserved_bytes": self._correction.pool.total_bytes(),
+                    "combined_pool_cap": self.max_total_bytes,
+                },
+            )
 
     def evaluate(self, images):
         """Initial queries, INCLUDING source-only local core correction."""
@@ -766,7 +1031,9 @@ class GaussianImageFields:
 
     def close(self):
         if self._cleanup_failure is not None:
-            raise RuntimeError("Gaussian field GPU cleanup remains uncertain") from self._cleanup_failure
+            raise RuntimeError(
+                "Gaussian field GPU cleanup remains uncertain"
+            ) from self._cleanup_failure
         if self.closed:
             return
         if self._owner is None:

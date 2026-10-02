@@ -16,9 +16,10 @@ _INTERPOLATION_BATCH_SIZE = 100_000
 
 @njit(cache=True, fastmath=False)
 def _sample_velocity(position, cell_centre, velocity, gradient, indices, weights, sampled):
-    """Accumulate donor Taylor values without materializing gathered gradients."""
+    """Interpolate donor differences so a uniform velocity is preserved exactly."""
     for row in range(len(position)):
         for component in range(3):
+            reference = velocity[indices[row, 0], component]
             value = 0.0
             for neighbour in range(indices.shape[1]):
                 weight = weights[row, neighbour]
@@ -30,8 +31,8 @@ def _sample_velocity(position, cell_centre, velocity, gradient, indices, weights
                     increment += (position[row, axis] - cell_centre[donor, axis]) * gradient[
                         donor, axis, component
                     ]
-                value += weight * (velocity[donor, component] + increment)
-            sampled[row, component] = value
+                value += weight * (velocity[donor, component] - reference + increment)
+            sampled[row, component] = reference + value
 
 
 @dataclass(frozen=True)
@@ -363,47 +364,6 @@ class FVMVelocityInterpolator:
                 indices[start:stop],
                 weights[start:stop],
                 sampled[start:stop],
-            )
-        return sampled
-
-    def sample_cell_field(
-        self,
-        evaluation_position: np.ndarray,
-        field: np.ndarray,
-    ) -> np.ndarray:
-        """Interpolate a cell-centred vector field without donor gradients.
-
-        Parameters
-        ----------
-        evaluation_position : ndarray, shape (N, 3)
-            Cartesian target positions in m.
-        field : ndarray, shape (M, 3)
-            Donor vector values. Units are preserved in the output.
-        Returns
-        -------
-        ndarray, shape (N, 3)
-            New ``float64`` interpolated field in the donor field's units.
-
-        Notes
-        -----
-        Constant fields are reproduced exactly. The donor value is taken as it
-        stands, so a field the FVM already differentiated is not differentiated
-        a second time on the coupling lattice. Inputs are not modified.
-        """
-        evaluation_position = np.ascontiguousarray(evaluation_position, dtype=np.float64).reshape(
-            -1, 3
-        )
-        field = np.asarray(field, dtype=np.float64).reshape(-1, 3)
-        indices, weights = self._stencil(evaluation_position)
-        sampled = np.empty((len(evaluation_position), 3), dtype=np.float64)
-
-        for start in range(0, len(evaluation_position), _INTERPOLATION_BATCH_SIZE):
-            stop = min(start + _INTERPOLATION_BATCH_SIZE, len(evaluation_position))
-            sampled[start:stop] = np.einsum(
-                "mk,mkj->mj",
-                weights[start:stop],
-                field[indices[start:stop]],
-                optimize=True,
             )
         return sampled
 

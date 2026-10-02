@@ -11,8 +11,7 @@ import pytest
 @pytest.fixture
 def rig(tmp_path):
     path = (
-        Path(__file__).resolve().parents[2]
-        / "tests/support/cylinder/analyze_interface_traces.py"
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder/analyze_interface_traces.py"
     )
     spec = importlib.util.spec_from_file_location("trace_analysis_asset", path)
     asset = importlib.util.module_from_spec(spec)
@@ -26,7 +25,7 @@ def rig(tmp_path):
         json.dumps(
             {
                 "kind": "openonda.coupled_backup",
-                "format_version": 11,
+                "format_version": 12,
                 "config": config,
                 "config_sha256": asset.mapping_digest(config),
                 "n_fvm_substeps": 5,
@@ -93,7 +92,7 @@ def rig(tmp_path):
             "converged": True,
         }
         metadata = {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "complete",
             "entry_clocks": entry,
             "exit_clocks": exit_clock,
@@ -149,7 +148,6 @@ def _mutate_trace(path, transform):
 
 def _seed_record(asset, path, seed, *, reject=False):
     def transform(metadata, arrays):
-        metadata["schema_version"] = 2
         original = metadata["events"]
 
         def values(event):
@@ -262,20 +260,6 @@ def test_rejected_seed_requires_a_fresh_raw_baseline_trace(rig):
 
     _mutate_trace(paths[0], corrupt)
     with pytest.raises(ValueError, match="seed acceptance/fallback"):
-        asset.load_trace(paths[0], settings)
-
-
-def test_legacy_schema_does_not_silently_admit_a_seed(rig):
-    asset, paths, manifest, _ = rig
-    settings, _ = asset.load_manifest(manifest)
-    current = asset.load_trace(paths[0], settings)
-    _seed_record(asset, paths[0], current["accepted"])
-
-    def legacy(metadata, arrays):
-        metadata["schema_version"] = 1
-
-    _mutate_trace(paths[0], legacy)
-    with pytest.raises(ValueError, match="supported trace provenance"):
         asset.load_trace(paths[0], settings)
 
 

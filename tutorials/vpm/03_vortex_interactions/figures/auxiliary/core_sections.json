@@ -26,7 +26,7 @@
     }
   },
   "generator": "assets/plot_core_sections.py",
-  "generator_sha256": "9e16ecb9b21a12de5f11554f81443db40075305270bb8d94b9ad6da65de88aae",
+  "generator_sha256": "6ff7403e4c9a93be7eda32f775e95537f7d2f444b00f2837a32147ba02272ce2",
   "layout": {
     "rows": 7,
     "columns": 4,
@@ -44,7 +44,10 @@
       6.0,
       7.5,
       9.0
-    ]
+    ],
+    "height_mm": 115,
+    "contour_color": "white",
+    "contour_alpha": 0.55
   },
   "coordinate": "(x - vorticity-weighted section centre) / R0",
   "panels": [
@@ -318,11 +321,11 @@
   "exports": [
     {
       "file": "core_sections.pdf",
-      "sha256": "25c39d7ea8a11488825d7ee6281c49e64885f8565190bc6fcebb7abbc99440c7"
+      "sha256": "0f483bb4207ec4732a2563f274d97c439b73edaa7267138afe254b91c3ae12d5"
     },
     {
       "file": "core_sections.png",
-      "sha256": "0b2c5159ca979a92b6f82537327767d63b7d7d307f1097b496abe2fd64892bd1"
+      "sha256": "5bf4ac581085890558b50dfae339a4738048ce1323c30d3c14dfe2d2d8798501"
     }
   ]
 }

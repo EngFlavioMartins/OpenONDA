@@ -30,10 +30,10 @@ def theme():
 def case_style(name):
     """Return the established label, colour, and marker for one method."""
     label, palette, marker = {
-        "baseline": ("Baseline", "TUDdark", "o"),
-        "selective_eddy_viscosity": ("Selective eddy viscosity", "VPMpurple", "s"),
-        "pedrizzetti_relaxation": ("Pedrizzetti relaxation", "TUDcyan", "D"),
-        "particle_splitting": ("Particle splitting", "AccentGreen", "^"),
+        "baseline": ("Baseline", "dark", "o"),
+        "selective_eddy_viscosity": ("Selective eddy viscosity", "vpm", "s"),
+        "pedrizzetti_relaxation": ("Pedrizzetti relaxation", "teal", "D"),
+        "particle_splitting": ("Particle splitting", "green", "^"),
     }[name]
     return {"label": label, "color": theme().COLORS[palette], "marker": marker}
 
@@ -64,7 +64,8 @@ def comparison_legend(fig, handles, labels=None, *, location="top"):
         loc="upper center" if location == "top" else "lower center",
         bbox_to_anchor=(0.5, 0.99 if location == "top" else 0.02),
         ncol=2,
-        frameon=False,
+        frameon=True,
+        fancybox=True,
         borderaxespad=0,
         handlelength=1.6,
         handletextpad=0.5,

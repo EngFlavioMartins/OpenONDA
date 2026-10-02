@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import shutil
 
 import numpy as np
@@ -41,7 +42,12 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             max_n_particles=50_000,
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
             freestream_velocity=(1.0, 0.0, 0.0),
-            viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
+            viscous=ViscousConfig.gbd(
+                kinematic_viscosity=0.01,
+                particle_spacing=H,
+                threshold=1e-5,
+                threshold_mode="absolute",
+            ),
         )
         return VPMSolver(VPMCase(numerics=numerics, directory=tmp_path)), numerics
 
@@ -137,17 +143,18 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "COUPLED BACKUP" in coupler_log
     backup = sol / "backups"
     manifest = json.loads((backup / "manifest.json").read_text())
-    assert manifest["format_version"] == 11
+    assert manifest["format_version"] == 12
     assert manifest["kind"] == "openonda.coupled_backup"
     assert all((backup / name).is_file() for name in manifest["artifacts"].values())
-    assert manifest["artifacts"] == {
+    assert {name: Path(relative).name for name, relative in manifest["artifacts"].items()} == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
         "vpm_vtu": "vpm_000002.vtu",
         "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
     assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
-    assert not list(backup.glob("*_000001*"))
+    assert len(list(backup.glob("checkpoint-*"))) == 1
+    assert not list(backup.rglob("*_000001*"))
     assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.h5")) == [
         "vpm_000001.h5",
         "vpm_000002.h5",

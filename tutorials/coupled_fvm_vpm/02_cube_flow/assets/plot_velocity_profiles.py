@@ -64,7 +64,7 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     util._THEME.set_thesis_style()
     fig, axes = plt.subplots(3, 1, figsize=util.figure_size(14), dpi=dpi)
     axes[1].sharex(axes[0])
-    util._THEME.centered_subplots_adjust(fig, outer=0.135, bottom=0.105, top=0.957, hspace=0.64)
+    util._THEME.centered_subplots_adjust(fig, outer=0.122, bottom=0.175, top=0.957, hspace=0.66)
     _profile(axes[0], "centreline", time, consts, r"(a) Centreline, $y/D=0$")
     _profile(axes[1], "offaxis_y075", time, consts, r"(b) Off-axis, $y/D=0.75$")
     axes[0].set_xlabel("")
@@ -91,12 +91,17 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     axes[2].xaxis.set_major_locator(MaxNLocator(6))
     axes[2].margins(y=0.08)
     handles, labels = axes[0].get_legend_handles_labels()
-    axes[2].legend(
+    fig.legend(
         handles,
         labels,
-        loc="upper right",
-        ncol=1,
-        frameon=False,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.025),
+        ncol=3,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        facecolor="white",
+        edgecolor="0.8",
         columnspacing=0.8,
         handlelength=1.5,
         handletextpad=0.4,

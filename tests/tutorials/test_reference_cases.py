@@ -64,18 +64,21 @@ def test_cube_reference_owns_geometry_and_uses_explicit_spacing(tmp_path, monkey
 def test_cylinder_coupled_mesh_is_uniform_at_the_reference_fine_spacing(tmp_path):
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
-    mesh = module.FVM_MESH
-    assert isinstance(mesh, module.msh.CartesianMesher)
+    mesh = module.build_case()[3]
+    assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
+    source = mesh.source
     assert pytest.approx(0.04) == module.CELL_SIZE
-    assert mesh.max_cell_size == pytest.approx(module.CELL_SIZE)
-    assert mesh.background_cell_size == pytest.approx(module.CELL_SIZE)
-    assert mesh.boundary_cell_size == pytest.approx(module.CELL_SIZE)
-    assert mesh.cell_size_anchor == pytest.approx(module.CELL_SIZE)
-    assert mesh.refinements == ()
-    assert mesh.patch_refinements == ()
-    assert mesh.effective_cell_size(module.CELL_SIZE) == pytest.approx(module.CELL_SIZE)
-    assert mesh.requested_domain.bounds == module.FVM_BOX
+    assert source.max_cell_size == pytest.approx(module.CELL_SIZE)
+    assert source.background_cell_size == pytest.approx(module.CELL_SIZE)
+    assert source.boundary_cell_size == pytest.approx(module.CELL_SIZE)
+    assert source.cell_size_anchor == pytest.approx(module.CELL_SIZE)
+    assert source.refinements == ()
+    assert [item.cell_size for item in source.patch_refinements] == [module.CELL_SIZE]
+    assert source.effective_cell_size(module.CELL_SIZE) == pytest.approx(module.CELL_SIZE)
     assert mesh.domain.bounds == pytest.approx(module.FVM_BOX)
+    assert mesh.levels[0] == pytest.approx(-0.48)
+    assert mesh.levels[-1] == pytest.approx(0.48)
+    assert len(mesh.levels) == 25
     assert pytest.approx((-1.6, 1.6, -1.6, 1.6, -0.48, 0.48)) == module.FVM_BOX
     assert pytest.approx(24) == module.FVM_RESOLVED_SPAN / module.CELL_SIZE
 
@@ -85,16 +88,17 @@ def test_cylinder_transfer_region_fits_boundary_face_centres(tmp_path):
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
     face_centre_box = np.asarray((*module.FVM_BOX[:4], -module.FVM_HALF_SPAN, module.FVM_HALF_SPAN))
-    module.COUPLER_SETUP.validate_transfer_region_box(face_centre_box)
+    module.build_case()[2].validate_transfer_region_box(face_centre_box)
 
 
 def test_cylinder_gbd_grid_is_aligned_and_within_gpu_budget(tmp_path):
     """Keep renewal and GBD aligned without overcommitting the fixed grid."""
     case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
-    viscous = module.VPM_CASE.numerics.viscous
-    assert viscous.particle_spacing == pytest.approx(module.VPM_PARTICLE_SPACING)
-    assert viscous.gbd_grid_spacing == pytest.approx(module.VPM_PARTICLE_SPACING)
+    flow, particles, _, _ = module.build_case()
+    viscous = particles.numerics.viscous
+    assert viscous.particle_spacing == pytest.approx(0.04)
+    assert viscous.gbd_grid_spacing == pytest.approx(0.04)
 
     domain = module.VPM_DOMAIN
     padding = viscous.gbd_domain_padding
@@ -104,6 +108,6 @@ def test_cylinder_gbd_grid_is_aligned_and_within_gpu_budget(tmp_path):
         for lower, upper in zip(domain[::2], domain[1::2], strict=True)
     )
     grid_bytes = int(np.prod(dimensions)) * 32
-    assert dimensions == (428, 220, 31)
+    assert dimensions == (511, 261, 35)
     assert grid_bytes < 1 << 30
-    assert module.REFERENCE_AREA == module.DIAMETER * module.FVM_RESOLVED_SPAN
+    assert flow.samplers[0].reference_area == module.DIAMETER * module.FVM_RESOLVED_SPAN

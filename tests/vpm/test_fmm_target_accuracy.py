@@ -1,8 +1,8 @@
-"""Adversarial target-local accuracy against the pre-overhaul target operator.
+"""Adversarial target-local accuracy against pointwise field evaluation.
 
-These cases deliberately make the legacy monopole accurate, so its error
+These cases deliberately make the pointwise monopole accurate, so its error
 cannot hide a new off-centre local-polynomial truncation error. The acceptance
-envelope is the measured old error plus a float32 summation allowance, not the
+envelope is the pointwise error plus a float32 summation allowance, not the
 looser general FMM qualification ceiling.
 """
 
@@ -70,7 +70,7 @@ def _adversarial_cases(kernel_name):
 
     # Every aligned binary source block has zero net strength; moments of
     # degree zero through three vanish, while the fourth moment does not.
-    # The legacy monopole traversal opens these cancelled cells. A geometric
+    # The pointwise monopole traversal opens these cancelled cells. A geometric
     # p=3 source MAC alone must not silently discard the surviving field.
     fourth_order_position = np.zeros((128, 3), dtype=np.float32)
     fourth_order_position[:, 2] = np.repeat(np.arange(-15, 16, 2) / 16, 8)
@@ -93,14 +93,14 @@ def _adversarial_cases(kernel_name):
     yield "mixed_coincident_and_far_targets", position, strength, core, mixed_targets
 
     # A pointlike common-core cloud is evaluated as the exact regularized
-    # monopole by the old path. A new singular expansion must not substitute
+    # monopole by pointwise traversal. A singular expansion must not substitute
     # the looser self-FMM 1e-5 tail criterion for that target-field accuracy.
     tail_radius = np.float32(0.2)
     loose_cutoff = max(make_vortex_kernel(kernel_name).dimensionless_tail_cutoffs(1e-5, 1e-5))
     tail_targets = np.zeros_like(line)
     tail_targets[:, 2] = np.linspace(1.001, 1.0011, len(line)) * loose_cutoff * tail_radius
     yield (
-        "common_core_at_old_self_tail_boundary",
+        "common_core_at_self_tail_boundary",
         np.zeros((128, 3), dtype=np.float32),
         strength,
         np.full(128, tail_radius, dtype=np.float32),
@@ -136,7 +136,7 @@ def _exact_fields_and_roundoff(kernel_name, position, strength, core, targets):
 
 
 @pytest.mark.parametrize("kernel_name", ("GAUSSIAN", "WINCKELMANS"))
-def test_target_local_error_preserves_legacy_envelope_at_cell_extremes(kernel_name):
+def test_target_local_error_preserves_pointwise_envelope_at_cell_extremes(kernel_name):
     harness = _DeviceFMMHarness(capacity=128, kernel_name=kernel_name)
     harness.induction._ensure_workspace(128)
     workspace = harness.induction.workspace

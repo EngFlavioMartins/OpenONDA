@@ -6,13 +6,13 @@ import numpy as np
 import pytest
 
 from source.solvers.fvm.io.vtk_exporter import VTKExporter
-from source.solvers.fvm.mesh.cartesian import structured_box
 from source.solvers.fvm.mesh.topology import build_cell_face_csr
 from source.solvers.fvm.mesh.validation import (
     cells_incident_to_points,
     extract_cell_subset_mesh,
     validate_vtk_cell_intersections,
 )
+from tests.support.fvm_mesh import structured_box
 
 
 @pytest.mark.parametrize("explicit_reversal", [False, True])

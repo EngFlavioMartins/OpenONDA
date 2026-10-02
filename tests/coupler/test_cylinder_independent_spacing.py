@@ -2,9 +2,7 @@
 
 import importlib.util
 import itertools
-import json
 from pathlib import Path
-import sys
 
 import pytest
 
@@ -32,7 +30,7 @@ def _study():
         {"particle_spacing_ratio": 1.5, "release_width_ratio": 3.0},
         {"particle_spacing_ratio": 1.5, "span": 0.48},
         {"particle_spacing_ratio": 1.5, "span": 1.92},
-        {"particle_spacing_ratio": 1.25, "exchange_dt": 0.02},
+        {"particle_spacing_ratio": 1.25, "exchange_dt": 0.016},
     ],
 )
 def test_native_builder_preserves_independent_physical_lengths(requested):
@@ -93,14 +91,3 @@ def test_every_single_factor_and_interaction_resolves_native_geometry():
         )
         assert policy.eta_blend_width == pytest.approx(resolved["blend_width"])
         assert policy.vpm_only_width == pytest.approx(resolved["release_width"])
-
-
-def test_legacy_confounded_report_is_preserved(tmp_path, monkeypatch):
-    study = _study()
-    report = tmp_path / "sensitivity.json"
-    original = json.dumps({"schema": "openonda-cylinder-sensitivity/2", "runs": [{"label": "old"}]})
-    report.write_text(original)
-    monkeypatch.setattr(sys, "argv", ["run_sensitivity.py", "--run-dir", str(tmp_path), "--resume"])
-    with pytest.raises(ValueError, match="confounded"):
-        study.main()
-    assert report.read_text() == original

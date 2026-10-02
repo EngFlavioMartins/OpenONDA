@@ -31,7 +31,6 @@ def box_transfer(spacing, centre, seed=0, *, triangles=None, patches=("body",), 
         triangles = points[indices[:, ::-1]] + centre
     bounds = np.array([-1.0, 1.0] * 3) + np.repeat(centre, 2)
     config = CouplerSetup(
-        transfer_method="buffered_m4_renewal",
         transfer_region_bounds=tuple(0.8 * np.array([-1.0, 1.0] * 3) + np.repeat(centre, 2)),
         eta_blend_width=0.18,
     )

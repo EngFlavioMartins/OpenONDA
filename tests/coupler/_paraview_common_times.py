@@ -1,7 +1,7 @@
 """Small filter-only ParaView qualification; no views, rendering or real outputs."""
 
-from pathlib import Path
 import ast
+from pathlib import Path
 import tempfile
 
 from paraview import servermanager
@@ -15,7 +15,9 @@ for case in ("02_cube_flow",):
     tree = ast.parse(state.read_text())
     prelude = []
     for statement in tree.body:
-        if isinstance(statement, ast.Import) and any(item.name == "paraview" for item in statement.names):
+        if isinstance(statement, ast.Import) and any(
+            item.name == "paraview" for item in statement.names
+        ):
             break
         prelude.append(statement)
     namespace = {"__file__": str(state)}
@@ -40,14 +42,18 @@ def collection(directory, name, times):
         )
         rows.append(f'<DataSet timestep="{time}" file="{frame.name}"/>')
     path = directory / f"{name}.pvd"
-    path.write_text('<VTKFile type="Collection"><Collection>' + ''.join(rows) + '</Collection></VTKFile>')
+    path.write_text(
+        '<VTKFile type="Collection"><Collection>' + "".join(rows) + "</Collection></VTKFile>"
+    )
     return path
 
 
 with tempfile.TemporaryDirectory(prefix="openonda-pv-clocks-") as temporary:
     directory = Path(temporary)
-    paths = (collection(directory, "vpm", range(9)),
-             collection(directory, "fvm", [0, 4.00000000000001, 7.99999999999999]))
+    paths = (
+        collection(directory, "vpm", range(9)),
+        collection(directory, "fvm", [0, 4.00000000000001, 7.99999999999999]),
+    )
     matched = match_saved_times(*(read_pvd_times(path) for path in paths))
     readers = [PVDReader(FileName=str(path)) for path in paths]
     selected = []

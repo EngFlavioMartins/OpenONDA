@@ -99,7 +99,6 @@ class VLMSolver:
         self.logging_interval_steps = setup.logging_interval_steps
         self.density = setup.density
         self.kinematic_viscosity = setup.kinematic_viscosity
-        self.sigma_factor = setup.sigma_factor
         self.wake_core_overlap = setup.wake_core_overlap
         # The present source representation uses one point/trace radius for
         # the bound operator.  It is named separately from particle radii in
@@ -892,25 +891,12 @@ class VLMSolver:
                 self.linear_solver, max_n_panels=self.max_n_panels, use_preconditioner=True
             )
         solver = self._linear_solver_instance
-        if solver.is_gpu:
-            # 1e-10 is pathologically tight for iterative solvers; 1e-6 is
-            # sufficient for VLM engineering accuracy and avoids hundreds of
-            # kernel-launch-bound iterations on small systems.
-            solver.solve(
-                self.lattice.aerodynamic_influence_coefficient,
-                self.lattice.right_hand_side,
-                self.lattice.circulation,
-                self.lattice.n_panels,
-                max_iterations=1000,
-                tolerance=1e-6,
-            )
-        else:
-            solver.solve(
-                self.lattice.aerodynamic_influence_coefficient,
-                self.lattice.right_hand_side,
-                self.lattice.circulation,
-                self.lattice.n_panels,
-            )
+        solver.solve(
+            self.lattice.aerodynamic_influence_coefficient,
+            self.lattice.right_hand_side,
+            self.lattice.circulation,
+            self.lattice.n_panels,
+        )
         if self.circulation_relaxation < 1.0:
             self.lattice.apply_relaxation(self.circulation_relaxation)
         return self.lattice.circulation.to_numpy()[:n_panels]
@@ -1202,22 +1188,12 @@ class VLMSolver:
                 max_n_panels=self.max_n_panels,
                 use_preconditioner=True,
             )
-        if self._linear_solver_instance.is_gpu:
-            self._linear_solver_instance.solve(
-                self._stage_influence,
-                self._stage_rhs,
-                self._stage_circulation,
-                n,
-                max_iterations=1000,
-                tolerance=1.0e-6,
-            )
-        else:
-            self._linear_solver_instance.solve(
-                self._stage_influence,
-                self._stage_rhs,
-                self._stage_circulation,
-                n,
-            )
+        self._linear_solver_instance.solve(
+            self._stage_influence,
+            self._stage_rhs,
+            self._stage_circulation,
+            n,
+        )
         self._stage_response_active = True
         matrix = self._stage_influence.to_numpy()[:n, :n]
         rhs = self._stage_rhs.to_numpy()[:n]
@@ -2188,8 +2164,7 @@ class VLMSolver:
         dtype = np.float32 if self.lattice.dtype == ti.f32 else np.float64
         shed_wake_particles_kernel(
             self.lattice.n_panels,
-            self.sigma_factor,
-            self.wake_core_overlap if self.wake_core_overlap is not None else 0.0,
+            self.wake_core_overlap,
             float(self.transverse_shedding_threshold),
             32.0 * np.finfo(dtype).eps,
             self.lattice.cumulative_circulation,
@@ -2295,12 +2270,9 @@ class VLMSolver:
             length = 0.5 * (np.linalg.norm(dl) + np.linalg.norm(dr))
             if span <= 1e-12 or length <= 1e-12:
                 continue
-            left_radius, right_radius = max(np.linalg.norm(dl), span), max(np.linalg.norm(dr), span)
-            transverse_radius = max(self.sigma_factor * length, span / 3)
-            if self.wake_core_overlap is not None:
-                left_radius *= self.wake_core_overlap
-                right_radius *= self.wake_core_overlap
-                transverse_radius = self.wake_core_overlap * max(length, span)
+            left_radius = self.wake_core_overlap * max(np.linalg.norm(dl), span)
+            right_radius = self.wake_core_overlap * max(np.linalg.norm(dr), span)
+            transverse_radius = self.wake_core_overlap * max(length, span)
             left_index, right_index = neighbors[panel, :2]
             shared_root = left_index != -1 and mirrored[panel] != mirrored[left_index]
             if not shared_root or panel < left_index:

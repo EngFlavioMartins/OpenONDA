@@ -2,5 +2,5 @@
 set -e
 cd -- "$(dirname -- "$0")"
 
-# Keep existing results; setup.py resumes a compatible native backup.
+# Keep results; setup.py resumes the current native checkpoint.
 python setup.py "$@"

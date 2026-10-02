@@ -33,6 +33,12 @@
     "colour_map": "thesis_blue, linear in |omega|"
   },
   "motion_arrows": {
+    "count": 1,
+    "colour_rgb": [
+      0.64,
+      0.64,
+      0.64
+    ],
     "direction": [
       -1.0,
       0.0,
@@ -40,51 +46,59 @@
     ],
     "starts_m": [
       [
-        -21.53592586517334,
-        -5.5,
-        0.4460441574454308
-      ],
-      [
-        -21.53592586517334,
+        -23.83592586517334,
         0.0,
-        0.4460441574454308
-      ],
-      [
-        -21.53592586517334,
-        5.5,
-        0.4460441574454308
+        1.0960441574454307
       ]
     ],
-    "length_m": 1.7999999999999998
+    "length_m": 2.4,
+    "shaft_radius_m": 0.108
+  },
+  "surface": {
+    "visible": true,
+    "color_rgb": [
+      0.3764705882,
+      0.4078431373,
+      0.4235294118
+    ],
+    "meaning": "Saved VLM plate surface, shown with shaded neutral material."
+  },
+  "lighting": {
+    "reference": "author's vortex_stretching.pvsm light kit",
+    "shading": true,
+    "tone_mapping": "filmic"
   },
   "camera": {
-    "projection": "parallel",
+    "projection": "perspective",
     "focal_point_m": [
-      -11.3472660779953,
-      0.0,
-      -0.746180797368288
+      -14.161371179913383,
+      -0.0015792839712721607,
+      -1.7659413290816808
     ],
     "position_m": [
-      -11.3472660779953,
-      -27.89101378917694,
-      11.931552743166685
+      -25.0273531256381,
+      -19.75791009437985,
+      12.06349023820432
     ],
     "view_up": [
       0.0,
-      0.0,
-      1.0
+      0.5734623443633282,
+      0.8192319205190405
     ],
-    "parallel_scale": 7.099530782699586,
+    "view_angle_degrees": 24.0,
     "image_pixels": [
-      1800,
+      2500,
       900
     ]
   },
   "output": {
     "raw_png": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake_raw.png",
-    "raw_png_sha256": "a1323b0e886e0d8f5c2823dfbb73ab2c766584ef234e8f22a003fd42e74268b9",
+    "raw_png_sha256": "fbdfef54f2932c332564c4958e768a8e7c1c6e430b141439b40aa90dec4fad33",
     "overlay_tex": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.tex",
+    "paraview_state": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/flat_plate_wake.pvsm",
+    "particle_glyph_input": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp",
+    "motion_arrow_input": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp",
     "final_both": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.pdf",
-    "final_both_sha256": "2a1defe26fa3b838a06d04a20eeff37fe278a0f13d0ac0bd560e903e125f90d8"
+    "final_both_sha256": "21d3482f8440a460e0c87a93ea37638049be4cf439a12e1cb78e9ff96084cd48"
   }
 }

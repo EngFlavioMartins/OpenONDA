@@ -37,8 +37,6 @@ class VLMLinearSolver(ABC):
         right_hand_side,
         circulation,
         n_panels: int,
-        max_iterations: int = 1000,
-        tolerance: float = EPSILON,
     ) -> int:
         """
         Solve the linear system aerodynamic_influence_coefficient @ circulation = right_hand_side.
@@ -48,8 +46,6 @@ class VLMLinearSolver(ABC):
             right_hand_side: Right-hand side vector (Taichi field or numpy)
             circulation: Solution vector - MODIFIED IN PLACE (Taichi field or numpy)
             n_panels: Number of panels (active size of the system)
-            max_iterations: Maximum iterations for iterative solvers
-            tolerance: Convergence tolerance for iterative solvers
 
         Returns:
             Number of iterations (0 for direct solvers)
@@ -101,8 +97,6 @@ class ScipySolver(VLMLinearSolver):
         right_hand_side,
         circulation,
         n_panels: int,
-        max_iterations: int = 1000,
-        tolerance: float = EPSILON,
     ) -> int:
         """Solve the active dense VLM system with SciPy on the CPU.
 
@@ -118,13 +112,6 @@ class ScipySolver(VLMLinearSolver):
             place; a Taichi field remains device-resident after the upload.
         n_panels : int
             Active system size ``N``; unused capacity is ignored.
-        max_iterations : int, default=1000
-            Accepted for interface compatibility and ignored by this direct
-            solver.
-        tolerance : float, default=EPSILON
-            Accepted for interface compatibility and ignored by SciPy's direct
-            factorization.
-
         Returns
         -------
         int
@@ -298,7 +285,7 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         circulation,
         n_panels: int,
         max_iterations: int = 1000,
-        tolerance: float = EPSILON,
+        tolerance: float = 1.0e-6,
     ) -> int:
         """Solve with right-preconditioned BiCGSTAB and verify the true residual.
 

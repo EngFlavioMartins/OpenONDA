@@ -82,7 +82,7 @@ Surface JSON defines quadrilateral segments with vertices `a,b` on the leading e
 
 Pass surfaces through `VLMSetup(surfaces=(VLMSurfaceSetup(...),))` in `Numerics.vlm`. Supply matching VPM/VLM viscosity and fluid `density` in kg/m³. `translation` and `rotation_centre` use metres; `rotation_degrees` uses degrees. Motion objects specify translation, rotation or prescribed maneuvers.
 
-`wake_core_overlap=2.5` sets both trailing and transverse emitted cores to 2.5 times the larger local span spacing or convected row length. The older `sigma_factor` affects transverse elements only. Resolve wake rows by refining $\Delta t$ together with the surface panels.
+`wake_core_overlap=2.5` sets both trailing and transverse emitted cores to 2.5 times the larger local span spacing or convected row length. Resolve wake rows by refining $\Delta t$ together with the surface panels.
 
 VLM solves bound circulation and sheds its spanwise differences and time changes into the wake. `ForceConfig.kutta_joukowski(unsteady=True)` adds the pressure-time load from changing surface potential jump. The default boundary response holds bound circulation during each particle step; `boundary_response="responsive"` is experimental and needs coupled time-convergence checks.
 
@@ -127,6 +127,6 @@ vpm.VPMSolver(case).run(start_from="latest")
 
 Backups are in `solution/`; open `solution/vpm.pvd` in ParaView. Diagnostics are in `samples/`. Energy, impulse and enstrophy are per unit density: m⁵/s², m⁴/s and m³/s² respectively; VPM enstrophy uses $\int|\boldsymbol{\omega}|^2\,dV$ without a one-half factor. `SurfaceSampler` and `LineSampler` add field probes in metres.
 
-Tutorials use `allrun.sh` for a clean run, `allcontinue.sh` for compatible continuation and `allplot.sh` for figures. Set capacity for the full shed/regenerated cloud. `RunPlan.steps` is the total step target, including restored steps; see [continuation](continuation.md). A numerical health stop produces a partial trajectory. A completed run still needs physical convergence checks.
+Tutorials use `allrun.sh` to run or resume a case, `allcontinue.sh` for continuation and `allplot.sh` for figures. Set capacity for the full shed/regenerated cloud. `RunPlan.steps` is the total step target, including restored steps; see [continuation](continuation.md). A numerical health stop produces a partial trajectory. A completed run still needs physical convergence checks.
 
 [Numerical references](../source/solvers/vpm/REFERENCES.md).

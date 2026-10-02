@@ -15,7 +15,7 @@ def test_public_exports_and_case_construction(tmp_path):
         assert len(module.__all__) == len(set(module.__all__))
         for name in module.__all__:
             assert getattr(module, name) is not None
-    mesh = fvm.mesher.structured_box(2, 2, 2)
+    mesh = fvm.mesher.coupling_box_mesh((0, 1, 0, 1, 0, 1), 0.5)
     flow = fvm.FVMCase(name="api", mesh=mesh, directory=tmp_path)
     particles = vpm.VPMCase(numerics=vpm.Numerics(compute_device="CPU"), directory=tmp_path)
     assert flow.to_setup().case_name == "api"

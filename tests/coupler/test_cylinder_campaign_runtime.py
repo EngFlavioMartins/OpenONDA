@@ -172,20 +172,16 @@ def test_sensitivity_factor_set_keeps_interface_cycles_fixed():
     )
 
 
-def test_coupled_campaign_identity_records_acceleration_choice(monkeypatch):
+def test_coupled_campaign_identity_uses_the_actual_mesh(monkeypatch):
     campaign = load_asset("run_campaign.py")
     module = campaign.load_case_module(campaign.CASE_DIR)
-    monkeypatch.setattr(campaign, "file_hash", lambda _path: "test-input")
+    monkeypatch.setattr(campaign, "file_hash", lambda _: "test-input")
     monkeypatch.setattr(campaign, "software_fingerprint", lambda: {"digest": "test-source"})
-
-    ordinary = campaign._resolved_coupled_config(module, 0.04, {})
-    accelerated = campaign._resolved_coupled_config(
-        module, 0.04, {"interface_acceleration": "aitken"}
-    )
-    assert ordinary["interface_acceleration"] == "none"
-    assert accelerated["interface_acceleration"] == "aitken"
-    assert ordinary["interface_iterations"] == accelerated["interface_iterations"] == 3
-    assert ordinary != accelerated
+    config = campaign._resolved_coupled_config(module, 0.8, {"hxy": 0.048, "dz": 0.08})
+    assert config["hxy"] == pytest.approx(0.048)
+    assert config["dz"] == pytest.approx(0.08)
+    assert config["span"] == pytest.approx(0.96)
+    assert config["exchange_dt"] == pytest.approx(0.04)
 
 
 def test_span_sensitivity_keeps_particle_spacing_fixed(tmp_path, monkeypatch):
@@ -286,7 +282,7 @@ def test_screen_sensitivity_matches_physical_duration_across_exchange_clocks(tmp
     assert end_times == [0.8, 0.8, 0.8]
     report = json.loads((tmp_path / "sensitivity" / "sensitivity.json").read_text())
     assert [row["screened_physical_time"] for row in report["runs"]] == [0.8, 0.8, 0.8]
-    assert [row["screened_exchange_steps"] for row in report["runs"]] == [20, 40, 10]
+    assert [row["screened_exchange_steps"] for row in report["runs"]] == [20, 50, 10]
 
 
 def test_screen_sensitivity_rejects_incompatible_step_budget():
@@ -644,34 +640,6 @@ def test_run_trial_changed_resume_command_consumes_prior_budget(monkeypatch, tmp
     assert len(record["attempts"]) == 2
     assert record["attempts"][0]["command"][-2:] == ["1", "--resume"]
     assert record["attempts"][1]["command"][-2:] == ["2", "--resume"]
-
-
-def test_run_trial_changed_resume_command_reads_legacy_record(monkeypatch, tmp_path):
-    waits = []
-    monkeypatch.setattr(cylinder_campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
-    monkeypatch.setattr(
-        cylinder_campaign.subprocess,
-        "Popen",
-        lambda *args, **kwargs: _BudgetChild(waits),
-    )
-    trial = tmp_path / "trial"
-    trial.mkdir()
-    (trial / "trial.json").write_text(
-        json.dumps(
-            {
-                "command": [sys.executable, "-c", "pass", "--end-time", "1"],
-                "wall_seconds": 2.25,
-                "returncode": 124,
-            }
-        )
-    )
-    command = [sys.executable, "-c", "pass", "--end-time", "2", "--resume"]
-
-    record = cylinder_campaign.run_trial(command, trial, cwd=tmp_path, wall_limit=5.0)
-
-    assert waits == [pytest.approx(2.75)]
-    assert len(record["attempts"]) == 2
-    assert record["attempts"][0]["command"][-2:] == ["--end-time", "1"]
 
 
 def test_run_trial_exhausted_resume_does_not_spawn(monkeypatch, tmp_path):

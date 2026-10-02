@@ -36,7 +36,6 @@ from source.solvers.fvm.mesher import (
     geometry,
     periodic_square_mesh,
     stretched,
-    structured_box,
     wall_refined_axis,
 )
 
@@ -63,6 +62,5 @@ __all__ = [
     "geometry",
     "periodic_square_mesh",
     "stretched",
-    "structured_box",
     "wall_refined_axis",
 ]

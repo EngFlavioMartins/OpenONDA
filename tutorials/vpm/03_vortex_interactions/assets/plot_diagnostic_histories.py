@@ -27,7 +27,7 @@ def plot(runs, output, formats):
     """Render six quantities directly from each native flow-integrals table."""
     plotting = theme()
     plotting.set_thesis_style()
-    fig, axes = plt.subplots(3, 2, figsize=figure_size(13.5), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=figure_size(11.8), sharex=True)
     quantities = (
         ("total_kinetic_energy", r"$E/E_0$", True),
         ("total_enstrophy", r"$Z/Z_0$", True),
@@ -84,7 +84,7 @@ def plot(runs, output, formats):
     handles, labels = axes[0, 0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
     plotting.centered_subplots_adjust(
-        fig, outer=0.115, bottom=0.195, top=0.97, hspace=0.36, wspace=0.60
+        fig, outer=0.115, bottom=0.235, top=0.97, hspace=0.18, wspace=0.36
     )
     save_figure(fig, output / FIGURE_NAME, axes.flat, formats)
     plt.close(fig)

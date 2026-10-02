@@ -48,7 +48,7 @@ def collective_phase(comm, description: str):
     are exchanged rather than potentially unpickleable exception objects.
     MPI-3 communicators first rendezvous with bounded polling and sleeping, so
     idle ranks do not busy-spin while another rank performs long local work.
-    Serial and legacy communicators without Ibarrier retain the direct path.
+    Serial execution does not enter collectives.
     """
     failure = None
     try:
@@ -56,11 +56,9 @@ def collective_phase(comm, description: str):
     except BaseException as error:
         failure = error
     if comm is not None and comm.Get_size() > 1:
-        begin = getattr(comm, "Ibarrier", None)
-        if callable(begin):
-            interruption = _wait_completion(begin())
-            if failure is None:
-                failure = interruption
+        interruption = _wait_completion(comm.Ibarrier())
+        if failure is None:
+            failure = interruption
         summary = None if failure is None else f"{type(failure).__name__}: {failure}"
         summaries = comm.allgather(summary)
         first = next(((rank, value) for rank, value in enumerate(summaries) if value), None)

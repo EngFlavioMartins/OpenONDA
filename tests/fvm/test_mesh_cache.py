@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from openonda.fvm import mesher as msh
+from tests.support.fvm_mesh import structured_box
 
 
 def test_cache_hit_and_changed_resolution(tmp_path, monkeypatch):
@@ -26,7 +27,7 @@ def test_cache_hit_and_changed_resolution(tmp_path, monkeypatch):
 
         def build():
             builds.append(size)
-            return msh.structured_box(2, 2, 2)
+            return structured_box(2, 2, 2)
 
         monkeypatch.setattr(mesher, "build", build)
         return msh.CachedMesh(mesher, tmp_path / "mesh.npz")

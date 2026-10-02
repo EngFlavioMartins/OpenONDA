@@ -70,8 +70,8 @@ def load_manifest(path):
     payload = path.read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     manifest = json.loads(payload)
-    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 11:
-        raise ValueError("Trace analysis requires a native v11 coupled manifest")
+    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 12:
+        raise ValueError("Trace analysis requires a native v12 coupled manifest")
     config = manifest["config"]
     if mapping_digest(config) != manifest["config_sha256"]:
         raise ValueError("Manifest numerical configuration digest mismatch")
@@ -136,7 +136,7 @@ def load_trace(path, settings):
     if file_digest(path) != digest:
         raise ValueError("Trace changed while being read")
     schema = metadata.get("schema_version")
-    if schema not in (1, 2) or metadata.get("status") != "complete":
+    if schema != 2 or metadata.get("status") != "complete":
         raise ValueError("Trace is missing, failed, incomplete or unsupported")
     diagnostics = metadata["interface_iteration"]
     if diagnostics.get("converged") is not True:
@@ -248,7 +248,7 @@ def load_trace(path, settings):
     attempted = prediction["attempted"]
     raw_trial = 2
     if attempted:
-        if schema != 2 or rows[0].get("prediction_probe") is not True:
+        if rows[0].get("prediction_probe") is not True:
             raise ValueError("Seed probe lacks explicit supported trace provenance")
         if prediction.get("reason") != "previous_accepted_correction":
             raise ValueError("Unknown interface seed strategy")
@@ -519,7 +519,7 @@ def analyze(paths, manifest_path, run_reports):
         "schema_version": 1,
         "status": "validated_offline_endpoint_analysis",
         "scope": "Candidate-to-accepted endpoint errors are not fixed-point residuals or convergence/accuracy proofs; no time shifts or solver changes",
-        "provenance_limit": "Capture schema1 has no embedded solver/config hash; completed benchmark trace indexes and unchanged source hashes bind explicit external provenance, audited against captured residuals and clocks",
+        "provenance_limit": "Captured traces have no embedded solver/config hash; completed benchmark trace indexes and unchanged source hashes bind explicit external provenance, audited against captured residuals and clocks",
         "manifest": manifest,
         "settings": settings,
         "benchmark_reports": provenance,
@@ -547,7 +547,9 @@ def main():
     )
     args = parser.parse_args()
     output = args.output.resolve()
-    case = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+    case = (
+        Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+    )
     if output.parent != case / "solution":
         raise ValueError(
             "Analysis output must stay directly in the ordinary case solution directory"

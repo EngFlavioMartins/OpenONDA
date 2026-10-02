@@ -281,7 +281,7 @@ def write_run_metadata(
     resolved_stop_step = configured_end_step if stop_step is None else int(stop_step)
     metadata = {
         "schema_version": 3,
-        "coupling_method": coupler.setup.transfer_method,
+        "coupling_method": "buffered_m4_renewal",
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
@@ -300,7 +300,7 @@ def write_run_metadata(
         },
         "fvm_solver": {
             "coupling_patch": coupler.setup.coupling_patch,
-            "boundary_condition_mode": coupler.setup.boundary_condition_mode,
+            "boundary_condition_mode": "vorticity_mixed",
             "fvm_domain": _domain_dict(coupler.fvm_box),
         },
         "vpm_solver": {
@@ -393,20 +393,6 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "mapped_target_vortex_strength_net_y": 0.0,
             "mapped_target_vortex_strength_net_z": 0.0,
             "maximum_mapped_vortex_strength": 0.0,
-            "fvm_mapping_vortex_strength_error": 0.0,
-            "fvm_mapping_first_moment_error": 0.0,
-            "blend_cross_divergence_l2_before": 0.0,
-            "blend_cross_divergence_l2_after": 0.0,
-            "blend_cross_divergence_relative": 0.0,
-            "mapped_vorticity_divergence_error": None,
-            "mapped_vortex_strength_misalignment_degrees": None,
-            "mapped_mean_overlap_ratio": None,
-            "projection_vorticity_relative_error": 0.0,
-            "projection_velocity_relative_error": None,
-            "projection_condition_number": 0.0,
-            "selective_support_births": 0,
-            "renewal_guard_width": 0.0,
-            "renewal_diffusion_substeps": 0,
             "renewed_input_particles": 0,
             "renewed_output_particles": 0,
             "preserved_outer_particles": 0,
@@ -483,52 +469,6 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "mapped_target_vortex_strength_net_y": float(mapped_target_net[1]),
             "mapped_target_vortex_strength_net_z": float(mapped_target_net[2]),
             "maximum_mapped_vortex_strength": float(result.maximum_mapped_vortex_strength),
-            "fvm_mapping_vortex_strength_error": (
-                None
-                if result.transfer_method == "buffered_m4_renewal"
-                else float(
-                    np.linalg.norm(
-                        result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net
-                    )
-                )
-            ),
-            "fvm_mapping_first_moment_error": (
-                None
-                if result.transfer_method == "buffered_m4_renewal"
-                else float(
-                    np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)
-                )
-            ),
-            "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
-            "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
-            "blend_cross_divergence_relative": float(result.blend_cross_divergence_relative),
-            "mapped_vorticity_divergence_error": (
-                None
-                if result.mapped_vorticity_divergence_error is None
-                else float(result.mapped_vorticity_divergence_error)
-            ),
-            "mapped_vortex_strength_misalignment_degrees": (
-                None
-                if result.mapped_vortex_strength_misalignment_degrees is None
-                else float(result.mapped_vortex_strength_misalignment_degrees)
-            ),
-            "mapped_mean_overlap_ratio": (
-                None
-                if result.mapped_mean_overlap_ratio is None
-                else float(result.mapped_mean_overlap_ratio)
-            ),
-            "projection_vorticity_relative_error": float(
-                result.projection_vorticity_relative_error
-            ),
-            "projection_velocity_relative_error": (
-                None
-                if result.projection_velocity_relative_error is None
-                else float(result.projection_velocity_relative_error)
-            ),
-            "projection_condition_number": float(result.projection_condition_number),
-            "selective_support_births": int(result.selective_support_births),
-            "renewal_guard_width": float(result.renewal_guard_width),
-            "renewal_diffusion_substeps": int(result.renewal_diffusion_substeps),
             "renewed_input_particles": int(result.renewed_input_particles),
             "renewed_output_particles": int(result.renewed_output_particles),
             "preserved_outer_particles": int(result.preserved_outer_particles),

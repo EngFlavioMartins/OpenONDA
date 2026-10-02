@@ -41,17 +41,13 @@ def test_invalid_domain_cannot_produce_a_silent_empty_or_nonfinite_grid(bounds, 
 def test_resume_rejects_changed_grid_before_evaluating_or_appending(tmp_path):
     from types import SimpleNamespace
 
-    import pyvista as pv
-
     from source.solvers.vpm.config.artifacts import Samplers
     from source.solvers.vpm.io.sampler import OutputEvent, OutputManager, SamplingContext
+    from tests.vpm.test_surface_sampling_resume import write_frame
 
     sampler = SurfaceSampler([0, 0, 0], [1, 0, 0], [-1, 1, -1, 1], 0.31, file_name="plane")
-    # Prior output used a genuinely different configured spacing, not merely
-    # the compatible historical construction of the current geometry.
-    c = np.arange(-1, 1 + 0.29 / 2, 0.29, dtype=np.float32)
-    a, b = np.meshgrid(c, c, indexing="ij")
-    pv.StructuredGrid(np.zeros_like(a), a, b).save(tmp_path / "plane_000001.vts")
+    previous = SurfaceSampler([0, 0, 0], [1, 0, 0], [-1, 1, -1, 1], 0.29)
+    write_frame(previous, tmp_path / "plane_000001.vts")
     OutputManager._write_pvd(tmp_path, "plane", [(0.1, "plane_000001.vts")])
     before = (tmp_path / "plane.pvd").read_bytes()
     solver = SimpleNamespace(case=SimpleNamespace(samplers=Samplers(samples=(sampler,))))
@@ -71,10 +67,8 @@ def test_resume_rejects_changed_grid_before_evaluating_or_appending(tmp_path):
 
 
 def test_unchanged_grid_can_continue(tmp_path):
-    import pyvista as pv
+    from tests.vpm.test_surface_sampling_resume import write_frame
 
     sampler = SurfaceSampler([0, 0, 0], [1, 0, 0], [-1, 1, -1, 1], 0.31)
-    shape = sampler._grid_shape
-    coordinates = [sampler.grid_points[:, i].reshape(shape) for i in range(3)]
-    pv.StructuredGrid(*coordinates).save(tmp_path / "prior.vts")
+    write_frame(sampler, tmp_path / "prior.vts")
     sampler.validate_existing_vtk(tmp_path / "prior.vts")

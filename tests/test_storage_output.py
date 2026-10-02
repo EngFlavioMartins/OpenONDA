@@ -111,7 +111,7 @@ def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
 
     from source.solvers.fvm.config.types import OutputConfig
     from source.solvers.fvm.io.vtk_exporter import VTKExporter
-    from source.solvers.fvm.mesh.cartesian import structured_box
+    from tests.support.fvm_mesh import structured_box
 
     mesh = structured_box(2, 2, 2)
     exporter = VTKExporter(mesh, OutputConfig(precision="f16", compression="zlib"))
@@ -131,9 +131,9 @@ def test_owned_only_partition_vtu_excludes_incomplete_halo_cells(tmp_path):
 
     from source.solvers.fvm.config.types import OutputConfig
     from source.solvers.fvm.io.vtk_exporter import VTKExporter
-    from source.solvers.fvm.mesh.cartesian import structured_box
     from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
     from source.solvers.fvm.mesh.partition import localize_mesh_and_geometry
+    from tests.support.fvm_mesh import structured_box
 
     mesh = structured_box(4, 2, 1)
     # Exercise the general-polyhedron path used by recovered Cartesian cells.
@@ -219,10 +219,10 @@ def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_p
     with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
         OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
     assert path.read_bytes() == original
-    # A legacy single-snapshot file cannot silently become malformed history.
-    legacy = "# time=0.3\nposition_x,position_y\n0,0\n"
-    path.write_text(legacy)
+    # An incompatible header cannot silently become malformed history.
+    invalid_schema = "time,position_x\n0.3,0\n"
+    path.write_text(invalid_schema)
     solver.step, solver.time = 4, 0.4
     with pytest.raises(RuntimeError, match="CSV schema mismatch"):
         OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
-    assert path.read_text() == legacy
+    assert path.read_text() == invalid_schema

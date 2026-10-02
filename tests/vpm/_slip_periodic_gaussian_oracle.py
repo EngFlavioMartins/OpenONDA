@@ -1,4 +1,4 @@
-"""UNWIRED f64 Gaussian slip-slab oracle with an analytic image-tail bound.
+"""Independent f64 Gaussian slip-slab oracle with an analytic image-tail bound.
 
 This is a small-cloud qualification oracle, not a particle-mesh implementation.
 It does not call any production induction or image-tail code. Sources in a slab
@@ -146,7 +146,9 @@ def _family_bounds(x, g, sigma, targets, period, shells):
     velocity = np.where(valid | (magnitude == 0), velocity, np.inf)
     gradient = np.where(valid | (magnitude == 0), gradient, np.inf)
     if np.isnan(velocity).any() or np.isnan(gradient).any():
-        raise FloatingPointError("oracle tail arithmetic overflow: rescale this qualification problem")
+        raise FloatingPointError(
+            "oracle tail arithmetic overflow: rescale this qualification problem"
+        )
     return velocity.sum(axis=1), gradient.sum(axis=1)
 
 

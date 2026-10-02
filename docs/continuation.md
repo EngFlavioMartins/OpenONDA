@@ -24,6 +24,8 @@ Keep the mesh, geometry, boundary conditions, viscosity, particle distribution, 
 
 ParaView files alone cannot restore a simulation. Backup cadence determines how much work is repeated after an interruption. Continuation preserves the model; it does not resolve a numerical instability.
 
+Restarts require the current checkpoint schemas: FVM serial version 10, FVM partitioned version 8, and coupled version 12 with boundary-state schema 4. Checkpoints are admitted without schema migration, and numerical configuration changes require explicit permission.
+
 ## After resuming
 
 The solver trims histories and visualization frames to the restored time before advancing again. Regenerate plots with `./allplot.sh`, where provided, after extending a run. See [saved fields](solution_layout.md) and [physical comparisons](visualization.md).

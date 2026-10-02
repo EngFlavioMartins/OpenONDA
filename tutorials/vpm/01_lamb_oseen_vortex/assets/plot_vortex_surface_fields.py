@@ -99,7 +99,7 @@ def plot_surface_fields(args) -> int:
     width_cm, height_cm = 12.5, 6.0
     fig = plt.figure(figsize=(width_cm * cm, height_cm * cm))
     outer = 0.097
-    bottom, top = 0.23, 0.90
+    bottom, top = 0.238, 0.90
     axis_height = top - bottom
     axis_width = axis_height * height_cm / width_cm
     colorbar_gap, colorbar_width = 0.015, 0.015
@@ -122,13 +122,13 @@ def plot_surface_fields(args) -> int:
         txt_kw = dict(
             ha=ha,
             va=va,
-            bbox=dict(boxstyle="round,pad=0.15", fc=colors["LightText"], alpha=0.75, lw=0),
+            bbox=dict(boxstyle="round,pad=0.15", fc=colors["white"], alpha=0.75, lw=0),
         )
         ax_v.text(tx, ty, label, **txt_kw)
         ax_w.text(tx, ty, label, **txt_kw)
 
     # Contro division lines
-    divider_kw = dict(color=colors["LightText"], linewidth=0.6, alpha=1.0)
+    divider_kw = dict(color=colors["white"], linewidth=0.6, alpha=1.0)
     for ax in (ax_v, ax_w):
         ax.axhline(0, **divider_kw)
         ax.axvline(0, **divider_kw)

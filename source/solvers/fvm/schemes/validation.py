@@ -18,7 +18,7 @@ CONVECTION_SCHEMES = {"upwind", "central", "linear", "deferred", "lust", "linear
 )
 
 # Time (ddt) schemes resolved in ``solve.pimple_solver`` / ``assemble.momentum``.
-TIME_SCHEMES = {"euler", "euler_implicit", "backward_euler", "backward", "bdf2"}
+TIME_SCHEMES = {"euler_implicit", "backward"}
 
 # Gradient schemes resolved by ``fields.gradients._resolve_gradient_fn``.
 GRADIENT_SCHEMES = {"gauss", "lsq"}

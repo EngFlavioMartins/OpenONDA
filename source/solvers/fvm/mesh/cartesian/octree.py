@@ -1051,15 +1051,11 @@ class CartesianOctree:
         surface_may_cross_domain_boundary:
             Permit a closed general surface to extend outside the mesh domain.
             Outer patches retain precedence where the domain clips the solid.
-    preserve_body_geometry:
-        Guarantee that the input body coordinates are immutable.  The body
-        faces become exact Cartesian lattice planes, the outer domain is padded
-        outward as needed, and no ordinary fluid cell may overlap the solid
-        with positive volume.  This is the only supported mode; the legacy
-        body-snapping path was removed.
-
     Notes
     -----
+    Input body coordinates are immutable. Box faces become exact Cartesian
+    lattice planes, the outer domain is padded outward as needed, and fluid
+    cells cannot overlap the solid with positive volume.
     Coarse cells next to finer cells are represented as valid polyhedra with
         multiple coplanar subfaces. Geometrically the untouched cells remain
         axis-aligned hexahedra. This
@@ -1090,7 +1086,6 @@ class CartesianOctree:
         preserve_outer_patches: tuple[str, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
         include_cell_vertex_indices: bool = True,
-        preserve_body_geometry: bool = True,
     ) -> None:
         """Allocate a deterministic Cartesian octree mesh builder.
 
@@ -1106,10 +1101,9 @@ class CartesianOctree:
         wall_patch_name, surface_cell_size, minimum_cell_size,
         refinements, surface_patch_refinements, merge_outer_patch,
         preserve_outer_patches, surface_may_cross_domain_boundary,
-        include_cell_vertex_indices, preserve_body_geometry
+        include_cell_vertex_indices
             Mesh-quality, refinement, boundary, and topology policies. Lengths
-            are in metres; ``preserve_body_geometry`` selects exact Cartesian
-            body conformance.
+            are in metres. Body coordinates are preserved exactly.
 
         Raises
         ------
@@ -1219,12 +1213,6 @@ class CartesianOctree:
         )
 
         if surface is not None:
-            if not preserve_body_geometry:
-                raise ValueError(
-                    "preserve_body_geometry=False is no longer supported: the legacy "
-                    "body-snapping path was removed and the input body is always "
-                    "preserved exactly."
-                )
             if surface.kind == "box" and surface_exclusion_distance <= 0.0:
                 resolved = _resolve_preserved_lattice(
                     requested_domain, fitted_max_cell_size, requested_level, surface.bounds
@@ -1278,7 +1266,6 @@ class CartesianOctree:
         self.preserve_outer_patches = tuple(dict.fromkeys(preserve_outer_patches))
         self.surface_may_cross_domain_boundary = bool(surface_may_cross_domain_boundary)
         self.include_cell_vertex_indices = include_cell_vertex_indices
-        self.preserve_body_geometry = preserve_body_geometry
         self.exact_surface_components = tuple(exact_surface_components)
         self.surface_exclusion_distance = float(surface_exclusion_distance)
 
@@ -1936,7 +1923,6 @@ class CartesianOctree:
                 "requested_domain": self.requested_domain,
                 "effective_domain": self.effective_domain,
                 "padding_per_face": self.padding_per_face,
-                "preserve_body_geometry": self.preserve_body_geometry,
                 "surface_file": self.surface_file,
                 "surface_sha256": self.surface.sha256 if self.surface is not None else None,
                 "surface_bounds": self.surface_bounds,

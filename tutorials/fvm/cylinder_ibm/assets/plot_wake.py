@@ -87,8 +87,8 @@ def main():
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
     ax.plot(x_cl / D_REF, u_cl / FREESTREAM_SPEED, color=COLORS["fvm"], linewidth=1.0)
-    ax.axhline(0.0, color=COLORS["AxisBlack"], linewidth=0.5)
-    ax.axvspan(-0.5, 0.5, color=COLORS["MaskGray"], label="cylinder")
+    ax.axhline(0.0, color=COLORS["black"], linewidth=0.6)
+    ax.axvspan(-0.5, 0.5, color=COLORS["light_gray"], label="cylinder")
     if L is not None and "L_over_D" in ref:
         lo, hi = ref["L_over_D"]
         ax.axvspan(
@@ -111,7 +111,7 @@ def main():
     ax.set_ylabel(r"$u_x / U_\infty$")
     ax.legend()
     ax.grid(False)
-    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.984)
+    centered_subplots_adjust(fig, outer=0.100, bottom=0.20, top=0.984)
     save_fig(fig, "wake_centreline.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     if L is not None:

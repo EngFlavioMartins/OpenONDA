@@ -38,11 +38,11 @@ def plot_vorticity_history(
     _theme.set_thesis_style()
     data = load_integrals(samples_dir)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
-    ax.plot(data["time"], data["total_enstrophy"], "-o", color=_COLORS["VPMpurple"])
+    ax.plot(data["time"], data["total_enstrophy"], "-o", color=_COLORS["vpm"])
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"Enstrophy [m$^3$/s$^2$]")
     figures_dir.mkdir(parents=True, exist_ok=True)
-    _theme.centered_subplots_adjust(fig, outer=.104, bottom=.22, top=.923)
+    _theme.centered_subplots_adjust(fig, outer=0.104, bottom=0.22, top=0.923)
     _theme.save_fig(
         fig,
         figures_dir / "quadcopter_vorticity_history.png",
@@ -183,18 +183,18 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
         time=("time", "first"), thrust=("thrust", "sum"), power=("input_power", "sum")
     )
     axes[1, 1].plot(
-        total.time / p.period, total.thrust, color=_COLORS["TUDcyan"], label="Total thrust"
+        total.time / p.period, total.thrust, color=_COLORS["teal"], label="Total thrust"
     )
     power_axis = axes[1, 1].twinx()
     power_axis.plot(
         total.time / p.period,
         total.power,
-        color=_COLORS["VPMpurple"],
+        color=_COLORS["vpm"],
         ls="-",
         label="Total shaft input",
     )
     axes[1, 1].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
-    power_axis.set_ylabel("Power [W]", color=_COLORS["VPMpurple"])
+    power_axis.set_ylabel("Power [W]", color=_COLORS["vpm"])
     _theme.centered_subplots_adjust(fig, outer=0.092, top=0.966)
     _theme.validate_thesis_figure(fig, fig.axes)
     _theme.export_figure(
@@ -268,7 +268,7 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
         )
         for x, y, _ in centers:
             ax.add_patch(Circle((x, y), p.radius, fill=False, color="white", lw=0.6, ls="--"))
-        ax.set(xlabel="$x$ [m]", aspect="equal", title=rf"$z={points[0, 2]:g}$ m")
+        ax.set(xlabel="$x$ [m]", aspect="equal", title=rf"$z={points[0, 2]:.2g}$ m")
         ax.locator_params(axis="both", nbins=3)
     axes[0, 0].set_ylabel("y [m]")
     outer = 0.135

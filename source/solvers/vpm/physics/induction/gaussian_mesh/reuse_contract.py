@@ -1,6 +1,6 @@
-"""Exact particle-stage reuse for the optional, standard Gaussian slab.
+"""Exact particle-stage reuse for the standard Gaussian slab.
 
-This contract is deliberately separate from the legacy FMM/slab contract.
+Other radial kernels use the reflected-source FMM/slab contract.
 Only the *complete pure particle operator* is cached: pair-mean-core primary
 FMM plus source-core images. Coherent source-only queries are never cached by
 this adapter. They may replace the session's private grid without invalidating
@@ -40,76 +40,104 @@ from . import (
 )
 
 _MODULES = (
-    slip_slab, session, policy, fields, runtime, correction, stencil, coordinates,
-    planning, correction_admission, error_bounds, execution, gaussian_tail, certificate, _interval, ieee,
+    slip_slab,
+    session,
+    policy,
+    fields,
+    runtime,
+    correction,
+    stencil,
+    coordinates,
+    planning,
+    correction_admission,
+    error_bounds,
+    execution,
+    gaussian_tail,
+    certificate,
+    _interval,
+    ieee,
 )
 _CLASSES = (
-    session.GaussianSlabFieldSession, session.GaussianSlabPolicy,
-    policy.GaussianMeshParameters, fields.GaussianImageFields,
-    runtime.DeviceOwner, runtime.FFTPlanPair, correction.GaussianCoreCorrectionGPU,
+    session.GaussianSlabFieldSession,
+    session.GaussianSlabPolicy,
+    policy.GaussianMeshParameters,
+    fields.GaussianImageFields,
+    runtime.DeviceOwner,
+    runtime.FFTPlanPair,
+    correction.GaussianCoreCorrectionGPU,
     execution.PortableGaussianImageFields,
 )
 # Snapshot actual standard implementations, not names or arbitrary closures.
 # Imports are CuPy-lazy. Untracked custom numerical code always falls through
 # to the public operator; this is not a purity declaration for custom code.
 _CLASS_BINDINGS = {
-    cls: {name: value for name, value in vars(cls).items()
-          if callable(value) or isinstance(value, (property, staticmethod, classmethod))}
+    cls: {
+        name: value
+        for name, value in vars(cls).items()
+        if callable(value) or isinstance(value, (property, staticmethod, classmethod))
+    }
     for cls in _CLASSES
 }
-_FUNCTION_BINDINGS = {
-    module: {name: value for name, value in vars(module).items()
-             if inspect.isfunction(value)} for module in _MODULES
-}
-_MODULE_CLASS_BINDINGS = {
-    module: {name: value for name, value in vars(module).items() if inspect.isclass(value)}
+_MODULE_BINDINGS = {
+    module: {
+        name: value
+        for name, value in vars(module).items()
+        if inspect.isfunction(value)
+        or inspect.isclass(value)
+        or (name.isupper() and _primitive_key(value))
+    }
     for module in _MODULES
 }
-_CONSTANT_BINDINGS = {
-    module: {name: value for name, value in vars(module).items()
-             if name.isupper() and _primitive_key(value)} for module in _MODULES
+_INSTANCE_METHODS = {
+    cls: frozenset(name for name in methods if not name.startswith("__"))
+    for cls, methods in _CLASS_BINDINGS.items()
 }
 _MATHEMATICAL_TAIL = ("shell", "velocity", "gradient", "relative", "contract")
 _MATHEMATICAL_MESH = (
-    "empty_field", "source_sha256", "source_only_primary", "finite_images", "shell",
-    "velocity_tail_bound", "gradient_tail_bound", "velocity_correction_bound",
-    "gradient_correction_bound", "omitted_distance_lower", "certificate_scope",
+    "empty_field",
+    "source_sha256",
+    "source_only_primary",
+    "finite_images",
+    "shell",
+    "velocity_tail_bound",
+    "gradient_tail_bound",
+    "velocity_correction_bound",
+    "gradient_correction_bound",
+    "omitted_distance_lower",
+    "certificate_scope",
 )
 
 
 def _standard_classes():
-    return all(inspect.getattr_static(cls, name) is method
-               for cls, methods in _CLASS_BINDINGS.items()
-               for name, method in methods.items())
+    return all(
+        vars(cls).get(name) is method
+        for cls, methods in _CLASS_BINDINGS.items()
+        for name, method in methods.items()
+    )
 
 
 def _standard_instance(instance, cls):
-    return type(instance) is cls and all(
-        name not in vars(instance) for name in _CLASS_BINDINGS[cls]
-        if not name.startswith("__"))
+    return type(instance) is cls and _INSTANCE_METHODS[cls].isdisjoint(vars(instance))
 
 
 def _standard_modules():
+    # Identity also detects reassignment of equal-looking numeric constants.
     return _standard_classes() and all(
-        vars(module).get(name) is function
-        for module, functions in _FUNCTION_BINDINGS.items()
-        for name, function in functions.items()
-    ) and all(vars(module).get(name) is cls
-              for module, classes in _MODULE_CLASS_BINDINGS.items()
-              for name, cls in classes.items()) and all(
-        # Exact primitive type and float bits are retained by the cache key;
-        # here identity detects reassignment even to equal-looking constants.
         vars(module).get(name) is value
-        for module, constants in _CONSTANT_BINDINGS.items()
-        for name, value in constants.items()
+        for module, bindings in _MODULE_BINDINGS.items()
+        for name, value in bindings.items()
     )
 
 
 def _policy_key(value):
     if is_dataclass(value):
-        return (type(value).__name__, tuple(
-            (item.name, _policy_key(getattr(value, item.name)))
-            for item in dataclass_fields(value)))
+        return (
+            type(value).__name__,
+            tuple(
+                (item.name, _policy_key(getattr(value, item.name)))
+                for item in dataclass_fields(value)
+            ),
+        )
     return value
 
 
@@ -119,9 +147,12 @@ def _admit_rounding():
     bridge = ieee._bridge()
     for name in ("capture", "enter_default", "restore", "round_to_nearest"):
         function = getattr(bridge, name, None)
-        if (not inspect.isbuiltin(function) or function.__name__ != name
-                or function.__module__ != bridge.__name__
-                or getattr(function, "__self__", None) is not bridge):
+        if (
+            not inspect.isbuiltin(function)
+            or function.__name__ != name
+            or function.__module__ != bridge.__name__
+            or getattr(function, "__self__", None) is not bridge
+        ):
             raise RuntimeError("Gaussian stage reuse requires the standard compiled FENV guard")
     ieee.require_round_to_nearest()
 
@@ -140,9 +171,17 @@ def _admit_session(slab):
         raise RuntimeError("Gaussian slab field session is closed or cleanup is uncertain")
     if current._configuration_key() != current._configuration:
         raise RuntimeError("Gaussian slab controls changed; construct a new session")
-    expected = (slab.z_min, slab.z_max, slab.tail_tolerance, slab.max_shells,
-                slab.velocity_scale, slab.gradient_scale, "float32", slab.gaussian_mesh_policy,
-                current.execution_backend)
+    expected = (
+        slab.z_min,
+        slab.z_max,
+        slab.tail_tolerance,
+        slab.max_shells,
+        slab.velocity_scale,
+        slab.gradient_scale,
+        "float32",
+        slab.gaussian_mesh_policy,
+        current.execution_backend,
+    )
     if current._configuration != expected:
         raise RuntimeError("Gaussian slab session does not match its bound operator")
     owner = current._owner
@@ -172,10 +211,13 @@ class StandardGaussianSlabReuseContract:
 
     def _supported(self):
         slab = self.backend
-        if (not _standard_modules() or not _standard_methods(slab, slip_slab.SlipSlabInduction)
-                or slab.base is not self._base_backend
-                or type(slab.gaussian_mesh_policy) is not session.GaussianSlabPolicy
-                or type(slab.gaussian_mesh_policy.mesh) is not policy.GaussianMeshParameters):
+        if (
+            not _standard_modules()
+            or not _standard_methods(slab, slip_slab.SlipSlabInduction)
+            or slab.base is not self._base_backend
+            or type(slab.gaussian_mesh_policy) is not session.GaussianSlabPolicy
+            or type(slab.gaussian_mesh_policy.mesh) is not policy.GaussianMeshParameters
+        ):
             return False
         current = slab._mesh_session
         if current is not None:
@@ -184,26 +226,32 @@ class StandardGaussianSlabReuseContract:
             owner = current._owner
             if owner is not None:
                 if type(owner) is execution.PortableGaussianImageFields:
-                    if (not _standard_instance(owner, execution.PortableGaussianImageFields)
-                            or owner.closed or owner.execution_backend != "cupy_cuda"):
+                    if (
+                        not _standard_instance(owner, execution.PortableGaussianImageFields)
+                        or owner.closed
+                        or owner.execution_backend != "cupy_cuda"
+                    ):
                         return False
                     owner = owner._owner
                 if not _standard_instance(owner, fields.GaussianImageFields):
                     return False
-                for item, cls in ((owner._owner, runtime.DeviceOwner),
-                                  (owner._plans, runtime.FFTPlanPair),
-                                  (owner._correction, correction.GaussianCoreCorrectionGPU)):
+                for item, cls in (
+                    (owner._owner, runtime.DeviceOwner),
+                    (owner._plans, runtime.FFTPlanPair),
+                    (owner._correction, correction.GaussianCoreCorrectionGPU),
+                ):
                     if item is not None and not _standard_instance(item, cls):
                         return False
                 if owner._correction is not None and not _standard_instance(
-                        owner._correction._owner, runtime.DeviceOwner):
+                    owner._correction._owner, runtime.DeviceOwner
+                ):
                     return False
         return True
 
     def _admit_request(self, **args):
         slab = self.backend
         if not slab._uses_mesh():
-            raise RuntimeError("Gaussian slab stage reuse requires its bound optional backend")
+            raise RuntimeError("Gaussian slab stage reuse requires its bound mesh operator")
         if args["velocity_out"] is None or args["vortex_strength_rate_out"] is None:
             raise ValueError("particle mesh stages require velocity and strength-rate outputs")
         if type(args["strength_rate_enabled"]) is not bool:
@@ -212,9 +260,17 @@ class StandardGaussianSlabReuseContract:
             # admitted; never silently reinterpret e.g. flag=2 on a hit.
             # Preserve the public operator's accepted int/np.bool_ semantics.
             return False
-        slab._mesh_fields(args["position"], args["vortex_strength"], args["core_radius"],
-                          args["position"], args["count"], args["count"], args["velocity_out"],
-                          args["velocity_gradient_out"], args["vortex_strength_rate_out"])
+        slab._mesh_fields(
+            args["position"],
+            args["vortex_strength"],
+            args["core_radius"],
+            args["position"],
+            args["count"],
+            args["count"],
+            args["velocity_out"],
+            args["velocity_gradient_out"],
+            args["vortex_strength_rate_out"],
+        )
         slab._mesh_count(args["count"], slab.gaussian_mesh_policy.max_sources)
         # Empty public stages return without certificate construction. Avoid
         # imposing a dependency on their otherwise dependency-free no-op.
@@ -232,23 +288,40 @@ class StandardGaussianSlabReuseContract:
         # f64/custom kernels deliberately bypass until separately qualified.
         if slab.physics.accumulator_dtype != ti.f32 or slab.kernel.name != "GAUSSIAN":
             return None
-        key = ("gaussian-slab-exact-stage-v1", primary.operator_key, id(slab),
-               id(slab.physics), _policy_key(slab.gaussian_mesh_policy),
-               slab.z_min, slab.z_max, slab.tail_tolerance, slab.max_shells,
-               slab.velocity_scale, slab.gradient_scale, slab.stretching_scheme,
-               float(slab._z_min_field[None]), float(slab._z_max_field[None]),
-               _field_layout(slab, ("_z_min_field", "_z_max_field", "_span_excess")),
-               tuple(float(value) for value in slab.physics._zero_velocity[None]))
+        key = (
+            "gaussian-slab-exact-stage-v1",
+            primary.operator_key,
+            id(slab),
+            id(slab.physics),
+            _policy_key(slab.gaussian_mesh_policy),
+            slab.z_min,
+            slab.z_max,
+            slab.tail_tolerance,
+            slab.max_shells,
+            slab.velocity_scale,
+            slab.gradient_scale,
+            slab.stretching_scheme,
+            float(slab._z_min_field[None]),
+            float(slab._z_max_field[None]),
+            _field_layout(slab, ("_z_min_field", "_z_max_field", "_span_excess")),
+            tuple(float(value) for value in slab.physics._zero_velocity[None]),
+        )
         if not _primitive_key(key):
             return None
 
         def capture():
             tail = slab.last_tail
-            state = None if tail is None else {
-                name: deepcopy(tail[name]) for name in _MATHEMATICAL_TAIL if name in tail}
+            state = (
+                None
+                if tail is None
+                else {name: deepcopy(tail[name]) for name in _MATHEMATICAL_TAIL if name in tail}
+            )
             if state is not None:
-                state["mesh"] = {name: deepcopy(tail.get("mesh", {})[name])
-                                 for name in _MATHEMATICAL_MESH if name in tail.get("mesh", {})}
+                state["mesh"] = {
+                    name: deepcopy(tail.get("mesh", {})[name])
+                    for name in _MATHEMATICAL_MESH
+                    if name in tail.get("mesh", {})
+                }
             return primary.capture_diagnostics(), float(slab._span_excess[None]), state
 
         def restore(state):
@@ -267,7 +340,12 @@ class StandardGaussianSlabReuseContract:
                 slab.last_tail["seconds"] = 0.0
 
         return InductionReuseContract(
-            operator_key=key, autonomous=True, sources_are_read_only=True,
-            complete_outputs_are_equivalent=True, diagnostics_are_complete=True,
-            capture_diagnostics=capture, restore_diagnostics=restore,
-            request_admission=self._admit_request)
+            operator_key=key,
+            autonomous=True,
+            sources_are_read_only=True,
+            complete_outputs_are_equivalent=True,
+            diagnostics_are_complete=True,
+            capture_diagnostics=capture,
+            restore_diagnostics=restore,
+            request_admission=self._admit_request,
+        )

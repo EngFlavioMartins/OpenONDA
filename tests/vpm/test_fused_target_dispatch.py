@@ -158,7 +158,7 @@ def test_fused_empty_and_background_contracts_do_not_dispatch(runtime):
     assert velocity.shape == (0, 3) and gradient.shape == (0, 9)
 
 
-def test_treecode_fused_route_and_legacy_fallback_remain_unchanged():
+def test_treecode_fused_route_and_direct_fallback_select_requested_backend():
     particles, points = object(), np.zeros((2, 3))
     result = (np.ones((2, 3)), np.ones((2, 9)))
     calls = []

@@ -49,8 +49,6 @@ VPM_PARTICLE_SPACING = CELL_SIZE
 ETA_BLEND_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 
 # Coupling
-BOUNDARY_CONDITION_MODE = "vorticity_mixed"
-TRANSFER_METHOD = "buffered_m4_renewal"
 INTERFACE_ITERATIONS = 3
 
 # Time and output
@@ -185,10 +183,8 @@ FVM_SETUP = fvm.FVMSetup(
 
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    transfer_method=TRANSFER_METHOD,
     transfer_region_bounds=TRANSFER_REGION_BOX,
     backup_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
-    boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     interface_iterations=INTERFACE_ITERATIONS,
     eta_blend_width=ETA_BLEND_WIDTH,
     vpm_only_width=2.0 * VPM_PARTICLE_SPACING,

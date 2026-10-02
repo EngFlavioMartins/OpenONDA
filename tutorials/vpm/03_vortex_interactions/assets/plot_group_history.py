@@ -65,7 +65,7 @@ def plot(runs, output, formats):
     axes[1].set_xlabel(r"$t\Gamma_0/R_0^2$")
     handles, labels = axes[0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
-    plotting.centered_subplots_adjust(fig, outer=0.118, bottom=0.275, top=0.96, hspace=0.18)
+    plotting.centered_subplots_adjust(fig, outer=0.118, bottom=0.33, top=0.96, hspace=0.18)
     save_figure(fig, output / FIGURE_NAME, axes, formats)
     plt.close(fig)
 

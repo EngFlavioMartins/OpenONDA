@@ -47,16 +47,15 @@ def collection_path(solution_directory: str | Path, component: str) -> Path:
 
 
 def vpm_backup_files(directory: str | Path) -> list[Path]:
-    """Find native checkpoints in a solution root or an explicit frame directory.
+    """Find native checkpoints in the solution root's ``vpm/`` component.
 
-    Prefer the canonical ``vpm/`` component when present. Otherwise accept a
-    frame directory directly (including older flat archives). Never recursively
-    combine separate cases or mix stale root-level files into a current series.
+    Never recursively combine separate cases or mix root-level files into
+    the component series.
     Step widths are a minimum of six digits, as in the solver's ``:06d`` writer.
     """
     directory = Path(directory)
     component = component_directory(directory, "vpm")
-    frames = component if component.is_dir() else directory
+    frames = component
     pattern = re.compile(r"^vpm_(\d{6,})\.h5$")
     records = []
     for path in frames.glob("vpm_*.h5"):

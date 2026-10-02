@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections import deque
 from contextlib import suppress
 import json
@@ -15,6 +16,17 @@ import time
 import numpy as np
 import psutil
 from scipy.integrate import trapezoid
+
+
+def positive_coupling_steps(value: str) -> int:
+    """Parse a positive accepted-exchange limit for the cylinder CLI."""
+    try:
+        steps = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if steps < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return steps
 
 
 def run_coupled_cylinder(
@@ -198,28 +210,6 @@ def _prior_trial_attempts(
         return validate(payload["attempts"])
     if accept_command_changes and "attempts" in payload:
         return validate(payload["attempts"])
-    legacy_command = payload.get("command")
-    legacy_wall = payload.get("wall_seconds")
-    if (
-        isinstance(legacy_command, list)
-        and all(isinstance(argument, str) for argument in legacy_command)
-        and (
-            accept_command_changes
-            or _normalized_trial_command(legacy_command) == normalized_command
-        )
-        and not isinstance(legacy_wall, bool)
-        and isinstance(legacy_wall, (int, float))
-        and np.isfinite(legacy_wall)
-        and legacy_wall >= 0.0
-    ):
-        return [
-            {
-                "command": legacy_command,
-                "returncode": payload.get("returncode"),
-                "timed_out": bool(payload.get("timed_out", False)),
-                "wall_seconds": float(legacy_wall),
-            }
-        ]
     if accept_command_changes:
         raise ValueError(f"cannot resume trial record with unsupported schema: {path}")
     return []

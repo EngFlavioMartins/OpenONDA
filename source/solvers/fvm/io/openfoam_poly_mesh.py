@@ -242,7 +242,7 @@ def read_poly_mesh(directory: str | Path) -> dict[str, object]:
     neighbours = np.asarray(
         [int(value) for value in _read_list(source / "neighbour")], dtype=np.int32
     )
-    # cfMesh's polyMeshGen can emit a full-length legacy neighbour list with
+    # cfMesh's polyMeshGen can emit a full-length neighbour list with
     # -1 for boundary faces; OpenFOAM accepts this as well as a compact list.
     boundary_entries = np.flatnonzero(neighbours < 0)
     if len(boundary_entries):

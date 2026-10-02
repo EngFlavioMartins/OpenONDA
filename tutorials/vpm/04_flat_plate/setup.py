@@ -110,7 +110,7 @@ def run(mode: str, angle_of_attack: float) -> None:
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         freestream_velocity=reference_velocity,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
-        sigma_factor=PARTICLE_CORE_FACTOR,
+        wake_core_overlap=PARTICLE_CORE_FACTOR,
     )
     case = vpm.VPMCase(
         name=name,

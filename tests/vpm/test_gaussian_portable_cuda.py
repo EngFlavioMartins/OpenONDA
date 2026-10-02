@@ -9,18 +9,27 @@ pytestmark = pytest.mark.gpu
 
 
 def _case(source_only):
-    x = np.array([[-.075, .012, .023], [.018, -.023, .079], [.086, .031, .15]])
-    gamma = np.array([[.3, -.2, .7], [-.25, .5, -.4], [.1, .2, .3]])
-    sigma = np.array([.035, .04, .05])
-    q = np.array([[.012, .014, .024], [-.068, .053, .061], [.097, -.036, .04]])
+    x = np.array([[-0.075, 0.012, 0.023], [0.018, -0.023, 0.079], [0.086, 0.031, 0.15]])
+    gamma = np.array([[0.3, -0.2, 0.7], [-0.25, 0.5, -0.4], [0.1, 0.2, 0.3]])
+    sigma = np.array([0.035, 0.04, 0.05])
+    q = np.array([[0.012, 0.014, 0.024], [-0.068, 0.053, 0.061], [0.097, -0.036, 0.04]])
     images = [(0, True), (-1, False), (1, False), (1, True)]
     if source_only:
         images.insert(0, (0, False))
-    options = {"zmin": 0., "zmax": .193, "tau": .12, "spacing": .035,
-               "cutoff": .6, "order": 10, "dtype": "float32",
-               "correction_dtype": "float32", "source_only_primary": source_only,
-               "max_scratch_bytes": 64*1024**2, "max_plan_bytes": 8*1024**2,
-               "max_correction_bytes": 16*1024**2}
+    options = {
+        "zmin": 0.0,
+        "zmax": 0.193,
+        "tau": 0.12,
+        "spacing": 0.035,
+        "cutoff": 0.6,
+        "order": 10,
+        "dtype": "float32",
+        "correction_dtype": "float32",
+        "source_only_primary": source_only,
+        "max_scratch_bytes": 64 * 1024**2,
+        "max_plan_bytes": 8 * 1024**2,
+        "max_correction_bytes": 16 * 1024**2,
+    }
     return x, gamma, sigma, q, images, options
 
 
@@ -29,24 +38,19 @@ def _assert_same_finite_fields(actual, expected):
         # Finite FFT/interpolation and float32 arithmetic have an independent
         # envelope; this comparison does not alter mathematical tail budgets.
         scale = max(float(np.max(np.abs(truth))), np.finfo("float32").tiny)
-        np.testing.assert_allclose(got, truth, rtol=2e-5, atol=2e-5*scale)
+        np.testing.assert_allclose(got, truth, rtol=2e-5, atol=2e-5 * scale)
 
 
 @pytest.mark.parametrize("source_only", [False, True])
-def test_cuda_and_host_match_same_float64_finite_operator_and_direct_cloud(source_only):
+def test_cuda_and_host_match_each_other_and_independent_direct_cloud(source_only):
     cp = pytest.importorskip("cupy")
     from source.solvers.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
     from source.solvers.vpm.physics.induction.gaussian_mesh.host_fields import (
         GaussianHostImageFields,
     )
-    from tests.vpm._finite_image_mesh_reference import direct_finite_images
-    from tests.vpm._finite_slab_field_mesh_reference import finite_slab_field_mesh
+    from tests.vpm._direct_gaussian_reference import direct_finite_images
 
     x, gamma, sigma, q, images, options = _case(source_only)
-    reference = finite_slab_field_mesh(
-        x, gamma, sigma, q, images, zmin=options["zmin"], zmax=options["zmax"],
-        tau=options["tau"], spacing=options["spacing"], order=options["order"],
-        correction_cutoff=options["cutoff"])
     with GaussianImageFields(x, gamma, sigma, q, **options) as cuda:
         u, j, cuda_report = cuda.evaluate(images)
         cuda_fields = cp.asnumpy(u), cp.asnumpy(j)
@@ -56,18 +60,18 @@ def test_cuda_and_host_match_same_float64_finite_operator_and_direct_cloud(sourc
         u, j, host_report = host.evaluate(images)
         host_fields = u, j
         assert host._prepared_world_images == world_images
-    truth = reference.velocity, reference.gradient
     direct = direct_finite_images(x, gamma, sigma, q, world_images)[:2]
     for actual in (cuda_fields, host_fields):
-        _assert_same_finite_fields(actual, truth)
-        _assert_same_finite_fields(actual, direct)
+        for got, truth in zip(actual, direct, strict=True):
+            assert np.linalg.norm(got - truth) / np.linalg.norm(truth) < 2e-5
     _assert_same_finite_fields(host_fields, cuda_fields)
     assert cuda_report["core_correction_included"] and host_report["core_correction_included"]
 
 
 @pytest.mark.parametrize("source_only", [False, True])
 def test_real_cuda_memory_admission_recovers_same_host_operator_without_touching_default_pool(
-    monkeypatch, source_only,
+    monkeypatch,
+    source_only,
 ):
     cp = pytest.importorskip("cupy")
     from source.solvers.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
@@ -90,10 +94,11 @@ def test_real_cuda_memory_admission_recovers_same_host_operator_without_touching
     # This leaves exactly the reserved FFT capacity and no field payload.
     # Only the admission result is constrained; real CUDA produced the
     # baseline and remains available while the same request executes on CPU.
-    constrained_free = options["max_correction_bytes"]+options["max_plan_bytes"]
+    constrained_free = options["max_correction_bytes"] + options["max_plan_bytes"]
     monkeypatch.setattr(cp.cuda.runtime, "memGetInfo", lambda: (constrained_free, total))
-    owner = PortableGaussianImageFields(x, gamma, sigma, q,
-                                        execution_backend="cupy_cuda", **options)
+    owner = PortableGaussianImageFields(
+        x, gamma, sigma, q, execution_backend="cupy_cuda", **options
+    )
     try:
         assert owner.execution_backend == "cpu"
         assert isinstance(owner._owner, GaussianHostImageFields)
@@ -106,7 +111,11 @@ def test_real_cuda_memory_admission_recovers_same_host_operator_without_touching
         assert report["memory_fallback"] == owner.fallback_reason
         _assert_same_finite_fields((u, j), expected)
         assert cp.cuda.get_allocator() is allocator_before
-        assert (normal_pool.used_bytes(), normal_pool.total_bytes(), normal_pool.get_limit()) == normal_before
+        assert (
+            normal_pool.used_bytes(),
+            normal_pool.total_bytes(),
+            normal_pool.get_limit(),
+        ) == normal_before
         np.testing.assert_array_equal(cp.asnumpy(sentinel), np.arange(17, dtype=np.float32))
     finally:
         owner.close()

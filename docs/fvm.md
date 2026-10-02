@@ -84,7 +84,7 @@ For an immersed body, the mesh contains no body-wall patch. Markers prescribe th
 
 `PimpleControl(algorithm="PISO")` advances transient flow with pressure corrections. `PIMPLE` adds nonlinear outer corrections; `n_outer_correctors` controls these and `n_correctors` controls pressure corrections. `SIMPLE` solves steady flow through `solve_steady()`.
 
-`euler_implicit` is first-order in time; `backward` or `bdf2` uses second-order BDF after startup. Upwind convection is more dissipative; central convection preserves a smooth resolved vortex but can oscillate in under-resolved flows. `limitedLinear` is the default. Gradients use `lsq` or `gauss`.
+`euler_implicit` is first-order in time; `backward` uses second-order BDF after startup. Upwind convection is more dissipative; central convection preserves a smooth resolved vortex but can oscillate in under-resolved flows. `limitedLinear` is the default. Gradients use `lsq` or `gauss`.
 
 Reduce the time step when the Courant number grows. `MaximumCourantTimeStep` adapts it within `maximum_time_step_size`; immersed forcing also needs the Fourier limit described in [the IBM tutorial](../tutorials/fvm/cylinder_ibm/README.md). Repeat with finer cells and a smaller time step before treating drag, shedding frequency or wall shear as converged.
 

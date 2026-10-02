@@ -42,6 +42,8 @@ ANGLE = math.radians(ALPHA_DEG)
 FREESTREAM_VELOCITY = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CHORD / REYNOLDS
 FVM_BOX = (-1.2, 1.4, -0.8, 0.8, -3.3, 3.3)
+TRANSFER_REGION_BOX = (-1.12, 1.32, -0.72, 0.72, -3.2, 3.2)
+GBD_VORTICITY_FLOOR = 0.01
 VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_N_PARTICLES = 1_500_000
 IBM_MARKER_RATIO = 2.5
@@ -151,8 +153,12 @@ VPM_CASE = vpm.VPMCase(
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
-        viscous=vpm.ViscousConfig.cs(
-            kinematic_viscosity=KINEMATIC_VISCOSITY, particle_spacing=SPACING
+        viscous=vpm.ViscousConfig.gbd(
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            particle_spacing=SPACING,
+            padding=5.0,
+            threshold_mode="absolute",
+            threshold=GBD_VORTICITY_FLOOR * SPACING**3,
         ),
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.les_smagorinsky(
@@ -172,7 +178,9 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    eta_blend_width=0.0,
+    transfer_region_bounds=TRANSFER_REGION_BOX,
+    eta_blend_width=6.0 * SPACING,
+    vpm_only_width=2.0 * SPACING,
     backup_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
 )
 

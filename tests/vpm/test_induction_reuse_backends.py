@@ -107,7 +107,7 @@ def test_real_fmm_output_subsets_are_cache_equivalent(kernel, scheme):
         h.close()
 
 
-@pytest.mark.parametrize("kernel", ["GAUSSIAN", "WINCKELMANS"])
+@pytest.mark.parametrize("kernel", ["WINCKELMANS"])
 def test_real_slab_subsets_tail_and_internal_span_guard(kernel, monkeypatch):
     h = Harness(kernel, slab=True)
     try:
@@ -220,7 +220,7 @@ def test_exact_operator_dependencies_and_unknown_bindings_decline(monkeypatch):
 
 
 def test_slab_target_ancestry_capacity_and_layout_are_part_of_contract(monkeypatch):
-    h = Harness(slab=True)
+    h = Harness("WINCKELMANS", slab=True)
     try:
         target = h.base._target_workspace
         assert target is not None

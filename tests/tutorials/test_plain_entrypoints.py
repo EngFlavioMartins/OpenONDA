@@ -5,13 +5,14 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 
 import pytest
 
-from openonda.tutorials import TUTORIALS, materialize_tutorial
+from openonda.tutorials import _EXCLUDED_PARTS, TUTORIALS, materialize_tutorial
 
 
 def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
@@ -37,7 +38,7 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
     )
     for family in ("fvm", "coupled_fvm_vpm"):
         for path in (root / family).rglob("*"):
-            if "study_results" in path.relative_to(root).parts:
+            if any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts):
                 continue
             # Campaign orchestrators are research tools, outside the direct
             # tutorial setup/launcher learning surface checked here.
@@ -132,7 +133,7 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "from pathlib import Path\n"
-        "assert sys.argv[1:] == ['-m', 'openonda.results', 'restore'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
+        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
         "with open(os.environ['CALLS'], 'a') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "raise SystemExit(int(os.environ['FAIL']))\n"
@@ -142,7 +143,7 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         sorted(
             path
             for path in root.rglob("all*.sh")
-            if "study_results" not in path.relative_to(root).parts
+            if not any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts)
         )
     ):
         if original.name == "allclean.sh":
@@ -158,7 +159,15 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
             dest = case / source.relative_to(original.parent)
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.touch()
-        formats = (None, "png", "pdf") if original.name == "allplot.sh" else (None,)
+        # Reference launchers may share a plotter in the parent case's assets.
+        for line in original.read_text().splitlines():
+            tokens = shlex.split(line, comments=True)
+            if len(tokens) > 1 and tokens[0] == "python" and tokens[1].endswith(".py"):
+                assert (original.parent / tokens[1]).is_file(), (original, tokens[1])
+                dest = case / tokens[1]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.touch()
+        formats = (None, "png", "pdf", "both") if original.name == "allplot.sh" else (None,)
         for figure_format in formats:
             for fail in (0, 23):
                 calls = tmp_path / "calls.jsonl"
@@ -182,4 +191,4 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
                     assert len(records) == 1, original
                 for record in records:
                     if "--format" in record:
-                        assert record[record.index("--format") + 1] == (figure_format or "png")
+                        assert record[record.index("--format") + 1] == (figure_format or "both")

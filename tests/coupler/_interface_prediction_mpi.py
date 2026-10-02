@@ -1,4 +1,4 @@
-"""Two-rank speculative seed admission, rollback, and cold disable checks."""
+"""Two-rank speculative seed admission, rollback, and cold-history checks."""
 
 import json
 from types import SimpleNamespace
@@ -10,7 +10,7 @@ from source.coupler import interface_iteration as iteration
 from source.coupler import interface_prediction as prediction
 
 
-def run_case(comm, *, correction, disable_worker=False, failure_at=None, failure_rank=0):
+def run_case(comm, *, correction, cold_worker=False, failure_at=None, failure_rank=0):
     master = comm.Get_rank() == 0
     fvm = SimpleNamespace(
         step=10,
@@ -31,7 +31,6 @@ def run_case(comm, *, correction, disable_worker=False, failure_at=None, failure
             interface_iterations=3,
             interface_normal_tolerance=1e-5,
             interface_gradient_tolerance=1e-5,
-            interface_acceleration="none",
         ),
         interface_predictor=prediction.SafeguardedInterfacePredictor(),
     )
@@ -53,8 +52,8 @@ def run_case(comm, *, correction, disable_worker=False, failure_at=None, failure
         "endpoint": prediction._copy_trace(old),
         "correction": trace(correction),
     }
-    if disable_worker and not master:
-        c.interface_predictor.enabled = False
+    if cold_worker and not master:
+        c.interface_predictor.reset()
     starts, inputs, outputs = [], [], []
     iteration.capture_restart_payload = lambda local: (local.step, local.time, local.value)
 
@@ -62,7 +61,7 @@ def run_case(comm, *, correction, disable_worker=False, failure_at=None, failure
         local.step, local.time, local.value = state
 
     iteration.publish_restart_payload = restore
-    iteration._particle_state_snapshot = lambda owner: owner.strength
+    iteration._particle_state_snapshot = lambda owner, **kwargs: owner.strength
     iteration._restore_particle_state = lambda owner, state: setattr(owner, "strength", state)
 
     def advance(owner, *args):
@@ -144,7 +143,7 @@ def run_case(comm, *, correction, disable_worker=False, failure_at=None, failure
         return 1
     if caught is not None:
         raise caught
-    if disable_worker:
+    if cold_worker:
         assert inputs == [1.0, 0.01, 0.0001]
         assert not c._last_interface_iteration_diagnostics["prediction"]["attempted"]
     elif correction == -1.0:
@@ -168,7 +167,7 @@ if __name__ == "__main__":
     counts = [
         run_case(comm, correction=-1.0),
         run_case(comm, correction=1.0),
-        run_case(comm, correction=-1.0, disable_worker=True),
+        run_case(comm, correction=-1.0, cold_worker=True),
     ]
     failed_cases = [
         ("initial_capture", 0),

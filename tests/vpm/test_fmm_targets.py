@@ -30,14 +30,16 @@ def test_highest_order_derivative_avoids_far_image_intermediate_underflow():
     output = ti.field(ti.f32, shape=())
     order = max(sum(alpha) for alpha in _DERIVATIVE_INDICES)
     _far_axis_derivative(backend, output, _DERIVATIVE_INDICES.index((0, 0, order)))
-    expected = (-1)**order * math.factorial(order) / (4 * math.pi * 5000.0**(order + 1))
+    expected = (-1) ** order * math.factorial(order) / (4 * math.pi * 5000.0 ** (order + 1))
     assert abs(float(output[None])) > 0.0
     np.testing.assert_allclose(float(output[None]), expected, rtol=3e-5, atol=0.0)
     backend.destroy()
 
 
 @ti.kernel
-def _angular_derivative_oracle(backend: ti.template(), output: ti.template(), direction: ti.template()):
+def _angular_derivative_oracle(
+    backend: ti.template(), output: ti.template(), direction: ti.template()
+):
     for index in range(len(_DERIVATIVE_INDICES)):
         output[index] = backend._angular_derivative(direction[None], index)
 
@@ -62,7 +64,10 @@ def test_cartesian_recurrence_matches_independent_contraction_table():
         direction[None] = unit
         _angular_derivative_oracle(backend, oracle, direction)
         scale = np.array(
-            [math.prod(range(1, 2 * sum(alpha), 2)) / (4 * math.pi) for alpha in _DERIVATIVE_INDICES]
+            [
+                math.prod(range(1, 2 * sum(alpha), 2)) / (4 * math.pi)
+                for alpha in _DERIVATIVE_INDICES
+            ]
         )
         error = np.abs(backend.derivatives.to_numpy()[0] - oracle.to_numpy())
         assert np.max(error / scale) < 3e-5
@@ -73,7 +78,9 @@ def test_bounded_block_decline_does_not_publish_any_output():
     rng = np.random.default_rng(51)
     harness = _DeviceFMMHarness(capacity=64)
     position = rng.normal(0, 1, (64, 3)).astype(np.float32)
-    harness.evaluate(position, rng.normal(0, 0.01, (64, 3)).astype(np.float32), np.full(64, 0.03, np.float32))
+    harness.evaluate(
+        position, rng.normal(0, 0.01, (64, 3)).astype(np.float32), np.full(64, 0.03, np.float32)
+    )
     query = ti.Vector.field(3, ti.f32, shape=64)
     velocity = ti.Vector.field(3, ti.f32, shape=64)
     gradient = ti.Matrix.field(3, 3, ti.f32, shape=64)
@@ -83,7 +90,9 @@ def test_bounded_block_decline_does_not_publish_any_output():
     backend = FMMTargetEvaluator(harness.induction.workspace, 64, max_pairs=1)
     backend.prepare_targets(query, 64)
     with pytest.raises(TargetBlockNotWorthwhile):
-        backend.evaluate_image_block([(0.0, False)], velocity, gradient, harness.induction.physics._zero_velocity)
+        backend.evaluate_image_block(
+            [(0.0, False)], velocity, gradient, harness.induction.physics._zero_velocity
+        )
     np.testing.assert_array_equal(velocity.to_numpy(), 17.0)
     np.testing.assert_array_equal(gradient.to_numpy(), 19.0)
     assert backend.last_diagnostics["m2l_pairs"] <= 128
@@ -109,7 +118,9 @@ def test_streamed_image_subblocks_match_single_batch_without_partial_publication
         backend.prepare_targets(query, 7)
         backend.evaluate_image_block(
             [(0.0, False), (1.0, True), (7.0, False)],
-            velocity, gradient, harness.induction.physics._zero_velocity,
+            velocity,
+            gradient,
+            harness.induction.physics._zero_velocity,
         )
         results.append((velocity.to_numpy(), gradient.to_numpy()))
         if capacity == 16:
@@ -126,7 +137,7 @@ def test_exact_near_work_refines_target_cells_and_profiles_separate_passes():
     position = rng.uniform(-0.1, 0.1, (64, 3)).astype(np.float32)
     strength = rng.normal(0, 0.01, (64, 3)).astype(np.float32)
     # Every target lies inside every core, so source acceptance is uniformly
-    # false and this exercises explicit P2P, not mixed legacy-subtree jobs.
+    # false and this exercises explicit P2P, not mixed mixed-subtree jobs.
     core = np.full(64, 1.0, dtype=np.float32)
     targets = rng.uniform(-0.1, 0.1, (128, 3)).astype(np.float32)
     harness = _DeviceFMMHarness(capacity=64)
@@ -135,7 +146,7 @@ def test_exact_near_work_refines_target_cells_and_profiles_separate_passes():
     backend, velocity, gradient = _query(harness, targets)
     near = int(backend.near_pair_count[None])
     exact = (backend.near_source.to_numpy()[:near] >= 0) & (
-        backend.near_legacy.to_numpy()[:near] == 0
+        backend.near_mixed.to_numpy()[:near] == 0
     )
     near_nodes = backend.near_target.to_numpy()[:near][exact]
     assert near > 0
@@ -143,7 +154,9 @@ def test_exact_near_work_refines_target_cells_and_profiles_separate_passes():
     assert {"traversal", "near_ordering", "near_evaluation"} <= set(
         backend.last_diagnostics["passes_seconds"]
     )
-    for actual, exact in zip((velocity, gradient), _oracle("GAUSSIAN", position, strength, core, targets), strict=True):
+    for actual, exact in zip(
+        (velocity, gradient), _oracle("GAUSSIAN", position, strength, core, targets), strict=True
+    ):
         np.testing.assert_allclose(actual, exact, rtol=3e-5, atol=3e-6)
     backend.destroy()
 
@@ -185,8 +198,8 @@ def _query(harness, targets):
     return backend, velocity.to_numpy(), gradient.to_numpy()
 
 
-def _legacy_query(harness, targets):
-    """Call the preserved strict monopole traversal, independent of dispatch."""
+def _pointwise_query(harness, targets):
+    """Call the strict pointwise monopole traversal, independent of dispatch."""
     count = len(targets)
     query = ti.Vector.field(3, ti.f32, shape=count)
     velocity = ti.Vector.field(3, ti.f32, shape=count)
@@ -283,7 +296,7 @@ def test_complete_image_block_matches_independent_reflected_source_sum():
             expected_gradient += j
             transformed_target = targets.copy()
             transformed_target[:, 2] = shift - targets[:, 2] if odd else targets[:, 2] - shift
-            old_v, old_j = _legacy_query(harness, transformed_target)
+            old_v, old_j = _pointwise_query(harness, transformed_target)
             if odd:
                 old_v[:, 2] *= -1
                 old_j[:, :2, 2] *= -1
@@ -337,7 +350,7 @@ def test_target_fmm_compares_actual_error_to_existing_target_path(configuration)
     backend, velocity, gradient = _query(harness, targets)
     expected = _oracle("GAUSSIAN", position, strength, core, targets)
     _, rounding = _exact_fields_and_roundoff("GAUSSIAN", position, strength, core, targets)
-    old = _legacy_query(harness, targets)
+    old = _pointwise_query(harness, targets)
     for label, new, reference, previous, roundoff in zip(
         ("velocity", "gradient"), (velocity, gradient), expected, old, rounding, strict=True
     ):
@@ -350,7 +363,7 @@ def test_target_fmm_compares_actual_error_to_existing_target_path(configuration)
         assert (
             backend.last_diagnostics["m2l_pairs"]
             + backend.last_diagnostics["monopole_cell_pairs"]
-            + backend.last_diagnostics["legacy_subtree_target_pairs"]
+            + backend.last_diagnostics["subtree_target_pairs"]
         ) > 0
     assert backend.last_diagnostics["target_cells"] < len(targets)
     backend.destroy()
@@ -384,7 +397,7 @@ def test_prepared_target_reflections_preserve_full_jacobian_and_geometry():
             output_start=64,
         )
         expected = _oracle("GAUSSIAN", position, strength, core, transformed)
-        previous = _legacy_query(harness, transformed)
+        previous = _pointwise_query(harness, transformed)
         kernel = make_vortex_kernel("GAUSSIAN")
         displacement = transformed[:, None, :] - position[None, :, :]
         pairs = (
@@ -392,7 +405,11 @@ def test_prepared_target_reflections_preserve_full_jacobian_and_geometry():
             kernel.gradient_pair(displacement, strength[None, :, :], core[None, :], core[None, :]),
         )
         for result, reference, old, pair in zip(
-            (velocity.to_numpy()[64:], gradient.to_numpy()[64:]), expected, previous, pairs, strict=True
+            (velocity.to_numpy()[64:], gradient.to_numpy()[64:]),
+            expected,
+            previous,
+            pairs,
+            strict=True,
         ):
             conditioning = np.linalg.norm(pair.reshape(64, 64, -1), axis=2).sum(axis=1)
             allowance = 16 * np.finfo(np.float32).eps * np.linalg.norm(conditioning)
@@ -402,7 +419,7 @@ def test_prepared_target_reflections_preserve_full_jacobian_and_geometry():
     backend.destroy()
 
 
-class _LegacyImageInduction:
+class _PointwiseImageInduction:
     # A plain proxy is intentional: Taichi's data-oriented __getattribute__
     # binds property getters from the decorated parent, ignoring a subclass's
     # override. That would silently compare the accelerated path to itself.
@@ -452,7 +469,7 @@ def _slab_oracle(kernel_name, position, strength, core, target, shell, *, stage)
     return outputs, conditioning
 
 
-@pytest.mark.parametrize("kernel_name", ["GAUSSIAN", "WINCKELMANS"])
+@pytest.mark.parametrize("kernel_name", ["WINCKELMANS"])
 def test_full_slab_blocks_preserve_tail_stage_rates_and_target_operator(kernel_name):
     rng = np.random.default_rng(776)
     n = 6
@@ -473,7 +490,7 @@ def test_full_slab_blocks_preserve_tail_stage_rates_and_target_operator(kernel_n
     radius.from_numpy(core)
     query.from_numpy(targets)
     records = []
-    for backend in (_LegacyImageInduction, FMMInduction):
+    for backend in (_PointwiseImageInduction, FMMInduction):
         physics = PhysicsBase(kernel_name, n, ti.f32, max_evaluation_points=7)
         slab = SlipSlabInduction(
             backend(), z_min=-0.48, z_max=0.48, tail_tolerance=1e-4, max_shells=129

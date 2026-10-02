@@ -25,40 +25,17 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     fvm, vpm, coupler, mesh = module.build_case()
     assert fvm.samplers[0].reference_area == pytest.approx(0.96)
     assert coupler.interface_iterations == 3
-    assert coupler.interface_acceleration == "none"
     assert vpm.numerics.induction.z_min == pytest.approx(-0.48)
     assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.04)
     assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
     assert len(mesh.levels) - 1 == 24
     assert vpm.numerics.compute_device == "AUTO"
-    assert vpm.numerics.induction.gaussian_mesh_policy == module.GAUSSIAN_MESH_POLICY
-
-
-def test_builder_acceleration_is_explicit_and_restart_identified():
-    from source.coupler import CouplerSetup
-
-    module = _setup_module()
-    _fvm, _vpm, accelerated, _mesh = module.build_case(
-        overrides={"interface_acceleration": "aitken"}
-    )
-    assert accelerated.interface_iterations == 3
-    assert accelerated.interface_acceleration == "aitken"
-    assert accelerated.interface_normal_tolerance == pytest.approx(1.0e-5)
-    assert accelerated.interface_gradient_tolerance == pytest.approx(1.0e-5)
-    assert accelerated.to_dict()["coupler"]["interface_acceleration"] == "aitken"
-    assert CouplerSetup().to_dict()["coupler"]["interface_acceleration"] == "none"
-
-    with pytest.raises(ValueError, match="interface_acceleration"):
-        module.build_case(overrides={"interface_acceleration": "anderson"})
-    for sweeps in (1, 2):
-        with pytest.raises(ValueError, match="at least three"):
-            CouplerSetup(interface_acceleration="aitken", interface_iterations=sweeps)
+    assert vpm.numerics.induction.gaussian_mesh_policy == module.vpm.GaussianSlabPolicy()
 
 
 def test_builder_resolves_independent_span_dz_and_particle_spacing():
     module = _setup_module()
     fvm, vpm, coupler, mesh = module.build_case(
-        gaussian_mesh_policy=None,
         overrides={
             "hxy": 0.08,
             "span": 0.48,
@@ -91,8 +68,9 @@ def test_builder_resolves_independent_span_dz_and_particle_spacing():
     # Fast force/phase records cannot be finer than one accepted exchange.
     assert vpm.samplers.samples[0].schedule.interval == 1
     assert fvm.samplers[0].schedule.every_n_steps == 10
-    profile = next(sample for sample in vpm.samplers.samples
-                   if sample.file_name == "vpm_transverse_x2")
+    profile = next(
+        sample for sample in vpm.samplers.samples if sample.file_name == "vpm_transverse_x2"
+    )
     assert profile.schedule.interval == 2
     assert vpm.run.steps % vpm.samplers.samples[0].schedule.interval == 0
     assert (vpm.numerics.induction.z_min, vpm.numerics.induction.z_max) == (-0.24, 0.24)

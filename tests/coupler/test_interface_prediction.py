@@ -19,7 +19,6 @@ def rig(monkeypatch):
     cfg = SimpleNamespace(
         coupling_patch="outer",
         interface_iterations=3,
-        interface_acceleration="none",
         interface_normal_tolerance=1e-5,
         interface_gradient_tolerance=1e-5,
     )
@@ -78,7 +77,7 @@ def rig(monkeypatch):
         f.step, f.time, f.field = snapshot
 
     monkeypatch.setattr(iteration, "publish_restart_payload", restore)
-    monkeypatch.setattr(iteration, "_particle_state_snapshot", lambda v: v.strength)
+    monkeypatch.setattr(iteration, "_particle_state_snapshot", lambda v, **kwargs: v.strength)
     monkeypatch.setattr(
         iteration, "_restore_particle_state", lambda v, p: setattr(v, "strength", p)
     )
@@ -216,8 +215,12 @@ def test_rejected_seed_restores_actual_physics_diagnostic_storage(rig, monkeypat
     update = iteration.update_boundary_history_after_replacement
 
     def observe(owner, *args):
-        observations.append((physics.last_gbd_wall_transfer["nested"]["marker"],
-                             physics.last_gbd_moment_recovery["nested"]["marker"]))
+        observations.append(
+            (
+                physics.last_gbd_wall_transfer["nested"]["marker"],
+                physics.last_gbd_moment_recovery["nested"]["marker"],
+            )
+        )
         return advance(owner, *args)
 
     def mutate(owner, *args):
@@ -278,21 +281,18 @@ def test_changed_identity_or_endpoint_cold_starts(rig, change):
     assert rig.c.interface_predictor._history is None
 
 
-def test_disabled_reset_and_uncommitted_history_are_cold(rig):
+def test_reset_and_uncommitted_history_are_cold(rig):
     rig.seed_history(-1.0)
-    rig.c.interface_predictor.enabled = False
+    rig.c.interface_predictor.reset()
     assert rig.c.interface_predictor._history is None
     run(rig)
     assert rig.inputs == pytest.approx([1.0, 0.01, 0.0001])
-    assert rig.c._last_interface_iteration_diagnostics["prediction"]["reason"] == "disabled"
-    rig.c.interface_predictor.enabled = True
+    assert not rig.c._last_interface_iteration_diagnostics["prediction"]["attempted"]
     rig.c.interface_predictor.commit()
     assert rig.c.interface_predictor._history is None
     rig.seed_history(-1.0)
     rig.c.interface_predictor.reset()
     assert rig.c.interface_predictor._history is None
-    with pytest.raises(TypeError, match="bool"):
-        rig.c.interface_predictor.enabled = "yes"
 
 
 def test_nonfinite_seed_is_not_probed(rig):
@@ -485,7 +485,7 @@ def test_native_identity_hashes_live_values_not_mutable_operator_identity():
 
 
 @pytest.mark.integration
-def test_two_rank_seed_fallback_and_disabling_are_collective():
+def test_two_rank_seed_fallback_and_cold_history_are_collective():
     pytest.importorskip("mpi4py")
     launcher = Path(sys.executable).with_name("mpiexec")
     if not launcher.is_file():

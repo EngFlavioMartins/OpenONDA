@@ -179,6 +179,9 @@ def test_backup_failure_keeps_all_ranks_on_the_same_publication_collectives(tmp_
         def Get_size(self):
             return 2
 
+        def Ibarrier(self):
+            return SimpleNamespace(Test=lambda: True)
+
         def allgather(self, value):
             turn = self.calls
             summaries[(turn, self.rank)] = value

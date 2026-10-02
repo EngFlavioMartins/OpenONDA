@@ -13,12 +13,14 @@ from source.solvers.fvm import (
     LinearSolverConfig,
     TimeConfig,
     TransportConfig,
+    TurbulenceConfig,
 )
 from source.solvers.fvm.immersed_boundary.body import ImmersedBody
 from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
 from source.solvers.fvm.mesh.validation import extract_cell_subset_mesh
 from source.solvers.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
+from source.solvers.vpm import TurbulenceConfig as VPMTurbulence
 
 
 def body_mesh(kind):
@@ -66,7 +68,7 @@ def body_mesh(kind):
     return mesh
 
 
-def make_coupler(directory, kind, transfer_method):
+def make_coupler(directory, kind, *, les=False, error_limit=1.0):
     velocity = [0.2, 0.03, 0]
     fvm = FVMSolver(
         FVMSetup(
@@ -74,6 +76,7 @@ def make_coupler(directory, kind, transfer_method):
             linear=LinearSolverConfig(momentum_tolerance=1e-10, pressure_tolerance=1e-10),
             time=TimeConfig(time_step_size=0.005, end_time=0.02),
             transport=TransportConfig(kinematic_viscosity=0.01),
+            turbulence=TurbulenceConfig.smagorinsky() if les else TurbulenceConfig(),
             initial_velocity=velocity,
             boundaries=[
                 *([] if kind == "immersed" else [BoundaryConfig.wall("body")]),
@@ -113,14 +116,13 @@ def make_coupler(directory, kind, transfer_method):
                 domain_bounds=(-2.0, 2.0) * 3,
                 freestream_velocity=velocity,
                 induction=DirectInduction(),
+                turbulence=VPMTurbulence.les_smagorinsky() if les else VPMTurbulence.dns(),
                 viscous=ViscousConfig.gbd(
                     kinematic_viscosity=0.01,
                     particle_spacing=0.25,
                     padding=4,
                     threshold=1e-5,
-                    threshold_mode=(
-                        "absolute" if transfer_method == "buffered_m4_renewal" else "budget"
-                    ),
+                    threshold_mode="absolute",
                 ),
             ),
         )
@@ -130,10 +132,9 @@ def make_coupler(directory, kind, transfer_method):
         vpm,
         CouplerSetup(
             freestream_velocity=velocity,
-            transfer_method=transfer_method,
             eta_blend_width=0,
             backup_interval_steps=100,
-            transfer_discretization_error_limit=1.0,
+            transfer_discretization_error_limit=error_limit,
         ),
     )
 
@@ -150,10 +151,9 @@ def particle_state(coupler):
     return positions[order], strengths[order]
 
 
-@pytest.mark.parametrize("transfer_method", ["common_lattice", "buffered_m4_renewal"])
 @pytest.mark.parametrize("kind", ["rotated", "concave", "multiple", "thin", "immersed"])
-def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind, transfer_method):
-    with make_coupler(tmp_path, kind, transfer_method) as first:
+def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
+    with make_coupler(tmp_path, kind) as first:
         assert first.run(start_from="latest", max_coupling_steps=1) == 1
         assert first.vorticity_transfer.solid_boundary is not None
         first.solve(start_step=1)
@@ -162,7 +162,7 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind, transfer_met
         positions, strengths = particle_state(first)
     manifest = tmp_path / "solution/backups/manifest.json"
     assert json.loads(manifest.read_text())["coupling_step"] == 1
-    with make_coupler(tmp_path, kind, transfer_method) as resumed:
+    with make_coupler(tmp_path, kind) as resumed:
         assert resumed.run(start_from="latest") == 2
         np.testing.assert_allclose(resumed.fvm_solver.get_velocity_field(), velocity, atol=1e-7)
         # VPM fields and GBD atomic accumulation use float32; accept its
@@ -173,3 +173,22 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind, transfer_met
         np.testing.assert_allclose(restored_strengths, strengths, atol=2e-7)
     diagnostics = tmp_path / "solution/coupler_diagnostics.jsonl"
     assert [json.loads(row)["step"] for row in diagnostics.read_text().splitlines()] == [1, 2]
+
+
+def test_finite_immersed_body_with_les_uses_canonical_3d_exchange(tmp_path):
+    with make_coupler(tmp_path, "immersed", les=True, error_limit=0.08) as driver:
+        assert driver.run(max_coupling_steps=1, backup_at_stop=True) == 1
+        assert driver.fvm_solver.setup.turbulence.model == "smagorinsky"
+        assert driver.vpm_solver.numerics.turbulence.model == "LES_SMAGORINSKY"
+        position, strength = particle_state(driver)
+        assert np.ptp(position[:, 2]) > 0.5
+        assert np.all(np.isfinite(strength))
+        assert driver.vorticity_transfer._planar_span is None
+        diagnostics = driver._last_transfer_result
+        assert diagnostics.transfer_method == "buffered_m4_renewal"
+        assert (
+            diagnostics.renewal_conservation_error <= diagnostics.renewal_vortex_strength_tolerance
+        )
+        assert (
+            diagnostics.renewal_linear_impulse_error <= diagnostics.renewal_linear_impulse_tolerance
+        )

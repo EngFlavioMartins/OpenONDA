@@ -98,7 +98,7 @@ class TargetInteractionCapacityError(RuntimeError):
 class TargetBlockNotWorthwhile(RuntimeError):  # noqa: N818 -- an optional fast-path decline.
     """A bounded local-expansion trial declined without publishing any output.
 
-    The caller must use its unchanged legacy operator for this complete tile
+    The caller must use its pointwise operator for this complete tile
     and block. This is a cost decision, never an image truncation or health gate.
     """
 
@@ -125,7 +125,9 @@ class FMMTargetEvaluator:
         self._fields = None
         self._pair_fields = None
         try:
-            self._initialize(source_workspace, max_targets, max_pairs=max_pairs, max_images=max_images)
+            self._initialize(
+                source_workspace, max_targets, max_pairs=max_pairs, max_images=max_images
+            )
         except BaseException as error:
             # Construction may fail after the hierarchy or coefficient fields
             # were allocated, but before the caller receives this object.
@@ -137,10 +139,10 @@ class FMMTargetEvaluator:
 
     def _initialize(self, source_workspace, max_targets, *, max_pairs, max_images):
         self.source = source_workspace
-        self.legacy_radial_kernel = source_workspace.kernel_name in {"GAUSSIAN", "WINCKELMANS"}
+        self.monopole_radial_kernel = source_workspace.kernel_name in {"GAUSSIAN", "WINCKELMANS"}
         self.source_separation = 2.0 / math.sqrt(float(source_workspace.tree.theta_sq))
-        # Arbitrary targets previously used the stricter LBVH blob-tail gate,
-        # not the particle FMM's 1e-5 regularization threshold.
+        # Arbitrary targets require the stricter LBVH blob-tail gate
+        # as well as the particle FMM regularization threshold.
         self.target_core_cutoff = max(
             float(source_workspace.tree.regularization_tail_cutoff[None]),
             source_workspace.velocity_tail_cutoff,
@@ -200,12 +202,16 @@ class FMMTargetEvaluator:
         self.direct_work = fields.scalar(dtype=ti.i64, shape=())
         self.monopole_work = fields.scalar(dtype=ti.i64, shape=())
         self.monopole_pair_count = fields.scalar(dtype=ti.i32, shape=())
-        self.legacy_subtree_work = fields.scalar(dtype=ti.i64, shape=())
+        self.subtree_work = fields.scalar(dtype=ti.i64, shape=())
         self.error = fields.scalar(dtype=ti.i32, shape=())
         self.velocity = fields.vector(3, dtype=ti.f32, shape=self.max_targets)
         self.gradient = fields.matrix(3, 3, dtype=ti.f32, shape=self.max_targets)
-        self.near_partial_velocity = fields.vector(3, dtype=ti.f32, shape=(self.max_targets, _NEAR_LANES))
-        self.near_partial_gradient = fields.matrix(3, 3, dtype=ti.f32, shape=(self.max_targets, _NEAR_LANES))
+        self.near_partial_velocity = fields.vector(
+            3, dtype=ti.f32, shape=(self.max_targets, _NEAR_LANES)
+        )
+        self.near_partial_gradient = fields.matrix(
+            3, 3, dtype=ti.f32, shape=(self.max_targets, _NEAR_LANES)
+        )
         self.target_path_capacity = int(self.tree.max_tree_depth_guard) + 1
         # Level-major storage coalesces neighbouring Morton targets' reads.
         # Root-first traversal keeps shared ancestors at the same SIMD loop
@@ -260,10 +266,10 @@ class FMMTargetEvaluator:
         self.near_target = fields.scalar(dtype=ti.i32, shape=capacity)
         self.near_source = fields.scalar(dtype=ti.i32, shape=capacity)
         self.near_image = fields.scalar(dtype=ti.i32, shape=capacity)
-        self.near_legacy = fields.scalar(dtype=ti.i32, shape=capacity)
+        self.near_mixed = fields.scalar(dtype=ti.i32, shape=capacity)
         self.ordered_near_source = fields.scalar(dtype=ti.i32, shape=capacity)
         self.ordered_near_image = fields.scalar(dtype=ti.i32, shape=capacity)
-        self.ordered_near_legacy = fields.scalar(dtype=ti.i32, shape=capacity)
+        self.ordered_near_mixed = fields.scalar(dtype=ti.i32, shape=capacity)
         self.frontier_source_a = fields.scalar(dtype=ti.i32, shape=capacity)
         self.frontier_source_b = fields.scalar(dtype=ti.i32, shape=capacity)
         self.frontier_target_a = fields.scalar(dtype=ti.i32, shape=capacity)
@@ -388,7 +394,7 @@ class FMMTargetEvaluator:
         self.direct_work[None] = 0
         self.monopole_work[None] = 0
         self.monopole_pair_count[None] = 0
-        self.legacy_subtree_work[None] = 0
+        self.subtree_work[None] = 0
         self.frontier_count[None] = 0
         for leaf in range(node_count):
             self.near_count[leaf] = 0
@@ -397,7 +403,7 @@ class FMMTargetEvaluator:
                 self.local[leaf * _LOCAL_COUNT + coefficient] = ti.Vector.zero(ti.f32, 3)
 
     @ti.func
-    def _legacy_accept(self, source: ti.i32, displacement: ti.template()):
+    def _pointwise_accept(self, source: ti.i32, displacement: ti.template()):
         distance_sq = displacement.dot(displacement)
         distance = ti.sqrt(distance_sq)
         diameter = 2.0 * self.source.tree.node_half_size[source]
@@ -406,7 +412,8 @@ class FMMTargetEvaluator:
             and diameter * diameter / distance_sq < self.source.tree.theta_sq
             and self.source.tree._node_core_is_admissible(
                 source, distance, self.source.tree.node_max_radius[source]
-            ) != 0
+            )
+            != 0
         )
 
     @ti.func
@@ -418,33 +425,40 @@ class FMMTargetEvaluator:
         distance = displacement.norm()
         target_radius = self.node_bound_radius[target]
         source_radius = self.source.tree.node_half_size[source]
-        source_extent = source_radius + (
-            self.source.tree.node_com[source] - self.source.tree.node_centre[source]
-        ).norm()
+        source_extent = (
+            source_radius
+            + (self.source.tree.node_com[source] - self.source.tree.node_centre[source]).norm()
+        )
         core = self.source.tree.node_max_radius[source]
         net_strength = self.source.tree.node_net_vortex_strength[source]
-        # Packet bounds classify the *legacy* pointwise decision. A mixed
+        # Packet bounds classify pointwise source acceptance. A mixed
         # packet must not open a source for points that would accept it: even
         # more accurate individual image terms can spoil cancellation of the
-        # original operator's errors in the complete image sum.
-        padding = 8 * 1.1920928955078125e-7 * (
-            distance + target_radius + source_extent + core
-            + ti.abs(self.tree.node_centre[target]).sum()
-            + ti.abs(self.source.tree.node_com[source]).sum()
-            + ti.abs(self.image_shift[image])
+        # pointwise approximation errors in the complete image sum.
+        padding = (
+            8
+            * 1.1920928955078125e-7
+            * (
+                distance
+                + target_radius
+                + source_extent
+                + core
+                + ti.abs(self.tree.node_centre[target]).sum()
+                + ti.abs(self.source.tree.node_com[source]).sum()
+                + ti.abs(self.image_shift[image])
+            )
         )
         minimum_distance = ti.max(0.0, distance - target_radius - padding)
         maximum_distance = distance + target_radius + padding
         outside_tail = minimum_distance > source_extent + self.target_core_cutoff * core
-        common_cores = (
-            core - self.source.tree.node_min_radius[source]
-            <= 1e-5 * ti.max(self.source.tree.node_avg_radius[source], 1e-12)
+        common_cores = core - self.source.tree.node_min_radius[source] <= 1e-5 * ti.max(
+            self.source.tree.node_avg_radius[source], 1e-12
         )
         source_ok = (
             minimum_distance > self.source_separation * source_radius
             and (common_cores or outside_tail)
             and minimum_distance > ti.max(1e-8, self.source.tree.node_avg_radius[source])
-            # Preserve the strict legacy target traversal's cancellation gate.
+            # Cancelled source nodes require further subdivision.
             and net_strength.dot(net_strength) > 1e-24
         )
         # Local polynomials represent the singular field. Common-core nodes
@@ -456,21 +470,25 @@ class FMMTargetEvaluator:
             or net_strength.dot(net_strength) <= 1e-24
             or (
                 not common_cores
-                and maximum_distance <= source_extent
-                + self.source.tree.regularization_tail_cutoff[None] * core
+                and maximum_distance
+                <= source_extent + self.source.tree.regularization_tail_cutoff[None] * core
             )
         )
         if target_radius == 0.0:
-            source_ok = self._legacy_accept(source, displacement)
+            source_ok = self._pointwise_accept(source, displacement)
             none_accept = not source_ok
-        return ti.Vector([
-            ti.cast(source_ok, ti.i32), ti.cast(target_ok, ti.i32), ti.cast(none_accept, ti.i32)
-        ])
+        return ti.Vector(
+            [ti.cast(source_ok, ti.i32), ti.cast(target_ok, ti.i32), ti.cast(none_accept, ti.i32)]
+        )
 
     @ti.kernel
     def _initialise_frontier(
-        self, leaf_start: ti.i32, leaf_count: ti.i32,
-        image_start: ti.i32, image_count: ti.i32, root_override: ti.i32,
+        self,
+        leaf_start: ti.i32,
+        leaf_count: ti.i32,
+        image_start: ti.i32,
+        image_count: ti.i32,
+        root_override: ti.i32,
     ):
         for work in range(leaf_count * image_count):
             if work < self.max_pairs:
@@ -486,8 +504,14 @@ class FMMTargetEvaluator:
 
     @ti.kernel
     def _advance_frontier(
-        self, source_in: ti.template(), target_in: ti.template(), image_in: ti.template(),
-        source_out: ti.template(), target_out: ti.template(), image_out: ti.template(), count: ti.i32,
+        self,
+        source_in: ti.template(),
+        target_in: ti.template(),
+        image_in: ti.template(),
+        source_out: ti.template(),
+        target_out: ti.template(),
+        image_out: ti.template(),
+        count: ti.i32,
     ):
         self.frontier_count[None] = 0
         for work in range(count):
@@ -508,15 +532,15 @@ class FMMTargetEvaluator:
                 elif admissible[0] or not admissible[2] or (source_leaf and target_leaf):
                     pair = ti.atomic_add(self.near_pair_count[None], 1)
                     encoded_source = source
-                    legacy = 0
+                    mixed = 0
                     if not admissible[0] and not admissible[2]:
-                        legacy = 1
+                        mixed = 1
                         ti.atomic_add(
-                            self.legacy_subtree_work[None],
+                            self.subtree_work[None],
                             ti.cast(self.tree.node_particle_count[target], ti.i64),
                         )
                     elif admissible[0]:
-                        # Negative entries are accepted legacy monopoles,
+                        # Negative entries are accepted regularised monopoles,
                         # evaluated once per target, not exact source lists.
                         encoded_source = -source - 1
                         ti.atomic_add(self.monopole_pair_count[None], 1)
@@ -525,15 +549,15 @@ class FMMTargetEvaluator:
                             ti.cast(self.tree.node_particle_count[target], ti.i64),
                         )
                     else:
-                        particle_work = ti.cast(self.tree.node_particle_count[target], ti.i64) * ti.cast(
-                            self.source.tree.node_particle_count[source], ti.i64
-                        )
+                        particle_work = ti.cast(
+                            self.tree.node_particle_count[target], ti.i64
+                        ) * ti.cast(self.source.tree.node_particle_count[source], ti.i64)
                         ti.atomic_add(self.direct_work[None], particle_work)
                     if pair < self.max_pairs:
                         self.near_target[pair] = target
                         self.near_source[pair] = encoded_source
                         self.near_image[pair] = image
-                        self.near_legacy[pair] = legacy
+                        self.near_mixed[pair] = mixed
                         ti.atomic_add(self.near_count[target], 1)
                     else:
                         ti.atomic_max(self.error[None], 1)
@@ -718,7 +742,7 @@ class FMMTargetEvaluator:
             destination = ti.atomic_add(self.cursor[leaf], 1)
             self.ordered_near_source[destination] = self.near_source[pair]
             self.ordered_near_image[destination] = self.near_image[pair]
-            self.ordered_near_legacy[destination] = self.near_legacy[pair]
+            self.ordered_near_mixed[destination] = self.near_mixed[pair]
 
     @ti.func
     def _differentiate_local(self, base: ti.i32, offset: ti.template(), derivative: ti.template()):
@@ -750,8 +774,16 @@ class FMMTargetEvaluator:
             for degree in ti.static(range(1, _LOCAL_ORDER + 1)):
                 powers[axis, degree] = powers[axis, degree - 1] * offset[axis]
         ax, ay, az = ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3)
-        axx, axy, axz = ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3)
-        ayy, ayz, azz = ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3), ti.Vector.zero(ti.f32, 3)
+        axx, axy, axz = (
+            ti.Vector.zero(ti.f32, 3),
+            ti.Vector.zero(ti.f32, 3),
+            ti.Vector.zero(ti.f32, 3),
+        )
+        ayy, ayz, azz = (
+            ti.Vector.zero(ti.f32, 3),
+            ti.Vector.zero(ti.f32, 3),
+            ti.Vector.zero(ti.f32, 3),
+        )
         for index in range(_LOCAL_COUNT):
             a, b, c = self.local_alpha[index]
             value = self.local[base + index]
@@ -811,7 +843,7 @@ class FMMTargetEvaluator:
         displacement = query - source_position
         radius = displacement.norm()
         core = self.source.tree.node_avg_radius[source_node]
-        # Match the legacy regularised monopole, including its safer far-field
+        # Evaluate the regularised monopole with bounded far-field
         # arithmetic: evaluating blob sigma^-5 first can overflow at small
         # physical units even when the final gradient is representable.
         r2 = radius * radius
@@ -819,7 +851,7 @@ class FMMTargetEvaluator:
         r5 = r3 * r2
         cross = displacement.cross(strength)
         velocity, gradient = ti.Vector.zero(ti.f32, 3), ti.Matrix.zero(ti.f32, 3, 3)
-        if ti.static(self.legacy_radial_kernel):
+        if ti.static(self.monopole_radial_kernel):
             q = self.source.tree.q_kernel(radius / core)
             zeta = self.source.tree.zeta_kernel(radius / core) / (core * core * core)
             velocity = -q * cross / r3
@@ -838,7 +870,9 @@ class FMMTargetEvaluator:
         return velocity, gradient
 
     @ti.func
-    def _physical_image_fields(self, velocity: ti.template(), gradient: ti.template(), image: ti.i32):
+    def _physical_image_fields(
+        self, velocity: ti.template(), gradient: ti.template(), image: ti.i32
+    ):
         v, j = velocity, gradient
         if self.block_mode[None] and self.image_odd[image]:
             v[2] = -v[2]
@@ -885,7 +919,7 @@ class FMMTargetEvaluator:
         return self._physical_image_fields(velocity, gradient, image)
 
     @ti.func
-    def _legacy_subtree_fields(self, root: ti.i32, position: ti.template(), image: ti.i32):
+    def _subtree_fields(self, root: ti.i32, position: ti.template(), image: ti.i32):
         """Preserve pointwise source acceptance inside a mixed packet.
 
         Parent/right-sibling advancement is stackless and confined to this
@@ -898,7 +932,7 @@ class FMMTargetEvaluator:
         velocity, gradient = ti.Vector.zero(ti.f32, 3), ti.Matrix.zero(ti.f32, 3, 3)
         node = root
         while node >= 0:
-            accepted = self._legacy_accept(node, query - self.source.tree.node_com[node])
+            accepted = self._pointwise_accept(node, query - self.source.tree.node_com[node])
             if accepted or self.source.tree.node_is_leaf[node]:
                 v, j = ti.Vector.zero(ti.f32, 3), ti.Matrix.zero(ti.f32, 3, 3)
                 if accepted:
@@ -927,8 +961,8 @@ class FMMTargetEvaluator:
             source_node = self.ordered_near_source[pair]
             image = self.ordered_near_image[pair]
             v, j = ti.Vector.zero(ti.f32, 3), ti.Matrix.zero(ti.f32, 3, 3)
-            if self.ordered_near_legacy[pair]:
-                v, j = self._legacy_subtree_fields(source_node, position, image)
+            if self.ordered_near_mixed[pair]:
+                v, j = self._subtree_fields(source_node, position, image)
             elif source_node < 0:
                 v, j = self._monopole_fields(-source_node - 1, position, image)
             else:
@@ -1129,7 +1163,7 @@ class FMMTargetEvaluator:
             "direct_particle_pairs": 0,
             "monopole_target_pairs": 0,
             "monopole_cell_pairs": 0,
-            "legacy_subtree_target_pairs": 0,
+            "subtree_target_pairs": 0,
             "work_batches": 0,
             "subdivided_batches": 0,
             "peak_stored_pairs": 0,
@@ -1154,24 +1188,30 @@ class FMMTargetEvaluator:
                 self.last_diagnostics["subdivided_batches"] += 1
                 if images > 1:
                     split = images // 2
-                    jobs.extend([
-                        (first_leaf, leaves, first_image + split, images - split, root),
-                        (first_leaf, leaves, first_image, split, root),
-                    ])
+                    jobs.extend(
+                        [
+                            (first_leaf, leaves, first_image + split, images - split, root),
+                            (first_leaf, leaves, first_image, split, root),
+                        ]
+                    )
                 elif leaves > 1:
                     split = leaves // 2
-                    jobs.extend([
-                        (first_leaf + split, leaves - split, first_image, images, -1),
-                        (first_leaf, split, first_image, images, -1),
-                    ])
+                    jobs.extend(
+                        [
+                            (first_leaf + split, leaves - split, first_image, images, -1),
+                            (first_leaf, split, first_image, images, -1),
+                        ]
+                    )
                 else:
                     if root < 0:
                         root = int(self.leaf_nodes[first_leaf])
                     if int(self.tree.node_particle_count[root]) > 1:
-                        jobs.extend([
-                            (0, 1, first_image, images, int(self.tree.node_right[root])),
-                            (0, 1, first_image, images, int(self.tree.node_left[root])),
-                        ])
+                        jobs.extend(
+                            [
+                                (0, 1, first_image, images, int(self.tree.node_right[root])),
+                                (0, 1, first_image, images, int(self.tree.node_left[root])),
+                            ]
+                        )
                     elif self.block_mode[None]:
                         raise TargetBlockNotWorthwhile(
                             required, self.max_pairs, self.last_diagnostics
@@ -1186,7 +1226,7 @@ class FMMTargetEvaluator:
             self.last_diagnostics["direct_particle_pairs"] += int(self.direct_work[None])
             self.last_diagnostics["monopole_target_pairs"] += int(self.monopole_work[None])
             self.last_diagnostics["monopole_cell_pairs"] += int(self.monopole_pair_count[None])
-            self.last_diagnostics["legacy_subtree_target_pairs"] += int(self.legacy_subtree_work[None])
+            self.last_diagnostics["subtree_target_pairs"] += int(self.subtree_work[None])
             self.last_diagnostics["work_batches"] += 1
             self.last_diagnostics["peak_stored_pairs"] = max(
                 self.last_diagnostics["peak_stored_pairs"], m2l, near

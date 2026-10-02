@@ -68,7 +68,7 @@ def _write_complete_case(tmp_path: Path) -> tuple[Path, Path]:
         with h5py.File(vpm_frames / f"vpm_{step:06d}.h5", "w") as archive:
             solver = archive.create_group("solver")
             numerical_configuration = FRESH_NATIVE_CONFIG
-            solver.attrs["backup_format_version"] = "10.0"
+            solver.attrs["backup_format_version"] = "10.2"
             solver.attrs["numerical_configuration"] = numerical_configuration
             solver.attrs["numerical_configuration_sha256"] = hashlib.sha256(
                 numerical_configuration.encode("utf-8")

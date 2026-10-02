@@ -26,7 +26,6 @@ from source.coupler.boundary import (
     update_boundary_history_after_replacement,
 )
 from source.coupler.config.types import CouplerSetup
-from source.coupler.consistency import FVMConsistencyBand
 from source.coupler.interface_prediction import (
     SafeguardedInterfacePredictor,
     discard_interface_prediction_on_failure,
@@ -136,8 +135,6 @@ class FVMVPMCoupler:
         ``None`` on other MPI ranks.
     vorticity_transfer : VorticityTransfer or None
         Prepared FVM-to-VPM transfer component.
-    fvm_consistency_band : FVMConsistencyBand or None
-        Optional resolved-scale consistency component.
     fvm_time_step_size, vpm_time_step_size : float or None
         Accepted FVM substep and VPM/coupling-step durations in s.
     n_fvm_substeps : int
@@ -235,15 +232,11 @@ class FVMVPMCoupler:
         self.vpm_solver: VPMSolver | None = None
         self.fvm_solver: FVMSolver | None = None
         self.vorticity_transfer: VorticityTransfer | None = None
-        self.fvm_consistency_band: FVMConsistencyBand | None = None
         self._velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition: np.ndarray | None = None
         self._tangential_gradient_boundary_condition_old: np.ndarray | None = None
         self._tangential_gradient_boundary_condition: np.ndarray | None = None
-        self._kinematic_pressure_gradient_boundary_condition_old: np.ndarray | None = None
-        self._kinematic_pressure_gradient_boundary_condition: np.ndarray | None = None
-        self._pressure_velocity_snapshot: np.ndarray | None = None
         self._velocity_global_buffer: np.ndarray | None = None
         self._velocity_gradient_global_buffer: np.ndarray | None = None
         self._last_vpm_boundary_condition_flux_diagnostics = {
@@ -504,7 +497,7 @@ class FVMVPMCoupler:
             If the master has no active VPM solver, the solver time steps do
             not form an integer subcycling ratio, freestream/viscosity/domain
             contracts disagree, adaptive FVM stepping is configured, or a
-            configured transfer/consistency region is invalid.
+            configured transfer region is invalid.
         RuntimeError
             If MPI and FVM execution sizes disagree or a transfer component
             cannot be prepared from the available mesh/particle settings.
@@ -618,14 +611,6 @@ class FVMVPMCoupler:
 
         self.vorticity_transfer = VorticityTransfer(self)
         self.vorticity_transfer.setup(self.fvm_solver)
-        if cfg.fvm_consistency_width > 0.0:
-            assert self.fvm_box is not None
-            self.fvm_consistency_band = FVMConsistencyBand(
-                cfg,
-                self.fvm_solver,
-                coupling_time_step_size=self.vpm_time_step_size,
-                fvm_box=self.fvm_box,
-            )
         with collective_phase(self._comm, "VPM grid configuration"):
             boundary = self.vorticity_transfer.solid_boundary
             if self._is_master and boundary is not None:
@@ -1019,7 +1004,7 @@ class FVMVPMCoupler:
                     "run",
                     ("coupling steps", f"{n_steps:,}"),
                     ("end time", f"{self.end_time:.6g}", "s"),
-                    ("boundary mode", self.setup.boundary_condition_mode),
+                    ("boundary mode", "vorticity_mixed"),
                     ("coupling patch", patch),
                     (
                         "coupled backup directory",
@@ -1142,7 +1127,7 @@ class FVMVPMCoupler:
         *,
         coupling_step: int | None = None,
     ) -> Path:
-        """Atomically write both solvers and the coupling boundary history.
+        """Save one coupled checkpoint and publish both solvers at its time.
 
         Parameters
         ----------
@@ -1157,8 +1142,8 @@ class FVMVPMCoupler:
         Returns
         -------
         pathlib.Path
-            Backup directory. On rank zero the committed VPM HDF5/VTU pair is
-            also copied into ``solution/vpm`` as a retained output frame.
+            Backup directory. Retained FVM and VPM frames are also indexed in
+            ``solution/fvm.pvd`` and ``solution/vpm.pvd`` at the saved time.
 
         Raises
         ------
@@ -1170,12 +1155,28 @@ class FVMVPMCoupler:
 
         Notes
         -----
-        The FVM save is collective in partitioned execution. The manifest is
-        committed last so a visible manifest denotes a complete checkpoint.
-        This method writes files but does not change physical time.
+        The FVM save and visualization write are collective. The manifest is
+        committed before visualization publication; successful return also
+        confirms both retained frames are published. An already-written FVM
+        frame is reused. This method does not change physical time.
         """
         with collective_phase(self._comm, "coupled backup"):
             backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
+
+        assert self.fvm_solver is not None
+        fvm = self.fvm_solver
+        write_fvm = getattr(fvm, "_last_vtk_state", None) != (
+            fvm.step,
+            fvm.time,
+            fvm._state_revision,
+        )
+        if self._comm is not None and self._comm.Get_size() > 1:
+            write_fvm = self._comm.bcast(write_fvm if self._is_master else None, root=0)
+        if write_fvm:
+            fvm.write_vtk()
+        with collective_phase(self._comm, "coupled FVM snapshot flush"):
+            fvm.flush_output()
+        with collective_phase(self._comm, "coupled VPM snapshot publication"):
             if self._is_master:
                 publish_vpm_snapshot(backup, self.solution_dir)
         return backup

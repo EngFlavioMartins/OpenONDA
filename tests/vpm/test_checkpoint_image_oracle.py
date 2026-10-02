@@ -13,7 +13,8 @@ import taichi as ti
 from source.solvers.vpm.kernels.base import make_device_vortex_kernels, make_vortex_kernel
 
 _PATH = (
-    Path(__file__).resolve().parents[2] / "tests/support/cylinder/verify_image_operator_checkpoint.py"
+    Path(__file__).resolve().parents[2]
+    / "tests/support/cylinder/verify_image_operator_checkpoint.py"
 )
 _SPEC = importlib.util.spec_from_file_location("checkpoint_image_oracle", _PATH)
 oracle = importlib.util.module_from_spec(_SPEC)
@@ -138,7 +139,7 @@ def test_rate_absolute_triangle_bound(scheme):
     assert np.all(np.abs(individual).sum(axis=0) <= bound + 1e-14)
 
 
-def _saved_evidence(tmp_path, *, embedded_digest=True):
+def _saved_evidence(tmp_path):
     rng = np.random.default_rng(306)
     position, strength = rng.normal(size=(2, 12, 3))
     identity = {
@@ -201,28 +202,21 @@ def _saved_evidence(tmp_path, *, embedded_digest=True):
             "excludes": "pair arithmetic",
         },
     }
-    if embedded_digest:
-        report["archive_sha256"] = digest
+    report["archive_sha256"] = digest
     prefix.with_suffix(".json").write_text(json.dumps(report))
     return prefix, report, archive, identity, position, strength, images, digest
 
 
-def test_saved_oracle_admission_requires_digest_and_preserves_values(tmp_path):
-    prefix, _, original, identity, position, strength, images, digest = _saved_evidence(
-        tmp_path, embedded_digest=False
-    )
-    with pytest.raises(ValueError, match="requires --saved-oracle-sha256"):
-        oracle.load_saved_oracle(prefix, identity, position, strength, images)
-    _, loaded, provenance = oracle.load_saved_oracle(
-        prefix, identity, position, strength, images, expected_sha256=digest
-    )
+def test_saved_oracle_authentication_preserves_values_and_rejects_changed_archive(tmp_path):
+    prefix, _, original, identity, position, strength, images, digest = _saved_evidence(tmp_path)
+    _, loaded, provenance = oracle.load_saved_oracle(prefix, identity, position, strength, images)
     assert provenance["archive_sha256"] == digest
+    assert provenance["digest_admission"] == "embedded report"
     for key in original:
         np.testing.assert_array_equal(loaded[key], original[key])
+    prefix.with_suffix(".npz").write_bytes(prefix.with_suffix(".npz").read_bytes() + b"changed")
     with pytest.raises(ValueError, match="SHA256 mismatch"):
-        oracle.load_saved_oracle(
-            prefix, identity, position, strength, images, expected_sha256="bad"
-        )
+        oracle.load_saved_oracle(prefix, identity, position, strength, images)
 
 
 @pytest.mark.parametrize(
@@ -295,10 +289,14 @@ def test_saved_oracle_main_performs_no_device_work_and_publishes_global_differen
                 rate=np.full((12, 3), value, dtype=np.float32),
             )
         pairs.append(pair)
-    solution = tmp_path / "solution"
-    solution.mkdir()
+    solution = tmp_path / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution"
+    solution.mkdir(parents=True)
     output = solution / "comparison"
-    monkeypatch.setattr(oracle, "__file__", str(tmp_path / "assets" / "verify.py"))
+    monkeypatch.setattr(
+        oracle,
+        "__file__",
+        str(tmp_path / "tests/support/cylinder/verify_image_operator_checkpoint.py"),
+    )
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Saved-oracle mode must never initialize a GPU or evaluate pairs")

@@ -138,7 +138,7 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
         assert "velocity_gradient" not in particles
         assert "strain_rate" not in particles
         assert "backup_store_velocity_gradient" not in archive["solver"].attrs
-        assert archive["solver"].attrs["backup_format_version"] == "10.1"
+        assert archive["solver"].attrs["backup_format_version"] == "10.2"
 
     import pyvista as pv
 
@@ -169,14 +169,13 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
 
     ring_data = _load_ring_metrics().load_ring_data([f"{backup}.h5"])
     assert len(ring_data[0]) == 1
-    # Old checkpoints stored event counts without the transfer ledger.
     with h5py.File(f"{backup}.h5", "r+") as archive:
         del archive["solver"].attrs["regularization_cumulative_total_kinetic_energy_transfer"]
         del archive["solver"].attrs["regularization_cumulative_total_enstrophy_transfer"]
-    with contextlib.redirect_stdout(io.StringIO()):
+    with pytest.raises(ValueError, match="missing solver attributes"):
         restored.load_backup(str(backup))
-    assert np.isnan(restored.stabilization.regularization_energy_transfer)
-    assert np.isnan(restored.stabilization.regularization_enstrophy_transfer)
+    assert restored.stabilization.regularization_energy_transfer == pytest.approx(-0.12)
+    assert restored.stabilization.regularization_enstrophy_transfer == pytest.approx(-0.34)
 
 
 def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):
@@ -359,29 +358,8 @@ def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     with h5py.File(backup, "r+") as archive:
         archive["solver"].attrs["backup_format_version"] = "9.0"
 
-    with pytest.raises(ValueError, match=r"9.0.*10.1"):
+    with pytest.raises(ValueError, match=r"9.0.*10.2"):
         solver.load_backup(str(backup))
-
-
-def test_selective_viscosity_feedback_survives_current_backup_roundtrip(tmp_path):
-    config = StabilizationConfig(selective_eddy_viscosity_coefficient=0.5)
-    writer = _solver(tmp_path / "writer", stabilization=config)
-    try:
-        _add_counter_rotating_pair(writer)
-        writer.stabilization.selective_eddy_viscosity_coefficient = 0.875
-        writer.save_backup()
-    finally:
-        writer.close()
-    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
-    reader = _solver(tmp_path / "reader", stabilization=config)
-    try:
-        reader.load_backup(backup)
-        assert reader.stabilization.selective_eddy_viscosity_coefficient == 0.875
-        reader.save_backup()
-        with h5py.File(tmp_path / "reader/solution/vpm/vpm_000000.h5") as archive:
-            assert archive["solver"].attrs["selective_eddy_viscosity_feedback_coefficient"] == 0.875
-    finally:
-        reader.close()
 
 
 def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
@@ -401,186 +379,11 @@ def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
 def _capacity_configuration() -> dict:
     return {
         "max_n_particles": 64,
-        "viscous": {"dvh_max_nodes": None, "gbd_max_nodes": None},
+        "viscous": {},
         "stabilization": {
             "filament_refinement": {"interval_steps": 0},
         },
     }
-
-
-def test_restart_capacity_aliases_accept_equivalent_legacy_configuration():
-    from source.solvers.vpm.io.backup import (
-        _configuration_mismatches,
-        _normalize_capacity_aliases,
-    )
-
-    expected = _capacity_configuration()
-    found = json.loads(json.dumps(expected))
-    found["viscous"].update(dvh_max_nodes=64, gbd_max_nodes=64)
-    found["stabilization"].update(
-        regularization_max_particles=64,
-        regularization_capacity_max_particles=64,
-    )
-    found["stabilization"]["filament_refinement"]["max_n_particles"] = 64
-
-    _normalize_capacity_aliases(expected)
-    _normalize_capacity_aliases(found)
-
-    assert _configuration_mismatches(expected, found) == []
-
-
-@pytest.mark.parametrize("legacy_node_cap", [None, 32, 64])
-def test_restart_loads_equivalent_legacy_capacity_aliases(tmp_path, legacy_node_cap):
-    writer = _solver(tmp_path / "writer")
-    try:
-        writer.save_backup()
-    finally:
-        writer.close()
-    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
-
-    with h5py.File(backup, "r+") as archive:
-        attributes = archive["solver"].attrs
-        configuration = json.loads(attributes["numerical_configuration"])
-        capacity = configuration["max_n_particles"]
-        configuration["viscous"].update(
-            dvh_max_nodes=legacy_node_cap,
-            gbd_max_nodes=legacy_node_cap,
-        )
-        configuration["stabilization"].update(
-            regularization_max_particles=capacity,
-            regularization_capacity_max_particles=capacity,
-        )
-        configuration["stabilization"]["filament_refinement"]["max_n_particles"] = capacity
-        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
-        attributes["numerical_configuration"] = encoded
-        attributes["numerical_configuration_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
-
-    reader = _solver(tmp_path / "reader")
-    try:
-        reader.load_backup(backup)
-        assert (reader.step, reader.time) == (0, 0.0)
-    finally:
-        reader.close()
-
-
-def test_restart_ignores_authenticated_legacy_target_batch_capacity(tmp_path):
-    writer = _solver(tmp_path / "writer")
-    try:
-        writer.save_backup()
-    finally:
-        writer.close()
-    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
-    with h5py.File(backup, "r+") as archive:
-        attributes = archive["solver"].attrs
-        configuration = json.loads(attributes["numerical_configuration"])
-        assert "max_evaluation_points" not in configuration
-        configuration["max_evaluation_points"] = 7
-        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
-        attributes["numerical_configuration"] = encoded
-
-    reader = _solver(tmp_path / "reader")
-    try:
-        with pytest.raises(ValueError, match="fingerprint"):
-            reader.load_backup(backup)
-        with h5py.File(backup, "r+") as archive:
-            archive["solver"].attrs["numerical_configuration_sha256"] = hashlib.sha256(
-                encoded.encode()
-            ).hexdigest()
-        reader.load_backup(backup)
-        assert (reader.step, reader.time) == (0, 0.0)
-    finally:
-        reader.close()
-
-
-def test_restart_ignores_authenticated_legacy_divergence_grid_cap(tmp_path):
-    from source.solvers.vpm.config.divergence_relaxation import DivergenceRelaxationConfig
-
-    stabilization = StabilizationConfig(
-        divergence_relaxation=DivergenceRelaxationConfig.constrained(
-            interval_steps=1, grid_spacing=0.2
-        )
-    )
-    writer = _solver(tmp_path / "writer", stabilization=stabilization)
-    try:
-        writer.save_backup()
-    finally:
-        writer.close()
-    backup = tmp_path / "writer/solution/vpm/vpm_000000.h5"
-    with h5py.File(backup, "r+") as archive:
-        attributes = archive["solver"].attrs
-        configuration = json.loads(attributes["numerical_configuration"])
-        divergence = configuration["stabilization"]["divergence_relaxation"]
-        divergence["max_grid_nodes"] = 32
-        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
-        attributes["numerical_configuration"] = encoded
-
-    reader = _solver(tmp_path / "reader", stabilization=stabilization)
-    try:
-        with pytest.raises(ValueError, match="fingerprint"):
-            reader.load_backup(backup)
-        with h5py.File(backup, "r+") as archive:
-            archive["solver"].attrs["numerical_configuration_sha256"] = hashlib.sha256(
-                encoded.encode()
-            ).hexdigest()
-        reader.load_backup(backup)
-        assert (reader.step, reader.time) == (0, 0.0)
-    finally:
-        reader.close()
-
-    with h5py.File(backup, "r+") as archive:
-        attributes = archive["solver"].attrs
-        configuration = json.loads(attributes["numerical_configuration"])
-        configuration["stabilization"]["divergence_relaxation"]["grid_spacing"] = 0.1
-        encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
-        attributes["numerical_configuration"] = encoded
-        attributes["numerical_configuration_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
-    reader = _solver(tmp_path / "physical_mismatch", stabilization=stabilization)
-    try:
-        with pytest.raises(ValueError, match="divergence_relaxation.grid_spacing"):
-            reader.load_backup(backup)
-    finally:
-        reader.close()
-
-
-@pytest.mark.parametrize(
-    ("section", "name", "path"),
-    [
-        (
-            "stabilization",
-            "regularization_max_particles",
-            "stabilization.regularization_max_particles",
-        ),
-        (
-            "stabilization",
-            "regularization_capacity_max_particles",
-            "stabilization.regularization_capacity_max_particles",
-        ),
-        (
-            "filament_refinement",
-            "max_n_particles",
-            "stabilization.filament_refinement.max_n_particles",
-        ),
-    ],
-)
-def test_restart_capacity_aliases_reject_lower_algorithmic_caps(section, name, path):
-    from source.solvers.vpm.io.backup import (
-        _configuration_mismatches,
-        _normalize_capacity_aliases,
-    )
-
-    expected = _capacity_configuration()
-    found = json.loads(json.dumps(expected))
-    target = (
-        found["stabilization"]["filament_refinement"]
-        if section == "filament_refinement"
-        else found[section]
-    )
-    target[name] = 32
-
-    _normalize_capacity_aliases(expected)
-    _normalize_capacity_aliases(found)
-
-    assert _configuration_mismatches(expected, found) == [path]
 
 
 def test_explicit_changed_time_step_restart_preserves_clock_and_checkpoint_state(tmp_path):
@@ -865,11 +668,9 @@ def test_regularization_capacity_increase_rejects_changed_physical_model():
     saved["stabilization"].update(
         regularization_interval_steps=1,
         regularization_grid_spacing=0.1,
-        regularization_max_particles=64,
     )
     current = json.loads(json.dumps(saved))
     current["max_n_particles"] = 128
-    current["stabilization"].pop("regularization_max_particles")
     assert (
         _configuration_mismatches(
             canonical_restart_configuration(current), canonical_restart_configuration(saved)
@@ -880,10 +681,6 @@ def test_regularization_capacity_increase_rejects_changed_physical_model():
     assert _configuration_mismatches(
         canonical_restart_configuration(current), canonical_restart_configuration(saved)
     ) == ["stabilization.regularization_grid_spacing"]
-    saved["stabilization"]["regularization_max_particles"] = 32
-    assert "stabilization.regularization_max_particles" in _configuration_mismatches(
-        canonical_restart_configuration(current), canonical_restart_configuration(saved)
-    )
 
 
 def test_vpm_case_has_no_partial_configuration_serialization(tmp_path):
@@ -1282,15 +1079,11 @@ def test_relaxation_transfer_is_native_sampled_and_restartable(tmp_path):
     with contextlib.redirect_stdout(io.StringIO()):
         restored.load_backup(backup)
     np.testing.assert_array_equal(restored.stabilization.pedrizzetti_moment_transfer, transfer)
-    # Missing historical transfer is unknown, even when reusing a solver that
-    # previously loaded a modern checkpoint. No zero or stale total is allowed.
     with h5py.File(backup, "r+") as archive:
-        for key in list(archive["solver"].attrs):
-            if key.startswith("pedrizzetti_cumulative_"):
-                del archive["solver"].attrs[key]
-    with contextlib.redirect_stdout(io.StringIO()):
+        del archive["solver"].attrs["pedrizzetti_cumulative_linear_impulse_transfer_x"]
+    with pytest.raises(ValueError, match="missing solver attributes"):
         restored.load_backup(backup)
-    assert np.isnan(restored.stabilization.pedrizzetti_moment_transfer).all()
+    np.testing.assert_array_equal(restored.stabilization.pedrizzetti_moment_transfer, transfer)
 
 
 def test_flow_integrals_append_past_step_100_and_reject_real_clock_conflicts(tmp_path):
@@ -1322,50 +1115,9 @@ def test_flow_integrals_append_past_step_100_and_reject_real_clock_conflicts(tmp
         solver.close()
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_removed_capacity_controls_preserve_restart_physics(enabled):
-    from source.solvers.vpm.io.backup import (
-        _configuration_mismatches,
-        _normalize_capacity_aliases,
-    )
-
-    expected = _capacity_configuration()
-    expected["stabilization"]["regularization_interval_steps"] = 1 if enabled else 0
-    found = json.loads(json.dumps(expected))
-    found["stabilization"].update(
-        regularization_capacity_fraction=0.8,
-        regularization_capacity_grid_spacing=0.05,
-        regularization_capacity_energy_rate_trigger=4.0,
-    )
-    _normalize_capacity_aliases(expected)
-    _normalize_capacity_aliases(found)
-    mismatches = _configuration_mismatches(expected, found)
-    if enabled:
-        assert sorted(mismatches) == [
-            "stabilization.regularization_capacity_energy_rate_trigger",
-            "stabilization.regularization_capacity_fraction",
-            "stabilization.regularization_capacity_grid_spacing",
-        ]
-    else:
-        assert mismatches == []
-
-
-@pytest.mark.parametrize("legacy_cap", [None, 32, 64])
-def test_restart_ignores_retired_diffusion_node_caps(legacy_cap):
-    from source.solvers.vpm.io.backup import _configuration_mismatches, _normalize_capacity_aliases
-
-    expected = _capacity_configuration()
-    expected["viscous"] = {}
-    found = json.loads(json.dumps(expected))
-    found["viscous"].update(dvh_max_nodes=legacy_cap, gbd_max_nodes=legacy_cap)
-    _normalize_capacity_aliases(expected)
-    _normalize_capacity_aliases(found)
-    assert _configuration_mismatches(expected, found) == []
-
-
 @pytest.mark.parametrize("requested_device", ["CUDA", "CPU"])
 def test_restart_device_selection_is_operational(requested_device):
-    from source.solvers.vpm.io.backup import _configuration_mismatches
+    from source.solvers.vpm.config.restart import _configuration_mismatches
 
     saved = {"compute_device": "AUTO", "precision": "f32", "particle_kernel": "GAUSSIAN"}
     current = {**saved, "compute_device": requested_device}
@@ -1374,49 +1126,6 @@ def test_restart_device_selection_is_operational(requested_device):
     assert _configuration_mismatches(current, saved) == ["precision"]
     current["particle_kernel"] = "WINCKELMANS"
     assert _configuration_mismatches(current, saved) == ["particle_kernel", "precision"]
-
-
-def test_restart_current_identity_accepts_legacy_operational_keys():
-    from source.solvers.vpm.io.backup import _configuration_mismatches
-
-    current = {"precision": "f32"}
-    saved = {**current, "compute_device": "AUTO", "device_memory_fraction": 0.5}
-    assert _configuration_mismatches(current, saved) == []
-
-
-@pytest.mark.parametrize("active", [False, True])
-def test_restart_retired_stabilization_policies_preserve_algorithm_identity(active):
-    from source.solvers.vpm.io.backup import _configuration_mismatches, _normalize_capacity_aliases
-
-    expected = _capacity_configuration()
-    expected["stabilization"].update(
-        regularization_interval_steps=5,
-        selective_eddy_viscosity_coefficient=1.6,
-    )
-    expected["stabilization"]["filament_refinement"]["interval_steps"] = 5
-    found = json.loads(json.dumps(expected))
-    found["stabilization"].update(
-        regularization_max_events=2 if active else None,
-        selective_eddy_viscosity_feedback_gain=1.0 if active else 0.0,
-        selective_eddy_viscosity_feedback_interval_steps=5,
-        selective_eddy_viscosity_feedback_growth_limit=0.25,
-        selective_eddy_viscosity_max_coefficient=8.0 if active else None,
-    )
-    found["stabilization"]["filament_refinement"].update(
-        late_interval_steps=1 if active else None,
-        late_start_step=750 if active else None,
-        late_absolute_only=active,
-        end_step=800 if active else None,
-    )
-    _normalize_capacity_aliases(expected)
-    _normalize_capacity_aliases(found)
-    mismatches = _configuration_mismatches(expected, found)
-    if active:
-        assert "stabilization.regularization_max_events" in mismatches
-        assert "stabilization.selective_eddy_viscosity_feedback_gain" in mismatches
-        assert "stabilization.filament_refinement.late_interval_steps" in mismatches
-    else:
-        assert mismatches == []
 
 
 @pytest.mark.parametrize("with_vlm", [False, True])

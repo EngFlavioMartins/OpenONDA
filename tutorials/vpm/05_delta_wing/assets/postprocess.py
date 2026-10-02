@@ -4,7 +4,7 @@ This module owns the explicit source lineage, its finalization, the CSV/sample
 readers, wake-plane loading and period averaging, figure-layout helpers,
 completed-run validation and the coupled native-backup GIF renderer. It exposes
 no figure; the ``plot_<figure>.py`` scripts hold one thesis figure each and call
-this module for data, validation and layout. ``generate_surface.py`` builds the
+this module for data, validation and layout. The installed geometry helper builds the
 VLM geometry and ``setup.py`` owns the physics.
 """
 
@@ -33,6 +33,7 @@ from PIL import Image
 from scipy.signal import find_peaks
 
 from openonda import plotting as _theme
+from source.solvers.vpm.io.backup import _BACKUP_FORMAT_VERSION
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution"
@@ -1008,7 +1009,7 @@ def _plot_wake_field(
         if period is None:
             raise ValueError("two sampled heave-velocity peaks are required for a mean wake")
         records = _wake_average(collections, end, period)
-        title = f"Mean: $t = {end - period:g}$--${end:g}$ s"
+        title = f"Mean: $t = {end - period:.2g}$--${end:.2g}$ s"
     records.sort(key=lambda row: row[0][0] @ direction)
     axial = [field @ direction / speed for _, field in records]
     vertical = [field[:, 2] / speed for _, field in records]
@@ -1034,7 +1035,7 @@ def _plot_wake_field(
         artist = ax.tricontourf(
             points[:, 1], points[:, 2], field, levels=np.linspace(*limits, 25), cmap=cmap
         )
-        ax.set(xlabel="$y$ [m]", title=f"$x={points[0, 0]:g}$ m")
+        ax.set(xlabel="$y$ [m]", title=f"$x={points[0, 0]:.2g}$ m")
         ax.set_xticks([-0.5, 0, 0.5])
         ax.set_yticks([-1, 0])
     axes[0].set_ylabel("$z$ [m]")
@@ -1112,8 +1113,10 @@ def _native_identity(path: Path) -> dict[str, object]:
             panel_count = len(vlm["panel_corner_position"])
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError(f"{path.name}: missing native identity attributes") from error
-    if backup_format not in {"10.0", "10.1"}:
+    if backup_format != _BACKUP_FORMAT_VERSION:
         raise RuntimeError(f"{path.name}: unsupported native backup format {backup_format!r}")
+    if version != 7:
+        raise RuntimeError(f"{path.name}: unsupported native VLM format {version!r}")
     if hashlib.sha256(numerical_configuration.encode("utf-8")).hexdigest() != numerical_hash:
         raise RuntimeError(f"{path.name}: numerical configuration hash is invalid")
     if not np.isfinite(time_step_size) or time_step_size <= 0.0:
@@ -2216,9 +2219,11 @@ def _compare_serialized_values(label: str, left, right) -> None:
         )
 
 
-def _compare_common_hdf5_datasets(left, right, prefix: str) -> None:
-    """Compare common native datasets while allowing additive new fields."""
-    for name in sorted(set(left) & set(right)):
+def _compare_hdf5_datasets(left, right, prefix: str) -> None:
+    """Compare the complete current dataset structure and values."""
+    if set(left) != set(right):
+        raise ValueError(f"overlapping coupled backups conflict at {prefix}: fields differ")
+    for name in sorted(left):
         left_item = left[name]
         right_item = right[name]
         label = f"{prefix}/{name}"
@@ -2229,7 +2234,7 @@ def _compare_common_hdf5_datasets(left, right, prefix: str) -> None:
         if isinstance(left_item, h5py.Dataset):
             _compare_serialized_values(label, left_item[()], right_item[()])
         else:
-            _compare_common_hdf5_datasets(left_item, right_item, label)
+            _compare_hdf5_datasets(left_item, right_item, label)
 
 
 def _compare_overlapping_backups(first: Path, second: Path) -> None:
@@ -2256,7 +2261,15 @@ def _compare_overlapping_backups(first: Path, second: Path) -> None:
             raise ValueError(
                 f"overlapping coupled backups missing required solver fields {missing}"
             )
-        for name in sorted(set(left_solver.attrs) & set(right_solver.attrs)):
+        if set(left_solver.attrs) != set(right_solver.attrs):
+            raise ValueError("overlapping coupled backups conflict in solver attributes")
+        if (
+            _text_attribute(left_solver.attrs["backup_format_version"]) != _BACKUP_FORMAT_VERSION
+            or _text_attribute(right_solver.attrs["backup_format_version"])
+            != _BACKUP_FORMAT_VERSION
+        ):
+            raise ValueError("overlapping coupled backups require the current native format")
+        for name in sorted(left_solver.attrs):
             if name in {"step", "time", "time_step_size"}:
                 # The accepted clock is a double-precision contract, not a
                 # relaxed comparison of physical f32 payloads.
@@ -2282,19 +2295,23 @@ def _compare_overlapping_backups(first: Path, second: Path) -> None:
 
         left_vlm = left_solver["vlm"]
         right_vlm = right_solver["vlm"]
-        for name in ("coupled_mode", "reference_speed", "reference_velocity", "solved", "time"):
+        for name in (
+            "coupled_mode",
+            "reference_speed",
+            "reference_velocity",
+            "solved",
+            "time",
+            "version",
+            "identity",
+            "physics_identity",
+        ):
             if name not in left_vlm.attrs or name not in right_vlm.attrs:
                 raise ValueError(f"overlapping coupled backups missing VLM attribute {name}")
-        left_version = int(left_vlm.attrs.get("version", -1))
-        right_version = int(right_vlm.attrs.get("version", -1))
-        if left_version != right_version and {left_version, right_version} != {6, 7}:
-            raise ValueError(
-                f"overlapping coupled backups conflict in VLM version: "
-                f"{left_version} versus {right_version}"
-            )
-        for name in sorted(set(left_vlm.attrs) & set(right_vlm.attrs)):
-            if name in {"identity", "version"}:
-                continue
+        if int(left_vlm.attrs["version"]) != 7 or int(right_vlm.attrs["version"]) != 7:
+            raise ValueError("overlapping coupled backups require the current VLM version")
+        if set(left_vlm.attrs) != set(right_vlm.attrs):
+            raise ValueError("overlapping coupled backups conflict in VLM attributes")
+        for name in sorted(left_vlm.attrs):
             if name == "time":
                 if not np.isclose(
                     float(left_vlm.attrs[name]),
@@ -2309,31 +2326,8 @@ def _compare_overlapping_backups(first: Path, second: Path) -> None:
                 _compare_serialized_values(
                     f"solver/vlm attribute {name}", left_vlm.attrs[name], right_vlm.attrs[name]
                 )
-        left_physics_identity = left_vlm.attrs.get("physics_identity")
-        right_physics_identity = right_vlm.attrs.get("physics_identity")
-        if left_physics_identity is not None and right_physics_identity is not None:
-            _compare_serialized_values(
-                "solver/vlm attribute physics_identity",
-                left_physics_identity,
-                right_physics_identity,
-            )
-        left_identity = left_vlm.attrs.get("identity")
-        right_identity = right_vlm.attrs.get("identity")
-        if left_identity is None or right_identity is None:
-            if left_version == right_version and left_identity != right_identity:
-                raise ValueError("overlapping coupled backups have incomplete VLM identity")
-        elif left_version == right_version:
-            _compare_serialized_values(
-                "solver/vlm attribute identity", left_identity, right_identity
-            )
-        # A v6 -> v7 continuation may legitimately change the legacy full
-        # identity as output-only fields migrate. The common physics identity,
-        # numerical identity and clocks above still have to agree.
-
-        _compare_common_hdf5_datasets(
-            left_archive["particles"], right_archive["particles"], "particles"
-        )
-        _compare_common_hdf5_datasets(left_vlm, right_vlm, "solver/vlm")
+        _compare_hdf5_datasets(left_archive["particles"], right_archive["particles"], "particles")
+        _compare_hdf5_datasets(left_vlm, right_vlm, "solver/vlm")
 
 
 def _solution_directories(value: Path | list[Path]) -> list[Path]:
@@ -2537,7 +2531,7 @@ def render(
                 array=values,
                 cmap=cmap,
                 norm=norm,
-                edgecolors=_theme.COLORS["DarkText"],
+                edgecolors=_theme.COLORS["text"],
                 linewidths=0.6,
             )
         )

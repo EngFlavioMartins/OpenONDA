@@ -159,9 +159,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             return absolute, float(relative)
 
         ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
-        ddt_scheme = "backward" if ts in ("backward", "bdf2") else "euler"
+        ddt_scheme = "backward" if ts == "backward" else "euler_implicit"
         if ddt_scheme == "backward" and velocity_older is None:
-            ddt_scheme = "euler"  # self-starting first step
+            ddt_scheme = "euler_implicit"  # self-starting first step
 
         # Frozen for the whole physical time step: only committed old-time
         # fields enter the face-history correction.
@@ -546,7 +546,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 default=0.0,
             )
             continuity = field_diagnostics.compute_continuity_error(
-                volumetric_face_flux, self.mesh_data, self.geo_data
+                volumetric_face_flux, self.mesh_data
             )
             volumes = self.geo_data["cell_volume"]
             parallel = self.params.get("_parallel_context")

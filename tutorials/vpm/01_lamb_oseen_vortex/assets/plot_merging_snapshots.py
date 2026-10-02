@@ -6,7 +6,7 @@ an orthographic camera, surface lighting and a depth buffer. Sphere radii
 scale with particle-strength magnitude to power 0.65 within each frame. Colour limits are
 clipped per frame and displayed explicitly. No particles are filtered out.
 Both states share one field of view enclosing both clouds and the sampling plane.
-The 600-dpi scene is embedded in a 125 x 85 mm PDF with vector labels.
+The 600-dpi scene is embedded in a 125 x 73 mm PDF with vector labels.
 Blue particles and amber streamlines use the approved thesis field maps.
 """
 
@@ -308,14 +308,14 @@ def main():
     height = int(np.ceil((width - 1) * (upper[1] - lower[1]) / (upper[0] - lower[0]))) + 1
     # Equal world-space pixel scales in x and y avoid any shape distortion.
     upper[1] = lower[1] + (height - 1) * (upper[0] - lower[0]) / (width - 1)
-    axes_rectangle = [0.015, 0.04, 0.97, 0.92]
+    axes_rectangle = [0.015, 0.02, 0.97, 0.97]
     view_limits = []
     for (pos, alpha, omega, vel, t), name in zip(
         cases, ["merging_render_t0.pdf", "merging_render_final.pdf"]
     ):
-        fig = plt.figure(figsize=(125 / 25.4, 78 / 25.4), facecolor="white")
+        fig = plt.figure(figsize=(125 / 25.4, 73 / 25.4), facecolor="white")
         ax = fig.add_axes(axes_rectangle)
-        ax.set_aspect("equal")
+        ax.set_aspect("equal", anchor="N")
         ax.axis("off")
         projected, depth = project(pos)
         strength = np.linalg.norm(alpha, axis=1)
@@ -374,7 +374,7 @@ def main():
         colorbar_axes = []
         for box, cmap, norm, label, extension, title_location in [
             (
-                [0.035, 0.65, 0.023, 0.20],
+                [0.015, 0.705, 0.023, 0.22],
                 particle_cmap,
                 norms[0],
                 r"$\omega_z/\omega_{c,0}$",

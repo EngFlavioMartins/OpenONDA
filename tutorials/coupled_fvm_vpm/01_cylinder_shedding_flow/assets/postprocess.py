@@ -10,7 +10,12 @@ import numpy as np
 from scipy.integrate import trapezoid
 import pandas as pd
 
-from openonda.plotting import DEFAULT_DPI, validate_thesis_figure
+from openonda.plotting import (
+    DEFAULT_DPI,
+    fit_thesis_y_label_margins,
+    prepare_figure,
+    validate_thesis_figure,
+)
 from openonda.saved_times import match_saved_times
 
 CASE_DIR = Path(__file__).resolve().parents[1]
@@ -161,6 +166,9 @@ def write_json(name: str, payload: dict) -> None:
 
 
 def save_figure(fig, axes, name: str, figure_format: str) -> None:
+    axes = tuple(axes)
+    prepare_figure(fig)
+    fit_thesis_y_label_margins(fig, axes)
     from openonda.plotting import export_figure
 
     validate_thesis_figure(fig, axes)
