@@ -505,11 +505,7 @@ def _verify_environment() -> dict[str, object]:
         axes.set_ylabel(r"$u/U_\infty$")
         theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
         theme.fit_thesis_y_label_margins(figure, (axes,))
-        for figure_format in ("pdf", "png"):
-            theme.save_fig(
-                figure, workspace / f"thesis.{figure_format}", figure_format=figure_format, dpi=72
-            )
-        plt.close(figure)
+        theme.save_fig(figure, workspace / "thesis", dpi=72)
         (workspace / "overlay.tex").write_text(
             r"\documentclass{standalone}\usepackage{tikz}\usepackage{newpxtext}"
             r"\usepackage{newpxmath}\begin{document}\begin{tikzpicture}"
