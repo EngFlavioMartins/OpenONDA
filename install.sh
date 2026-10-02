@@ -10,7 +10,7 @@ _openonda_install() {
     fi
     installer_path="$(cd "$(dirname "$installer_path")" && pwd)" || return
     activation_file="$(mktemp "${TMPDIR:-/tmp}/openonda-activation.XXXXXX")" || return
-    if bash "$installer_path/scripts/install/install_conda.sh" "$activation_file"; then
+    if bash "$installer_path/scripts/install/install_conda.sh" "$activation_file" </dev/null; then
         conda_root="$(cat "$activation_file")"
         rm -f "$activation_file"
         . "$conda_root/etc/profile.d/conda.sh" || return

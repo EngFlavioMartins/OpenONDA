@@ -29,6 +29,28 @@ def executable(path, content):
     path.chmod(0o755)
 
 
+def test_installer_does_not_consume_commands_pasted_after_it(tmp_path):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    shutil.copy(ROOT / "install.sh", checkout / "install.sh")
+    executable(
+        checkout / "scripts/install/install_conda.sh",
+        '#!/bin/bash\ncat > "$INSTALL_TEST_INPUT"\nexit 17\n',
+    )
+    captured = tmp_path / "installer-stdin"
+    result = subprocess.run(
+        ["bash"],
+        input=f'source "{checkout}/install.sh"\nprintf "next-command-status=%s\\n" "$?"\n',
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "INSTALL_TEST_INPUT": str(captured)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "next-command-status=17" in result.stdout
+    assert captured.read_bytes() == b""
+
+
 @pytest.mark.parametrize(
     "system,architecture,checksum",
     [

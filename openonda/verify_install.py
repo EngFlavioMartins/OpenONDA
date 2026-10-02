@@ -557,6 +557,7 @@ def _verify_environment() -> dict[str, object]:
             ["mpiexec", "--oversubscribe", "-n", "2", sys.executable, "-I", "-c", parallel],
             cwd=workspace,
             check=True,
+            stdin=subprocess.DEVNULL,
             env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"},
         )
         for name in ("thesis.png", "thesis.pdf", "overlay.pdf", "overlay.png", "scene.png"):
