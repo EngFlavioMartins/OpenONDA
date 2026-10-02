@@ -10,6 +10,9 @@ certificates, and SSH access. Neither Conda nor OpenONDA is installed. Restore
 this snapshot only when the VM is powered off; restoring discards subsequent
 changes in the guest.
 
+The `openonda-verified` snapshot preserves the successful installation and its
+tutorial results. The VM is left powered off in this installed state.
+
 ## Repeat the test
 
 On the host:
@@ -18,7 +21,7 @@ On the host:
 VBoxManage snapshot OpenONDA-Ubuntu-24.04 restore clean-before-openonda
 VBoxManage startvm OpenONDA-Ubuntu-24.04 --type headless
 ssh -i "$HOME/VirtualBox VMs/OpenONDA-Ubuntu-24.04/access/id_ed25519" \
-    -o UserKnownHostsFile="$HOME/VirtualBox VMs/OpenONDA-Ubuntu-24.04/access/known_hosts" \
+    -o "UserKnownHostsFile=\"$HOME/VirtualBox VMs/OpenONDA-Ubuntu-24.04/access/known_hosts\"" \
     -p 22524 tester@127.0.0.1
 ```
 
@@ -35,14 +38,68 @@ cd tutorials/fvm/taylor_green
 ```
 
 The tutorial advances a 24-by-24 Taylor–Green vortex for ten steps. Its fresh
-history is `solution/history.csv`, and the figure is
-`figures/taylor_green_decay.png`. The installer also verifies thesis PNG/PDF
+history is `solution/history.csv`, and its figures are
+`figures/taylor_green_decay.png` and `.pdf`. The installer also verifies thesis PNG/PDF
 export, headless ParaView rendering, two-process MPI/PETSc, native meshing,
 FVM/VPM stepping, output, restart, and coupled continuation.
 
 Finish with `sudo poweroff` inside the guest so the VM uses no host RAM or CPU
 between tests. For an already installed snapshot, start a new terminal and run
 `conda activate OpenONDA` before using the solver.
+
+## Verified result — 2026-10-02
+
+The final test started from `clean-before-openonda`, confirmed that neither
+Miniforge nor the checkout existed, and cloned commit
+`429aa824a17068d1b26334e7863fc914eedb12ae` from the public `development` branch.
+The installation and the two tutorial scripts above completed in sequence,
+without guest-side fixes, extra packages, or manual configuration.
+
+- Ubuntu 24.04.5, Python 3.11.16, editable OpenONDA installation.
+- All built-in installation checks passed: 19 tutorial resources, 10 direct
+  tutorial entry points, native Cartesian meshing, FVM, VPM, restart, coupled
+  continuation, thesis PNG/PDF, headless ParaView, and two-process MPI/PETSc.
+- Taylor–Green completed ten steps to `t = 0.05 s`. All history values were
+  finite; final kinetic-energy relative error was `7.0371e-5`, and maximum
+  continuity error was `1.1601e-15 s^-1`.
+- A new interactive shell activated `OpenONDA` normally and imported it from
+  outside the checkout. The documented `openonda tutorial run` and `plot`
+  commands also passed in `~/first-flow`, reproducing the same final values.
+- Deactivation restored the original graphics-driver environment.
+- Installer regression tests: 82 passed; 12 Zsh variants skipped because Zsh
+  was absent on the test host. Changed Python files passed Ruff checks and
+  formatting checks; the shell installers passed Bash syntax checks.
+
+The fresh-machine tests led to fixes for the Miniforge checksum URL, stalled
+downloads, Mesa vendor discovery, the shared figure-export API, and standard
+input handling when installation commands are pasted together. The concurrent
+tutorial cleanup also removed a retired helper with machine-specific paths.
+These fixes are part of the installer and shared verification code.
+
+Local evidence is retained under `build/vm-validation/`: `installation.log`,
+`verified-install.json`, `new-terminal.log`, `openonda-install-validation.json`,
+the tutorial history, and the generated PNG/PDF.
+
+## Independent backup
+
+A powered-off copy of the clean baseline was exported to:
+
+```text
+~/VirtualBox VMs/Backups/OpenONDA-Ubuntu-24.04-clean/baseline.ova
+```
+
+The approximately 755 MiB appliance contains the guest disk and VM configuration.
+Both entries passed their exported SHA-256 manifest checks. `SHA256SUMS` beside
+the appliance records the checksum of the complete OVA:
+
+```text
+e69ac538c0508f0db3c9a110da04be340f68d51cf83c22de8e7ba8380e8840c6
+```
+
+Use VirtualBox's **Import Appliance** to recover it independently of the original
+VM's snapshots. Its adjacent `access/` directory contains the matching SSH key
+and host record; retain these private files with the backup. The backup and
+keys are local files, not repository contents.
 
 ## Baseline provenance
 
