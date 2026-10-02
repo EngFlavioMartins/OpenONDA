@@ -42,9 +42,9 @@ if [[ -z "$CONDA_COMMAND" ]]; then
     trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
     URL="https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/$INSTALLER"
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --location --retry 3 --output "$DOWNLOAD_DIR/$INSTALLER" "$URL"
+        curl --fail --location --connect-timeout 20 --speed-limit 1024 --speed-time 60 --retry 3 --output "$DOWNLOAD_DIR/$INSTALLER" "$URL"
     elif command -v wget >/dev/null 2>&1; then
-        wget --output-document="$DOWNLOAD_DIR/$INSTALLER" "$URL"
+        wget --timeout=60 --tries=4 --output-document="$DOWNLOAD_DIR/$INSTALLER" "$URL"
     else
         echo 'Downloading Miniforge requires curl or wget.' >&2
         exit 1

@@ -30,7 +30,22 @@ PACKAGES = (
 
 def download(url: str, destination: Path) -> None:
     subprocess.run(
-        ["curl", "--fail", "--location", "--retry", "3", "--output", str(destination), url],
+        [
+            "curl",
+            "--fail",
+            "--location",
+            "--connect-timeout",
+            "20",
+            "--speed-limit",
+            "1024",
+            "--speed-time",
+            "60",
+            "--retry",
+            "3",
+            "--output",
+            str(destination),
+            url,
+        ],
         check=True,
     )
 
