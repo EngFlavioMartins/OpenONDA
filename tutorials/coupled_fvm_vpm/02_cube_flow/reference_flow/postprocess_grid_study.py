@@ -229,7 +229,7 @@ def analyse_forces(
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "grid_forces.json").write_text(json.dumps(report, indent=2) + "\n")
     write_csv(grids, output_dir / "grid_forces.csv")
-    plot_forces(grids, output_dir / "grid_forces.png")
+    plot_forces(grids, output_dir / "grid_forces.both")
     return report
 
 

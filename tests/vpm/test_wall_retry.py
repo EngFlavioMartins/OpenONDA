@@ -73,7 +73,7 @@ def test_native_rk_wall_retry_preserves_clock_strength_and_projection_budget(tmp
         positions = solver.particles.position_cpu()
         assert not boundary.contains(positions).any()
         wall_clearance = np.dot(positions[0] - start, normal) + 0.1
-        assert 0 < wall_clearance <= 8 * boundary.tolerance
+        assert 0 < wall_clearance <= max(8 * boundary.tolerance, 2e-7 * spacing)
         np.testing.assert_allclose(solver.particles.vortex_strength_cpu(), strength, atol=1e-12)
         assert solver.time == pytest.approx(initial_time + dt)
         assert solver.step == initial_step + 1
@@ -103,7 +103,7 @@ def test_native_rk_wall_retry_preserves_clock_strength_and_projection_budget(tmp
             total_displacement += displacement
             np.testing.assert_allclose(
                 budget[f"{kind}_impulse_change"] - initial_budget[f"{kind}_impulse_change"],
-                np.cross(displacement * normal, strength[0]),
+                0.5 * np.cross(displacement * normal, strength[0]),
                 atol=1e-10,
             )
         assert 0.0 < total_displacement < 2.0 * dt

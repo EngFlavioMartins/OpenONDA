@@ -2,6 +2,5 @@
 set -e
 cd -- "$(dirname -- "$0")"
 
-./allclean.sh
-
-python assets/run_pipeline.py --run-dir study_results/cylinder/default
+# Keep existing results; setup.py resumes a compatible native backup.
+python setup.py "$@"

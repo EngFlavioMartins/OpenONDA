@@ -1,26 +1,5 @@
-# Backward-facing-step flow
+# Step-flow diagnostics
 
-This tutorial solves laminar incompressible flow through a sudden 2:1 expansion
-with the native FVM PIMPLE solver. The upstream channel occupies
-`1 <= y/h <= 2`; at `x/h = 0` the lower wall drops to `y/h = 0`, creating a
-vertical step and a downstream recirculation region.
+The [case guide](../README.md) defines the expansion geometry, inlet profile, mesh controls and run commands. See [FVM boundary conditions](../../../../docs/fvm.md#boundary-conditions) for the parabolic inlet and no-slip walls.
 
-The default case uses `Re_h = U_b h / nu = 100`, a parabolic inlet, no-slip
-solid walls, a fixed-pressure outlet, and one empty cell in the spanwise
-direction. It writes the final cell fields and a near-wall reattachment
-estimate to CSV. The estimate is a tutorial diagnostic, not a frozen
-experimental validation threshold; production qualification still requires a
-mesh-convergence study and an independent reference dataset.
-
-Run the case and plots with:
-
-```bash
-./allrun.sh
-```
-
-For a quick smoke run:
-
-```bash
-python setup.py
-    --n-downstream 12 --n-height 4 --linear-solver spsolve
-```
+`mesh_step.py` builds the body-fitted grid. `reattachment.py` estimates the downstream sign change in near-wall velocity; `plot_profile.py` and `plot_comparison.py` plot the history and final flow.

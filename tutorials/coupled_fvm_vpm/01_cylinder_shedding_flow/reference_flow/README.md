@@ -1,75 +1,14 @@
-# Cylinder reference flow
+# Cylinder FVM reference at $Re=150$
 
-This is a body-fitted reference study for flow around a unit cylinder at
-Re = 150. The physical problem and numerical method are defined in `setup.py`.
-Production runs use the top-level pipeline's conservative candidate family
-`h = 0.10, 0.08, 0.064D`; each grid receives its own 12-hour wall budget.
+This standalone, body-fitted calculation provides force and wake profiles for the [coupled cylinder](../README.md). It uses the same 1 m diameter, 1 m/s freestream, $\nu=1/150$ m²/s, no-slip cylinder and 0.96 m free-slip span.
 
-The top-level [pipeline](../assets/run_pipeline.py) is the budgeted entry
-point: it runs conservative reference candidates and matched coupled cases,
-applies a 12-hour limit to each case, and stores independent logs and cost
-records. Run a bounded screen first:
+The domain is $[-8,24]\times[-10,10]\times[-0.48,0.48]$ m. The selected mesh has 0.04 m wall spacing and 24 spanwise layers. `setup.py` defines near-body and wake refinement, a velocity inlet, zero kinematic-pressure outlet and lateral slip boundaries. See [mesh setup](../../../../docs/fvm.md#mesh-setup) and [boundary conditions](../../../../docs/fvm.md#boundary-conditions).
 
 ```bash
-cd ..
-python assets/run_pipeline.py --pilot --sensitivity none
-```
-
-`./allrun.sh` cleans and runs the single-grid `setup.py` case. Use
-`./allcontinue.sh` to resume that grid's latest native FVM backup. Both launchers
-accept the same `--name` and `-h` arguments as `setup.py`.
-
-The separate pipeline supports `--reference-only`, `--reference-cores` and
-`--root` through `python ../assets/run_pipeline.py`. Its default six-rank
-reference configuration requires the optional MPI stack; select
-`--reference-cores 1` for a serial campaign.
-
-The explicit reference-family candidates used for a fine mesh check are:
-
-| Case | Wall spacing h (m) | Span layers | Spanwise spacing (m) |
-| --- | ---: | ---: | ---: |
-| `grid_h008` | 0.08 | 12 | 0.08 |
-| `grid_h00565685` | 0.0565685424949238 | 17 | 0.056471 |
-| `grid_h004` | 0.04 | 24 | 0.04 |
-| `grid_h00282843` | 0.0282842712474619 | 34 | 0.028235 |
-
-Successive grids have a refinement ratio of sqrt(2). The realized near-body
-spacing is passed directly as `h`:
-
-```bash
-python setup.py --name grid_h004 -h 0.04
-```
-
-Every grid uses the same 0.96 m resolved slip span, physical domain, Reynolds
-number, timestep controls, force cadence and 100 s horizon. The span has enough
-uniform layers to keep the near-body cells approximately isotropic. The wake
-remains refined through 12 diameters downstream. Forces are sampled every
-0.04 s, leaving more than one hundred samples per shedding cycle without
-forcing the previous 0.004 s timestep cadence. Solutions and samples are
-written below a unique campaign directory. A bounded mesh pilot is available
-with `python ../assets/run_campaign.py --kind reference --pilot`; complete
-campaigns publish `reference_selection.json`, which is the only reference
-selection accepted by the comparison plots. The selection is accepted only
-when its `force_grid_qualified` flag is true; that flag covers the force-grid
-statistics/GCI gate and does not certify temporal, domain, span or profile
-convergence. The four-grid table is an explicit candidate family, while the
-default production pipeline remains the three-grid `.10, .08, .064D` family.
-
-After all grids finish, post-process their force histories with:
-
-```bash
+./allrun.sh
 ./allplot.sh
 ```
 
-The launcher restores a parent-case result bundle if one is available. The
-cylinder reference production samples are not archived yet; a fresh clone
-needs the genuine completed grid runs before this plot can succeed. The
-postprocessor writes `grid_forces.json`, `grid_forces.csv`,
-`grid_forces.png` and `grid_forces_fluctuations.png` under `figures/`. It reports
-mean drag, force RMS, lift-based Strouhal number and Richardson/GCI estimates
-over the declared statistics window.
+The launcher runs `python setup.py -h 0.04`, with six FVM ranks, fixed 0.008 s steps and a 100 s end time. `./allcontinue.sh` resumes compatible backups; both launchers preserve outputs. `./allclean.sh` deletes results.
 
-`allrun.sh` calls `allclean.sh` before starting from zero. Full production
-completion and the finest-case 12-hour target
-remain pending measured long-horizon runs. A per-case timeout is not evidence
-that the case completed within the budget.
+Forces and wake probes are sampled every 0.04 s, profiles every 0.2 s, slices every 0.4 s and volumes every 4 s. Read `samples/forces_history.csv`, `solution/fvm.pvd` and `samples/midspan.pvd`. Run `../allplot.sh` from this directory to compare forces and velocity profiles with the coupled case. This single mesh does not establish grid independence.

@@ -96,10 +96,10 @@ def plot_surface_fields(args) -> int:
 
     # -- Figure --------------------------------------------------------
     cm = 1 / 2.54
-    width_cm, height_cm = 12.5, 5.4
+    width_cm, height_cm = 12.5, 6.0
     fig = plt.figure(figsize=(width_cm * cm, height_cm * cm))
-    outer = 0.13
-    bottom, top = 0.29, 0.86
+    outer = 0.097
+    bottom, top = 0.23, 0.90
     axis_height = top - bottom
     axis_width = axis_height * height_cm / width_cm
     colorbar_gap, colorbar_width = 0.015, 0.015
@@ -128,7 +128,7 @@ def plot_surface_fields(args) -> int:
         ax_w.text(tx, ty, label, **txt_kw)
 
     # Contro division lines
-    divider_kw = dict(color=colors["LightText"], linewidth=0.5, alpha=1.0)
+    divider_kw = dict(color=colors["LightText"], linewidth=0.6, alpha=1.0)
     for ax in (ax_v, ax_w):
         ax.axhline(0, **divider_kw)
         ax.axvline(0, **divider_kw)
@@ -152,8 +152,8 @@ def plot_surface_fields(args) -> int:
     sm_v.set_array([])
     sm_w = ScalarMappable(cmap=w_cmap, norm=w_norm)
     sm_w.set_array([])
-    cb_v = fig.colorbar(sm_v, cax=cax_v)
-    cb_w = fig.colorbar(sm_w, cax=cax_w)
+    cb_v = fig.colorbar(sm_v, cax=cax_v, ticks=[0, 0.1, 0.2])
+    cb_w = fig.colorbar(sm_w, cax=cax_w, ticks=[0, 0.05, 0.1])
     for colorbar in (cb_v, cb_w):
         colorbar.ax.tick_params(pad=2)
 

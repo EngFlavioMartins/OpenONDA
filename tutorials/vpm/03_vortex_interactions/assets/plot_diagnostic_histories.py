@@ -84,7 +84,7 @@ def plot(runs, output, formats):
     handles, labels = axes[0, 0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
     plotting.centered_subplots_adjust(
-        fig, outer=0.18, bottom=0.25, top=0.97, hspace=0.36, wspace=0.78
+        fig, outer=0.115, bottom=0.195, top=0.97, hspace=0.36, wspace=0.60
     )
     save_figure(fig, output / FIGURE_NAME, axes.flat, formats)
     plt.close(fig)
@@ -94,7 +94,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures")
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
     formats = ("pdf", "png") if args.format == "both" else (args.format,)
     plot(args.runs, args.output, formats)

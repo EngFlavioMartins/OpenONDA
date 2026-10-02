@@ -1,5 +1,7 @@
 """Physical sampling cadence does not depend on a destination's divisors."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -26,8 +28,8 @@ def test_2500_and_prime_2501_exchanges_keep_same_physical_cadence(end_time):
     assert schedule.fvm_sample_steps == 20
     module = load_case_module(CASE)
     flow, particles, _, _ = module.build_case(end_time=end_time)
-    assert flow.samplers[0].schedule.every_n_steps * flow.time.time_step_size == pytest.approx(0.2)
-    assert particles.samplers.samples[0].schedule.interval == 5
+    assert flow.samplers[0].schedule.every_n_steps * flow.time.time_step_size == pytest.approx(0.04)
+    assert particles.samplers.samples[0].schedule.interval == 1
 
 
 def test_equal_distance_rounds_toward_finer_sampling():
@@ -61,7 +63,7 @@ def test_off_cadence_horizon_covers_registered_statistics_without_extrapolation(
         header="time,drag_coefficient,lift_coefficient,side_force_coefficient",
         comments="",
     )
-    post = load_case_module(CASE / "reference_flow", "postprocess_grid_study")
+    post = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "postprocess_grid_study")
     result = post.force_statistics(history, 40, 100)
     assert result["mean_drag"] == pytest.approx(1.3)
     assert result["strouhal"] == pytest.approx(0.2, abs=0.001)

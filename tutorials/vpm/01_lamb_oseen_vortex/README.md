@@ -1,74 +1,43 @@
-# Lamb–Oseen vortex benchmark
+# Lamb–Oseen vortices: diffusion, translation and merger
 
-This tutorial compares core spreading (CS), an adaptive Random Walk
-Method ensemble (RWM), discrete vortex heat diffusion (DVH), and Gaussian blob diffusion
-(GBD) for an isolated vortex, a counter-rotating dipole, and a co-rotating
-merger.
+Compare core spreading (CS), random walk (RWM), Diffused Vortex Hydrodynamics (DVH) and grid-based diffusion (GBD) for an isolated vortex, a counter-rotating dipole and a co-rotating pair. See [particle distributions](../../../docs/vpm.md#particle-distributions) and [diffusion models](../../../docs/vpm.md#diffusion-and-les).
 
-## Run the complete comparison
+## Run
 
-From this case directory, with the installed OpenONDA environment active:
+From this directory with OpenONDA installed:
 
 ```bash
 ./allrun.sh
 ./allplot.sh
 ```
 
-`allrun.sh` cleans the case and runs the listed simulations. `allcontinue.sh` runs the same cases and RWM ensembles from their latest backups. Use `python setup.py vortex CS` to run
-one physical/method variant. `./allclean.sh` explicitly removes generated
-outputs before a fresh comparison when desired.
+`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes compatible backups. For one case, use `python setup.py vortex CS`; physical choices are `vortex`, `dipole`, `merging`, and methods are `CS`, `RWM`, `DVH`, `GBD`. A single RWM run is one realization; use `python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
 
-RWM starts with ten independent seeds and adds batches until the maximum
-velocity and vorticity relative standard errors are both at most 7.5%, up to
-80 seeds. The ensemble's statistical stopping rule is part of the experiment.
-Validation is separate: run `python assets/postprocess.py` after plotting
-(add `--format pdf` when checking PDF exports).
+## Physical and numerical inputs
 
-`allplot.sh` extracts the required fields and produces PNG figures by default;
-use `./allplot.sh pdf` for PDF exports. This also creates `mergingRenderT0`
-and `mergingRenderFinal` in the selected format from the initial conditions
-and the final GBD particle backup in
-`solution/merging_gbd/`. Keep that backup and its sample metadata when
-reproducing the sphere views. Their camera and field of view are shared;
-colour clipping and strength-based sphere sizes are normalised per frame.
-The lower-right label shows `nu t / a_c,0^2`. The CPU renderer requires
-Numba and TeX Live with NewPX/Pagella fonts and takes a few minutes.
+Edit [setup.py](setup.py):
 
-No `PYTHONPATH`, Matplotlib path, Taichi cache path, or repository working
-directory needs to be configured. Installed copies can also be managed with
-`openonda tutorial create`, `openonda tutorial run`, `openonda tutorial plot`,
-and `openonda tutorial clean`.
+| Quantity | Value |
+| --- | --- |
+| Scalar circulation $\Gamma_0$ | ±1 m²/s; pair signs select translation or merger. |
+| Circulation Reynolds number $\lvert\Gamma_0\rvert/\nu$ | 530; $\nu=1/530$ m²/s. |
+| Initial velocity-peak radius $a_{c,0}$ | 0.125 m. |
+| Gaussian vorticity radius $a_0=a_{c,0}/1.12$ | 0.1116 m. |
+| Pair separation $b_0$; column length | 1 m; 5 m. |
+| Particle spacing $h$; overlap $\sigma/h$ | 0.075 m; 1.2. |
+| Step $\Delta t$; duration | 0.03233 s; 29.973 s (927 steps). |
 
-## Numerical setup
+The particles form a triangular transverse lattice extruded along $z$. Initial core compensation separates physical vortex width from particle smoothing. RK2 and transposed stretching are common to all methods. CS/RWM use direct induction; DVH/GBD use treecode. These are finite columns with unbounded induction, so end effects differ from an infinite two-dimensional vortex.
 
-- Particle spacing: `h/a0 = 0.60` (2,077 initial particles for the isolated
-  vortex and 3,618 for either pair).
-- Particle core radius: `sigma/h = 1.20` for all methods and regeneration.
-- Time integration: two-stage, second-order RK2 at the documented timestep.
-- CS and RWM induction: exact direct summation.
-- DVH and GBD induction: kernel-independent treecode.
-- Stretching: transposed for every viscous method.
+For the isolated Gaussian vortex, the radial reference is
 
-In `setup.py`, `COMPUTE_METHOD` selects the backend separately from
-`STRETCHING_SCHEME`, which accepts `"direct"`, `"mixed"`, or `"transposed"`.
-The factory calls, for example, `vpm.TreecodeInduction(stretching_scheme="transposed")`.
-Both choices are recorded by the solver in `solution/<case>/vpm_metadata.json`.
-Clean the previous outputs before comparing newly edited configurations.
+$$
+a^2(t)=a_0^2+4\nu t,\qquad
+u_\theta(r,t)=\frac{\Gamma_0}{2\pi r}\left[1-e^{-r^2/a^2(t)}\right].
+$$
 
-FMM remains available in OpenONDA, but is not used for this cross-platform
-benchmark because it is unavailable on Metal and its surface evaluation is
-currently direct. The treecode works on macOS and Linux and accelerates both
-particle stages and sampled fields.
+The dipole tests mutual translation; the co-rotating pair tests separation, orientation and merger against [Cerretelli–Williamson data](assets/references/README.md). Figures use $\nu t/a_{c,0}^2$; this radius differs from the Gaussian radius above.
 
-Every method writes total kinetic energy, measured `dE/dt`, its source,
-and the viscous energy rate. Uniform-core DVH/GBD clouds use a zero-padded
-FFT convolution with the unbounded Gaussian Green tensor, including the
-far-field energy of an open vortex column. Energy is not taken from a
-periodic inverse Laplacian. DVH energy samples span at least one complete
-heat-transfer interval (36 steps for vortex/dipole, 30 for merging); surface
-fields retain their original cadence. The explicit postprocessor check rejects missing or
-non-finite energy histories, incomplete RWM ensembles, failed GBD moment
-closure, incomplete physical-time coverage, or missing figures.
+RWM starts with ten independent seeds and adds batches until velocity and vorticity relative standard errors are at most 7.5%, with a default cap of 80 seeds. Features are extracted from the ensemble-mean field; shaded intervals describe Monte Carlo uncertainty. See the short [RWM methodology](assets/references/rwm_statistical_methodology.md).
 
-The statistical definition and uncertainty treatment of RWM are documented in
-[assets/references/rwm_statistical_methodology.md](assets/references/rwm_statistical_methodology.md).
+Fields and integrals are in `samples/<case>/`; checkpoints are in `solution/<case>/`. Figures compare profiles, kinetic-energy decay, dipole motion and merger. Run `python assets/postprocess.py` to check completeness, finite energy histories and ensemble coverage. Diffusion domains include the physical spread; if you change duration or viscosity, enlarge them accordingly.

@@ -52,7 +52,7 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
             values.R_over_R0,
             color=plotting.COLORS["RefGray"],
             lw=1.0,
-            linestyle="-" if core == 1 else "--",
+            linestyle="--" if core == 1 else ":",
         )
 
     plotted = []
@@ -84,7 +84,8 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
                 ms=3.5,
                 markevery=max(1, len(values) // 12),
                 lw=1.1,
-                linestyle="-" if core == 1 else "--",
+                linestyle="-",
+                markerfacecolor=style["color"] if core == 1 else "white",
             )
         plotted.append(run)
         sources.append(
@@ -119,12 +120,13 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
             [0],
             [0],
             color=plotting.COLORS["RefGray"],
+            linestyle="--",
             lw=1,
             label="LBM (Cheng et al., 2015)",
         )
     )
     comparison_legend(fig, handles, location="bottom")
-    plotting.centered_subplots_adjust(fig, outer=0.18, bottom=0.40, top=0.96)
+    plotting.centered_subplots_adjust(fig, outer=0.100, bottom=0.39, top=0.96)
     figure_path = output / FIGURE_NAME
     save_figure(fig, figure_path, ax, formats)
     plt.close(fig)
@@ -159,7 +161,7 @@ def main():
     parser.add_argument(
         "--auxiliary-output", type=Path, default=setup.TUTORIAL_DIR / "figures/auxiliary"
     )
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
     if not 0 < args.bridge_limit < args.merge_bridge < 1:
         parser.error("require 0 < bridge-limit < merge-bridge < 1")

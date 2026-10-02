@@ -77,8 +77,7 @@ def save_figure(fig, path, axes, formats=("png",), *, fit_margins=True):
     """Validate and save one figure using its script-matching base name."""
     plotting = theme()
     axes = (axes,) if hasattr(axes, "get_position") else tuple(axes)
-    if fit_margins:
-        plotting.fit_thesis_y_label_margins(fig, axes)
+    # Margins are authored in each generator, including colour-bar figures.
     plotting.validate_thesis_figure(fig, axes)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

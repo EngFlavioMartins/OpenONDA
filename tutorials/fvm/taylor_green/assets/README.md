@@ -1,24 +1,5 @@
-# taylor_green — periodic 2D decaying vortex
+# Taylor–Green comparison
 
-This case runs the incompressible PIMPLE solver on the Taylor–Green vortex in
-the periodic domain `[0, 2π]²`. The one-cell-thick mesh uses translational
-cyclic pairs in `x` and `y` and empty boundaries in `z`.
+The [case guide](../README.md) gives the exact viscous decay, periodic boundaries and run commands. See [FVM discretisation](../../../../docs/fvm.md#time-and-discretisation) for the convection and time schemes.
 
-The analytic solution is
-
-```text
-u = exp(-2 nu t) sin(x) cos(y)
-v = -exp(-2 nu t) cos(x) sin(y)
-KE(t) = KE(0) exp(-4 nu t)
-```
-
-Run the case and generate the validation plot with:
-
-```bash
-./allrun.sh
-```
-
-The run writes numerical and analytic energy and enstrophy decay, velocity
-error, continuity, and CFL to `solution/history.csv`. The default central scheme
-is appropriate for this smooth vortex; `--scheme upwind` is available to
-demonstrate numerical dissipation.
+`decay_errors.py` computes energy, enstrophy and velocity error; `plot_decay.py` compares `solution/history.csv` with the analytic solution.

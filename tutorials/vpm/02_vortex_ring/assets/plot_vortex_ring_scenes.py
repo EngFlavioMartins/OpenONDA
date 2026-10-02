@@ -15,40 +15,152 @@ if not __package__:
 
 
 from pathlib import Path
-import argparse, json, shutil, subprocess, tempfile
+import argparse, hashlib, json, shutil, subprocess, tempfile
 import h5py, numpy as np, pyvista as pv
 from matplotlib import colormaps
+from openonda import plotting as theme
 from .. import setup as s
-import openonda.vpm as vpm
 from openonda.executables import find_executable
+from source.solvers.vpm.io.manifest import _manifest_value
 
 CASE = Path(__file__).resolve().parents[1]
 
 
 def initial_cloud():
     """Rebuild the declarative initial cloud from the tutorial setup."""
-    sigma = 2 * s.PARTICLE_SPACING
-    distribution = vpm.ToroidalDistribution(
-        ring_radius=s.RING_RADIUS,
-        tube_radius=np.sqrt(s.CORE_RADIUS**2 - sigma**2)
-        * np.sqrt(-np.log(s.TOROIDAL_TAIL_FRACTION)),
-        spacing=s.PARTICLE_SPACING,
-        core_radius_ratio=sigma / s.PARTICLE_SPACING,
-    )
-    return vpm.VortexRing(
-        kinematic_viscosity=s.KINEMATIC_VISCOSITY,
-        radius=s.RING_RADIUS,
-        circulation=s.RING_STRENGTH,
-        vortex_core_radius=s.CORE_RADIUS,
-        disturbance=vpm.WidnallDisturbance.broadband(
-            amplitude=s.DEFAULT_WIDNALL_AMPLITUDE,
-            number_of_modes=s.WIDNALL_MODES,
-            seed=s.RANDOM_SEED,
-        ),
-        core_compensation=vpm.ParticleCoreCompensation(),
-        distribution=distribution,
-        group_id=0,
-    ).build()
+    return s.build_case("les_transposed").initial_conditions[0].build()
+
+
+def initial_configuration(configuration=None):
+    """The complete declared initialization and its solver representation."""
+    if configuration is None:
+        case = s.build_case("les_transposed")
+        configuration = {
+            "initial_conditions": _manifest_value(case.initial_conditions),
+            "initial_weak_particle_percent": case.initial_weak_particle_percent,
+            "numerics": _manifest_value(case.numerics),
+        }
+    return {
+        "initial_conditions": configuration["initial_conditions"],
+        "initial_weak_particle_percent": configuration["initial_weak_particle_percent"],
+        **{
+            key: configuration["numerics"][key]
+            for key in ("precision", "random_seed", "particle_kernel")
+        },
+    }
+
+
+def validate_initial_cloud(cloud, path):
+    """Reject a scene reconstructed from a different step-zero particle state.
+
+    This check also applies to ``--schematic-only``: its initial geometry and
+    normalization describe the saved run, not an unrelated current setup.
+    The HDF5 field dtypes are the recorded solver precision.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Saved step-zero ring backup required for scene provenance: {path}"
+        )
+    with h5py.File(path) as initial:
+        solver = initial["solver"].attrs
+        if solver["step"] != 0 or solver["time"] != 0.0:
+            raise ValueError("Initial ring backup is not the step-zero state.")
+        count = solver["n_particles_total"]
+        if count != len(cloud.position):
+            raise ValueError("Initial ring backup particle count differs from reconstruction.")
+        for name in ("position", "vortex_strength", "core_radius"):
+            saved = initial[f"particles/{name}"][:]
+            shape = (count,) if name == "core_radius" else (count, 3)
+            if saved.shape != shape or saved.dtype not in (
+                np.dtype("float32"),
+                np.dtype("float64"),
+            ):
+                raise ValueError(f"Initial ring backup {name} has invalid shape or precision.")
+            reconstructed = np.asarray(getattr(cloud, name))
+            if reconstructed.shape != shape or not np.all(np.isfinite(reconstructed)):
+                raise ValueError(f"Reconstructed initial ring {name} is invalid.")
+            if not np.all(np.isfinite(saved)) or (name == "core_radius" and np.any(saved <= 0)):
+                raise ValueError(f"Initial ring backup {name} is invalid.")
+            if not np.array_equal(reconstructed.astype(saved.dtype), saved):
+                raise ValueError(
+                    f"Reconstructed initial ring {name} differs from the saved step-zero "
+                    "state at its recorded precision; restore the matching setup before plotting."
+                )
+
+
+def validate_scene_initial_cloud(cloud, case_dir=CASE):
+    """Prefer saved fields; otherwise require a recorded field fingerprint.
+
+    The legacy published plotting archive omitted its step-zero backup. Its
+    separate provenance sidecar was derived from that saved backup, not from
+    a new reconstruction. The fallback authenticates the released metadata
+    and each reconstructed field; it does not claim the old arrays are present.
+    """
+    case_dir = Path(case_dir)
+    metadata_path = case_dir / "solution/les_transposed/vpm_metadata.json"
+    metadata_bytes = metadata_path.read_bytes()
+    metadata = json.loads(metadata_bytes)
+    declared = initial_configuration()
+    if initial_configuration(metadata["configuration"]) != declared:
+        raise ValueError("Current ring initialization configuration differs from saved metadata.")
+    initial_path = case_dir / "solution/les_transposed/vpm/vpm_000000.h5"
+    if initial_path.is_file():
+        validate_initial_cloud(cloud, initial_path)
+        return "saved_step_zero_verified"
+
+    sidecar_path = case_dir / "assets/initial_state_fingerprint.json"
+    if not sidecar_path.is_file():
+        raise FileNotFoundError(
+            "Saved ring step-zero state or its recorded fingerprint is required."
+        )
+    fingerprint = json.loads(sidecar_path.read_text())
+    manifest = json.loads((case_dir / "assets/results/manifest.json").read_text())
+    relative = metadata_path.relative_to(case_dir).as_posix()
+    entries = [entry for entry in manifest["files"] if entry["path"] == relative]
+    expected_metadata = {
+        "path": relative,
+        "sha256": hashlib.sha256(metadata_bytes).hexdigest(),
+        "size": len(metadata_bytes),
+    }
+    if (
+        type(fingerprint.get("schema_version")) is not int
+        or fingerprint.get("schema_version") != 1
+        or len(entries) != 1
+        or entries[0] != expected_metadata
+        or fingerprint.get("metadata") != expected_metadata
+        or fingerprint.get("clock") != {"step": 0, "time": 0.0}
+        or fingerprint.get("initial_configuration") != declared
+    ):
+        raise ValueError("Ring initial-state fingerprint or released metadata identity is invalid.")
+    count = fingerprint.get("particle_count")
+    if type(count) is not int or count != len(cloud.position) or count <= 0:
+        raise ValueError("Ring initial-state fingerprint particle count is invalid.")
+    fields = fingerprint.get("fields", {})
+    if set(fields) != {"position", "vortex_strength", "core_radius"}:
+        raise ValueError("Ring initial-state fingerprint fields are incomplete.")
+    for name, record in fields.items():
+        shape = [count] if name == "core_radius" else [count, 3]
+        dtype_name = record.get("dtype")
+        if (
+            dtype_name not in ("<f4", "<f8", ">f4", ">f8")
+            or record.get("shape") != shape
+            or np.dtype(dtype_name).itemsize != {"f32": 4, "f64": 8}[declared["precision"]]
+        ):
+            raise ValueError(f"Ring initial-state fingerprint {name} shape or dtype is invalid.")
+        array = np.asarray(getattr(cloud, name))
+        if list(array.shape) != shape or not np.all(np.isfinite(array)):
+            raise ValueError(f"Reconstructed ring {name} is invalid.")
+        if name == "core_radius" and np.any(array <= 0):
+            raise ValueError("Reconstructed ring core radii must be positive.")
+        stored = np.asarray(array, dtype=np.dtype(dtype_name), order="C")
+        if not np.all(np.isfinite(stored)) or hashlib.sha256(
+            stored.tobytes()
+        ).hexdigest() != record.get("sha256"):
+            raise ValueError(
+                f"Reconstructed ring {name} differs from its recorded field fingerprint."
+            )
+    return "recorded_field_fingerprint_verified_reconstruction"
 
 
 def tex_document(body, height):
@@ -76,7 +188,7 @@ def export_document(work, output_dir, name, tex, figure_format, texbin):
         stdout=subprocess.DEVNULL,
     )
     shutil.copy2(work / f"{name}.tex", output_dir / f"{name}.tex")
-    if figure_format == "png":
+    if figure_format in ("png", "both"):
         pdftoppm = find_executable("pdftoppm")
         subprocess.run(
             [
@@ -90,7 +202,7 @@ def export_document(work, output_dir, name, tex, figure_format, texbin):
             ],
             check=True,
         )
-    else:
+    if figure_format in ("pdf", "both"):
         shutil.copy2(work / f"{name}.pdf", output_dir / f"{name}.pdf")
 
 
@@ -102,10 +214,12 @@ def main():
         help="Skip scenes until the final LES backup is available.",
     )
     parser.add_argument(
-        "--schematic-only", action="store_true", help="Rebuild only the initial geometry diagram."
+        "--schematic-only",
+        action="store_true",
+        help="Rebuild only the initial geometry diagram, still validating saved-run provenance.",
     )
     parser.add_argument("--output-dir", type=Path, default=CASE / "figures")
-    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     parser.add_argument("--pvpython")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +240,8 @@ def main():
     if status != "completed":
         raise ValueError("A completed LES run is required for the final panel.")
     ic = initial_cloud()
+    initial_provenance = validate_scene_initial_cloud(ic, CASE)
+    print(f"Ring initial scene provenance: {initial_provenance}")
     path = final_backup
     with h5py.File(path) as f:
         p1 = f["particles/position"][:].astype(float)
@@ -136,15 +252,16 @@ def main():
     if len(ic) != int(state["initial_n_particles_total"]):
         raise ValueError("Initial particle count differs from metadata.")
     strength_ref = np.linalg.norm(ic.vortex_strength, axis=1).max()
-    colors = colormaps["viridis"](np.linspace(0, 1, 65))[:, :3]
+    colors = colormaps[theme.COLORMAPS["vorticity_magnitude"]](np.linspace(0, 1, 65))[:, :3]
     scene = {
         "variant": "les_transposed",
+        "initial_provenance": initial_provenance,
         "initial_maximum_strength": float(strength_ref),
         "color_limits": [0.04, 0.80],
         "sphere_radius_rule": "0.025 R0 (|alpha|/max|alpha_0|)^0.65",
-        "camera_position": [5, 0, 3],
+        "camera_position": [5, 0, 7],
         "camera_up": [0, 0, 1],
-        "parallel_scale": 1.06,
+        "parallel_scale": 0.82,
         "normalized_times": [0, final_time * s.RING_STRENGTH / s.RING_RADIUS**2],
         "rgb_points": np.column_stack([np.linspace(0.04, 0.80, 65), colors]).ravel().tolist(),
         "centroids": [],
@@ -192,7 +309,7 @@ def main():
             pv.lines_from_points(points).tube(radius=tube, n_sides=16).save(work / name)
 
         circle(center, envelope, "cut_edge.vtp", 0.004)
-        circle(center, minor, "core_scale.vtp", 0.003)
+        circle(center, minor, "core_scale.vtp", 0.0034)
         for angle in [-0.60]:
             r = np.array([0, np.cos(angle), np.sin(angle)])
             pts = r + envelope * (np.cos(phi)[:, None] * axial + np.sin(phi)[:, None] * r)
@@ -291,16 +408,16 @@ def main():
 \node[anchor=north west,inner sep=0] at (62.5,0) {\includegraphics[width=62.5mm]{vortex_ring_particles_1.png}};
 \node[anchor=north west] at (1,0.5) {(a)};
 \node[anchor=north west] at (63.5,0.5) {(b)};
-\node[anchor=south east,font=\normalsize] at (61.5,56.5) {$t\Gamma_0/R_0^2=0$};
-\node[anchor=south east,font=\normalsize] at (124,56.5) {$t\Gamma_0/R_0^2=FINALTIME$};
-\draw[line width=.6pt] (3,54.5) -- (15.28,54.5);
-\draw[line width=.6pt] (3,53.8) -- (3,55.2) (15.28,53.8) -- (15.28,55.2);
-\node[anchor=south,font=\normalsize] at (9.14,54) {$0.5R_0$};
+\node[anchor=south east,font=\normalsize] at (61.5,48.5) {$t\Gamma_0/R_0^2=0$};
+\node[anchor=south east,font=\normalsize] at (124,48.5) {$t\Gamma_0/R_0^2=FINALTIME$};
+\draw[line width=.6pt] (3,46.5) -- (15.70,46.5);
+\draw[line width=.6pt] (3,45.8) -- (3,47.2) (15.70,45.8) -- (15.70,47.2);
+\node[anchor=south,font=\normalsize] at (9.35,46) {$0.5R_0$};
 """.replace("FINALTIME", f"{float(format(scene['normalized_times'][1], '.2g')):g}")
         # Vector colour bar from the identical ParaView transfer-function samples.
         for j, rgb in enumerate(colors):
             body += f"\\definecolor{{bar{j}}}{{rgb}}{{{rgb[0]:.6f},{rgb[1]:.6f},{rgb[2]:.6f}}}\n"
-            body += f"\\fill[bar{j}] ({38 + j * 49 / 65:.5f},60) rectangle ({38 + (j + 1) * 49 / 65:.5f},62.5);\n"
+            body += f"\\fill[bar{j}] ({38 + j * 49 / 65:.5f},52) rectangle ({38 + (j + 1) * 49 / 65:.5f},54.5);\n"
         for value in [0.04, 0.2, 0.4, 0.6, 0.8]:
             x = 38 + (value - 0.04) / 0.76 * 49
             label = f"{value:g}"
@@ -308,26 +425,32 @@ def main():
                 label = r"\leq0.04"
             if value == 0.8:
                 label = r"\geq0.8"
-            body += f"\\node[anchor=north,font=\\normalsize] at ({x},62.5) {{${label}$}};\n"
-        body += r"\node[anchor=north,font=\normalsize] at (62.5,66.5) {$|\boldsymbol{\alpha}_p|/\max_q|\boldsymbol{\alpha}_{q,0}|$};"
-        snapshot = tex_document(body, 74)
+            body += f"\\node[anchor=north,font=\\normalsize] at ({x},54.5) {{${label}$}};\n"
+        body += r"\node[anchor=north,font=\normalsize] at (62.5,58.5) {$|\boldsymbol{\alpha}_p|/\max_q|\boldsymbol{\alpha}_{q,0}|$};"
+        reconstructed = initial_provenance == "recorded_field_fingerprint_verified_reconstruction"
+        if reconstructed:
+            body += r"\node[anchor=south,font=\footnotesize] at (62.5,69) {Initial panel reconstructed; recorded field fingerprints verified.};"
+        snapshot = tex_document(body, 71 if reconstructed else 66)
         schematic_body = r"""\node[anchor=north west,inner sep=0] at (0,0) {\includegraphics[width=94mm,height=82mm]{vortex_ring_schematic_raw.png}};
 \node[anchor=north west,inner sep=0] at (90,8) {\includegraphics[width=35mm]{vortex_ring_core_detail.png}};
 \node at (29,36) {$R_0$};
 \node at (44,54) {$U_{\mathrm{ring}}\,\boldsymbol{e}_x$};
 \node at (85,61) {$\boldsymbol{\omega}$};
 \node[anchor=north] at (107.5,2) {Core section};
-\node at (117,32) {$a_0$};
+\node at (117,24) {$a_0$};
 \node[align=center] at (106.5,45) {$a_0/R_0=0.10$};
 \node at (106,57) {$\mathrm{Re}_\Gamma=\Gamma_0/\nu=3000$};
 """
-        schematic_body += f"\\draw[cyan!65!black,densely dotted,line width=.55pt] ({face[0]:.3f},{face[1]:.3f}) -- (98,25.5);\n"
-        schematic = tex_document(schematic_body, 82)
+        schematic_body += f"\\draw[cyan!65!black,densely dotted,line width=.6pt] ({face[0]:.3f},{face[1]:.3f}) -- (98,25.5);\n"
+        if reconstructed:
+            schematic_body += r"\node[anchor=south,font=\footnotesize] at (62.5,86) {Reconstructed initial state; recorded field fingerprints verified.};"
+        schematic = tex_document(schematic_body, 88 if reconstructed else 82)
         documents = [("vortex_ring_schematic", schematic)]
         if not args.schematic_only:
             documents.insert(0, ("vortex_ring_snapshots", snapshot))
         for name, tex in documents:
             export_document(work, args.output_dir, name, tex, args.format, texbin)
+        (args.output_dir / "vortex_ring_scene.json").write_text(json.dumps(scene, indent=2) + "\n")
 
 
 if __name__ == "__main__":

@@ -9,14 +9,7 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = (
-    ROOT
-    / "tutorials"
-    / "coupled_fvm_vpm"
-    / "01_cylinder_shedding_flow"
-    / "reference_flow"
-    / "postprocess_grid_study.py"
-)
+SCRIPT = ROOT / "tests/support/cylinder/postprocess_grid_study.py"
 
 
 def load_postprocessor():

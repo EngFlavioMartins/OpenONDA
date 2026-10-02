@@ -1,0 +1,1001 @@
+{
+  "date": "2026-09-30",
+  "scope": "Full-resolution early-transient CUDA pilot and native restart; not developed shedding qualification.",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "gpu_memory_mib": 6144,
+    "driver": "595.91.07",
+    "other_gpu_simulation_active": true
+  },
+  "configuration": {
+    "cells": 143600,
+    "faces": 441352,
+    "points": 154280,
+    "fvm_cores": 4,
+    "compute_device": "CUDA",
+    "taichi_arch": "Arch.cuda",
+    "fvm_spacing": 0.04,
+    "particle_spacing": 0.048,
+    "fvm_dt": 0.004,
+    "coupling_dt": 0.04,
+    "interface_max_sweeps": 3,
+    "interface_acceleration": "none",
+    "interface_tolerances": 1e-05,
+    "physical_end_time_configured": 100,
+    "bounded_stop_time": 0.36,
+    "max_particles": 1000000
+  },
+  "artifacts": "/home/flavio-martins/Projects/OpenONDA/tmp/cylinder_cuda_profile_20260930",
+  "source_before": {
+    "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+    "source_hashes": {
+      "source/coupler/geometry.py": "932f217179a34b1d4d335eafa90b5c48080d9fd3c450281dd7b0bf50ee8caee2",
+      "source/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
+      "source/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
+      "source/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
+      "source/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
+      "source/solvers/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
+      "source/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "cff3da2488182d2701aaa6d7083a21f3d841bf08c44fad39b2f475e86f74df44"
+    },
+    "packages": {
+      "taichi": "1.7.4",
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "numba": "0.66.0",
+      "mpi4py": "4.1.2",
+      "petsc4py": "3.25.4",
+      "vtk": "9.6.2"
+    }
+  },
+  "source_after": {
+    "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+    "source_hashes": {
+      "source/coupler/geometry.py": "8ef974b01939bedcefe964b9d4bf7ad7d4d3f17f0a6d84ba23d01284a3192786",
+      "source/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
+      "source/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
+      "source/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
+      "source/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
+      "source/solvers/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
+      "source/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "cff3da2488182d2701aaa6d7083a21f3d841bf08c44fad39b2f475e86f74df44"
+    },
+    "packages": {
+      "taichi": "1.7.4",
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "numba": "0.66.0",
+      "mpi4py": "4.1.2",
+      "petsc4py": "3.25.4",
+      "vtk": "9.6.2"
+    }
+  },
+  "mesh_sha256": "18726bfb75110fa9fb16b2536a6b7f59185465122da58a3070a78024a44ae8de",
+  "baseline_instrumentation": {
+    "cprofile_all_mpi_ranks": true,
+    "vpm_synchronized_detailed_timing": true
+  },
+  "baseline_startup_seconds": 234.13642683500075,
+  "mesh_generation_profiled_seconds": 652.159,
+  "baseline_steps": [
+    {
+      "step": 1,
+      "time": 0.04,
+      "wall_seconds": 173.04157309199218,
+      "phase_seconds": {
+        "vpm": 47.811123485997086,
+        "vpm_boundary_condition": 27.9805405990046,
+        "fvm": 70.81069219198253,
+        "transfer": 6.988375201981398,
+        "total": 153.5907314789656,
+        "last_sweep_donor_gather": 0.058300089003751054
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 0.00041071140372703907,
+        "gradient_residual_rms": 0.0004726448369698425,
+        "scaled_residual": 47.26448369698424,
+        "converged": false,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 5841,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 4.74255425,
+        "wall_native_distance": 4.660168131000001,
+        "wall_first_intersections": 3.0618854410000003,
+        "compile_cache_entrypoint": 48.966935146000004,
+        "kernel_ast_materialize": 18.40699905,
+        "kernel_launch_wrapper": 66.526402022,
+        "mpi_halo_exchange": 7.264424538,
+        "mpi_global_sum": 1.909930477,
+        "mpi_global_max": 4.676180481,
+        "fvm_pimple": 70.4940973,
+        "fvm_lsq_gradient": 22.755111998,
+        "fvm_petsc_solve": 18.330134685,
+        "gbd_diffusion": 39.702353710000004,
+        "gbd_wall_correction": 4.233218,
+        "grid_connected_components": 0.015404328,
+        "fmm_ensure_workspace": 1.959215943,
+        "fmm_workspace_constructor": 1.942373804,
+        "vpm_boundary_evaluation": 27.980546375000003,
+        "coupled_backup": 0.0,
+        "fvm_partition_backup": 0.0,
+        "vpm_prepared_backup": 0.0,
+        "vpm_backup_field_refresh": 0.0,
+        "vpm_backup_serialize": 0.0,
+        "fvm_accepted_output": 0.004014,
+        "fvm_partition_vtu": 0.0,
+        "fvm_samplers": 0.00011730200000000001,
+        "fvm_force_sampler": 0.0,
+        "fvm_slice_save": 0.0,
+        "vpm_scheduled_samplers_with_health": 19.434645527,
+        "vpm_sampler_dispatch": 0.000197715,
+        "accepted_health_refresh": 19.434231851,
+        "diagnostic_field_refresh": 19.393987421000002,
+        "wall_distance_called_from_first_intersections": 2.070566576
+      }
+    },
+    {
+      "step": 2,
+      "time": 0.08,
+      "wall_seconds": 91.66444901500654,
+      "phase_seconds": {
+        "vpm": 12.610452883993275,
+        "vpm_boundary_condition": 1.9741502149990993,
+        "fvm": 71.30878457799554,
+        "transfer": 5.271498032991076,
+        "total": 91.16488570997899,
+        "last_sweep_donor_gather": 0.021669120993465185
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 1.0875288151044641e-05,
+        "gradient_residual_rms": 1.2521617255984326e-05,
+        "scaled_residual": 1.2521617255984325,
+        "converged": false,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 6462,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 5.0833937360000006,
+        "wall_native_distance": 5.010273062,
+        "wall_first_intersections": 2.5183910330000003,
+        "compile_cache_entrypoint": 0.538867176,
+        "kernel_ast_materialize": 4.054324026000001,
+        "kernel_launch_wrapper": 3.806899982,
+        "mpi_halo_exchange": 7.745604124000001,
+        "mpi_global_sum": 1.9288178450000002,
+        "mpi_global_max": 4.653153761,
+        "fvm_pimple": 70.964654335,
+        "fvm_lsq_gradient": 23.785523153,
+        "fvm_petsc_solve": 17.473524562,
+        "gbd_diffusion": 9.211331147000001,
+        "gbd_wall_correction": 3.4292052080000004,
+        "grid_connected_components": 0.009539163,
+        "fmm_ensure_workspace": 0.006072874000000001,
+        "fmm_workspace_constructor": 0.0,
+        "vpm_boundary_evaluation": 1.9741543590000001,
+        "coupled_backup": 0.0,
+        "fvm_partition_backup": 0.0,
+        "vpm_prepared_backup": 0.0,
+        "vpm_backup_field_refresh": 0.0,
+        "vpm_backup_serialize": 0.0,
+        "fvm_accepted_output": 0.00286294,
+        "fvm_partition_vtu": 0.0,
+        "fvm_samplers": 9.9021e-05,
+        "fvm_force_sampler": 0.0,
+        "fvm_slice_save": 0.0,
+        "vpm_scheduled_samplers_with_health": 0.489225862,
+        "vpm_sampler_dispatch": 9.4893e-05,
+        "accepted_health_refresh": 0.489009603,
+        "diagnostic_field_refresh": 0.448041517,
+        "wall_distance_called_from_first_intersections": 1.801160617
+      }
+    },
+    {
+      "step": 3,
+      "time": 0.12,
+      "wall_seconds": 92.71422584899119,
+      "phase_seconds": {
+        "vpm": 10.82660106899857,
+        "vpm_boundary_condition": 0.6680118259973824,
+        "fvm": 75.02424636099022,
+        "transfer": 5.406215456983773,
+        "total": 91.92507471296994,
+        "last_sweep_donor_gather": 0.020336265995865688
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 6.519677280292491e-06,
+        "gradient_residual_rms": 7.515892200655596e-06,
+        "scaled_residual": 0.7515892200655595,
+        "converged": true,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 6795,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 7.209119482,
+        "wall_native_distance": 7.120767817000001,
+        "wall_first_intersections": 3.849682628,
+        "compile_cache_entrypoint": 0.057329188,
+        "kernel_ast_materialize": 0.235684146,
+        "kernel_launch_wrapper": 2.323440728,
+        "mpi_halo_exchange": 8.850846674000001,
+        "mpi_global_sum": 2.049112665,
+        "mpi_global_max": 4.701170358000001,
+        "fvm_pimple": 74.64955063100001,
+        "fvm_lsq_gradient": 25.355114438,
+        "fvm_petsc_solve": 18.779428929,
+        "gbd_diffusion": 9.160985728,
+        "gbd_wall_correction": 5.129930453,
+        "grid_connected_components": 0.013326036000000001,
+        "fmm_ensure_workspace": 0.005926567000000001,
+        "fmm_workspace_constructor": 0.0,
+        "vpm_boundary_evaluation": 0.6680150650000001,
+        "coupled_backup": 0.0,
+        "fvm_partition_backup": 0.0,
+        "vpm_prepared_backup": 0.0,
+        "vpm_backup_field_refresh": 0.0,
+        "vpm_backup_serialize": 0.0,
+        "fvm_accepted_output": 0.002820997,
+        "fvm_partition_vtu": 0.0,
+        "fvm_samplers": 0.000100396,
+        "fvm_force_sampler": 0.0,
+        "fvm_slice_save": 0.0,
+        "vpm_scheduled_samplers_with_health": 0.780203544,
+        "vpm_sampler_dispatch": 0.00013731300000000002,
+        "accepted_health_refresh": 0.7799040450000001,
+        "diagnostic_field_refresh": 0.743174332,
+        "wall_distance_called_from_first_intersections": 2.911162076
+      }
+    },
+    {
+      "step": 4,
+      "time": 0.16,
+      "wall_seconds": 131.452875064002,
+      "phase_seconds": {
+        "vpm": 9.47568217200751,
+        "vpm_boundary_condition": 25.221383483993122,
+        "fvm": 75.99238173099002,
+        "transfer": 5.2440531219908735,
+        "total": 115.93350050898152,
+        "last_sweep_donor_gather": 0.023309716998483054
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 5.3452047790507235e-06,
+        "gradient_residual_rms": 6.169814679931598e-06,
+        "scaled_residual": 0.6169814679931598,
+        "converged": true,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 7254,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 5.441530491,
+        "wall_native_distance": 5.3602333820000005,
+        "wall_first_intersections": 2.985678746,
+        "compile_cache_entrypoint": 17.679922259,
+        "kernel_ast_materialize": 11.997307753000001,
+        "kernel_launch_wrapper": 27.932413681000003,
+        "mpi_halo_exchange": 8.940051590000001,
+        "mpi_global_sum": 1.9901095190000002,
+        "mpi_global_max": 6.1936995800000005,
+        "fvm_pimple": 75.601166738,
+        "fvm_lsq_gradient": 25.100592990000003,
+        "fvm_petsc_solve": 18.37259158,
+        "gbd_diffusion": 6.92180993,
+        "gbd_wall_correction": 4.070103362,
+        "grid_connected_components": 0.013239388000000001,
+        "fmm_ensure_workspace": 1.697007984,
+        "fmm_workspace_constructor": 1.6771989330000001,
+        "vpm_boundary_evaluation": 25.221386954000003,
+        "coupled_backup": 0.0,
+        "fvm_partition_backup": 0.0,
+        "vpm_prepared_backup": 0.0,
+        "vpm_backup_field_refresh": 0.0,
+        "vpm_backup_serialize": 0.0,
+        "fvm_accepted_output": 0.004531516,
+        "fvm_partition_vtu": 0.0,
+        "fvm_samplers": 0.00019516300000000002,
+        "fvm_force_sampler": 0.0,
+        "fvm_slice_save": 0.0,
+        "vpm_scheduled_samplers_with_health": 15.504798349000001,
+        "vpm_sampler_dispatch": 0.000167183,
+        "accepted_health_refresh": 15.504427163,
+        "diagnostic_field_refresh": 15.416587872000001,
+        "wall_distance_called_from_first_intersections": 2.2464645180000002
+      }
+    },
+    {
+      "step": 5,
+      "time": 0.2,
+      "wall_seconds": 100.85851576700225,
+      "phase_seconds": {
+        "vpm": 17.711435546007124,
+        "vpm_boundary_condition": 1.6787362619943451,
+        "fvm": 72.9404920800007,
+        "transfer": 6.014850221996312,
+        "total": 98.34551410999848,
+        "last_sweep_donor_gather": 0.017782312002964318
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 4.247924096770262e-06,
+        "gradient_residual_rms": 4.902062818335169e-06,
+        "scaled_residual": 0.49020628183351683,
+        "converged": true,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 7552,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 6.579629316,
+        "wall_native_distance": 6.4901542690000005,
+        "wall_first_intersections": 3.5507260030000003,
+        "compile_cache_entrypoint": 0.50787916,
+        "kernel_ast_materialize": 4.9454704650000005,
+        "kernel_launch_wrapper": 5.356849454000001,
+        "mpi_halo_exchange": 8.024797143,
+        "mpi_global_sum": 2.040179563,
+        "mpi_global_max": 5.2927935150000005,
+        "fvm_pimple": 72.07044810100001,
+        "fvm_lsq_gradient": 24.179312837,
+        "fvm_petsc_solve": 17.188635667,
+        "gbd_diffusion": 12.389318853,
+        "gbd_wall_correction": 5.072551618,
+        "grid_connected_components": 0.012274376,
+        "fmm_ensure_workspace": 0.0073054570000000004,
+        "fmm_workspace_constructor": 0.0,
+        "vpm_boundary_evaluation": 1.6787397880000001,
+        "coupled_backup": 0.0,
+        "fvm_partition_backup": 0.0,
+        "vpm_prepared_backup": 0.0,
+        "vpm_backup_field_refresh": 0.0,
+        "vpm_backup_serialize": 0.0,
+        "fvm_accepted_output": 0.533209272,
+        "fvm_partition_vtu": 0.0,
+        "fvm_samplers": 0.529976522,
+        "fvm_force_sampler": 0.004638461,
+        "fvm_slice_save": 0.0,
+        "vpm_scheduled_samplers_with_health": 2.502442675,
+        "vpm_sampler_dispatch": 1.222101574,
+        "accepted_health_refresh": 1.280171771,
+        "diagnostic_field_refresh": 1.219348896,
+        "wall_distance_called_from_first_intersections": 2.6136533020000003
+      }
+    },
+    {
+      "step": 6,
+      "time": 0.24,
+      "wall_seconds": 95.34282441400865,
+      "phase_seconds": {
+        "vpm": 11.974893762991996,
+        "vpm_boundary_condition": 2.3107958400069037,
+        "fvm": 66.42692182499741,
+        "transfer": 5.3579672450287035,
+        "total": 86.07057867302501,
+        "last_sweep_donor_gather": 0.025385255008586682
+      },
+      "accepted_residual": {
+        "sweep": 3,
+        "normal_residual_rms": 4.170930441061919e-06,
+        "gradient_residual_rms": 4.813677128601294e-06,
+        "scaled_residual": 0.4813677128601293,
+        "converged": true,
+        "acceleration_alpha": null,
+        "acceleration_rejected": false,
+        "next_acceleration_alpha": null,
+        "accepted": true
+      },
+      "particles_after_transfer": 7959,
+      "cost_seconds_nested": {
+        "wall_signed_distance": 7.501189204,
+        "wall_native_distance": 7.416265548,
+        "wall_first_intersections": 3.8355732450000004,
+        "compile_cache_entrypoint": 2.470773307,
+        "kernel_ast_materialize": 2.448222744,
+        "kernel_launch_wrapper": 8.260351238,
+        "mpi_halo_exchange": 6.536128774000001,
+        "mpi_global_sum": 1.800805264,
+        "mpi_global_max": 4.6495458890000005,
+        "fvm_pimple": 65.85354172800001,
+        "fvm_lsq_gradient": 21.776275916000003,
+        "fvm_petsc_solve": 15.628045640000002,
+        "gbd_diffusion": 8.636252668000001,
+        "gbd_wall_correction": 4.80345579,
+        "grid_connected_components": 0.012768380000000001,
+        "fmm_ensure_workspace": 0.006628861000000001,
+        "fmm_workspace_constructor": 0.0,
+        "vpm_boundary_evaluation": 2.3107989570000003,
+        "coupled_backup": 8.640295586,
+        "fvm_partition_backup": 0.387003951,
+        "vpm_prepared_backup": 8.165715393000001,
+        "vpm_backup_field_refresh": 7.931207395,
+        "vpm_backup_serialize": 0.23430925800000002,
+        "fvm_accepted_output": 0.265239671,
+        "fvm_partition_vtu": 0.069826446,
+        "fvm_samplers": 0.18775297000000002,
+        "fvm_force_sampler": 0.0,
+        "fvm_slice_save": 0.186983898,
+        "vpm_scheduled_samplers_with_health": 0.612892863,
+        "vpm_sampler_dispatch": 0.00010005800000000001,
+        "accepted_health_refresh": 0.612650718,
+        "diagnostic_field_refresh": 0.574149887,
+        "wall_distance_called_from_first_intersections": 3.0573610560000004
+      }
+    }
+  ],
+  "ordinary_restart_steps": [
+    {
+      "step": 7,
+      "time": 0.28,
+      "wall_seconds": 206.40957050200086,
+      "particles": 8219,
+      "phase_seconds": {
+        "vpm": 48.280539389001206,
+        "vpm_boundary_condition": 23.118688736998593,
+        "fvm": 73.69174728600774,
+        "transfer": 48.197777530003805,
+        "total": 193.28875294201134,
+        "last_sweep_donor_gather": 0.023548255005152896
+      },
+      "interface": {
+        "sweeps": 3,
+        "accepted_sweep": 3,
+        "converged": true,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0011174480186044392,
+            "gradient_residual_rms": 0.001963818208400681,
+            "scaled_residual": 196.38182084006806,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 4.1212126163454214e-05,
+            "gradient_residual_rms": 4.861259331862572e-05,
+            "scaled_residual": 4.861259331862572,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 4.361426851506497e-06,
+            "gradient_residual_rms": 5.0322527834784775e-06,
+            "scaled_residual": 0.5032252783478477,
+            "converged": true,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.9481731069972739,
+          "state_restore": 0.03255487899878062,
+          "boundary_refresh": 1.395696035004221,
+          "accepted_output": 0.0014285690122051165
+        }
+      }
+    },
+    {
+      "step": 8,
+      "time": 0.32,
+      "wall_seconds": 92.0180953980016,
+      "particles": 8512,
+      "phase_seconds": {
+        "vpm": 7.42910692699661,
+        "vpm_boundary_condition": 0.36093634099233896,
+        "fvm": 77.00104511500103,
+        "transfer": 5.445783874980407,
+        "total": 90.23687225797039,
+        "last_sweep_donor_gather": 0.027279714005999267
+      },
+      "interface": {
+        "sweeps": 3,
+        "accepted_sweep": 3,
+        "converged": true,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0011033091330635016,
+            "gradient_residual_rms": 0.001935181713042957,
+            "scaled_residual": 193.5181713042957,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 4.3890214179859654e-05,
+            "gradient_residual_rms": 5.155528518277646e-05,
+            "scaled_residual": 5.155528518277645,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 4.655706180833313e-06,
+            "gradient_residual_rms": 5.3707078974675e-06,
+            "scaled_residual": 0.5370707897467499,
+            "converged": true,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.01160760699713137,
+          "state_restore": 0.027972564988886006,
+          "boundary_refresh": 3.707476684008725,
+          "accepted_output": 0.0010308120108675212
+        }
+      }
+    },
+    {
+      "step": 9,
+      "time": 0.36,
+      "wall_seconds": 82.81666666999809,
+      "particles": 8753,
+      "phase_seconds": {
+        "vpm": 9.844907685008366,
+        "vpm_boundary_condition": 1.7452650090126554,
+        "fvm": 64.79982337797992,
+        "transfer": 5.559502979987883,
+        "total": 81.94949905198882,
+        "last_sweep_donor_gather": 0.023008916003163904
+      },
+      "interface": {
+        "sweeps": 3,
+        "accepted_sweep": 3,
+        "converged": true,
+        "residuals": [
+          {
+            "sweep": 1,
+            "normal_residual_rms": 0.0010894587710346903,
+            "gradient_residual_rms": 0.001886148173310431,
+            "scaled_residual": 188.61481733104307,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 2,
+            "normal_residual_rms": 4.622381103863498e-05,
+            "gradient_residual_rms": 5.4160000523586454e-05,
+            "scaled_residual": 5.416000052358645,
+            "converged": false,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          },
+          {
+            "sweep": 3,
+            "normal_residual_rms": 4.919748353698668e-06,
+            "gradient_residual_rms": 5.6811482864292405e-06,
+            "scaled_residual": 0.568114828642924,
+            "converged": true,
+            "acceleration_alpha": null,
+            "acceleration_rejected": false,
+            "next_acceleration_alpha": null,
+            "accepted": true
+          }
+        ],
+        "phase_seconds": {
+          "state_capture": 0.013737228990066797,
+          "state_restore": 0.07880466501228511,
+          "boundary_refresh": 3.7798074790043756,
+          "accepted_output": 0.0016229850007221103
+        }
+      }
+    }
+  ],
+  "baseline_result": {
+    "step": 6,
+    "time": 0.24,
+    "particles": 7959,
+    "positions_finite": true,
+    "solid_particle_count": 0,
+    "fvm_fields_finite": true,
+    "core_and_volume_positive_finite": true,
+    "strengths_finite": true,
+    "position_min": [
+      -0.8151271343231201,
+      -0.7671261429786682,
+      -0.4560000002384186
+    ],
+    "position_max": [
+      0.9128729104995728,
+      0.7688738703727722,
+      0.4560000002384186
+    ],
+    "wall_seconds": 919.3470116230019
+  },
+  "restart_result": {
+    "step": 9,
+    "time": 0.36,
+    "particles": 8753,
+    "positions_finite": true,
+    "solid_particle_count": 0,
+    "fvm_fields_finite": true,
+    "core_and_volume_positive_finite": true,
+    "strengths_finite": true,
+    "position_min": [
+      -0.8151271343231201,
+      -0.7671261429786682,
+      -0.4560000002384186
+    ],
+    "position_max": [
+      1.056872844696045,
+      0.7688738703727722,
+      0.4560000002384186
+    ],
+    "wall_seconds": 493.63147438899614
+  },
+  "checks": {
+    "unique_journal_steps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "checkpoint_clocks": {
+      "coupling_step": 9,
+      "fvm_step": 90,
+      "vpm_step": 9,
+      "time": 0.36
+    },
+    "all_renewal_strength_and_linear_impulse_within_tolerance": true,
+    "focused_tests_passed": 60,
+    "ruff_passed": true,
+    "diff_check_passed": true,
+    "final_artifact_validation": {
+      "fvm": true,
+      "vpm": true,
+      "vpm_vtu": true,
+      "vpm_boundary_condition": true,
+      "stored_particle_arrays_finite": true,
+      "stored_particle_count": 8753,
+      "stored_time": 0.36,
+      "stored_step": 9
+    }
+  },
+  "geometry_microbenchmark": {
+    "benchmark_script_sha256": "d073f9a2e4ddef300eec387c95019ae981f67f5c489c72bae1b210e49b54aff7",
+    "geometry_source_sha256": {
+      "before": "932f217179a34b1d4d335eafa90b5c48080d9fd3c450281dd7b0bf50ee8caee2",
+      "after": "8ef974b01939bedcefe964b9d4bf7ad7d4d3f17f0a6d84ba23d01284a3192786"
+    },
+    "before_matches_baseline_manifest": true,
+    "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
+    "numpy": "2.4.6",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+    "timer": "time.perf_counter",
+    "cache_policy": "cleared before every measured invocation",
+    "excluded_warmup_calls_per_method_per_fixture": 1,
+    "timed_calls_instrumented": false,
+    "scope": "host wall first_intersections only; no GPU solver speed claim",
+    "results": [
+      {
+        "fixture": "curved",
+        "particles": 512,
+        "segments_per_particle": 64,
+        "segments": 32768,
+        "distance_queries": {
+          "before": {
+            "calls": 1,
+            "rows": 16384
+          },
+          "after": {
+            "calls": 1,
+            "rows": 512
+          }
+        },
+        "median_seconds": {
+          "before": 0.2772945260076085,
+          "after": 0.22293076700589154
+        },
+        "before_over_after": 1.2438593816899228,
+        "bitwise_fraction_and_normal_parity": true,
+        "pairs": [
+          {
+            "pair": 0,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.23471191199496388,
+            "after": 0.21660942399466876
+          },
+          {
+            "pair": 1,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.19999323500087485,
+            "before": 0.21857120998902246
+          },
+          {
+            "pair": 2,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.3670281209924724,
+            "after": 0.5349069240037352
+          },
+          {
+            "pair": 3,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.3406745440006489,
+            "before": 0.301944642997114
+          },
+          {
+            "pair": 4,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.2772945260076085,
+            "after": 0.22293076700589154
+          }
+        ]
+      },
+      {
+        "fixture": "rotated",
+        "particles": 512,
+        "segments_per_particle": 64,
+        "segments": 32768,
+        "distance_queries": {
+          "before": {
+            "calls": 1,
+            "rows": 32768
+          },
+          "after": {
+            "calls": 1,
+            "rows": 512
+          }
+        },
+        "median_seconds": {
+          "before": 0.3965869690000545,
+          "after": 0.339471365994541
+        },
+        "before_over_after": 1.1682486616748466,
+        "bitwise_fraction_and_normal_parity": true,
+        "pairs": [
+          {
+            "pair": 0,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.8263534550060285,
+            "after": 0.4558976400003303
+          },
+          {
+            "pair": 1,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.339471365994541,
+            "before": 0.3965869690000545
+          },
+          {
+            "pair": 2,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.5191335550043732,
+            "after": 0.2928105710016098
+          },
+          {
+            "pair": 3,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.3979180599999381,
+            "before": 0.3653293789975578
+          },
+          {
+            "pair": 4,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.3082617409963859,
+            "after": 0.33308537599805277
+          }
+        ]
+      },
+      {
+        "fixture": "concave",
+        "particles": 512,
+        "segments_per_particle": 64,
+        "segments": 32768,
+        "distance_queries": {
+          "before": {
+            "calls": 1,
+            "rows": 32768
+          },
+          "after": {
+            "calls": 1,
+            "rows": 512
+          }
+        },
+        "median_seconds": {
+          "before": 0.4914382049901178,
+          "after": 0.3949944960040739
+        },
+        "before_over_after": 1.2441646908038162,
+        "bitwise_fraction_and_normal_parity": true,
+        "pairs": [
+          {
+            "pair": 0,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.37310309600434266,
+            "after": 0.3949944960040739
+          },
+          {
+            "pair": 1,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.3456443280010717,
+            "before": 0.612958065001294
+          },
+          {
+            "pair": 2,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.8322782609902788,
+            "after": 0.46326060900173616
+          },
+          {
+            "pair": 3,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.3582115400058683,
+            "before": 0.4103386990027502
+          },
+          {
+            "pair": 4,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.4914382049901178,
+            "after": 0.7256638329999987
+          }
+        ]
+      },
+      {
+        "fixture": "thin",
+        "particles": 512,
+        "segments_per_particle": 64,
+        "segments": 32768,
+        "distance_queries": {
+          "before": {
+            "calls": 1,
+            "rows": 8192
+          },
+          "after": {
+            "calls": 1,
+            "rows": 512
+          }
+        },
+        "median_seconds": {
+          "before": 0.2894519539986504,
+          "after": 0.18508429400390014
+        },
+        "before_over_after": 1.5638925796294256,
+        "bitwise_fraction_and_normal_parity": true,
+        "pairs": [
+          {
+            "pair": 0,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.2894519539986504,
+            "after": 0.1718946189939743
+          },
+          {
+            "pair": 1,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.17782363000151236,
+            "before": 0.2522173690085765
+          },
+          {
+            "pair": 2,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.201011904006009,
+            "after": 0.18508429400390014
+          },
+          {
+            "pair": 3,
+            "order": [
+              "after",
+              "before"
+            ],
+            "after": 0.26375928599736653,
+            "before": 0.2986711279954761
+          },
+          {
+            "pair": 4,
+            "order": [
+              "before",
+              "after"
+            ],
+            "before": 0.30938946099195164,
+            "after": 0.18513326199899893
+          }
+        ]
+      }
+    ]
+  },
+  "interpretation": [
+    "Profile categories can be nested; MPI costs include waiting and load imbalance.",
+    "No end-to-end speedup claim: ordinary restart has different states and no profiler.",
+    "First two capped interface iterations did not reach tolerance; steps 3\u20139 did.",
+    "The ordinary step 9 timer excludes the final forced stop checkpoint."
+  ]
+}

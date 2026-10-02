@@ -109,7 +109,7 @@ def test_iteration_rejects_output_inside_provisional_interval():
         iteration.validate_output_schedules(c)
 
 
-def _run_accelerated_scalar_map(monkeypatch, map_value, *, gradient_map=None):
+def _run_accelerated_scalar_map(monkeypatch, map_value, *, gradient_map=None, physics=None):
     """Exercise the complete sweep/rollback path with a flux-free trace."""
     cfg = SimpleNamespace(
         interface_iterations=3,
@@ -131,7 +131,7 @@ def _run_accelerated_scalar_map(monkeypatch, map_value, *, gradient_map=None):
     fvm.write_accepted_step_output = lambda: outputs.append((fvm.step, fvm.field))
     vpm = SimpleNamespace(
         strength=3.0,
-        physics=SimpleNamespace(
+        physics=physics if physics is not None else SimpleNamespace(
             induction=SimpleNamespace(last_tail={"marker": 0}),
             last_solid_projection={"marker": 0},
         ),
@@ -210,6 +210,9 @@ def _run_accelerated_scalar_map(monkeypatch, map_value, *, gradient_map=None):
         c._last_vpm_boundary_condition_flux_diagnostics = {"marker": transfer.step}
         vpm.physics.induction.last_tail = {"marker": transfer.step}
         vpm.physics.last_solid_projection = {"marker": transfer.step}
+        if hasattr(vpm.physics, "_last_gbd_wall_transfer"):
+            vpm.physics._last_gbd_wall_transfer = {"marker": len(inputs)}
+            vpm.physics._last_gbd_moment_recovery = {"marker": len(inputs)}
 
     monkeypatch.setattr(iteration, "update_boundary_history_after_replacement", update)
     result, _, _ = iteration.advance_iterated_interface(
@@ -266,6 +269,35 @@ def test_aitken_residual_growth_restores_prior_full_endpoint(monkeypatch):
     assert vpm.physics.last_solid_projection == {"marker": 5}
     assert c._velocity_boundary_condition_old[0, 0] == pytest.approx(0.4)
     assert c._normal_velocity_boundary_condition_old == pytest.approx([0.4, -0.4])
+    assert outputs == [(11, 0.5)]
+
+
+def test_aitken_rejection_restores_actual_read_only_physics_diagnostics(monkeypatch):
+    from source.solvers.vpm.physics.engine import PhysicsEngine
+
+    # Exercise the actual production descriptors without allocating device
+    # fields or initializing Taichi. Grid initialization is host metadata only.
+    physics = object.__new__(PhysicsEngine)
+    physics._init_grid_diffusion()
+    physics.last_solid_projection = {"marker": 0}
+    physics.induction = SimpleNamespace(last_tail={"marker": 0})
+
+    def nonlinear_map(value):
+        return 0.5 if value > 0.75 else 0.4 if value > 0.45 else 1.0
+
+    c, _, _, _, inputs, outputs, _ = _run_accelerated_scalar_map(
+        monkeypatch, nonlinear_map, physics=physics,
+    )
+    assert inputs == pytest.approx([1.0, 0.5, 0.375])
+    assert c._last_interface_iteration_diagnostics["accepted_sweep"] == 2
+    assert physics.last_gbd_wall_transfer == {"marker": 2}
+    assert physics.last_gbd_moment_recovery == {"marker": 2}
+    for name in ("last_gbd_wall_transfer", "last_gbd_moment_recovery"):
+        view = getattr(physics, name)
+        view["marker"] = -1
+        assert getattr(physics, name) == {"marker": 2}
+        with pytest.raises(AttributeError):
+            setattr(physics, name, {})
     assert outputs == [(11, 0.5)]
 
 

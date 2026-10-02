@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare native downstream velocity samples with an ideal actuator-disk wake."""
+"""Compare each native wake plane with disk and expanded far-wake limits."""
 
 from __future__ import annotations
 
@@ -11,28 +11,27 @@ if not __package__:
 
 from defusedxml import ElementTree
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import trapezoid
+from matplotlib.legend_handler import HandlerTuple
 
 from source.solution_layout import vpm_backup_files
 import pyvista as pv
 
 from openonda import plotting as theme
-from openonda.rotor_theory import (
-    actuator_disk_velocity_ratio,
-    axial_induction_factor_from_thrust_coefficient,
-)
+from openonda.rotor_theory import axial_induction_factor_from_thrust_coefficient
 from ._common import (
     FIGURES_DIR,
     FIELD_STATIONARITY_COMPARISON_REVOLUTIONS,
     OPERATING_WINDOW_REVOLUTIONS,
     SIGNAL_ONSET_PERSISTENCE_FRAMES,
     SIGNAL_ONSET_RELATIVE_THRESHOLD,
+    WAKE_PLANE_DIAMETERS,
     bem_reference,
     build_arg_parser,
-    read_operating_point,
     rotor_inputs,
+    rotor_subplots,
+    save_rotor_figure,
 )
 from .finite_distance_theory import build_system, induced_velocity
 
@@ -338,10 +337,10 @@ def native_plane_windows(
         declared_by_name = {item["file_name"]: item for item in declared}
         missing = [name for name in required_names if name not in declared_by_name]
         if missing:
-            raise ValueError(f"Missing required downstream planes: {missing}")
+            raise ValueError(f"Missing required rotor planes: {missing}")
         declared = [declared_by_name[name] for name in required_names]
     if not declared:
-        raise ValueError("No downstream planes declared in native metadata")
+        raise ValueError("No rotor planes declared in native metadata")
     tolerance = max(1e-10, dt * 1e-6)
     collections = {}
     common_times = None
@@ -478,6 +477,8 @@ def native_plane_windows(
                 induced_field_drift=drift,
                 compared_rotations=compared_rotations,
                 window_mean_velocity=window_mean_velocity,
+                bracket_times=drift_times,
+                bracket_velocity=drift_velocity,
                 window_start=start,
                 window_end=end,
             )
@@ -486,19 +487,25 @@ def native_plane_windows(
         station_radius = getattr(p, "station_radius", p.rotor_radius)
         stations = {row["name"]: row["points"][0, 0] / (2 * station_radius) for row in records}
         if required_names is None:
-            expected_stations = {1.0, 2.0}
+            # Current metadata declares the actual station origins. Older
+            # fixtures/records without origins retain the legacy 1D/2D check.
+            expected_stations = (
+                {round(float(item["point"][0]) / (2 * station_radius), 6) for item in declared}
+                if all("point" in item for item in declared)
+                else {1.0, 2.0}
+            )
             if (
-                len(stations) != 2
+                len(stations) != len(expected_stations)
                 or set(np.round(np.asarray(tuple(stations.values())), 6)) != expected_stations
             ):
-                raise ValueError("Rotor wake series has unexpected declared 1D/2D stations")
+                raise ValueError("Rotor series has unexpected declared plane stations")
         else:
-            expected = {"wake_1D": 1.0, "wake_2D": 2.0}
+            expected = {f"wake_{distance}D": distance for distance in WAKE_PLANE_DIAMETERS}
             if set(stations) != set(required_names) or any(
                 not np.isclose(stations[name], expected.get(name, np.nan), rtol=0, atol=1e-6)
                 for name in required_names
             ):
-                raise ValueError("Rotor validation requires native downstream planes at 1D and 2D")
+                raise ValueError("Rotor validation requires the configured native plane stations")
     return records
 
 
@@ -560,6 +567,10 @@ def finite_distance_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
     records = []
     for plane in native_plane_windows(p, rotations):
         points = plane["points"]
+        if points[0, 0] <= 0:
+            # The right-cylinder diagnostic is defined strictly downstream;
+            # the disk is assessed separately against its 1-a reference.
+            continue
         extent = min(-points[:, 1:].min(axis=0).max(), points[:, 1:].max(axis=0).min())
         edges = np.linspace(0.0, extent / p.rotor_radius, 49)
         radius = 0.5 * (edges[1:] + edges[:-1])
@@ -643,66 +654,87 @@ def finite_distance_profiles(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
 
 def main():
     args = build_arg_parser(__doc__).parse_args()
-    theme.set_thesis_style()
     p = rotor_inputs()
     profiles = plane_profiles(p)
-    ct, _ = read_operating_point(
-        window_start=profiles[0]["window_start"], window_end=profiles[0]["window_end"]
-    )
-    induction = axial_induction_factor_from_thrust_coefficient(ct)
-    fig, ax = plt.subplots(figsize=theme.figure_size("stacked"), constrained_layout=True)
-    for row in profiles:
-        drift = row["induced_field_drift"]
-        start, end = np.array([row["window_start"], row["window_end"]]) / p.rotation_period
-        quality = (
-            f"field drift {100 * drift:.1f}\\%" if np.isfinite(drift) else "wake drift unqualified"
-        )
-        if not row["signal_onset_qualifies"]:
-            quality += "; signal onset unqualified"
-        station_radius = getattr(p, "station_radius", p.rotor_radius)
-        label = f"{row['x'] / (2 * station_radius):g}D; rev {start:.1f}–{end:.1f}\n{quality}"
-        if not row["complete"]:
-            label += "; incomplete"
-        ax.plot(
-            row["radius"],
-            row["mean"],
-            ls="-" if row["complete"] and row["signal_onset_qualifies"] and drift <= 0.01 else ":",
-            label=label,
-        )
-        status = f"{drift:.2%}" if np.isfinite(drift) else "unqualified"
-        print(
-            f"{row['name']}: {len(row['times'])} frames; induced-field drift {status} "
-            f"over {row['compared_rotations']} revolutions; "
-            f"signal onset={'qualified' if row['signal_onset_qualifies'] else 'unqualified'}"
-        )
-    ax.axhline(1, color="0.5", lw=0.7, label="Freestream")
-    if np.isfinite(induction) and induction < 0.5:
-        r = np.linspace(0, 2.0, 500)
-        ax.plot(
-            r,
-            actuator_disk_velocity_ratio(induction, r),
-            color="0.2",
-            ls="--",
-            label=f"Ideal far wake, CT={ct:.3f}",
-        )
-        ax.plot([0, 1], [1 - induction] * 2, color="0.5", ls=":", label="Ideal disk velocity")
+    disk = [row for row in profiles if np.isclose(row["x"], 0.0, atol=1e-9)]
+    if disk:
+        # Show the actual disk and the furthest recorded wake plane. Retain
+        # intermediate stations in the data and validation diagnostics.
+        profiles = [disk[0], max(profiles, key=lambda row: row["x"])]
     else:
-        ax.text(
-            0.02, 0.03, f"CT={ct:.3f}: outside ideal low-induction branch", transform=ax.transAxes
+        print("No disk-plane samples in this record; showing the recorded downstream stations.")
+    # These independent disk limits use matched BEM loading, never a fit to the
+    # plotted native wake. The far-wake streamtube expands by mass conservation.
+    ct = bem_reference().attrs["thrust_coefficient"]
+    induction = axial_induction_factor_from_thrust_coefficient(ct)
+    if not np.isfinite(induction) or not 0 <= induction < 0.5:
+        raise ValueError("BEM thrust is outside the classical actuator-disk regime")
+    wake_radius = np.sqrt((1 - induction) / (1 - 2 * induction))
+    extent = max(row["radius"].max() for row in profiles)
+    fig, axes = rotor_subplots(len(profiles), height_cm=11, sharex=True)
+    for axis, row in zip(axes, profiles, strict=True):
+        axis.plot(
+            row["mean"],
+            row["radius"],
+            color=theme.COLORS["VPMpurple"],
+            ls="-",
+            marker="o",
+            markevery=4,
+            label="VLM+VPM",
+            zorder=4,
         )
-    ax.set(
-        xlabel=r"$r/R$",
-        ylabel=r"$\langle u_x/U_\infty\rangle_{t,\theta}$",
-        xlim=(0, 2.0),
-        title="Time and azimuthal mean",
+        axis.plot(
+            [1 - induction, 1 - induction, 1, 1],
+            [0, 1, 1, max(extent, 1)],
+            color=theme.COLORS["reference"],
+            ls=":",
+            label=r"$1-a$",
+        )
+        axis.plot(
+            [1 - 2 * induction, 1 - 2 * induction, 1, 1],
+            [0, wake_radius, wake_radius, max(extent, wake_radius)],
+            color=theme.COLORS["reference"],
+            ls="--",
+            label=r"$1-2a$",
+        )
+        axis.text(
+            0.04,
+            0.94,
+            rf"$x/D={row['x'] / p.station_diameter:g}$",
+            transform=axis.transAxes,
+            va="top",
+        )
+        axis.set_ylabel(r"Radius, $r/R$")
+        print(f"{row['name']}: induced-field drift {row['induced_field_drift']:.2%}")
+
+    handles, _ = axes[0].get_legend_handles_labels()
+    # One row, two columns: numerical results and the two reference limits.
+    axes[0].legend(
+        [handles[0], (handles[1], handles[2])],
+        ["VLM+VPM", r"$1-a$, $1-2a$"],
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=0.4)},
+        loc="lower left",
+        ncol=2,
+        frameon=True,
+        framealpha=1.0,
+        edgecolor="none",
+        facecolor="white",
+        handlelength=1.5,
+        handletextpad=0.4,
+        columnspacing=0.6,
     )
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.22))
-    theme.save_fig(
-        fig,
-        FIGURES_DIR / "rotor_wake_planes.png",
-        figure_format=args.format,
-        dpi=args.dpi,
-        bbox_inches=None,
+
+    # Share scales, retain all native values and leave space inside the axes for
+    # the legends. Disk and far-wake limits are not exact 1D/2D predictions.
+    low = min(0, *(axis.get_xlim()[0] for axis in axes))
+    high = max(1.08, *(axis.get_xlim()[1] for axis in axes))
+    for axis in axes:
+        axis.set_xlim(low, high)
+        axis.set_ylim(0, extent)
+    axes[-1].set_xlabel(r"$u_x/U_\infty$")
+    print(f"BEM disk reference: CT={ct:.6f}, a={induction:.6f}, Rw/R={wake_radius:.6f}")
+    save_rotor_figure(
+        fig, FIGURES_DIR / "rotor_wake_planes.png", figure_format=args.format, dpi=args.dpi
     )
     return 0
 

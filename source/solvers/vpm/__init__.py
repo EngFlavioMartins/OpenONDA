@@ -60,6 +60,8 @@ from .io.sampling import EverySteps, EveryTime, FinalOnly, VLMSampler
 from .numerics.rk_tableaux import RK2, RK4, SSPRK3
 from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
+from .physics.induction.gaussian_mesh.policy import GaussianMeshParameters
+from .physics.induction.gaussian_mesh.session import GaussianSlabPolicy
 from .physics.induction.planar import PlanarInduction
 from .physics.induction.slip_slab import SlipSlabInduction
 from .physics.induction.treecode import TreecodeInduction
@@ -75,6 +77,8 @@ __all__ = [
     "PlanarInduction",
     "SlipSlabInduction",
     "FMMInduction",
+    "GaussianMeshParameters",
+    "GaussianSlabPolicy",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
     "Backup",

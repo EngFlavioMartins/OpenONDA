@@ -60,8 +60,8 @@ def plot_force_grids(grids: list[dict], path: Path) -> None:
 
     from openonda.plotting import (
         COLORS,
-        DEFAULT_DPI,
         centered_subplots_adjust,
+        export_figure,
         figure_size,
         fit_thesis_y_label_margins,
         set_thesis_style,
@@ -86,20 +86,20 @@ def plot_force_grids(grids: list[dict], path: Path) -> None:
     ):
         figure, axes = plt.subplots(len(metrics), 1, figsize=figure_size(size), sharex=True)
         if not all(grid.get("qualified_statistics", True) for grid in grids):
-            figure.suptitle("Force statistics unqualified", y=0.97)
+            print("Force statistics unqualified: see the grid qualification report.")
         for axis, metric in zip(axes, metrics, strict=True):
             axis.plot(
                 [grid["h"] for grid in grids],
                 [grid[metric] for grid in grids],
                 "o-",
-                color=COLORS["FVMorange"],
+                color=COLORS["fvm"],
             )
             axis.set_ylabel(labels[metric])
-            axis.grid(alpha=0.2)
+            axis.grid(False)
         axes[-1].invert_xaxis()
         axes[-1].set_xlabel("h / D")
         centered_subplots_adjust(figure, outer=0.18, bottom=0.16, top=0.92, hspace=0.26)
         fit_thesis_y_label_margins(figure, axes)
         validate_thesis_figure(figure, axes)
-        figure.savefig(output, dpi=DEFAULT_DPI)
+        export_figure(figure, output)
         plt.close(figure)

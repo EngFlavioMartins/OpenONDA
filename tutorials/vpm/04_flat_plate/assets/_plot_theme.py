@@ -48,15 +48,17 @@ def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
 
 def save_fig(fig, path, *, figure_format: str = "png", dpi: int | None = None) -> None:
     """Validate and save a fixed-layout thesis figure without recropping it."""
-    theme = _load()
-    out = theme.figure_path(path, figure_format)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    theme.validate_thesis_figure(fig, fig.axes)
-    fig.savefig(out, dpi=theme.DEFAULT_DPI if dpi is None else dpi, bbox_inches=None)
-    theme.plt.close(fig)
-    print(f"  Saved: {out}")
+    _load().save_validation_figure(fig, path, figure_format=figure_format, dpi=dpi)
+
+
+def validation_subplots(*args, **kwargs):
+    return _load().validation_subplots(*args, **kwargs)
+
+
+def validation_legend(*args, **kwargs):
+    return _load().validation_legend(*args, **kwargs)
 
 
 def export_formats() -> tuple[str, ...]:
     """Return the supported export format strings."""
-    return tuple(_load().EXPORT_FORMATS)
+    return tuple(_load().FORMAT_CHOICES)

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Plot coupled-cylinder drag and lift histories."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
 import argparse
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,20 +23,27 @@ from openonda.plotting import (
     set_thesis_style,
 )
 
-import postprocess as data
+from . import postprocess as data
 
 FORCE_COLUMNS = ("drag_coefficient", "lift_coefficient")
 
 
 def time_mean(time: np.ndarray, values: np.ndarray) -> float:
     """Return the trapezoidal mean over the sampled time interval."""
+    if len(time) < 2 or time[-1] <= time[0]:
+        raise ValueError("Force statistics require at least two distinct saved times")
     return float(trapezoid(values, time) / (time[-1] - time[0]))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--case-dir", type=Path, default=data.CASE_DIR)
     arguments = parser.parse_args()
+
+    data.CASE_DIR = arguments.case_dir.resolve()
+    data.FIGURES = data.CASE_DIR / "figures"
+    data.AUXILIARY = data.FIGURES / "auxiliary"
 
     frame = data.history(data.CASE_DIR / "samples" / "forces_history.csv", FORCE_COLUMNS)
     time = frame.time.to_numpy(dtype=float)
@@ -43,6 +57,8 @@ def main() -> None:
         "cylinder_force_statistics.json",
         {
             "time_interval": [float(time[statistics][0]), float(time[-1])],
+            "sample_count": int(np.count_nonzero(statistics)),
+            "scope": "last available 30 s or shorter; periodicity is not established by these statistics",
             "mean_drag_coefficient": mean_drag,
             "rms_drag_coefficient": float(
                 np.sqrt(time_mean(time[statistics], (drag[statistics] - mean_drag) ** 2))
@@ -53,6 +69,7 @@ def main() -> None:
             ),
         },
     )
+    print(f"Force history: {time[0]:g}–{time[-1]:g} s; statistics use available samples only.")
 
     set_thesis_style()
     figure, axes = plt.subplots(2, 1, figsize=(12.5 * CM, 8.3 * CM), sharex=True)
@@ -62,9 +79,9 @@ def main() -> None:
     axes[1].set_ylabel(r"$C_L$")
     axes[1].set_xlabel(r"$tU_\infty/D$")
     for axis in axes:
-        axis.grid(alpha=0.22)
+        axis.grid(False)
     centered_subplots_adjust(figure, outer=0.17, bottom=0.17, top=0.96, hspace=0.12)
-    fit_thesis_y_label_margins(figure, axes)
+    centered_subplots_adjust(figure, outer=0.135, top=0.987)
     data.save_figure(figure, axes, "cylinder_forces", arguments.format)
 
 

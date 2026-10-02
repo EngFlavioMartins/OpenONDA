@@ -1,0 +1,34 @@
+{
+  "reference": "reference_flow/samples",
+  "reference_scope": "single-mesh comparison; not a grid-independence claim",
+  "time_interval": [
+    0.04,
+    13.999999999999345
+  ],
+  "errors": {
+    "drag_coefficient": {
+      "rms": 0.12461571153095231,
+      "maximum": 3.280057827832409
+    },
+    "lift_coefficient": {
+      "rms": 0.0011669599486778767,
+      "maximum": 0.0054286335395541
+    }
+  },
+  "available_time_intervals": {
+    "coupled": [
+      0.04,
+      13.999999999999345
+    ],
+    "reference": [
+      0.0,
+      99.99999999998808
+    ]
+  },
+  "comparison_time_interval": [
+    0.04,
+    13.999999999999345
+  ],
+  "time_alignment": "piecewise-linear interpolation on the common interval; no time shift",
+  "scope": "available samples only; not a completion, periodicity or phase-convergence claim"
+}

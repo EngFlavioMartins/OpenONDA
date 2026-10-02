@@ -124,7 +124,7 @@ def plot_dipole_case(args) -> int:
     )
 
     fig, axes_grid = plt.subplots(2, 2, figsize=(125 / 25.4, 95 / 25.4), sharex=True)
-    centered_subplots_adjust(fig, outer=0.13, bottom=0.30, top=0.92, wspace=0.42, hspace=0.42)
+    centered_subplots_adjust(fig, outer=0.100, bottom=0.25, top=0.939, wspace=0.42, hspace=0.40)
     axes = axes_grid.ravel()
 
     plotted_schemes = []
@@ -208,14 +208,14 @@ def plot_dipole_case(args) -> int:
         ("Core trajectory", r"$x_c/a_{c,0}$"),
         ("Core radius", r"$a_c/a_{c,0}$"),
         ("Core separation", r"$b/b_0$"),
-        ("High-vorticity aspect", r"$E_{50}$"),
+        ("Aspect ratio", r"$E_{50}$"),
     )
     for axis, (title, ylabel) in zip(axes, labels, strict=True):
         axis.set_title(title)
         axis.set_ylabel(ylabel)
     for axis in axes[:2]:
         axis.tick_params(labelbottom=False)
-    fig.supxlabel(r"$\nu t/a_{c,0}^2$", y=0.205)
+    fig.supxlabel(r"$\nu t/a_{c,0}^2$", y=0.160)
 
     handles, legend_labels = [], []
     for axis in axes:

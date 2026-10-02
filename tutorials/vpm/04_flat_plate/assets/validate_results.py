@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Certification checks for the flat-plate suite."""
+"""Completion and consistency checks; physical accuracy also needs refinement."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ import pandas as pd
 from openonda.tutorial_runner import case_package
 
 __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
-from .results import load_forces
+from .results import load_forces, parameters, settled_coefficients
+from .theoretical_model import lifting_line_polar
 
 AOA_TAGS = [
     "aoan10",
@@ -135,7 +136,16 @@ def main() -> int:
                 df["nondimensional_distance_travelled"]
                 >= df["nondimensional_distance_travelled"].max() - 5.0
             ]
-            polar[frame, tag] = tail[list(COEFFICIENTS)].mean().to_numpy()
+            polar[frame, tag] = settled_coefficients(case_dir, name)
+            physics = parameters(case_dir, name)
+            angle = float(tag.removeprefix("aoa").replace("n", "-"))
+            reference = lifting_line_polar(angle, physics["span"] / physics["chord"])
+            if angle:
+                differences = 100 * (polar[frame, tag][:2] / np.asarray(reference) - 1)
+                print(
+                    f"{name}: lifting-line difference CL={differences[0]:+.2f}%, "
+                    f"CD={differences[1]:+.2f}% (diagnostic, not an exact reference)"
+                )
             scale = max(abs(float(tail["lift_coefficient"].mean())), 1e-12)
             rel = float(tail["lift_coefficient"].max() - tail["lift_coefficient"].min()) / scale
             if rel > 2e-3:
@@ -178,7 +188,11 @@ def main() -> int:
     if failures:
         print("\n".join(f"[FAIL] {x}" for x in failures))
         return 1
-    print("[OK] flat_plate certification passed")
+    print("[OK] flat_plate completion and consistency checks passed")
+    print(
+        "[UNQUALIFIED] Physical accuracy requires matched space/time refinement; "
+        "frame agreement and circulation closure alone do not establish it."
+    )
     return 0
 
 

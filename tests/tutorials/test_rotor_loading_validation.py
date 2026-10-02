@@ -51,6 +51,19 @@ def test_shared_vlm_window_uses_final_five_revolutions():
     np.testing.assert_array_equal(chord_window.step.unique(), np.arange(5, 11))
 
 
+def test_shared_vlm_window_retains_lower_boundary_bracket():
+    span, chord = _histories()
+    span_window, chord_window, cutoff, end = shared_vlm_window(
+        span,
+        chord,
+        rotation_period=1.1,
+        end_time=10.0,
+    )
+    assert (cutoff, end) == (4.5, 10.0)
+    assert span_window.time.min() == 4.0
+    assert chord_window.time.min() == 4.0
+
+
 @pytest.mark.parametrize("offset", [0.001, -0.001])
 def test_shared_vlm_window_rejects_span_chord_clock_mismatch(offset):
     span, chord = _histories(chord_time_offset=offset)

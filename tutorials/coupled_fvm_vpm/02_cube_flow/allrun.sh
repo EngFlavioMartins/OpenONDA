@@ -2,7 +2,5 @@
 set -e
 cd -- "$(dirname -- "$0")"
 
-./allclean.sh
-
-
-python setup.py
+# Preserve outputs; setup.py resumes only a compatible native backup.
+python setup.py "$@"

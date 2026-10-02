@@ -7,6 +7,7 @@ import pytest
 import taichi as ti
 
 from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin
+from tests.coupler._solid_geometry import wall_case
 
 
 @ti.data_oriented
@@ -14,17 +15,27 @@ class _Harness(_GridDiffusionMixin):
     pass
 
 
+def _configure_curved_wall(physics):
+    boundary, *_ = wall_case("curved")
+    physics.configure_body_classifier(
+        boundary.contains,
+        revision=boundary.revision,
+        query_bounds=boundary.bounds,
+        blocks_segments=boundary.blocks_segments,
+    )
+
+
 def _ensure_taichi_cpu() -> None:
     if ti.lang.impl.get_runtime().prog is None:
         ti.init(arch=ti.cpu)
 
 
-def test_cylinder_body_mask_excludes_only_open_solid_interior():
+def test_triangulated_curved_body_mask_excludes_only_open_solid_interior():
     _ensure_taichi_cpu()
     physics = _Harness()
     physics._init_grid_diffusion()
     physics._body_mask_grid = ti.field(dtype=ti.i32, shape=(7, 7, 7))
-    physics.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, -1.0, 1.0), axis="z")
+    _configure_curved_wall(physics)
 
     physics._prepare_body_mask_current_grid(np.array([-1.5, -1.5, -1.5]), 0.5, 7, 7, 7)
     mask = physics._body_mask_grid.to_numpy()
@@ -33,13 +44,6 @@ def test_cylinder_body_mask_excludes_only_open_solid_interior():
     assert mask[4, 3, 3] == 0  # radial surface
     assert mask[3, 3, 5] == 0  # end-cap surface
     assert mask[5, 3, 3] == 0  # exterior fluid
-
-
-def test_cylinder_body_mask_rejects_noncircular_transverse_bounds():
-    physics = _Harness()
-    physics._init_grid_diffusion()
-    with pytest.raises(ValueError, match="circular diameter"):
-        physics.configure_body_cylinder((-0.5, 0.5, -0.25, 0.25, -1.0, 1.0), axis=2)
 
 
 def test_wall_classifier_mask_is_cached_and_follows_lattice_phase():
@@ -78,10 +82,10 @@ def test_wall_classifier_requires_one_flag_per_node():
         physics._prepare_body_mask_current_grid(np.zeros(3), 0.5, 3, 3, 3)
 
 
-def test_cylinder_particle_classification_uses_strict_interior():
+def test_triangulated_curved_particle_classification_uses_strict_interior():
     physics = _Harness()
     physics._init_grid_diffusion()
-    physics.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, -1.0, 1.0))
+    _configure_curved_wall(physics)
     points = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -99,7 +103,7 @@ def test_cylinder_particle_classification_uses_strict_interior():
 def test_wall_adjacent_m4_preserves_local_strength_and_first_moment(phase):
     physics = _Harness()
     physics._init_grid_diffusion()
-    physics.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, -1.0, 1.0))
+    _configure_curved_wall(physics)
     position = np.array([[0.57, 0.13, 0.1]])
     strength = np.array([[0.2, -0.4, 1.0]])
     origin = np.array([-1.5 + phase, -1.5, -1.5])
@@ -134,7 +138,7 @@ def test_device_wall_scatter_and_zero_flux_diffusion_conserve_fluid_strength():
     physics._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=shape)
     physics._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=shape)
     physics._body_mask_grid = ti.field(dtype=ti.i32, shape=shape)
-    physics.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, -1.0, 1.0))
+    _configure_curved_wall(physics)
     positions = np.array([[0.57, 0.13, 0.1]], dtype=np.float32)
     strengths = np.array([[0.2, -0.4, 1.0]], dtype=np.float32)
     source_position = ti.Vector.field(3, dtype=ti.f32, shape=1)

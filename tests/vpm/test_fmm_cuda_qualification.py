@@ -16,13 +16,16 @@ import pytest
 
 def _has_cuda() -> bool:
     try:
-        return subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            ).returncode
+            == 0
+        )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
@@ -104,11 +107,12 @@ def _worker(scenario: str, workdir: Path) -> None:
     import taichi as ti
 
     from tests.vpm.test_fmm_device import (
-        _DeviceFMMHarness,
         test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage,
         test_device_fmm_is_permutation_translation_and_axis_rotation_covariant,
         test_device_fmm_meets_all_kernel_gates_with_near_pairs_and_far_clusters,
+        test_device_fmm_recovers_overflow_without_changing_stage_results,
         test_device_hierarchy_handles_edge_cases_and_rebuilds_stage_metadata,
+        test_fmm_grows_real_pair_arrays_and_matches_oversized_control,
     )
 
     ti.init(arch=ti.cuda, default_fp=ti.f32, device_memory_fraction=0.02, offline_cache=False)
@@ -123,15 +127,8 @@ def _worker(scenario: str, workdir: Path) -> None:
                 kernel
             )
     elif scenario == "overflow":
-        harness = _DeviceFMMHarness(capacity=64)
-        harness.induction._ensure_workspace(64)
-        harness.induction.workspace.max_pairs = 1
-        rng = np.random.default_rng(20260916)
-        position = rng.normal(size=(64, 3)).astype(np.float32)
-        strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
-        radius = np.full(64, 0.02, dtype=np.float32)
-        with pytest.raises(RuntimeError, match="interaction-list capacity was exceeded"):
-            harness.evaluate(position, strength, radius)
+        test_device_fmm_recovers_overflow_without_changing_stage_results()
+        test_fmm_grows_real_pair_arrays_and_matches_oversized_control()
     elif scenario == "restart":
         _restart_case(workdir)
     else:

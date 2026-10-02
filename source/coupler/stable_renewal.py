@@ -15,6 +15,7 @@ import numpy as np
 from scipy.ndimage import convolve1d
 
 from source._numba import cacheable_njit as njit
+from source.grid_connectivity import connected_grid_components
 
 from .lattice_transfer import _m4_prime_scalar, m4_prime
 
@@ -448,6 +449,8 @@ class StableRenewalLattice:
     fvm_authority: np.ndarray
     planar_span: float | None = None
     slip_slab: bool = False
+    wall_links: np.ndarray | None = None
+    wall_scatter_correction: Callable | None = None
 
     @property
     def particle_volume(self) -> float:
@@ -477,6 +480,8 @@ def build_stable_renewal_lattice(
     planar_span: float | None = None,
     slip_slab: bool = False,
     plane_z: float = 0.0,
+    solid_boundary=None,
+    wall_scatter_correction: Callable | None = None,
 ) -> StableRenewalLattice:
     """Build fixed renewal nodes and transfer weights around the FVM region.
 
@@ -504,6 +509,13 @@ def build_stable_renewal_lattice(
     slip_slab : bool, default=False
         Use physical z faces without a z ownership ramp; ghost support nodes
         remain on the lattice with zero fluid weight.
+    solid_boundary : optional
+        Static solid-query interface. Its segment queries cache blocked lattice
+        links for component-local pruning and invariant recovery.
+    wall_scatter_correction : callable, optional
+        Existing GBD visible-support M4 correction for off-lattice 3-D donors.
+        Called with positions, strengths, origin, spacing and shape; returns
+        sparse node indices, additive strength corrections and diagnostics.
 
     Returns
     -------
@@ -542,11 +554,11 @@ def build_stable_renewal_lattice(
         anchor_array = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
         if np.any(~np.isfinite(anchor_array)):
             raise ValueError("lattice_anchor must be finite")
-        lower = anchor_array + np.floor((lower - anchor_array) / spacing) * spacing
-    shape = (
-        int(np.ceil((upper[0] - lower[0]) / spacing)) + 1,
-        int(np.ceil((upper[1] - lower[1]) / spacing)) + 1,
-        int(np.ceil((upper[2] - lower[2]) / spacing)) + 1,
+        lower = (
+            anchor_array + np.floor(_snap_grid_roundoff((lower - anchor_array) / spacing)) * spacing
+        )
+    shape = tuple(
+        (np.ceil(_snap_grid_roundoff((upper - lower) / spacing)).astype(int) + 1).tolist()
     )
     if planar_span is not None:
         _positive_finite("planar_span", planar_span)
@@ -576,6 +588,11 @@ def build_stable_renewal_lattice(
         )
         * mesh_weight
     )
+    wall_links = (
+        None
+        if solid_boundary is None
+        else _blocked_lattice_links(positions, shape, solid_interior, solid_boundary)
+    )
     return StableRenewalLattice(
         transfer_box=bounds,
         renewal_bounds=renewal_bounds,
@@ -591,7 +608,37 @@ def build_stable_renewal_lattice(
         fvm_authority=authority,
         planar_span=planar_span,
         slip_slab=slip_slab,
+        wall_links=wall_links,
+        wall_scatter_correction=wall_scatter_correction,
     )
+
+
+def _snap_grid_roundoff(coordinates: np.ndarray) -> np.ndarray:
+    """Keep floor/ceil invariant under roundoff-sized translations of a grid."""
+    nearest = np.rint(coordinates)
+    tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, np.abs(coordinates))
+    return np.where(np.abs(coordinates - nearest) <= tolerance, nearest, coordinates)
+
+
+def _blocked_lattice_links(positions, shape, solid_interior, boundary) -> np.ndarray:
+    """Cache six-neighbour wall visibility using one bit per positive axis."""
+    links = np.zeros(shape, dtype=np.uint8)
+    flat_links = links.reshape(-1)
+    strides = (shape[1] * shape[2], shape[2], 1)
+    # Bound coordinate/query temporaries independently of lattice size.
+    for start in range(0, len(positions), 65536):
+        rows = np.arange(start, min(start + 65536, len(positions)))
+        for axis, stride in enumerate(strides):
+            lower = rows[(rows // stride) % shape[axis] < shape[axis] - 1]
+            upper = lower + stride
+            blocked = solid_interior[lower] | solid_interior[upper]
+            fluid = ~blocked
+            if np.any(fluid):
+                blocked[fluid] = boundary.blocks_segments(
+                    positions[lower[fluid]], positions[upper[fluid]]
+                )
+            flat_links[lower[blocked]] |= np.uint8(1 << axis)
+    return links
 
 
 def scatter_m4_prime_to_lattice(
@@ -600,8 +647,18 @@ def scatter_m4_prime_to_lattice(
     lattice: StableRenewalLattice,
     *,
     allow_slab_images: bool = False,
+    position_dtype=None,
 ) -> np.ndarray:
-    """Scatter donors with aligned direct insertion and complete M4' support."""
+    """Scatter donors with aligned direct insertion and complete M4' support.
+
+    ``position_dtype`` retains source storage precision when a caller has
+    already converted positions to double precision for geometric arithmetic.
+    """
+    storage_dtype = np.dtype(
+        np.asarray(positions).dtype if position_dtype is None else position_dtype
+    )
+    if not np.issubdtype(storage_dtype, np.floating):
+        storage_dtype = np.dtype(np.float64)
     position = _vectors("positions", positions)
     strength = _vectors("vortex_strength", vortex_strength)
     if len(position) != len(strength):
@@ -624,7 +681,7 @@ def scatter_m4_prime_to_lattice(
         if len(position) == 0:
             return np.zeros((len(lattice.positions), 3), dtype=np.float64)
 
-    if lattice.planar_span is not None:
+    if lattice.planar_span is not None and lattice.wall_links is None:
         from source.solvers.vpm.physics.diffusion.planar import scatter_planar
 
         return scatter_planar(
@@ -640,7 +697,39 @@ def scatter_m4_prime_to_lattice(
     nearest = np.rint(relative).astype(np.int64)
     shape_array = np.asarray(lattice.shape, dtype=np.int64)
     aligned = np.max(np.abs(relative - nearest), axis=1) <= _ALIGNMENT_TOLERANCE_CELLS
+    if lattice.wall_links is not None:
+        # GBD and renewal share a lattice; finite position storage can shift
+        # an exact node by a few ulps. Do not spread those shifts through walls.
+        dimensions = 3 if lattice.planar_span is None else 2
+        if dimensions == 2:
+            nearest[:, 2] = 0
+        exact = lattice.origin + lattice.particle_spacing * nearest
+        storage_roundoff = (
+            4.0
+            * np.finfo(storage_dtype).eps
+            * np.maximum(np.abs(position[:, :dimensions]), np.abs(exact[:, :dimensions]))
+        )
+        if np.any(storage_roundoff >= 0.01 * lattice.particle_spacing):
+            raise ValueError(
+                "Wall renewal cannot resolve the particle spacing at "
+                f"{storage_dtype.name} position precision"
+            )
+        tolerance = np.maximum(
+            _ALIGNMENT_TOLERANCE_CELLS * lattice.particle_spacing, storage_roundoff
+        )
+        aligned = np.all(
+            np.abs(position[:, :dimensions] - exact[:, :dimensions]) <= tolerance, axis=1
+        )
     aligned &= np.all((nearest >= 0) & (nearest < shape_array), axis=1)
+    if (
+        lattice.wall_links is not None
+        and np.any(~aligned)
+        and (lattice.wall_scatter_correction is None or lattice.planar_span is not None)
+    ):
+        raise ValueError(
+            "Wall-aware buffered renewal requires GBD-aligned particles; "
+            "off-lattice M4 scatter has no wall-visible support"
+        )
     field = np.zeros((*lattice.shape, 3), dtype=np.float64)
     if np.any(aligned):
         index = nearest[aligned]
@@ -658,6 +747,17 @@ def scatter_m4_prime_to_lattice(
             strength[~aligned],
             shape_array,
         )
+        if lattice.wall_links is not None:
+            indices, corrections, _ = lattice.wall_scatter_correction(
+                position[~aligned],
+                strength[~aligned],
+                lattice.origin,
+                lattice.particle_spacing,
+                lattice.shape,
+            )
+            np.add.at(field, tuple(indices.T), corrections)
+    if lattice.wall_links is not None:
+        field[lattice.solid_interior.reshape(lattice.shape)] = 0.0
     return field.reshape(-1, 3)
 
 
@@ -897,6 +997,9 @@ def redistribute_pruned_vortex_strength_locally(
     removed_vortex_strength: np.ndarray,
     retained_vortex_strength: np.ndarray,
     shape: tuple[int, int, int],
+    *,
+    labels: np.ndarray | None = None,
+    wall_links: np.ndarray | None = None,
 ) -> np.ndarray:
     """Move removed strength to surviving face neighbours without a periodic seam."""
     removed = _vectors("removed_vortex_strength", removed_vortex_strength).reshape(*shape, 3)
@@ -911,6 +1014,11 @@ def redistribute_pruned_vortex_strength_locally(
     shifts = ((0, 1), (0, -1), (1, 1), (1, -1), (2, 1), (2, -1))
     neighbours = [np.roll(alive, -step, axis=axis) for axis, step in shifts]
     for index, (axis, step) in enumerate(shifts):
+        if labels is not None:
+            neighbours[index] &= (labels >= 0) & (labels == np.roll(labels, -step, axis=axis))
+        if wall_links is not None:
+            edge_links = wall_links if step == 1 else np.roll(wall_links, 1, axis=axis)
+            neighbours[index] &= (edge_links & (1 << axis)) == 0
         boundary_slice: list[slice | int] = [slice(None)] * 3
         boundary_slice[axis] = -1 if step == 1 else 0
         neighbours[index][tuple(boundary_slice)] = False
@@ -923,6 +1031,41 @@ def redistribute_pruned_vortex_strength_locally(
         contribution = np.where(neighbour[..., None], share, 0.0)
         output += np.roll(contribution, step, axis=axis)
     return output.reshape(-1, 3)
+
+
+def _recover_wall_components(lattice, original, redistributed, labels, recover):
+    """Close each fluid component, retaining its original state if rank is lost."""
+    raw = redistributed.copy()
+    corrected = redistributed.copy()
+    flat_labels = labels.reshape(-1)
+    rows = np.flatnonzero(flat_labels >= 0)
+    if not len(rows):
+        return raw, corrected
+    if np.any(flat_labels[rows] != flat_labels[rows[0]]):
+        rows = rows[np.argsort(flat_labels[rows], kind="stable")]
+    boundaries = np.r_[0, np.flatnonzero(np.diff(flat_labels[rows])) + 1, len(rows)]
+    for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True):
+        component = rows[start:stop]
+        retained = component[np.linalg.norm(raw[component], axis=1) > 0.0]
+        target = vortex_invariants(lattice.positions[component], original[component])
+        try:
+            if len(retained) < 2:
+                raise ValueError("insufficient component support")
+            result = recover(
+                lattice.positions[retained],
+                raw[retained],
+                target,
+                volumes=np.full(len(retained), lattice.particle_volume),
+            )
+            if not np.all(np.isfinite(result)):
+                raise FloatingPointError("nonfinite component correction")
+            corrected[retained] = result
+        except (ValueError, np.linalg.LinAlgError, FloatingPointError):
+            # A pruning threshold cannot justify moving a component's strength
+            # into another fluid region. Keep its original support instead.
+            raw[component] = original[component]
+            corrected[component] = original[component]
+    return raw, corrected
 
 
 @dataclass(frozen=True)
@@ -999,6 +1142,7 @@ def renew_stable_overlap(
     ``release_prune_threshold`` is blended in as FVM authority decreases and
     applies at the transfer surface; ``None`` uses a uniform threshold.
     """
+    position_dtype = np.asarray(positions).dtype
     position = _vectors("positions", positions)
     strength = _vectors("vortex_strength", vortex_strength)
     if len(position) != len(strength):
@@ -1052,6 +1196,7 @@ def renew_stable_overlap(
         position[in_renewal_belt],
         tapered_strength[in_renewal_belt],
         lattice,
+        position_dtype=position_dtype,
     )
     if lattice.slip_slab and np.any(in_renewal_belt):
         source = position[in_renewal_belt]
@@ -1060,7 +1205,11 @@ def renew_stable_overlap(
             image_position = source.copy()
             image_position[:, 2] = 2.0 * plane - image_position[:, 2]
             vpm_lattice_strength += scatter_m4_prime_to_lattice(
-                image_position, axial_image, lattice, allow_slab_images=True
+                image_position,
+                axial_image,
+                lattice,
+                allow_slab_images=True,
+                position_dtype=position_dtype,
             )
     excluded_remesh_l1 = float(
         np.linalg.norm(vpm_lattice_strength * (1.0 - lattice.fluid_weight)[:, None], axis=1).sum()
@@ -1111,17 +1260,32 @@ def renew_stable_overlap(
             / denominator
         )
 
-    pre_prune_invariants = vortex_invariants(lattice.positions, blend.vortex_strength)
-    magnitude_before = np.linalg.norm(blend.vortex_strength, axis=1)
+    pre_prune_strength = blend.vortex_strength
+    if lattice.wall_links is not None:
+        pre_prune_strength = pre_prune_strength.copy()
+        pre_prune_strength[lattice.solid_interior] = 0.0
+    pre_prune_invariants = vortex_invariants(lattice.positions, pre_prune_strength)
+    magnitude_before = np.linalg.norm(pre_prune_strength, axis=1)
+    labels = (
+        None
+        if lattice.wall_links is None
+        else connected_grid_components(
+            magnitude_before.reshape(lattice.shape),
+            np.zeros(lattice.shape, dtype=np.int8),
+            lattice.wall_links,
+        )
+    )
     # Interior state is regenerated from the FVM. At the release surface the
     # VPM is the sole owner, so pruning must fall to its own resolved GBD floor.
     local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_authority
-    shrunk, removed = soft_prune_vortex_strength(blend.vortex_strength, local_threshold)
+    shrunk, removed = soft_prune_vortex_strength(pre_prune_strength, local_threshold)
     if lattice.planar_span is None:
         redistributed = redistribute_pruned_vortex_strength_locally(
             removed,
             shrunk,
             lattice.shape,
+            labels=labels,
+            wall_links=lattice.wall_links,
         )
     else:
         # Binary neighbour eligibility transfers a finite amount to a node
@@ -1131,6 +1295,11 @@ def renew_stable_overlap(
         # the retained-strength metric, preserving circulation and impulse.
         redistributed = shrunk.copy()
     redistributed[lattice.solid_interior] = 0.0
+    wall_corrected = None
+    if labels is not None:
+        redistributed, wall_corrected = _recover_wall_components(
+            lattice, pre_prune_strength, redistributed, labels, invariant_recovery
+        )
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
     pruned = (magnitude_before > 0.0) & ~keep
     active_l1 = float(magnitude_before[magnitude_before > 0.0].sum())
@@ -1138,14 +1307,14 @@ def renew_stable_overlap(
 
     renewed_position = lattice.positions[keep]
     raw_renewed_strength = redistributed[keep]
-    renewed_strength = raw_renewed_strength
+    renewed_strength = raw_renewed_strength if wall_corrected is None else wall_corrected[keep]
     renewed_volume = np.full(len(renewed_position), lattice.particle_volume, dtype=np.float64)
     raw_invariants = vortex_invariants(renewed_position, raw_renewed_strength)
     conservation_raw_mismatch = _invariant_residual(pre_prune_invariants, raw_invariants)
     conservation_target_invariants = pre_prune_invariants
     conservation_raw_invariants = raw_invariants
     conservation_reference_strength_l1 = active_l1
-    if len(renewed_position) > 1:
+    if wall_corrected is None and len(renewed_position) > 1:
         renewed_strength = invariant_recovery(
             renewed_position,
             raw_renewed_strength,
@@ -1307,6 +1476,11 @@ def renew_stable_overlap(
     final_renewed_count = len(renewed_position)
     final_outer_count = int(np.count_nonzero(preserved_for_append))
     if maximum_particle_count is not None and len(output_position) > maximum_particle_count:
+        if lattice.wall_links is not None:
+            raise RuntimeError(
+                "Wall-aware renewal exceeds particle capacity after component-local pruning; "
+                "increase capacity rather than applying a global cross-wall correction"
+            )
         target_count = int(maximum_particle_count)
         combined_invariants = vortex_invariants(output_position, output_strength)
         combined_magnitude = np.linalg.norm(output_strength, axis=1)

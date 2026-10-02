@@ -17,6 +17,8 @@ import h5py
 from defusedxml import ElementTree
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.collections import PolyCollection
+from matplotlib.cm import ScalarMappable
 import numpy as np
 
 from source.solution_layout import vpm_backup_files
@@ -153,14 +155,8 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
     theme.set_thesis_style()
     # Keep animation raster size independent of the publication export DPI.
     figure, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=100, constrained_layout=True)
-    circulation_cmap = LinearSegmentedColormap.from_list(
-        "thesis_rotor_circulation",
-        [theme.PALETTE["teal"], theme.PALETTE["white"], theme.PALETTE["purple"]],
-    )
-    vorticity_cmap = LinearSegmentedColormap.from_list(
-        "thesis_rotor_vorticity",
-        [theme.PALETTE["white"], theme.PALETTE["purple"], theme.PALETTE["dark"]],
-    )
+    circulation_cmap = plt.get_cmap(theme.COLORMAPS["vorticity"])
+    vorticity_cmap = plt.get_cmap(theme.COLORMAPS["vorticity_magnitude"])
     native_frames = []
     for time, backup_path in vlm_frames:
         centres, circulation = _panel_centres(backup_path)
@@ -178,6 +174,22 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
     wake_points = next(iter(plane_cache.values()))[1]
     vorticity_max = max(values.max() for _, _, values in plane_cache.values())
     vorticity_norm = Normalize(vmin=0.0, vmax=max(float(vorticity_max), 1.0e-12))
+    figure.colorbar(
+        ScalarMappable(norm=circulation_norm, cmap=circulation_cmap),
+        ax=axes[0],
+        location="bottom",
+        shrink=0.8,
+        pad=0.13,
+        label=r"Signed panel circulation, $\Gamma$ [m$^2$/s]",
+    )
+    figure.colorbar(
+        ScalarMappable(norm=vorticity_norm, cmap=vorticity_cmap),
+        ax=axes[1],
+        location="bottom",
+        shrink=0.8,
+        pad=0.13,
+        label=r"Vorticity magnitude, $|\omega|$ [1/s]",
+    )
     panel_limits = (
         float(np.min([centres[:, 1].min() for _, _, centres, _ in native_frames])),
         float(np.max([centres[:, 1].max() for _, _, centres, _ in native_frames])),
@@ -191,9 +203,8 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         float(wake_points[:, 2].min()),
         float(wake_points[:, 2].max()),
     )
-    native_frame_count = len(native_frames)
     selected_plane_paths = []
-    for frame_index, (time, backup_path, centres, circulation) in enumerate(native_frames):
+    for time, backup_path, centres, circulation in native_frames:
         plane_time, plane_path = _nearest_frame(plane_frames, time)
         selected_plane_paths.append(plane_path)
         _, points, vorticity = plane_cache[plane_path]
@@ -202,38 +213,40 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
 
         for axis in axes:
             axis.clear()
-        axes[0].scatter(
-            centres[:, 1],
-            centres[:, 2],
-            c=circulation,
-            s=7,
+        with h5py.File(backup_path, "r") as archive:
+            corners = np.asarray(archive["solver/vlm/panel_corner_position"])
+        panels = PolyCollection(
+            corners[:, :, 1:],
+            array=circulation,
             cmap=circulation_cmap,
             norm=circulation_norm,
+            edgecolors="none",
         )
-        axes[0].set(xlabel="rotor y [m]", ylabel="rotor z [m]", title="coupled VPM+VLM rotor disk")
+        axes[0].add_collection(panels)
+        axes[0].set(xlabel="y [m]", ylabel="z [m]", title="Native blade panels")
         axes[0].set_aspect("equal", adjustable="box")
         axes[0].set_xlim(panel_limits[0] - panel_margin, panel_limits[1] + panel_margin)
         axes[0].set_ylim(panel_limits[2] - panel_margin, panel_limits[3] + panel_margin)
-        axes[1].scatter(
-            points[::4, 1],
-            points[::4, 2],
-            c=vorticity[::4],
-            s=1.2,
+        # Display every native point on its structured grid. Striding flattened
+        # points creates diagonal aliasing unrelated to the wake physics.
+        dimensions = pv.read(plane_path).dimensions[:2]
+        axes[1].pcolormesh(
+            points[:, 1].reshape(dimensions, order="F"),
+            points[:, 2].reshape(dimensions, order="F"),
+            vorticity.reshape(dimensions, order="F"),
+            shading="nearest",
             cmap=vorticity_cmap,
             norm=vorticity_norm,
         )
         axes[1].set(
-            xlabel="wake-plane y [m]",
-            ylabel="wake-plane z [m]",
-            title=rf"native wake\_1D field (t={plane_time:.3f} s)",
+            xlabel="y [m]",
+            ylabel="z [m]",
+            title=f"1D wake plane, t={plane_time:.2g} s",
         )
         axes[1].set_aspect("equal", adjustable="box")
         axes[1].set_xlim(wake_limits[0], wake_limits[1])
         axes[1].set_ylim(wake_limits[2], wake_limits[3])
-        figure.suptitle(
-            f"rotor coupled backup frames | accepted t={time:.3f} s | frame {frame_index + 1}/{native_frame_count} | "
-            f"GIF {fps:g} fps | playback {playback:.2f}x",
-        )
+        figure.suptitle(f"$t={time:.2g}$ s; {playback:.2g}x playback")
         figure.canvas.draw()
         rgba = np.asarray(figure.canvas.buffer_rgba())
         # Retain one byte per pixel, the native GIF representation, rather

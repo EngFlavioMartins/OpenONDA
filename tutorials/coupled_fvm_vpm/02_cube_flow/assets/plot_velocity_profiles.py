@@ -31,7 +31,7 @@ def _profile(ax, name, time, consts, title):
     ax.axvspan(box["xmin"], box["xmax"], color=util.COLORS["background_light"])
     if name == "centreline":
         ax.axvspan(-0.5, 0.5, color=util.COLORS["background_strong"])
-    for source, style in (("reference", "-."), ("fvm", "-"), ("vpm", "--")):
+    for source, style in (("reference", "--"), ("fvm", "-"), ("vpm", "-")):
         frame = util.load_line(source, name, time)
         if frame is None:
             raise ValueError(f"No exact {source} {name} sample at t={time:g}")
@@ -43,6 +43,9 @@ def _profile(ax, name, time, consts, title):
             values,
             color=util.colour(source),
             ls=style,
+            marker={"reference": None, "fvm": "s", "vpm": "o"}[source],
+            markevery=12,
+            markersize=2.5,
             label=util.label(source),
             lw=1 if source == "reference" else 1.1,
         )
@@ -59,20 +62,23 @@ def _profile(ax, name, time, consts, title):
 
 def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
     util._THEME.set_thesis_style()
-    fig, axes = plt.subplots(3, 1, figsize=util.figure_size(16), dpi=dpi)
+    fig, axes = plt.subplots(3, 1, figsize=util.figure_size(14), dpi=dpi)
     axes[1].sharex(axes[0])
-    util._THEME.centered_subplots_adjust(fig, outer=0.16, bottom=0.095, top=0.95, hspace=0.5)
+    util._THEME.centered_subplots_adjust(fig, outer=0.135, bottom=0.105, top=0.957, hspace=0.64)
     _profile(axes[0], "centreline", time, consts, r"(a) Centreline, $y/D=0$")
     _profile(axes[1], "offaxis_y075", time, consts, r"(b) Off-axis, $y/D=0.75$")
     axes[0].set_xlabel("")
     axes[0].tick_params(labelbottom=False)
-    for source, style in (("fvm", "-"), ("reference", "-.")):
+    for source, style in (("fvm", "-"), ("reference", "--")):
         t, cd = _force_series(source, time)
         axes[2].plot(
             t * consts["freestream_speed"],
             cd,
             color=util.colour(source),
             ls=style,
+            marker={"reference": None, "fvm": "s", "vpm": "o"}[source],
+            markevery=12,
+            markersize=2.5,
             label=util.label(source),
         )
     axes[2].set(
@@ -95,14 +101,14 @@ def plot_frame(time, consts, figure_format="png", dpi=util.FIGURE_DPI):
         handlelength=1.5,
         handletextpad=0.4,
     )
-    util._THEME.fit_thesis_y_label_margins(fig, axes)
+
     util.save(fig, f"velocity_profiles_t{time:.2f}", figure_format, dpi)
     plt.close(fig)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="both")
     parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
     util.validate_plot_inputs()

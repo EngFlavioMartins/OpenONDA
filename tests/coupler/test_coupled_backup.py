@@ -25,9 +25,7 @@ from source.coupler.backup import (
 def test_backup_config_records_stable_wall_geometry_revision():
     setup = _MappingSetup({"coupler": {"transfer_method": "common_lattice"}})
     vpm = SimpleNamespace(setup=_MappingSetup({"viscous": {"scheme": "GBD"}}))
-    transfer = SimpleNamespace(
-        _solid_bodies=(SimpleNamespace(revision="wall-a"),), _body_bounds=None
-    )
+    transfer = SimpleNamespace(_solid_bodies=(SimpleNamespace(revision="wall-a"),))
     coupler = SimpleNamespace(setup=setup, vpm_solver=vpm, vorticity_transfer=transfer)
     first = _backup_config(coupler)
     transfer._solid_bodies = (SimpleNamespace(revision="wall-b"),)
@@ -35,9 +33,20 @@ def test_backup_config_records_stable_wall_geometry_revision():
     assert config_difference_paths(first, second) == {"solid_geometry.wall_revisions"}
 
 
+def test_backup_config_records_transfer_lattice_phase():
+    setup = _MappingSetup({"coupler": {"transfer_method": "common_lattice"}})
+    vpm = SimpleNamespace(setup=_MappingSetup({"viscous": {"scheme": "GBD"}}))
+    transfer = SimpleNamespace(_lattice_anchor=np.array([0.1, 0.2, 0.3]))
+    coupler = SimpleNamespace(setup=setup, vpm_solver=vpm, vorticity_transfer=transfer)
+    first = _backup_config(coupler)
+    transfer._lattice_anchor[0] += 0.01
+    second = _backup_config(coupler)
+    assert config_difference_paths(first, second) == {"transfer_lattice.anchor"}
+
+
 @pytest.fixture(autouse=True)
 def _serialize_the_minimal_fake_vpm_setup(monkeypatch):
-    """Keep this focused backup test independent of the full VPM setup type."""
+    """Explicit fake schema/inspection; real native admission has separate tests."""
     monkeypatch.setattr(
         "source.coupler.backup._vpm_numerical_config",
         lambda setup: {
@@ -46,6 +55,7 @@ def _serialize_the_minimal_fake_vpm_setup(monkeypatch):
             if key not in {"backup", "output", "step", "time"}
         },
     )
+    monkeypatch.setattr("source.coupler.backup._inspect_coupled_vpm_checkpoint", lambda *args: None)
 
 
 class _MappingSetup:
@@ -147,7 +157,7 @@ class _VPM:
         writer.EncodeAppendedDataOff()
         writer.Write()
 
-    def _load_backup_from(self, filename: str) -> None:
+    def _load_backup_from(self, filename: str, *, allowed_config_differences=(), expected_config_differences=None) -> None:
         assert Path(filename).is_file()
 
     def compute_velocity_at_points(self, points: np.ndarray, **_kwargs) -> np.ndarray:

@@ -5,6 +5,7 @@ import pytest
 
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin, _m4_prime_1d
+from tests.coupler._solid_geometry import wall_case
 
 
 class _WallHarness(_GridDiffusionMixin):
@@ -14,7 +15,13 @@ class _WallHarness(_GridDiffusionMixin):
 def _remapped_velocity(spacing: float, phase: float):
     wall = _WallHarness()
     wall._init_grid_diffusion()
-    wall.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, -1.0, 1.0))
+    boundary, *_ = wall_case("curved")
+    wall.configure_body_classifier(
+        boundary.contains,
+        revision=boundary.revision,
+        query_bounds=boundary.bounds,
+        blocks_segments=boundary.blocks_segments,
+    )
     # Stay wall-adjacent at every resolution without changing the circulation.
     source = np.array([[0.5 + 0.3 * spacing, 0.08, 0.07]])
     strength = np.array([[0.25, -0.18, 0.9]])

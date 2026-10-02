@@ -18,6 +18,7 @@ from source.solvers.vpm.physics.induction.fmm import FMMInduction
 from source.solvers.vpm.physics.induction.fmm.device import (
     _DERIVATIVE_INDICES,
     _MULTI_INDICES,
+    _InteractionListCapacityError,
     _translation_tables,
 )
 from source.solvers.vpm.physics.induction.treecode.lbvh import (
@@ -461,7 +462,10 @@ def test_device_fmm_is_permutation_translation_and_axis_rotation_covariant():
 
     velocity, gradient, rate = harness.evaluate(position, strength, radius)
     assert int(harness.induction.workspace._m2l_count[None]) > 0
-    assert int(harness.induction.workspace._nonzero_l2l_count[None]) > 0
+    # These separated 32-particle clusters receive locals directly on their
+    # active leaves. Translating those locals to singleton leaves is no longer
+    # necessary; genuine multi-level L2L is qualified in test_fmm_active_cells.
+    assert harness.induction.diagnostics.last_active_cell_count < 2 * len(position) - 1
 
     permutation = rng.permutation(len(position))
     permuted_velocity, permuted_gradient, permuted_rate = harness.evaluate(
@@ -541,20 +545,115 @@ def test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inacti
     assert np.isfinite(gradient).all()
 
 
-def test_device_fmm_raises_before_consuming_an_overflowed_interaction_queue():
+def test_device_fmm_recovers_overflow_without_changing_stage_results():
     harness = _DeviceFMMHarness(capacity=64)
     rng = np.random.default_rng(20260916)
     position = rng.normal(size=(64, 3)).astype(np.float32)
     strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
     radius = np.full(64, 0.02, dtype=np.float32)
 
-    # The allocated arrays retain their normal size; restricting the logical
-    # queue isolates the required hard-failure path from allocator behaviour.
+    reference = _DeviceFMMHarness(capacity=64).evaluate(position, strength, radius)
+    # Restrict the logical list before its kernels compile. The evaluator must
+    # discard truncated scratch, not consume it or advance a partial stage.
     assert harness.induction.workspace is not None
     harness.induction._ensure_workspace(64)
-    harness.induction.workspace.max_pairs = 1
-    with pytest.raises(RuntimeError, match="interaction-list capacity was exceeded"):
-        harness.evaluate(position, strength, radius)
+    old = harness.induction.workspace
+    old.max_pairs = 1
+    old.profile_passes = True
+    with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
+        result = harness.evaluate(position, strength, radius)
+    for expected, actual in zip(reference, result, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-7)
+    np.testing.assert_array_equal(harness.position.to_numpy(), position)
+    np.testing.assert_array_equal(harness.strength.to_numpy(), strength)
+    np.testing.assert_array_equal(harness.radius.to_numpy(), radius)
+    assert old._field_owner.tree is None and old.tree._field_owner.tree is None
+    assert harness.induction.workspace.max_n_particles == 64
+    assert harness.induction.workspace.max_pairs > 1
+    assert harness.induction.workspace.profile_passes
+    assert harness.induction.diagnostics.interaction_list_resizes == 1
+    assert harness.induction.diagnostics.stage_evaluations == 1
+    assert harness.induction.diagnostics.host_particle_transfers == 0
+
+
+def test_fmm_capacity_retry_is_bounded_and_never_publishes_partial_outputs(monkeypatch):
+    from source.solvers.vpm.physics.induction.fmm import device
+
+    induction = FMMInduction()
+    attempts, published = [], []
+
+    def overflow(*args):
+        attempts.append(1)
+        raise _InteractionListCapacityError(1, m2l=0, near=2, queue_a=0, queue_b=0)
+
+    induction.physics = SimpleNamespace(_copy_vec3=lambda *args: published.append(args))
+    induction.workspace = SimpleNamespace(evaluate=overflow)
+    monkeypatch.setattr(induction, "_ensure_workspace", lambda count: None)
+    monkeypatch.setattr(induction, "_grow_interaction_lists", lambda error: None)
+    with pytest.raises(RuntimeError, match="no stage output was published"):
+        induction.evaluate_stage(
+            position=None,
+            vortex_strength=None,
+            core_radius=None,
+            velocity_out=None,
+            vortex_strength_rate_out=None,
+            count=1,
+            stage_time=0.0,
+        )
+    assert len(attempts) == device._MAX_LIST_GROWTH_RETRIES + 1
+    assert not published and induction.diagnostics.stage_evaluations == 0
+
+
+def test_fmm_incomplete_traversal_is_not_misclassified_as_capacity_overflow():
+    harness = _DeviceFMMHarness(capacity=2)
+    workspace = harness.induction.workspace
+    workspace._list_error[None] = 0
+    workspace._queue_count_a[None] = 1
+    workspace._queue_count_b[None] = 0
+    workspace._finalize_interaction_lists()
+    assert int(workspace._list_error[None]) == 2
+    workspace._list_error[None] = 1
+    workspace._finalize_interaction_lists()
+    assert int(workspace._list_error[None]) == 1
+
+
+def test_fmm_memory_estimate_includes_grown_interaction_storage():
+    induction = FMMInduction()
+    # Above the derivative-cache batch ceiling only the eight pair arrays grow.
+    base = induction.estimated_workspace_bytes(2048, max_pairs=65536)
+    grown = induction.estimated_workspace_bytes(2048, max_pairs=98304)
+    assert grown - base == (98304 - 65536) * 8 * 4
+
+
+def test_fmm_grows_real_pair_arrays_and_matches_oversized_control():
+    from source.solvers.vpm.physics.induction.fmm import device
+
+    # One particle per leaf and overlapping cores force all 64**2 near pairs,
+    # exceeding the REAL initial allocation of 32*64, not just a logical cap.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(device, "_FMM_LEAF_CAPACITY", 1)
+        rng = np.random.default_rng(20261001)
+        position = rng.uniform(-0.1, 0.1, (64, 3)).astype(np.float32)
+        strength = rng.normal(0, 0.01, (64, 3)).astype(np.float32)
+        radius = np.ones(64, dtype=np.float32)
+        control = _DeviceFMMHarness(capacity=64)
+        control.induction._replace_workspace(64, 8192)
+        expected = control.evaluate(position, strength, radius)
+        subject = _DeviceFMMHarness(capacity=64)
+        subject.induction._ensure_workspace(64)
+        old = subject.induction.workspace
+        assert old.near_source.shape == (2048,)
+        with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
+            actual = subject.evaluate(position, strength, radius)
+        assert subject.induction.workspace.near_source.shape[0] >= 4096
+        assert old._field_owner.tree is None
+        assert int(subject.induction.workspace._near_count[None]) == 4096
+        for first, second in zip(expected, actual, strict=True):
+            np.testing.assert_allclose(second, first, rtol=2e-6, atol=2e-7)
+        # A later evaluation reuses the expanded allocation without another retry.
+        resizes = subject.induction.diagnostics.interaction_list_resizes
+        subject.evaluate(position, strength, radius)
+        assert subject.induction.diagnostics.interaction_list_resizes == resizes
 
 
 def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():

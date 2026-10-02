@@ -200,30 +200,13 @@ def build_arg_parser(description: str):
     import argparse
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
+    p.add_argument("--format", choices=_theme().FORMAT_CHOICES, default="both")
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
 
-def save_fig(
-    fig,
-    path,
-    dpi: int | None = None,
-    tight_rect: tuple[float, float, float, float] | None = None,
-    figure_format: str = "png",
-) -> None:
-    """Save without tight layout or cropping; manual subplots_adjust() takes precedence."""
-    import matplotlib.pyplot as plt
-
-    out = Path(path)
-    fmt = figure_format or "png"
-    if fmt not in _theme().EXPORT_FORMATS:
-        raise ValueError(f"Unsupported figure format: {fmt!r}")
-    out = out.with_suffix(f".{fmt}")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=_theme().DEFAULT_DPI if dpi is None else dpi, bbox_inches=None)
-    plt.close(fig)
-    print(f"  Saved: {out}")
+def save_fig(fig, path, dpi=None, tight_rect=None, figure_format="both"):
+    return _theme().export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 
 
 # -- H5 helpers ----------------------------------------------------------------

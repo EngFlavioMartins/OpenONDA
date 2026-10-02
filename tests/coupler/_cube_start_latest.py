@@ -82,8 +82,8 @@ def main(directory, cores):
     with build("continued") as first:
         assert first.run(start_from="latest", max_coupling_steps=1) == 1
         if first._is_master:
-            assert first.vorticity_transfer._body_bounds is not None
-            assert not first.vorticity_transfer._solid_bodies
+            assert first.vorticity_transfer.solid_boundary is not None
+            assert first.vorticity_transfer._solid_bodies
             assert first.vpm_solver.particles.n_particles_total > 0
     assert json.loads(manifest.read_text())["coupling_step"] == 1
     log = (directory / "continued/solution/coupler.log").read_bytes()

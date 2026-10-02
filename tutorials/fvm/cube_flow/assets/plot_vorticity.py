@@ -12,10 +12,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 import pyvista as pv
 
-from ._common import (  # noqa: E402
+from ._common import (
+    THEME,  # noqa: E402
     FIGURES_DIR,
     SOLUTION_DIR,
     build_arg_parser,
@@ -50,17 +52,18 @@ def main():
     lim = np.percentile(np.abs(wz), 98)
 
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
-    sc = ax.tripcolor(x, y, wz, cmap="RdBu_r", vmin=-lim, vmax=lim, shading="gouraud")
+    sc = ax.tripcolor(
+        x, y, wz, cmap=THEME.COLORMAPS["vorticity"], vmin=-lim, vmax=lim, shading="gouraud"
+    )
     ax.add_patch(
         mpatches.Rectangle((-0.5, -0.5), 1.0, 1.0, facecolor="0.2", edgecolor="k", zorder=5)
     )
     plt.colorbar(sc, ax=ax, label=r"$\omega_z$ [1/s]")
     ax.set_xlabel("x / D")
     ax.set_ylabel("y / D")
-    ax.set_title(f"Von Karman street, $\\omega_z$ (Re = {args.Re:g})")
     ax.set_aspect("equal")
 
-    plt.tight_layout()
+    centered_subplots_adjust(plt.gcf(), outer=.16, bottom=.22, top=.96)
     save_fig(fig, "cube_vorticity_street.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

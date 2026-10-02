@@ -44,7 +44,7 @@ def _wind_axis_coefficients(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=theme.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=theme.FORMAT_CHOICES, default="both")
     args = parser.parse_args()
 
     theme.set_thesis_style()
@@ -79,17 +79,15 @@ def main() -> None:
     axes[0].plot(time, lift, label=r"$C_L$")
     axes[0].set_ylabel("wind-axis coefficient")
     axes[0].legend()
-    axes[0].grid(alpha=0.25)
+    axes[0].grid(False)
     axes[1].semilogy(time, np.maximum(slip_error, 1e-16))
     axes[1].set(xlabel="time", ylabel="IBM no-slip error")
-    axes[1].grid(alpha=0.25)
-    figure.tight_layout()
+    axes[1].grid(False)
+    theme.centered_subplots_adjust(figure, outer=.20, bottom=.14, top=.94, hspace=.32)
     output = figures / f"force_history.{args.format}"
-    theme.fit_thesis_y_label_margins(figure, axes)
     theme.validate_thesis_figure(figure, axes)
-    figure.savefig(output, dpi=theme.DEFAULT_DPI, bbox_inches=None)
+    theme.export_figure(figure, output, figure_format=args.format)
     plt.close(figure)
-    print(f"Wrote {output}")
 
     last_half = time >= 0.5 * time[-1]
     print(

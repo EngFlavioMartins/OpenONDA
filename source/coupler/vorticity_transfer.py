@@ -379,8 +379,11 @@ def _validate_particle_sources(
     return source_position, volume, source_vorticity
 
 
-def _particle_state_snapshot(vpm) -> dict[str, np.ndarray]:
-    """Download every mutable particle field required for a transfer rollback."""
+def _particle_state_snapshot(vpm, *, slot: str = "coupler-transfer"):
+    """Capture every rollback field, using device scratch when supported."""
+    capture = getattr(vpm, "capture_particle_snapshot", None)
+    if callable(capture):
+        return capture(slot=slot)
     particles = vpm.particles
     count = int(particles.n_particles_total)
     dtype = np.dtype(getattr(vpm, "np_dtype", np.float64))
@@ -407,8 +410,14 @@ def _particle_state_snapshot(vpm) -> dict[str, np.ndarray]:
     }
 
 
-def _restore_particle_state(vpm, snapshot: dict[str, np.ndarray]) -> None:
+def _restore_particle_state(vpm, snapshot) -> None:
     """Restore a transfer snapshot through VPM's atomic field replacement API."""
+    if not isinstance(snapshot, dict):
+        restore = getattr(vpm, "restore_particle_snapshot", None)
+        if not callable(restore):
+            raise RuntimeError("VPM cannot restore its device particle snapshot")
+        restore(snapshot)
+        return
     replace = getattr(vpm, "replace_vortex_particles", None)
     if not callable(replace):
         raise RuntimeError(
@@ -569,7 +578,9 @@ def replace_particles_from_buffered_m4_renewal(
 
     particles = vpm.particles
     n_before = int(particles.n_particles_total)
-    existing_position = np.asarray(particles.position_cpu(), dtype=np.float64).reshape(-1, 3)
+    # Renewal needs the actual storage precision to distinguish node roundoff
+    # from genuinely off-lattice particles before using visible M4 support.
+    existing_position = np.asarray(particles.position_cpu()).reshape(-1, 3)
     existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
     if len(existing_position) != n_before or len(existing_strength) != n_before:
         raise RuntimeError("VPM particle arrays do not match the active particle count")
@@ -1666,6 +1677,9 @@ class VorticityTransfer:
         self.config = cfg
         self.transfer_method = str(cfg.transfer_method)
         candidate_vpm = getattr(coupler, "vpm_solver", None)
+        self._wall_scatter_correction = getattr(
+            getattr(candidate_vpm, "physics", None), "_m4_wall_corrections", None
+        )
         if (
             self.transfer_method == "buffered_m4_renewal"
             and candidate_vpm is not None
@@ -1743,7 +1757,6 @@ class VorticityTransfer:
         self._velocity_trace: FVMVelocityInterpolator | None = None
         self._buffered_trace_stencils: list | None = None
         self._fvm_solid_mask: np.ndarray | None = None
-        self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
         self.solid_boundary: SolidBoundary | None = None
         self._lattice_anchor: np.ndarray | None = None
@@ -1777,7 +1790,7 @@ class VorticityTransfer:
         points : array_like, shape (K, 3)
             Candidate particle or lattice-node coordinates in metres.
         include_boundary : bool
-            Include points exactly on a body/box boundary when true; use a
+            Include points exactly on a solid boundary when true; use a
             strict interior test when false.
 
         Returns
@@ -1789,40 +1802,14 @@ class VorticityTransfer:
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         if self.solid_boundary is not None:
             return self.solid_boundary.contains(query, include_boundary=include_boundary)
-        inside = np.zeros(len(query), dtype=bool)
-        for body in self._solid_bodies:
-            inside |= np.asarray(
-                body.contains(query, include_boundary=include_boundary), dtype=bool
-            ).reshape(-1)
-        if self._body_bounds is not None:
-            lower = self._body_bounds[[0, 2, 4]]
-            upper = self._body_bounds[[1, 3, 5]]
-            comparison = (query >= lower) & (query <= upper)
-            if not include_boundary:
-                comparison = (query > lower) & (query < upper)
-            inside |= np.all(comparison, axis=1)
-        return inside
+        return np.zeros(len(query), dtype=bool)
 
     def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
-        """Approximate signed distance, positive in fluid and negative in solid."""
+        """Signed distance from the configured wall, positive in fluid."""
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         if self.solid_boundary is not None:
             return self.solid_boundary.signed_distance(query)
-        distance = np.full(len(query), np.inf, dtype=np.float64)
-        for body in self._solid_bodies:
-            distance = np.minimum(
-                distance,
-                np.asarray(body.signed_distance(query), dtype=np.float64).reshape(-1),
-            )
-        if self._body_bounds is not None:
-            lower = self._body_bounds[[0, 2, 4]]
-            upper = self._body_bounds[[1, 3, 5]]
-            outward = np.maximum(lower - query, query - upper)
-            outside_distance = np.linalg.norm(np.maximum(outward, 0.0), axis=1)
-            inside_depth = np.max(outward, axis=1)
-            box_distance = np.where(outside_distance > 0.0, outside_distance, inside_depth)
-            distance = np.minimum(distance, box_distance)
-        return distance
+        return np.full(len(query), np.inf, dtype=np.float64)
 
     def _face_cell_index(self, bounds: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
         """Index donor cells lying on each face of a transfer box.
@@ -1957,18 +1944,6 @@ class VorticityTransfer:
             for boundary_condition in resolved_setup.boundaries
             if boundary_condition.mesh_type == "wall"
         ]
-        wall_faces = None
-        wall_normals = None
-        if len(wall_patches) == 1:
-            wall_faces = np.asarray(
-                fvm.get_boundary_face_centre_coordinates(wall_patches[0]), dtype=np.float64
-            ).reshape(-1, 3)
-            get_normals = getattr(fvm, "get_boundary_face_normal", None)
-            if callable(get_normals):
-                wall_normals = np.asarray(get_normals(wall_patches[0]), dtype=np.float64).reshape(
-                    -1, 3
-                )
-
         get_wall_triangles = getattr(fvm, "get_wall_surface_triangles", None)
         wall_triangles = get_wall_triangles() if callable(get_wall_triangles) else None
 
@@ -1990,66 +1965,19 @@ class VorticityTransfer:
             if self.transfer_method == "buffered_m4_renewal":
                 self._cell_tree = cKDTree(self._cell_centre)
 
-            if wall_faces is not None and len(wall_faces) and wall_normals is not None:
-                bounds = np.array(
-                    [
-                        wall_faces[:, 0].min(),
-                        wall_faces[:, 0].max(),
-                        wall_faces[:, 1].min(),
-                        wall_faces[:, 1].max(),
-                        wall_faces[:, 2].min(),
-                        wall_faces[:, 2].max(),
-                    ]
-                )
-                on_planes = np.zeros(len(wall_faces), dtype=bool)
-                complete_box = True
-                for axis in range(3):
-                    aligned = np.isclose(np.abs(wall_normals[:, axis]), 1.0, rtol=0.0, atol=1.0e-10)
-                    for coordinate in bounds[2 * axis : 2 * axis + 2]:
-                        on_face = aligned & np.isclose(
-                            wall_faces[:, axis], coordinate, rtol=0.0, atol=1.0e-9
-                        )
-                        on_planes |= on_face
-                        complete_box &= bool(np.any(on_face))
-                # A one/two-layer extruded cylinder also has every face centre
-                # on a z-extremum. Centres alone do not identify a box wall.
-                if complete_box and on_planes.all():
-                    self._body_bounds = bounds
-                    self._lattice_anchor = bounds[[0, 2, 4]]
-                    if self.transfer_method == "buffered_m4_renewal":
-                        # Both phases below reflect about the body centre.
-                        # Choose the one whose wall-crossing control cells
-                        # have fluid centres: solid-centre exclusion must not
-                        # discard their fluid circulation. Integer side/h
-                        # ratios retain the previous wall-aligned lattice.
-                        side_cells = (bounds[1::2] - bounds[::2]) / self.particle_spacing
-                        roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, side_cells)
-                        whole_cells = np.floor(side_cells + roundoff).astype(np.int64)
-                        half_shift = whole_cells % 2 == 0
-                        self._lattice_anchor = (
-                            0.5 * (bounds[::2] + bounds[1::2])
-                            - 0.5 * self.particle_spacing * half_shift
-                        )
-
             ibm = getattr(fvm, "ibm", None)
             bodies = () if ibm is None else tuple(ibm.bodies)
-            self._solid_bodies = tuple(body for body in bodies if body.has_solid_geometry)
-            if self._solid_bodies:
-                self._body_bounds = None
-                self._lattice_anchor = self._cell_centre[0].copy()
-            elif self._body_bounds is None and wall_triangles is not None and len(wall_triangles):
-                self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_box),)
-            elif wall_patches and self._body_bounds is None:
+            if any(not body.has_solid_geometry for body in bodies):
+                raise ValueError("Coupled immersed bodies require explicit solid geometry")
+            self._solid_bodies = bodies
+            if wall_triangles is not None and len(wall_triangles):
+                self._solid_bodies += (TriangulatedWall(wall_triangles, self._fvm_box),)
+            elif wall_patches:
                 raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
-            if self._solid_bodies:
-                self.solid_boundary = SolidBoundary(self._solid_bodies)
-            elif self._body_bounds is not None:
-                wall = (
-                    TriangulatedWall(wall_triangles, self._fvm_box)
-                    if wall_triangles is not None and len(wall_triangles)
-                    else TriangulatedWall.from_box(self._body_bounds, self._fvm_box)
-                )
-                self.solid_boundary = SolidBoundary((wall,))
+            self.solid_boundary = SolidBoundary(self._solid_bodies) if self._solid_bodies else None
+            # One mesh-derived phase for every geometry, independent of donor
+            # ordering, wall patch names, and inferred body dimensions.
+            self._lattice_anchor = self._cell_centre.min(axis=0)
             if self.transfer_method == "buffered_m4_renewal":
                 self._velocity_trace = FVMVelocityInterpolator(
                     self._cell_centre,
@@ -2057,8 +1985,6 @@ class VorticityTransfer:
                     neighbour_count=4,
                     solid_boundary=self.solid_boundary,
                 )
-            if self._lattice_anchor is None:
-                self._lattice_anchor = self._cell_centre[0].copy()
             if self._slip_z is not None:
                 # Keep both physical slip planes halfway between VPM nodes.
                 # The FVM cell-centre z phase need not match the particle h.
@@ -2079,7 +2005,7 @@ class VorticityTransfer:
                         axis=1,
                     ).astype(np.float64)
 
-                has_solid = bool(self._solid_bodies) or self._body_bounds is not None
+                has_solid = self.solid_boundary is not None
 
                 def fluid_weight_at_node(points: np.ndarray) -> np.ndarray:
                     return _smoothstep(
@@ -2115,6 +2041,8 @@ class VorticityTransfer:
                     mesh_weight_at_node=mesh_weight_at_node,
                     fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
                     interior_at_node=interior_at_node if has_solid else None,
+                    solid_boundary=self.solid_boundary,
+                    wall_scatter_correction=self._wall_scatter_correction,
                     planar_span=self._planar_span,
                     slip_slab=self._slip_slab,
                     plane_z=getattr(self._planar_induction, "plane_z", 0.0),
@@ -2669,7 +2597,7 @@ class VorticityTransfer:
         condition_number: float,
         iteration_count: int,
     ) -> Path:
-        """Persist the exact failed cube field and basis for an offline oracle."""
+        """Persist the failed field and basis for an offline projection check."""
         if self._cell_centre is None or self._fvm_solid_mask is None:
             raise RuntimeError("cannot export an uninitialized projected-renewal oracle")
         path = Path(vpm.case_dir) / "renewal_projection_failure_oracle.npz"
@@ -2681,11 +2609,6 @@ class VorticityTransfer:
             fvm_solid_mask=self._fvm_solid_mask,
             authority_cell_mask=np.asarray(authority_cell_mask, dtype=bool),
             renewal_bounds=np.asarray(renewal_bounds, dtype=np.float64),
-            body_bounds=(
-                np.empty(0, dtype=np.float64)
-                if self._body_bounds is None
-                else np.asarray(self._body_bounds, dtype=np.float64)
-            ),
             lattice_anchor=(
                 np.empty(0, dtype=np.float64)
                 if self._lattice_anchor is None
@@ -2911,7 +2834,7 @@ class VorticityTransfer:
             projection=sparse_result,
             used_selective_births=used_births,
         )
-        snapshot = _particle_state_snapshot(vpm)
+        snapshot = _particle_state_snapshot(vpm, slot="coupler-projection-verification")
         result = apply_projected_gbd_renewal(
             vpm,
             projection,
@@ -2973,7 +2896,7 @@ class VorticityTransfer:
                 raise RuntimeError(
                     f"Planar FVM donor state lost spanwise invariance: {self.last_spanwise_metrics}"
                 )
-        has_solid = bool(self._solid_bodies) or self._body_bounds is not None
+        has_solid = self.solid_boundary is not None
 
         def fluid_weight(points: np.ndarray) -> np.ndarray:
             return _smoothstep(

@@ -1,0 +1,12 @@
+{
+  "time_interval": [
+    70.00000000000472,
+    99.99999999998808
+  ],
+  "sample_count": 751,
+  "scope": "last available 30 s or shorter; periodicity is not established by these statistics",
+  "mean_drag_coefficient": 1.379926964848318,
+  "rms_drag_coefficient": 0.01909739786374694,
+  "mean_lift_coefficient": 0.020094745374085368,
+  "rms_lift_coefficient": 0.38197867208515573
+}

@@ -61,7 +61,7 @@ CASES = ("vortex", "dipole", "merging")
 ENERGY_CASES = (
     ("vortex", "Single vortex", 1),
     ("dipole", "Vortex dipole", 2),
-    ("merging", "Co-rotating merger", 2),
+    ("merging", "Co-rotating", 2),
 )
 
 # Analytic-reference defaults used when no solver output is available.
@@ -977,19 +977,8 @@ def validate_thesis_figure(fig, axes) -> None:
 
 
 def save_fig(fig, path: Path, dpi: int) -> None:
-    """Save without tight layout or cropping; manual subplots_adjust() takes precedence."""
-    import matplotlib.pyplot as plt
-
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    # Save PDF first so constrained-layout figures match a PDF-only export.
-    outputs = (
-        (out.with_suffix(".pdf"), out.with_suffix(".png")) if out.suffix == ".both" else (out,)
-    )
-    for output in outputs:
-        fig.savefig(output, dpi=dpi, bbox_inches=None)
-        print(f"  Saved: {output}")
-    plt.close(fig)
+    """Export the authored canvas, including both formats for a .both request."""
+    _theme().export_figure(fig, path, dpi=dpi)
 
 
 def build_arg_parser(description: str):
@@ -1001,7 +990,7 @@ def build_arg_parser(description: str):
     p.add_argument(
         "--format",
         choices=("png", "pdf", "both"),
-        default="png",
+        default="both",
         help="Output figure format.",
     )
     kinematic_viscosity = REFERENCE_CIRCULATION / REYNOLDS_NUMBER
@@ -2958,8 +2947,8 @@ def validate(
             "merging_comparison",
             "vortex_surface_fields",
             "lamboseen_energy",
-            "mergingRenderT0",
-            "mergingRenderFinal",
+            "merging_render_t0",
+            "merging_render_final",
         ):
             for suffix in ("png", "pdf") if figure_format == "both" else (figure_format,):
                 figure = FIGURES_DIR / f"{fig_name}.{suffix}"
@@ -2993,7 +2982,7 @@ def main() -> int:
     parser.add_argument(
         "--format",
         choices=("png", "pdf", "both"),
-        default="png",
+        default="both",
         help="Figure format to check during validation (default: png).",
     )
     parser.add_argument(

@@ -1,0 +1,21 @@
+[FAIL] Run incomplete; last recorded step 1259/1667; convergence is unqualified
+CT: mean=0.723336, BEM=0.683817, difference=5.78%, window drift=1.01%
+CP: mean=0.531146, BEM=0.486252, difference=9.23%, window drift=1.67%
+Coupled impulse / surface-force impulse: 1.0106; recorded relaxation contribution: +0.00%; common native window 5.220–7.500 s
+particle-front bracket at x=12 m: t=1.728–1.752 s
+particle-front bracket at x=24 m: t=3.720–3.744 s
+wake_1D: signal onset at t=0.720 s; five-revolution window starts at t=3.707 s
+wake_2D: signal onset at t=1.920 s; five-revolution window starts at t=3.707 s
+wake_1D: induced-velocity field drift=14.02% over 5 revolutions
+wake_2D: induced-velocity field drift=87.50% over 5 revolutions
+wake_1D: finite-distance VC diagnostic axial=0.7622 m/s (48/48 bins, scaled 197.42%); azimuthal=0.1609 m/s (48/48 bins, scaled 93.48%)
+[DIAGNOSTIC FLAG] wake_1D: finite-distance axial comparison is outside the predeclared 25% screen
+[DIAGNOSTIC FLAG] wake_1D: finite-distance azimuthal comparison is outside the predeclared 35% screen
+wake_2D: finite-distance VC diagnostic axial=1.204 m/s (48/48 bins, scaled 238.30%); azimuthal=0.1364 m/s (48/48 bins, scaled 62.27%)
+[DIAGNOSTIC FLAG] wake_2D: finite-distance axial comparison is outside the predeclared 25% screen
+[DIAGNOSTIC FLAG] wake_2D: finite-distance azimuthal comparison is outside the predeclared 35% screen
+[UNQUALIFIED] Finite-distance vortex-cylinder comparisons are diagnostic only; the screens are not uncertainty-based acceptance gates.
+[FAIL] configured run is incomplete
+[FAIL] wake_1D: no resolved stationary wake within1% field drift
+[FAIL] wake_2D: no resolved stationary wake within1% field drift
+[FAIL] native plane geometry/cadence check: wake_1D: native frame extent does not match its declared compact bounds

@@ -132,4 +132,15 @@ def canonical_restart_configuration(configuration: dict[str, Any]) -> dict[str, 
     result.pop("compute_device", None)
     result.pop("device_memory_fraction", None)
     result.pop("max_evaluation_points", None)
+    induction = result.get("induction")
+    if isinstance(induction, dict):
+        policy = induction.get("gaussian_mesh_policy")
+        if (isinstance(policy, dict)
+                and policy.get("tail_contract") == "gaussian_interval_remainder_v1"
+                and policy.get("backend") in {"auto", "cpu", "cupy_cuda"}):
+            # The same finite Gaussian/cardinal operator can execute with
+            # CUDA FFTs or bounded host FFT blocks. Authenticate the saved
+            # mapping first; only execution placement is portable on restart.
+            # Mesh, cores, images, tail gates and precision remain exact.
+            policy.pop("backend")
     return result

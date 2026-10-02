@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
+from source.coupler.geometry import SolidBoundary, TriangulatedWall
 from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin, _m4_prime_1d
 
 
@@ -54,13 +55,21 @@ def test_generic_body_mask_folds_half_and_node_phase(origin_z, inside_index, mir
     assert physics._body_mask_cache_key != old_key
 
 
-def test_slab_analytic_cylinder_uses_same_folded_mask_as_particle_classification():
+def test_slab_wall_surface_uses_same_folded_mask_as_particle_classification():
     _cpu()
     physics = _Harness()
     physics._init_grid_diffusion()
     physics._slip_slab_bounds = (0.0, 6.0)
     physics._body_mask_grid = ti.field(dtype=ti.i32, shape=(3, 3, 11))
-    physics.configure_body_cylinder((-0.5, 0.5, -0.5, 0.5, 0, 6), axis="z")
+    boundary = SolidBoundary(
+        (TriangulatedWall.from_box((-0.5, 0.5, -0.5, 0.5, 0, 6), [-4, 4, -4, 4, 0, 6]),)
+    )
+    physics.configure_body_classifier(
+        boundary.contains,
+        revision=boundary.revision,
+        query_bounds=boundary.bounds,
+        blocks_segments=boundary.blocks_segments,
+    )
     origin = np.array([-1.0, -1.0, -2.0])
     physics._prepare_body_mask_current_grid(origin, 1.0, 3, 3, 11)
     mask = physics._body_mask_grid.to_numpy()

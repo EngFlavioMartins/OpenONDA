@@ -11,7 +11,7 @@ import pytest
 def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, monkeypatch):
     path = (
         Path(__file__).resolve().parents[2]
-        / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets"
+        / "tests/support/cylinder"
         / f"{asset}.py"
     )
     spec = importlib.util.spec_from_file_location(asset, path)

@@ -36,7 +36,7 @@ def plot_circulation(
     _theme.set_thesis_style()
     data = flow_integrals(samples_arg)
     fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.0 * _theme.CM))
-    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.20, top=0.88)
+    _theme.centered_subplots_adjust(fig, outer=0.101, bottom=0.20, top=0.915)
     ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_theme.COLORS["VPMpurple"])
     ax.set(
         xlabel="Time [s]",
@@ -48,7 +48,7 @@ def plot_circulation(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=_theme.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=_theme.FORMAT_CHOICES, default="both")
     parser.add_argument(
         "--samples",
         type=Path,

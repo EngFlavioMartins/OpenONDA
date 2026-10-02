@@ -14,6 +14,11 @@ import tempfile
 def main(arguments=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--gaussian-mesh-cuda12",
+        action="store_true",
+        help="install the optional CUDA 12 Gaussian mesh backend and verify its GPU runtime",
+    )
     parser.add_argument("--with-environment", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(arguments)
     if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):
@@ -22,8 +27,12 @@ def main(arguments=None) -> int:
         )
     root = Path(__file__).resolve().parent
     install = [sys.executable, "-m", "pip", "install"]
-    install += ["-e", f"{root}[dev]"]
+    extras = ["dev"] + (["gaussian-mesh-cuda12"] if args.gaussian_mesh_cuda12 else [])
+    target = str(root) + ("[" + ",".join(extras) + "]" if extras else "")
+    install += ["-e", target]
     verify = [sys.executable, "-I", "-m", "openonda.verify_install"]
+    if args.gaussian_mesh_cuda12:
+        verify.append("--with-gaussian-mesh")
     if args.with_environment:
         verify.append("--with-environment")
     # Neither the current directory nor PYTHONPATH can make verification pass

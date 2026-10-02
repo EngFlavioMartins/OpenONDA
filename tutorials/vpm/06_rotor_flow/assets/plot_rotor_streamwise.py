@@ -9,9 +9,9 @@ if not __package__:
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from scipy.integrate import trapezoid
 
+from ..setup import STREAMWISE_STATIONS
 from ._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
@@ -19,9 +19,11 @@ from ._common import (
     build_arg_parser,
     load_theme,
     rotor_inputs,
+    rotor_subplots,
+    save_rotor_figure,
 )
 
-STREAMWISE_NAMES = ("streamwise_r000", "streamwise_r025", "streamwise_r065", "streamwise_r110")
+STREAMWISE_NAMES = tuple(f"streamwise_r{label}" for label, _ in STREAMWISE_STATIONS)
 
 
 def mean_profile(data, start, end):
@@ -57,7 +59,7 @@ def mean_profile(data, start, end):
 
 
 def main():
-    """Render one common five-revolution native window for all four lines."""
+    """Render one common five-revolution native window for the configured lines."""
     args = build_arg_parser(__doc__).parse_args()
     p = rotor_inputs()
     tables = [
@@ -66,9 +68,11 @@ def main():
     ]
     end = min(table.time.max() for table in tables)
     start = end - OPERATING_WINDOW_REVOLUTIONS * p.rotation_period
-    _, theme = load_theme()
-    fig, axes = plt.subplots(3, 1, figsize=(7, 8), sharex=True, constrained_layout=True)
-    for table in tables:
+    colors, _ = load_theme()
+    fig, axes = rotor_subplots(3, height_cm=12.5, sharex=True)
+    for table, ink, marker in zip(
+        tables, (colors["VPMpurple"], colors["TUDcyan"]), ("o", "s"), strict=True
+    ):
         profile = mean_profile(table, start, end)
         radial_fraction = (
             np.hypot(profile.position_y.iloc[0], profile.position_z.iloc[0]) / p.station_radius
@@ -83,17 +87,32 @@ def main():
             ),
             strict=True,
         ):
-            axis.plot(x, field, label=rf"$r/R_{{design}}={radial_fraction:.2f}$")
+            axis.plot(
+                x,
+                field,
+                color=ink,
+                ls="-",
+                marker=marker,
+                markevery=18,
+                label=rf"$r/R_{{\mathrm{{d}}}}={radial_fraction:.2f}$",
+            )
     for axis, label in zip(
         axes, (r"$1-u_x/U_\infty$", r"$u_y/U_\infty$", r"$u_z/U_\infty$"), strict=True
     ):
         axis.axvline(0, color="0.5", ls=":", lw=0.8)
-        axis.axhline(0, color="0.7", lw=0.6)
+        axis.axhline(0, color="0.7", ls=":", lw=0.6)
         axis.set_ylabel(label)
-    axes[0].legend(ncol=2)
-    axes[0].set_title(f"Native rotor field, time mean {start:.3f}–{end:.3f} s")
-    axes[-1].set_xlabel(r"$x/D_{design}$ (rotor at 0)")
-    theme.save_fig(
+        axis.set_xlim(-0.5, 3.0)
+    axes[1].legend(
+        loc="upper right",
+        ncol=2,
+        frameon=False,
+        handlelength=1.5,
+        columnspacing=0.8,
+        handletextpad=0.5,
+    )
+    axes[-1].set_xlabel(r"$x/D_{\mathrm{d}}$ (rotor at 0)")
+    save_rotor_figure(
         fig, FIGURES_DIR / "rotor_streamwise.png", figure_format=args.format, dpi=args.dpi
     )
 

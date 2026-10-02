@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Compare coupled and fine-reference cylinder force histories."""
+"""Compare cylinder forces over the actually available common interval."""
+
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 import argparse
 
@@ -15,14 +21,14 @@ from openonda.plotting import (
     set_thesis_style,
 )
 
-import postprocess as data
+from . import postprocess as data
 
 FORCE_COLUMNS = ("drag_coefficient", "lift_coefficient")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     arguments = parser.parse_args()
 
     coupled = data.history(data.CASE_DIR / "samples" / "forces_history.csv", FORCE_COLUMNS)
@@ -33,10 +39,16 @@ def main() -> None:
     data.write_json(
         "reference_force_errors.json",
         {
-            "reference": data.reference_directory().name,
+            "reference": str(data.reference_directory().relative_to(data.CASE_DIR)),
+            "reference_scope": "single-mesh comparison; not a grid-independence claim",
             "time_interval": [float(time[0]), float(time[-1])],
             "errors": errors,
+            **data.history_coverage(coupled, reference),
         },
+    )
+    print(
+        f"Force comparison: common saved coverage {time[0]:g}–{time[-1]:g} s; "
+        "interpolated only within that interval, without time shifts."
     )
 
     set_thesis_style()
@@ -49,6 +61,7 @@ def main() -> None:
             color=COLORS["RefGray"],
             linewidth=REFERENCE_LINE_WIDTH,
             label="Reference FVM",
+            linestyle="--",
         )
         axis.plot(
             time,
@@ -58,7 +71,7 @@ def main() -> None:
             label="Coupled FVM",
         )
         axis.set_ylabel(labels[index])
-        axis.grid(alpha=0.22)
+        axis.grid(False)
     handles, legend_labels = axes[0].get_legend_handles_labels()
     figure.legend(
         handles,
@@ -69,8 +82,8 @@ def main() -> None:
         frameon=False,
     )
     axes[1].set_xlabel(r"$tU_\infty/D$")
-    centered_subplots_adjust(figure, outer=0.17, bottom=0.20, top=0.95, hspace=0.12)
-    fit_thesis_y_label_margins(figure, axes)
+    centered_subplots_adjust(figure, outer=0.17, bottom=0.245, top=0.97, hspace=0.12)
+    centered_subplots_adjust(figure, outer=0.135, top=0.987)
     data.save_figure(figure, axes, "reference_forces", arguments.format)
 
 

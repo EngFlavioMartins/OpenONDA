@@ -16,6 +16,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 import pyvista as pv
 
@@ -56,14 +57,13 @@ def main():
     ux = u[sel, 0][order] / FREESTREAM_SPEED
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
-    ax.plot(x, ux, color=COLORS["TUDdark"], linewidth=1.1)
+    ax.plot(x, ux, color=COLORS["fvm"], linewidth=1.1)
     ax.axhline(0.0, color=COLORS["reference"], linewidth=0.8, linestyle="--")
     ax.set_xlabel("x / D")
     ax.set_ylabel("$u_x / U_\\infty$")
-    ax.set_title("Instantaneous wake centreline")
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
 
-    plt.tight_layout()
+    centered_subplots_adjust(plt.gcf(), outer=.16, bottom=.20, top=.96)
     save_fig(fig, "cube_wake_centreline.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     rev = x[ux < 0.0]

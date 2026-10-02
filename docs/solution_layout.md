@@ -1,36 +1,18 @@
-# Solution layout
+# Saved simulation fields
 
-Each run keeps its ParaView entry points at the top of `solution/` and stores
-the larger immutable frame files by physical representation:
+A case writes its field time series beneath `solution/`:
 
-```text
-solution/
-  fvm.pvd                 # resolved Eulerian field time series
-  vpm.pvd                 # particle time series
-  vlm.pvd                 # lifting-surface time series, when present
-  fvm_metadata.json       # FVM configuration and accepted-clock record
-  vpm_metadata.json       # VPM configuration and accepted-clock record
-  run_metadata.json       # coupled-run record, when present
-  fvm/
-    mesh.npz              # native mesh for Python readers
-    mesh.vtu              # mesh for ParaView
-    fvm_*.vtu|pvtu        # field frames and MPI pieces
-  vpm/
-    vpm_*.h5              # particle fields and explicit VPM restart targets
-    vpm_*.vtu             # ParaView particle frames indexed by vpm.pvd
-  vlm/
-    vlm_*.vtp             # surface frames
-```
+| File | Meaning |
+| --- | --- |
+| `fvm.pvd` | Mesh velocity and pressure; open in ParaView. |
+| `vpm.pvd` | Particle positions and fields; open in ParaView. |
+| `vlm.pvd` | Lifting-surface geometry and loading, when present. |
+| `fvm/mesh.npz`, `fvm/mesh.vtu` | Native FVM mesh for Python and ParaView. |
+| `fvm/fvm_*.vtu` or `*.pvtu` | Saved FVM field frames. |
+| `vpm/vpm_*.h5` | Particle state and standalone VPM/VLM restart data. |
+| `vpm/vpm_*.vtu`, `vlm/vlm_*.vtp` | Particle and surface visualization frames. |
+| `fvm_metadata.json`, `vpm_metadata.json`, `run_metadata.json` | Executed configuration and saved run timing; present for the relevant solver. |
 
-Open a root-level `.pvd` file in ParaView. The collection stores relative
-paths, so copying or moving the entire `solution/` directory preserves the
-series. Python post-processing should read `fvm/mesh.npz` for native FVM mesh
-data, `vpm/*.h5` for particle states, and the root metadata records for the
-executed configuration and clock. ParaView should open the root `.pvd`
-collections; the VPM collection references `.vtu` frames because ParaView's
-PVD reader does not accept XDMF collection members.
+Open the root `.pvd` collection to load all saved times. Copy the entire `solution/` directory when moving results so its relative frame paths remain valid. Tutorial plots also read case-specific histories in `samples/` or `solution/`.
 
-Standalone VPM restart uses an explicit `.h5` file. FVM backup locations are
-set by `BackupConfig`; coupled runs keep a manifest and both solver states in
-their configured backup directory (normally `solution/backups/`). Keep those
-files together. Visualization files alone cannot restart a coupled run.
+Use the solver guides for [FVM field units](fvm.md), [particle strength and vorticity](vpm.md), and [coupled fields](coupling.md). See [visualization](visualization.md) for comparisons and [continuation](continuation.md) for numerical backups.

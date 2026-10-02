@@ -24,7 +24,7 @@ import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+START_FROM = "latest"  # Both launchers preserve outputs; allclean.sh is explicit.
 
 CASE_NAME = "coupled_cube_flow"
 CUBE_SIDE = 1.0

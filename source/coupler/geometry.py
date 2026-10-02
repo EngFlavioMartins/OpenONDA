@@ -4,19 +4,22 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import hashlib
+import inspect
 
 import numpy as np
 
 from source.solvers.vpm.wall_errors import WallCorrectionTooLargeError
+
+_DISTANCE_CACHE_MAX_BYTES = 8 * 1024 * 1024
 
 
 class TriangulatedWall:
     """Signed wall distance, positive in fluid, from oriented FVM triangles.
 
     Native face normals point out of the fluid. Reverse wall faces for
-    VTK's outward-from-solid convention. Open walls crossing a box boundary
-    are only classified inside that box: no finite cap is invented for a
-    spanwise-extruded cylinder. Coordinates/distances are metres; the mesh
+    VTK's outward-from-solid convention. Open surfaces crossing a domain
+    boundary are only classified inside that domain: their continuation
+    or closure is not inferred. Coordinates/distances are metres; the mesh
     must be static and its wall faces consistently oriented.
     """
 
@@ -64,8 +67,15 @@ class TriangulatedWall:
         if not np.all(np.isfinite(self._bounds)) or np.any(self._bounds[1::2] <= self._bounds[::2]):
             raise ValueError("Wall domain bounds must be finite and increasing")
         body_scale = float(np.max(self.surface_bounds[1::2] - self.surface_bounds[::2]))
-        self.interior_tolerance = 16.0 * np.finfo(np.float32).eps * max(body_scale, 1.0e-6)
+        # Surface coordinates and VTK distance queries are float64. Particle
+        # storage precision is handled by the projection margin, not by
+        # erasing a float32-sized band from every solid interior.
+        coordinate_scale = float(np.max(np.abs(triangles)))
+        self.interior_tolerance = (
+            16.0 * np.finfo(np.float64).eps * max(body_scale, coordinate_scale, 1.0e-6)
+        )
         self._cache: OrderedDict[bytes, np.ndarray] = OrderedDict()
+        self._cache_bytes = 0
 
     @classmethod
     def from_box(cls, bounds, domain_bounds):
@@ -126,7 +136,16 @@ class TriangulatedWall:
         )
         if len(candidates):
             # Signed distance is a conservative broad phase for a segment.
-            distance = self.signed_distance(starts[candidates])
+            candidate_starts = starts[candidates]
+            new_start = np.ones(len(candidates), dtype=bool)
+            new_start[1:] = np.any(candidate_starts[1:] != candidate_starts[:-1], axis=1)
+            if np.all(new_start):
+                distance = self.signed_distance(candidate_starts)
+            else:
+                # Stencils repeat a source for each target. Evaluate each
+                # adjacent run once without sorting or changing query order.
+                run_index = np.cumsum(new_start, dtype=np.intp) - 1
+                distance = self.signed_distance(candidate_starts[new_start])[run_index]
             candidates = candidates[
                 (distance <= lengths[candidates] + self.interior_tolerance) | ~np.isfinite(distance)
             ]
@@ -156,7 +175,7 @@ class TriangulatedWall:
         query = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
         if not np.all(np.isfinite(query)):
             raise ValueError("Wall queries must be finite")
-        key = hashlib.blake2b(query.tobytes(), digest_size=16).digest()
+        key = hashlib.blake2b(query.view(np.uint8), digest_size=16).digest()
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key].copy()
@@ -166,9 +185,15 @@ class TriangulatedWall:
             values = numpy_to_vtk(np.empty(int(inside_box.sum()), dtype=np.float64), deep=True)
             self._distance.FunctionValue(numpy_to_vtk(query[inside_box], deep=True), values)
             result[inside_box] = vtk_to_numpy(values)
+        # Moving RK queries rarely repeat. Bound retained storage independently
+        # of particle count, while keeping small repeated grid queries useful.
+        if result.nbytes > _DISTANCE_CACHE_MAX_BYTES:
+            return result
         self._cache[key] = result
-        while len(self._cache) > 8:
-            self._cache.popitem(last=False)
+        self._cache_bytes += result.nbytes
+        while len(self._cache) > 8 or self._cache_bytes > _DISTANCE_CACHE_MAX_BYTES:
+            _, evicted = self._cache.popitem(last=False)
+            self._cache_bytes -= evicted.nbytes
         return result.copy()
 
     def contains(self, points: np.ndarray, *, include_boundary: bool = True) -> np.ndarray:
@@ -225,6 +250,70 @@ class SolidBoundary:
         for body in self.bodies:
             result |= body.contains(points, include_boundary=include_boundary)
         return result
+
+    def grid_geometry_contract(self):
+        """Certify standard static wall queries for exact diffusion-grid reuse.
+
+        No fitted geometry or bounding-box classification is introduced. The
+        signature covers the current predicate implementation and every array
+        or VTK input controlling it, including mutable data behind the revision
+        label. Unknown body implementations retain ordinary uncached queries.
+        """
+        from source.solvers.vpm.physics.diffusion.body_geometry import ImmutableBodyGeometryQueries
+
+        identity = self._grid_geometry_identity()
+        if identity is None:
+            return None
+        return ImmutableBodyGeometryQueries(self.contains, self.blocks_segments,
+                                            self._grid_geometry_identity, identity[1], identity[2])
+
+    def _grid_geometry_identity(self):
+        from vtkmodules.util.numpy_support import vtk_to_numpy
+        from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkStaticCellLocator
+        from vtkmodules.vtkFiltersCore import vtkImplicitPolyDataDistance
+
+        if ((SolidBoundary, TriangulatedWall) != _GRID_GEOMETRY_CLASSES
+                or type(self) is not SolidBoundary or type(self.bodies) is not tuple or not self.bodies):
+            return None
+        for instance, cls in ((self, SolidBoundary), *((body, TriangulatedWall) for body in self.bodies)):
+            if type(instance) is not cls:
+                return None
+            for name, method in _GRID_GEOMETRY_METHODS[cls].items():
+                if name in vars(instance) or inspect.getattr_static(cls, name, None) is not method:
+                    return None
+        digest = hashlib.sha256()
+        runtime = []
+        for body in self.bodies:
+            if (type(body.revision) is not str or type(body._surface) is not vtkPolyData
+                    or type(body._distance) is not vtkImplicitPolyDataDistance
+                    or type(body._locator) is not vtkStaticCellLocator
+                    or body._locator.GetDataSet() is not body._surface
+                    or body._distance.GetTransform() is not None):
+                return None
+            coordinates = body._surface.GetPoints().GetData()
+            topology = []
+            for cells in (body._surface.GetVerts(), body._surface.GetLines(),
+                          body._surface.GetPolys(), body._surface.GetStrips()):
+                topology.extend((vtk_to_numpy(cells.GetOffsetsArray()),
+                                 vtk_to_numpy(cells.GetConnectivityArray())))
+            arrays = (vtk_to_numpy(coordinates), *topology, body._normals,
+                      body._bounds, body.surface_bounds)
+            for array in arrays:
+                array = np.asarray(array)
+                if array.dtype.kind not in "fiu" or not np.all(np.isfinite(array)):
+                    return None
+                digest.update(str((array.dtype.str, array.shape)).encode())
+                digest.update(np.ascontiguousarray(array).tobytes())
+            tolerance = float(body.interior_tolerance)
+            if not np.isfinite(tolerance) or tolerance < 0:
+                return None
+            digest.update(np.float64(tolerance).tobytes())
+            for values in (body._distance.GetTolerance(), body._distance.GetNoValue(),
+                           body._distance.GetNoGradient(), body._distance.GetNoClosestPoint()):
+                digest.update(np.asarray(values, dtype=np.float64).tobytes())
+            digest.update(str((id(body), id(body._surface), id(body._distance), id(body._locator))).encode())
+            runtime.append((body._distance.GetMTime(), body._locator.GetMTime()))
+        return self.revision, digest.digest(), tuple(runtime)
 
     @staticmethod
     def _closest_surface(body, points):
@@ -329,7 +418,6 @@ class SolidBoundary:
         scale = max(spacing, float(np.max(np.abs(corrected), initial=0.0)))
         margin = max(4 * self.tolerance, 32 * np.finfo(original.dtype).eps * scale, 1e-7 * spacing)
         for _ in range(12):
-            inside = self.contains(corrected)
             hits = np.full(len(corrected), np.inf)
             if reference is not None:
                 hits, normals = self.first_intersections(reference, corrected)
@@ -362,3 +450,15 @@ class SolidBoundary:
                 selected = np.any(displacement != 0, axis=1)
                 return result, selected, displacement[selected], maximum
         raise RuntimeError("Wall projection did not find fluid support at an intersecting boundary")
+
+
+_GRID_GEOMETRY_CLASSES = (SolidBoundary, TriangulatedWall)
+_GRID_GEOMETRY_METHODS = {
+    cls: {
+        name: inspect.getattr_static(cls, name)
+        for name, value in vars(cls).items()
+        if not name.startswith("__")
+        and (callable(value) or isinstance(value, (staticmethod, classmethod, property)))
+    }
+    for cls in _GRID_GEOMETRY_CLASSES
+}

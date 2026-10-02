@@ -1,60 +1,36 @@
-# Coupled flow around a cube
+# Coupled cube flow at $Re=1000$
 
-A body-fitted FVM region resolves the viscous wall of a unit cube at Re=1000.
-The surrounding VPM transports vorticity, using RK2, grid diffusion, Gaussian
-particles and FMM induction. Both solvers use equilibrium Smagorinsky closure.
-Freestream speed is 1 m/s and kinematic viscosity is 0.001 m²/s.
+FVM resolves separation from the no-slip faces of a unit cube; VPM carries the outer wake. Both solvers use equilibrium Smagorinsky LES with $C_k=0.094$ and $C_e=1.048$. Force coefficients use frontal area 1 m².
 
-| Quantity | Current setup |
+| Quantity | Default |
 | --- | --- |
-| Cube | [−.5,.5]³ m |
-| FVM domain | [−1.485,1.485]³ m |
-| Transfer region | [−1.45,1.45]³ m |
-| Uniform FVM spacing | .045 m |
-| VPM particle spacing | .045 m |
-| FVM step | .01 s |
-| VPM/coupling step | .05 s |
+| Cube | $[-0.5,0.5]^3$ m |
+| Freestream $\mathbf{U}_\infty$; density $\rho$ | $(1,0,0)$ m/s; 1 kg/m³ |
+| Molecular viscosity $\nu$ | 0.001 m²/s |
+| FVM box | $[-1.485,1.485]^3$ m |
+| Transfer region | $[-1.45,1.45]^3$ m |
+| VPM domain | $[-4.5,12]\times[-3,3]^2$ m |
+| FVM/particle spacing | 0.045 m |
+| FVM/exchange step | 0.01 s / 0.05 s |
 | End time | 30 s |
-| Force/profile sampling | .05 s |
-| Retained fields and coupled checkpoint | .25 s |
-| Maximum interface sweeps | 3 |
 
-The mixed vorticity boundary and buffered M4 renewal iterate from the same FVM
-start and VPM predictor. Convergence status is recorded in
-`solution/coupler_diagnostics.jsonl`; provisional sweeps do not publish samples.
-The native mesh cache is `constant/mesh.npz`. The FVM box uses the reference
-fine spacing everywhere, with no refinement or coarsening regions. Its bounds
-are snapped inward from ±1.5 m so the uniform lattice does not enlarge the
-compact coupled domain.
+## Models and mesh
 
-## Run and continue
+The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cube.stl`, with uniform spacing and cache `constant/mesh.npz`. The cube is no-slip; all outer FVM faces belong to `numericalBoundary`.
 
-From an installed OpenONDA environment, `python setup.py` runs this configuration.
-`./allrun.sh` first invokes `allclean.sh`, which removes this tutorial's generated
-solution, samples, figures and mesh cache. Preserve results elsewhere before using
-that fresh-run launcher.
+See [FVM LES](../../../docs/fvm.md#turbulence-and-les) and [VPM diffusion and LES](../../../docs/vpm.md#diffusion-and-les) for the closures. Particles use RK2, Gaussian cores of radius $1.05h$, GBD diffusion and free-space FMM induction. [Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to three interface sweeps. Edit constants and configurations in `setup.py` to change the problem.
 
-`./allcontinue.sh` calls `setup.py` without cleaning. It automatically restores
-`solution/backups/`, or starts at zero when no backup exists. The constructed
-setup must match the checkpoint's numerical and coupled-output identity; an old
-checkpoint does not silently adopt the new .25 s backup cadence. Running processes
-retain the settings with which they were constructed.
+## Run and compare
 
-The coupled factory owns MPI construction and solver lifetime. No manual MPI or
-thread-environment setup is required in tutorial scripts.
+From this directory in an [installed environment](../../../docs/installation.md):
 
-## Reference and visualization
+```bash
+./allrun.sh
+./allplot.sh
+```
 
-The [body-fitted reference](reference_flow/README.md) is an explicit Re = 1000
-four-grid study. Its physics live in `reference_flow/setup.py`, while its grid
-names and baseline spacings are visible directly in `reference_flow/allrun.sh`.
+`./allrun.sh`, `./allcontinue.sh` and `python setup.py` preserve outputs and resume compatible coupled backups. `./allclean.sh` deletes generated results and the mesh cache. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
 
-`./allplot.sh` uses PNG by default; `./allplot.sh pdf` selects the same thesis-sized
-figures in PDF. It uses a complete historical `fine` reference when present,
-otherwise the finest completed `grid_h*` reference run. The selected grid is
-recorded in the comparison report. Only common saved physical times are plotted.
+Forces and profiles are sampled every 0.05 s; retained fields and coupled backups every 0.25 s. Read histories under `samples/`, plots under `figures/` and convergence in `solution/coupler_diagnostics.jsonl`. ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`.
 
-Open the FVM/VPM PVD collections with their complete referenced directories in
-ParaView. Retained frames support animation; rolling coupled backups preserve
-restart state. Compare only common saved physical times, retaining source coverage
-and excluded solid regions in any reported error.
+Run the [three-grid FVM reference](reference_flow/README.md) for comparison. `./allplot.sh` uses a completed reference and common saved physical times. Compare force statistics and wake profiles while refining FVM spacing, particle spacing and exchange step; matching LES coefficients alone does not establish coupled accuracy.

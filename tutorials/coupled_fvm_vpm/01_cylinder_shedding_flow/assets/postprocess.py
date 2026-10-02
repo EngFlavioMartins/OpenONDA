@@ -11,6 +11,7 @@ from scipy.integrate import trapezoid
 import pandas as pd
 
 from openonda.plotting import DEFAULT_DPI, validate_thesis_figure
+from openonda.saved_times import match_saved_times
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
@@ -20,11 +21,16 @@ VELOCITY_COLUMNS = tuple(f"velocity_{axis}" for axis in "xyz")
 
 
 def reference_directory(root: Path = REFERENCE_ROOT) -> Path:
-    """Resolve the reference from the post-processed selection metadata."""
+    """Use the explicit local reference, or an explicitly qualified legacy grid.
+
+    The ordinary single-mesh comparison is not a grid-independence claim.
+    """
+    if (root / "samples/forces_history.csv").is_file():
+        return root / "samples"
     selection_path = root / "reference_selection.json"
     if not selection_path.is_file():
         raise FileNotFoundError(
-            f"reference selection is missing: run the complete reference campaign ({selection_path})"
+            f"reference samples are missing: run reference_flow/./allrun.sh ({root / 'samples'})"
         )
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
     if selection.get("force_grid_qualified") is not True:
@@ -86,13 +92,34 @@ def common_history(
     return times, left, right, errors
 
 
+def history_coverage(candidate: pd.DataFrame, reference: pd.DataFrame) -> dict:
+    """Describe the observed interval, without asserting either run is complete."""
+    intervals = {
+        name: [float(frame.time.iloc[0]), float(frame.time.iloc[-1])]
+        for name, frame in (("coupled", candidate), ("reference", reference))
+    }
+    start = max(interval[0] for interval in intervals.values())
+    end = min(interval[1] for interval in intervals.values())
+    return {
+        "available_time_intervals": intervals,
+        "comparison_time_interval": [start, end],
+        "time_alignment": "piecewise-linear interpolation on the common interval; no time shift",
+        "scope": "available samples only; not a completion, periodicity or phase-convergence claim",
+    }
+
+
 def profile(path: Path, time: float) -> pd.DataFrame:
     """Load one native line-sampler state at an exact saved time."""
     columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
     frame = profile_history(path, columns)
-    selected = frame[np.isclose(frame.time, time, rtol=0.0, atol=1.0e-7)].copy()
-    if selected.empty:
+    available = np.unique(frame.time.to_numpy(dtype=float))
+    match = match_saved_times([time], available)
+    if not match.times:
         raise ValueError(f"{path} has no profile at t={time:g} s")
+    native_time = available[match.indices[1][0]]
+    selected = frame[frame.time == native_time].copy()
+    if selected.position_y.duplicated().any():
+        raise ValueError(f"{path} has duplicate transverse positions at t={native_time:g} s")
     return selected.sort_values("position_y")
 
 
@@ -105,23 +132,23 @@ def profile_history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
     values = frame[["time", *columns]].to_numpy(dtype=float)
     if len(values) < 2 or not np.all(np.isfinite(values)):
         raise ValueError(f"{path} must contain finite profile samples")
-    times = np.unique(values[:, 0])
-    if len(times) == 0 or np.any(np.diff(times) <= 0.0):
+    if np.any(np.diff(values[:, 0]) < 0.0):
         raise ValueError(f"{path} profile times must be ordered")
+    match_saved_times(np.unique(values[:, 0]))
     return frame
 
 
 def latest_common_profile_time(paths: tuple[Path, ...]) -> float:
     """Return the latest physical time stored by every requested profile."""
     columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
-    common: set[float] | None = None
+    series = []
     for path in paths:
         frame = profile_history(path, columns)
-        available = set(np.round(frame.time.to_numpy(dtype=float), 7))
-        common = available if common is None else common & available
-    if not common:
+        series.append(np.unique(frame.time.to_numpy(dtype=float)))
+    common = match_saved_times(*series)
+    if not common.times:
         raise ValueError("Velocity profiles have no common physical sample time")
-    return float(max(common))
+    return common.times[-1]
 
 
 def write_json(name: str, payload: dict) -> None:
@@ -134,8 +161,7 @@ def write_json(name: str, payload: dict) -> None:
 
 
 def save_figure(fig, axes, name: str, figure_format: str) -> None:
-    """Validate and save one fixed-canvas thesis figure."""
-    FIGURES.mkdir(parents=True, exist_ok=True)
+    from openonda.plotting import export_figure
+
     validate_thesis_figure(fig, axes)
-    fig.savefig(FIGURES / f"{name}.{figure_format}", dpi=DEFAULT_DPI, bbox_inches=None)
-    plt.close(fig)
+    export_figure(fig, FIGURES / name, figure_format=figure_format)

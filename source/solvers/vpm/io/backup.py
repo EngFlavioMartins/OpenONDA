@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 import hashlib
 import json
 import os
@@ -18,12 +19,15 @@ from source.write_precision import DEFAULT_WRITE_PRECISION
 
 from ..config.fingerprint import numerical_configuration
 from ..config.restart import (
-    _configuration_mismatches,
-    canonical_restart_configuration,
+    _configuration_mismatches as _configuration_mismatches,
 )
 from ..config.restart import (
     _normalize_capacity_aliases as _normalize_capacity_aliases,
 )
+from ..config.restart import (
+    canonical_restart_configuration as canonical_restart_configuration,
+)
+from ..config.restart_changes import admit_configuration_changes
 from .logging import Logging
 
 # Restart data is numerical backup data, not visualization output. Bump the
@@ -149,14 +153,19 @@ class _BackupIO:
         hdf5_file: str | Path,
         *,
         allow_time_step_size_mismatch: bool = False,
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
+        _configuration_changes: list[dict[str, Any]] | None = None,
     ) -> tuple[int, float, float, int]:
         """Validate a checkpoint and return its accepted clock."""
         path = str(hdf5_file)
-        _BackupIO._validate_hdf5_structure(
+        changes = _BackupIO._validate_hdf5_structure(
             path,
             expected_float_dtype=_restart_dtype(solver),
             expected_configuration=_numerical_configuration(solver),
             allow_time_step_size_mismatch=allow_time_step_size_mismatch,
+            allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
         )
         with h5py.File(path, "r") as file:
             solver_group = file["solver"]
@@ -181,6 +190,8 @@ class _BackupIO:
                     )
             elif state is not None:
                 raise ValueError("VLM backup requires a configured VLM solver")
+        if _configuration_changes is not None:
+            _configuration_changes.extend(changes)
         return source_step, source_time, source_time_step_size, source_particle_count
 
     @staticmethod
@@ -189,20 +200,29 @@ class _BackupIO:
         hdf5_file: str | Path,
         *,
         time_step_size: float | None = None,
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
     ) -> None:
         """Replace ``solver`` state from an HDF5 backup.
 
         ``time_step_size`` is an explicit continuation override.  It permits
         only the numerical-configuration ``time_step_size`` field to differ;
-        every other restart identity remains strict.  The complete checkpoint
+        every other unlisted restart identity remains strict. Exact scalar
+        configuration differences require an explicit allowlist; structural
+        differences also require exact stored/current expectations. The
+        complete checkpoint
         is restored first, including the accepted clock and optional VLM
         state, and the override is applied only after that restore succeeds.
         """
         path = str(hdf5_file)
+        configuration_changes: list[dict[str, Any]] = []
         source_step, source_time, source_time_step_size, _ = _BackupIO.inspect(
             solver,
             path,
             allow_time_step_size_mismatch=time_step_size is not None,
+            allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
+            _configuration_changes=configuration_changes,
         )
 
         stabilization = _stabilization(solver)
@@ -247,6 +267,22 @@ class _BackupIO:
             }
         else:
             solver._restart_provenance = None
+        if configuration_changes:
+            provenance = solver._restart_provenance or {
+                "kind": "explicit_changed_configuration_continuation",
+                "source_checkpoint": str(Path(path).resolve()),
+                "source": {
+                    "accepted_step": source_step,
+                    "accepted_time": source_time,
+                    "time_step_size": source_time_step_size,
+                },
+                "continuation": {
+                    "accepted_step": int(solver.step),
+                    "accepted_time": float(solver.time),
+                },
+            }
+            provenance["configuration_changes"] = configuration_changes
+            solver._restart_provenance = provenance
 
     @staticmethod
     def save(
@@ -796,7 +832,9 @@ class _BackupIO:
         expected_float_dtype: np.dtype | None = None,
         expected_configuration: dict[str, Any] | None = None,
         allow_time_step_size_mismatch: bool = False,
-    ) -> None:
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
+    ) -> tuple[dict[str, Any], ...]:
         """Validate a restart file before it is allowed to mutate a solver.
 
         This is deliberately strict: a numerical restart must not silently
@@ -804,6 +842,9 @@ class _BackupIO:
         particle geometry.
         """
         path = str(hdf5_file)
+        configuration_changes: tuple[dict[str, Any], ...] = ()
+        if expected_configuration is None and (allowed_config_differences or expected_config_differences):
+            raise ValueError("configuration permissions require a current numerical configuration")
 
         def invalid(reason: str) -> NoReturn:
             raise ValueError(f"Invalid VPM backup {path}: {reason}")
@@ -869,16 +910,16 @@ class _BackupIO:
                 if not isinstance(stored_configuration, dict):
                     invalid("numerical configuration must be a JSON object")
                 if expected_configuration is not None:
-                    mismatches = _configuration_mismatches(
-                        canonical_restart_configuration(expected_configuration),
-                        canonical_restart_configuration(stored_configuration),
-                    )
-                    if allow_time_step_size_mismatch:
-                        mismatches = [
-                            mismatch for mismatch in mismatches if mismatch != "time_step_size"
-                        ]
-                    if mismatches:
-                        invalid("numerical configuration mismatch at " + ", ".join(mismatches))
+                    try:
+                        configuration_changes = admit_configuration_changes(
+                            expected_configuration,
+                            stored_configuration,
+                            allowed_config_differences=allowed_config_differences,
+                            expected_config_differences=expected_config_differences,
+                            allow_time_step_size_mismatch=allow_time_step_size_mismatch,
+                        )
+                    except (TypeError, ValueError) as exc:
+                        invalid(str(exc))
 
                 freestream_velocity = np.asarray(
                     _read_attribute(solver_group, "freestream_velocity")
@@ -1040,3 +1081,4 @@ class _BackupIO:
                     invalid("particle field 'particle_volume' must be strictly positive")
         except OSError as exc:
             invalid(f"cannot read HDF5 file ({exc})")
+        return configuration_changes

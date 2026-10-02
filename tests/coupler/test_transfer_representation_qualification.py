@@ -360,7 +360,7 @@ def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     )
     transfer = VorticityTransfer(coupler)
     transfer.setup(fvm)
-    assert transfer._body_bounds is None
+    assert transfer.solid_boundary is not None
     np.testing.assert_array_equal(
         transfer._points_in_solid(query, include_boundary=True), [True, True, False, False]
     )

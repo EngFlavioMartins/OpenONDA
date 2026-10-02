@@ -38,7 +38,8 @@ def test_ordinary_rotor_case_keeps_native_controls() -> None:
     assert setup.ANGULAR_VELOCITY * backup_time <= np.deg2rad(12.0)
     assert all(type(item.schedule).__name__ == "EveryTime" for item in case.samplers.samples)
     assert all(type(item).__name__ != "VLMSampler" for item in case.samplers.samples)
-    assert [item.file_name for item in case.samplers.samples[1:3]] == ["wake_1D", "wake_2D"]
+    planes = [item for item in case.samplers.samples if type(item).__name__ == "SurfaceSampler"]
+    assert [item.file_name for item in planes] == ["wake_0D", "wake_1D", "wake_2D"]
 
 
 def test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius() -> None:
@@ -54,18 +55,22 @@ def test_station_labels_use_authored_nominal_diameter_not_mesh_tip_radius() -> N
         for segment in wing["segments"]
     )
     case = setup.build_case()
-    planes = case.samplers.samples[1:3]
+    planes = [item for item in case.samplers.samples if type(item).__name__ == "SurfaceSampler"]
 
     assert np.isclose(mesh_tip_radius, 6.005739216519047)
     assert setup.ROTOR_RADIUS == 6.0
     assert not np.isclose(mesh_tip_radius, setup.ROTOR_RADIUS)
-    assert [sampler.point[0] for sampler in planes] == [12.0, 24.0]
+    assert [sampler.point[0] for sampler in planes] == [0.0, 12.0, 24.0]
+    for sampler in planes:
+        np.testing.assert_allclose(sampler.grid_points[:, 0], sampler.point[0])
 
 
 def test_streamwise_lines_resolve_signed_fields_through_rotor_and_wake() -> None:
-    lines = setup.build_case().samplers.samples[3:]
-    assert len(lines) == 4
-    for line, fraction in zip(lines, (0.0, 0.25, 0.65, 1.1), strict=True):
+    lines = [
+        item for item in setup.build_case().samplers.samples if type(item).__name__ == "LineSampler"
+    ]
+    assert [line.file_name for line in lines] == ["streamwise_r025", "streamwise_r065"]
+    for line, fraction in zip(lines, (0.25, 0.65), strict=True):
         assert type(line).__name__ == "LineSampler"
         np.testing.assert_allclose(line.start, [-12.0, fraction * 6.0, 0.0])
         np.testing.assert_allclose(line.end, [36.0, fraction * 6.0, 0.0])
@@ -164,9 +169,11 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
 
 def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:
     launcher = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow/allrun.sh"
-    assert launcher.read_text() == (
-        '#!/bin/bash -e\ncd -- "$(dirname -- "$0")"\n\n./allclean.sh\n\npython setup.py "$@"\n'
-    )
+    commands = [line for line in launcher.read_text().splitlines() if line.strip()]
+    assert commands[0] in ("#!/bin/bash", "#!/bin/bash -e")
+    if commands[0] == "#!/bin/bash":
+        assert commands.pop(1) == "set -e"
+    assert commands[1:] == ['cd -- "$(dirname -- "$0")"', "./allclean.sh", 'python setup.py "$@"']
 
 
 def test_default_rotor_entrypoint_uses_native_continuation(monkeypatch) -> None:

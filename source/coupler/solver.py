@@ -27,6 +27,10 @@ from source.coupler.boundary import (
 )
 from source.coupler.config.types import CouplerSetup
 from source.coupler.consistency import FVMConsistencyBand
+from source.coupler.interface_prediction import (
+    SafeguardedInterfacePredictor,
+    discard_interface_prediction_on_failure,
+)
 from source.coupler.parallel import collective_phase
 from source.coupler.reporting import (
     OutputRedirector,
@@ -202,6 +206,7 @@ class FVMVPMCoupler:
                 "FVMSetup, VPMCase and CouplerSetup for automatic MPI ownership."
             )
         self.setup = coupler_setup
+        self.interface_predictor = SafeguardedInterfacePredictor()
         self._owned_resources = ExitStack()
         self._closed = False
         self.case_dir = Path(fvm_solver.case_dir).expanduser().absolute()
@@ -278,17 +283,34 @@ class FVMVPMCoupler:
         """
         if self._closed:
             return
+        cleanup_failures = []
         try:
             self._owned_resources.__exit__(
                 type(failure) if failure is not None else None,
                 failure,
                 failure.__traceback__ if failure is not None else None,
             )
+        except BaseException as error:
+            cleanup_failures.append(error)
         finally:
             if self._log_handler is not None:
-                logger.removeHandler(self._log_handler)
-                self._log_handler.close()
+                for cleanup in (
+                    lambda: logger.removeHandler(self._log_handler),
+                    self._log_handler.close,
+                ):
+                    try:
+                        cleanup()
+                    except BaseException as error:
+                        cleanup_failures.append(error)
             self._closed = True
+        if failure is not None:
+            for error in cleanup_failures:
+                failure.add_note(f"Coupled driver cleanup also failed: {error!r}")
+        elif cleanup_failures:
+            primary_failure, *additional_failures = cleanup_failures
+            for error in additional_failures:
+                primary_failure.add_note(f"Coupled driver cleanup also failed: {error!r}")
+            raise primary_failure
 
     def __enter__(self):
         """Return this live driver for an automatically closed run."""
@@ -611,10 +633,11 @@ class FVMVPMCoupler:
 
                 assert self.vpm_solver is not None
                 self.vpm_solver.physics.configure_body_classifier(
-                    lambda points: boundary.contains(points, include_boundary=False),
+                    boundary.contains,
                     revision=boundary.revision,
                     query_bounds=boundary.bounds,
                     blocks_segments=boundary.blocks_segments,
+                    geometry_cache_contract=boundary.grid_geometry_contract(),
                 )
                 guard = SolidParticleGuard(
                     boundary,
@@ -688,6 +711,7 @@ class FVMVPMCoupler:
         *,
         start_from: str | Path | None = None,
         restart_allowed_config_differences: Collection[str] = (),
+        restart_expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
         max_coupling_steps: int | None = None,
         backup_at_stop: bool = False,
     ) -> int:
@@ -710,6 +734,10 @@ class FVMVPMCoupler:
             Exact dotted configuration paths permitted to differ from the
             backup manifest. This is accepted only with ``restart_from``;
             artifact hashes and all unlisted settings remain strict.
+        restart_expected_config_differences : mapping or None, default=None
+            Exact ``path: (stored_value, current_value)`` expectations for the
+            explicitly permitted differences. Required for structural or
+            absent-key changes; never grants a parent/wildcard exemption.
         max_coupling_steps : int or None, default=None
             Positive cap on accepted coupling steps performed by this call.
             ``None`` advances to the configured physical end time.
@@ -785,9 +813,10 @@ class FVMVPMCoupler:
             start_step = self.load_backup(
                 restart_from,
                 allowed_config_differences=restart_allowed_config_differences,
+                expected_config_differences=restart_expected_config_differences,
             )
-        elif restart_allowed_config_differences:
-            raise ValueError("restart_allowed_config_differences requires restart_from")
+        elif restart_allowed_config_differences or restart_expected_config_differences:
+            raise ValueError("restart configuration permissions require restart_from")
         if (
             start_step == 0
             and restart_from is None
@@ -834,6 +863,7 @@ class FVMVPMCoupler:
                 )
         return step
 
+    @discard_interface_prediction_on_failure
     def solve(
         self,
         start_step: int = 0,
@@ -880,6 +910,9 @@ class FVMVPMCoupler:
         samplers, and may write logs/backups. MPI ranks must call it
         collectively and in the same order.
         """
+        # Iteration history is an optimization only, never restart state.
+        # A new invocation starts cold even when continuing the same object.
+        self.interface_predictor.reset()
         face_geometry, n_steps = self._prepare_run()
         with collective_phase(self._comm, "coupled start state"):
             start_step = self._validate_start_step(start_step, n_steps)
@@ -912,6 +945,7 @@ class FVMVPMCoupler:
         assert self.vpm_time_step_size is not None
         self._log_stop_step = stop_step
         for step in range(1 + start_step, stop_step + 1):
+            exchange_started = time.perf_counter()
             time_end = step * self.vpm_time_step_size
             vpm_time = self._advance_vpm(step, time_end)
             velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
@@ -929,10 +963,12 @@ class FVMVPMCoupler:
                 )
                 transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
                 update_boundary_history_after_replacement(self, *face_geometry)
+            health_output_started = time.perf_counter()
             with collective_phase(self._comm, "VPM health check and output"):
                 if self._is_master:
                     assert self.vpm_solver is not None
                     self.vpm_solver.execute_scheduled_samplers()
+            health_output_time = time.perf_counter() - health_output_started
             self._last_transfer_result = transfer_result
             record_step(
                 self,
@@ -942,7 +978,10 @@ class FVMVPMCoupler:
                 transfer_result,
                 logger=logger,
                 comm=self._comm,
+                exchange_started=exchange_started,
+                health_output_time=health_output_time,
             )
+            self.interface_predictor.commit()
         backup_was_scheduled = (
             self.setup.backup_interval_steps > 0
             and stop_step > start_step
@@ -1146,6 +1185,7 @@ class FVMVPMCoupler:
         directory: str | Path,
         *,
         allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
     ) -> int:
         """Restore a complete coupled checkpoint into initialized solvers.
 
@@ -1158,6 +1198,10 @@ class FVMVPMCoupler:
             Exact recursive configuration paths permitted to differ for a
             controlled restart. All other configuration and artifact hashes
             remain strict.
+        expected_config_differences : mapping or None, default=None
+            Exact ``path: (stored_value, current_value)`` expectations, required
+            for structured or absent-key changes. VPM native admission runs
+            before FVM fields or observation histories can be loaded.
 
         Returns
         -------
@@ -1181,11 +1225,13 @@ class FVMVPMCoupler:
         clock, and all stored VPM boundary-condition history. In partitioned
         execution every rank must participate collectively.
         """
+        self.interface_predictor.reset()
         step = load_coupled_backup(
             self,
             directory,
             comm=self._comm,
             allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
         )
         self._restart_loaded = True
         return step

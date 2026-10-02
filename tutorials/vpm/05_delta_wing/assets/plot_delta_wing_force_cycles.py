@@ -47,7 +47,7 @@ def plot_force_cycles(
         print("Cycle comparison skipped: fewer than two sampled heave-velocity peaks.")
         return
     fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12.5 * _theme.CM, 8.3 * _theme.CM))
-    _theme.centered_subplots_adjust(fig, outer=0.16, bottom=0.16, top=0.80, hspace=0.27)
+    _theme.centered_subplots_adjust(fig, outer=0.077, bottom=0.16, top=0.81, hspace=0.27)
     for ax, surface, color, label in zip(
         axes,
         ("front_wing", "rear_wing"),
@@ -62,7 +62,10 @@ def plot_force_cycles(
                 phase,
                 tail.force_z,
                 color=color,
-                ls=(":", "--", "-")[index],
+                ls="-",
+                marker=("o", "s", "D")[index],
+                markevery=25,
+                markersize=2.5,
                 label=f"Cycle {cycle + 1}",
             )
         ax.set_ylabel(r"$F_z$ [N]")
@@ -77,7 +80,7 @@ def plot_force_cycles(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=_theme.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=_theme.FORMAT_CHOICES, default="both")
     parser.add_argument(
         "--samples",
         type=Path,

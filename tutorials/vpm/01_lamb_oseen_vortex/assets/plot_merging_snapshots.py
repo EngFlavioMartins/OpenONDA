@@ -7,7 +7,7 @@ scale with particle-strength magnitude to power 0.65 within each frame. Colour l
 clipped per frame and displayed explicitly. No particles are filtered out.
 Both states share one field of view enclosing both clouds and the sampling plane.
 The 600-dpi scene is embedded in a 125 x 85 mm PDF with vector labels.
-Viridis/plasma retain the original scientific-field color conventions.
+Blue particles and amber streamlines use the approved thesis field maps.
 """
 
 import argparse
@@ -85,7 +85,7 @@ def project(points):
     right = np.array([0.0, 0.0, 1.0]) - view[2] * view
     right /= np.linalg.norm(right)
     up = np.cross(view, right)
-    angle = np.deg2rad(25)
+    angle = np.deg2rad(0)
     basis = np.array(
         [np.cos(angle) * right - np.sin(angle) * up, np.sin(angle) * right + np.cos(angle) * up]
     )
@@ -195,10 +195,10 @@ def main():
         "--field-cache", type=Path, help="Optional reusable NPZ of the reconstructed fields."
     )
     parser.add_argument("--output-dir", type=Path, default=OUT)
-    parser.add_argument("--format", choices=("pdf", "png", "both"), default="pdf")
+    parser.add_argument("--format", choices=("pdf", "png", "both"), default="both")
     args = parser.parse_args()
     load_theme()
-    plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
+    plt.rcParams.update({"axes.linewidth": 0.6, "pdf.compression": 9})
     args.output_dir.mkdir(parents=True, exist_ok=True)
     run = _metadata(CASE_DIR / "solution/merging_gbd/vpm_metadata.json")
     if not run:
@@ -308,12 +308,12 @@ def main():
     height = int(np.ceil((width - 1) * (upper[1] - lower[1]) / (upper[0] - lower[0]))) + 1
     # Equal world-space pixel scales in x and y avoid any shape distortion.
     upper[1] = lower[1] + (height - 1) * (upper[0] - lower[0]) / (width - 1)
-    axes_rectangle = [0.005, 0.045, 0.99, 0.95]
+    axes_rectangle = [0.015, 0.04, 0.97, 0.92]
     view_limits = []
     for (pos, alpha, omega, vel, t), name in zip(
-        cases, ["mergingRenderT0.pdf", "mergingRenderFinal.pdf"]
+        cases, ["merging_render_t0.pdf", "merging_render_final.pdf"]
     ):
-        fig = plt.figure(figsize=(125 / 25.4, 85 / 25.4), facecolor="white")
+        fig = plt.figure(figsize=(125 / 25.4, 78 / 25.4), facecolor="white")
         ax = fig.add_axes(axes_rectangle)
         ax.set_aspect("equal")
         ax.axis("off")
@@ -325,7 +325,7 @@ def main():
         speed = np.linalg.norm(vel, axis=2) / uc
         umax = float(np.quantile(speed, 0.99))
         norms = [Normalize(wmin, wmax), Normalize(0, umax)]
-        particle_cmap = plt.get_cmap("viridis").copy()
+        particle_cmap = plt.get_cmap("thesis_blue").copy()
         particle_cmap.set_under((0.78, 0.82, 0.87, 1.0))
         colors = particle_cmap(norms[0](omega))[:, :3]
         # Streamplot integrates the actual instantaneous 3-D induced velocity on z=L/4.
@@ -339,12 +339,12 @@ def main():
             arrowsize=0.001,
             broken_streamlines=False,
             color=speed,
-            cmap="plasma",
+            cmap="thesis_amber",
             norm=norms[1],
-            linewidth=0.3,
+            linewidth=0.6,
         )
         raw = streams.lines.get_segments()
-        line_colors = plt.get_cmap("plasma")(norms[1](streams.lines.get_array()))[:, :3]
+        line_colors = plt.get_cmap("thesis_amber")(norms[1](streams.lines.get_array()))[:, :3]
         segments = []
         for line in raw:
             points = np.column_stack((line, np.full(len(line), sample_z)))
@@ -359,7 +359,7 @@ def main():
         canvas, zbuffer = render_spheres(
             np.column_stack((projected, depth)), radii, colors, lower, upper, width, height
         )
-        canvas = render_streamlines(canvas, zbuffer, segments, line_colors, lower, upper, 1.15)
+        canvas = render_streamlines(canvas, zbuffer, segments, line_colors, lower, upper, 2.65)
         ax.imshow(
             np.uint8(np.clip(canvas, 0, 1) * 255),
             extent=[lower[0], upper[0], lower[1], upper[1]],
@@ -374,7 +374,7 @@ def main():
         colorbar_axes = []
         for box, cmap, norm, label, extension, title_location in [
             (
-                [scene_left, 0.67, 0.023, 0.20],
+                [0.035, 0.65, 0.023, 0.20],
                 particle_cmap,
                 norms[0],
                 r"$\omega_z/\omega_{c,0}$",
@@ -382,8 +382,8 @@ def main():
                 "left",
             ),
             (
-                [0.89, 0.17, 0.023, 0.20],
-                "plasma",
+                [0.89, 0.20, 0.023, 0.20],
+                "thesis_amber",
                 norms[1],
                 r"$|\mathbf{u}|/U_{c,0}$",
                 "max",
@@ -399,7 +399,9 @@ def main():
                 format=FormatStrFormatter("%.2g"),
                 extend=extension,
             )
-            cb.ax.tick_params(width=0.4, length=2, pad=2)
+            cb.ax.tick_params(width=0.6, length=2, pad=2)
+            for tick_label in cb.ax.get_yticklabels():
+                tick_label.set_bbox({"facecolor": "white", "edgecolor": "none", "pad": 0.4})
             cb.ax.set_title(
                 label,
                 pad=7,

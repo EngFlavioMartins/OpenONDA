@@ -45,7 +45,7 @@ class SolidParticleGuard:
             return positions
         strengths = self.physics._download_vector_field(strength, count)[changed]
         self.physics._upload_vector_array(corrected, position, count)
-        impulse_change = np.cross(delta, strengths).sum(axis=0)
+        impulse_change = 0.5 * np.cross(delta, strengths).sum(axis=0)
         budget = getattr(self.physics, "last_solid_projection", None)
         if budget is None:
             budget = {

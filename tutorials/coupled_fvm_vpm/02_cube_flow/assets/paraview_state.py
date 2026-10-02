@@ -1,5 +1,17 @@
 # state file generated using paraview version 6.1.0
 from pathlib import Path
+import runpy
+
+# ParaView may use a different Python ABI from the installed solver. Load only
+# this checkout's stdlib clock helper; no solver import or sys.path mutation.
+_clock_helper = next((parent / "openonda/saved_times.py" for parent in
+                      Path(__file__).resolve().parents
+                      if (parent / "openonda/saved_times.py").is_file()), None)
+if _clock_helper is None:
+    raise FileNotFoundError("This checkout state requires openonda/saved_times.py in a parent checkout")
+_saved_time_helpers = runpy.run_path(str(_clock_helper))
+match_saved_times = _saved_time_helpers["match_saved_times"]
+read_pvd_times = _saved_time_helpers["read_pvd_times"]
 
 import paraview
 
@@ -12,6 +24,12 @@ from paraview.simple import *
 # Resolve input paths from the tutorial directory. ParaView readers use strings.
 CASE_DIR = Path(__file__).resolve().parent.parent
 SOLUTION_DIR = CASE_DIR / "solution"
+matched_times = match_saved_times(
+    read_pvd_times(SOLUTION_DIR / "vpm.pvd"),
+    read_pvd_times(SOLUTION_DIR / "fvm.pvd"),
+)
+if not matched_times.times:
+    raise ValueError("No common saved FVM/VPM time is available for this scene")
 
 # Keep the saved camera when displaying the first source.
 paraview.simple._DisableFirstRenderCameraReset()
@@ -64,11 +82,11 @@ appendSelections = CreateSelection(
 
 # setup the data processing pipelines
 
-vpmpvd = PVDReader(
+vpmReader = PVDReader(
     registrationName="vpm.pvd",
     FileName=str(SOLUTION_DIR / "vpm.pvd"),
 )
-vpmpvd.PointArrays = [
+vpmReader.PointArrays = [
     "core_radius",
     "eddy_viscosity",
     "effective_viscosity",
@@ -80,6 +98,11 @@ vpmpvd.PointArrays = [
     "vorticity",
     "zone_id",
 ]
+
+vpmpvd = ExtractTimeSteps(registrationName="VPM common saved times", Input=vpmReader)
+vpmpvd.SelectionMode = "Select Time Steps"
+vpmpvd.TimeStepIndices = list(matched_times.indices[0])
+vpmpvd.ApproximationMode = "Nearest Time Step"
 
 clip1 = Clip(registrationName="Clip1", Input=vpmpvd)
 clip1.Set(
@@ -103,11 +126,11 @@ cubestl = STLReader(
     FileNames=[str(CASE_DIR / "assets" / "cube.stl")],
 )
 
-fvmpvd = PVDReader(
+fvmReader = PVDReader(
     registrationName="fvm.pvd",
     FileName=str(SOLUTION_DIR / "fvm.pvd"),
 )
-fvmpvd.CellArrays = [
+fvmReader.CellArrays = [
     "velocity",
     "kinematic_pressure",
     "courant_number",
@@ -119,6 +142,11 @@ fvmpvd.CellArrays = [
     "cell_equivalent_size",
     "global_cell_id",
 ]
+
+fvmpvd = ExtractTimeSteps(registrationName="FVM common saved times", Input=fvmReader)
+fvmpvd.SelectionMode = "Select Time Steps"
+fvmpvd.TimeStepIndices = list(matched_times.indices[1])
+fvmpvd.ApproximationMode = "Nearest Time Step"
 
 cellDatatoPointData1 = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=fvmpvd)
 
@@ -360,19 +388,27 @@ vorticityPWF.Set(
 
 timeKeeper1 = GetTimeKeeper()
 
-timeKeeper1.SuppressedTimeSources = [fvmpvd, cubestl]
+# Only the common saved VPM clock drives playback. Derived filters may retain
+# their original reader's time metadata even though their inputs are selected.
+vpmpvd.UpdatePipelineInformation()
+fvmpvd.UpdatePipelineInformation()
+timeKeeper1.SuppressedTimeSources = [vpmReader, fvmReader, fvmpvd, cubestl, clip1, cellDatatoPointData1, slice1]
 
 timeAnimationCue1 = GetTimeTrack()
 
 
 animationScene1 = GetAnimationScene()
+animationScene1.UpdateAnimationUsingDataTimeSteps()
+_actual_times = tuple(timeKeeper1.TimestepValues)
+if match_saved_times(_actual_times, matched_times.times).times != _actual_times or len(_actual_times) != len(matched_times.times):
+    raise RuntimeError(f"ParaView playback contains unsaved coupled times: {_actual_times}")
 
 animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
-    AnimationTime=20.0,
-    StartTime=0.5,
-    EndTime=20.0,
+    AnimationTime=matched_times.times[-1],
+    StartTime=matched_times.times[0],
+    EndTime=matched_times.times[-1],
     PlayMode="Snap To TimeSteps",
 )
 

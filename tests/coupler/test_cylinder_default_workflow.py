@@ -15,41 +15,63 @@ ROOT = Path(__file__).resolve().parents[2]
 CASE = ROOT / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 
 
-def test_default_launchers_run_the_plot_campaign_and_preserve_historical_runs(tmp_path):
+@pytest.mark.parametrize("arguments", [[], ["--max-coupling-steps", "3"]])
+def test_default_launchers_run_one_local_case_and_preserve_outputs(tmp_path, arguments):
     for name in ("allrun.sh", "allcontinue.sh", "allclean.sh"):
         shutil.copy2(CASE / name, tmp_path / name)
     python = tmp_path / "python"
     python.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > invocation.txt\n')
     python.chmod(0o755)
     environment = {**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]}
-    current = tmp_path / "study_results/cylinder/default/native_backup"
+    current = tmp_path / "solution/native_backup"
     current.parent.mkdir(parents=True)
     current.write_text("checkpoint")
     history = tmp_path / "study_results/cylinder/historical/pipeline_manifest.json"
-    history.parent.mkdir()
+    history.parent.mkdir(parents=True)
     history.write_text("historical")
     subprocess.run(
-        ["bash", str(tmp_path / "allcontinue.sh")], cwd="/tmp", env=environment, check=True
+        ["bash", str(tmp_path / "allcontinue.sh"), *arguments],
+        cwd="/tmp", env=environment, check=True
     )
     assert current.read_text() == "checkpoint"
-    assert (tmp_path / "invocation.txt").read_text().splitlines() == [
-        "assets/run_pipeline.py",
-        "--run-dir",
-        "study_results/cylinder/default",
-        "--resume",
-    ]
-    subprocess.run(["bash", str(tmp_path / "allrun.sh")], cwd="/tmp", env=environment, check=True)
-    assert not current.exists()
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", *arguments]
+    subprocess.run(["bash", str(tmp_path / "allrun.sh"), *arguments],
+                   cwd="/tmp", env=environment, check=True)
+    assert current.read_text() == "checkpoint"
     assert history.read_text() == "historical"
-    assert (tmp_path / "invocation.txt").read_text().splitlines() == [
-        "assets/run_pipeline.py",
-        "--run-dir",
-        "study_results/cylinder/default",
-    ]
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", *arguments]
+
+
+def test_reference_launcher_selects_one_mesh_and_preserves_outputs(tmp_path):
+    shutil.copy2(CASE / "reference_flow/allrun.sh", tmp_path / "allrun.sh")
+    python = tmp_path / "python"
+    python.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > invocation.txt\n')
+    python.chmod(0o755)
+    checkpoint = tmp_path / "solution/backup"
+    checkpoint.parent.mkdir()
+    checkpoint.write_text("checkpoint")
+    environment = {**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]}
+    subprocess.run(["bash", str(tmp_path / "allrun.sh")], env=environment, check=True)
+    assert checkpoint.read_text() == "checkpoint"
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", "-h", "0.04"]
+
+
+def test_reference_default_factory_uses_plain_case_directories(monkeypatch):
+    setup = load_case_module(CASE / "reference_flow")
+    captured = {}
+
+    def factory(config, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(setup.fvm, "create_fvm_solver", factory)
+    setup.create_solver("phase_h004", 0.04)
+    assert captured["solution_dir"] == CASE / "reference_flow/solution"
+    assert captured["samples_dir"] == CASE / "reference_flow/samples"
 
 
 def campaign(monkeypatch):
-    module = load_case_module(CASE / "assets", "run_campaign")
+    module = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_campaign")
     monkeypatch.setattr(module, "_collective_preflight", lambda action: action())
     monkeypatch.setattr(module, "_collective_root_action", lambda action: action())
     monkeypatch.setattr(module, "_collective_barrier", lambda: None)
@@ -185,7 +207,7 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
 
 @pytest.mark.parametrize("format", ["png", "pdf"])
 def test_synthetic_campaign_plots_pass_thesis_contract(tmp_path, format):
-    pipeline = load_case_module(CASE / "assets", "run_pipeline")
+    pipeline = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_pipeline")
     rows = [
         {
             "h": h,

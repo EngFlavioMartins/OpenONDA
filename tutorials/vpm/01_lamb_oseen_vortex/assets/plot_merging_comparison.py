@@ -60,7 +60,7 @@ def plot_merging_case(args) -> int:
     b0 = runtime["vortex_separation"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    centered_subplots_adjust(fig, outer=0.14, hspace=0.09, top=0.94, bottom=0.24)
+    centered_subplots_adjust(fig, outer=0.1215, hspace=0.09, top=0.953, bottom=0.22)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -117,7 +117,7 @@ def plot_merging_case(args) -> int:
 
     reference_options = {
         "color": colors["reference"],
-        "linestyle": "-",
+        "linestyle": "--",
         "linewidth": 1.0,
         "zorder": 100,
         "label": r"Experiment",

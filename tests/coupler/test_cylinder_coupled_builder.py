@@ -27,8 +27,11 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     assert coupler.interface_iterations == 3
     assert coupler.interface_acceleration == "none"
     assert vpm.numerics.induction.z_min == pytest.approx(-0.48)
-    assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.048)
-    assert mesh is module.FVM_MESH
+    assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.04)
+    assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
+    assert len(mesh.levels) - 1 == 24
+    assert vpm.numerics.compute_device == "AUTO"
+    assert vpm.numerics.induction.gaussian_mesh_policy == module.GAUSSIAN_MESH_POLICY
 
 
 def test_builder_acceleration_is_explicit_and_restart_identified():
@@ -55,6 +58,7 @@ def test_builder_acceleration_is_explicit_and_restart_identified():
 def test_builder_resolves_independent_span_dz_and_particle_spacing():
     module = _setup_module()
     fvm, vpm, coupler, mesh = module.build_case(
+        gaussian_mesh_policy=None,
         overrides={
             "hxy": 0.08,
             "span": 0.48,
@@ -84,8 +88,12 @@ def test_builder_resolves_independent_span_dz_and_particle_spacing():
     assert vpm.numerics.viscous.core_radius_ratio == pytest.approx(1.2)
     assert vpm.numerics.max_n_particles == 50000
     assert vpm.numerics.time_step_size == pytest.approx(0.08)
-    assert vpm.samplers.samples[0].schedule.interval == 2
-    assert fvm.samplers[0].schedule.every_n_steps == 40
+    # Fast force/phase records cannot be finer than one accepted exchange.
+    assert vpm.samplers.samples[0].schedule.interval == 1
+    assert fvm.samplers[0].schedule.every_n_steps == 10
+    profile = next(sample for sample in vpm.samplers.samples
+                   if sample.file_name == "vpm_transverse_x2")
+    assert profile.schedule.interval == 2
     assert vpm.run.steps % vpm.samplers.samples[0].schedule.interval == 0
     assert (vpm.numerics.induction.z_min, vpm.numerics.induction.z_max) == (-0.24, 0.24)
     assert coupler.eta_blend_width == pytest.approx(0.64)
@@ -100,7 +108,7 @@ def test_builder_rejects_exchange_clock_and_release_width_errors():
     with pytest.raises(ValueError, match="release_width_ratio"):
         module.build_case(overrides={"blend_width_ratio": 2.0, "release_width_ratio": 2.0})
     with pytest.raises(ValueError, match="authority ramp begins inside"):
-        module.build_case(overrides={"hxy": 0.08, "span": 0.96, "blend_width_ratio": 8.0})
+        module.build_case(overrides={"hxy": 0.08, "span": 0.96, "blend_width_ratio": 10.0})
 
 
 def test_overridden_mesh_keeps_exact_slip_planes_when_dz_equals_hxy():

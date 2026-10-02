@@ -48,6 +48,9 @@ def _canonical_value(value: Any) -> Any:
             result["base"] = _canonical_value(value.base)
         if kernel is not None and hasattr(kernel, "name"):
             result["kernel"] = str(kernel.name)
+        policy = getattr(value, "gaussian_mesh_policy", None)
+        if policy is not None:
+            result["gaussian_mesh_policy"] = _canonical_value(policy)
         return result
     if is_dataclass(value):
         return {item.name: _canonical_value(getattr(value, item.name)) for item in fields(value)}

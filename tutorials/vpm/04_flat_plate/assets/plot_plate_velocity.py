@@ -9,23 +9,28 @@ if not __package__:
 
 import argparse
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ._plot_theme import FIG_DIR, SAMPLES_DIR, centered_subplots_adjust, cm, color, save_fig
+from ._plot_theme import (
+    validation_subplots,
+    validation_legend,
+    FIG_DIR,
+    SAMPLES_DIR,
+    color,
+    save_fig,
+)
 from .results import parameters
 from .theoretical_model import lifting_line_circulation
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--format", choices=("png", "pdf"), default="png")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
 parser.add_argument("--dpi", type=int, default=400)
 args = parser.parse_args()
 
 physics = parameters(SAMPLES_DIR.parent)
 span, chord, speed = physics["span"], physics["chord"], physics["speed"]
-fig, axes = plt.subplots(2, 1, figsize=(12.5 * cm(), 10.8 * cm()), sharex=True)
-centered_subplots_adjust(fig, outer=0.17, bottom=0.125, top=0.92, hspace=0.12)
+fig, axes = validation_subplots(2, height_cm=14, sharex=True, outer=0.135, top_padding_cm=0.13)
 
 for mode, ink, marker in [("moving", color("TUDcyan"), "o"), ("static", color("vpm"), "s")]:
     name = f"exp_{mode}_aoa05"
@@ -66,16 +71,9 @@ axes[1].axhline(0, ls="--", lw=1, color=color("ref"), label="Lifting-line")
 axes[0].set_ylabel(r"Downwash, $w$ [m/s]")
 axes[1].set_ylabel(r"Streamwise, $u_i$ [m/s]")
 axes[1].set_xlabel(r"Spanwise position, $2y/b$")
-axes[0].set_title(r"Induced velocity, $\alpha=5^\circ$")
 for axis in axes:
     axis.set_xlim(-1, 1)
-axes[0].legend(
-    loc="lower center",
-    bbox_to_anchor=(0.5, 0.035),
-    ncol=3,
-    handlelength=1.2,
-    handletextpad=0.4,
-    columnspacing=0.8,
-    borderpad=0.35,
-)
+validation_legend(fig, axes[0], ncol=3)
+print("Final sampled bound-point velocity, weighted by circulation")
+print("Finite chord and wake cores affect tip downwash")
 save_fig(fig, FIG_DIR / "plate_velocity.png", figure_format=args.format, dpi=args.dpi)

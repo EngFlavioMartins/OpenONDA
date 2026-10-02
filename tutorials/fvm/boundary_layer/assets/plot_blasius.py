@@ -16,6 +16,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from ._common import (  # noqa: E402
@@ -44,7 +45,12 @@ def main():
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
     ax.plot(
-        eta_ref, fprime_ref, color=COLORS["reference"], linewidth=1.4, label="Blasius $f'(\\eta)$"
+        eta_ref,
+        fprime_ref,
+        color=COLORS["reference"],
+        linestyle="--",
+        linewidth=1.0,
+        label="Blasius $f'(\\eta)$",
     )
 
     max_err = 0.0
@@ -59,9 +65,10 @@ def main():
             eta,
             u_norm,
             marker,
-            markersize=3.5,
-            linestyle="none",
-            label=f"FVM $x/L$ = {sampled_x:.3g}",
+            markersize=3,
+            color=COLORS["fvm"],
+            linestyle="-",
+            label=f"FVM $x/L$ = {sampled_x:.2g}",
         )
         # Error against Blasius inside the layer (eta <= 6).
         inside = eta <= 6.0
@@ -74,11 +81,10 @@ def main():
     ax.set_ylim(0, 1.15)
     ax.set_xlabel(r"$\eta = y \sqrt{U_\infty / (\nu x)}$")
     ax.set_ylabel(r"$u / U_\infty$")
-    ax.set_title(f"Flat-plate profiles vs Blasius (Re$_L$ = {args.Re:g})")
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
     ax.legend()
 
-    fig.tight_layout()
+    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.984)
     save_fig(fig, "blasius_profiles.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     print(
         f"  overall max profile error: {max_err:.4f}"

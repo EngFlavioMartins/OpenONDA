@@ -10,6 +10,7 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from ._common import (  # noqa: E402
@@ -64,48 +65,36 @@ def main():
         fig, axes = plt.subplots(3, 1, figsize=figure_size("stacked"), sharex=True)
 
         ax = axes[0]
-        ax.plot(t, drag_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
+        ax.plot(t, drag_coefficient, color=COLORS["fvm"], linewidth=0.9)
         if "drag_coefficient" in ref:
             ax.axhspan(
                 *ref["drag_coefficient"],
                 color=COLORS["reference"],
                 alpha=0.25,
-                label=f"Constant et al.: {ref['drag_coefficient'][0]:.2f}-{ref['drag_coefficient'][1]:.2f}",
+                label=f"Constant et al.: {ref['drag_coefficient'][0]:.2g}-{ref['drag_coefficient'][1]:.2g}",
             )
             ax.legend(loc="upper right")
         ax.set_ylabel("$C_d$")
-        ax.set_title(f"IBM cylinder forces — {name} (Re = {args.Re:g})")
-        ax.text(
-            0.02,
-            0.45,
-            rf"$\overline{{C_d}} = {drag_coefficient_mean:.4f}$ (last third)",
-            transform=ax.transAxes,
-        )
-        ax.grid(True, alpha=0.3)
+        print(rf"$\overline{{C_d}} = {drag_coefficient_mean:.4f}$ (last third)")
+        ax.grid(False)
 
         ax = axes[1]
-        ax.plot(t, lift_coefficient, color=COLORS["TUDdark"], linewidth=0.9)
+        ax.plot(t, lift_coefficient, color=COLORS["fvm"], linewidth=0.9)
         strouhal_number = strouhal_from_lift(t, lift_coefficient)
-        label = rf"$C_{{l,\mathrm{{rms}}}} = {lift_coefficient_rms:.3g}$"
+        label = rf"$C_{{l,\mathrm{{rms}}}} = {lift_coefficient_rms:.2g}$"
         if strouhal_number is not None and "strouhal_number" in ref:
-            label += f"\n$St$ = {strouhal_number:.4f} (ref {ref['strouhal_number'][0]:.3f}-{ref['strouhal_number'][1]:.3f})"
-        ax.text(
-            0.02,
-            0.06,
-            label,
-            transform=ax.transAxes,
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85},
-        )
+            label += f"\n$St$ = {strouhal_number:.2g} (ref {ref['strouhal_number'][0]:.2g}-{ref['strouhal_number'][1]:.2g})"
+        print(label)
         ax.set_ylabel("$C_l$")
-        ax.grid(True, alpha=0.3)
+        ax.grid(False)
 
         ax = axes[2]
-        ax.semilogy(t, np.maximum(slip_error, 1e-16), color=COLORS["TUDdark"], linewidth=0.9)
+        ax.semilogy(t, np.maximum(slip_error, 1e-16), color=COLORS["fvm"], linewidth=0.9)
         ax.set_ylabel(r"marker slip error $\max_s |u(X_s)|$")
         ax.set_xlabel("t [s]")
-        ax.grid(True, alpha=0.3, which="both")
+        ax.grid(False)
 
-        fig.tight_layout()
+        centered_subplots_adjust(fig, outer=.119, bottom=.12, top=.991, hspace=.30)
         save_fig(fig, f"forces_{name}.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
         print(

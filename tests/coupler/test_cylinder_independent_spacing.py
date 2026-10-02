@@ -14,7 +14,7 @@ CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylin
 
 
 def _study():
-    path = CASE / "assets/run_sensitivity.py"
+    path = Path(__file__).resolve().parents[2] / "tests/support/cylinder/run_sensitivity.py"
     spec = importlib.util.spec_from_file_location("independent_cylinder_sensitivity", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

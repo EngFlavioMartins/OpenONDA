@@ -1,0 +1,133 @@
+{
+  "scope": "Standalone steady VLM with its prescribed wake; no VPM, no LES, no fitting",
+  "mesh_refinement": [
+    {
+      "chordwise_panels": 4,
+      "half_span_panels": 7,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.43304557250078407,
+      "CD": 0.005851023667577326,
+      "CD_trefftz": 0.00583557015561644,
+      "relative_near_far_drag_difference": 0.0026481580289139384,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.0167342176541887,
+      "relative_CD_difference": -0.12730243875618463
+    },
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 14,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.4274298619652452,
+      "CD": 0.005878116298419855,
+      "CD_trefftz": 0.005841431977560702,
+      "relative_near_far_drag_difference": 0.006280021919295109,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.02948515280696462,
+      "relative_CD_difference": -0.12326149238384776
+    },
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 28,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.42437558769397915,
+      "CD": 0.00588019130776506,
+      "CD_trefftz": 0.0058146471152777926,
+      "relative_near_far_drag_difference": 0.01127225628448758,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.03642013510800102,
+      "relative_CD_difference": -0.12295199857592609
+    },
+    {
+      "chordwise_panels": 16,
+      "half_span_panels": 28,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.42439475704513224,
+      "CD": 0.005881140424161376,
+      "CD_trefftz": 0.0058143676655501965,
+      "relative_near_far_drag_difference": 0.011484096371614738,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.03637660951103028,
+      "relative_CD_difference": -0.12281043504594213
+    },
+    {
+      "chordwise_panels": 16,
+      "half_span_panels": 56,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.4228091357863481,
+      "CD": 0.005879491520092568,
+      "CD_trefftz": 0.0057866138546612605,
+      "relative_near_far_drag_difference": 0.016050434289216042,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.039976893699410265,
+      "relative_CD_difference": -0.12305637398608837
+    }
+  ],
+  "aspect_ratio": [
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 28,
+      "aspect_ratio": 5.0,
+      "angle_degrees": 5.0,
+      "CL": 0.3475424994926757,
+      "CD": 0.007646939229388316,
+      "CD_trefftz": 0.007482751876031703,
+      "relative_near_far_drag_difference": 0.021942108475162314,
+      "lifting_line_CL": 0.37647822733061015,
+      "lifting_line_CD": 0.00936947387981946,
+      "relative_CL_difference": -0.07685896749753895,
+      "relative_CD_difference": -0.18384539756722562
+    },
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 28,
+      "aspect_ratio": 10.0,
+      "angle_degrees": 5.0,
+      "CL": 0.42437558769397915,
+      "CD": 0.00588019130776506,
+      "CD_trefftz": 0.0058146471152777926,
+      "relative_near_far_drag_difference": 0.01127225628448758,
+      "lifting_line_CL": 0.4404155827203223,
+      "lifting_line_CD": 0.0067045262040587505,
+      "relative_CL_difference": -0.03642013510800102,
+      "relative_CD_difference": -0.12295199857592609
+    },
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 28,
+      "aspect_ratio": 20.0,
+      "angle_degrees": 5.0,
+      "CL": 0.4759458172755964,
+      "CD": 0.003925247087593753,
+      "CD_trefftz": 0.003908836731825945,
+      "relative_near_far_drag_difference": 0.00419827096747083,
+      "lifting_line_CL": 0.48382914533482746,
+      "lifting_line_CD": 0.004328236767782571,
+      "relative_CL_difference": -0.016293619628423905,
+      "relative_CD_difference": -0.09310712463525328
+    },
+    {
+      "chordwise_panels": 8,
+      "half_span_panels": 28,
+      "aspect_ratio": 40.0,
+      "angle_degrees": 5.0,
+      "CL": 0.5075618325194243,
+      "CD": 0.0024228735897002026,
+      "CD_trefftz": 0.0024232507949354986,
+      "relative_near_far_drag_difference": -0.00015566083216989046,
+      "lifting_line_CL": 0.510998759480409,
+      "lifting_line_CD": 0.002627171811091244,
+      "relative_CL_difference": -0.006725900791773598,
+      "relative_CD_difference": -0.07776355567174809
+    }
+  ]
+}

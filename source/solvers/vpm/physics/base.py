@@ -1968,7 +1968,12 @@ class PhysicsBase:
         *,
         include_freestream: bool = True,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Evaluate target velocity/Jacobian through one configured backend path."""
+        """Evaluate velocity and Jacobian in one backend pass per target batch.
+
+        Both fields use the same current source state and source-only target
+        core convention. No fields or source validity survive this call: a
+        following query may have changed particle values in the same objects.
+        """
         if self.velocity_method == "TREECODE":
             return self.compute_target_velocity_and_gradients_hierarchical(
                 particles,
@@ -1976,6 +1981,41 @@ class PhysicsBase:
                 theta=self.velocity_theta,
                 include_freestream=include_freestream,
             )
+        backend = getattr(self, "induction", None)
+        if backend is not None and hasattr(backend, "evaluate_targets"):
+            source_count = len(particles)
+            target_count = len(target_position)
+            velocity = np.zeros((target_count, 3), dtype=self.np_dtype)
+            gradient = np.zeros((target_count, 9), dtype=self.np_dtype)
+            if target_count == 0:
+                return velocity, gradient
+            if source_count == 0:
+                if include_freestream:
+                    velocity += particles.velocity_background_cpu()
+                return velocity, gradient
+            background = (
+                particles.velocity_background if include_freestream else self._zero_velocity
+            )
+            for start, stop in self._target_batch_slices(target_count):
+                count = stop - start
+                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                backend.evaluate_targets(
+                    target_position=self.target_position,
+                    source_position=particles.position,
+                    source_vortex_strength=particles.vortex_strength,
+                    source_core_radius=particles.core_radius,
+                    target_velocity=self.target_velocity,
+                    target_velocity_gradient=self.target_velocity_gradient,
+                    target_count=count,
+                    source_count=source_count,
+                    include_freestream=include_freestream,
+                    background_velocity=background,
+                )
+                velocity[start:stop] = self.extract_target_velocity(count)
+                gradient[start:stop] = self._download_matrix_field(
+                    self.target_velocity_gradient, count
+                ).reshape(-1, 9)
+            return velocity, gradient
         return (
             self.compute_target_velocity(
                 particles,

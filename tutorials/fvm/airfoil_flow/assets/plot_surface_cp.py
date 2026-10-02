@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 
 from ._common import (  # noqa: E402
     COLORS,
@@ -43,7 +44,7 @@ def main():
         x[upper],
         -cp[upper],
         "o",
-        color=COLORS["TUDdark"],
+        color=COLORS["fvm"],
         markersize=3,
         linestyle="none",
         label="Upper surface",
@@ -52,18 +53,17 @@ def main():
         x[lower],
         -cp[lower],
         "s",
-        color=COLORS["FVMorange"],
+        color=COLORS["fvm"],
         markersize=3,
         linestyle="none",
         label="Lower surface",
     )
     ax.set_xlabel("x / c")
     ax.set_ylabel("$-C_p$")
-    ax.set_title(f"NACA 0012 surface pressure (Re = {RE:.0f}, $\\alpha$ = {args.angle:g}$^\\circ$)")
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
     ax.legend()
 
-    fig.tight_layout()
+    centered_subplots_adjust(fig, outer=.1215, bottom=.20, top=.985)
     save_fig(fig, "airfoil_surface_cp.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     if abs(args.angle) < 1e-9:
         gap = float(abs(cp[upper].mean() - cp[lower].mean()))

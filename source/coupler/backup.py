@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -24,6 +24,11 @@ from source.solvers.vpm.config.fingerprint import numerical_configuration
 from source.solvers.vpm.config.restart import (
     _configuration_mismatches,
     canonical_restart_configuration,
+)
+from source.solvers.vpm.config.restart_changes import (
+    MISSING_CONFIGURATION_VALUE,
+    admit_configuration_changes,
+    admit_exact_configuration_changes,
 )
 from source.solvers.vpm.io.backup import _BackupIO
 from source.solvers.vpm.io.vlm_backup import export_vlm_backup
@@ -62,7 +67,6 @@ def _backup_config(coupler) -> dict:
     transfer = getattr(coupler, "vorticity_transfer", None)
     if transfer is not None:
         bodies = getattr(transfer, "_solid_bodies", ())
-        box = getattr(transfer, "_body_bounds", None)
         if bodies:
             revisions = [getattr(body, "revision", None) for body in bodies]
             if any(revision is None for revision in revisions):
@@ -70,8 +74,9 @@ def _backup_config(coupler) -> dict:
                     "Solid bodies need stable geometry revisions for coupled restart"
                 )
             config["solid_geometry"] = {"wall_revisions": revisions}
-        elif box is not None:
-            config["solid_geometry"] = {"box_bounds": np.asarray(box).tolist()}
+        anchor = getattr(transfer, "_lattice_anchor", None)
+        if anchor is not None:
+            config["transfer_lattice"] = {"anchor": np.asarray(anchor).tolist()}
     return config
 
 
@@ -157,6 +162,83 @@ def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
     if stored is None:
         return set()
     return {path for path, _old, _new in _config_differences(stored, current)}
+
+
+def _admit_coupled_configuration(stored, current, allowed, expectations):
+    """Apply VPM compatibility only inside VPM; all other namespaces are exact."""
+    if isinstance(allowed, str | bytes) or not isinstance(allowed, Collection):
+        raise TypeError("allowed_config_differences must be a collection of exact paths")
+    paths = tuple(allowed)
+    if any(type(path) is not str for path in paths):
+        raise ValueError("configuration permissions require exact dotted paths")
+    if expectations is None:
+        expectations = {}
+    elif not isinstance(expectations, Mapping):
+        raise TypeError("expected_config_differences must map exact paths to (stored, current)")
+    else:
+        expectations = dict(expectations)
+    if any(type(path) is not str for path in expectations) or set(expectations) - set(paths):
+        raise ValueError("configuration expectations require their exact allowlisted paths")
+    old_vpm, new_vpm = stored.get("vpm"), current.get("vpm")
+    if not isinstance(old_vpm, dict) or not isinstance(new_vpm, dict):
+        raise ValueError("coupled restart requires stored and current VPM configuration mappings")
+    try:
+        vpm_changes = admit_configuration_changes(
+            new_vpm, old_vpm,
+            allowed_config_differences=tuple(path[4:] for path in paths if path.startswith("vpm.")),
+            expected_config_differences={path[4:]: value for path, value in expectations.items() if path.startswith("vpm.")},
+        )
+    except (TypeError, ValueError) as exc:
+        changed = _configuration_mismatches(canonical_restart_configuration(new_vpm),
+                                            canonical_restart_configuration(old_vpm))
+        detail = ", ".join("vpm."+path for path in changed)
+        raise type(exc)(f"{exc}; coupled VPM difference paths: {detail}") from exc
+    other_changes = admit_exact_configuration_changes(
+        {key: value for key, value in current.items() if key != "vpm"},
+        {key: value for key, value in stored.items() if key != "vpm"},
+        allowed_config_differences=tuple(path for path in paths if not path.startswith("vpm.")),
+        expected_config_differences={path: value for path, value in expectations.items() if not path.startswith("vpm.")},
+    )
+    # The detached admitted values, rather than the caller's mutable map,
+    # become the exact permission snapshot forwarded to the real VPM reader.
+    vpm_paths = tuple(change["path"] for change in vpm_changes)
+    vpm_expectations = {
+        change["path"]: tuple(
+            change[side]["value"] if change[side]["present"] else MISSING_CONFIGURATION_VALUE
+            for side in ("stored", "current")
+        )
+        for change in vpm_changes
+    }
+    changes = (*other_changes, *({**change, "path": "vpm."+change["path"]} for change in vpm_changes))
+    return changes, vpm_paths, vpm_expectations
+
+
+def _inspect_coupled_vpm_checkpoint(coupler, path, manifest, allowed, expectations):
+    """Read real native VPM admission before any coupled state/history load."""
+    solver = coupler.vpm_solver
+    step, time, dt, _count = _BackupIO.inspect(
+        solver, path, allowed_config_differences=allowed,
+        expected_config_differences=expectations,
+    )
+    with h5py.File(path, "r") as archive:
+        stored_config = json.loads(archive["solver"].attrs["numerical_configuration"])
+    manifest_vpm = manifest["config"]["vpm"]
+    if config_mapping_digest(stored_config) != config_mapping_digest(manifest_vpm):
+        raise ValueError("authenticated VPM HDF5 configuration differs from coupled manifest VPM configuration")
+    for name in ("coupling_step", "vpm_step", "fvm_step", "n_fvm_substeps"):
+        value = manifest[name]
+        if type(value) is not int or value < (1 if name == "n_fvm_substeps" else 0):
+            raise ValueError(f"invalid coupled backup clock {name}")
+    if (manifest["vpm_step"] != step or manifest["coupling_step"] != step
+            or manifest["n_fvm_substeps"] != coupler.n_fvm_substeps
+            or manifest["fvm_step"] != step*manifest["n_fvm_substeps"]):
+        raise ValueError("coupled backup step/subcycle clocks do not match native VPM checkpoint")
+    clock = manifest["time"]
+    if (isinstance(clock, bool) or not isinstance(clock, int | float)
+            or not np.isfinite(clock) or clock < 0 or not np.isclose(clock, time, rtol=0., atol=1.e-12)):
+        raise ValueError("coupled backup time does not match native VPM checkpoint")
+    if dt != manifest_vpm.get("time_step_size"):
+        raise ValueError("native VPM checkpoint time-step attribute differs from authenticated configuration")
 
 
 def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = None) -> None:
@@ -398,12 +480,16 @@ def load_coupled_backup(
     *,
     comm=None,
     allowed_config_differences: Collection[str] = (),
+    expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
 ) -> int:
     """Restore both solvers and the VPM boundary-history state.
 
     Configuration matching remains strict unless a caller explicitly names
     the exact paths allowed to differ for a controlled restart experiment.
     Artifact integrity and every unlisted configuration field remain strict.
+    Structural changes additionally require exact stored/current expectations.
+    Native VPM admission completes collectively before FVM state/history load;
+    this is not a transaction rollback for later FVM/output publication errors.
     """
     if coupler.fvm_solver is None or (coupler._is_master and coupler.vpm_solver is None):
         raise RuntimeError("Initialize the coupler before loading a backup")
@@ -413,6 +499,8 @@ def load_coupled_backup(
     manifest: dict | None = None
     artifacts: dict[str, str] = {}
     artifact_paths: dict[str, Path] = {}
+    vpm_allowed: tuple[str, ...] = ()
+    vpm_expectations: dict[str, tuple[object, object]] = {}
     if coupler._is_master:
         try:
             manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
@@ -511,25 +599,21 @@ def load_coupled_backup(
                 elif manifest.get("config_sha256") != config_mapping_digest(stored_config):
                     error = "Coupled backup stored configuration hash mismatch"
                 else:
-                    current_config = _backup_config(coupler)
-                    if manifest.get("config_sha256") != config_mapping_digest(current_config):
-                        changed_paths = config_difference_paths(stored_config, current_config)
-                        changes = config_diff(stored_config, current_config)
-                        unexpected = changed_paths - set(allowed_config_differences)
-                        detail = "\n  ".join(changes) if changes else "(no structured diff)"
-                        if unexpected:
-                            error = (
-                                "Coupled backup configuration differs outside the explicit "
-                                "allowlist:\n  "
-                                + detail
-                                + "\n  disallowed paths: "
-                                + ", ".join(sorted(unexpected))
-                            )
-                        elif changed_paths:
+                    try:
+                        current_config = _backup_config(coupler)
+                        changes, vpm_allowed, vpm_expectations = _admit_coupled_configuration(
+                            stored_config, current_config, allowed_config_differences, expected_config_differences,
+                        )
+                        _inspect_coupled_vpm_checkpoint(
+                            coupler, artifact_paths["vpm"], manifest, vpm_allowed, vpm_expectations,
+                        )
+                        if changes:
                             logging.getLogger("coupler").warning(
                                 "Loading a coupled backup with explicitly allowed "
-                                f"configuration differences: {', '.join(sorted(changed_paths))}"
+                                "configuration differences: " + ", ".join(sorted(change["path"] for change in changes))
                             )
+                    except BaseException as exc:
+                        error = f"Coupled restart admission failed: {type(exc).__name__}: {exc}"
     if comm is not None and comm.Get_size() > 1:
         error, manifest = comm.bcast(
             (error, manifest) if coupler._is_master else None,
@@ -551,7 +635,10 @@ def load_coupled_backup(
     if coupler._is_master:
         try:
             assert coupler.vpm_solver is not None
-            coupler.vpm_solver._load_backup_from(str(target / artifacts["vpm"]))
+            coupler.vpm_solver._load_backup_from(
+                str(target / artifacts["vpm"]), allowed_config_differences=vpm_allowed,
+                expected_config_differences=vpm_expectations,
+            )
             with np.load(
                 target / artifacts["vpm_boundary_condition"], allow_pickle=False
             ) as boundary:

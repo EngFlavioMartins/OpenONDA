@@ -54,7 +54,7 @@ def main() -> None:
         figsize=(125 / 25.4, 84 / 25.4),
         gridspec_kw={"width_ratios": (1.0, 1.0)},
     )
-    centered_subplots_adjust(fig, outer=0.12, wspace=0.55, top=0.88, bottom=0.37)
+    centered_subplots_adjust(fig, outer=0.102, wspace=0.55, top=0.930, bottom=0.305)
     curves = []
     plotted_values = []
 
@@ -138,7 +138,7 @@ def main() -> None:
         *ax.get_legend_handles_labels(),
         ncol=3,
         loc="lower center",
-        bbox_to_anchor=(0.5, -0.01),
+        bbox_to_anchor=(0.5, 0.0),
         borderpad=0.25,
         handletextpad=0.45,
         columnspacing=0.70,

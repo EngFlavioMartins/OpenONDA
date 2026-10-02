@@ -1,61 +1,39 @@
 # Quadcopter in climb
 
-Run `python setup.py` (or `./allrun.sh`), then `./allplot.sh`. Use `./allplot.sh pdf` for vector figures. The installed OpenONDA package supplies the solver and plotting dependencies.
+Four counter-rotating, two-bladed rotors generate interacting wakes in axial climb. See [VLM blade/wake setup](../../../docs/vpm.md#vlm-surfaces-and-wakes) and [LES/core spreading](../../../docs/vpm.md#diffusion-and-les).
 
-Four counter-rotating, two-bladed flat-plate rotors operate at 4000 rpm in 0.8 m/s axial climb. The leading edges face the actual rotational relative wind; the quarter chords lie on each radial axis. Rotation starts at the operating speed. A spin-up in an already established axial inflow would initially expose almost stationary plates to nearly normal flow, which this attached-flow VLM does not describe.
+## Run
 
-At this operating point the blade chord Reynolds number is approximately 22,000–63,000, using `sqrt(U² + (Omega r)²) c / nu`. These small rotors are not in the wind-turbine tutorial's Reynolds-number range. The theoretical comparison assesses attached inviscid loading; transition and profile losses would require a blade-section model beyond this VLM.
+From this directory:
 
-The setup declares geometry, motion, fluid properties, resolution and native
-samplers. Attached VLM loading is recorded on every accepted VPM step. The
-VPM-owned backup clock is the sole coupled surface-output clock: `solution/`
-holds restartable VPM+VLM HDF5 backups and their native VLM companion files,
-while force/loading CSVs and sampled flow fields are in `samples/quadcopter/`.
-Plotters use those native records and the actual blade geometry. They do not
-import the setup, reconstruct a solver, or extract checkpoints.
+```bash
+./allrun.sh
+./allplot.sh
+```
 
-`quadcopter_performance` shows thrust and input shaft power for each rotor. Positive shaft input is the negative of the native fluid-on-blade rotational power. The solver records each blade's torque about its own axis and contracts it with its actual angular velocity, so counter-rotation does not cancel power. Coefficients use the rotorcraft convention:
+`allrun.sh` removes previous generated output. `./allcontinue.sh` resumes compatible backups; `python setup.py` also continues automatically. `./allplot.sh pdf` exports PDF.
 
-- `CT = T / (rho A (Omega R)^2)`;
-- `CP = P / (rho A (Omega R)^3)`, with `A = pi R^2` for one rotor.
+## Geometry and resolution
 
-The native console also reports generic lift/drag coefficients using its displayed reference pressure and blade area. Use the disk-based `CT` and `CP` in these figures for the rotor theory comparison.
+Edit [setup.py](setup.py). Each rotor has radius $R=0.15$ m, hub radius 0.03 m and two blades with root/tip chords 0.025/0.015 m and pitch 12°/6°. Each blade uses 4 chordwise and 12 spanwise panels. Rotor centres are at $(\pm0.16,\pm0.16,0)$ m with alternating rotation directions.
 
-The reference uses the recorded chord/pitch distribution in an isolated-rotor blade-element/momentum calculation with tip/hub losses and an inviscid thin-plate lift polar. The axial ideal-momentum curve includes climb power. These references omit rotor interference, airfoil profile drag, stall and transition; they assess the inviscid loading model, not real motor electrical power. `quadcopter_wake` averages native velocity planes over the last six revolutions. Dashed circles mark the projected disks. Enstrophy is a separate wake diagnostic, not a convergence criterion.
+The speed is 4000 rpm and axial climb speed is 0.8 m/s. Density is 1.225 kg/m³ and viscosity is $1.5\times10^{-5}$ m²/s. Blade chord Reynolds numbers are approximately 22,000–63,000. Rotation starts at operating speed, with the leading edges facing the rotational relative wind.
 
-The authored run spans 24 nominal revolutions at 3.75 degrees per step. VLM
-forces and power are sampled on every accepted step, fields 8 times per
-revolution, and full coupled restart backups 32 times per revolution
-(every three steps, 11.25 degrees of rotation). The 24-revolution run therefore
-provides 768 distinct VPM+VLM states for a slowed 30 fps animation, rather than
-sampling the blades repeatedly at the same azimuth. There is no
-independent VLM surface sampler. `python assets/validate_results.py` checks
-completion and tail load drift against native metadata, compares BEM, checks
-the ideal power requirement and rotor symmetry, and requires complete final
-six-revolution velocity-plane histories. It compares the two three-revolution
-mean vector fields relative to the induced velocity, with a 3% drift limit.
-Subtracting the freestream prevents a large uniform inflow from hiding wake
-changes. The native flow-integral sampler also records bound and coupled linear
-impulse per density. The validator compares the final six-revolution coupled-
-impulse change with integrated blade thrust, allowing 10% discrepancy; a
-failure calls for checking wake health and any boundary losses. This comparison
-requires retaining the wake inside the domain. Run it with `--pre-plot` to
-assess numerical results before rendering figures. A completed solver run is
-not automatically a converged solution.
+The wake uses Winckelmans particles, transposed treecode induction, core spreading and $C_s=0.20$ Smagorinsky LES. Core spreading with this algebraic kernel is a second-moment diffusion model. Adaptive splitting checks each step when strength doubles. Particles outside $x,y\in[-1.5,1.5]$ m and $z\in[-3,1]$ m are removed; enlarge this region before studying a longer retained wake.
 
-Reference formulation: [CCBlade theory and its cited Ning/Buhl papers](https://wisdem.readthedocs.io/en/master/wisdem/ccblade/theory.html). The propeller branch is checked independently against annular axial and angular momentum in `tests/tutorials/test_rotor_theory.py`.
+There are 96 steps per revolution (3.75° per step), with $\Delta t=0.00015625$ s. The run spans 24 revolutions, or 0.36 s. Fields are sampled eight times per revolution; coupled backups occur every three steps.
 
-The quadcopter is a demonstration after validation with the flat plate, combined
-motion of the delta wings, and the single wind-turbine rotor. It needs a stable,
-complete run and useful native wake/load figures; a separate isolated-propeller
-validation campaign is not a prerequisite. Earlier [diagnostic studies](studies/README.md)
-and their results are retained for reproducibility, but are not separate
-validation tutorials. No additional isolated quadcopter-rotor studies are scheduled.
+## Loads, references and outputs
 
-Adaptive filament refinement checks the wake each accepted step and bisects
-particles whose strength has doubled relative to their lineage reference.
-The strain limit and maximum particle capacity remain active. The archived
-unrefined health-stop run is a different numerical configuration and cannot
-continue with this setup. Qualify the refined case from a clean initial state
-in a separate copy to retain the old data. See the
-[checkpoint audit](../../../studies/quadcopter_stability_audit.md).
+For each rotor, $A=\pi R^2$ and the rotorcraft coefficients are
+
+$$
+C_T=\frac{T}{\rho A(\Omega R)^2},\qquad
+C_P=\frac{P}{\rho A(\Omega R)^3}.
+$$
+
+Positive $P$ is shaft input, the negative of fluid-on-blade rotational power. The reference is isolated-rotor BEM with a thin-plate lift polar and hub/tip losses. It omits rotor interference, transition, profile drag and stall; the power excludes motor electrical losses.
+
+Force/loading records and planes at $z=-0.35$ and −0.70 m are in `samples/quadcopter/`. Open `solution/vpm.pvd` and `vlm.pvd` for the coupled geometry. Wake figures average the final six revolutions.
+
+Run `python assets/validate_results.py --pre-plot` to check completion, load/wake stationarity, rotor symmetry, BEM comparison and thrust/impulse balance. The impulse check requires the wake to remain inside the retained domain. A complete run still needs panel, time-step and particle-core convergence. This case demonstrates interacting attached-flow rotor wakes; VLM does not resolve low-Reynolds-number blade boundary layers or stall.

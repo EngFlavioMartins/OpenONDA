@@ -82,6 +82,59 @@ def _verify_taichi() -> tuple[str, str]:
         ti.reset()
 
 
+def _verify_gaussian_mesh() -> dict[str, object]:
+    """Exercise optional installed FENV, NVRTC and private cuFFT ownership.
+
+    Explicit opt-in only: normal installation verification stays CPU-only.
+    No global allocator/FFT cache is cleared, and no process-global device or
+    stream is selected. Solver physics/mesh/tail qualification is separate.
+    """
+    from source.solvers.vpm.physics.induction.gaussian_mesh.availability import (
+        require_gaussian_mesh_runtime,
+    )
+    from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import DeviceOwner, FFTPlanPair
+
+    report = require_gaussian_mesh_runtime()
+    owner = DeviceOwner(8 * 1024**2)
+    plans = None
+    try:
+        cp = owner.cp
+        with owner.allocation_scope():
+            data = cp.empty((4, 4, 4), dtype=cp.float64)
+            output = cp.empty_like(data)
+            kernel = cp.RawKernel(
+                'extern "C" __global__ void verify(double *x) {'
+                "int i=blockIdx.x*blockDim.x+threadIdx.x; if(i<64) x[i]=(double)i+0.25;}",
+                "verify",
+                options=("--std=c++11",),
+                backend="nvrtc",
+            )
+            kernel((1,), (64,), (data,))
+            plans = FFTPlanPair(owner, (4, 4, 4), "float64", 4 * 1024**2)
+            transformed = plans.rfft(data)
+            plans.irfft(transformed, output)
+            actual = cp.asnumpy(output).ravel()
+        np.testing.assert_allclose(
+            actual, np.arange(64, dtype=np.float64) + 0.25, rtol=0, atol=1e-11
+        )
+        report.update(
+            {
+                "nvrtc_kernel": "passed",
+                "owned_fft_roundtrip": "passed",
+                "pool_reserved_bytes": int(owner.pool.total_bytes()),
+                "plan_work_bytes": int(plans.work_bytes),
+                "scope": "installation smoke, not a discretization accuracy certificate",
+            }
+        )
+        return report
+    finally:
+        try:
+            if plans is not None:
+                plans.close()
+        finally:
+            owner.close()
+
+
 def _verify_cartesian_mesher() -> dict[str, str | int]:
     """Exercise the installed, compiled octree using packaged STL geometry."""
     from source.solvers.fvm.mesh.cartesian.cfmesh_octree import _balance_selection_kernel
@@ -555,6 +608,11 @@ def main() -> int:
         "--with-meshing", action="store_true", help="also exercise optional Gmsh geometry"
     )
     parser.add_argument(
+        "--with-gaussian-mesh",
+        action="store_true",
+        help="also verify optional installed FENV, CUDA 12 NVRTC and owned cuFFT execution",
+    )
+    parser.add_argument(
         "--with-environment",
         action="store_true",
         help="also render thesis/ParaView figures and exercise MPI/PETSc",
@@ -572,6 +630,8 @@ def main() -> int:
     }
     if args.with_meshing:
         report["gmsh_version"] = _verify_gmsh()
+    if args.with_gaussian_mesh:
+        report["gaussian_mesh"] = _verify_gaussian_mesh()
     if args.with_environment:
         report["environment"] = _verify_environment()
     taichi_version, taichi_arch = _verify_taichi()
