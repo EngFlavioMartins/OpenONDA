@@ -1,153 +1,30 @@
 # Installation
 
-OpenONDA is installed with pip. Native FVM, VPM and hybrid solvers do not
-require OpenFOAM, a source checkout at runtime, or shell startup changes.
-CPython 3.11 is the supported interpreter across Linux x86-64, Apple Silicon,
-and Intel macOS. All 3.11 security patch updates are supported. This single
-minor version covers the available Taichi wheels on these platforms, including
-Taichi 1.7.1 on Intel macOS. Windows is not currently qualified.
-
-The [README clone command](../README.md#installation) uses shallow Git history.
-The current checkout does not require Git LFS. Lossless tutorial result archives
-are downloaded from versioned GitHub releases and checked against Git-tracked hashes.
-To retrieve the full `development` history later, run `git fetch --unshallow origin`.
-Working `samples/` and `solution/` directories remain local; approved result
-snapshots are versioned in `assets/results` with file hashes and provenance.
-`allplot.sh` restores archived inputs only when its result directories are absent.
-It does not overwrite or combine an archive with an existing local run.
-
-Missing archives download automatically on the first `allplot.sh` run; cached
-archives and restored results remain usable offline. For the complete newer
-sample snapshot, follow the [sample retrieval instructions](../studies/samples_snapshot_2026-09-30/README.md).
-See the
-[archive checklist](verification/tutorial_results_archive.md) for case coverage.
-
-## Normal installation
-
-From a cloned checkout, optionally create a virtual environment first:
+On Linux x86-64 or macOS (Intel or Apple Silicon), use Bash or Zsh:
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python install.py
+git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+cd OpenONDA
+source install.sh
 ```
 
-`install.py` rejects unsupported interpreters before running pip. It installs
-the package and dependencies into the CPython 3.11 environment,
-runs `pip check`, and verifies the installation from a temporary directory.
-It requires no per-case interpreter variables or import-path configuration.
-The equivalent package-only command is `python -m pip install .`.
+The installer creates and activates the **OpenONDA** Conda environment, installs Python 3.11 and the solver, meshing, MPI, and plotting dependencies, and checks the installation. If Conda is absent, it installs Miniforge. Administrator access is not required.
 
-After installation, change to any writable directory and run:
+In a new terminal:
 
 ```bash
-openonda info
-python -m openonda.verify_install --require-site-packages
-python -m pip check
+conda activate OpenONDA
+```
+
+Keep the checkout in place: installation is editable, so source changes take effect immediately. Re-run `source install.sh` to update the environment.
+
+## First simulation
+
+```bash
 openonda tutorial run fvm/taylor_green --workspace ./first-flow
+openonda tutorial plot fvm/taylor_green --workspace ./first-flow
 ```
 
-The verifier checks installed resources, a rendered figure, a refined Cartesian
-mesh using the compiled octree, Numba runtime compatibility, a native FVM step
-with iterative/AMG solves, and a CPU VPM step with HDF5/ParaView output and
-checkpoint restart. It creates temporary output and
-returns a nonzero status on failure. `--require-site-packages` distinguishes a
-normal installation from an editable checkout; omit it for editable installs.
+This case follows viscous decay of a periodic vortex. Choose other flows from the [tutorial index](tutorials.md), or configure a case with the [FVM](fvm.md), [VPM/VLM](vpm.md), or [coupling](coupling.md) guide.
 
-The native Cartesian mesher automatically uses Numba for octree balancing.
-This acceleration is part of the normal package: it requires no meshing extra,
-external compiler, OpenFOAM/cfMesh installation, or repository-relative paths.
-Numba compiles for the local CPU on first use and caches the result for later
-processes, including runs launched from other working directories. The first
-run after installation or a kernel update includes compilation overhead;
-steady-state performance still depends on the CPU and mesh size.
-
-Numba uses a writable package cache or falls back to its per-user cache for
-read-only installations. Set `NUMBA_CACHE_DIR` to a writable persistent directory
-if a shared installation requires an explicit cache location. Machine-specific
-compiled cache files are not shipped in the wheel; each machine builds its own.
-See [Numba's cache documentation](https://numba.readthedocs.io/en/stable/developer/caching.html).
-
-## Development installation
-
-```bash
-python install.py --dev
-```
-
-Run tests from the checkout using `python -m pytest`. Installed imports still
-work from other directories; the editable installation tracks source changes.
-The equivalent package-only command is `python -m pip install -e ".[dev]"`.
-For only the test runner, use `.[test]`. See [the test guide](../tests/README.md).
-
-## Optional Python dependencies
-
-| Extra | Purpose |
-| --- | --- |
-| `.[meshing]` | Gmsh API/import and accelerated STL reading through numpy-stl. Native meshers and the built-in STL reader work without it. |
-| `.[parallel]` | mpi4py and petsc4py, requiring compatible MPI/PETSc system libraries. |
-| `.[test]` | pytest. |
-| `.[dev]` | Tests, lint/type/security tools, profiling and distribution building. |
-
-NumPy, SciPy, Numba, Taichi and PyAMG supply the numerical runtime. HDF5,
-VTK/PyVista, pandas and Matplotlib provide storage, output and plotting.
-These packages are installed automatically. SciPy 1.12 or newer is required
-for the iterative solvers’ `rtol` API. Post-processing uses SciPy’s trapezoidal
-integration so the declared NumPy 1.26 minimum remains supported. The Markdown documentation needs
-no separate build tools.
-
-Solver factories configure CPU use internally. MPI runs limit BLAS and Numba
-to one thread per rank; `threadpoolctl` also updates libraries already loaded
-by Python. Coupled VPM work uses the case CPU budget on its owning rank while
-the other ranks wait. No per-tutorial thread exports are required.
-
-## Optional external software
-
-- **Gmsh:** install `.[meshing]` for its Python API. Linux may also require
-  `libGLU` (`libglu1-mesa` on Debian/Ubuntu). See the
-  [Gmsh installation manual](https://gmsh.info/doc/texinfo/#Installing-and-running-Gmsh-on-your-computer).
-  Check it with `python -m openonda.verify_install --with-meshing`.
-- **MPI/PETSc:** use one compatible MPI stack. The project provides
-  `scripts/environment/environment-parallel.yml`; see the
-  [PETSc installation guide](https://petsc.org/release/install/).
-- **OpenVSP:** only needed to regenerate OpenVSP geometry; cached tutorial
-  inputs are shipped. Install its API for a matching Python ABI from the
-  [upstream distribution](https://openvsp.org/download.php). If that API lives
-  in a separate environment, the optional rotor generation tool accepts
-  `OPENONDA_OPENVSP_PYTHON` pointing to that interpreter. This selects an
-  external executable; it does not change OpenONDA's import paths.
-- **ParaView:** required for tutorial scripts that render ParaView scenes.
-  Obtain it from [ParaView](https://www.paraview.org/download/) and make its
-  `pvpython` command available on `PATH`. Matplotlib plots do not require it.
-- **OpenFOAM/cfMesh:** only needed for independent external parity studies or
-  comparison data. Native solver operation and the introductory examples use
-  neither program. Mesh-file interchange is distinct from running OpenFOAM.
-- **LaTeX:** the tutorial thesis figures require `latex`, `pdflatex`, `dvipng`,
-  and the `newpxtext`/`newpxmath`, `standalone`, and TikZ packages from a TeX
-  installation. They use the shared
-  thesis fonts and palette. The solver itself does not require TeX;
-  `openonda.plotting.set_style()` supports plots with Matplotlib's built-in
-  math renderer when the thesis typography is not required.
-- **Poppler:** the labelled ParaView scenes use its `pdftoppm` command for PNG
-  export. Install `poppler-utils` on Debian/Ubuntu or `poppler` with Homebrew
-  or Conda; a PDF-only scene export does not require this rasterizer.
-
-Plotting also requires the case's saved data. Installing OpenONDA does not
-produce simulation results. See the [tutorial data audit](verification/tutorial_data_and_portability_2026-09-29.md)
-for the inputs still needed to reproduce every figure from a fresh clone.
-
-## Conda alternative
-
-The optional project helper creates a Conda environment and then installs the
-same Python package:
-
-```bash
-bash scripts/install/install_conda.sh
-```
-
-Add `--dev` for an editable development installation or `--parallel` for the
-MPI/PETSc environment. The helper can install Miniforge if Conda is absent;
-use `--prompt` to confirm that download interactively. Pip is sufficient for
-the normal installation and does not require this helper. The Conda helper
-uses the same `install.py` once the environment exists. Activate the environment
-once per terminal session, then run `python setup.py ...`, `python assets/name.py
-...`, or `./allrun.sh` in a tutorial. The shell launchers use the active `python`.
+CPU execution is available with the standard installation. GPU cases require a device and drivers compatible with the selected `compute_device`.

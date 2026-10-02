@@ -72,11 +72,9 @@ def test_installer_runs_install_check_and_isolated_verification(monkeypatch, dev
     monkeypatch.setattr(install.subprocess, "run", run)
     assert install.main(["--dev"] if dev else []) == 0
     assert calls[0][:4] == [install.sys.executable, "-m", "pip", "install"]
-    assert calls[0][4:] == (["-e", f"{ROOT}[dev]"] if dev else [str(ROOT)])
+    assert calls[0][4:] == ["-e", f"{ROOT}[dev]"]
     assert calls[1] == [install.sys.executable, "-m", "pip", "check"]
-    assert calls[2] == [install.sys.executable, "-I", "-m", "openonda.verify_install"] + (
-        [] if dev else ["--require-site-packages"]
-    )
+    assert calls[2] == [install.sys.executable, "-I", "-m", "openonda.verify_install"]
 
 
 def test_installer_stops_after_failed_install(monkeypatch):

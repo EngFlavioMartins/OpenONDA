@@ -14,8 +14,9 @@ import tempfile
 def main(arguments=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--dev", action="store_true", help="editable install with development tools"
+        "--dev", action="store_true", help=argparse.SUPPRESS
     )
+    parser.add_argument("--with-environment", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(arguments)
     if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):
         parser.error(
@@ -23,10 +24,10 @@ def main(arguments=None) -> int:
         )
     root = Path(__file__).resolve().parent
     install = [sys.executable, "-m", "pip", "install"]
-    install += ["-e", f"{root}[dev]"] if args.dev else [str(root)]
+    install += ["-e", f"{root}[dev]"]
     verify = [sys.executable, "-I", "-m", "openonda.verify_install"]
-    if not args.dev:
-        verify.append("--require-site-packages")
+    if args.with_environment:
+        verify.append("--with-environment")
     # Neither the current directory nor PYTHONPATH can make verification pass
     # by accidentally importing the source checkout instead of the installation.
     with tempfile.TemporaryDirectory(prefix="openonda-install-") as directory:

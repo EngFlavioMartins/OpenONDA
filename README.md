@@ -24,51 +24,15 @@ viscous flows, wakes, wings, rotors, and interacting vortices.
 
 ## Installation
 
-Use **CPython 3.11** on Linux and macOS (Apple Silicon or Intel).
-Only the 3.11 release series is supported; 3.11 security and bug-fix updates
-remain allowed. Create a virtual environment with that interpreter:
+On Linux x86-64 or macOS, clone the repository and install:
 
 ```bash
-git clone --depth 1 --branch development \
-  https://github.com/EngFlavioMartins/OpenONDA.git
+git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
-python3.11 -m venv .venv
-source .venv/bin/activate
-python install.py
+source install.sh
 ```
 
-The installer installs dependencies into the Python environment you are using
-and verifies the result outside the checkout. Use `python install.py --dev`
-to work on the source without reinstalling after edits. Ordinary
-`python -m pip install .` is also supported.
-
-See [installation details](docs/installation.md) for environment setup,
-optional mesh import and MPI/PETSc support.
-
-To reproduce archived tutorial figures, install the
-[rendering dependencies](docs/installation.md#optional-external-software).
-Run `./allplot.sh` inside the case. Its lossless result archive restores missing
-plot inputs, downloading checksum-verified release assets as needed; existing
-local runs are preserved. Git LFS is not required. Archives record whether their
-results are complete, partial or stopped on a numerical health check. See the
-[archive checklist](docs/verification/tutorial_results_archive.md) for coverage
-and remaining numerical work. Result archives are separate from the pip package.
-
-The [30 September sample snapshot](studies/samples_snapshot_2026-09-30/README.md)
-also preserves every current tutorial `samples/` file, including study histories
-and restart branches. To retrieve it from another machine:
-
-```bash
-git clone --branch development https://github.com/EngFlavioMartins/OpenONDA.git
-cd OpenONDA
-python -m openonda.results restore build/published-samples \
-  --bundle studies/samples_snapshot_2026-09-30/assets/results
-```
-
-Run the Python command in the installed OpenONDA environment. The restored files
-retain their original `tutorials/.../samples/...` paths under
-`build/published-samples`; they remain separate from local simulations and the
-older, matched solution bundles used by `allplot.sh`.
+The installer creates and activates the **OpenONDA** Conda environment, installs the checkout editably, and supplies solver and plotting dependencies. In a new terminal, run `conda activate OpenONDA`. See [installation](docs/installation.md) for requirements.
 
 ## Two small examples
 
@@ -157,7 +121,7 @@ Each case includes its own instructions and input assets. See the [tutorial guid
 
 ## Development and contributing
 
-Install with `python -m pip install -e ".[dev]"`. See the
+The installation already includes development tools. See the
 [test index](tests/README.md) for verification commands.
 Report problems through [GitHub issues](https://github.com/EngFlavioMartins/OpenONDA/issues).
 

@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -288,6 +289,28 @@ def _verify_native_coupled() -> dict[str, object]:
     return {"n_cells": int(mesh["n_cells"]), "fvm_step": fvm_step, "vpm_step": vpm_step}
 
 
+def _verify_tutorial_source_paths(tutorial_root: Path) -> None:
+    """Inspect only resources eligible for installation/materialization.
+
+    Editable installations may contain the user's generated results beside
+    maintained templates. They are not shipped tutorial code and must neither
+    be verified as such nor exempt any included source from the path check.
+    """
+    from pathlib import PurePosixPath
+
+    from openonda.tutorials import _include_resource
+
+    path_markers = ("/" + "Users/", "/" + "home/")
+    for source in tutorial_root.rglob("*"):
+        relative = PurePosixPath(source.relative_to(tutorial_root).as_posix())
+        if (not source.is_file() or source.suffix not in {".py", ".sh"}
+                or not _include_resource(relative)):
+            continue
+        text = source.read_text(encoding="utf-8")
+        if any(marker in text for marker in path_markers):
+            raise RuntimeError(f"Installed tutorial contains a machine-specific path: {source}")
+
+
 def _verify_distribution_resources() -> dict[str, object]:
     """Verify typing, tutorial, and plotting resources from the installation."""
     if not (resources.files("openonda") / "py.typed").is_file():
@@ -296,13 +319,7 @@ def _verify_distribution_resources() -> dict[str, object]:
     tutorial_root = resources.files("tutorials")
     if not isinstance(tutorial_root, Path):
         raise RuntimeError("OpenONDA tutorials require an unpacked installation")
-    path_markers = ("/" + "Users/", "/" + "home/")
-    for source in tutorial_root.rglob("*"):
-        if source.suffix not in {".py", ".sh"}:
-            continue
-        text = source.read_text(encoding="utf-8")
-        if any(marker in text for marker in path_markers):
-            raise RuntimeError(f"Installed tutorial contains a machine-specific path: {source}")
+    _verify_tutorial_source_paths(tutorial_root)
 
     with tempfile.TemporaryDirectory(prefix="openonda-installed-resources-") as directory:
         workspace = Path(directory) / "workspace"
@@ -335,6 +352,8 @@ def _verify_distribution_resources() -> dict[str, object]:
         figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
         axes.plot([0.0, 1.0], [0.0, 1.0])
         axes.set_xlabel(r"$x$")
+        theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
+        theme.fit_thesis_y_label_margins(figure, (axes,))
         figure_path = workspace / "plot-smoke.png"
         theme.save_fig(figure, figure_path, dpi=72)
         if not figure_path.is_file() or figure_path.stat().st_size == 0:
@@ -401,6 +420,85 @@ def _verify_direct_tutorial_scripts() -> int:
     return checked
 
 
+def _verify_environment() -> dict[str, object]:
+    """Exercise the non-Python tools supplied by the one-command installer."""
+    from matplotlib import pyplot as plt
+
+    from openonda import plotting as theme
+
+    commands = ("latex", "pdflatex", "dvipng", "pdftoppm", "pvpython", "mpiexec")
+    missing = [command for command in commands if shutil.which(command) is None]
+    if missing:
+        raise RuntimeError(f"OpenONDA environment is missing commands: {', '.join(missing)}")
+    outside = [command for command in commands
+               if not Path(shutil.which(command)).resolve().is_relative_to(Path(sys.prefix).resolve())]
+    if outside:
+        raise RuntimeError(f"Commands resolve outside the OpenONDA environment: {', '.join(outside)}")
+    with tempfile.TemporaryDirectory(prefix="openonda-environment-") as directory:
+        workspace = Path(directory)
+        theme.set_thesis_style()
+        figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
+        axes.plot([0, 1], [0, 1])
+        axes.set_xlabel(r"$x/R$")
+        axes.set_ylabel(r"$u/U_\infty$")
+        theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
+        theme.fit_thesis_y_label_margins(figure, (axes,))
+        for figure_format in ("pdf", "png"):
+            theme.save_fig(figure, workspace / f"thesis.{figure_format}",
+                           figure_format=figure_format, dpi=72)
+        plt.close(figure)
+        (workspace / "overlay.tex").write_text(
+            r"\documentclass{standalone}\usepackage{tikz}\usepackage{newpxtext}"
+            r"\usepackage{newpxmath}\begin{document}\begin{tikzpicture}"
+            r"\node {OpenONDA $u/U_\infty$};\end{tikzpicture}\end{document}"
+        )
+        latex = subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "overlay.tex"],
+            cwd=workspace, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if latex.returncode:
+            raise RuntimeError(f"TeX overlay verification failed:\n{latex.stdout}")
+        subprocess.run(
+            ["pdftoppm", "-png", "-singlefile", "-scale-to", "256", "overlay.pdf", "overlay"],
+            cwd=workspace, check=True,
+        )
+        (workspace / "scene.py").write_text(
+            "from paraview.simple import (Sphere, Show, CreateView, SaveScreenshot, "
+            "CreateLayout, AssignViewToLayout)\n"
+            "view = CreateView('RenderView')\n"
+            "layout = CreateLayout(name='Verification')\n"
+            "AssignViewToLayout(view=view, layout=layout, hint=0)\n"
+            "Show(Sphere(), view)\n"
+            "view.ResetCamera()\n"
+            "assert SaveScreenshot('scene.png', layout, ImageResolution=[256, 256])\n"
+        )
+        subprocess.run(
+            ["pvpython", "--force-offscreen-rendering", "scene.py"], cwd=workspace, check=True,
+        )
+        # Use two real MPI processes and a PETSc solve, not just import checks.
+        parallel = (
+            "from mpi4py import MPI; from petsc4py import PETSc; "
+            "comm=MPI.COMM_WORLD; assert comm.size == 2; "
+            "assert comm.allreduce(comm.rank+1) == 3; "
+            "a=PETSc.Mat().createAIJ([2,2], comm=PETSc.COMM_SELF); "
+            "a.setUp(); a.setValue(0,0,2); a.setValue(1,1,2); a.assemble(); "
+            "b=a.createVecRight(); b.set(2); x=b.duplicate(); "
+            "k=PETSc.KSP().create(comm=PETSc.COMM_SELF); k.setOperators(a); "
+            "k.solve(b,x); assert k.getConvergedReason()>0; "
+            "assert max(abs(x.getArray()-1)) < 1e-10"
+        )
+        subprocess.run(
+            ["mpiexec", "--oversubscribe", "-n", "2", sys.executable, "-I", "-c", parallel],
+            cwd=workspace, check=True,
+            env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"},
+        )
+        for name in ("thesis.png", "thesis.pdf", "overlay.pdf", "overlay.png", "scene.png"):
+            if not (workspace / name).is_file() or (workspace / name).stat().st_size == 0:
+                raise RuntimeError(f"Environment verification did not create {name}")
+    return {"thesis_png_pdf": True, "paraview_render": True, "mpi_ranks": 2, "petsc_solve": True}
+
+
 def main() -> int:
     """Run the command-line installation verification suite.
 
@@ -439,6 +537,10 @@ def main() -> int:
     parser.add_argument(
         "--with-meshing", action="store_true", help="also exercise optional Gmsh geometry"
     )
+    parser.add_argument(
+        "--with-environment", action="store_true",
+        help="also render thesis/ParaView figures and exercise MPI/PETSc",
+    )
     args = parser.parse_args()
 
     # Initialize Numba before FVM runtime setup, as in a mixed-solver process.
@@ -452,6 +554,8 @@ def main() -> int:
     }
     if args.with_meshing:
         report["gmsh_version"] = _verify_gmsh()
+    if args.with_environment:
+        report["environment"] = _verify_environment()
     taichi_version, taichi_arch = _verify_taichi()
     report.update(
         {

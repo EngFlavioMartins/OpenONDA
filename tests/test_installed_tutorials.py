@@ -33,7 +33,7 @@ def test_catalog_has_every_maintained_launcher() -> None:
     maintained = {
         str(path.parent.relative_to(root))
         for path in root.rglob("allrun.sh")
-        if "study_results" not in path.relative_to(root).parts
+        if tutorial_api._include_resource(path.relative_to(root))
     }
     assert {tutorial.relative_path.as_posix() for tutorial in TUTORIALS} == maintained
 
