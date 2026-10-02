@@ -196,6 +196,7 @@ class OutputManager:
 
         event = OutputEvent.INITIAL if self.solver.step == 0 else OutputEvent.ACCEPTED_STEP
         directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
+        self._prepare_existing_vtk_series(directory)
         missing = [
             sample
             for sample in self._selected(event)
@@ -254,6 +255,10 @@ class OutputManager:
             self._runtime.last_written.clear()
             return
 
+        # Admit the last retained geometry before rewriting any observations,
+        # not at its next scheduled write after an expensive resumed step.
+        self._prepare_existing_vtk_series(output_directory, through_time=time)
+
         owned_names = {self._name(sampler) for sampler in self.samplers.samples}
         if getattr(self.solver, "vlm_solver", None) is not None:
             owned_names.update(("vlm_forces", "vlm_surface_forces"))
@@ -273,6 +278,34 @@ class OutputManager:
                 if entry_time <= time + 1.0e-12
             ]
         self._runtime.last_written.clear()
+
+    @staticmethod
+    def _prepare_vtk_geometry(sampler, filepath):
+        prepare = getattr(sampler, "prepare_existing_vtk", None)
+        if callable(prepare):
+            prior_layout = getattr(sampler, "grid_layout", None)
+            prepare(filepath)
+            layout = getattr(sampler, "grid_layout", None)
+            if layout != prior_layout:
+                Logging.info(
+                    f"Sampler {OutputManager._name(sampler)!r}: preserving exact stored "
+                    f"geometry with grid layout {layout!r} from {filepath}"
+                )
+        else:
+            validate = getattr(sampler, "validate_existing_vtk", None)
+            if callable(validate):
+                validate(filepath)
+
+    def _prepare_existing_vtk_series(self, directory, *, through_time=None):
+        """Validate/admit existing fixed geometry without evaluating fields."""
+        for sampler in self.samplers.samples:
+            if not isinstance(sampler, _VtkSampler):
+                continue
+            entries = self._read_pvd(directory, self._name(sampler))
+            if through_time is not None:
+                entries = [entry for entry in entries if entry[0] <= through_time + 1.0e-12]
+            if entries:
+                self._prepare_vtk_geometry(sampler, directory / entries[-1][1])
 
     @classmethod
     def _rewind_csv(cls, filepath: Path, time: float) -> None:
@@ -466,11 +499,16 @@ class OutputManager:
             filename = f"{prefix}_{context.step:06d}{extension}"
             final_path = context.output_directory / filename
             if prefix not in self._runtime.pvd_entries:
-                self._runtime.pvd_entries[prefix] = (
+                existing = (
                     self._read_pvd(context.output_directory, prefix)
                     if context.continuing_output
                     else []
                 )
+                if existing:
+                    self._prepare_vtk_geometry(
+                        sampler, context.output_directory / existing[-1][1]
+                    )
+                self._runtime.pvd_entries[prefix] = existing
             entries = self._runtime.pvd_entries[prefix]
             temp_path = context.output_directory / f".{filename}.tmp{extension}"
             sampler.save_vtp(context.solver, temp_path, time=context.time)

@@ -14,6 +14,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import csv
+import hashlib
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -115,6 +117,11 @@ class SurfaceSampler:
     canonical scalar CSV columns, while ``save_vtp`` preserves the structured
     grid topology in a VTS file.
 
+    Fresh grids use ``bounded_uniform_v1``. Native continuation may restore
+    ``legacy_arange_v0`` only by exact reconstruction of an existing frame
+    from the configured geometry. Old, metadata-free frames establish their
+    observed coordinates, not otherwise unrecorded constructor parameters.
+
     Attributes
     ----------
     point : numpy.ndarray
@@ -124,7 +131,8 @@ class SurfaceSampler:
     bounds : numpy.ndarray
         Two in-plane intervals ``(min1, max1, min2, max2)`` in m.
     spacing : float
-        Uniform point spacing in m.
+        Maximum requested point spacing in m. Each interval is uniformly
+        subdivided to include both bounds exactly.
     grid_points : numpy.ndarray
         Flattened generated points, shape ``(n_points, 3)``, in m.
 
@@ -159,8 +167,8 @@ class SurfaceSampler:
             ``[min1, max1, min2, max2]`` in m, ordered along the two in-plane
             axes.
         spacing : float
-            Positive grid spacing in m. Endpoints are included when reached by
-            the spacing sequence.
+            Positive maximum grid spacing in m. Both endpoints are included;
+            the realized spacing may be smaller to fit the declared bounds.
         file_name : str or None, default=None
             Base output name. The output manager supplies a class-based name
             when omitted.
@@ -180,9 +188,14 @@ class SurfaceSampler:
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
-        self.normal = normal / np.linalg.norm(normal)
+        normal_length = np.linalg.norm(normal)
+        if not np.isfinite(normal).all() or normal_length == 0:
+            raise ValueError("normal must be finite and non-zero")
+        self.normal = normal / normal_length
         self.bounds = np.asarray(bounds, dtype=np.float32)
         self.spacing = float(spacing)
+        # Record the grid construction policy in native run metadata.
+        self.grid_layout = "bounded_uniform_v1"
         self.file_name = file_name
         self.include_derivatives = bool(include_derivatives)
         self.schedule = schedule
@@ -193,9 +206,13 @@ class SurfaceSampler:
             raise ValueError(f"point must be 3D, got shape {self.point.shape}")
         if self.normal.shape != (3,):
             raise ValueError(f"normal must be 3D, got shape {self.normal.shape}")
-        if len(self.bounds) != 4:
-            raise ValueError(f"bounds must have 4 elements, got {len(self.bounds)}")
-        if self.spacing <= 0:
+        if self.bounds.shape != (4,) or not np.isfinite(self.bounds).all():
+            raise ValueError("bounds must have 4 finite elements")
+        if not np.isfinite(self.point).all():
+            raise ValueError("point must be finite")
+        if np.any(self.bounds[[1, 3]] <= self.bounds[[0, 2]]):
+            raise ValueError("bounds intervals must be strictly increasing")
+        if not np.isfinite(self.spacing) or self.spacing <= 0:
             raise ValueError(f"spacing must be positive, got {self.spacing}")
 
         # Build grid points
@@ -203,6 +220,12 @@ class SurfaceSampler:
 
     def _build_grid(self):
         """Build the 2D grid of sample points on the plane."""
+        self._install_grid(self.grid_layout, self._make_grid(self.grid_layout))
+
+    def _make_grid(self, layout):
+        """Reconstruct a known layout without changing the live sampler."""
+        if not isinstance(layout, str) or layout not in {"bounded_uniform_v1", "legacy_arange_v0"}:
+            raise ValueError(f"Unknown surface sampling grid layout {layout!r}")
         # Determine which axis is the normal direction
         abs_normal = np.abs(self.normal)
         normal_axis = np.argmax(abs_normal)
@@ -211,34 +234,169 @@ class SurfaceSampler:
         plane_offset = self.point[normal_axis]
 
         # Create coordinate arrays for the two in-plane axes
-        c1 = np.arange(self.bounds[0], self.bounds[1] + self.spacing / 2, self.spacing)
-        c2 = np.arange(self.bounds[2], self.bounds[3] + self.spacing / 2, self.spacing)
+        def bounded_axis(lower, upper):
+            if layout == "legacy_arange_v0":
+                # Keep the historical scalar dtypes and operations exactly.
+                # In particular, do not replace this with an f32 arange or
+                # round the stored coordinates to the new bounded grid.
+                return np.arange(lower, upper + self.spacing / 2, self.spacing)
+            # Accumulate in f64, then cast the points once. arange in f32
+            # drifts and may overshoot a bound by up to half a spacing.
+            intervals = max(1, int(np.ceil((float(upper) - float(lower)) / self.spacing)))
+            return np.linspace(float(lower), float(upper), intervals + 1)
+
+        c1 = bounded_axis(self.bounds[0], self.bounds[1])
+        c2 = bounded_axis(self.bounds[2], self.bounds[3])
         C1, C2 = np.meshgrid(c1, c2, indexing="ij")
 
         n_points = C1.size
-        self.grid_points = np.zeros((n_points, 3), dtype=np.float32)
+        grid_points = np.zeros((n_points, 3), dtype=np.float32)
 
         if normal_axis == 2:  # z-plane (normal = [0,0,1])
-            self.grid_points[:, 0] = C1.ravel()  # x
-            self.grid_points[:, 1] = C2.ravel()  # y
-            self.grid_points[:, 2] = plane_offset  # z constant
-            self._axis1_name = "x"
-            self._axis2_name = "y"
+            grid_points[:, 0] = C1.ravel()  # x
+            grid_points[:, 1] = C2.ravel()  # y
+            grid_points[:, 2] = plane_offset  # z constant
+            axes = ("x", "y")
         elif normal_axis == 1:  # y-plane (normal = [0,1,0])
-            self.grid_points[:, 0] = C1.ravel()  # x
-            self.grid_points[:, 1] = plane_offset  # y constant
-            self.grid_points[:, 2] = C2.ravel()  # z
-            self._axis1_name = "x"
-            self._axis2_name = "z"
+            grid_points[:, 0] = C1.ravel()  # x
+            grid_points[:, 1] = plane_offset  # y constant
+            grid_points[:, 2] = C2.ravel()  # z
+            axes = ("x", "z")
         else:  # x-plane (normal = [1,0,0])
-            self.grid_points[:, 0] = plane_offset  # x constant
-            self.grid_points[:, 1] = C1.ravel()  # y
-            self.grid_points[:, 2] = C2.ravel()  # z
-            self._axis1_name = "y"
-            self._axis2_name = "z"
+            grid_points[:, 0] = plane_offset  # x constant
+            grid_points[:, 1] = C1.ravel()  # y
+            grid_points[:, 2] = C2.ravel()  # z
+            axes = ("y", "z")
 
-        self._grid_shape = C1.shape
-        self._n_points = n_points
+        return grid_points, C1.shape, axes
+
+    def _install_grid(self, layout, grid):
+        self.grid_points, self._grid_shape, axes = grid
+        self._axis1_name, self._axis2_name = axes
+        self._n_points = len(self.grid_points)
+        self.grid_layout = layout
+
+    @staticmethod
+    def _vtk_points(grid):
+        points, shape, _ = grid
+        return np.column_stack([points[:, i].reshape(shape).ravel(order="F") for i in range(3)])
+
+    @staticmethod
+    def _coordinate_bytes(points):
+        values = np.asarray(points)
+        if values.dtype.kind != "f" or values.dtype.itemsize not in (4, 8):
+            raise ValueError("Surface sampling coordinates must be f32 or f64")
+        if values.ndim != 2 or values.shape[1] != 3 or not np.isfinite(values).all():
+            raise ValueError("Surface sampling coordinates must be finite three-vectors")
+        # f32 -> f64 is lossless. Never downcast a stored f64 coordinate:
+        # even a difference smaller than one f32 ULP is a different grid.
+        return np.ascontiguousarray(values, dtype="<f8").tobytes()
+
+    def _grid_metadata(self, layout, grid):
+        return {
+            "kind": "openonda.surface_sampling_grid",
+            "format_version": 1,
+            "grid_layout": layout,
+            "configuration": {
+                "point": self.point.tolist(),
+                "normal": self.normal.tolist(),
+                "bounds": self.bounds.tolist(),
+                "spacing": self.spacing,
+            },
+            "dimensions": [*grid[1], 1],
+            "coordinates_sha256": hashlib.sha256(
+                self._coordinate_bytes(self._vtk_points(grid))
+            ).hexdigest(),
+        }
+
+    @staticmethod
+    def _read_grid_metadata(previous):
+        key = "openonda_sampling_grid"
+        if key not in previous.field_data:
+            return None
+        values = np.asarray(previous.field_data[key])
+        if values.shape != (1,) or not isinstance(values[0], str):
+            raise ValueError("Invalid surface sampling grid metadata encoding")
+        try:
+            metadata = json.loads(values[0])
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid surface sampling grid metadata JSON") from error
+        if not isinstance(metadata, dict):
+            raise ValueError("Invalid surface sampling grid metadata record")
+        return metadata
+
+    def _matches_grid(self, previous, grid):
+        return tuple(getattr(previous, "dimensions", ())) == (*grid[1], 1) and (
+            self._coordinate_bytes(previous.points)
+            == self._coordinate_bytes(self._vtk_points(grid))
+        )
+
+    def validate_existing_vtk(self, filepath: Path) -> None:
+        """Reject continuation of a fixed-plane series on a different grid."""
+        import pyvista as pv
+
+        previous = pv.read(filepath)
+        grid = (self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name))
+        metadata = self._read_grid_metadata(previous)
+        if not self._matches_grid(previous, grid) or (
+            metadata is not None and metadata != self._grid_metadata(self.grid_layout, grid)
+        ):
+            raise ValueError(
+                f"sampling grid differs from existing frame {filepath}; "
+                "use a fresh sample directory or the original sampling geometry"
+            )
+
+    def prepare_existing_vtk(self, filepath: Path) -> None:
+        """Admit a resumed series by exact, versioned geometry reconstruction.
+
+        Explicit frame metadata is authoritative and cannot be bypassed by a
+        fallback layout. Without metadata, only the known bounded and legacy
+        constructions are tried. An exact match proves the old observations'
+        geometry, not unrecorded parameters that produced identical points
+        (for example, reversing the sign of an axis-aligned normal).
+
+        No files are modified. The effective grid and provenance are published
+        only after the entire admission succeeds; fresh construction is never
+        changed by this compatibility path.
+        """
+        import pyvista as pv
+
+        filepath = Path(filepath)
+        with filepath.open("rb") as stream:
+            before = hashlib.file_digest(stream, "sha256").hexdigest()
+        previous = pv.read(filepath)
+        metadata = self._read_grid_metadata(previous)
+        layouts = (
+            (metadata.get("grid_layout"),)
+            if metadata is not None
+            else ("bounded_uniform_v1", "legacy_arange_v0")
+        )
+        for layout in layouts:
+            grid = self._make_grid(layout)
+            if not self._matches_grid(previous, grid):
+                continue
+            if metadata is not None and metadata != self._grid_metadata(layout, grid):
+                raise ValueError(f"Surface sampling grid metadata conflicts with {filepath}")
+            with filepath.open("rb") as stream:
+                after = hashlib.file_digest(stream, "sha256").hexdigest()
+            if before != after:
+                raise ValueError(f"Surface sampling frame changed during admission: {filepath}")
+            admission = {
+                "frame": str(filepath.resolve()),
+                "frame_sha256": before,
+                "effective_grid_layout": layout,
+                "provenance": "versioned_frame_metadata" if metadata is not None else (
+                    "metadata_free_exact_geometry_reconstruction; "
+                    "unrecorded parameter identity is not established"
+                ),
+            }
+            self._install_grid(layout, grid)
+            self.grid_resume_admission = admission
+            return
+        raise ValueError(
+            f"sampling grid differs from existing frame {filepath}; "
+            "neither its explicit policy nor exact historical geometry is compatible"
+        )
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """Evaluate the solver field at every generated grid point.
@@ -427,6 +585,15 @@ class SurfaceSampler:
 
         # Create StructuredGrid with dimensions (ni, nj, 1)
         grid = pv.StructuredGrid(x_3d, y_3d, z_3d)
+        live_grid = (
+            self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name)
+        )
+        if not self._matches_grid(grid, live_grid):
+            raise ValueError("Surface sample coordinates differ from the admitted grid")
+        grid.field_data["openonda_sampling_grid"] = np.array([
+            json.dumps(self._grid_metadata(self.grid_layout, live_grid), sort_keys=True,
+                       separators=(",", ":"), allow_nan=False)
+        ])
 
         # Reshape field data to match grid point ordering
         # PyVista uses Fortran-order for StructuredGrid point data

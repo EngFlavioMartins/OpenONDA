@@ -1,63 +1,13 @@
-# Leapfrogging kinematic reference
+# Leapfrogging reference
 
-`leapfrogging_lbm_trajectory.csv` contains the two vortex-core trajectories
-shown for `Re = 3000` in Fig. 5(b) of:
+`leapfrogging_lbm_trajectory.csv` contains digitized vortex-core trajectories from Fig. 5(b) of Cheng, M., Lou, J. & Lim, T. T. (2015), [Leapfrogging of multiple coaxial viscous vortex rings](https://doi.org/10.1063/1.4915890), *Physics of Fluids* 27, 031702. See the [case comparison](../../readme.md).
 
-M. Cheng, J. Lou, and T. T. Lim, "Leapfrogging of multiple coaxial viscous
-vortex rings," *Physics of Fluids* 27, 031702 (2015),
-https://doi.org/10.1063/1.4915890.
+The paper's axial coordinate $Z$ is the simulation's $x$. CSV coordinates are `x_over_R0` and `r_over_R0`; subtracting the reference midpoint 2.5 aligns its initial centres at $Z/R_0=2,3$ with $x/R_0=-0.5,0.5$. Only the origin changes.
 
-The marker centres were recovered from the vector paths in the published PDF.
-The axes were calibrated from the vector tick positions at `Z/R0 = 2, 4, 6,
-8` and `R/R0 = 0.6, 0.8, 1.0, 1.2`. The paper's axial coordinate `Z` is the
-simulation's `x`, so the CSV stores it as `x_over_R0`. Cheng et al. initialize
-the cores at `Z/R0 = 2` and `3`; the plot subtracts their midpoint, `2.5`, to
-align those positions with the present centres at `x/R0 = -0.5` and `0.5`.
-Only the arbitrary axial origin is changed.
+Fig. 5 uses unperturbed rings at $Re_\Gamma=3000$, physical core $a_0/R_0=0.1$ and separation $h_0/R_0=1$. The mode-8, amplitude-0.05 axial perturbation belongs to the separate Fig. 3 case at $Re_\Gamma=3415$ and is not used here.
 
-The source case has `Re_Gamma = 3000`, `a0/R0 = 0.1`, and `h0/R0 = 1`, which
-match the present leapfrogging geometry. However, the paper explicitly excludes
-flow instability from the subsequent parametric calculations (pages 2–3),
-including the Fig. 5 trajectory. Its amplitude `epsilon/R0 = 0.05`, mode `n = 8`
-perturbation belongs to the separate Fig. 3 validation example at `Re = 3415`
-and is described as a displacement in the axial z direction. The older tutorial
-uses a radial disturbance. Therefore Fig. 5 is an unperturbed kinematic
-reference, not a matched validation of that seeded instability experiment.
-The current DNS baseline uses zero imposed disturbance. The optional
-single-mode initializer places any nonzero test perturbation in the axial
-direction and applies it consistently to ring geometry and vorticity.
+The LBM reference has periodic boundaries in a $20R_0\times7R_0\times7R_0$ box and spacing $0.005R_0$. The VPM tutorial has unbounded induction and spacing $0.05R_0$. This is a kinematic comparison; boundary and resolution differences prevent a matched validation claim.
 
-The paper uses periodic boundaries in a box of axial length `20 R0` and
-transverse dimensions `7 R0` by `7 R0`, with `R0/dx=200`. Current treecode
-induction is unbounded; specifying `domain_bounds` would not impose periodic
-induction boundary conditions. This remaining difference prevents calling the
-overlay a fully matched benchmark.
+The plot follows two dominant sampled vorticity maxima and stops identity assignment if a bridge or competing peak becomes comparable. Its cutoff is a diagnostic choice, not a physical merger criterion. Group centroids represent each initial ring's vorticity contribution; material-core shapes would require separate passive tracers.
 
-`assets/plot_core_trajectories.py` compares field-core maxima at equal axial
-positions, weights the two initially distinct cores equally, and refuses
-extrapolation. It follows the two dominant maxima while any third maximum is
-less than half the weaker core. Comparable competing maxima or a straight-line
-bridge reaching the explicit diagnostic cutoff stop identity assignment
-(default 0.5 of the weaker maximum). That cutoff is not a physical merger
-criterion. Sampler cadence, plane spacing and peak detection must still resolve the paths.
-Fig. 4 instead describes core shapes using trajectories of fluid particles;
-that observable requires independent passive tracers rather than remeshed
-vortex-particle `group_id` labels.
-
-## Current study scope
-
-The requested VPM comparison keeps DNS, SSPRK3 and transposed stretching
-enabled. Selective eddy viscosity, Pedrizzetti relaxation, and particle splitting are separate numerical
-stabilization comparisons, not LBM model terms. The automatic comparison
-now reads SurfaceSampler VTS/PVD outputs; it does not reconstruct fields from
-particle snapshots. See the [current workflow](../../readme.md).
-
-The local splitting algorithm comes from Winckelmans' 1989 Caltech thesis,
-printed p. 89 (PDF p. 105), using the fixed-core branch and offsets h(t)/4:
-https://thesis.caltech.edu/697/5/winckelmans-gs_1989.pdf.
-
-The added viscosity uses the positive-production form of Winckelmans' 1995
-selective eddy viscosity, Eq. (26), version 2, with particle strength providing
-the direction and h=V^(1/3). The implementation's coefficient C equals 2 C_w².
-The optional feedback controller is an OpenONDA extension and is disabled in
-this tutorial. Source: https://ntrs.nasa.gov/citations/19960022324.
+Numerical-model sources: [Winckelmans' 1989 thesis, p. 89](https://thesis.caltech.edu/697/5/winckelmans-gs_1989.pdf) for fixed-core splitting at offsets $h/4$, and [Winckelmans (1995), Eq. 26](https://ntrs.nasa.gov/citations/19960022324) for positive-production selective viscosity. The implementation uses $h=V_p^{1/3}$ and coefficient $C=2C_w^2$; optional feedback is disabled in this case.

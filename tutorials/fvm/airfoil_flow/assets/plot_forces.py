@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from ._common import (  # noqa: E402
@@ -45,29 +46,28 @@ def main():
     ax.plot(
         t,
         drag_coefficient,
-        color=COLORS["TUDdark"],
+        color=COLORS["fvm"],
         linewidth=0.9,
-        label=rf"$\overline{{C_D}}$ (last 1/3) = {drag_coefficient_mean:.4f}",
+        label=r"$C_D$",
     )
     ax.set_ylabel("drag coefficient")
-    ax.set_title(f"NACA 0012 forces (Re = {RE:.0f}, $\\alpha$ = {args.angle:g}$^\\circ$)")
     ax.legend(loc="best")
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
 
     ax = axes[1]
     ax.plot(
         t,
         lift_coefficient,
-        color=COLORS["TUDdark"],
+        color=COLORS["fvm"],
         linewidth=0.9,
-        label=rf"$\overline{{C_L}}$ (last 1/3) = {lift_coefficient_mean:.4f}",
+        label=r"$C_L$",
     )
     ax.legend(loc="best")
     ax.set_ylabel("lift coefficient")
     ax.set_xlabel("t [s]")
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
 
-    fig.tight_layout()
+    centered_subplots_adjust(fig, outer=.135, bottom=.12, top=.991, hspace=.23)
     save_fig(fig, "airfoil_forces.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(

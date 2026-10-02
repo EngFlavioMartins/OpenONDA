@@ -130,3 +130,32 @@ def test_zero_strength_system_has_zero_induced_components():
     assert result["tangential_velocity"] == 0.0
     assert result["axial_induction"] == 0.0
     assert result["tangential_induction"] == 0.0
+
+
+@pytest.mark.parametrize("circulation", [[1.2, 1.0, 0.4], [0.3, 1.4, 0.7]])
+def test_assembled_turbine_recovers_each_annulus_at_disk_and_in_far_wake(circulation):
+    """An individual sheet test cannot catch a reversed radial assembly."""
+    radii = np.array([1.0, 2.0, 3.0])
+    system = build_system(
+        {
+            "radial_position": radii,
+            "circulation": circulation,
+            "tangential_induction_factor": np.array([0.08, 0.05, 0.02]),
+        },
+        number_of_blades=3,
+        freestream_speed=7.0,
+        angular_velocity=8.0,
+        hub_radius=0.5,
+        rotor_radius=3.5,
+    )
+    for distance, factor in [(1e-9, 1.0), (1e7, 2.0)]:
+        for i, radius in enumerate(radii):
+            result = induced_velocity(
+                radius, distance, system, freestream_speed=7.0, angular_velocity=8.0
+            )
+            assert result["axial_induction"] == pytest.approx(
+                factor * system.annulus_induction[i], rel=1e-7
+            )
+            assert result["tangential_induction"] == pytest.approx(
+                factor * system.bound_circulation[i] / (4 * np.pi * 8.0 * radius**2), rel=1e-7
+            )

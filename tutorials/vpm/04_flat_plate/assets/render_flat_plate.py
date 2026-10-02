@@ -208,13 +208,15 @@ def plate_velocity_tex(velocity: np.ndarray) -> str:
     terms = []
     for value, axis in zip(velocity, "xyz", strict=True):
         if abs(value) > 1e-10:
-            terms.append(f"{value:+.3g}\\,\\mathbf{{e}}_{axis}")
+            terms.append(f"{value:+.2g}\\,\\mathbf{{e}}_{axis}")
     if not terms:
         raise ValueError("Plate velocity is zero")
     return "".join(terms).lstrip("+")
 
 
-def write_overlay(omega_min: float, omega_max: float, velocity: np.ndarray) -> None:
+def write_overlay(
+    omega_min: float, omega_max: float, velocity: np.ndarray, *, time: float | None = None
+) -> None:
     colormap = vorticity_colormap()
     bar_bottom = 7.7
     bar_top = 10.3
@@ -231,6 +233,8 @@ def write_overlay(omega_min: float, omega_max: float, velocity: np.ndarray) -> N
             f"\\fill[{name}] ({x0:.4f},{bar_bottom:.1f}) rectangle ({x1:.4f},{bar_top:.1f});"
         )
     bar = "\n".join(segments)
+    # Glyph interpretation is recorded in the scene JSON; retain only physical time.
+    caption = rf"$t={time:.2g}$ s" if time is not None else ""
     source = rf"""\documentclass[tikz,border=0pt]{{standalone}}
 \usepackage[T1]{{fontenc}}
 \usepackage{{newpxtext,newpxmath}}
@@ -243,13 +247,14 @@ def write_overlay(omega_min: float, omega_max: float, velocity: np.ndarray) -> N
   \node[anchor=north west,fill=white,fill opacity=0.90,text opacity=1,
         rounded corners=0.8mm,inner xsep=2.2mm,inner ysep=1.5mm]
         at (2.8,{FIGURE_HEIGHT_MM - 2.8:.1f})
-        {{Plate velocity: $\mathbf{{U}}_{{\mathrm{{plate}}}}={plate_velocity_tex(velocity)}\;\mathrm{{m\,s^{{-1}}}}$}};
+        {{ $\mathbf{{U}}_{{\mathrm{{plate}}}}={plate_velocity_tex(velocity)}\;\mathrm{{m\,s^{{-1}}}}$}};
+  \node[anchor=south west,fill=white,inner sep=1.2mm] at (2.8,2.8) {{{caption}}};
   \fill[white,fill opacity=0.90] (76.8,3.5) rectangle (122.3,14.5);
   \node[anchor=south] at (99.5,{bar_label_y:.1f}) {{$\lvert\boldsymbol{{\omega}}\rvert\;[\mathrm{{s}}^{{-1}}]$}};
 {bar}
-  \draw[line width=0.35pt] (80.0,{bar_bottom:.1f}) rectangle (119.0,{bar_top:.1f});
-  \node[anchor=north west] at (80.0,{tick_y:.1f}) {{{omega_min:.3g}}};
-  \node[anchor=north east] at (119.0,{tick_y:.1f}) {{{omega_max:.3g}}};
+  \draw[line width=0.6pt] (80.0,{bar_bottom:.1f}) rectangle (119.0,{bar_top:.1f});
+  \node[anchor=north west] at (80.0,{tick_y:.1f}) {{{omega_min:.2g}}};
+  \node[anchor=north east] at (119.0,{tick_y:.1f}) {{{omega_max:.2g}}};
 \end{{tikzpicture}}
 \end{{document}}
 """
@@ -271,7 +276,7 @@ def compile_overlay(figure_format: str) -> None:
             cwd=FIGURE_DIR,
             check=True,
         )
-        if figure_format == "png":
+        if figure_format in ("png", "both"):
             pdftoppm = find_executable("pdftoppm")
             subprocess.run(
                 [
@@ -285,13 +290,13 @@ def compile_overlay(figure_format: str) -> None:
                 ],
                 check=True,
             )
-        else:
+        if figure_format in ("pdf", "both"):
             shutil.copy2(compiled_pdf, PDF_OUTPUT)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("png", "pdf"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
@@ -332,7 +337,9 @@ def main() -> None:
         )
     if not RAW_OUTPUT.is_file():
         raise FileNotFoundError(f"ParaView did not produce {RAW_OUTPUT}.")
-    write_overlay(omega_min, omega_max, np.asarray(state["kinematic_velocity"]))
+    write_overlay(
+        omega_min, omega_max, np.asarray(state["kinematic_velocity"]), time=float(state["time"])
+    )
     compile_overlay(args.format)
 
     manifest = {

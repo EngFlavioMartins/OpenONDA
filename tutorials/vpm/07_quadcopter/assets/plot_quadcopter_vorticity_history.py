@@ -15,7 +15,7 @@ from ._quadcopter_plots import FIGURES_DIR, SAMPLES_DIR, _theme, plot_vorticity_
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=_theme.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=_theme.FORMAT_CHOICES, default="both")
     args = parser.parse_args()
     plot_vorticity_history(SAMPLES_DIR, FIGURES_DIR, args.format)
 

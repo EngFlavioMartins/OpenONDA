@@ -11,7 +11,7 @@ import pytest
 from openonda import cylinder_campaign, cylinder_case
 
 ROOT = Path(__file__).resolve().parents[2]
-ASSETS = ROOT / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets"
+ASSETS = ROOT / "tests/support/cylinder"
 
 
 def load_asset(name: str):

@@ -11,6 +11,7 @@ Usage:
 
 from pathlib import Path
 from dataclasses import replace
+import argparse
 import math
 
 import numpy as np
@@ -24,13 +25,14 @@ from openonda.cylinder_case import (
     validate_cylinder_authority,
 )
 from openonda.cylinder_campaign import run_coupled_cylinder
+from openonda.tutorial_runner import load_case_module
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
 # Physical problem
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
 
 CASE_NAME = "coupled_cylinder_flow"
 DIAMETER = DEFAULT_CYLINDER_CASE.diameter
@@ -66,11 +68,12 @@ TRANSFER_REGION_BOX = (
 # physical slab exactly; the slab induction wrapper supplies the free-slip
 # images at its two span boundaries.
 VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
-SPANWISE_LAYERS = math.ceil(FVM_RESOLVED_SPAN / 0.05)
+SPANWISE_LAYERS = math.ceil(FVM_RESOLVED_SPAN / CELL_SIZE)
 VPM_PARTICLE_SPACING = FVM_RESOLVED_SPAN / SPANWISE_LAYERS
 # Keep renewal and grid-based diffusion on one VPM lattice.
 SAMPLE_SPACING = 2.0 * CELL_SIZE
 PARTICLE_LIMIT = 1_000_000
+GAUSSIAN_MESH_POLICY = vpm.GaussianSlabPolicy()
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -79,16 +82,16 @@ INTERFACE_ITERATIONS = 3
 INTERFACE_TOLERANCE = 1.0e-5
 
 # Time and output
-FVM_TIME_STEP_SIZE = 0.004
-VPM_TIME_STEP_MULTIPLIER = 10
+FVM_TIME_STEP_SIZE = 0.008
+VPM_TIME_STEP_MULTIPLIER = 5
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
 END_TIME = DEFAULT_CYLINDER_CASE.coupled_end_time
 SAMPLING_INTERVAL_TIME = 0.2
-SLICE_INTERVAL_TIME = 0.24
-OUTPUT_INTERVAL_TIME = 0.24
+SLICE_INTERVAL_TIME = 0.4
+OUTPUT_INTERVAL_TIME = 4.0
 # Every schedule must land on a 0.04 s accepted coupling boundary while
 # interface iteration is active.
-BACKUP_INTERVAL_TIME = 0.24
+BACKUP_INTERVAL_TIME = 1.0
 GBD_VORTICITY_FLOOR = 0.01
 
 FVM_OUTPUT_INTERVAL_STEPS = round(OUTPUT_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
@@ -247,6 +250,7 @@ VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
+        compute_device="AUTO",
         freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
@@ -264,6 +268,7 @@ VPM_CASE = vpm.VPMCase(
             z_max=FVM_HALF_SPAN,
             tail_tolerance=1.0e-4,
             max_shells=129,
+            gaussian_mesh_policy=GAUSSIAN_MESH_POLICY,
         ),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         max_n_particles=PARTICLE_LIMIT,
@@ -282,8 +287,22 @@ def build_case(
     *,
     end_time: float | None = None,
     overrides: dict[str, object] | None = None,
+    gaussian_mesh_policy: vpm.GaussianSlabPolicy | None = GAUSSIAN_MESH_POLICY,
 ):
-    """Construct one resolved coupled case without creating solver state."""
+    """Construct a case without solver state on any supported particle device.
+
+    The ordinary case uses the portable Gaussian field operator. Passing
+    ``gaussian_mesh_policy=None`` explicitly selects the legacy image operator
+    for callers selecting that numerical operator explicitly. Execution
+    placement and memory blocking preserve the selected numerical operator.
+    """
+    overrides = {
+        "hxy": CELL_SIZE,
+        "dz": CELL_SIZE,
+        "particle_spacing_ratio": 1.0,
+        "compute_device": "AUTO",
+        **(overrides or {}),
+    }
     variant = resolve_cylinder_variant(
         overrides,
         hxy=CELL_SIZE,
@@ -426,6 +445,7 @@ def build_case(
             z_max=half_span,
             tail_tolerance=1.0e-4,
             max_shells=129,
+            gaussian_mesh_policy=gaussian_mesh_policy,
         ),
         stabilization=vpm.StabilizationConfig.bounded_domain(vpm_domain),
         compute_device=compute_device,
@@ -465,6 +485,12 @@ def build_case(
         )
     if values:
         coupler_setup = replace(coupler_setup, **values)
+    # Share physical force and wake observations with the reference case.
+    observations = load_case_module(CASE_DIR, "assets.sampling")
+    fvm_setup = observations.configure_fvm(
+        fvm_setup, False, physical_end, span=span, exchange_dt=exchange_dt)
+    vpm_case = replace(vpm_case, samplers=vpm.Samplers(samples=observations.vpm_samplers(
+        end=physical_end, exchange_dt=exchange_dt, fvm_time_step=fvm_setup.time.time_step_size)))
     return fvm_setup, vpm_case, coupler_setup, mesh
 
 
@@ -477,8 +503,16 @@ def create_solver(
     overrides: dict[str, object] | None = None,
 ) -> int:
     """Run the coupled case in an optional isolated campaign directory."""
+    def resolved_case(**kwargs):
+        setup, particles, coupling_setup, mesh = build_case(**kwargs)
+        # This is the ordinary case mesh cache, not a separate run directory.
+        cached_mesh = (CASE_DIR if output_root is None else Path(output_root)) / "solution/fvm/mesh.npz"
+        if cached_mesh.is_file() and not kwargs.get("overrides"):
+            mesh = cached_mesh
+        return setup, particles, coupling_setup, mesh
+
     return run_coupled_cylinder(
-        build_case,
+        resolved_case,
         start_from=START_FROM,
         output_root=output_root,
         end_time=end_time,
@@ -488,8 +522,25 @@ def create_solver(
     )
 
 
-def main() -> int:
-    create_solver()
+def _positive_steps(value: str) -> int:
+    try:
+        steps = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if steps < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return steps
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--max-coupling-steps", type=_positive_steps,
+        help="Stop after this many accepted exchanges and save a native checkpoint; "
+             "the configured 100 s physical horizon is unchanged.",
+    )
+    options = parser.parse_args(argv)
+    create_solver(max_coupling_steps=options.max_coupling_steps)
     return 0
 
 

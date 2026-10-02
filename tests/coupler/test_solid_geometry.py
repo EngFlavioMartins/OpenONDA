@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
-from source.coupler.geometry import SolidBoundary
+from source.coupler.geometry import SolidBoundary, TriangulatedWall
 from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.solid import SolidParticleGuard
 from source.solvers.fvm.immersed_boundary.body import ImmersedBody
@@ -42,6 +42,83 @@ def test_concave_void_is_fluid_and_distinct_from_the_bounding_box():
     assert not boundary.blocks_segments([[1.2, 1.2, 0]], [[1.8, 1.8, 0]])[0]
 
 
+@pytest.mark.parametrize("shape", ["curved", "rotated", "thin", "concave"])
+def test_wall_intersection_batches_repeated_starts_without_changing_hits(shape, monkeypatch):
+    boundary, start, end, normal = wall_case(shape)
+    wall = boundary.bodies[0]
+    sources = start + np.arange(3)[:, None] * 0.02 * normal
+    starts = sources[[0, 0, 0, 1, 1, 0, 2]]
+    ends = np.broadcast_to(end, starts.shape).copy()
+    ends[1] = start + 0.1 * normal  # An outward segment among repeated starts.
+    reference = [
+        wall.first_intersections(a[None], b[None]) for a, b in zip(starts, ends, strict=True)
+    ]
+    distance_queries = []
+    original = wall.signed_distance
+
+    def record_distance(points):
+        distance_queries.append(points.copy())
+        return original(points)
+
+    monkeypatch.setattr(wall, "signed_distance", record_distance)
+    fractions, normals = wall.first_intersections(starts, ends)
+    np.testing.assert_array_equal(fractions, np.concatenate([value[0] for value in reference]))
+    np.testing.assert_array_equal(normals, np.concatenate([value[1] for value in reference]))
+    # Nonadjacent repetitions stay in place; the broad phase needs four runs
+    # rather than one distance evaluation for every segment.
+    assert len(distance_queries) == 1
+    np.testing.assert_array_equal(distance_queries[0], sources[[0, 1, 0, 2]])
+
+
+@pytest.mark.parametrize("count", [0, 1, 5])
+def test_wall_intersection_distinct_start_fast_path(count, monkeypatch):
+    wall = TriangulatedWall.from_box([-0.5, 0.5] * 3, [-2, 2] * 3)
+    # A strided view exercises non-contiguous input without duplicate starts.
+    starts = np.column_stack(
+        (np.full(2 * count, 0.6), np.linspace(-0.2, 0.2, 2 * count), np.zeros(2 * count))
+    )[::2]
+    ends = starts.copy()
+    ends[:, 0] = 0.4
+    queried = []
+    original = wall.signed_distance
+
+    def record_distance(points):
+        queried.append(points.copy())
+        return original(points)
+
+    monkeypatch.setattr(wall, "signed_distance", record_distance)
+    fractions, normals = wall.first_intersections(starts, ends)
+    np.testing.assert_allclose(fractions, 0.5)
+    np.testing.assert_allclose(normals, np.broadcast_to([1, 0, 0], (count, 3)))
+    assert len(queried) == int(count > 0)
+    if count:
+        np.testing.assert_array_equal(queried[0], starts)
+
+
+def test_wall_intersection_compression_preserves_one_ulp_and_outside_domain_starts(monkeypatch):
+    wall = TriangulatedWall.from_box([-0.5, 0.5] * 3, [-1, 1] * 3)
+    x = np.array([0.6, np.nextafter(0.6, np.inf), 1.5, 1.5, np.nextafter(1.5, np.inf)])
+    starts = np.column_stack((x, np.zeros((len(x), 2))))
+    ends = starts.copy()
+    ends[:, 0] = 0.4
+    reference = [
+        wall.first_intersections(a[None], b[None]) for a, b in zip(starts, ends, strict=True)
+    ]
+    queried = []
+    original = wall.signed_distance
+
+    def record_distance(points):
+        queried.append(points.copy())
+        return original(points)
+
+    monkeypatch.setattr(wall, "signed_distance", record_distance)
+    fractions, normals = wall.first_intersections(starts, ends)
+    np.testing.assert_array_equal(fractions, np.concatenate([value[0] for value in reference]))
+    np.testing.assert_array_equal(normals, np.concatenate([value[1] for value in reference]))
+    assert np.isfinite(fractions).all()  # Infinite outside-domain distances still test the surface.
+    np.testing.assert_array_equal(queried[0], starts[[0, 1, 2, 4]])
+
+
 def test_deep_crossings_require_a_smaller_time_step():
     boundary, *_ = wall_case("thin")
     with pytest.raises(RuntimeError, match="Reduce the time step"):
@@ -74,7 +151,7 @@ def test_stage_and_accepted_motion_share_geometry_and_report_impulse(shape):
     np.testing.assert_array_equal(strength, original_strength)
     np.testing.assert_allclose(
         physics.last_solid_projection["accepted_impulse_change"],
-        np.cross(state.position.astype(float) - end.astype(np.float32), strength).sum(axis=0),
+        0.5 * np.cross(state.position.astype(float) - end.astype(np.float32), strength).sum(axis=0),
         atol=1e-9,
     )
     assert physics.last_solid_projection["stage_count"] == 1
@@ -130,3 +207,39 @@ def test_unbounded_immersed_extrusion_does_not_invent_a_finite_query_box():
     boundary = SolidBoundary((body,))
     assert boundary.bounds is None
     assert boundary.blocks_segments([[-1, 0, 100]], [[1, 0, 100]])[0]
+
+
+def test_long_thin_wall_keeps_its_resolved_interior():
+    wall = TriangulatedWall.from_box(
+        [-0.0001, 0.0001, -1, 1, -1000, 1000], [-2, 2, -2, 2, -1001, 1001]
+    )
+    query = np.array([[0, 0, 0], [0.00005, 0, 0], [0.0002, 0, 0]])
+    np.testing.assert_array_equal(wall.contains(query, include_boundary=False), [True, True, False])
+
+
+@pytest.mark.parametrize("shape", ["rotated", "curved"])
+def test_float32_surface_roundoff_needs_only_a_small_projection(shape):
+    boundary, start, _, _ = wall_case(shape)
+    surface, normals = boundary.closest_surface(start[None])
+    # Native double-precision wall locations need not be exactly representable
+    # by stored particles. Resolve small inward rounding at storage precision.
+    candidate = (surface - 5e-8 * normals).astype(np.float32)
+    corrected, changed, _, maximum = boundary.constrain_motion(candidate, 0.25)
+    assert changed.any()
+    assert not boundary.contains(corrected).any()
+    assert 0 < maximum < 1e-5
+
+
+def test_wall_distance_cache_has_bounded_storage_and_independent_results(monkeypatch):
+    monkeypatch.setattr("source.coupler.geometry._DISTANCE_CACHE_MAX_BYTES", 32)
+    wall = TriangulatedWall.from_box([-0.5, 0.5] * 3, [-2, 2] * 3)
+    for coordinate in (0.6, 0.7, 0.8):
+        query = np.array([[coordinate, 0, 0], [0, coordinate, 0]])
+        distance = wall.signed_distance(query)
+        distance[:] = -100  # A caller cannot mutate a stored result.
+        np.testing.assert_allclose(wall.signed_distance(query), coordinate - 0.5)
+    assert sum(value.nbytes for value in wall._cache.values()) <= 32
+    count = len(wall._cache)
+    query = np.tile([0.6, 0, 0], (5, 1))
+    np.testing.assert_allclose(wall.signed_distance(query), 0.1)
+    assert len(wall._cache) == count  # An oversized query is not retained.

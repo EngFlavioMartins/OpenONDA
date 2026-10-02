@@ -1,8 +1,0 @@
-..........                                                               [100%]
-=============================== warnings summary ===============================
-../../anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/_lib/utils.py:70
-  /home/flavio-martins/anaconda3/envs/OpenONDA/lib/python3.11/site-packages/taichi/_lib/utils.py:70: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.
-    return path.encode(locale.getdefaultlocale()[1])
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-10 passed, 69 deselected, 1 warning in 81.02s (0:01:21)

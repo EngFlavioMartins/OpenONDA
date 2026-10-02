@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager, suppress
+from dataclasses import fields, replace
 from itertools import count
 from typing import Protocol
 
@@ -365,6 +366,7 @@ class StageRHS:
         providers: tuple[ExternalStageContribution, ...] = (),
         *,
         strength_enabled: bool = True,
+        reuse_induction: bool = True,
     ) -> None:
         """Create a central RHS evaluator for one RK stage.
 
@@ -381,12 +383,150 @@ class StageRHS:
             Global switch for vortex-strength evolution.  False zeros the
             strength-rate output after all providers run, while velocity and
             diagnostic gradients remain evaluated.
+        reuse_induction : bool, default=True
+            Reuse pure fields only for explicitly certified standard FMM
+            backends and bitwise-identical ordered particle inputs. Guards,
+            providers, health checks and other induction methods are unchanged.
+            False retains the uncached control path.
         """
         self.induction = induction
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
+        self.reuse_induction = bool(reuse_induction)
+        self._induction_reuse = None
+        self._induction_reuse_kind = None
+        self._induction_reuse_history = None
+        self._closed = False
         self.position_guard: Callable[[StageState], None] | None = None
         self.accepted_position_projector: Callable[..., None] | None = None
+
+    @property
+    def induction_reuse(self):
+        """Current private pure-field cache and statistics, or None.
+
+        The public ``induction`` remains the original operator. Profilers
+        should wrap :meth:`evaluate_induction`, not patch numerical methods
+        on the certified backend (custom methods intentionally bypass reuse).
+        """
+        return self._induction_reuse
+
+    def _release_induction_reuse(self):
+        cache, self._induction_reuse = self._induction_reuse, None
+        self._induction_reuse_kind = None
+        if cache is not None:
+            try:
+                cache.close()
+            finally:
+                self._induction_reuse_history = self._reuse_statistics_sum(
+                    self._induction_reuse_history, cache.statistics
+                )
+
+    @staticmethod
+    def _reuse_statistics_sum(previous, current):
+        if previous is None:
+            return None if current is None else replace(current)
+        if current is None:
+            return replace(previous)
+        return type(current)(
+            **{
+                item.name: getattr(current, item.name)
+                + (0 if item.name == "storage_bytes" else getattr(previous, item.name))
+                for item in fields(current)
+            }
+        )
+
+    @property
+    def induction_reuse_statistics(self):
+        """Detached cumulative reuse counters, including released cache owners.
+
+        Storage reports only the currently owned allocation; closed caches
+        contribute their actual request/hit/miss counters but zero bytes.
+        Unknown backends which never created a cache return None.
+        """
+        return self._reuse_statistics_sum(
+            self._induction_reuse_history,
+            None if self._induction_reuse is None else self._induction_reuse.statistics,
+        )
+
+    def close(self):
+        """Release owned private fields before the Taichi runtime is reset."""
+        if self._closed:
+            return
+        self._closed = True
+        self._release_induction_reuse()
+
+    def _induction_evaluator(self):
+        if self._closed:
+            raise RuntimeError("StageRHS is closed")
+        cache = self._induction_reuse
+        mesh = getattr(self.induction, "gaussian_mesh_policy", None) is not None
+        kind = "gaussian_slab" if mesh else "standard_fmm"
+        if cache is not None and (
+            not self.reuse_induction
+            or cache.backend is not self.induction
+            or cache.max_particles != getattr(self.induction, "max_n_particles", None)
+            or self._induction_reuse_kind != kind
+        ):
+            self._release_induction_reuse()
+            cache = None
+        if not self.reuse_induction:
+            return self.induction
+        if cache is None:
+            # Lazy imports avoid making StageRHS/PhysicsEngine construction a
+            # cycle, and unknown/custom operators retain their exact call API.
+            from .induction.fmm.device import FMMInduction
+            from .induction.reuse import ExactContentInductionReuse
+            from .induction.reuse_backends import StandardFMMReuseContract
+            from .induction.slip_slab import SlipSlabInduction
+
+            base = self.induction
+            if type(base) is SlipSlabInduction:
+                base = base.base
+                if type(base) is not FMMInduction or base.kernel.name not in {
+                    "GAUSSIAN",
+                    "WINCKELMANS",
+                }:
+                    return self.induction
+            if type(base) is not FMMInduction:
+                return self.induction
+            capacity = base.max_n_particles
+            if type(capacity) is not int or capacity < 1:
+                return self.induction
+            cache = ExactContentInductionReuse(
+                self.induction,
+                max_particles=capacity,
+                contract_provider=StandardFMMReuseContract(self.induction)
+                if not mesh else self._gaussian_reuse_contract(),
+            )
+            self._induction_reuse = cache
+            self._induction_reuse_kind = kind
+        return cache
+
+    def _gaussian_reuse_contract(self):
+        # Distinct capability; the legacy FMM adapter still declines mesh
+        # policies and cannot silently skip their additional admission gates.
+        from .induction.gaussian_mesh.reuse_contract import StandardGaussianSlabReuseContract
+
+        return StandardGaussianSlabReuseContract(self.induction)
+
+    def evaluate_induction(self, stage_state, stage_time, stage_rates):
+        """Dispatch only pure induction after the current position guard.
+
+        This is also the stable outer timing hook: every request reaches it,
+        while cache counters distinguish actual backend misses from hits.
+        No guard, provider, or health observation is cached by this method.
+        """
+        self._induction_evaluator().evaluate_stage(
+            position=stage_state.position,
+            vortex_strength=stage_state.vortex_strength,
+            core_radius=stage_state.core_radius,
+            count=stage_state.count,
+            velocity_out=stage_rates.velocity,
+            vortex_strength_rate_out=stage_rates.vortex_strength_rate,
+            velocity_gradient_out=stage_rates.velocity_gradient,
+            strength_rate_enabled=stage_rates.strength_rate_enabled,
+            stage_time=stage_time,
+        )
 
     @contextmanager
     def integration_step(self, tableau, time_step_size):
@@ -441,20 +581,12 @@ class StageRHS:
         state and are evaluated sequentially; disabling strength evolution
         zeros the final rate after all provider callbacks complete.
         """
+        if self._closed:
+            raise RuntimeError("StageRHS is closed")
         position_guard = getattr(self, "position_guard", None)
         if position_guard is not None:
             position_guard(stage_state)
-        self.induction.evaluate_stage(
-            position=stage_state.position,
-            vortex_strength=stage_state.vortex_strength,
-            core_radius=stage_state.core_radius,
-            count=stage_state.count,
-            velocity_out=stage_rates.velocity,
-            vortex_strength_rate_out=stage_rates.vortex_strength_rate,
-            velocity_gradient_out=stage_rates.velocity_gradient,
-            strength_rate_enabled=stage_rates.strength_rate_enabled,
-            stage_time=stage_time,
-        )
+        self.evaluate_induction(stage_state, stage_time, stage_rates)
         for provider in self.providers:
             provider.add_stage_rates(stage_state, stage_time, stage_rates)
         if not self.strength_enabled or not stage_rates.strength_rate_enabled:

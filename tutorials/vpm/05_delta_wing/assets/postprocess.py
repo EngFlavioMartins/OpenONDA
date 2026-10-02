@@ -771,15 +771,9 @@ def last_cycles(data, period, count=3):
 
 
 def _save_figure(fig, axes, path, figure_format, *, fit=True):
-    """Export the fixed thesis canvas without automatic cropping or relayout."""
-    if fit:
-        _theme.fit_thesis_y_label_margins(fig, axes)
+    # Numeric display rules are shared; positions stay authored per generator.
     _theme.validate_thesis_figure(fig, axes)
-    path = Path(path).with_suffix(f".{figure_format}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=_theme.DEFAULT_DPI, bbox_inches=None)
-    plt.close(fig)
-    print(f"wrote {path}")
+    return _theme.export_figure(fig, path, figure_format=figure_format)
 
 
 def _available_period(data):
@@ -1018,12 +1012,8 @@ def _plot_wake_field(
     records.sort(key=lambda row: row[0][0] @ direction)
     axial = [field @ direction / speed for _, field in records]
     vertical = [field[:, 2] / speed for _, field in records]
-    sequential = LinearSegmentedColormap.from_list(
-        "thesis_teal", ["white", _theme.COLORS["TUDcyan"]]
-    )
-    diverging = LinearSegmentedColormap.from_list(
-        "thesis_signed", [_theme.COLORS["TUDcyan"], "white", _theme.COLORS["VPMpurple"]]
-    )
+    sequential = plt.get_cmap(_theme.COLORMAPS["velocity"])
+    diverging = plt.get_cmap(_theme.COLORMAPS["vorticity"])
     if field_name == "streamwise":
         values, cmap, label = axial, sequential, r"$u_{\parallel}/U_\infty$"
     elif field_name == "vertical":
@@ -1039,7 +1029,7 @@ def _plot_wake_field(
     fig, axes = plt.subplots(
         1, 3, sharex=True, sharey=True, figsize=(12.5 * _theme.CM, 7.6 * _theme.CM)
     )
-    _theme.centered_subplots_adjust(fig, outer=0.15, bottom=0.40, top=0.83, wspace=0.13)
+    _theme.centered_subplots_adjust(fig, outer=0.097, bottom=0.40, top=0.83, wspace=0.13)
     for ax, (points, _), field in zip(axes, records, values, strict=True):
         artist = ax.tricontourf(
             points[:, 1], points[:, 2], field, levels=np.linspace(*limits, 25), cmap=cmap
@@ -1050,14 +1040,13 @@ def _plot_wake_field(
     axes[0].set_ylabel("$z$ [m]")
     # Measure the y labels first; preserve equal physical aspect by choosing
     # the height from the resulting panel width, then place the colorbar.
-    _theme.fit_thesis_y_label_margins(fig, axes)
-    outer = axes[0].get_position().x0
+    outer = 0.097
     panel_width_cm = axes[0].get_position().width * 12.5
     aspect = np.ptp(records[0][0][:, 2]) / np.ptp(records[0][0][:, 1])
     panel_height_cm = panel_width_cm * aspect
-    height_cm = panel_height_cm + 4.1
+    height_cm = panel_height_cm + 3.5
     fig.set_size_inches(12.5 * _theme.CM, height_cm * _theme.CM, forward=False)
-    fig.subplots_adjust(bottom=2.8 / height_cm, top=1 - 1.3 / height_cm)
+    fig.subplots_adjust(bottom=2.8 / height_cm, top=1 - 0.58 / height_cm)
     for ax in axes:
         ax.set_aspect("equal")
     cax = fig.add_axes([outer, 1.3 / height_cm, 1 - 2 * outer, 0.22 / height_cm])
@@ -1066,10 +1055,10 @@ def _plot_wake_field(
         cax=cax,
         orientation="horizontal",
         ticks=np.linspace(*limits, 3),
-        format="%.2f",
+        format="%.2g",
         label=label,
     )
-    fig.suptitle(title, y=1 - 0.22 / height_cm)
+    print(title)
     _save_figure(
         fig,
         (*axes, cax),
@@ -2535,9 +2524,7 @@ def render(
     scale = max(float(np.max(np.abs(circulation))), 1e-12)
     norm = Normalize(-scale, scale)
     _theme.set_thesis_style()
-    cmap = LinearSegmentedColormap.from_list(
-        "thesis_signed", [_theme.COLORS["TUDcyan"], "white", _theme.COLORS["VPMpurple"]]
-    )
+    cmap = plt.get_cmap(_theme.COLORMAPS["vorticity"])
     frames = []
     for target_time, (source_time, _, source_segment), (_, path, segment, corners, values) in zip(
         target_times, selected, native_frames, strict=True
@@ -2551,7 +2538,7 @@ def render(
                 cmap=cmap,
                 norm=norm,
                 edgecolors=_theme.COLORS["DarkText"],
-                linewidths=0.15,
+                linewidths=0.6,
             )
         )
         ax.set(
@@ -2559,13 +2546,13 @@ def render(
             ylim=vertical_limits,
             xlabel="$s$ [m]",
             ylabel="$h$ [m]",
-            title=f"$t = {source_time:.3f}$ s",
+            title=f"$t = {source_time:.2g}$ s",
         )
-        ax.grid(True, color=_theme.COLORS["LightBG"], linewidth=0.5)
+        ax.grid(False)
         ax.locator_params(axis="y", nbins=3)
         _theme.centered_subplots_adjust(fig, outer=0.15, bottom=0.30, top=0.87)
-        _theme.fit_thesis_y_label_margins(fig, (ax,))
-        outer = ax.get_position().x0
+        outer = 0.115
+        _theme.centered_subplots_adjust(fig, outer=outer)
         height_cm = (1 - 2 * outer) * 12.5 * np.ptp(vertical_limits) / np.ptp(
             horizontal_limits
         ) + 3.8
@@ -2578,7 +2565,7 @@ def render(
             cax=cax,
             orientation="horizontal",
             ticks=[-scale, 0, scale],
-            format="%.2f",
+            format="%.2g",
             label=r"$\Gamma$ [m$^2$/s]",
         )
         _theme.validate_thesis_figure(fig, (ax, cax))

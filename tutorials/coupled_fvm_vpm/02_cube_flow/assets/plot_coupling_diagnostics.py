@@ -26,10 +26,10 @@ FIGURE_HEIGHT_CM = 10.5
 FIGURE_SIZE = util.figure_size(FIGURE_HEIGHT_CM)
 
 # Manual layout controls (fractions of the fixed 12.5 cm canvas).
-LAYOUT_LEFT = 0.16
-LAYOUT_RIGHT = 0.84
+LAYOUT_LEFT = 0.132
+LAYOUT_RIGHT = 0.868
 LAYOUT_BOTTOM = 0.13
-LAYOUT_TOP = 0.92
+LAYOUT_TOP = 0.945
 LAYOUT_HSPACE = 0.42
 LEGEND_FONT_SIZE = util.FONT_SIZE_PT
 
@@ -200,7 +200,7 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     for ax in axes:
         ax.yaxis.set_major_locator(MaxNLocator(4))
     axes[2].set_xlabel("Flow time [s]")
-    util._THEME.fit_thesis_y_label_margins(fig, axes)
+
     # The longer cost label needs a slightly wider symmetric margin than the
     # automatic minimum to remain clear with the fixed thesis canvas.
     util._THEME.centered_subplots_adjust(fig, outer=LAYOUT_LEFT)
@@ -211,7 +211,7 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default=FIGURE_FORMAT)
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="both")
     parser.add_argument("--dpi", type=int, default=FIGURE_DPI, help="PNG resolution in dpi.")
     args = parser.parse_args()
     plot(args.format, args.dpi)

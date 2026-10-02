@@ -1,4 +1,4 @@
-"""Every distributed tutorial exposes the same fresh/continue contract."""
+"""Tutorial launchers retain their declared fresh/continue contracts."""
 
 import ast
 from importlib.util import find_spec
@@ -15,6 +15,12 @@ from openonda.tutorials import TUTORIALS, materialize_tutorial
 
 ROOT = Path(__file__).resolve().parents[2] / "tutorials"
 CASES = [tutorial.relative_path for tutorial in TUTORIALS]
+PRESERVING_RUNS = {
+    "coupled_fvm_vpm/01_cylinder_shedding_flow",
+    "coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow",
+    "coupled_fvm_vpm/02_cube_flow",
+    "coupled_fvm_vpm/02_cube_flow/reference_flow",
+}
 
 
 def _variants():
@@ -93,8 +99,12 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
     fresh = commands(directory / "allrun.sh")
     continuing = commands(directory / "allcontinue.sh")
     assert fresh[:2] == continuing[:2] == ["set -e", 'cd -- "$(dirname -- "$0")"']
-    assert fresh[2] == "./allclean.sh"
-    fresh_runs = [shlex.split(command) for command in fresh[3:]]
+    if relative.as_posix() in PRESERVING_RUNS:
+        assert "./allclean.sh" not in fresh
+        fresh_runs = [shlex.split(command) for command in fresh[2:]]
+    else:
+        assert fresh[2] == "./allclean.sh"
+        fresh_runs = [shlex.split(command) for command in fresh[3:]]
     continuing_runs = [shlex.split(command) for command in continuing[2:]]
     assert len(fresh_runs) == len(continuing_runs) > 0
     for fresh_run, continuing_run in zip(fresh_runs, continuing_runs, strict=True):

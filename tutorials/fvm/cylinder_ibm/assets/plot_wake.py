@@ -14,6 +14,7 @@ if not __package__:
 
 
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 import pyvista as pv
 
@@ -85,7 +86,7 @@ def main():
     L = recirculation_length(x_cl, u_cl)
 
     fig, ax = plt.subplots(figsize=figure_size("single"))
-    ax.plot(x_cl / D_REF, u_cl / FREESTREAM_SPEED, color=COLORS["TUDdark"], linewidth=1.0)
+    ax.plot(x_cl / D_REF, u_cl / FREESTREAM_SPEED, color=COLORS["fvm"], linewidth=1.0)
     ax.axhline(0.0, color=COLORS["AxisBlack"], linewidth=0.5)
     ax.axvspan(-0.5, 0.5, color=COLORS["MaskGray"], label="cylinder")
     if L is not None and "L_over_D" in ref:
@@ -95,23 +96,22 @@ def main():
             0.5 + hi,
             color=COLORS["reference"],
             alpha=0.3,
-            label=f"ref. wake closure: L/D = {lo:.2f}-{hi:.2f}",
+            label=f"ref. wake closure: L/D = {lo:.2g}-{hi:.2g}",
         )
     if L is not None:
         ax.axvline(
             _wake_endpoint_over_d(L, D_REF),
-            color=COLORS["TUDred"],
-            linestyle="--",
+            color=COLORS["fvm"],
+            linestyle="-",
             linewidth=0.8,
-            label=f"L/D = {L / D_REF:.3f}",
+            label=f"L/D = {L / D_REF:.2g}",
         )
     ax.set_xlim(-2, 10)
     ax.set_xlabel("x / D")
     ax.set_ylabel(r"$u_x / U_\infty$")
-    ax.set_title(f"Wake centreline (Re = {args.Re:g})")
     ax.legend()
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    ax.grid(False)
+    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.984)
     save_fig(fig, "wake_centreline.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     if L is not None:

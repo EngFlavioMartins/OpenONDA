@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 from matplotlib.collections import PolyCollection
 import numpy as np
 import pyvista as pv
@@ -64,21 +65,20 @@ def main():
 
     polygons, speed = _section_polygons_and_speed(mesh)
 
-    fig, ax = plt.subplots(figsize=figure_size("wide_short"))
+    fig = plt.figure(figsize=(125 / 25.4, 105 / 25.4))
+    ax = fig.add_axes([.132, .32, .736, .657143])
     sc = PolyCollection(polygons, cmap=COLORMAPS["field_speed"], edgecolors="none")
     sc.set_array(speed)
     ax.add_collection(sc)
-    plt.colorbar(sc, ax=ax, label="velocity magnitude / freestream speed")
+    cax = fig.add_axes([.132, .14, .736, .022])
+    fig.colorbar(sc, cax=cax, orientation="horizontal", label="velocity magnitude / freestream speed")
     ax.set_xlim(-1.0, 3.0)
     ax.set_ylim(-1.5, 1.5)
     ax.set_xlabel("x / c")
     ax.set_ylabel("y / c")
-    ax.set_title(
-        f"NACA 0012 velocity magnitude (Re = {RE:.0f}, $\\alpha$ = {args.angle:g}$^\\circ$)"
-    )
     ax.set_aspect("equal")
+    ax.tick_params(axis="y", pad=8)
 
-    fig.tight_layout()
     save_fig(fig, "airfoil_velocity.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

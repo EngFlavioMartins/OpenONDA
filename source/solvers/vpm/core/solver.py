@@ -7,7 +7,7 @@ Author: Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from numbers import Real
 from pathlib import Path
@@ -879,8 +879,8 @@ class VPMSolver:
         try:
             if start_from is not None:
                 self._start_run_from(start_from)
-        except BaseException:
-            self.close()
+        except BaseException as error:
+            self.close(failure=error)
             raise
         self._run_started = True
         self._run_wall_started_at = perf_counter()
@@ -1038,24 +1038,57 @@ class VPMSolver:
             status=status,
         )
 
-    def close(self) -> None:
+    def close(self, *, failure: BaseException | None = None) -> None:
         """Record manually advanced state and release logging/backend resources.
 
         Drivers that call :meth:`advance` directly, including the coupled
         solver, still publish their final accepted state on close. A bounded
         run retains ``partial`` status when its configured steps remain.
+        When unwinding an existing failure, attach cleanup errors to it so
+        allocation or evolution failures remain the caller-visible cause.
         """
         if getattr(self, "_closed", False):
             return
         primary_failure: BaseException | None = None
+        # Only the concrete slab's optional private CuPy owner is ours here.
+        # Never close an arbitrary configured/shared induction or its base.
+        from ..physics.induction.slip_slab import SlipSlabInduction
+
+        induction = getattr(self, "induction", None)
+        mesh_failure = getattr(self, "_mesh_cleanup_failure", None)
+        if mesh_failure is None and type(induction) is SlipSlabInduction:
+            try:
+                induction.close_mesh_session()
+            except BaseException as error:
+                mesh_failure = self._mesh_cleanup_failure = error
+        if mesh_failure is not None:
+            primary_failure = mesh_failure
+        stage_rhs = getattr(self, "stage_rhs", None)
+        close_stage_rhs = getattr(stage_rhs, "close", None)
+        if close_stage_rhs is not None:
+            try:
+                close_stage_rhs()
+            except BaseException as error:
+                if primary_failure is None:
+                    primary_failure = error
+        for buffer in getattr(self, "_particle_snapshot_buffers", {}).values():
+            try:
+                buffer.destroy()
+            except BaseException as error:
+                if primary_failure is None:
+                    primary_failure = error
+        self._particle_snapshot_buffers = {}
         if not self._run_started and self._initial_conditions_built:
             status = "completed" if self.step >= self.case.run.steps else "partial"
             if self._evolution_failure is not None:
                 status = "failed"
+            if mesh_failure is not None:
+                status = "failed"
             try:
-                self._write_run_manifest(status, self._evolution_failure)
+                self._write_run_manifest(status, self._evolution_failure or mesh_failure)
             except BaseException as error:
-                primary_failure = error
+                if primary_failure is None:
+                    primary_failure = error
         restore = getattr(self, "_restore_output_streams", None)
         if restore is not None:
             try:
@@ -1063,7 +1096,7 @@ class VPMSolver:
             except BaseException as error:
                 if primary_failure is None:
                     primary_failure = error
-        if getattr(self, "_backend_claimed", False):
+        if getattr(self, "_backend_claimed", False) and mesh_failure is None:
             try:
                 reset_taichi_backend(owner=self)
                 self._backend_claimed = False
@@ -1071,6 +1104,9 @@ class VPMSolver:
                 if primary_failure is None:
                     primary_failure = error
         if primary_failure is not None:
+            if failure is not None:
+                failure.add_note(f"VPM cleanup also failed: {primary_failure!r}")
+                return
             raise primary_failure
         self._closed = True
 
@@ -2253,6 +2289,53 @@ class VPMSolver:
         magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_replacement(magnitude, particle_volume)
 
+    def capture_particle_snapshot(self, *, slot: str):
+        """Capture a provisional device state in an explicitly named scratch slot.
+
+        Distinct nested transactions must use different slots. Reusing a slot
+        invalidates its previous handle; restoring it then fails before mutation.
+        This is not a restart or a cache: every call copies current device state.
+        """
+        from ..particles.snapshot import ParticleSnapshotBuffer
+
+        if not isinstance(slot, str) or not slot:
+            raise ValueError("Particle snapshot slot must be a non-empty string")
+        buffers = getattr(self, "_particle_snapshot_buffers", None)
+        if buffers is None:
+            buffers = self._particle_snapshot_buffers = {}
+        count = int(self.particles.n_particles_total)
+        buffer = buffers.get(slot)
+        if buffer is None or buffer.capacity < count:
+            capacity = min(
+                self.particles.capacity,
+                max(1, count, 2 * buffer.capacity if buffer is not None else count),
+            )
+            replacement = ParticleSnapshotBuffer(capacity, self.particles._taichi_dtype)
+            if buffer is not None:
+                buffer.destroy()
+            buffer = buffers[slot] = replacement
+        return buffer.capture(
+            self.particles,
+            prepare_lineage=self.stabilization.reference_vortex_strength is not None,
+        )
+
+    def restore_particle_snapshot(self, snapshot) -> None:
+        """Publish a device rollback with the existing replacement semantics."""
+        from ..particles.snapshot import ParticleSnapshot
+
+        if not isinstance(snapshot, ParticleSnapshot):
+            raise TypeError("Expected a particle snapshot from this solver")
+        snapshot._validate(self.particles)
+        lineage = (
+            snapshot.prepare_lineage()
+            if self.stabilization.reference_vortex_strength is not None
+            else None
+        )
+        snapshot.restore(self.particles)
+        self._axisymmetric_orbits_validated = False
+        if lineage is not None:
+            self.stabilization.on_replacement(*lineage)
+
     def update_particle_vortex_strength(
         self,
         mask: np.ndarray,
@@ -2440,6 +2523,8 @@ class VPMSolver:
         filename: str | Path,
         *,
         time_step_size: float | None = None,
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
     ) -> None:
         """Restore numerical state from a path owned by an internal coordinator.
 
@@ -2461,7 +2546,11 @@ class VPMSolver:
                 )
         filename = str(filename)
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
-        _BackupIO.load(self, path, time_step_size=time_step_size)
+        _BackupIO.load(
+            self, path, time_step_size=time_step_size,
+            allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
+        )
         self._restart_loaded = True
         self._restart_output_time = self.time
         # A numerical restart replaces the complete particle state. Declarative
@@ -2493,6 +2582,8 @@ class VPMSolver:
         filename: str | Path,
         *,
         time_step_size: float | None = None,
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
     ) -> None:
         """Restore one numerical backup into this configured solver.
 
@@ -2507,13 +2598,29 @@ class VPMSolver:
             checkpoint; all other numerical settings remain strict. The
             accepted checkpoint clock and coupled VLM state are restored
             before the new runtime step is applied.
+        allowed_config_differences : collection[str], default=()
+            Exact VPM numerical configuration paths explicitly permitted to
+            change. Strict matching is the default. Parent/wildcard/unused
+            permissions are rejected; time step changes use the separate
+            ``time_step_size`` argument, never this allowlist.
+        expected_config_differences : mapping or None, default=None
+            Optional ``path: (stored_value, current_value)`` expectations.
+            Required for structural or absent-key changes, so admitting a
+            policy mapping never implicitly admits extra policy fields. Use
+            ``config.restart_changes.MISSING_CONFIGURATION_VALUE`` for a
+            missing key (distinct from ``None``). All particle/schema/dtype
+            validation remains mandatory, independent of these permissions.
 
         Side Effects
         ------------
         Replaces particle fields and accepted clock, resets health history, and
         invalidates derived/cache state. The case configuration is unchanged.
         """
-        self._load_backup_from(filename, time_step_size=time_step_size)
+        self._load_backup_from(
+            filename, time_step_size=time_step_size,
+            allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
+        )
 
     def save_backup(self) -> None:
         """Write HDF5 state and its ParaView companions to the backup directory.

@@ -81,7 +81,8 @@ def main():
         )
 
     for name, label, values, cmap, clim in fields:
-        fig, ax = plt.subplots(figsize=figure_size("wide_short"))
+        fig = plt.figure(figsize=(125 / 25.4, 78 / 25.4))
+        ax = fig.add_axes([.110, .305, .780, .673077])
         image = PolyCollection(footprints, cmap=cmap, edgecolors="none", antialiased=False)
         image.set_array(values)
         if clim is not None:
@@ -103,7 +104,9 @@ def main():
         ax.set_aspect("equal")
         ax.set_xlabel("x / D")
         ax.set_ylabel("y / D")
-        fig.colorbar(image, ax=ax, orientation="horizontal", pad=0.24, fraction=0.06, label=label)
+        ax.tick_params(axis="y", pad=8)
+        cax = fig.add_axes([.110, .15, .780, .025])
+        fig.colorbar(image, cax=cax, orientation="horizontal", label=label)
         save_fig(fig, name, FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

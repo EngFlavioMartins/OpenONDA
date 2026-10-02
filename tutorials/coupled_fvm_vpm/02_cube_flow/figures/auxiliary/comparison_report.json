@@ -1,5 +1,5 @@
 {
-  "reference_samples": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/samples/grid_h0045",
+  "reference_samples": "reference_flow/samples/grid_h0045",
   "reference_grid": "grid_h0045",
   "reference_target_spacing": 0.045,
   "comparison_end_time": 22.0,

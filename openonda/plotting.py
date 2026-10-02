@@ -7,6 +7,8 @@ import shutil
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
+from matplotlib.lines import Line2D
+from matplotlib.ticker import ScalarFormatter, FormatStrFormatter
 import numpy as np
 
 from source.solution_layout import collection_path
@@ -133,9 +135,11 @@ THESIS_FONT_SIZE_PT = 10.95  # \normalsize in the thesis's 11pt class
 FONT_SIZE_PT = THESIS_FONT_SIZE_PT
 DEFAULT_DPI = 400
 EXPORT_FORMATS = ("png", "pdf")
+FORMAT_CHOICES = (*EXPORT_FORMATS, "both")
 MAX_FIGURE_WIDTH_CM = 12.5
 WIDE_FIGURE_WIDTH_CM = 12.5
-MIN_TEXT_CANVAS_PADDING_PT = 5.0
+MIN_TEXT_CANVAS_PADDING_PT = 2.0
+MIN_LINE_WIDTH_PT = 0.6  # At the native 125 mm publication width.
 FONT_PATH = Path(__file__).parent / "_resources" / "DejaVuSerif.ttf"
 
 FIGURE_SIZES_CM = {
@@ -150,30 +154,30 @@ FIGURE_SIZES_CM = {
     "wide_stacked": (WIDE_FIGURE_WIDTH_CM, 12.5),
 }
 
-LINE_WIDTH = 1.1
+LINE_WIDTH = 1.0
 SECONDARY_LINE_WIDTH = 1.0
 REFERENCE_LINE_WIDTH = 1.0
 MARKER_SIZE = 3.0
 LEGEND_MARKER_SIZE = 4.0
-MARKER_EDGE_WIDTH = 0.4
-SECONDARY_LINESTYLE = ":"
+MARKER_EDGE_WIDTH = MIN_LINE_WIDTH_PT
+SECONDARY_LINESTYLE = "-"
 MARK_EVERY = {
     "default": 3,
     "total_kinetic_energy": 4,
     "trajectory": 5,
 }
 
-# Match the rendered Thesis/thesis.tex palette; "orange" denotes the
-# thesis's FVMorange aubergine.
+# Approved Thesis/thesis_visuals palette (2026-10-02). Legacy colour names
+# are compatibility aliases: purple is now light blue and orange is amber.
 PALETTE = {
-    "dark": "#0C2340",
-    "teal": "#0E8A85",
-    "purple": "#5C3D9B",
-    "orange": "#772953",
-    "green": "#2B7A4E",
-    "red": "#9C2F50",
-    "gray": "#6E8898",
-    "text": "#2E3D46",
+    "dark": "#0D3D45",
+    "teal": "#156074",
+    "purple": "#41A6C4",
+    "orange": "#EF9C1F",
+    "green": "#629B42",
+    "red": "#BF2326",
+    "gray": "#60686C",
+    "text": "#28353A",
     "light_gray": "#C0C0C0",
     "strong_gray": "#8B8B8B",
     "white": "#ffffff",
@@ -183,14 +187,15 @@ COLOR_CYCLE = (
     PALETTE["teal"],
     PALETTE["purple"],
     PALETTE["orange"],
-    PALETTE["green"],
     PALETTE["red"],
+    PALETTE["green"],
     PALETTE["gray"],
     PALETTE["dark"],
 )
 BACKGROUND_LIGHT = PALETTE["light_gray"]
 BACKGROUND_STRONG = PALETTE["strong_gray"]
-REFERENCE_GRAY = PALETTE["gray"]
+# Neutral references remain distinct from the coloured numerical series.
+REFERENCE_GRAY = "#60686C"
 
 COLORS = {
     # Named thesis colours and compatibility aliases.
@@ -206,11 +211,11 @@ COLORS = {
     "ReferenceGray": REFERENCE_GRAY,
     "RefGray": REFERENCE_GRAY,
     "DarkText": PALETTE["text"],
-    "LightBG": "#EDF3F5",
-    "LightCyan": "#CBE8E7",
-    "LightPurple": "#E5E0F5",
-    "LightOrange": "#F5E8D3",
-    "LightGreen": "#D6EDE2",
+    "LightBG": "#F5F6F5",
+    "LightCyan": "#DBEDF2",
+    "LightPurple": "#E4F2F7",
+    "LightOrange": "#FCEDD2",
+    "LightGreen": "#E7F0DF",
     "LightText": PALETTE["white"],
     "AxisBlack": PALETTE["black"],
     "MaskGray": PALETTE["light_gray"],
@@ -229,8 +234,8 @@ COLORS = {
     # Semantic aliases used by existing tutorials.
     "vpm": PALETTE["purple"],
     "hybrid": PALETTE["orange"],
-    "fvm": PALETTE["text"],
-    "of": PALETTE["green"],
+    "fvm": PALETTE["teal"],
+    "of": REFERENCE_GRAY,
     "ref": REFERENCE_GRAY,
     "literature": REFERENCE_GRAY,
     "dvh": PALETTE["green"],
@@ -238,22 +243,59 @@ COLORS = {
     "dns": PALETTE["dark"],
 }
 
-COLORMAPS = {
-    "field_speed": "viridis",
-    "field_vorticity": "magma",
-    "vorticity_magnitude": "hot",
-    "velocity": "Spectral_r",
-    "vorticity": "RdBu_r",
-    "error": "inferno",
-    "error_diverging": "seismic",
-    "vortex_speed": "plasma",
-    "vortex_vorticity": "inferno",
+# Sequential maps for magnitudes; a zero-centred diverging map for signed fields.
+from matplotlib import colormaps
+from matplotlib.colors import LinearSegmentedColormap
+
+for _name, _stops in {
+    "thesis_blue": ["#0D3D45", "#156074", "#41A6C4", "#C8EDF5"],
+    "thesis_amber": ["#6B3019", "#B45D1E", "#EF9C1F", "#FFF0CA"],
+    "thesis_signed": ["#156074", "#F5F6F5", "#BF2326"],
+}.items():
+    if _name not in colormaps:
+        colormaps.register(LinearSegmentedColormap.from_list(_name, _stops, N=256))
+
+COLORMAPS = dict.fromkeys(
+    (
+        "field_speed",
+        "field_vorticity",
+        "vorticity_magnitude",
+        "velocity",
+        "error",
+        "vortex_speed",
+        "vortex_vorticity",
+    ),
+    "thesis_blue",
+)
+COLORMAPS.update(
+    vorticity="thesis_signed", error_diverging="thesis_signed", streamlines="thesis_amber"
+)
+
+# Method identity is stable across tutorials. VLM+VPM remains the VPM method;
+# hybrid means FVM+VPM. Different physical components may omit markers when dense.
+METHOD_STYLE = {
+    "fvm": {"color": COLORS["fvm"], "marker": "s", "linestyle": "-"},
+    "vpm": {"color": COLORS["vpm"], "marker": "o", "linestyle": "-"},
+    "hybrid": {"color": COLORS["hybrid"], "marker": "D", "linestyle": "-"},
+    "reference": {"color": COLORS["reference"], "linestyle": "--"},
+    "reference_secondary": {"color": COLORS["DarkText"], "linestyle": ":"},
 }
+
+
+def method_style(method, *, markers=True):
+    """Return a fresh method style; gray broken lines are reserved for references."""
+    style = dict(METHOD_STYLE[method], linewidth=LINE_WIDTH)
+    if markers and "marker" in style:
+        style.update(markersize=MARKER_SIZE, markeredgewidth=MARKER_EDGE_WIDTH)
+    elif not markers:
+        style.pop("marker", None)
+    return style
+
 
 # Vortex-interaction ladder. The two interaction families are plotted in
 # separate panels, so each method keeps the same style in both panels.
 VORTEX_INTERACTION_VARIANT_STYLE = {
-    "dns": {"label": "DNS", "color": COLORS["RefGray"], "marker": "o"},
+    "dns": {"label": "DNS", "color": COLORS["TUDdark"], "marker": "o"},
     "les": {"label": "LES", "color": COLORS["TUDcyan"], "marker": "s"},
     "les_stabilized": {
         "label": "LES + stabilization",
@@ -271,12 +313,12 @@ INTENDED_CASE_ORDER = {
 }
 
 VORTEX_RING_VARIANT_STYLE = {
-    "dns_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
-    "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
-    "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
+    "dns_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "-"},
+    "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "-"},
+    "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "-"},
     "les_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
     # Saved schema-2 case names use the corresponding transposed styles.
-    "dns_treecode": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
+    "dns_treecode": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "-"},
     "les_treecode": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
@@ -294,7 +336,7 @@ VORTEX_RING_VARIANT_LABEL = {
 
 LAMB_OSEEN_SCHEME_STYLE = {
     "cs": {"label": "CS", "color": COLORS["FVMorange"], "marker": "o"},
-    "rwm": {"label": "RWM", "color": COLORS["RefGray"], "marker": "^"},
+    "rwm": {"label": "RWM", "color": COLORS["TUDdark"], "marker": "^"},
     "dvh": {"label": "DVH", "color": COLORS["TUDcyan"], "marker": "v"},
     "gbd": {"label": "GBD", "color": COLORS["VPMpurple"], "marker": "D"},
 }
@@ -491,8 +533,57 @@ def _separate_title_from_y_ticks(fig, axes: tuple[Axes, ...]) -> None:
             )
 
 
+class TwoSignificantDigitsFormatter(ScalarFormatter):
+    """Two significant digits, with a shared exponent/offset for close values."""
+
+    def _set_format(self):
+        template = r"$\mathdefault{%1.2g}$" if self._usetex or self._useMathText else "%1.2g"
+        if hasattr(self, "_format"):
+            self._format = template
+        else:
+            self.format = template
+
+
+def prepare_figure(fig):
+    """Apply print precision and stroke floors without changing authored layout.
+
+    Zero-width/absent edges stay absent. Full data precision, locators, limits,
+    normalisation and explicitly authored textual tick labels are retained.
+    """
+    for ax in fig.axes:
+        for axis in (ax.xaxis, ax.yaxis):
+            formatter = axis.get_major_formatter()
+            if isinstance(formatter, ScalarFormatter) and not isinstance(formatter, TwoSignificantDigitsFormatter):
+                new = TwoSignificantDigitsFormatter(useMathText=True)
+                new.set_powerlimits(formatter.get_powerlimits() if hasattr(formatter, "get_powerlimits") else (-3, 2))
+                lo, hi = sorted(axis.get_view_interval())
+                # A compact additive offset preserves visible variation near 1,
+                # e.g. ring-circulation values 0.996--1.000, without long labels.
+                if lo * hi > 0 and hi - lo < 0.1 * min(abs(lo), abs(hi)):
+                    new.set_useOffset(float(format((lo + hi) / 2, ".2g")))
+                axis.set_major_formatter(new)
+            elif isinstance(formatter, FormatStrFormatter):
+                axis.set_major_formatter(FormatStrFormatter("%.2g"))
+            for tick in (*axis.get_major_ticks(), *axis.get_minor_ticks()):
+                tick.tick1line.set_markeredgewidth(MIN_LINE_WIDTH_PT)
+                tick.tick2line.set_markeredgewidth(MIN_LINE_WIDTH_PT)
+        for spine in ax.spines.values():
+            spine.set_linewidth(max(MIN_LINE_WIDTH_PT, spine.get_linewidth()))
+    for artist in fig.findobj():
+        if not artist.get_visible():
+            continue
+        if hasattr(artist, "get_linewidth") and hasattr(artist, "set_linewidth"):
+            width = np.asarray(artist.get_linewidth(), dtype=float)
+            if width.size:
+                adjusted = np.where(width > 0, np.maximum(width, MIN_LINE_WIDTH_PT), width)
+                artist.set_linewidth(float(adjusted) if adjusted.ndim == 0 else adjusted)
+        if isinstance(artist, Line2D) and artist.get_marker() not in (None, "None", "", " "):
+            artist.set_markeredgewidth(max(MIN_LINE_WIDTH_PT, artist.get_markeredgewidth()))
+
+
 def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
     """Validate the fixed-size, centred, single-font thesis plot contract."""
+    prepare_figure(fig)
     axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
     if not axes:
         raise ValueError("at least one plotting axis is required")
@@ -639,10 +730,10 @@ def set_style(*, use_tex: bool = False):
         "ytick.major.size": 6,
         "xtick.minor.size": 4,
         "ytick.minor.size": 4,
-        "xtick.major.width": 0.5,
-        "ytick.major.width": 0.5,
-        "xtick.minor.width": 0.5,
-        "ytick.minor.width": 0.5,
+        "xtick.major.width": MIN_LINE_WIDTH_PT,
+        "ytick.major.width": MIN_LINE_WIDTH_PT,
+        "xtick.minor.width": MIN_LINE_WIDTH_PT,
+        "ytick.minor.width": MIN_LINE_WIDTH_PT,
         "axes.grid": False,
         "grid.linestyle": "--",
         "grid.linewidth": 0.5,
@@ -654,7 +745,7 @@ def set_style(*, use_tex: bool = False):
         "xtick.top": True,
         "ytick.right": True,
         "axes.edgecolor": "black",
-        "axes.linewidth": 0.5,
+        "axes.linewidth": MIN_LINE_WIDTH_PT,
         "lines.linewidth": LINE_WIDTH,
         "lines.markersize": MARKER_SIZE,
         "xtick.direction": "in",
@@ -666,30 +757,50 @@ def set_style(*, use_tex: bool = False):
     plt.rcParams.update(tex_fonts)
 
 
-def save_fig(
-    fig,
-    path,
-    figure_format: str | None = None,
-    dpi: int | None = None,
-    tight_rect: tuple[float, float, float, float] | None = None,
-    bbox_inches: str | None = None,
-) -> None:
-    """Save a Matplotlib figure with the shared export defaults."""
-    out = Path(path)
-    if figure_format is not None:
-        out = figure_path(out, figure_format)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    layout_engine = fig.get_layout_engine() if hasattr(fig, "get_layout_engine") else None
-    if layout_engine is None:
-        if tight_rect is None:
-            fig.tight_layout()
-        else:
-            fig.tight_layout(rect=tight_rect)
-    fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=bbox_inches)
-    plt.close(fig)
-    from source import log_style
+def requested_formats(figure_format="both"):
+    """Expand the CLI format without treating 'both' as a filename extension."""
+    if figure_format == "both":
+        return ("pdf", "png")
+    if figure_format not in EXPORT_FORMATS:
+        raise ValueError(f"Unsupported figure format: {figure_format!r}")
+    return (figure_format,)
 
-    print(log_style.block_section("figure output", [("saved", str(out))]))
+
+def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
+    """Export an already laid-out canvas at native size, without cropping.
+
+    Validate before calling this function when using a custom panel layout.
+    PDF is saved first so both formats use identical physical geometry.
+    """
+    prepare_figure(fig)
+    path = Path(path)
+    suffix_format = path.suffix.lstrip(".")
+    formats = requested_formats(
+        figure_format or (suffix_format if suffix_format in FORMAT_CHOICES else "both")
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    outputs = []
+    for fmt in formats:
+        output = (
+            path.with_suffix(f".{fmt}")
+            if suffix_format in FORMAT_CHOICES
+            else Path(f"{path}.{fmt}")
+        )
+        fig.savefig(output, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=None)
+        outputs.append(output)
+        print(f"Saved: {output}")
+    if close:
+        plt.close(fig)
+    return tuple(outputs)
+
+
+def save_fig(fig, path, figure_format="both", dpi=None, tight_rect=None, bbox_inches=None):
+    """Lay out, validate and export a simple thesis figure in PNG and PDF."""
+    if bbox_inches is not None:
+        raise ValueError("Thesis figures use a fixed canvas; cropping is unsupported.")
+    prepare_figure(fig)
+    validate_thesis_figure(fig, fig.axes)
+    return export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 
 
 def set_thesis_style():
@@ -700,7 +811,7 @@ def set_thesis_style():
     plt.rcParams.update(
         {
             "text.usetex": True,
-            "text.latex.preamble": r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepackage{amsmath}\usepackage{newpxmath}",
+            "text.latex.preamble": r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepackage{amsmath}\usepackage{newpxmath}\newcommand{\vect}[1]{\boldsymbol{#1}}\newcommand{\dd}{\mathrm{d}}\newcommand{\zetaeps}{\zeta_{\sigma}}\newcommand{\Reyn}{\mathrm{Re}}",
             "font.family": "serif",
             "font.serif": ["Palatino"],
             **dict.fromkeys(
@@ -721,3 +832,41 @@ def set_thesis_style():
             "savefig.pad_inches": 0.0,
         }
     )
+
+
+def validation_subplots(nrows, *, height_cm=None, sharex=False, outer=0.17, top_padding_cm=0.65):
+    """Compact boxed panels at the thesis width, with no caption gutters."""
+    set_thesis_style()
+    height = min(height_cm or (2 + 3.6 * nrows), 2 + 3.6 * nrows)
+    fig, axes = plt.subplots(
+        nrows, 1, squeeze=False, sharex=sharex, figsize=(MAX_FIGURE_WIDTH_CM * CM, height * CM)
+    )
+    centered_subplots_adjust(
+        fig,
+        outer=outer,
+        bottom=1.35 / height,
+        top=1 - top_padding_cm / height,
+        hspace=0.12 if sharex else 0.48,
+    )
+    return fig, axes[:, 0]
+
+
+def validation_legend(fig, axis, *, ncol=2):
+    """Use one compact legend inside a panel."""
+    return axis.legend(
+        loc="best",
+        ncol=ncol,
+        frameon=True,
+        framealpha=0.9,
+        edgecolor="none",
+        handlelength=1.5,
+        columnspacing=0.8,
+        handletextpad=0.4,
+    )
+
+
+def save_validation_figure(fig, path, *, figure_format="both", dpi=None):
+    """Check text extents and collisions before publishing a validation figure."""
+    prepare_figure(fig)
+    validate_thesis_figure(fig, fig.axes)
+    return export_figure(fig, path, figure_format=figure_format, dpi=dpi)

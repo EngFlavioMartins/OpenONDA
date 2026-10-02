@@ -1,5 +1,6 @@
 """Logging, metadata, and per-step diagnostics for coupled runs."""
 
+from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 import json
@@ -15,6 +16,50 @@ from source import log_style
 from source.coupler.backup import BACKUP_DIRECTORY
 
 _REAL_STDOUT = sys.stdout
+
+
+def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
+    """Copy structured evidence into JSON types, rejecting every nonfinite leaf.
+
+    Counts, flags, optional values, ordered lists and nested mappings retain
+    their meaning. NumPy scalar/array values are supported without coercing
+    lists to scalars, dropping details, stringifying objects, or mutating the
+    producer. Non-string mapping keys and cycles are rejected explicitly.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, bool | np.bool_):
+        return bool(value)
+    if isinstance(value, int | np.integer):
+        return int(value)
+    if isinstance(value, float | np.floating):
+        result = float(value)
+        if not np.isfinite(result):
+            raise FloatingPointError(f"non-finite diagnostic at {path}")
+        return result
+    if not isinstance(value, Mapping | list | tuple | np.ndarray):
+        raise TypeError(f"unsupported diagnostic value {type(value).__name__} at {path}")
+    active = set() if _active is None else _active
+    identity = id(value)
+    if identity in active:
+        raise ValueError(f"cyclic diagnostic structure at {path}")
+    active.add(identity)
+    try:
+        if isinstance(value, np.ndarray):
+            return _diagnostic_json_value(value.tolist(), path, _active=active)
+        if isinstance(value, Mapping):
+            result = {}
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise TypeError(f"diagnostic mapping key must be a string at {path}: {key!r}")
+                result[key] = _diagnostic_json_value(child, f"{path}[{key!r}]", _active=active)
+            return result
+        return [
+            _diagnostic_json_value(child, f"{path}[{index}]", _active=active)
+            for index, child in enumerate(value)
+        ]
+    finally:
+        active.remove(identity)
 
 
 class OutputRedirector:
@@ -677,11 +722,11 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         tail = getattr(induction, "last_tail", None)
         if tail is not None:
             # This describes only the most recent image query, not the total
-            # induction work across the coupling step.
-            image_call = {str(name): float(value) for name, value in tail.items()}
-            if not all(np.isfinite(value) for value in image_call.values()):
-                raise FloatingPointError("non-finite slip-slab image diagnostic")
-            diagnostics["last_induction_image_call"] = image_call
+            # induction work across the coupling step. Backend decline records
+            # contain structured work/capacity evidence and must stay intact.
+            diagnostics["last_induction_image_call"] = _diagnostic_json_value(
+                tail, "slip-slab image diagnostic"
+            )
     spanwise = getattr(coupler.vorticity_transfer, "last_spanwise_metrics", None)
     if spanwise:
         values = {str(name): float(value) for name, value in spanwise.items()}
@@ -700,35 +745,39 @@ def record_step(
     *,
     logger: logging.Logger,
     comm=None,
+    exchange_started: float | None = None,
+    health_output_time: float = 0.0,
 ) -> None:
-    """Persist diagnostics and synchronize a completed coupling step."""
+    """Report one accepted exchange through its scheduled checkpoint attempt.
+
+    The four evolution timers exclude health/output and backup. The end-to-end
+    clock includes those phases, reporting preparation, logging and collective
+    waits. Publishing this final timing record itself is outside its scope.
+    Nested breakdowns (for example donor gather) are descriptive, not additive.
+    A failed checkpoint does not undo the accepted numerical step. Preserve one
+    diagnostic row for it, then re-raise the checkpoint failure on every rank.
+    """
     from .parallel import collective_phase
 
+    reporting_started = time.perf_counter()
     with collective_phase(comm, "coupled step reporting"):
         t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
         diagnostics = compute_diagnostics(coupler, transfer_result)
         interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
         if interface_iteration is not None:
             diagnostics["interface_iteration"] = interface_iteration
+        diagnostics = _diagnostic_json_value(diagnostics, "coupled step diagnostic")
         timing_data = {
             "vpm": float(t_vpm),
             "vpm_boundary_condition": float(t_vpm_boundary_condition),
             "fvm": float(t_fvm),
             "transfer": float(t_transfer),
-            "total": float(sum(timing)),
+            "evolution_total": float(sum(timing)),
+            "health_and_samplers": float(health_output_time),
         }
         stats = getattr(coupler, "_step_transfer_stats", None) or {}
         timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
         if coupler._is_master:
-            diagnostics.update(
-                {"step": int(step), "time": float(time_end), "timing_seconds": timing_data}
-            )
-            coupler.coupling_diagnostics.append(diagnostics)
-            with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
-                "a", encoding="utf-8"
-            ) as stream:
-                stream.write(json.dumps(diagnostics, separators=(",", ":")) + "\n")
-
             logger.info(
                 format_coupler_log(
                     "FVM",
@@ -756,35 +805,109 @@ def record_step(
                     ),
                 )
             )
-            logger.info(
-                format_coupler_log(
-                    "timing",
-                    ("wall time", f"{timing_data['total']:.3f}", "s"),
-                    ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
-                    ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
-                    ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
-                    ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
-                )
-            )
             finish_coupling_step(logger, final=step == coupler._log_stop_step)
             flush_log(logger)
 
+    reporting_time = time.perf_counter() - reporting_started
+    backup_started = time.perf_counter()
     backup_due = (
         coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
     )
-    if backup_due:
-        backup_directory = coupler.solution_dir / BACKUP_DIRECTORY
-        coupler.save_backup(backup_directory, coupling_step=step)
-        if coupler._is_master:
-            logger.info(
-                format_coupler_log(
-                    "coupled backup",
-                    ("coupling step", step),
-                    ("flow time", coupler.vpm_time_step_size * step, "s"),
-                    ("directory", str(backup_directory)),
+    backup_failure = None
+    try:
+        if backup_due:
+            backup_directory = coupler.solution_dir / BACKUP_DIRECTORY
+            coupler.save_backup(backup_directory, coupling_step=step)
+            if coupler._is_master:
+                logger.info(
+                    format_coupler_log(
+                        "coupled backup",
+                        ("coupling step", step),
+                        ("flow time", coupler.vpm_time_step_size * step, "s"),
+                        ("directory", str(backup_directory)),
+                    )
                 )
-            )
-            flush_log(logger)
+                flush_log(logger)
+    except BaseException as error:
+        backup_failure = error
+    backup_time = time.perf_counter() - backup_started
+    # save_backup already owns its MPI collectives. Only propagate the captured
+    # local failure here, after that call has returned/raised on every rank; no
+    # rank skips publication while another is entering its collective.
+    try:
+        with collective_phase(comm, "accepted exchange backup completion"):
+            if backup_failure is not None:
+                raise backup_failure
+    except BaseException as error:
+        backup_failure = error
+    measured_end = time.perf_counter()
+    phases = float(sum(timing) + health_output_time + reporting_time + backup_time)
+    total = phases if exchange_started is None else measured_end - exchange_started
+    timing_data.update(
+        {
+            "reporting": float(reporting_time),
+            "backup": float(backup_time),
+            "orchestration_and_wait": float(total - phases),
+            "total": float(total),
+        }
+    )
+    try:
+        with collective_phase(comm, "accepted exchange timing publication"):
+            if coupler._is_master:
+                diagnostics.update(
+                    {
+                        "step": int(step),
+                        "time": float(time_end),
+                        "timing_seconds": timing_data,
+                        "timing_scope": "accepted exchange through checkpoint attempt, before timing publication",
+                        "backup_phase": {
+                            "scheduled": backup_due,
+                            "status": (
+                                "failed"
+                                if backup_failure is not None
+                                else "complete"
+                                if backup_due
+                                else "not_scheduled"
+                            ),
+                            "error": (
+                                None
+                                if backup_failure is None
+                                else f"{type(backup_failure).__name__}: {backup_failure}"
+                            ),
+                        },
+                    }
+                )
+                diagnostics = _diagnostic_json_value(diagnostics, "accepted exchange diagnostic")
+                encoded = json.dumps(diagnostics, separators=(",", ":"), allow_nan=False)
+                coupler.coupling_diagnostics.append(diagnostics)
+                with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
+                    "a", encoding="utf-8"
+                ) as stream:
+                    stream.write(encoded + "\n")
+                logger.info(
+                    format_coupler_log(
+                        "timing",
+                        ("wall time", f"{timing_data['total']:.3f}", "s"),
+                        ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
+                        ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
+                        ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
+                        ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
+                        ("  health and samplers", f"{health_output_time:.3f}", "s"),
+                        ("  reporting", f"{reporting_time:.3f}", "s"),
+                        ("  backup", f"{backup_time:.3f}", "s"),
+                        ("  orchestration and wait", f"{total - phases:.3f}", "s"),
+                    )
+                )
+                flush_log(logger)
+    except BaseException as publication_failure:
+        if backup_failure is None:
+            raise
+        backup_failure.add_note(
+            "Accepted-step diagnostic publication also failed: "
+            f"{type(publication_failure).__name__}: {publication_failure}"
+        )
+    if backup_failure is not None:
+        raise backup_failure.with_traceback(backup_failure.__traceback__)
 
 
 __all__ = [

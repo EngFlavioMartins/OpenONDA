@@ -49,16 +49,16 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
     assert len(mesh.levels) - 1 == 24
     assert np.diff(mesh.levels) == pytest.approx(0.96 / 24.0)
     assert np.diff(mesh.levels).max() <= 0.04 + 1.0e-12
-    assert captured["solution_dir"] == CASE / "solution/grid_h004"
-    assert captured["samples_dir"] == CASE / "samples/grid_h004"
+    assert captured["solution_dir"] == CASE / "solution"
+    assert captured["samples_dir"] == CASE / "samples"
 
     config = captured["config"]
     assert config.cores == 6
     assert config.time.end_time == 100.0
-    assert config.time.adjustment.maximum == 0.7
-    assert config.time.adjustment.maximum_time_step_size == 0.01
-    assert config.pimple.algorithm == "PISO"
-    assert config.pimple.n_outer_correctors == 1
+    assert config.time.adjustment is None
+    assert config.time.time_step_size == 0.008
+    assert config.pimple.algorithm == "PIMPLE"
+    assert config.pimple.n_outer_correctors == 2
     samplers = {sampler.file_name: sampler for sampler in config.samplers}
     assert set(samplers) == {
         "forces_history",
@@ -66,13 +66,19 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
         "span_lower",
         "span_middle",
         "span_upper",
+        "phase_near_upper",
+        "phase_near_lower",
+        "phase_wake_upper",
+        "phase_wake_lower",
+        "transverse_x2",
+        "transverse_x4",
+        "midspan",
     }
-    assert samplers["forces_history"].schedule.every_time == 0.04
+    assert samplers["forces_history"].schedule.every_n_steps * config.time.time_step_size == 0.04
 
 
 def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):
-    # Never execute a tutorial launcher in the checkout: allrun invokes
-    # allclean, which would delete the user's generated simulation data.
+    # Never execute a tutorial launcher in the checkout during tests.
     case_copy = tmp_path / "case"
     case_copy.mkdir()
     shutil.copy2(CASE / "allrun.sh", case_copy / "allrun.sh")
@@ -90,7 +96,7 @@ def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):
     subprocess.run(["/bin/bash", str(case_copy / "allrun.sh")], env=environment, check=True)
 
     calls = [shlex.split(line) for line in (tmp_path / "calls").read_text().splitlines()]
-    assert calls == [["clean"], ["setup.py"]]
+    assert calls == [["setup.py", "-h", "0.04"]]
 
 
 def test_setup_exposes_only_name_and_spacing():

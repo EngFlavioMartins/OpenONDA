@@ -1,17 +1,12 @@
 # Project tooling
 
-`python install.py` at the repository root installs with pip and verifies the
-result outside the checkout; `--dev` selects an editable installation.
-CPython 3.11 is required; all 3.11 security patch updates are supported.
-These optional Conda files help
-assemble a consistent interpreter and, where requested, an MPI/PETSc stack.
-They do not repair Python imports or modify shell startup files.
+Use `source install.sh` at the repository root. It creates and activates the
+`OpenONDA` environment and installs the checkout editably, with development
+and tutorial plotting tools. No installer options are needed.
 
-| File | Purpose |
-| --- | --- |
-| `install/install_conda.sh` | Create/update a Conda environment, install OpenONDA and verify it outside the checkout. `--dev` selects editable development installation; `--parallel` selects MPI/PETSc. |
-| `environment/environment.yml` | Base Python/numerical Conda environment; package metadata selects the compatible Taichi wheel. |
-| `environment/environment-parallel.yml` | The base environment plus a coherent OpenMPI/PETSc stack. |
+`environment/environment.yml` defines the shared Conda dependencies.
+The helpers under `install/` are called by the root installer; they are not
+separate user installation steps. See [installation](../docs/installation.md).
 
-Use `bash scripts/install/install_conda.sh --help` for options. For OpenVSP and
-ParaView, see [upstream installation guidance](../docs/installation.md#optional-external-software).
+Maintainers can repeat a fresh Ubuntu installation using the
+[VirtualBox baseline](../docs/verification/clean_install_vm.md).

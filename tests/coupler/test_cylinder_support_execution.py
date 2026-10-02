@@ -1,8 +1,6 @@
 """Installed campaign support preserves local physical factories and lifecycle."""
 
 from dataclasses import FrozenInstanceError, asdict
-import importlib.util
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,31 +12,24 @@ from openonda.cylinder_case import resolve_cylinder_variant
 from openonda.tutorial_runner import load_case_module
 
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
-FIXTURE = Path(__file__).with_name("fixtures") / "cylinder_factory_configuration.json"
 
 
-def test_native_configuration_matches_pre_refactor_physics_and_schedules():
-    """The fixture is a configuration snapshot, not numerical solution evidence."""
+def test_native_configuration_matches_selected_reference_physics_and_schedules():
+    """The selected ordinary run must match the reference, not the old campaign."""
     setup = load_case_module(CASE)
-    spec = importlib.util.spec_from_file_location(
-        "support_campaign", CASE / "assets/run_campaign.py"
-    )
-    campaign = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(campaign)
-    for expected in json.loads(FIXTURE.read_text()):
-        flow, particles, policy, _ = setup.build_case(end_time=0.8, overrides=expected["overrides"])
-        actual = {
-            "overrides": expected["overrides"],
-            "resolved": campaign._resolved_coupled_config(setup, 0.8, expected["overrides"]),
-            "fvm_schedules": [asdict(sample.schedule) for sample in flow.samplers],
-            "vpm_schedules": [asdict(sample.schedule) for sample in particles.samplers.samples],
-            "output_schedule": asdict(flow.time.output_schedule),
-            "backup_interval_steps": policy.backup_interval_steps,
-        }
-        # Provenance changes with a refactor; physical configuration must not.
-        actual["resolved"].pop("source_hash")
-        actual["resolved"].pop("software_fingerprint")
-        assert json.loads(json.dumps(actual)) == expected
+    reference = load_case_module(CASE / "reference_flow")
+    flow, particles, policy, mesh = setup.build_case()
+    control, control_mesh = reference.build_case("phase_h004", 0.04)
+    for field in ("schemes", "pimple", "linear", "transport", "turbulence", "time"):
+        assert asdict(getattr(flow, field)) == asdict(getattr(control, field))
+    assert len(mesh.levels) == len(control_mesh.levels) == 25
+    assert flow.time.time_step_size == 0.008
+    assert particles.numerics.time_step_size == 0.04
+    assert particles.numerics.viscous.particle_spacing == 0.04
+    assert particles.numerics.compute_device == "AUTO"
+    assert policy.backup_interval_steps == 25
+    assert flow.samplers[0].schedule.every_n_steps == 5
+    assert particles.samplers.samples[0].schedule.interval == 1
 
 
 def test_resolved_campaign_inputs_are_immutable():
@@ -154,8 +145,8 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         )
         == 3
     )
+    factory = captured.pop("factory")
     assert captured == {
-        "factory": setup.build_case,
         "start_from": setup.START_FROM,
         "output_root": tmp_path,
         "end_time": 0.8,
@@ -163,3 +154,6 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         "max_coupling_steps": 3,
         "overrides": overrides,
     }
+    resolved = tuple(object() for _ in range(4))
+    monkeypatch.setattr(setup, "build_case", lambda **kwargs: resolved)
+    assert factory(end_time=0.8, overrides=overrides) == resolved

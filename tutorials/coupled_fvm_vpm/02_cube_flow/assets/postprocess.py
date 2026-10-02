@@ -25,6 +25,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 import numpy as np
+from openonda.saved_times import match_saved_times, same_saved_time
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
@@ -45,14 +46,14 @@ CM = 1.0 / 2.54
 FIGURE_WIDTH_CM = 12.5
 FIGURE_WIDTH = FIGURE_WIDTH_CM * CM
 FIGURE_DPI = _THEME.DEFAULT_DPI
-EXPORT_FORMATS = _THEME.EXPORT_FORMATS
+EXPORT_FORMATS = _THEME.FORMAT_CHOICES
 FONT_SIZE_PT = _THEME.THESIS_FONT_SIZE_PT
 COMPARISON = SAMPLES / "comparison"
 
 COLORS = dict(_THEME.COLORS)
 COLORS.update(
     {
-        "fvm": COLORS["hybrid"],
+        "fvm": COLORS["TUDcyan"],
         "vpm": COLORS["vpm"],
         "cd": COLORS["hybrid"],
         "cl": COLORS["vpm"],
@@ -94,8 +95,7 @@ def _pvd_frames(pvd: Path) -> list[tuple[float, Path]]:
         (float(item.attrib["timestep"]), pvd.parent / item.attrib["file"])
         for item in ET.parse(pvd).iter("DataSet")
     )
-    if any(b[0] <= a[0] for a, b in zip(result, result[1:])):
-        raise ValueError(f"Duplicate states in {pvd}")
+    match_saved_times([time for time, _ in result])
     return result
 
 
@@ -249,9 +249,8 @@ def reference_run() -> ReferenceRun:
 
 
 def _frame_at_time(items: list[tuple[float, Path]], time: float) -> Path | None:
-    return next(
-        (path for value, path in items if np.isclose(value, time, rtol=0, atol=TIME_ATOL)), None
-    )
+    matched = match_saved_times([time], [value for value, _ in items])
+    return items[matched.indices[1][0]][1] if matched.times else None
 
 
 def _file_stamp(path: Path) -> list:
@@ -409,34 +408,21 @@ def figure_size(height_cm: float) -> tuple[float, float]:
 
 
 def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
-    """Save without auto-cropping so the exported width stays exactly 12.5 cm.
-
-    Every caller sets ``left``, ``right``, ``bottom``, ``top``, ``wspace`` and
-    ``hspace`` explicitly with :meth:`matplotlib.figure.Figure.subplots_adjust`.
-    Applying ``tight_layout`` or ``bbox_inches='tight'`` here would override
-    those controls and change the physical canvas size.
-    """
-    if fmt not in EXPORT_FORMATS:
-        raise ValueError(f"Unsupported figure format: {fmt!r}")
+    """Validate and export the authored native-width canvas."""
     _THEME.validate_thesis_figure(fig, fig.axes)
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    out = FIGURES / f"{name}.{fmt}"
-    fig.savefig(out, format=fmt, dpi=dpi, bbox_inches=None, facecolor="white")
-    try:
-        display_path = out.relative_to(CASE_DIR)
-    except ValueError:
-        display_path = out
-    print(f"  wrote {display_path}")
-    return out
+    return _THEME.export_figure(fig, FIGURES / name, figure_format=fmt, dpi=dpi, close=False)[0]
 
 
 def remove_obsolete_frames(prefix: str, times: np.ndarray, fmt: str) -> None:
     """Retire generated frames that no longer have a matched source state."""
-    expected = {f"{prefix}_t{time:.2f}.{fmt}" for time in times}
-    for path in FIGURES.glob(f"{prefix}_t*.{fmt}"):
-        generated_name = re.fullmatch(rf"{re.escape(prefix)}_t[0-9]+\.[0-9]{{2}}\.{fmt}", path.name)
-        if generated_name and path.name not in expected:
-            path.unlink()
+    for extension in _THEME.requested_formats(fmt):
+        expected = {f"{prefix}_t{time:.2f}.{extension}" for time in times}
+        for path in FIGURES.glob(f"{prefix}_t*.{extension}"):
+            generated_name = re.fullmatch(
+                rf"{re.escape(prefix)}_t[0-9]+\.[0-9]{{2}}\.{extension}", path.name
+            )
+            if generated_name and path.name not in expected:
+                path.unlink()
 
 
 def comparison_manifest() -> dict:
@@ -549,8 +535,7 @@ def slice_frames(source: str, name: str = "slice_z0") -> list[tuple[float, Path]
     pvd = _path(source, name, ".pvd")
     if not pvd.exists():
         return []
-    matches = re.finditer(r'timestep="([^"]+)"\s+[^>]*file="([^"]+)"', pvd.read_text())
-    return sorted((float(m.group(1)), pvd.parent / m.group(2)) for m in matches)
+    return _pvd_frames(pvd)
 
 
 def slice_times(source: str, name: str = "slice_z0") -> np.ndarray:
@@ -653,19 +638,14 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
 
 def common_times(*series: np.ndarray, tol: float = TIME_ATOL) -> np.ndarray:
     """Accepted physical times present in every supplied sampler series."""
+    if tol != TIME_ATOL:
+        raise ValueError(
+            "Comparison clocks use the shared saved-time policy, not a custom tolerance"
+        )
     if not series or any(np.asarray(values).size == 0 for values in series):
         return np.empty(0)
-    base = np.unique(np.asarray(series[0], dtype=float))
-    matched = [
-        time
-        for time in base
-        if time > tol
-        and all(
-            np.any(np.isclose(np.asarray(values, dtype=float), time, rtol=0.0, atol=tol))
-            for values in series[1:]
-        )
-    ]
-    return np.asarray(matched)
+    matched = match_saved_times(*(np.unique(np.asarray(values, dtype=float)) for values in series))
+    return np.asarray([time for time in matched.times if time > 0 and not same_saved_time(time, 0)])
 
 
 def _require_coincident_overlap(label: str, base: np.ndarray, *series: np.ndarray) -> np.ndarray:

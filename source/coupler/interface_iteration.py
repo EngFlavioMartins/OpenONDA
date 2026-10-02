@@ -17,6 +17,8 @@ from source.solvers.fvm.io.backup import (
 )
 
 from .boundary import advance_fvm, update_boundary_history_after_replacement
+from .interface_prediction import discard_interface_prediction_on_failure
+from .parallel import collective_phase
 from .vorticity_transfer import _particle_state_snapshot, _restore_particle_state
 
 logger = logging.getLogger("coupler")
@@ -41,8 +43,10 @@ _TRANSFER_ROLLBACK_ATTRIBUTES = (
 _FVM_ROLLBACK_ATTRIBUTES = ("_last_residuals", "last_diagnostics")
 _VPM_PHYSICS_ROLLBACK_ATTRIBUTES = (
     "last_solid_projection",
-    "last_gbd_wall_transfer",
-    "last_gbd_moment_recovery",
+    # These diagnostics are exposed through read-only, copy-returning
+    # properties. Roll back the owned state, not those reporting views.
+    "_last_gbd_wall_transfer",
+    "_last_gbd_moment_recovery",
 )
 
 BoundaryTrace: TypeAlias = tuple[np.ndarray, np.ndarray, np.ndarray]
@@ -58,6 +62,9 @@ class IterationRow(TypedDict):
     acceleration_rejected: bool
     next_acceleration_alpha: float | None
     accepted: bool
+    prediction_probe: NotRequired[bool]
+    prediction_rejected: NotRequired[bool]
+    picard_sweep: NotRequired[int]
     particle_count: NotRequired[int]
     particle_support_digest: NotRequired[str]
     two_sweep_normal_residual_rms: NotRequired[float]
@@ -68,7 +75,7 @@ class TrialFallback(TypedDict):
     fvm: RestartPayload
     fvm_attributes: dict[str, Any]
     fvm_patch: dict[str, Any] | None
-    particles: dict[str, np.ndarray] | None
+    particles: Any
     physics_attributes: dict[str, Any]
     induction_last_tail: Any
     transfer_step: int
@@ -189,6 +196,13 @@ def _aitken_candidate(
     return (velocity, normal, gradient), alpha
 
 
+def _capture_particles(vpm, slot):
+    """Keep predictor, accelerated trial and transfer rollback slots independent."""
+    if callable(getattr(vpm, "capture_particle_snapshot", None)):
+        return _particle_state_snapshot(vpm, slot=slot)
+    return _particle_state_snapshot(vpm)
+
+
 def _capture_trial_fallback(
     coupler, result, input_trace: BoundaryTrace, output_trace: BoundaryTrace
 ) -> TrialFallback:
@@ -218,7 +232,7 @@ def _capture_trial_fallback(
             if hasattr(fvm, name)
         },
         "fvm_patch": deepcopy(patch) if patch is not None else None,
-        "particles": _particle_state_snapshot(vpm) if vpm is not None else None,
+        "particles": _capture_particles(vpm, "coupler-trial") if vpm is not None else None,
         "physics_attributes": {
             name: deepcopy(getattr(physics, name))
             for name in _VPM_PHYSICS_ROLLBACK_ATTRIBUTES
@@ -280,6 +294,7 @@ def _restore_trial_fallback(coupler, fallback: TrialFallback):
     return fallback["result"]
 
 
+@discard_interface_prediction_on_failure
 def advance_iterated_interface(coupler, geometry, next_velocity):
     """Advance only FVM/renewal repeatedly; the VPM predictor stays fixed.
 
@@ -289,9 +304,13 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     MPI ranks restore their local FVM state and share the master's stop decision.
     """
     fvm, vpm, transfer = coupler.fvm_solver, coupler.vpm_solver, coupler.vorticity_transfer
+    comm = getattr(fvm.parallel, "comm", None)
     snapshot_started = perf_counter()
-    fvm_start = capture_restart_payload(fvm)
-    predictor = _particle_state_snapshot(vpm) if coupler._is_master else None
+    with collective_phase(comm, "interface initial state capture"):
+        fvm_start = capture_restart_payload(fvm)
+        predictor = _capture_particles(vpm, "coupler-predictor") if coupler._is_master else None
+        old = _read_trace(coupler, old=True)
+        candidate: BoundaryTrace = _read_trace(coupler, velocity=next_velocity)
     phase_seconds = {
         "state_capture": perf_counter() - snapshot_started,
         "state_restore": 0.0,
@@ -299,8 +318,27 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         "accepted_output": 0.0,
     }
     transfer_step = transfer.step
-    old = _read_trace(coupler, old=True)
-    candidate: BoundaryTrace = _read_trace(coupler, velocity=next_velocity)
+    raw_predictor = candidate
+    history = getattr(coupler, "interface_predictor", None)
+    prediction = {"enabled": False, "attempted": False, "reason": "unavailable"}
+    seed_fallback = None
+    if history is not None:
+        started = perf_counter()
+        seed, prediction = history.prepare(coupler, geometry, old, raw_predictor)
+        prediction["identity_seconds"] = perf_counter() - started
+        prediction["snapshot_seconds"] = 0.0
+        if seed is not None:
+            snapshot_started = perf_counter()
+            with collective_phase(comm, "interface seed snapshot and installation"):
+                seed_fallback = _capture_trial_fallback(coupler, None, raw_predictor, old)
+                candidate = seed
+                # Unlike later sweeps, a seed must install its matching
+                # normal/gradient fields before the first FVM call.
+                _write_trace(coupler, candidate)
+            prediction["snapshot_seconds"] = perf_counter() - snapshot_started
+        phase_seconds["state_capture"] += perf_counter() - started
+    probing = bool(prediction["attempted"])
+    prediction.update(accepted=False, fallback=False)
     fvm_seconds = transfer_seconds = 0.0
     records = []
     previous_candidate = None
@@ -312,9 +350,11 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     fallback: TrialFallback | None = None
     accepted_row = None
     accepted_sweep = 0
-    for sweep in range(1, coupler.setup.interface_iterations + 1):
+    for sweep in range(1, coupler.setup.interface_iterations + 1 + int(probing)):
+        prediction_probe = probing and sweep == 1
+        picard_sweep = sweep - int(probing)
         input_trace = candidate
-        if sweep > 1:
+        if picard_sweep > 1:
             started = perf_counter()
             publish_restart_payload(fvm, fvm_start)
             if coupler._is_master:
@@ -358,6 +398,12 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                 "next_acceleration_alpha": None,
                 "accepted": True,
             }
+            if history is not None:
+                row.update(
+                    prediction_probe=prediction_probe,
+                    prediction_rejected=prediction_probe and not row["converged"],
+                    picard_sweep=picard_sweep,
+                )
             if getattr(getattr(vpm, "induction", None), "planar_span", None) is not None:
                 position = np.ascontiguousarray(vpm.particles.position_cpu())
                 row["particle_count"] = int(vpm.particles.n_particles_total)
@@ -377,7 +423,11 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                         )
                     )
                 previous_candidate = candidate
-            if (
+            if prediction_probe and not row["converged"]:
+                # This speculative solve is outside the original allowance.
+                # It never becomes the next Picard input or an Aitken pair.
+                row["accepted"] = False
+            elif (
                 trial_accelerated
                 and accepted_row is not None
                 and (
@@ -404,7 +454,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                     acceleration_enabled
                     and not acceleration_disabled
                     and not row["converged"]
-                    and sweep < coupler.setup.interface_iterations
+                    and picard_sweep < coupler.setup.interface_iterations
                     and previous_pair is not None
                 ):
                     accelerated, alpha = _aitken_candidate(
@@ -433,6 +483,22 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
             row = fvm.parallel.comm.bcast(row, root=0)
         assert row is not None
         records.append(row)
+        if prediction_probe and not row["converged"]:
+            started = perf_counter()
+            assert seed_fallback is not None
+            with collective_phase(comm, "interface seed rejection restore"):
+                _restore_trial_fallback(coupler, seed_fallback)
+            candidate = raw_predictor
+            previous_candidate = None
+            previous_pair = None
+            elapsed = perf_counter() - started
+            phase_seconds["state_restore"] += elapsed
+            transfer_seconds += elapsed
+            prediction["fallback"] = True
+            seed_fallback = None
+            continue
+        if prediction_probe:
+            prediction["accepted"] = True
         if row["acceleration_rejected"]:
             started = perf_counter()
             assert fallback is not None
@@ -466,6 +532,8 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         "converged": accepted_row["converged"],
         "residuals": records,
         "phase_seconds": phase_seconds,
+        "prediction": prediction,
+        "picard_sweeps": len(records) - int(probing),
     }
     if coupler._is_master:
         final = accepted_row
@@ -481,6 +549,18 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     fvm.write_accepted_step_output()
     phase_seconds["accepted_output"] = perf_counter() - started
     fvm_seconds += phase_seconds["accepted_output"]
+    if history is not None:
+        started = perf_counter()
+        with collective_phase(getattr(fvm.parallel, "comm", None), "interface history staging"):
+            history.stage(
+                coupler,
+                geometry,
+                raw_predictor,
+                _read_trace(coupler, old=True),
+                converged=accepted_row["converged"],
+            )
+        prediction["history_stage_seconds"] = perf_counter() - started
+        phase_seconds["state_capture"] += prediction["history_stage_seconds"]
     # Capture cost used to fall outside the four reported phase totals.
     transfer_seconds += phase_seconds["state_capture"]
     return result, fvm_seconds, transfer_seconds

@@ -44,7 +44,9 @@ def main():
     )
     triangulation.set_mask((triangle_centres[:, 0] < 0.0) & (triangle_centres[:, 1] < 1.0))
 
-    fig, (flow_ax, history_ax) = plt.subplots(2, 1, figsize=figure_size("stacked"))
+    fig = plt.figure(figsize=(125 / 25.4, 100 / 25.4))
+    flow_ax = fig.add_axes([.077, .885, .846, .09253125])
+    history_ax = fig.add_axes([.077, .15, .846, .43])
     contour = flow_ax.tricontourf(triangulation, speed, levels=30, cmap=COLORMAPS["field_speed"])
     flow_ax.plot([-4.0, 0.0, 0.0, 20.0], [1.0, 1.0, 0.0, 0.0], color="black", linewidth=1.5)
     flow_ax.plot([-4.0, 20.0], [2.0, 2.0], color="black", linewidth=1.5)
@@ -53,8 +55,8 @@ def main():
     flow_ax.set_aspect("equal", adjustable="box")
     flow_ax.set_xlabel(r"$x/h$")
     flow_ax.set_ylabel(r"$y/h$")
-    flow_ax.set_title("Backward-facing-step speed")
-    fig.colorbar(contour, ax=flow_ax, orientation="horizontal", pad=0.35, label=r"$|U|/U_b$")
+    cax = fig.add_axes([.077, .72, .846, .025])
+    fig.colorbar(contour, cax=cax, orientation="horizontal", label=r"$|U|/U_b$")
 
     time = history["time"]
     x_re = history["reattachment_position_over_height"]
@@ -62,8 +64,7 @@ def main():
     history_ax.plot(time[finite], x_re[finite], linewidth=1.2)
     history_ax.set_xlabel(r"$t U_b/h$")
     history_ax.set_ylabel(r"$x_r/h$")
-    history_ax.set_title("Resolved near-wall reattachment estimate")
-    history_ax.grid(True, alpha=0.3)
+    history_ax.grid(False)
     if finite.any():
         x_final = float(x_re[finite][-1])
         print(f"  final x_r/h = {x_final:.2f}")

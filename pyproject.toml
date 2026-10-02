@@ -63,6 +63,12 @@ openonda = "openonda.cli:main"
 openonda-verify-install = "openonda.verify_install:main"
 
 [project.optional-dependencies]
+# Explicit CUDA-12 Gaussian image fields. Ordinary CPU/FMM installations do
+# not import or require CuPy. CUDA toolkit/driver installation stays explicit.
+gaussian-mesh-cuda12 = [
+    "cupy-cuda12x>=14.2,<15; platform_system=='Linux'",
+]
+
 # External Gmsh input/generation and accelerated STL reading. Native meshers
 # and the built-in STL reader work without these packages.
 meshing = [

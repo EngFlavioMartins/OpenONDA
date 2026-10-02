@@ -76,17 +76,17 @@ def main() -> None:
     surface_display = Show(surface, view)
     surface_display.Representation = "Surface With Edges"
     surface_display.ColorArrayName = [None, ""]
-    surface_display.DiffuseColor = [0.78, 0.79, 0.80]
-    surface_display.AmbientColor = [0.78, 0.79, 0.80]
+    surface_display.DiffuseColor = [191 / 255, 35 / 255, 38 / 255]
+    surface_display.AmbientColor = [191 / 255, 35 / 255, 38 / 255]
     surface_display.EdgeColor = [0.22, 0.24, 0.27]
-    surface_display.LineWidth = 0.7
+    surface_display.LineWidth = 3.1
 
     arrows = XMLPolyDataReader(FileName=[args.arrows])
     arrow_display = Show(arrows, view)
     arrow_display.Representation = "Surface"
     arrow_display.ColorArrayName = [None, ""]
-    arrow_display.DiffuseColor = [0.78, 0.31, 0.08]
-    arrow_display.AmbientColor = [0.78, 0.31, 0.08]
+    arrow_display.DiffuseColor = [239 / 255, 156 / 255, 31 / 255]
+    arrow_display.AmbientColor = [239 / 255, 156 / 255, 31 / 255]
 
     view.Update()
     written = SaveScreenshot(

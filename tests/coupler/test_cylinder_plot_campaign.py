@@ -12,7 +12,7 @@ from openonda.tutorial_runner import load_case_module
 def test_latest_incomplete_campaign_requires_explicit_older_selection(tmp_path):
     assets = (
         Path(__file__).resolve().parents[2]
-        / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets"
+        / "tests/support/cylinder"
     )
     module = load_case_module(assets, "plot_campaign")
     old = tmp_path / "old"

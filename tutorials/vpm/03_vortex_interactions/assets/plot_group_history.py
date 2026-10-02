@@ -36,7 +36,7 @@ def plot(runs, output, formats):
             continue
         frame = pd.read_csv(path)
         style = case_style(run)
-        for group, linestyle in ((1, "-"), (0, "--")):
+        for group in (1, 0):
             values = frame[frame.group_id == group].sort_values("time")
             time = values.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2
             line = {
@@ -44,7 +44,8 @@ def plot(runs, output, formats):
                 "marker": style["marker"],
                 "ms": 3,
                 "markevery": max(1, len(values) // 12),
-                "linestyle": linestyle,
+                "linestyle": "-",
+                "markerfacecolor": style["color"] if group == 1 else "white",
                 "lw": 1,
             }
             axes[0].plot(
@@ -64,7 +65,7 @@ def plot(runs, output, formats):
     axes[1].set_xlabel(r"$t\Gamma_0/R_0^2$")
     handles, labels = axes[0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
-    plotting.centered_subplots_adjust(fig, outer=0.19, bottom=0.32, top=0.96, hspace=0.18)
+    plotting.centered_subplots_adjust(fig, outer=0.118, bottom=0.275, top=0.96, hspace=0.18)
     save_figure(fig, output / FIGURE_NAME, axes, formats)
     plt.close(fig)
 
@@ -73,7 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures")
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     args = parser.parse_args()
     formats = ("pdf", "png") if args.format == "both" else (args.format,)
     plot(args.runs, args.output, formats)

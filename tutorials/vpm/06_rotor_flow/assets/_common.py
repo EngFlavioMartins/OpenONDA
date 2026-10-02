@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from openonda import plotting as theme
-from ..setup import ROTOR_RADIUS
+from ..setup import ROTOR_RADIUS, WAKE_PLANE_DIAMETERS
 
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
@@ -30,6 +30,7 @@ FIELD_STATIONARITY_COMPARISON_REVOLUTIONS = 5
 IMPULSE_WINDOW_REVOLUTIONS = 3
 SIGNAL_ONSET_RELATIVE_THRESHOLD = 0.01
 SIGNAL_ONSET_PERSISTENCE_FRAMES = 3
+REQUIRED_PLANE_NAMES = tuple(f"wake_{distance}D" for distance in WAKE_PLANE_DIAMETERS)
 
 
 def blade_geometry(vlm):
@@ -187,8 +188,27 @@ def read_operating_point(
                 )
             )
         return tuple(means)
-    tail = data[data.time > data.time.max() - revolutions * rotor_inputs().rotation_period]
-    return float(tail.CT.mean()), float(tail.CP.mean())
+    end = float(data.time.max())
+    return read_operating_point(
+        window_start=end - revolutions * rotor_inputs().rotation_period, window_end=end
+    )
+
+
+def run_status(p=None):
+    p = rotor_inputs() if p is None else p
+    state = p.metadata["state"]
+    requested = (
+        state["initial_time"] + p.metadata["configuration"]["run"]["steps"] * p.time_step_size
+    )
+    complete = (
+        p.metadata["lifecycle"]["status"] == "completed"
+        and state["step"] == state["initial_step"] + p.metadata["configuration"]["run"]["steps"]
+    )
+    return (
+        f"Completed: {state['time']:.2g} s"
+        if complete
+        else f"Incomplete: {state['time']:.2g} / {requested:.2g} s"
+    )
 
 
 def read_time_step():
@@ -200,9 +220,39 @@ def load_theme():
     return dict(theme.COLORS), theme
 
 
+def rotor_subplots(nrows, *, height_cm, sharex=False):
+    """Compact rotor panels using the authored OpenONDA Matplotlib style."""
+    import matplotlib.pyplot as plt
+
+    theme.set_thesis_style()
+    fig, axes = plt.subplots(
+        nrows,
+        1,
+        squeeze=False,
+        sharex=sharex,
+        figsize=(theme.MAX_FIGURE_WIDTH_CM * theme.CM, height_cm * theme.CM),
+    )
+    theme.centered_subplots_adjust(
+        fig,
+        outer=0.16,
+        bottom=1.30 / height_cm,
+        top=1 - 0.25 / height_cm,
+        hspace=0.10 if sharex else 0.38,
+    )
+    return fig, axes[:, 0]
+
+
+def save_rotor_figure(fig, path, *, figure_format="both", dpi=None):
+    outer = {"rotor_performance": 0.100, "rotor_loading_validation": 0.116,
+             "rotor_wake_planes": 0.113, "rotor_streamwise": 0.139}[Path(path).stem]
+    theme.centered_subplots_adjust(fig, outer=outer, top=1 - 0.11 / (fig.get_figheight() / theme.CM))
+    theme.validate_thesis_figure(fig, fig.axes)
+    return theme.export_figure(fig, path, figure_format=figure_format, dpi=dpi)
+
+
 def build_arg_parser(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--format", choices=theme.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=theme.FORMAT_CHOICES, default="both")
     parser.add_argument("--dpi", type=int, default=theme.DEFAULT_DPI)
     return parser
 

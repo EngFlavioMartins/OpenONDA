@@ -4,7 +4,6 @@
 import argparse
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.integrate import cumulative_trapezoid
@@ -12,12 +11,19 @@ from scipy.integrate import cumulative_trapezoid
 from openonda.tutorial_runner import case_package
 
 __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
-from ._plot_theme import FIG_DIR, SAMPLES_DIR, centered_subplots_adjust, cm, color, save_fig
+from ._plot_theme import (
+    validation_subplots,
+    validation_legend,
+    FIG_DIR,
+    SAMPLES_DIR,
+    color,
+    save_fig,
+)
 from .results import parameters
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--case", default="exp_static_aoa08")
-parser.add_argument("--format", choices=("png", "pdf"), default="png")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
 parser.add_argument("--dpi", type=int, default=400)
 parser.add_argument("--figure", default="plate_impulse")
 args = parser.parse_args()
@@ -54,32 +60,61 @@ stream = physics["reference_velocity"] / physics["speed"]
 lift = np.array([0.0, 0.0, 1.0]) - stream[2] * stream
 lift /= np.linalg.norm(lift)
 
-fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12.5 * cm(), 10.8 * cm()))
-centered_subplots_adjust(fig, outer=0.17, bottom=0.125, top=0.92, hspace=0.12)
-for axis, direction, label in zip(axes, (lift, stream), ("Lift", "Drag"), strict=True):
-    axis.plot(clock, measured @ direction, color=color("ref"), label="Fluid impulse", lw=1.5)
+fig, axes = validation_subplots(3, height_cm=18, sharex=True, outer=0.115, top_padding_cm=0.54)
+for axis, direction, label in zip(axes[:2], (lift, stream), ("Lift", "Drag"), strict=True):
+    axis.plot(
+        clock,
+        measured @ direction,
+        color=color("TUDdark"),
+        marker="D",
+        markevery=80,
+        ms=2.5,
+        label="Fluid impulse",
+        lw=1.5,
+    )
     axis.plot(
         clock,
         load_impulses[0] @ direction,
-        "--",
+        "-",
+        marker="o",
+        markevery=80,
+        ms=2.5,
         color=color("vpm"),
-        label="Kutta--Joukowski",
+        label="Kutta--Joukowski only",
         lw=1.5,
     )
     axis.plot(
         clock,
         load_impulses[1] @ direction,
-        ":",
+        "-",
+        marker="s",
+        markevery=80,
+        ms=2.5,
         color=color("TUDcyan"),
         label="Total surface load",
         lw=1.8,
     )
     axis.set_ylabel(label + r" impulse [N\,s]")
+    residual = (load_impulses[1] - measured) @ direction
+    axes[2].plot(
+        clock,
+        100 * residual / abs(measured[-1] @ direction),
+        label=label,
+        color=color("vpm" if label == "Lift" else "TUDcyan"),
+        ls="-",
+        marker="o" if label == "Lift" else "s",
+        markevery=80,
+        ms=2.5,
+    )
     discrepancy = (load_impulses[1][-1] - measured[-1]) @ direction
     print(
         f"{label} impulse: fluid={measured[-1] @ direction:.8g} N s; surface-fluid={discrepancy:+.8g} N s"
     )
-axes[0].legend(loc="upper left")
-axes[0].set_title("Surface force and fluid impulse")
+validation_legend(fig, axes[0], ncol=1)
+axes[2].set_ylabel(r"Residual [\%]")
+axes[2].legend(frameon=False, loc="upper left", ncol=2)
+print("Residual = total surface load minus fluid impulse")
+print(args.case.replace("_", r"\_"))
+print("Normalized by each final fluid-impulse magnitude")
 axes[-1].set_xlabel("Time [s]")
 save_fig(fig, FIG_DIR / f"{args.figure}.png", figure_format=args.format, dpi=args.dpi)

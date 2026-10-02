@@ -30,6 +30,15 @@ class FMMDiagnostics:
     peak_node_count: int = 0
     peak_interaction_list_count: int = 0
     device_memory_estimate_bytes: int = 0
+    image_target_geometry_builds: int = 0
+    image_target_geometry_restores: int = 0
+    image_geometry_allocations: int = 0
+    image_geometry_fallback_scopes: int = 0
+    image_geometry_bytes: int = 0
+    peak_image_geometry_bytes: int = 0
+    interaction_list_resizes: int = 0
+    last_active_cell_count: int = 0
+    last_active_leaf_count: int = 0
     last_tree_build_seconds: float = 0.0
     last_upward_pass_seconds: float = 0.0
     last_interaction_list_seconds: float = 0.0

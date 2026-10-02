@@ -56,7 +56,7 @@ def main() -> None:
     grid = fig.add_gridspec(2, 2, height_ratios=(1.25, 1.0))
     ax_tube = fig.add_subplot(grid[0, 0])
     ax_sum = fig.add_subplot(grid[0, 1])
-    centered_subplots_adjust(fig, outer=0.15, wspace=0.55, hspace=0.64, top=0.93, bottom=0.22)
+    centered_subplots_adjust(fig, outer=0.100, wspace=0.55, hspace=0.64, top=0.953, bottom=0.22)
     legend_handles = []
     legend_labels = []
 

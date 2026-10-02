@@ -24,10 +24,17 @@ MAX_N_PARTICLES = 600_000
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # [rad/s]
 
 TIME_STEP_SIZE = 0.006  # [s]
-END_TIME = 10  # [s]
+# Allow the 2D wake to develop before the final five-revolution mean. With the
+# matched BEM a ~= 0.219, ramp + 2D/[U*(1-2a)] + five revolutions is ~10.7 s.
+# This planning margin does not replace the measured stationarity checks.
+END_TIME = 15  # [s]
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]
 BACKUP_INTERVAL_TIME = 0.024  # [s]
+STREAMWISE_STATIONS = (("025", 0.25), ("065", 0.65))
+# 1-a applies at the disk. 1D/2D test downstream development toward the
+# 1-2a limit; no finite x/D guarantees a fully developed ideal wake.
+WAKE_PLANE_DIAMETERS = (0, 1, 2)
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 
@@ -86,7 +93,7 @@ def build_case(
             include_derivatives=False,
             schedule=plane_schedule,
         )
-        for distance in (1, 2)
+        for distance in WAKE_PLANE_DIAMETERS
     ]
     streamwise_samplers = [
         vpm.LineSampler(
@@ -97,7 +104,7 @@ def build_case(
             include_derivatives=False,
             schedule=plane_schedule,
         )
-        for label, radial_fraction in (("000", 0.0), ("025", 0.25), ("065", 0.65), ("110", 1.1))
+        for label, radial_fraction in STREAMWISE_STATIONS
     ]
 
     if run_plan is None:

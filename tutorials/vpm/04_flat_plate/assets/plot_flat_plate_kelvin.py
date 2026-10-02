@@ -19,11 +19,18 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ._plot_theme import CASE_DIR, centered_subplots_adjust, color, cm, export_formats, save_fig
+from ._plot_theme import (
+    validation_subplots,
+    validation_legend,
+    CASE_DIR,
+    color,
+    cm,
+    export_formats,
+    save_fig,
+)
 
 
 CM = cm()
@@ -51,7 +58,7 @@ def load_budget(samples_dir: Path, name: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Bound/wake vortex-strength closure.")
-    ap.add_argument("--format", choices=export_formats(), default="png")
+    ap.add_argument("--format", choices=export_formats(), default="both")
     ap.add_argument("--dpi", type=int, default=400)
     args = ap.parse_args()
 
@@ -66,31 +73,49 @@ def main() -> None:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
     c_bound = color("vpm")
-    c_wake = color("hybrid")
+    c_wake = color("TUDcyan")
     residual = bound + wake
     scale = max(float(np.max(np.abs(bound))), 1e-15)
     rel = 100.0 * residual / scale
     max_rel = float(np.max(np.abs(rel)))
 
-    fig, (ax, axr) = plt.subplots(
-        2,
-        1,
-        figsize=(12.5 * CM, 9.5 * CM),
-        sharex=True,
-        gridspec_kw={"height_ratios": [1.7, 1.1]},
-    )
-    centered_subplots_adjust(fig, outer=0.17, bottom=0.13, top=0.90, hspace=0.13)
-
+    fig, (ax, axr) = validation_subplots(2, height_cm=14, sharex=True, outer=0.098, top_padding_cm=0.12)
     ax.plot(t, bound, color=c_bound, lw=1.5, label=r"Bound, $\mathcal{A}_{b,y}$")
-    ax.plot(t, -wake, "--", color=c_wake, lw=1.5, label=r"Wake, $-\mathcal{A}_{w,y}$")
-    ax.set_ylabel(r"Integrated strength [m$^3$/s]")
-    ax.set_title(rf"Bound--wake strength balance, $\alpha={angle_of_attack:.0f}^\circ$")
-    ax.legend(loc="lower right")
+    ax.plot(
+        t,
+        -wake,
+        "-",
+        marker="s",
+        markevery=80,
+        ms=2.5,
+        color=c_wake,
+        lw=1.5,
+        label=r"Wake, $-\mathcal{A}_{w,y}$",
+    )
+    ax.set_ylabel(r"$\mathcal{A}_y$ [m$^3$/s]")
+    validation_legend(fig, ax)
 
     axr.axhline(0.0, color=color("reference"), ls="--", lw=1.0)
-    axr.plot(t, rel, color=color("DarkText"), lw=1.2)
+    axr.plot(t, 1e4 * rel, color=color("vpm"), lw=1.2, label="Signed span component")
+    flow = pd.read_csv(CASE_DIR / "samples" / name / "flow_integrals.csv")
+    coupled = flow[[f"coupled_vortex_strength_{a}" for a in "xyz"]].to_numpy()
+    bound_vector = flow[[f"bound_vortex_strength_{a}" for a in "xyz"]].to_numpy()
+    norm_scale = max(np.linalg.norm(bound_vector, axis=1).max(), 1e-15)
+    axr.plot(
+        flow.time,
+        1e6 * np.linalg.norm(coupled, axis=1) / norm_scale,
+        "-",
+        marker="s",
+        markevery=80,
+        ms=2.5,
+        color=color("TUDcyan"),
+        label="Full vector norm",
+    )
+    axr.legend(frameon=False, loc="upper left")
+    axr.margins(y=0.4)
+    print("Vector-strength closure is necessary, not load validation")
     axr.set_xlabel("Time [s]")
-    axr.set_ylabel(r"Residual [\%]")
+    axr.set_ylabel("Closure residual [ppm]")
     axr.set_xlim(float(t.min()), float(t.max()))
     out_dir = CASE_DIR / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)

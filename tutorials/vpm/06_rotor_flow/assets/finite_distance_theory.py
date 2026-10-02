@@ -133,11 +133,12 @@ def build_system(
         float(rotor_radius),
     ]
     annulus_with_ghosts = np.r_[0.0, annulus_induction, 0.0]
-    # The published kernel takes positive ``gamma_t`` as positive axial
-    # velocity, while this module reports the standard positive wind-turbine
-    # induction ``a = -u_a / U``.  Convert the positive BEM induction jump to
-    # the corresponding signed sheet orientation here.
-    tangential_sheet_strength = -2.0 * freestream_speed * np.diff(annulus_with_ghosts)
+    # Sheets act on points INSIDE their radius. Summing outward from annulus
+    # i must telescope to -2 U a_i, not +2 U a_i. The outermost jump is
+    # therefore negative for a turbine: Li et al. (2025), Eq. (41).
+    # The minus sign converting velocity to induction belongs only in
+    # induced_velocity(), not in this radial difference as well.
+    tangential_sheet_strength = 2.0 * freestream_speed * np.diff(annulus_with_ghosts)
     # Retain the Γ_j−Γ_{j+1} orientation for the longitudinal sheets.  The
     # root ghost then gives the negative inside-rotor swirl required by
     # ``a' = -u_t / (Ω r)`` for positive circulation and Ω.

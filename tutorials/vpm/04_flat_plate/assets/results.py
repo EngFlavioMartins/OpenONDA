@@ -54,3 +54,16 @@ def load_forces(case_dir: Path, name: str) -> pd.DataFrame | None:
         times, physics["kinematics"], physics["ramp_time"], physics["speed"], physics["chord"]
     )
     return data
+
+
+def settled_coefficients(case_dir, name, chord_lengths=5):
+    """Mean final cruise loads with exact, fully bracketed travel boundaries."""
+    from openonda.validation import time_mean
+
+    data = load_forces(case_dir, name)
+    if data is None:
+        raise ValueError(f"{name}: complete force history required")
+    distance = data.nondimensional_distance_travelled.to_numpy()
+    end = float(distance[-1])
+    columns = ["lift_coefficient", "drag_coefficient", "pitching_moment_coefficient_quarter_chord"]
+    return time_mean(distance, data[columns].to_numpy(), end - chord_lengths, end)

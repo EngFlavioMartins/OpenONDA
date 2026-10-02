@@ -1,14 +1,5 @@
-# boundary_layer — laminar flat plate (Blasius)
+# Flat-plate comparison
 
-Flow physics: viscous boundary-layer growth on a no-slip flat plate at
-Re_L = U L / nu = 1e4 (laminar over the whole plate).
+The [case guide](../README.md) defines Reynolds number, wall spacing and the Blasius comparison. See [FVM mesh setup](../../../../docs/fvm.md#mesh-setup) for wall resolution.
 
-Validation (theory — Blasius 1908; Schlichting, *Boundary-Layer Theory*):
-
-* wall-normal profiles collapse onto u/U = f'(eta), eta = y sqrt(U/(nu x)),
-  sampled at x/L = 0.25, 0.5, 0.75 → `figures/blasius_profiles.png`
-* skin friction Cf(x) = 0.664 / sqrt(Re_x) → `figures/skin_friction.png`
-
-Run `./allrun.sh` (mesh is generated in-memory by `assets/mesh_plate.py`;
-the bottom boundary is a slip run-in upstream of the leading edge, so the
-layer starts at x = 0 as the similarity solution assumes).
+`mesh_plate.py` builds the stretched mesh. `profiles.py` samples wall-normal velocity and wall shear; `plot_blasius.py` and `plot_cf.py` compare them with Blasius theory.

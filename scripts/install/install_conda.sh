@@ -1,133 +1,87 @@
 #!/usr/bin/env bash
+# Internal worker; install.sh keeps activation in the caller's shell.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ENV_DIR="$REPO_ROOT/scripts/environment"
-ENV_NAME="${OPENONDA_CONDA_ENV:-OpenONDA}"
-ENV_FILE="$ENV_DIR/environment.yml"
-AUTO_YES=1
-EDITABLE=0
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ACTIVATION_FILE="${1:?Run source install.sh from the repository root.}"
 
-usage() {
-    printf '%s\n' \
-        "Usage: scripts/install/install_conda.sh [options]" \
-        "" \
-        "  -y, --yes       install Miniforge without prompting (the default)" \
-        "  --prompt        ask before installing Miniforge if Conda is absent" \
-        "  --parallel      install the MPI/PETSc environment" \
-        "  --dev          editable install with development tools" \
-        "  --no-editable   install a fixed copy instead of linking the repository" \
-        "  --name NAME     choose the Conda environment name" \
-        "  -h, --help      show this help"
-}
-
-while (($#)); do
-    case "$1" in
-        -y|--yes) AUTO_YES=1 ;;
-        --prompt) AUTO_YES=0 ;;
-        --parallel)
-            ENV_FILE="$ENV_DIR/environment-parallel.yml"
-            if [[ "$ENV_NAME" == "OpenONDA" ]]; then ENV_NAME="OpenONDA-parallel"; fi
-            ;;
-        --no-editable) EDITABLE=0 ;;
-        --dev) EDITABLE=1 ;;
-        --name)
-            shift
-            [[ $# -gt 0 ]] || { echo "--name requires a value" >&2; exit 2; }
-            ENV_NAME="$1"
-            ;;
-        -h|--help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
-    esac
-    shift
-done
-
-case "$(uname -s)" in
-    Linux) PLATFORM="Linux" ;;
-    Darwin) PLATFORM="MacOSX" ;;
-    *) echo "OpenONDA supports Linux and macOS." >&2; exit 1 ;;
+# Pin the bootstrap and its upstream SHA-256 together. The unversioned
+# Miniforge asset has no .sha256 companion, and "latest" can change mid-download.
+MINIFORGE_VERSION=26.7.2-0
+case "$(uname -s):$(uname -m)" in
+    Linux:x86_64)
+        PLATFORM=Linux; ARCH=x86_64
+        MINIFORGE_SHA256=281b0ac7d550802efc81af633225a5e6116d29ae72f3ab4eae7168c3931a4c05 ;;
+    Darwin:x86_64)
+        PLATFORM=MacOSX; ARCH=x86_64
+        MINIFORGE_SHA256=b00e7798658f92721a3ae2f6b9832695ffc6baf07758894d726268055359f6c5 ;;
+    Darwin:arm64)
+        PLATFORM=MacOSX; ARCH=arm64
+        MINIFORGE_SHA256=d70bfa2e97afcda96927c9b9ca0e2316cb7750e4ce651c94388267cbe9588711 ;;
+    *) echo 'OpenONDA supports Linux x86-64 and macOS (Intel/Apple Silicon).' >&2; exit 1 ;;
 esac
 
-CONDA_EXE=""
-if command -v conda >/dev/null 2>&1; then
-    CONDA_EXE="$(command -v conda)"
-else
-    for candidate in \
-        "${OPENONDA_CONDA_EXE:-}" \
-        "$HOME/miniforge3/bin/conda" \
-        "$HOME/mambaforge/bin/conda" \
-        "$HOME/anaconda3/bin/conda"
-    do
-        if [[ -n "$candidate" && -x "$candidate" ]]; then
-            CONDA_EXE="$candidate"
-            break
-        fi
-    done
-fi
-
-if [[ -z "$CONDA_EXE" ]]; then
-    case "$(uname -m)" in
-        x86_64) ARCH="x86_64" ;;
-        arm64|aarch64)
-            if [[ "$PLATFORM" == "Linux" ]]; then ARCH="aarch64"; else ARCH="arm64"; fi
-            ;;
-        *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-    esac
-    MINIFORGE_ROOT="${OPENONDA_MINIFORGE_ROOT:-$HOME/miniforge3}"
-    INSTALLER="Miniforge3-${PLATFORM}-${ARCH}.sh"
-    URL="https://github.com/conda-forge/miniforge/releases/latest/download/$INSTALLER"
-    if [[ $AUTO_YES -ne 1 ]]; then
-        printf 'Conda was not found. Install Miniforge at %s? [y/N] ' "$MINIFORGE_ROOT"
-        read -r response
-        [[ "$response" =~ ^[Yy]([Ee][Ss])?$ ]] || exit 1
+CONDA_COMMAND=""
+for candidate in \
+    "${CONDA_EXE:-}" \
+    "$(type -P conda || true)" \
+    "$HOME/miniforge3/bin/conda" \
+    "$HOME/mambaforge/bin/conda" \
+    "$HOME/anaconda3/bin/conda" \
+    "$HOME/miniconda3/bin/conda"
+do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+        CONDA_COMMAND="$candidate"
+        break
     fi
-    TEMP_INSTALLER="$(mktemp "${TMPDIR:-/tmp}/openonda-miniforge.XXXXXX.sh")"
-    trap 'rm -f "$TEMP_INSTALLER"' EXIT
+done
+
+if [[ -z "$CONDA_COMMAND" ]]; then
+    INSTALLER="Miniforge3-${MINIFORGE_VERSION}-${PLATFORM}-${ARCH}.sh"
+    DOWNLOAD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openonda-miniforge.XXXXXX")"
+    trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
+    URL="https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/$INSTALLER"
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --location --retry 3 --output "$TEMP_INSTALLER" "$URL"
+        curl --fail --location --retry 3 --output "$DOWNLOAD_DIR/$INSTALLER" "$URL"
     elif command -v wget >/dev/null 2>&1; then
-        wget --output-document="$TEMP_INSTALLER" "$URL"
+        wget --output-document="$DOWNLOAD_DIR/$INSTALLER" "$URL"
     else
-        echo "Install curl or wget, then re-run this installer." >&2
+        echo 'Downloading Miniforge requires curl or wget.' >&2
         exit 1
     fi
-    bash "$TEMP_INSTALLER" -b -p "$MINIFORGE_ROOT"
-    CONDA_EXE="$MINIFORGE_ROOT/bin/conda"
+    printf '%s  %s\n' "$MINIFORGE_SHA256" "$INSTALLER" > "$DOWNLOAD_DIR/$INSTALLER.sha256"
+    (
+        cd "$DOWNLOAD_DIR"
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check "$INSTALLER.sha256"
+        else
+            shasum -a 256 --check "$INSTALLER.sha256"
+        fi
+    )
+    bash "$DOWNLOAD_DIR/$INSTALLER" -b -p "$HOME/miniforge3"
+    CONDA_COMMAND="$HOME/miniforge3/bin/conda"
 fi
 
-CONDA_ROOT="$("$CONDA_EXE" info --base)"
+CONDA_ROOT="$("$CONDA_COMMAND" info --base)"
+echo 'Creating or updating OpenONDA...'
+"$CONDA_COMMAND" env update --name OpenONDA --file "$REPO_ROOT/scripts/environment/environment.yml"
+# Activation supplies compiler and MPI library settings as well as Python.
+source "$CONDA_ROOT/etc/profile.d/conda.sh"
+conda activate OpenONDA
+# Conda replaces the previous environment's PATH entry in place. Existing
+# OpenFOAM/ParaView startup entries may therefore still precede it. Activate
+# this environment with its own tools first, without leaving duplicate entries
+# behind when Conda subsequently deactivates it.
+mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
+cat > "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh" <<'HOOK'
+export PATH="$("$CONDA_PREFIX/bin/python" -c 'import os; p=os.path.join(os.environ["CONDA_PREFIX"], "bin"); print(os.pathsep.join([p] + [v for v in os.environ["PATH"].split(os.pathsep) if v != p]))')"
+HOOK
+source "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh"
+"$CONDA_PREFIX/bin/python" "$REPO_ROOT/scripts/install/install_tex.py"
+"$CONDA_PREFIX/bin/python" "$REPO_ROOT/install.py" --with-environment
 
-echo "Creating or updating Conda environment '$ENV_NAME'..."
-"$CONDA_EXE" env update --name "$ENV_NAME" --file "$ENV_FILE"
-
-ENV_PREFIX="$("$CONDA_EXE" env list | awk -v name="$ENV_NAME" '$1 == name {print $NF; exit}')"
-ENV_PYTHON="$ENV_PREFIX/bin/python"
-if [[ -z "$ENV_PREFIX" || ! -x "$ENV_PYTHON" ]]; then
-    echo "Could not locate Python in Conda environment '$ENV_NAME'." >&2
-    exit 1
-fi
-
-REQUIRED_PYTHON="$(sed -n 's/^[[:space:]]*-[[:space:]]*python=\([0-9][0-9.]*\).*/\1/p' "$ENV_FILE" | head -1)"
-ACTUAL_PYTHON="$("$ENV_PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-if [[ -n "$REQUIRED_PYTHON" && "$ACTUAL_PYTHON" != "$REQUIRED_PYTHON" ]]; then
-    echo "Environment '$ENV_NAME' has Python $ACTUAL_PYTHON, but OpenONDA requires $REQUIRED_PYTHON." >&2
-    echo "Remove it and re-run this installer:  conda env remove --name $ENV_NAME" >&2
-    exit 1
-fi
-echo "Using Python $ACTUAL_PYTHON from '$ENV_NAME'."
-
-INSTALL_ARGS=()
-if [[ $EDITABLE -eq 1 ]]; then INSTALL_ARGS+=(--dev); fi
-"$ENV_PYTHON" "$REPO_ROOT/install.py" ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}
-
-echo
-echo "OpenONDA is ready in '$ENV_NAME'."
-printf 'Activate it with:\n  source %q\n  conda activate %q\n' \
-    "$CONDA_ROOT/etc/profile.d/conda.sh" "$ENV_NAME"
-echo "The package can then be imported from any directory; PYTHONPATH is not needed."
-echo "Inspect the installation with: openonda info"
-echo "List packaged tutorials with: openonda tutorial list"
-if [[ $EDITABLE -eq 1 ]]; then
-    echo "Edits under $REPO_ROOT take effect immediately; no reinstall is needed."
-fi
+case "${SHELL:-/bin/bash}" in
+    */zsh) "$CONDA_COMMAND" init --quiet zsh ;;
+    *) "$CONDA_COMMAND" init --quiet bash ;;
+esac
+printf '%s\n' "$CONDA_ROOT" > "$ACTIVATION_FILE"

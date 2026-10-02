@@ -8,9 +8,11 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
+from openonda.cylinder_campaign import initialize_cylinder_perturbation
+from openonda.tutorial_runner import load_case_module
 
 # Physical problem
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
 
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = 1.0
@@ -31,10 +33,10 @@ WAKE = (-2.5, 12.0, -2.5, 2.5)
 # Time, output and sampling
 CORES = 6
 END_TIME = DEFAULT_CYLINDER_CASE.reference_end_time
-TIME_STEP_SIZE = 0.001
+TIME_STEP_SIZE = 0.008
 MAXIMUM_TIME_STEP_SIZE = 0.01
 MAXIMUM_COURANT_NUMBER = 0.7
-OUTPUT_INTERVAL = 5.0
+OUTPUT_INTERVAL = 4.0
 FORCE_SAMPLE_INTERVAL = 0.04
 PROFILE_SAMPLE_INTERVAL = 0.1
 PROFILE_SPACING = 0.08
@@ -164,7 +166,8 @@ def build_case(
         ],
         initial_velocity=VELOCITY,
     )
-    return setup, mesh
+    observations = load_case_module(CASE_DIR.parent, "assets.sampling")
+    return observations.configure_fvm(setup, True, END_TIME if end_time is None else end_time), mesh
 
 
 def create_solver(
@@ -180,21 +183,21 @@ def create_solver(
     return fvm.create_fvm_solver(
         setup,
         case_dir=artifact_root,
-        solution_dir=artifact_root / "solution" / name,
-        samples_dir=artifact_root / "samples" / name,
+        solution_dir=artifact_root / "solution",
+        samples_dir=artifact_root / "samples",
         mesh=mesh,
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--name", default="grid_h004")
+    parser.add_argument("--name", default="phase_h004")
     parser.add_argument("-h", type=float, default=0.04)
     arguments = parser.parse_args()
 
     with create_solver(arguments.name, arguments.h) as solver:
+        initialize_cylinder_perturbation(solver, SPAN)
         solver.run(start_from=START_FROM)
-        fvm.update_grid_study(solver, arguments.h, profiles=("centreline",))
 
 
 if __name__ == "__main__":

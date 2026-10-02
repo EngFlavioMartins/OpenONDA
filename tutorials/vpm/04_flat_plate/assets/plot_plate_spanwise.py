@@ -18,17 +18,24 @@ import argparse
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import trapezoid
 import pandas as pd
 
-from ._plot_theme import FIG_DIR, SAMPLES_DIR, centered_subplots_adjust, cm, color, save_fig
+from ._plot_theme import (
+    validation_subplots,
+    validation_legend,
+    FIG_DIR,
+    SAMPLES_DIR,
+    cm,
+    color,
+    save_fig,
+)
 from .results import parameters
 from .theoretical_model import spanwise_reference
 
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
-parser.add_argument("--format", choices=("png", "pdf"), default="png")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
 parser.add_argument("--dpi", type=int, default=400)
 args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -105,8 +112,8 @@ moving_data = load_spanwise_csv("exp_moving_aoa05")
 static_data = load_spanwise_csv("exp_static_aoa05")
 
 # -- Figure ---------------------------------------------------------------------
-fig, ax = plt.subplots(1, 1, figsize=(12.5 * CM, 7.5 * CM))
-centered_subplots_adjust(fig, outer=0.16, bottom=0.21, top=0.89)
+fig, axes = validation_subplots(1, height_cm=11, outer=0.100, top_padding_cm=0.20)
+ax = axes[0]
 
 if moving_data is not None:
     y_m, cl_m, yob_m = moving_data
@@ -135,14 +142,14 @@ if static_data is not None:
 
 # Theory curves
 ax.plot(y_ll_over_b, cl_ll, "--", color=C_LL, lw=1.0, label="Lifting-line")
-ax.plot(y_ll_over_b, cl_ell, ":", color=C_ELL, lw=1.0, label="Elliptic")
+ax.plot(y_ll_over_b, cl_ell, ":", color=C_ELL, lw=1.0, label="Elliptic shape")
 
 ax.set_xlabel(r"Spanwise position, $2y/b$")
 ax.set_ylabel(r"Sectional lift, $c_\ell$")
-ax.set_title(rf"Spanwise loading, $\alpha={ANGLE_OF_ATTACK:.0f}^\circ$, AR={aspect_ratio:.0f}")
 ax.set_xlim(-1, 1)
 ax.margins(y=0.08)
-ax.legend(loc="lower center", ncol=2)
+validation_legend(fig, ax)
+print("Final sampled loading; elliptic curve is a shape comparison")
 
 out = FIG_DIR / "plate_spanwise.png"
 save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

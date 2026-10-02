@@ -12,11 +12,29 @@ dependencies:
   - scipy>=1.12
   - matplotlib>=3.8
   - h5py>=3.10
-  - numba>=0.59
+  # ParaView's readers link to the HDF5 1.14 ABI. Keep its native libraries
+  # and h5py/PETSc on the same ABI rather than accepting HDF5 2.x.
+  - hdf5>=1.14,<1.15
+  # Match the Intel-macOS package constraint on every platform, so pip never
+  # replaces Conda's numerical stack during the editable installation.
+  - numba>=0.59,<0.63
   - pandas>=2.1
   - defusedxml>=0.7
   - pyamg>=5
   - pyvista>=0.43
   - vtk>=9.3
-  # Taichi is installed by the OpenONDA wheel below because its Intel-macOS
+  - openmpi>=5
+  - mpi4py>=4
+  - petsc>=3.21
+  - petsc4py>=3.21
+  - c-compiler
+  - paraview>=5.13
+  # Software rendering keeps ParaView usable without a GPU/display server.
+  - mesalib
+  - poppler
+  - perl
+  - curl
+  - ghostscript
+  # TinyTeX and the thesis fonts are installed inside this environment.
+  # Taichi is installed by pip because its Intel-macOS
   # compatibility pin is expressed with Python platform markers in pyproject.toml.

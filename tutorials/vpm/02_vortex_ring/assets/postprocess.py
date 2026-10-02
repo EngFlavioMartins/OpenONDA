@@ -296,7 +296,7 @@ def validate(pre_plot: bool, figure_format: str = "png") -> int:
     if outcomes:
         ordered = sorted(outcomes, reverse=True)
         ranking = ", ".join(
-            f"{VARIANT_LABEL[name]} ({time / REFERENCE_TIME:.3f}, {status})"
+            f"{VARIANT_LABEL[name]} ({time / REFERENCE_TIME:.2g}, {status})"
             for time, name, status in ordered
         )
         print(f"[stability] longest sustained time first: {ranking}")
@@ -384,7 +384,7 @@ def main() -> int:
     parser.add_argument(
         "--format",
         choices=("png", "pdf", "both"),
-        default="png",
+        default="both",
         help="Figure format to check during validation (default: png).",
     )
     parser.add_argument(

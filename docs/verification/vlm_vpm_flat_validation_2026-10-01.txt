@@ -1,0 +1,60 @@
+exp_moving_aoan10: lifting-line difference CL=-3.22%, CD=-10.93% (diagnostic, not an exact reference)
+exp_moving_aoan10: bound/wake strength closure 7.710e-07
+exp_moving_aoan10: full-vector strength closure 9.819e-07
+exp_moving_aoan05: lifting-line difference CL=-2.73%, CD=-10.04% (diagnostic, not an exact reference)
+exp_moving_aoan05: bound/wake strength closure 8.371e-07
+exp_moving_aoan05: full-vector strength closure 1.068e-06
+exp_moving_aoan02: lifting-line difference CL=-2.59%, CD=-9.79% (diagnostic, not an exact reference)
+exp_moving_aoan02: bound/wake strength closure 2.300e-06
+exp_moving_aoan02: full-vector strength closure 2.555e-06
+exp_moving_aoa00: bound/wake strength closure 0.000e+00
+exp_moving_aoa00: full-vector strength closure 0.000e+00
+exp_moving_aoa02: lifting-line difference CL=-2.59%, CD=-9.79% (diagnostic, not an exact reference)
+exp_moving_aoa02: bound/wake strength closure 2.202e-06
+exp_moving_aoa02: full-vector strength closure 2.666e-06
+exp_moving_aoa05: lifting-line difference CL=-2.73%, CD=-10.04% (diagnostic, not an exact reference)
+exp_moving_aoa05: bound/wake strength closure 8.909e-07
+exp_moving_aoa05: full-vector strength closure 1.068e-06
+exp_moving_aoa08: lifting-line difference CL=-2.99%, CD=-10.51% (diagnostic, not an exact reference)
+exp_moving_aoa08: bound/wake strength closure 1.283e-06
+exp_moving_aoa08: full-vector strength closure 1.115e-06
+exp_moving_aoa10: lifting-line difference CL=-3.22%, CD=-10.93% (diagnostic, not an exact reference)
+exp_moving_aoa10: bound/wake strength closure 8.993e-07
+exp_moving_aoa10: full-vector strength closure 9.822e-07
+exp_moving_aoa12: lifting-line difference CL=-3.51%, CD=-11.45% (diagnostic, not an exact reference)
+exp_moving_aoa12: bound/wake strength closure 1.048e-06
+exp_moving_aoa12: full-vector strength closure 8.199e-07
+exp_moving_aoa15: lifting-line difference CL=-4.04%, CD=-12.40% (diagnostic, not an exact reference)
+exp_moving_aoa15: bound/wake strength closure 5.670e-07
+exp_moving_aoa15: full-vector strength closure 7.178e-07
+exp_static_aoan10: lifting-line difference CL=-3.22%, CD=-10.95% (diagnostic, not an exact reference)
+exp_static_aoan10: bound/wake strength closure 8.410e-07
+exp_static_aoan10: full-vector strength closure 9.815e-07
+exp_static_aoan05: lifting-line difference CL=-2.73%, CD=-10.06% (diagnostic, not an exact reference)
+exp_static_aoan05: bound/wake strength closure 9.305e-07
+exp_static_aoan05: full-vector strength closure 1.779e-06
+exp_static_aoan02: lifting-line difference CL=-2.59%, CD=-9.81% (diagnostic, not an exact reference)
+exp_static_aoan02: bound/wake strength closure 2.496e-06
+exp_static_aoan02: full-vector strength closure 2.889e-06
+exp_static_aoa00: bound/wake strength closure 0.000e+00
+exp_static_aoa00: full-vector strength closure 0.000e+00
+exp_static_aoa02: lifting-line difference CL=-2.59%, CD=-9.81% (diagnostic, not an exact reference)
+exp_static_aoa02: bound/wake strength closure 2.548e-06
+exp_static_aoa02: full-vector strength closure 2.777e-06
+exp_static_aoa05: lifting-line difference CL=-2.73%, CD=-10.06% (diagnostic, not an exact reference)
+exp_static_aoa05: bound/wake strength closure 9.607e-07
+exp_static_aoa05: full-vector strength closure 1.779e-06
+exp_static_aoa08: lifting-line difference CL=-2.98%, CD=-10.52% (diagnostic, not an exact reference)
+exp_static_aoa08: bound/wake strength closure 1.160e-06
+exp_static_aoa08: full-vector strength closure 1.671e-06
+exp_static_aoa10: lifting-line difference CL=-3.22%, CD=-10.95% (diagnostic, not an exact reference)
+exp_static_aoa10: bound/wake strength closure 7.950e-07
+exp_static_aoa10: full-vector strength closure 1.160e-06
+exp_static_aoa12: lifting-line difference CL=-3.51%, CD=-11.47% (diagnostic, not an exact reference)
+exp_static_aoa12: bound/wake strength closure 9.653e-07
+exp_static_aoa12: full-vector strength closure 1.117e-06
+exp_static_aoa15: lifting-line difference CL=-4.04%, CD=-12.42% (diagnostic, not an exact reference)
+exp_static_aoa15: bound/wake strength closure 7.680e-07
+exp_static_aoa15: full-vector strength closure 1.615e-06
+[OK] flat_plate completion and consistency checks passed
+[UNQUALIFIED] Physical accuracy requires matched space/time refinement; frame agreement and circulation closure alone do not establish it.

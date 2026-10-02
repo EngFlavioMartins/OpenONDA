@@ -4,14 +4,45 @@ import numpy as np
 import pytest
 import taichi as ti
 
+from source.coupler.geometry import SolidBoundary, TriangulatedWall
+from source.grid_connectivity import connected_grid_components
 from source.solvers.vpm.kernels.base import make_vortex_kernel
-from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin, _m4_prime_1d
+from source.solvers.vpm.physics.diffusion.grid import (
+    _GridDiffusionMixin,
+    _m4_prime_1d,
+    _nearest_visible_nodes,
+)
 from tests.coupler._solid_geometry import wall_case
 
 
 @ti.data_oriented
 class WallGrid(_GridDiffusionMixin):
     pass
+
+
+def test_pruning_searches_visible_nodes_when_support_wraps_around_a_finite_wall():
+    boundary = SolidBoundary(
+        (TriangulatedWall.from_box([-0.02, 0.02, -0.4, 0.4, -1, 1], [-2, 2] * 3),)
+    )
+    shape = (7, 11, 1)
+    nodes = np.stack(np.indices(shape), axis=-1) * 0.1 + [-0.25, -0.5, 0]
+    links = np.zeros(shape, dtype=np.int32)
+    for axis in range(3):
+        starts = nodes.reshape(-1, 3)
+        ends = starts.copy()
+        ends[:, axis] += 0.1
+        links |= boundary.blocks_segments(starts, ends).reshape(shape).astype(np.int32) << axis
+    labels = connected_grid_components(np.ones(shape), np.zeros(shape, np.int32), links)
+    # The cloud connects around the finite wall, while a direct shortcut from
+    # its right side to the nearest left-side survivors crosses the solid.
+    assert np.unique(labels).size == 1
+    removed = np.array([[0.05, 0, 0]])
+    hidden = np.column_stack((np.linspace(-0.15, -0.05, 40), np.zeros((40, 2))))
+    survivors = np.vstack((hidden, [0.35, 0, 0]))
+    nearest = _nearest_visible_nodes(survivors, removed, boundary.blocks_segments)
+    np.testing.assert_array_equal(nearest, [40])
+    with pytest.raises(RuntimeError, match="no wall-visible retained node"):
+        _nearest_visible_nodes(hidden, removed, boundary.blocks_segments)
 
 
 @pytest.mark.parametrize("variable_viscosity", [False, True])

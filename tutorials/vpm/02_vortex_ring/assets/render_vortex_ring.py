@@ -28,15 +28,15 @@ view = CreateView("RenderView")
 # Headless ParaView rendering requires the view to belong to a layout.
 layout = CreateLayout("Vortex ring render")
 AssignViewToLayout(view=view, layout=layout)
-view.ViewSize = [1500, 1250]
+view.ViewSize = [1500, 1000]
 view.UseColorPaletteForBackground = 0
 view.Background = [1, 1, 1]
 view.OrientationAxesVisibility = 0
-view.CameraPosition = [5, 0, 3]
+view.CameraPosition = [5, 0, 7]
 view.CameraFocalPoint = [0, 0, 0]
 view.CameraViewUp = [0, 0, 1]
 view.CameraParallelProjection = 1
-view.CameraParallelScale = 1.06
+view.CameraParallelScale = 0.82
 
 
 def save_screenshot(name, resolution):
@@ -73,14 +73,14 @@ def particles(name, colored):
         d.SetScalarBarVisibility(view, False)
     else:
         d.ColorArrayName = ["POINTS", ""]
-        d.DiffuseColor = [0.34, 0.36, 0.62]
+        d.DiffuseColor = [21 / 255, 96 / 255, 116 / 255]
         d.AmbientColor = d.DiffuseColor
     return g
 
 
 for i in [] if schematic_only else [0, 1]:
     g = particles(f"particles_{i}.vtp", True)
-    save_screenshot(f"particles_{i}.png", [2400, 2000])
+    save_screenshot(f"particles_{i}.png", [2400, 1600])
     Hide(g, view)
 
 # Silver cutaway with the same projected section in the enlarged view.
@@ -117,11 +117,11 @@ for name in ["radius_arrow", "speed_arrow", "circulation_arrow"]:
 save_screenshot("schematic.png", [2820, 2460])
 for obj in objects:
     Hide(obj, view)
-view.ViewSize = [1200, 1200]
-view.CameraParallelScale = 0.18
+view.ViewSize = [1500, 1000]
+view.CameraParallelScale = 0.11
 view.CameraPosition = [5, -2, 3]
 view.CameraFocalPoint = [0, 0, 0]
 particles("core_particles.vtp", False)
 geometry("detail_scale", [0, 0.55, 0.70])
 geometry("core_radius_arrow", [0.35, 0.37, 0.40])
-save_screenshot("core_detail.png", [1500, 1500])
+save_screenshot("core_detail.png", [1500, 1000])

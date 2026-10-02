@@ -10,11 +10,13 @@ if not __package__:
 import argparse
 import numpy as np
 import pandas as pd
+from openonda.validation import time_mean
 
 from ._common import (
     FIGURES_DIR,
     IMPULSE_WINDOW_REVOLUTIONS,
     OPERATING_WINDOW_REVOLUTIONS,
+    REQUIRED_PLANE_NAMES,
     bem_reference,
     impulse_history,
     performance,
@@ -30,7 +32,6 @@ from .plot_rotor_wake_planes import (
     assess_wake_signal_onset,
     checkpoint_particle_front_brackets,
     native_plane_windows,
-    relative_drift,
 )
 from .plot_rotor_wake_planes import finite_distance_profiles
 
@@ -38,13 +39,9 @@ VALIDATION_ROTATIONS = OPERATING_WINDOW_REVOLUTIONS
 
 
 def _scaled_profile_error(actual, reference, floor):
-    actual = np.asarray(actual, dtype=float)
-    reference = np.asarray(reference, dtype=float)
-    valid = np.isfinite(actual) & np.isfinite(reference) & (np.abs(reference) >= floor)
-    if not np.any(valid):
-        return np.nan
-    scaled = (actual[valid] - reference[valid]) / np.maximum(np.abs(reference[valid]), floor)
-    return float(np.sqrt(np.mean(scaled**2)))
+    from openonda.validation import profile_error
+
+    return profile_error(actual, reference, floor)
 
 
 def _rms_error(actual, reference):
@@ -73,7 +70,8 @@ def main():
         print(
             f"[FAIL] Run incomplete; last recorded step {state['step']}/{final_step}; convergence is unqualified"
         )
-        return 1
+        failures.append("configured run is incomplete")
+        end = float(state["time"])
     data = performance()
     if not np.isfinite(data.select_dtypes("number")).all().all() or data.time.duplicated().any():
         failures.append("non-finite or duplicate force samples")
@@ -95,10 +93,15 @@ def main():
         print(f"[FAIL] Fewer than {VALIDATION_ROTATIONS} revolutions of final force samples")
         return 1
     bem = bem_reference()
+    load_end = float(data.time.max())
+    load_start = load_end - VALIDATION_ROTATIONS * p.rotation_period
+    split = 0.5 * (load_start + load_end)
     for key, reference_key in (("CT", "thrust_coefficient"), ("CP", "power_coefficient")):
-        mean = tail[key].mean()
+        mean = float(time_mean(data.time, data[key], load_start, load_end))
         reference = bem.attrs[reference_key]
-        drift = relative_drift(tail[key])
+        early = time_mean(data.time, data[key], load_start, split)
+        late = time_mean(data.time, data[key], split, load_end)
+        drift = abs(late - early) / max(abs(mean), 1e-12)
         error = abs(mean / reference - 1)
         print(
             f"{key}: mean={mean:.6f}, BEM={reference:.6f}, difference={error:.2%}, window drift={drift:.2%}"
@@ -121,21 +124,23 @@ def main():
             if flow_schedule["type"] == "EveryTime"
             else None,
         }
-        _, loads, fluid, relaxation = impulse_history(
+        impulse_end = min(end, float(integrals.time.max()), load_end)
+        clock, loads, fluid, relaxation = impulse_history(
             data,
             integrals,
             density=p.density,
             time_step_size=p.time_step_size,
             **cadence_kwargs,
-            start_time=end - IMPULSE_WINDOW_REVOLUTIONS * p.rotation_period,
-            end_time=end,
+            start_time=impulse_end - IMPULSE_WINDOW_REVOLUTIONS * p.rotation_period,
+            end_time=impulse_end,
         )
         thrust_impulse = loads[-1, 0]
         ratio = fluid[-1, 0] / thrust_impulse
         transfer = relaxation[-1, 0] / thrust_impulse
         print(
             f"Coupled impulse / surface-force impulse: {ratio:.4f}; "
-            f"recorded relaxation contribution: {transfer:+.2%}"
+            f"recorded relaxation contribution: {transfer:+.2%}; "
+            f"common native window {clock[0]:.3f}–{clock[-1]:.3f} s"
         )
         if not np.isfinite(ratio) or abs(ratio - 1) > 0.10:
             failures.append(
@@ -159,7 +164,12 @@ def main():
                     f"particle-front evidence {status} at x={bracket['station_x']:.6g} m{reason}; "
                     "convected arrival remains unqualified"
                 )
-        for name in ("wake_1D", "wake_2D"):
+        recorded_plane_names = tuple(
+            item["file_name"]
+            for item in config["samplers"]["items"]
+            if item["type"] == "SurfaceSampler"
+        )
+        for name in recorded_plane_names:
             onset = assess_wake_signal_onset(p, name)
             onset_time = onset["signal_onset_time"]
             if onset_time is None:
@@ -183,9 +193,11 @@ def main():
         for row in native_plane_windows(
             p,
             rotations=VALIDATION_ROTATIONS,
-            require_complete=True,
-            required_names=("wake_1D", "wake_2D"),
+            require_complete=False,
+            required_names=recorded_plane_names,
         ):
+            if not row["complete"]:
+                failures.append(f"{row['name']}: incomplete native field window")
             drift = row["induced_field_drift"]
             print(
                 f"{row['name']}: induced-velocity field drift={drift:.2%} "
@@ -195,6 +207,15 @@ def main():
                 failures.append(f"{row['name']}: no resolved stationary wake within1% field drift")
     except (OSError, ValueError, KeyError) as error:
         failures.append(f"invalid native wake samples: {error}")
+    try:
+        native_plane_windows(
+            p,
+            rotations=VALIDATION_ROTATIONS,
+            require_complete=True,
+            required_names=REQUIRED_PLANE_NAMES,
+        )
+    except (OSError, ValueError, KeyError) as error:
+        failures.append(f"native plane geometry/cadence check: {error}")
     try:
         for row in finite_distance_profiles(p):
             axial_error = _scaled_profile_error(
@@ -249,6 +270,8 @@ def main():
             "rotor_loading_validation",
             "rotor_wake_planes",
             "rotor_induction_validation",
+            "rotor_streamwise",
+            "rotor_impulse",
         ):
             for extension in ("png", "pdf"):
                 if not (FIGURES_DIR / f"{name}.{extension}").is_file():

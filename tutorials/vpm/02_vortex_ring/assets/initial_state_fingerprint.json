@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "provenance": "Derived from saved step-zero HDF5; fields also verified against current reconstruction at recorded solver precision. Published result archive is unchanged.",
+  "metadata": {
+    "path": "solution/les_transposed/vpm_metadata.json",
+    "sha256": "2c21a19e01240255db5a780c4b88abe2482043217a7cb3ec642750ea6520b021",
+    "size": 9886
+  },
+  "backup": {
+    "path": "solution/les_transposed/vpm/vpm_000000.h5",
+    "sha256": "f748431751660436aa95038fb5c2d66c2f4cd16e6709edebf5c3f602f17a1de9"
+  },
+  "clock": {
+    "step": 0,
+    "time": 0
+  },
+  "particle_count": 8772,
+  "initial_configuration": {
+    "initial_conditions": [
+      {
+        "axis": [
+          1,
+          0,
+          0
+        ],
+        "centre": [
+          0,
+          0,
+          0
+        ],
+        "circulation": 3.141592653589793,
+        "core_compensation": {
+          "kernel_diffusivity": 4,
+          "type": "ParticleCoreCompensation"
+        },
+        "distribution": {
+          "axis": "x",
+          "centre": [
+            0,
+            0,
+            0
+          ],
+          "core_radius_ratio": 2,
+          "disturbance": null,
+          "ring_radius": 1,
+          "spacing": 0.035,
+          "tube_radius": 0.12360515602160518,
+          "type": "ToroidalDistribution"
+        },
+        "disturbance": {
+          "amplitude": 0.005,
+          "direction": "radial",
+          "mode": null,
+          "number_of_modes": 24,
+          "phase": 0,
+          "seed": 42,
+          "type": "WidnallDisturbance"
+        },
+        "group_id": 0,
+        "kinematic_viscosity": 0.0010471975511965976,
+        "radius": 1,
+        "type": "VortexRing",
+        "vortex_core_radius": 0.1
+      }
+    ],
+    "initial_weak_particle_percent": 0,
+    "precision": "f32",
+    "random_seed": 42,
+    "particle_kernel": "GAUSSIAN"
+  },
+  "fields": {
+    "position": {
+      "dtype": "<f4",
+      "shape": [
+        8772,
+        3
+      ],
+      "sha256": "0ba7f5ea7389323b27fbf613caebfa7887acd9a0bc39bd1d3a34a1afe667c532"
+    },
+    "vortex_strength": {
+      "dtype": "<f4",
+      "shape": [
+        8772,
+        3
+      ],
+      "sha256": "9ebe7aa01d1a794886a32d343b24c0a722c871161ed41a0bbe199d5b04861250"
+    },
+    "core_radius": {
+      "dtype": "<f4",
+      "shape": [
+        8772
+      ],
+      "sha256": "da03b3af741c385dc69c1fed6fd1421f5fd2a6c351d86870479c6b38b1a9c1dc"
+    }
+  }
+}

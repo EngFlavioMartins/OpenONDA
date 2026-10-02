@@ -14,15 +14,19 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import inspect
 import math
+import time
 
 import numpy as np
 import taichi as ti
 
 from source._numba import cacheable_njit as njit
+from source.grid_connectivity import connected_grid_components
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
 from ..events import NullPhysicsEventObserver
+from .body_geometry import BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
 _GRID_TRANSFER_CHUNK = 65536
 # Bound the 64 atomic deposits per particle to keep GPU dispatches short.
@@ -52,6 +56,46 @@ _GBD_MOMENT_CORRECTION_FRACTION_LIMIT = 0.5
 
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
 _REGEN_RADIUS_RATIO = 2.5
+
+
+def _nearest_visible_nodes(survivors, removed, blocks_segments=None):
+    """Return nearest retained nodes, querying occluded alternatives in batches."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(survivors, compact_nodes=False)
+    nearest = tree.query(removed, k=1, workers=-1)[1]
+    if blocks_segments is None:
+        return nearest
+
+    for start in range(0, len(removed), _GRID_TRANSFER_CHUNK):
+        stop = min(start + _GRID_TRANSFER_CHUNK, len(removed))
+        hidden = blocks_segments(removed[start:stop], survivors[nearest[start:stop]])
+        nearest[start:stop][hidden] = -1
+    pending = np.flatnonzero(nearest < 0)
+    # Asking for a list of ranks stores only that list's results, rather than
+    # a growing donor-by-survivor matrix. Most donors use the initial nearest
+    # result; only occluded donors enter these additional geometry queries.
+    for first_rank in range(2, len(survivors) + 1, 32):
+        if not len(pending):
+            break
+        ranks = np.arange(first_rank, min(first_rank + 32, len(survivors) + 1))
+        batch_size = max(1, _GRID_TRANSFER_CHUNK // len(ranks))
+        for start in range(0, len(pending), batch_size):
+            rows = pending[start : start + batch_size]
+            candidates = tree.query(removed[rows], k=ranks, workers=-1)[1]
+            sources = np.broadcast_to(removed[rows, None, :], (*candidates.shape, 3))
+            visible = ~blocks_segments(
+                sources.reshape(-1, 3), survivors[candidates].reshape(-1, 3)
+            ).reshape(candidates.shape)
+            found = visible.any(axis=1)
+            nearest[rows[found]] = candidates[found, visible[found].argmax(axis=1)]
+        pending = pending[nearest[pending] < 0]
+    if len(pending):
+        raise RuntimeError(
+            "GBD pruning has no wall-visible retained node for discarded support; "
+            "reduce the pruning threshold or increase the regeneration cap."
+        )
+    return nearest
 
 
 @dataclass(frozen=True)
@@ -447,8 +491,6 @@ class _GridDiffusionMixin:
 
         # Body-aware diffusion settings (optional; enabled when body STL is configured).
         self._body_mask_active: bool = False
-        self._body_box_bounds: np.ndarray | None = None
-        self._body_cylinder: tuple[int, np.ndarray, float, float, float] | None = None
         self._body_classifier: Callable[[np.ndarray], np.ndarray] | None = None
         self._body_segment_classifier = None
         self._body_geometry_revision: object | None = None
@@ -456,6 +498,9 @@ class _GridDiffusionMixin:
         self._body_mask_host: np.ndarray | None = None
         self._body_links_host: np.ndarray | None = None
         self._body_query_bounds: np.ndarray | None = None
+        self._body_geometry_contract = None
+        self._body_grid_geometry_cache = None
+        self._body_geometry_cache_diagnostics = {"status": "not_prepared"}
 
         self._require_fixed_grid_allocation: bool = False
 
@@ -758,78 +803,6 @@ class _GridDiffusionMixin:
         origin = a + np.floor((origin - a) / particle_spacing) * particle_spacing
         self._fixed_grid_min = origin.astype(np.float32)
 
-    def configure_body_box(self, bounds) -> None:
-        """Configure an exact axis-aligned solid mask for grid diffusion.
-
-        The mask is rebuilt on the active diffusion lattice, so it remains
-        correct for both fixed-domain and dynamically sized grids.  The GBD
-        Laplacian treats solid neighbours as the fluid centre value (zero
-        normal diffusive flux) and never regenerates particles at solid nodes.
-        """
-        b = np.asarray(bounds, dtype=np.float32).reshape(-1)
-        if b.shape != (6,) or not np.all(np.isfinite(b)):
-            raise ValueError("body box must contain six finite bounds")
-        if np.any(b[1::2] <= b[::2]):
-            raise ValueError("body box upper bounds must exceed lower bounds")
-        self._body_box_bounds = b.copy()
-        self._body_query_bounds = b.astype(np.float64)
-        self._body_cylinder = None
-        self._body_classifier = None
-        self._body_segment_classifier = None
-        self._body_mask_cache_key = None
-        self._body_mask_host = None
-        self._body_mask_active = True
-
-    def configure_body_cylinder(self, bounds, axis: int | str = 2) -> None:
-        """Configure an exact axis-aligned circular-cylinder diffusion mask.
-
-        ``bounds`` are the cylinder's Cartesian extrema.  The two transverse
-        extents must define one circular diameter; the axial extrema bound the
-        finite cylinder.  Surface nodes remain fluid, matching the box-mask
-        convention and leaving wall vorticity on the fluid side.
-        """
-        b = np.asarray(bounds, dtype=np.float32).reshape(-1)
-        if b.shape != (6,) or not np.all(np.isfinite(b)):
-            raise ValueError("body cylinder bounds must contain six finite values")
-        if np.any(b[1::2] <= b[::2]):
-            raise ValueError("body cylinder upper bounds must exceed lower bounds")
-        if isinstance(axis, str):
-            try:
-                axis_index = {"x": 0, "y": 1, "z": 2}[axis.lower()]
-            except KeyError as error:
-                raise ValueError("body cylinder axis must be x, y, z, 0, 1, or 2") from error
-        elif isinstance(axis, int | np.integer) and not isinstance(axis, bool):
-            axis_index = int(axis)
-        else:
-            raise TypeError("body cylinder axis must be a coordinate name or integer")
-        if axis_index not in (0, 1, 2):
-            raise ValueError("body cylinder axis must be x, y, z, 0, 1, or 2")
-
-        transverse = [candidate for candidate in range(3) if candidate != axis_index]
-        extents = b[1::2] - b[::2]
-        diameters = extents[transverse]
-        diameter_scale = float(np.max(diameters))
-        if not np.isclose(diameters[0], diameters[1], rtol=1.0e-4, atol=1.0e-7):
-            raise ValueError("body cylinder transverse bounds must define one circular diameter")
-        centre = 0.5 * (b[::2] + b[1::2])
-        radius = 0.25 * float(diameters.sum())
-        if not np.isfinite(radius) or radius <= 0.0 or diameter_scale <= 0.0:
-            raise ValueError("body cylinder radius must be positive")
-        self._body_box_bounds = None
-        self._body_cylinder = (
-            axis_index,
-            centre.astype(np.float32),
-            radius,
-            float(b[2 * axis_index]),
-            float(b[2 * axis_index + 1]),
-        )
-        self._body_mask_active = True
-        self._body_query_bounds = b.astype(np.float64)
-        self._body_classifier = None
-        self._body_segment_classifier = None
-        self._body_mask_cache_key = None
-        self._body_mask_host = None
-
     def configure_body_classifier(
         self,
         contains_interior: Callable[[np.ndarray], np.ndarray],
@@ -837,6 +810,7 @@ class _GridDiffusionMixin:
         revision: object,
         query_bounds: np.ndarray | None = None,
         blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+        geometry_cache_contract: ImmutableBodyGeometryQueries | None = None,
     ) -> None:
         """Use the transfer body's strict-interior classifier on the GBD lattice.
 
@@ -848,10 +822,10 @@ class _GridDiffusionMixin:
             raise TypeError("body classifier must be callable")
         if revision is None:
             raise ValueError("body geometry revision must be supplied")
-        self._body_box_bounds = None
-        self._body_cylinder = None
         self._body_classifier = contains_interior
         self._body_segment_classifier = blocks_segments
+        self._body_geometry_contract = geometry_cache_contract
+        self._body_grid_geometry_cache = None
         self._body_geometry_revision = revision
         if query_bounds is not None:
             bounds = np.asarray(query_bounds, dtype=np.float64).reshape(6)
@@ -864,12 +838,43 @@ class _GridDiffusionMixin:
         self._body_mask_cache_key = None
         self._body_mask_host = None
 
+    @property
+    def body_geometry_cache_diagnostics(self):
+        """Last preparation evidence; no callbacks or device transfers occur."""
+        return dict(self._body_geometry_cache_diagnostics)
+
+    def _body_grid_geometry_key(self):
+        contract = self._body_geometry_contract
+        if type(contract) is not ImmutableBodyGeometryQueries:
+            return None
+        if any(name in vars(self) or inspect.getattr_static(type(self), name, None) is not method
+               for name, method in _BODY_GRID_GEOMETRY_METHODS.items()):
+            return None
+        key = contract.key(self._body_classifier, self._body_segment_classifier,
+                           self._body_geometry_revision)
+        if key is None:
+            return None
+        slab = getattr(self, "_slip_slab_bounds", None)
+        slab_key = None if slab is None else np.asarray(slab, dtype=np.float64).tobytes()
+        return key, ("none",) if slab_key is None else ("slab", slab_key)
+
     def _prepare_body_mask_current_grid(
         self, grid_min: np.ndarray, particle_spacing: float, nx: int, ny: int, nz: int
     ) -> None:
-        """Populate the active grid's solid-node mask."""
+        """Populate masks/links, reusing only exactly certified host geometry."""
         if not self._body_mask_active or self._body_mask_grid is None:
             return
+        started = time.perf_counter()
+        try:
+            geometry_key = self._body_grid_geometry_key()
+        except BaseException:
+            self._body_mask_cache_key = None
+            self._body_mask_host = self._body_links_host = None
+            self._body_geometry_cache_diagnostics = {
+                "status": "failed", "qualified": False,
+                "preparation_seconds": time.perf_counter() - started,
+            }
+            raise
         g = np.asarray(grid_min, dtype=np.float32).reshape(3)
         key = (
             id(self._body_mask_grid),
@@ -882,90 +887,108 @@ class _GridDiffusionMixin:
             tuple(float(value) for value in self._slip_slab_bounds)
             if getattr(self, "_slip_slab_bounds", None) is not None
             else None,
+            float(particle_spacing),
+            geometry_key,
+            id(self._body_link_grid),
+            g.tobytes(),
         )
-        if key == self._body_mask_cache_key:
+        invalid_contract = self._body_geometry_contract is not None and geometry_key is None
+        if not invalid_contract and key == self._body_mask_cache_key:
+            self._body_geometry_cache_diagnostics = {
+                "status": "resident_hit", "qualified": geometry_key is not None,
+                "preparation_seconds": time.perf_counter() - started,
+            }
             return
+        # Never leave stale residency admitted after a partially written mask
+        # or link grid. Host evidence is independent of device allocation.
+        self._body_mask_cache_key = None
+        self._body_mask_host = self._body_links_host = None
+        try:
+            if geometry_key is not None:
+                if self._body_grid_geometry_cache is None:
+                    self._body_grid_geometry_cache = BodyGridGeometryCache()
+                cache = self._body_grid_geometry_cache
+                required_bytes = 5 * int(nx) * int(ny) * int(nz) + 12 * (nx + ny + nz)
+                if required_bytes <= cache.max_bytes:
+                    mask, links, diagnostics = cache.prepare(
+                        g, particle_spacing, (nx, ny, nz),
+                        contains=self._body_interior_at_particles,
+                        blocks=self._body_blocked_segments if self._body_segment_classifier is not None else None,
+                        geometry_key=geometry_key,
+                    )
+                    if self._body_segment_classifier is not None and self._body_link_grid is None:
+                        self._body_link_grid = ti.field(dtype=ti.i32, shape=self._body_mask_grid.shape)
+                    for field, values in ((self._body_mask_grid, mask), (self._body_link_grid, links)):
+                        if field is None:
+                            continue
+                        buffer = self._grid_transfer_buffer("scalar", field, "upload")
+                        flat = values.reshape(-1)
+                        for start in range(0, len(flat), _GRID_TRANSFER_CHUNK):
+                            count = min(_GRID_TRANSFER_CHUNK, len(flat) - start)
+                            buffer[:count] = flat[start:start + count]
+                            self._upload_scalar_chunk_kernel(field, buffer, start, count, ny, nz)
+                    ti.sync()
+                    self._body_mask_host, self._body_links_host = mask, links
+                    self._body_mask_cache_key = (*key[:-2], id(self._body_link_grid), key[-1])
+                    self._body_geometry_cache_diagnostics = {
+                        **diagnostics, "status": "complete",
+                        "preparation_seconds": time.perf_counter() - started,
+                    }
+                    return
+            self._prepare_body_mask_fresh(g, particle_spacing, nx, ny, nz)
+            ti.sync()
+            self._body_mask_cache_key = (
+                None if invalid_contract else (*key[:-2], id(self._body_link_grid), key[-1])
+            )
+            self._body_geometry_cache_diagnostics = {
+                "status": "fresh_fallback", "qualified": False,
+                "nodes": int(nx) * int(ny) * int(nz),
+                "preparation_seconds": time.perf_counter() - started,
+            }
+        except BaseException:
+            self._body_mask_cache_key = None
+            self._body_mask_host = self._body_links_host = None
+            self._body_geometry_cache_diagnostics = {
+                "status": "failed", "qualified": geometry_key is not None,
+                "preparation_seconds": time.perf_counter() - started,
+            }
+            raise
+
+    def _prepare_body_mask_fresh(self, g, particle_spacing, nx, ny, nz):
+        """Original predicate path for unqualified/custom geometry queries."""
         if self._body_link_grid is not None:
             self._body_link_grid.fill(0)
-        if (
-            self._body_classifier is not None
-            or getattr(self, "_slip_slab_bounds", None) is not None
-        ):
-            total = int(nx) * int(ny) * int(nz)
-            host_mask = np.empty(total, dtype=bool)
-            buffer = self._grid_transfer_buffer("scalar", self._body_mask_grid, "upload")
-            for start in range(0, total, _GRID_TRANSFER_CHUNK):
-                stop = min(start + _GRID_TRANSFER_CHUNK, total)
-                linear = np.arange(start, stop, dtype=np.int64)
-                points = np.column_stack(
-                    (
-                        g[0] + (linear // (ny * nz)) * particle_spacing,
-                        g[1] + ((linear // nz) % ny) * particle_spacing,
-                        g[2] + (linear % nz) * particle_spacing,
-                    )
+        total = int(nx) * int(ny) * int(nz)
+        host_mask = np.empty(total, dtype=bool)
+        buffer = self._grid_transfer_buffer("scalar", self._body_mask_grid, "upload")
+        for start in range(0, total, _GRID_TRANSFER_CHUNK):
+            stop = min(start + _GRID_TRANSFER_CHUNK, total)
+            linear = np.arange(start, stop, dtype=np.int64)
+            points = np.column_stack(
+                (
+                    g[0] + (linear // (ny * nz)) * particle_spacing,
+                    g[1] + ((linear // nz) % ny) * particle_spacing,
+                    g[2] + (linear % nz) * particle_spacing,
                 )
-                try:
-                    values = self._body_interior_at_particles(
-                        points.astype(np.float32).astype(np.float64)
-                    )
-                except RuntimeError as error:
-                    if "one flag per particle" not in str(error):
-                        raise
-                    raise RuntimeError(
-                        "body classifier must return one flag per GBD node"
-                    ) from error
-                if len(values) != stop - start:
-                    raise RuntimeError("body classifier must return one flag per GBD node")
-                host_mask[start:stop] = values
-                buffer[: stop - start] = values
-                self._upload_scalar_chunk_kernel(
-                    self._body_mask_grid, buffer, start, stop - start, ny, nz
+            )
+            try:
+                values = self._body_interior_at_particles(
+                    points.astype(np.float32).astype(np.float64)
                 )
-            ti.sync()
-            self._body_mask_host = host_mask.reshape(nx, ny, nz)
-            self._prepare_body_links(g, particle_spacing, nx, ny, nz)
-            self._body_mask_cache_key = key
-            return
-        if self._body_box_bounds is not None:
-            b = self._body_box_bounds
-            self._fill_box_body_mask_kernel(
-                self._body_mask_grid,
-                float(g[0]),
-                float(g[1]),
-                float(g[2]),
-                float(particle_spacing),
-                float(b[0]),
-                float(b[1]),
-                float(b[2]),
-                float(b[3]),
-                float(b[4]),
-                float(b[5]),
-                nx,
-                ny,
-                nz,
+            except RuntimeError as error:
+                if "one flag per particle" not in str(error):
+                    raise
+                raise RuntimeError("body classifier must return one flag per GBD node") from error
+            if len(values) != stop - start:
+                raise RuntimeError("body classifier must return one flag per GBD node")
+            host_mask[start:stop] = values
+            buffer[: stop - start] = values
+            self._upload_scalar_chunk_kernel(
+                self._body_mask_grid, buffer, start, stop - start, ny, nz
             )
-            self._body_mask_cache_key = key
-            return
-        if self._body_cylinder is not None:
-            axis, centre, radius, axial_min, axial_max = self._body_cylinder
-            self._fill_cylinder_body_mask_kernel(
-                self._body_mask_grid,
-                float(g[0]),
-                float(g[1]),
-                float(g[2]),
-                float(particle_spacing),
-                int(axis),
-                float(centre[0]),
-                float(centre[1]),
-                float(centre[2]),
-                float(radius),
-                float(axial_min),
-                float(axial_max),
-                nx,
-                ny,
-                nz,
-            )
-            self._body_mask_cache_key = key
+        ti.sync()
+        self._body_mask_host = host_mask.reshape(nx, ny, nz)
+        self._prepare_body_links(g, particle_spacing, nx, ny, nz)
 
     def _body_blocked_segments(self, starts, ends):
         """Test visibility on the physical wall, including reflected slab paths."""
@@ -1079,18 +1102,6 @@ class _GridDiffusionMixin:
             if len(result) != len(points):
                 raise RuntimeError("body classifier must return one flag per particle")
             return result
-        if self._body_box_bounds is not None:
-            bounds = self._body_box_bounds.astype(np.float64)
-            return np.all((points > bounds[::2]) & (points < bounds[1::2]), axis=1)
-        if self._body_cylinder is not None:
-            axis, centre, radius, axial_min, axial_max = self._body_cylinder
-            transverse = [candidate for candidate in range(3) if candidate != axis]
-            radial = points[:, transverse] - centre[transverse]
-            return (
-                (points[:, axis] > axial_min)
-                & (points[:, axis] < axial_max)
-                & (np.einsum("ij,ij->i", radial, radial) < radius * radius)
-            )
         return np.zeros(len(points), dtype=bool)
 
     def _wall_moment_correction(self, point, indices, weights, fluid, origin, spacing, shape):
@@ -1542,30 +1553,7 @@ class _GridDiffusionMixin:
         wall by following an empty route around its far edge. Existing source
         group boundaries are retained as well.
         """
-        from scipy.sparse import coo_matrix
-        from scipy.sparse.csgraph import connected_components
-
-        active = magnitude > 0
-        ids = np.full(magnitude.shape, -1, dtype=np.int64)
-        ids[active] = np.arange(np.count_nonzero(active))
-        links = self._body_links_host
-        sources, targets = [], []
-        for axis in range(3):
-            lower, upper = [slice(None)] * 3, [slice(None)] * 3
-            lower[axis], upper[axis] = slice(None, -1), slice(1, None)
-            lower, upper = tuple(lower), tuple(upper)
-            connected = active[lower] & active[upper] & ((links[lower] & (1 << axis)) == 0)
-            connected &= groups[lower] == groups[upper]
-            sources.append(ids[lower][connected])
-            targets.append(ids[upper][connected])
-        rows, columns = np.concatenate(sources), np.concatenate(targets)
-        graph = coo_matrix(
-            (np.ones(len(rows), dtype=bool), (rows, columns)), shape=(int(active.sum()),) * 2
-        ).tocsr()
-        _, components = connected_components(graph, directed=False)
-        labels = np.full(magnitude.shape, -1, dtype=np.int32)
-        labels[active] = components
-        return labels
+        return connected_grid_components(magnitude, groups, self._body_links_host)
 
     @staticmethod
     def _augment_moment_recovery_support(
@@ -1898,6 +1886,7 @@ class _GridDiffusionMixin:
         labels: np.ndarray | None = None,
         diagnostics: dict[str, bool | int | float] | None = None,
         strict_labels: bool = False,
+        blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> np.ndarray:
         """Coarsen pruned nodes locally while preserving diffusive moments.
 
@@ -2093,13 +2082,7 @@ class _GridDiffusionMixin:
             if len(removed_position) == 0:
                 return survivor_vortex_strength.astype(grid_np.dtype, copy=False)
 
-            from scipy.spatial import cKDTree
-
-            nearest = cKDTree(survivor_position, compact_nodes=False).query(
-                removed_position,
-                k=1,
-                workers=-1,
-            )[1]
+            nearest = _nearest_visible_nodes(survivor_position, removed_position, blocks_segments)
             corrected = survivor_vortex_strength.copy()
             np.add.at(corrected, nearest, removed_vortex_strength)
 
@@ -2943,6 +2926,7 @@ class _GridDiffusionMixin:
                 labels=(recovery_labels if preserve_group_recovery else None),
                 diagnostics=closure_diagnostics,
                 strict_labels=wall_recovery,
+                blocks_segments=self._body_blocked_segments if wall_recovery else None,
             )
             correction_l1 = float(
                 np.linalg.norm(corrected_retained.astype(np.float64) - raw_retained, axis=1).sum(
@@ -3725,68 +3709,6 @@ class _GridDiffusionMixin:
             dst[i, j, k] = src[i, j, k] + time_step_size * flux / h_sq
 
     @ti.kernel
-    def _fill_box_body_mask_kernel(
-        self,
-        body_mask: ti.template(),
-        gmin_x: ti.f32,
-        gmin_y: ti.f32,
-        gmin_z: ti.f32,
-        particle_spacing: ti.f32,
-        xmin: ti.f32,
-        xmax: ti.f32,
-        ymin: ti.f32,
-        ymax: ti.f32,
-        zmin: ti.f32,
-        zmax: ti.f32,
-        nx: ti.i32,
-        ny: ti.i32,
-        nz: ti.i32,
-    ):
-        """Mark open-interior box nodes as solid; surface nodes stay fluid."""
-        for i, j, k in ti.ndrange(nx, ny, nz):
-            x = gmin_x + ti.cast(i, ti.f32) * particle_spacing
-            y = gmin_y + ti.cast(j, ti.f32) * particle_spacing
-            z = gmin_z + ti.cast(k, ti.f32) * particle_spacing
-            inside = xmin < x and x < xmax and ymin < y and y < ymax and zmin < z and z < zmax
-            body_mask[i, j, k] = 1 if inside else 0
-
-    @ti.kernel
-    def _fill_cylinder_body_mask_kernel(
-        self,
-        body_mask: ti.template(),
-        gmin_x: ti.f32,
-        gmin_y: ti.f32,
-        gmin_z: ti.f32,
-        particle_spacing: ti.f32,
-        axis: ti.i32,
-        centre_x: ti.f32,
-        centre_y: ti.f32,
-        centre_z: ti.f32,
-        radius: ti.f32,
-        axial_min: ti.f32,
-        axial_max: ti.f32,
-        nx: ti.i32,
-        ny: ti.i32,
-        nz: ti.i32,
-    ):
-        """Mark open-interior cylinder nodes as solid."""
-        radius_squared = radius * radius
-        for i, j, k in ti.ndrange(nx, ny, nz):
-            x = gmin_x + ti.cast(i, ti.f32) * particle_spacing
-            y = gmin_y + ti.cast(j, ti.f32) * particle_spacing
-            z = gmin_z + ti.cast(k, ti.f32) * particle_spacing
-            axial = z
-            radial_squared = (x - centre_x) ** 2 + (y - centre_y) ** 2
-            if axis == 0:
-                axial = x
-                radial_squared = (y - centre_y) ** 2 + (z - centre_z) ** 2
-            elif axis == 1:
-                axial = y
-                radial_squared = (x - centre_x) ** 2 + (z - centre_z) ** 2
-            inside = axial_min < axial and axial < axial_max and radial_squared < radius_squared
-            body_mask[i, j, k] = 1 if inside else 0
-
-    @ti.kernel
     def _zero_grid_kernel(
         self,
         field: ti.template(),
@@ -3940,3 +3862,13 @@ class _GridDiffusionMixin:
         for i, j, k in ti.ndrange(nx, ny, nz):
             if body_mask[i, j, k] != 0:
                 grid[i, j, k] = ti.Vector.zero(ti.f32, 3)
+
+
+_BODY_GRID_GEOMETRY_METHODS = {
+    name: inspect.getattr_static(_GridDiffusionMixin, name)
+    for name in (
+        "_body_grid_geometry_key", "_prepare_body_mask_current_grid", "_prepare_body_mask_fresh",
+        "_prepare_body_links", "_body_interior_at_particles", "_body_blocked_segments",
+        "_fold_slab_exterior_z",
+    )
+}

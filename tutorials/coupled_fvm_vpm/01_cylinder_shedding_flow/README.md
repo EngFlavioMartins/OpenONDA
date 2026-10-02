@@ -1,131 +1,34 @@
-# Flow past a cylinder at Re = 150
+# Cylinder shedding at $Re=150$
 
-A body-fitted finite-volume region resolves the cylinder wall and transfers
-vorticity to the surrounding vortex-particle domain. The diameter and
-freestream speed are 1 m and 1 m/s, giving kinematic viscosity 1/150 m²/s.
-The compact FVM box is
-`[-1.60, 1.60] × [-1.60, 1.60] × [-0.48, 0.48] m`. Its base setup uses the reference
-fine spacing `h = 0.04 m` uniformly in every direction, giving 24 cells across
-the resolved span. There are no mesh-refinement or coarsening regions. Force
-coefficients use the resolved 0.96 m span.
+A no-slip cylinder sheds vorticity into a laminar wake. FVM resolves the wall and near wake; VPM transports the outer wake. Two free-slip spanwise planes model a cylinder section with resolved span $b=0.96$ m. Force coefficients use frontal area $Db=0.96$ m².
 
-Coupled runs end at 100 s, retaining volume fields and coupled checkpoints
-every 0.24 s (six 0.04 s coupling steps). This preserves the tested time
-discretization; an exact 0.25 s event would fall between accepted coupled
-states.
+| Quantity | Default |
+| --- | --- |
+| Diameter $D$; speed $U_\infty$ | 1 m; 1 m/s in $+x$ |
+| Density $\rho$; viscosity $\nu=U_\infty D/Re$ | 1 kg/m³; $1/150$ m²/s |
+| FVM box | $[-1.6,1.6]^2\times[-0.48,0.48]$ m |
+| Transfer region | $[-1.25,1.25]^2\times[-0.48,0.48]$ m |
+| VPM domain | $[-5,15]\times[-5,5]\times[-0.48,0.48]$ m |
+| FVM/particle spacing | 0.04 m; 24 spanwise layers |
+| FVM/exchange step | 0.008 s / 0.04 s |
+| End time | 100 s |
 
-`setup.py` shows the coupled configuration. The case is full 3D: it uses
-`SlipSlabInduction` with free-slip image planes at `z = ±0.48D`, and the VPM
-and FVM domains use the same physical slab. The spanwise lattice closes the
-span exactly; it does not stretch or average the z direction.
+## Models and mesh
 
-`allrun.sh` cleans the default campaign and runs matched reference/coupled
-grids plus sensitivity cases. `allcontinue.sh` continues that campaign from
-each solver's latest native backup; a case with no backup starts from
-the initial time. The default campaign is saved in `study_results/cylinder/default`.
-Historical campaign directories are preserved. Existing standalone backups in
-the tutorial-root `solution/` belong to the single case: continue them with
-`python setup.py`. The campaign launcher uses its own default campaign directory
-and does not migrate those backups. `python setup.py` runs only the coupled
-configuration shown in that file and resumes automatically.
+The [body-fitted mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cylinder_long.stl`. The cylinder is no-slip; `zmin` and `zmax` are slip; the remaining box faces form `numericalBoundary`. VPM uses RK2, Gaussian particles with core radius equal to spacing, and GBD diffusion. No SGS closure is applied.
 
-The campaign uses the
-initial candidate family `h = 0.10, 0.08, 0.064D`; every reference and
-coupled case receives its own 12-hour wall limit, log, output directory and
-cost summary. Resumed attempts consume the same cumulative per-case allowance.
-A complete multi-case campaign can therefore take many days.
-All three spacings fit the same outer XY box exactly, and explicit extrusion
-preserves the same physical span. Custom spacings may resolve a larger
-Cartesian box; the campaign records those bounds so domain changes remain
-visible in a grid comparison.
-The per-case limit is a budget and measurement boundary; it does not certify
-that a finest case completed or that the target accuracy was reached. Use a
-bounded pilot first.
+[Slab induction](../../../docs/coupling.md#free-slip-span) enforces the same physical slip planes in VPM. [Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to three interface sweeps. Edit the physical, mesh and coupling constants in `setup.py`; both solvers start with the same small velocity perturbation as the reference.
 
-The current measurements do **not** certify the twelve-hour target: the
-finest pilot takes about 17 seconds per warm startup interval, and
-the longer h=.08 screen with the same hp=.08 reaches 26 seconds by t=.8.
-These timings precede the final sparse wall-image correction; the execution
-report distinguishes successive solver revisions.
-The gross twelve-hour allowance at exchange dt=.04 is only 17.28 seconds per
-interval before startup. Treat this family as a qualification experiment,
-not a proven overnight production configuration.
+## Run and compare
+
+From this directory in an [installed environment](../../../docs/installation.md):
 
 ```bash
-python assets/run_pipeline.py --pilot --sensitivity none
+(cd reference_flow && ./allrun.sh)
+./allrun.sh
+./allplot.sh
 ```
 
-Pass campaign options to `assets/run_pipeline.py`. The campaign defaults to CPU, selected
-from the laptop pilot and available without a GPU driver. Choose
-`--compute-device AUTO`, `CUDA`, `VULKAN` or `METAL` for an available GPU
-backend. `--coupled-cores 4` controls the coupled MPI/owner thread budget and
-is propagated to the sensitivity workers; `--reference-cores 6` controls the
-reference MPI ranks. Parallel execution requires a compatible MPI installation
-(see [installation](../../../docs/installation.md)). A base pip installation
-can run both cases serially with `--coupled-cores 1 --reference-cores 1`.
-Backend performance must be measured
-on the actual device; software Vulkan rendering is not a GPU benchmark.
+The [standalone FVM reference](reference_flow/README.md) is needed for force/profile comparison, but the coupled solver runs independently. Both launchers preserve outputs and resume compatible backups; `./allcontinue.sh` also resumes. `./allcontinue.sh --max-coupling-steps 25` stops after 25 accepted exchanges and saves a checkpoint. `./allclean.sh` deletes generated results.
 
-For a full run, select `--sensitivity screen` for bounded screens or
-`--sensitivity full` for the long paired study. The full study has one baseline
-plus two levels for each of the eight supported factors (17 independent
-cases), with at most one paired interaction case selected after the OFAT
-results. The sensitivity baseline uses `hxy = 0.08` and
-`particle_spacing_ratio = 1.0`, giving `hp = 0.08`; span variants keep that
-particle spacing so span and particle resolution are not confounded. The
-particle-spacing factor then tests ratios `1.25` and `1.5`, keeping the
-physical core radius `0.08 D`, blend width `0.48 D`, and release width `0.16 D`
-fixed. The report records requested and realized spacing, span intervals and
-`sigma/hp` overlap. Reports before sensitivity schema 3 changed those physical
-lengths together with spacing; preserve those cohorts and use a new directory
-for the independent study. The remaining
-factors cover core radius, blend width (4 and 7), release width, transfer
-amplification cap, exchange clock, span and spanwise spacing. Interface
-iteration limits and tolerances remain fixed;
-`exchange_dt` changes the exchange clock and is the explicit temporal factor.
-Any optional two-factor interaction is checked through the case builder before
-launch; invalid body-authority combinations are recorded and skipped.
-Screen runs use short bounded coupling segments and are not accuracy
-qualifications. Their step budget is defined at the baseline `exchange_dt =
-0.04 s` clock, so a 20-step screen uses 40 steps at `0.02 s` and 10 steps at
-`0.08 s`; runtime comparisons are normalized per physical time. Full runs
-retain the 100 s horizon and common statistics window. Point sampling uses
-the nearest exchange-step interval, choosing the finer interval for equal
-distances. Short pilots clamp that interval to their duration. Periodic records
-need not include an off-cadence final time: a 100.04 s run still samples through
-100 s for the registered statistics window. Custom windows must be covered by
-actual samples; the postprocessor does not extrapolate beyond them. An interrupted pipeline
-can be continued without cleaning with:
-
-```bash
-./allcontinue.sh
-```
-
-Use `python assets/run_pipeline.py --run-dir <directory> --resume` for a
-separate study directory. Native solver backups are the restart authority;
-no additional restart file is required by the campaign. Pipeline provenance is
-written to `<directory>/pipeline_manifest.json`; each case has a console log,
-`trial.json`, solver timing journals and cost summary below `<directory>/logs`
-and its case output directory. Reference grid reports are written under
-`<directory>/reference/figures`; `reference_selection.json` records the
-`force_grid_qualified` gate. The full production campaign and the 12-hour
-runtime certification remain pending measured long-horizon evidence. A
-successful launcher return alone is not a production qualification.
-
-The pipeline saves comparison figures automatically. Run `./allplot.sh` to
-regenerate PNG figures from the most recently updated campaign, or
-`./allplot.sh pdf --run-dir <directory>` to select a saved campaign explicitly.
-An incomplete latest campaign is reported as incomplete; plotting does not
-silently substitute older results. The individual legacy plotting scripts
-remain available for older tutorial-local outputs.
-
-The [fully meshed reference](reference_flow/README.md) describes the explicit
-reference-only pipeline and its three conservative candidate grids. Its slip
-span boundaries describe a full 3D cylinder flow without endcaps.
-
-Both cases start from the same small, divergence-free velocity perturbation.
-It breaks the planar reflection symmetry and includes a span-dependent
-component compatible with the slip planes. Re=150 is retained: a resolved
-3D mesh is not a claim that a persistent three-dimensional wake instability
-must develop. The off-midspan profiles and span/axial-resolution studies test
-that response explicitly.
+Forces and wake probes are sampled every 0.04 s, profiles every 0.2 s, slices every 0.4 s, backups every 1 s, and FVM volumes every 4 s. Read `samples/forces_history.csv`, the plots under `figures/`, and `solution/coupler_diagnostics.jsonl`. Open `solution/fvm.pvd` and `solution/vpm.pvd` in ParaView. Short transients are insufficient for shedding frequency or phase agreement. Refine the mesh, particle spacing and exchange step before drawing accuracy conclusions.

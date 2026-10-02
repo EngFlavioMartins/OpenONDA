@@ -5,28 +5,28 @@
     "cases": {
       "baseline": {
         "label": "Baseline",
-        "color": "#0C2340",
+        "color": "#0D3D45",
         "marker": "o"
       },
       "selective_eddy_viscosity": {
         "label": "Selective eddy viscosity",
-        "color": "#5C3D9B",
+        "color": "#41A6C4",
         "marker": "s"
       },
       "pedrizzetti_relaxation": {
         "label": "Pedrizzetti relaxation",
-        "color": "#0E8A85",
+        "color": "#156074",
         "marker": "D"
       },
       "particle_splitting": {
         "label": "Particle splitting",
-        "color": "#2B7A4E",
+        "color": "#629B42",
         "marker": "^"
       }
     }
   },
   "generator": "assets/plot_core_sections.py",
-  "generator_sha256": "0f85c5c650ba2df2fb716475534fdefc456e3a645025dea70a12b53acc64ec40",
+  "generator_sha256": "9e16ecb9b21a12de5f11554f81443db40075305270bb8d94b9ad6da65de88aae",
   "layout": {
     "rows": 7,
     "columns": 4,
@@ -317,8 +317,12 @@
   ],
   "exports": [
     {
+      "file": "core_sections.pdf",
+      "sha256": "25c39d7ea8a11488825d7ee6281c49e64885f8565190bc6fcebb7abbc99440c7"
+    },
+    {
       "file": "core_sections.png",
-      "sha256": "c4a5ec7120676acda6f15164c5f4f47f2ded4fc3809859ecc8f951094eb972f2"
+      "sha256": "0b2c5159ca979a92b6f82537327767d63b7d7d307f1097b496abe2fd64892bd1"
     }
   ]
 }

@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
-# Usage: ./allplot.sh [png|pdf] (default: png)
+# Usage: ./allplot.sh [both|png|pdf] (default: both)
 cd -- "$(dirname -- "$0")"
 
 python -m openonda.results restore
 
-python assets/plot_profile.py --format "${1:-png}"
-python assets/plot_comparison.py --format "${1:-png}"
+python assets/plot_profile.py --format "${1:-both}"
+python assets/plot_comparison.py --format "${1:-both}"

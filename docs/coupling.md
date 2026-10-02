@@ -1,337 +1,106 @@
-# FVM--VPM coupling guide
+# FVM–VPM coupling
 
-`FVMVPMCoupler` exchanges a resolved inner FVM flow with an outer VPM particle
-representation. It is a time-synchronized state-transfer driver, not an additive force
-model. The public entry points are `CouplerSetup`, `FVMVPMCoupler`, and
-`create_coupler` from [`openonda.coupler`](../source/coupler/__init__.py).
+FVM resolves pressure, viscous walls and the near wake. VPM transports the outer wake as vortex particles. At each exchange, VPM supplies the outer FVM boundary condition; FVM replaces the particle representation in the inner transfer region. The two representations describe the same flow there, so their velocities are not added.
 
-## Creating a coupled run
+Start with a case matching your physical problem:
 
-The coupler receives already constructed solvers:
+| Case | Physics and setup |
+| --- | --- |
+| [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$; no-slip cylinder and free-slip span. |
+| [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$; body-fitted wall and equilibrium Smagorinsky LES. |
+| [NACA 4412](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite-span airfoil at $10^\circ$, $Re=1000$; immersed boundary and Smagorinsky LES. |
+
+See the [FVM guide](fvm.md) for meshes and walls, and the [VPM guide](vpm.md) for particle kernels, diffusion and LES.
+
+## Variables and units
+
+| Quantity | Meaning | Unit |
+| --- | --- | --- |
+| $\mathbf{x}$, $h$, $\sigma$ | Position, particle spacing and kernel core radius | m |
+| $\Delta t_\mathrm{FVM}$, $\Delta t_\mathrm{VPM}$ | FVM step and particle/exchange step | s |
+| $\mathbf{U}$, $\mathbf{U}_\infty$ | Flow velocity and freestream | m/s |
+| $p_k=p/\rho$ | FVM kinematic pressure | m²/s² |
+| $\rho$ | Density | kg/m³ |
+| $\nu$, $\nu_t$ | Molecular and subgrid kinematic viscosity | m²/s |
+| $\boldsymbol{\omega}=\nabla\times\mathbf{U}$ | Vorticity | 1/s |
+| $V$ | FVM cell or particle volume | m³ |
+| $\boldsymbol{\Gamma}=\boldsymbol{\omega}V$ | Vector particle strength | m³/s |
+
+Match the freestream and molecular viscosity in both solvers. Define Reynolds number as $Re=U_\infty L/\nu$, using the same body length $L$. For LES, match the closure and coefficients; each solver still computes its subgrid viscosity from its own resolved field and filter width. The [cube case](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) shows matching equilibrium coefficients; [FVM LES](fvm.md#turbulence-and-les) and [VPM diffusion and LES](vpm.md#diffusion-and-les) explain the models.
+
+## Geometry and mesh
+
+1. Define a Cartesian FVM box enclosing the body and near wake. Generate a [body-fitted mesh or immersed body](fvm.md#mesh-setup), with a no-slip solid boundary and an outer patch named `numericalBoundary`.
+2. Set `transfer_region_bounds=(xmin, xmax, ymin, ymax, zmin, zmax)` in metres inside the FVM box. The transfer region is rectangular and uses a uniform particle lattice. Resolve the wall-generated vorticity inside this region before releasing it to VPM.
+3. Choose particle spacing and core radius together with the FVM near-wall spacing. The cylinder and cube use equal FVM and particle spacing; inspect both resolutions when refining.
+4. Give VPM enough domain extent for the desired wake length. Keep the diffusion grid padding required by the selected scheme.
+
+Static, consistently oriented wall triangles and geometrically represented immersed bodies supply solid boundaries for particle motion and diffusion. Marker-only bodies and moving-wall coupling are unsupported. FVM generates no-slip wall vorticity; particle exclusion from the solid does not replace wall resolution.
+
+### Free-slip span
+
+The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses FVM slip planes and `vpm.SlipSlabInduction` at the same two physical $z$ coordinates. Match the FVM slip faces, VPM domain limits and transfer-region span exactly. Free-space induction describes a different boundary condition and is appropriate for the cube and finite-span airfoil cases.
+
+The slab model retains all three velocity and vorticity components. It currently supports laminar GBD diffusion or inviscid `NONE`, without LES, core spreading, random-walk diffusion or DVH. For GBD, use M4-prime remeshing, at least three grid cells of padding, and a spacing placing the slip planes on grid nodes or half nodes. The coupler anchors its slab lattice half a particle spacing above the lower plane.
+
+`tail_tolerance` and `max_shells` control image-sum convergence. Check sensitivity to these settings on a developed wake. Images enforce slip conditions; they are not physical particles or part of the force reference area.
+
+## Boundary conditions
+
+`coupling_patch` selects the outer FVM patch. Keep the [solid and slip boundary conditions](fvm.md#boundary-conditions) separate from this patch.
+
+| `boundary_condition_mode` | Trace supplied by VPM |
+| --- | --- |
+| `dirichlet` | Velocity; default, used by the NACA case. |
+| `vorticity_mixed` | Normal velocity and tangential normal velocity derivative; used by cylinder and cube, with `fixedFluxPressure`. |
+| `directional_outflow` | Constrains incoming flow while allowing outgoing flow. |
+| `characteristic` | Incoming/outgoing characteristic information. |
+| `pressure_gradient` | Velocity and pressure gradient. |
+| `vorticity_mixed_pressure_gradient` | Mixed velocity trace and pressure gradient. |
+
+The prescribed-pressure modes depend on VPM acceleration, temporal history and viscous data. Check their pressure-gradient accuracy for the intended flow before replacing the tutorial boundary choice.
+
+## Vorticity transfer
+
+| `transfer_method` | Representation and requirements |
+| --- | --- |
+| `buffered_m4_renewal` | M4-prime renewal with an advective release buffer; requires GBD. Used by cylinder and cube. |
+| `common_lattice` | Maps FVM cell strengths onto a particle lattice and blends with VPM; default experimental path, used by NACA. |
+| `projected_renewal` | Experimental sparse Gaussian projection; requires explicit transfer bounds and `eta_blend_width=0`. |
+
+`eta_blend_width` is the inward width, in metres, over which FVM authority increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. Cylinder and cube use widths $6h$ and $2h$, respectively.
+
+Buffered renewal provides a release buffer of length
+
+$$
+L_\mathrm{buffer}=1.5\lVert\mathbf{U}_\infty\rVert\Delta t_\mathrm{VPM}+2h.
+$$
+
+`transfer_vorticity_cutoff` sets the interior pruning threshold in 1/s; it tapers to the configured GBD floor at release. Check wake sensitivity to pruning when choosing spacing and thresholds. Renewal corrects total vector strength and linear impulse $\mathbf{I}=\tfrac12\sum_i\mathbf{x}_i\times\boldsymbol{\Gamma}_i$; this does not guarantee pointwise vorticity accuracy.
+
+## Time stepping and configuration
+
+Coupled runs require fixed steps with an integer ratio $n=\Delta t_\mathrm{VPM}/\Delta t_\mathrm{FVM}$. Each exchange advances VPM, applies its boundary trace during $n$ FVM substeps, then renews the inner particles while retaining the outer wake.
+
+Cylinder and cube set `interface_iterations=3`: repeat the FVM solve and renewal at the same physical endpoint, up to three sweeps. Iteration requires `vorticity_mixed`, `buffered_m4_renewal`, no consistency band, and output times aligned with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
+
+Edit the physical constants, mesh and solver configurations in a tutorial's `setup.py`. Its `FVM_SETUP`, `VPM_CASE` and `FVM_MESH` supply the flow models and mesh; `CouplerSetup` supplies the exchange choices. For example, the cube configuration uses:
 
 ```python
 from openonda import coupler
 
 cfg = coupler.CouplerSetup(
-    coupling_patch="numericalBoundary",
-    transfer_method="common_lattice",
     freestream_velocity=[1.0, 0.0, 0.0],
+    coupling_patch="numericalBoundary",
+    transfer_region_bounds=(-1.45, 1.45, -1.45, 1.45, -1.45, 1.45),
+    transfer_method="buffered_m4_renewal",
+    boundary_condition_mode="vorticity_mixed",
+    eta_blend_width=6 * 0.045,
+    vpm_only_width=2 * 0.045,
+    interface_iterations=3,
 )
-driver = coupler.FVMVPMCoupler(fvm_solver, vpm_solver, cfg)
-driver.run(max_coupling_steps=2, backup_at_stop=True)
+with coupler.create_coupler(FVM_SETUP, VPM_CASE, cfg, mesh=FVM_MESH) as solver:
+    solver.run(start_from="latest")
 ```
 
-`fvm_solver` exists on every MPI rank. `vpm_solver` is owned by rank zero; inactive
-ranks pass `None` and participate in the FVM collectives. The coupler adopts the
-injected objects and does not clone their fields. Call `initialize()` explicitly when
-inspection of derived coupling components is needed; `run()` initializes idempotently.
-
-The FVM configuration owns its mesh, density, boundaries, and FVM step. The VPM
-configuration owns its particle discretization, induction, viscosity, and VPM step.
-Initialization derives an integer subcycling ratio
-
-\[
-  n_\mathrm{FVM} = \operatorname{round}(\Delta t_\mathrm{VPM}/\Delta t_\mathrm{FVM}),
-\]
-
-and rejects incompatible time-step ratios. A coupled run currently requires a fixed
-FVM step; maximum-Courant adaptive stepping is for standalone FVM/reference runs.
-
-## Coupled time sequence
-
-For every accepted coupling step `k`, the driver performs the following sequence:
-
-```text
-VPM advance (Δt_vpm, deferred output)
-        ↓ synchronize VPM device
-sample VPM velocity / boundary trace at FVM boundary
-        ↓
-n_fvm substeps: solve_pimple(candidate) → advance_time(commit)
-        ↓
-collect FVM velocity and ∇U at all donor cells
-        ↓
-replace/blend FVM-authoritative particle state in VPM
-        ↓
-VPM scheduled samples, transfer diagnostics, optional backup
-```
-
-The VPM particle evolution is complete before the boundary trace is sampled. The FVM
-pressure solve is repeated as needed inside its candidate/commit contract, but the
-accepted FVM clock advances only in `advance_time()`. The transfer then replaces the
-inner VPM representation while retaining the outer wake. The next coupling interval
-starts from the synchronized accepted state.
-
-When `interface_iterations > 1`, the driver repeats the FVM substeps and
-particle renewal at that same coupling time. Each sweep restores the FVM
-starting state and the VPM predictor; it does not advance the solution by
-another physical interval. Updated boundary traces are used for the next
-sweep. `interface_normal_tolerance` and `interface_gradient_tolerance` control
-early convergence; diagnostics record every sweep and whether the configured
-iteration limit was reached. Change that limit only with a sensitivity study.
-
-`interface_acceleration="aitken"` enables experimental, safeguarded mixing of
-the velocity and tangential-gradient traces; the default is `"none"`.
-It requires at least three sweeps, uses two ordinary residuals before proposing
-a bounded mixing factor, and retains the same convergence tolerances. If either
-residual grows or becomes nonfinite, the previous coherent endpoint is restored;
-the rejected trial still consumes a sweep. Diagnostics distinguish attempted
-sweeps from `accepted_sweep`. No acceleration history crosses an interval or
-needs additional restart state. With the cylinder's three-sweep limit this can
-improve the final residual, but cannot reduce the number of sweeps. Qualify it
-against the ordinary iteration before using it in a production study.
-
-`run(start_step=..., restart_from=...)` supports a complete run or a bounded segment.
-Tutorials use `run(start_from="latest")` to discover the committed bundle,
-including its FVM and VPM states and boundary history. A fresh run creates a
-time-zero bundle; a completed run does not advance again. See
-[continuation](continuation.md) for output reconciliation and launcher behavior.
-`max_coupling_steps` is an execution limit, not a physical configuration change.
-`save_backup` writes both solver states and coupling history; `load_backup` restores
-both clocks, fields, and boundary-history arrays. A bounded stop can write a restart
-with `backup_at_stop=True`.
-
-## Shared units and layouts
-
-All coordinates and lengths are m, times are s, velocities are m/s, kinematic pressure
-is m²/s², density is kg/m³, vorticity/velocity gradients are 1/s, and vortex strength
-is m³/s. The transfer uses the following logical arrays:
-
-| Array | Shape | Source | Meaning |
-| --- | --- | --- | --- |
-| FVM cell centres | `(M, 3)` | FVM | Donor locations. |
-| FVM cell volumes | `(M,)` | FVM | Quadrature weights for `ωV`. |
-| FVM velocity | `(M, 3)` | FVM | Accepted cell-centred velocity. |
-| FVM velocity gradient | `(M, 3, 3)` | FVM | Jacobian used to derive vorticity and diagnostics. |
-| FVM vorticity | `(M, 3)` | FVM | Curl of the FVM gradient in the coupler's declared layout. |
-| VPM position | `(N, 3)` | VPM | Active particle positions. |
-| VPM vortex strength | `(N, 3)` | VPM | Particle-strength vector retained/replaced by transfer. |
-
-FVM gradients use `G[i,j] = ∂U_j/∂x_i`; VPM field evaluations use
-`J[i,j] = ∂U_i/∂x_j`. Transpose when exchanging these gradient representations.
-
-The FVM donor count `M` must match cell centres, cell volumes, velocity, and gradient.
-The VPM active count `N` can change during renewal; all particle fields remain aligned.
-The transfer records before/after populations, L1/net strength, first moments, closure,
-divergence, amplification, and pruning diagnostics in `TransferResult`.
-
-## Boundary trace
-
-`coupling_patch` identifies the FVM boundary where VPM supplies the outer trace. The
-driver samples face centres, outward face normals, and face areas. The selected
-`boundary_condition_mode` determines which part of the trace is imposed:
-
-* `dirichlet` imposes the sampled velocity;
-* `characteristic` uses incoming/outgoing characteristic information;
-* `directional_outflow` preserves outgoing flow while constraining incoming content;
-* `pressure_gradient` prescribes velocity and the pressure-gradient trace;
-* `vorticity_mixed` prescribes normal velocity and tangential `du/dn`, with native
-  `fixedFluxPressure`; and
-* `vorticity_mixed_pressure_gradient` is an opt-in combination of the mixed
-  velocity trace and a prescribed pressure gradient. Its pressure evaluation
-  includes the viscous term as well as convection and the available temporal
-  history. It requires separate qualification of VPM pressure-gradient accuracy.
-
-Both mixed modes retain normal-velocity and tangential-gradient histories.
-Both prescribed-pressure modes retain the pressure-gradient and Eulerian velocity
-histories used during subcycling and restart. The combined mode keeps all of
-these histories, including refreshing the velocity snapshot after particle
-replacement at fixed physical time.
-
-The mixed face velocity is `U_b = (I - nnᵀ) U_owner + n U_n + d g_t`.
-Its tangential value therefore depends on the adjacent FVM cell. Momentum
-convection retains the diagonal part of that dependence implicitly, just as
-the directional diffusion condition does; cross-component terms converge
-through the outer iterations. The reconstructed face value is used to evaluate
-the flux, while the cell dependence belongs in the momentum matrix.
-
-The pressure datum has a constant nullspace. Coupling does not shift the numerical FVM
-pressure field merely to improve presentation; a pressure offset can be applied to an
-output copy when required. Closed-body pressure forces are invariant to that datum.
-
-The optional `fvm_consistency_width` creates a resolved-scale band outside the transfer
-region. It is a diagnostic/consistency projection and must fit between every transfer
-face and the outer FVM boundary.
-
-## Transfer methods
-
-`transfer_method` selects how the absolute FVM state is represented on the VPM lattice:
-
-### `common_lattice`
-
-Builds a common lattice aligned with FVM donor cells, scatters FVM `ωV` to lattice
-nodes, and blends the FVM-authoritative state with the retained VPM state in the
-transfer box. `eta_blend_width=0` is a hard partition; a positive width uses a C1
-smoothstep authority ramp. `vpm_only_width` reserves an inner band where FVM authority
-is exactly zero and must be smaller than `eta_blend_width`.
-
-### `projected_renewal`
-
-Solves a sparse Gaussian projection for a replacement particle basis and verifies the
-projected vorticity and boundary velocity errors. It requires explicit transfer bounds
-and currently requires `eta_blend_width=0`. The sparse solve tolerance, Gaussian tail,
-vorticity error limit, and velocity error limit are independent controls.
-
-### `buffered_m4_renewal`
-
-Uses the stable buffered M4-prime renewal path: a release/retention buffer accounts for
-advection, a stable lattice represents the FVM-authoritative belt, and invariant/error
-checks constrain pruning and amplification. The current implementation requires the
-VPM GBD diffusion scheme. The buffer length includes an advection safety factor and
-complete M4-prime support:
-
-\[
-  L_\mathrm{buffer} = s\,||U_\infty||\,\Delta t_\mathrm{couple} + 2h.
-\]
-
-The configured pruning threshold applies in the FVM-owned interior. It decreases with
-FVM authority through the overlap and reaches the VPM GBD scheme's absolute vorticity
-floor at the release surface. The VPM floor is read from its solver configuration, so
-the transfer cannot silently impose a second, stronger cutoff after FVM authority has
-decayed. The `transfer_amplification_cap` limits represented-state corrections. A
-transfer failure rolls back the VPM particle fields through the atomic replacement API
-before surfacing the error.
-
-## Conservation and diagnostics
-
-The coupler treats `Γ` and the first moments as explicit budgets. Diagnostics distinguish
-the donor budget, the mapped target budget, the blended/replaced budget, the retained
-outer population, and pruned strength. They are not interchangeable with pointwise
-vorticity error. In particular:
-
-* `net_vortex_strength` measures the vector sum of `Γ`;
-* L1 strength measures `Σ ||Γ_i||` and detects cancellation-insensitive population change;
-* first moments measure the spatial distribution of the transferred strength;
-* divergence/closure diagnostics test whether the particle representation remains
-  compatible with a solenoidal field;
-* velocity/pressure boundary mismatches measure interface consistency, not global
-  conservation.
-
-Use the recorded `TransferResult` and `coupler_diagnostics.jsonl` together with mesh/particle
-resolution studies. A run completing without an exception is not evidence that transfer
-errors are below a physical accuracy target.
-
-## Output and restart artifacts
-
-The solution root is the user-facing ParaView launch point. Open `solution/fvm.pvd`,
-`solution/vpm.pvd`, or `solution/vlm.pvd` for the resolved fields, particles, or lifting
-surfaces respectively. Each collection uses relative paths to immutable files below its
-matching `fvm/`, `vpm/`, or `vlm/` directory, so the complete solution directory can be
-moved without editing the collection. Solver metadata and coupled diagnostics remain at
-the solution root for Python post-processing; VPM scientific samples remain under the
-VPM solver's `samples/` path.
-
-Restart state is not a visualization product, and this layout does not prescribe a
-restart location. It remains independent of the component directories above.
-
-## Failure modes and limitations
-
-For a resolved free-slip span, configure the installed `openonda.vpm.SlipSlabInduction`
-around a full-3D target-capable induction backend, for example
-`SlipSlabInduction(FMMInduction(), z_min=-0.48, z_max=0.48)`. The FVM slip faces,
-VPM domain z bounds, and transfer-region z faces must be the same physical
-planes. The slab path supports laminar GBD or inviscid (`NONE`) diffusion;
-configuration rejects core spreading, random-walk diffusion, DVH and LES.
-Variable eddy viscosity requires reflected scalar support that is not yet implemented.
-Set the GBD spacing so both planes fall on grid nodes or half nodes;
-for a 0.96 m span, `h=0.96/20` m is one choice. GBD requires M4-prime
-remeshing and at least three grid cells of domain padding. The wrapper uses
-full three-component velocity, vorticity, and stretching. Images have axial
-vorticity parity `(-Gamma_x,-Gamma_y,Gamma_z)` and are temporary induction,
-diffusion, and renewal support; they are never counted as physical particles
-or included in the force reference area.
-
-The image sum checks velocity and gradient changes over consecutive doubling
-blocks. `tail_tolerance`, `max_shells`, `velocity_scale`, and `gradient_scale`
-control this check; an unconverged sum raises an error. The block difference
-is an empirical convergence diagnostic, so certify the selected tolerances
-against a longer image sum on representative developed-wake states. The
-solver also rejects physical particles that escape the slab. The FVM-owned
-renewal ramp acts on x/y exchange faces and retains full authority through the
-slip span.
-
-Stationary walls share geometric queries between renewal, particle motion and
-GBD: signed distance, nearest surface and first segment intersection. Native
-walls use their actual oriented FVM triangles, including rotated and concave
-surfaces and multiple bodies. No cylinder fitting or tutorial-specific shape
-substitution is used. Immersed bodies supply the same segment-query interface
-from their represented geometry.
-The FVM velocity trace used by buffered renewal searches for visible fluid
-donors, expanding beyond the nearest cells when a wall hides them. It retains
-complete distance ties and affine-field reproduction without averaging across
-a solid or sampling an immersed body's interior.
-
-GBD caches solid-node masks and surface-crossing grid links by wall revision
-and lattice geometry. A link is blocked even when both endpoint nodes are in
-fluid, so a thin wall need not contain a grid node to exclude diffusive flux.
-M4-prime scatter uses only fluid nodes visible from its source particle and
-preserves circulation and first spatial moments. If the original stencil is
-insufficient, support expands locally up to ten nodes per axis; ill-conditioned
-or excessive signed weights are rejected. Pruning recovery stays within
-connected, wall-visible nonzero grid support and never falls back to a global
-correction across disconnected regions. Insufficient capacity raises an error
-rather than transferring strength across a wall. Physical wall-vorticity
-production remains the responsibility of the no-slip FVM solve. Ghost-node solid queries
-reflect into the physical span. Sparse wall corrections are computed for
-physical particles once and reflected with axial parity; image corrections
-have separate diagnostics. Node-aligned slip-plane particles use half
-control-volume strength and volume to avoid doubling normal circulation on
-repeated remeshing; half-node lattices need no endpoint weight.
-
-For every solid, shallow RK and accepted-step crossings are projected to the
-fluid side before induction. The first wall hit along the particle path also
-detects tunnelling through a thin solid with two fluid endpoints. Corrections
-preserve tangential motion and are checked against the union of all bodies.
-Displacements exceeding a quarter of the particle spacing reject that RK
-attempt. Without an attached VLM solver, the particle integrator restores the
-attempt's positions, strengths and projection diagnostics, then retries two
-half intervals. Subdivision is bounded to ten levels. Stage evaluations use
-the actual subinterval times; diffusion, output and the coupling clock still
-advance once over the configured interval. Failed attempts do not contribute
-projection diagnostics. If subdivision cannot resolve the crossing, the
-inviscid particle state is restored and the error propagates. VLM-attached
-runs retain the explicit timestep error because their bound-reaction ledger
-requires a single integration interval. Projection preserves circulation
-but changes impulse; `solid_projection` in coupled diagnostics separates
-temporary RK corrections from accepted-state corrections. `gbd_wall_transfer`
-records the remeshing budget, including expanded support. These numerical
-exclusion checks do not establish near-wall accuracy for every mesh; use refinement and
-matched-reference comparisons for that qualification.
-
-Geometry tests cover rotated and concave polyhedra, curved triangulations,
-multiple solids and sub-grid-thickness barriers. Operator tests check blocked
-flux for constant and variable viscosity, conservative visible remeshing,
-induced-velocity refinement and disconnected-region pruning. Native coupled
-tests advance non-box meshes and compare resumed and uninterrupted states.
-The geometry must remain static, consistently oriented and resolved sufficiently
-for the requested flow accuracy; moving-wall coupling is a separate capability.
-
-Construction/initialization rejects missing injected solvers, mismatched viscosity,
-invalid donor bounds, incompatible step ratios, missing VPM particle spacing, invalid
-patch geometry, and unsupported transfer-method combinations. Runtime transfer rejects
-non-finite or mismatched arrays, failed projection/closure limits, excessive
-amplification, and failed rollback prerequisites.
-
-MPI ranks must enter collective solver, field-gather, output, and backup calls in the
-same order. The VPM owner is rank zero. Coupled adaptive FVM stepping, arbitrary
-unqualified combinations of transfer/diffusion kernels, and convergence claims without
-the local validation reports are outside the current guaranteed contract.
-
-## Small-domain accuracy qualification
-
-Manufactured-field transfer checks, unsteady FVM boundary tests and induction
-checks against independent fields isolate different error sources. These
-component checks cannot establish agreement of complete cylinder runs. A
-finite-span 3D cylinder and a quasi-2D reference also solve different physical
-problems.
-
-Buffered renewal uses fluid-domain membership and native wall geometry
-independently of distance to the nearest FVM cell centre, so anisotropic donor
-cells retain their authority. Its represented Gaussian uses the physical VPM
-kernel without discrete normalization. Generic body-fitted walls provide
-oriented native surface triangles through a collective FVM getter; this
-geometry is assumed static.
-
-The cylinder tutorial's `allplot.sh` plots coupled forces and available
-reference forces/profiles. Each `reference_flow/postprocess_grid_study.py`
-compares the standalone FVM grids. See the
-[tutorial guide](tutorials.md#reference-grid-studies) for the run commands.
+Run commands and output locations are in each case README. Use [continuation](continuation.md) to resume compatible coupled backups. Read forces and profiles alongside `solution/coupler_diagnostics.jsonl`, then compare mesh, particle-spacing and exchange-step refinements at common physical times. ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`.

@@ -94,7 +94,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         wspace=0.04,
         hspace=0.06,
     )
-    cmap = LinearSegmentedColormap.from_list("core_vorticity", ["white", theme.COLORS["TUDdark"]])
+    cmap = plt.get_cmap(theme.COLORMAPS["vorticity_magnitude"])
     levels = np.linspace(0, 1, 41)
     contour_levels = np.array([0.05, 0.1, 0.2, 0.4, 0.8])
     panels = []
@@ -183,7 +183,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         return
 
     fig.supxlabel(r"$(x-x_c)/R_0$", y=0.045)
-    fig.supylabel(r"$r/R_0$", x=0.018)
+    fig.supylabel(r"$r/R_0$", x=0.020)
     left_plot_edge = min(axis.get_position().x0 for axis in axes.flat)
     colorbar_width = 0.014
     cax = fig.add_axes([1.0 - left_plot_edge - colorbar_width, 0.31, colorbar_width, 0.38])
@@ -245,7 +245,7 @@ def main():
         action="store_true",
         help="Include each selected run's actual final saved time",
     )
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
     parser.add_argument(
         "--clean-output",
         action="store_true",

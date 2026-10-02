@@ -1,172 +1,49 @@
-# VPM solver — source references
+# VPM numerical references
 
-References for the numerical methods, with pointers to their implementations.
-Paths below are relative to this directory unless prefixed with `tests/`.
+Physical models and numerical methods used by OpenONDA. See the [VPM guide](../../../docs/vpm.md) for variables, units, configuration and tutorial cases.
 
-## Particle approximation, consistency, overlap
+## Particle approximation and regularization
 
-- **[CK2000]** Cottet, G.-H. & Koumoutsakos, P. (2000). *Vortex Methods: Theory
-  and Practice.* Cambridge University Press.
-  Particle quadrature consistency and the overlap requirement h/σ < 1;
-  §5.3 on the 3-D vortex-method instability driven by ∇·ω ≠ 0.
-  → `diagnostics/resolution.py` (`mean_overlap_ratio`, `vorticity_divergence_error`)
+- **[CK2000]** Cottet, G.-H. & Koumoutsakos, P. (2000). *Vortex Methods: Theory and Practice.* Cambridge University Press. Particle quadrature, overlapping cores and divergence error in three-dimensional vortex methods.
+- **[Beale1986]** Beale, J. T. (1986). A convergent 3-D vortex method with grid-free stretching. *Mathematics of Computation* 46(174), 401–424. Resolution error associated with $h/\sigma$.
+- **[WL1993]** Winckelmans, G. S. & Leonard, A. (1993). Contributions to vortex particle methods for the computation of three-dimensional incompressible unsteady flows. *Journal of Computational Physics* 109(2), 247–273. Algebraic regularization and direct/transposed/mixed stretching. Only the symmetric transposed pair formulation conserves total particle vector strength exactly.
+- **[DLMF7.6]** NIST, [Digital Library of Mathematical Functions, §7.6](https://dlmf.nist.gov/7.6). Error-function series for Gaussian regularization; see [coefficient attribution](kernels/THIRD_PARTY_NOTICES.md).
 
-- **[Beale1986]** Beale, J. T. (1986). A convergent 3-D vortex method with
-  grid-free stretching. *Math. Comp.* 46(174), 401–424.
-  Convergence and the (h/σ)^m error estimate underlying the overlap diagnostic.
+## Biot–Savart summation
 
-## Regularization kernels
-
-- **[WL1993]** Winckelmans, G. S. & Leonard, A. (1993). Contributions to vortex
-  particle methods for the computation of three-dimensional incompressible
-  unsteady flows. *J. Comput. Phys.* 109(2), 247–273.
-  The high-order algebraic kernel ζ = (15/8π)(1+ρ²)^(-7/2) with its q and g;
-  the DIRECT / TRANSPOSED / MIXED stretching forms.
-  → `kernels/winckelmans.py`, `numerics/kernels_common.py:_stretching_contribution`
-
-- **[DLMF7.6]** NIST Digital Library of Mathematical Functions,
-  [§7.6, error-function series](https://dlmf.nist.gov/7.6).
-  The Gaussian kernel uses a small-radius series and a Cephes rational
-  approximation away from the origin. It no longer uses the old
-  Abramowitz–Stegun approximation with its approximately 1e-7 error floor.
-  → `kernels/gaussian.py`, [coefficient attribution](kernels/THIRD_PARTY_NOTICES.md)
-
-Verified in-repo (see `tests/vpm/test_kernels_math.py` and
-`tests/vpm/test_audit_2026_08_regressions.py`): the Gaussian and Winckelmans kernels
-normalize to 1 and have second moment m₂ = 3/2, which is the value the
-angular-impulse correction assumes.
-
-## Biot–Savart evaluation and fast summation
-
-- **[BH1986]** Barnes, J. & Hut, P. (1986). A hierarchical O(N log N)
-  force-calculation algorithm. *Nature* 324, 446–449.
-  Opening-angle (θ) multipole acceptance criterion.
-
-- **[Karras2012]** Karras, T. (2012). Maximizing parallelism in the construction
-  of BVHs, octrees, and k-d trees. *High-Performance Graphics.*
-  Morton-code LBVH built entirely on device.
-  → `physics/induction/treecode/lbvh.py`
-
-- **[GR1987]** Greengard, L. & Rokhlin, V. (1987). A fast algorithm for particle
-  simulations. *J. Comput. Phys.* 73(2), 325–348.
-  Background for the multipole orders 1–3 available on tree nodes.
-
-## Vortex stretching
-
-- **[WL1993]** as above — the three discrete stretching forms.
-- **[Pedrizzetti1992]** Pedrizzetti, G. (1992). Insight into singular vortex
-  flows. *Fluid Dyn. Res.* 10, 101–115.
-  Relaxation of particle strength Γ toward the local vorticity direction; the misalignment
-  diagnostic measures exactly the quantity this addresses.
-  → `diagnostics/resolution.py:strength_misalignment_deg`,
-  `stabilization/operators.py:apply_pedrizzetti_relaxation`
-
-Only the TRANSPOSED form conserves total particle strength ΣΓ exactly — proved in
-`tests/vpm/test_conservation_structure.py`.
+- **[BH1986]** Barnes, J. & Hut, P. (1986). A hierarchical $O(N\log N)$ force-calculation algorithm. *Nature* 324, 446–449. Tree opening-angle criterion.
+- **[Karras2012]** Karras, T. (2012). Maximizing parallelism in the construction of BVHs, octrees, and k-d trees. *High-Performance Graphics.* Device hierarchy construction.
+- **[GR1987]** Greengard, L. & Rokhlin, V. (1987). A fast algorithm for particle simulations. *Journal of Computational Physics* 73(2), 325–348. Multipole summation.
 
 ## Viscous diffusion
 
-- **[Leonard1980]** Leonard, A. (1980). Vortex methods for flow simulation.
-  *J. Comput. Phys.* 37(3), 289–335. Core spreading.
-  For the Gaussian, dσ²/dt = 4ν is the *exact* self-similar heat-kernel
-  solution.  Both production kernels have m₂ = 3/2, so both use C = 6/m₂ = 4.
-  **For an algebraic kernel core spreading is a model, not a discretization** —
-  the diffused algebraic blob is not an algebraic blob, so a calibrated constant
-  is defensible there provided it is labelled as one.
-  → `physics/diffusion/schemes.py:core_spreading_diffusion`
+The [Lamb–Oseen tutorial](../../../tutorials/vpm/01_lamb_oseen_vortex/README.md) compares the implemented diffusion schemes.
 
-- **[Chorin1973]** Chorin, A. J. (1973). Numerical study of slightly viscous
-  flow. *J. Fluid Mech.* 57(4), 785–796. Random-walk method, Δx ~ N(0, 2νΔt).
-  → `numerics/kernels_common.py:_make_rwm_kernel`
+- **[Leonard1980]** Leonard, A. (1980). Vortex methods for flow simulation. *Journal of Computational Physics* 37(3), 289–335. Core spreading. OpenONDA uses $d\sigma^2/dt=4\nu$: exact uniform-viscosity Gaussian heat spreading, but a second-moment model for Winckelmans cores.
+- **[Chorin1973]** Chorin, A. J. (1973). Numerical study of slightly viscous flow. *Journal of Fluid Mechanics* 57(4), 785–796. Random walk with displacement covariance $2\nu\Delta t\,I$.
+- **[Degond1989]** Degond, P. & Mas-Gallic, S. (1989). The weighted particle method for convection-diffusion equations. *Mathematics of Computation* 53(188), 485–526. Particle-strength exchange background.
+- **[Durante2024]** Durante, D. et al. (2024). [Numerical simulation of 3D vorticity dynamics with the Diffused Vortex Hydrodynamics method](https://doi.org/10.1016/j.matcom.2024.06.003). *Mathematics and Computers in Simulation* 225, 528–544. DVH heat transfer. The reference relation $\Delta t_d=\beta R_d^2/(4\nu)$, with $\beta\approx0.077$, assumes matched steps; OpenONDA uses the accepted physical diffusion interval.
+- **[Rossi2005]** Rossi, L. F. (2005). Achieving high-order convergence rates with deforming basis functions. *SIAM Journal on Scientific Computing* 26(3), 885–906. Particle regeneration background.
 
-- **[Degond1989]** Degond, P. & Mas-Gallic, S. (1989). The weighted particle
-  method for convection-diffusion equations. *Math. Comp.* 53(188), 485–526. PSE.
+## LES
 
-- **[Durante2024]** Durante, D. et al. (2024).
-  [Numerical simulation of 3D vorticity dynamics with the Diffused Vortex Hydrodynamics method](https://doi.org/10.1016/j.matcom.2024.06.003).
-  *Mathematics and Computers in Simulation* 225, 528–544, eq. 14–15.
-  Diffused Vortex Hydrodynamics truncation parameter β ≈ 0.077 and the fixed
-  viscous step Δt_d = β R_d²/(4ν), under the matched-step assumptions of that
-  method.  Production DVH uses the accepted physical interval and computes the
-  heat width 4ν_effΔt; this fixed-step relation remains a reference estimate,
-  not a hidden solver clock.
-  → `config/constants.py:_DVH_BETA`, `physics/diffusion/grid.py`
+The [ring](../../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake.
 
-- **[Rossi2005]** Rossi, L. F. (2005). Achieving high-order convergence rates
-  with deforming basis functions. *SIAM J. Sci. Comput.* 26(3), 885–906.
-  Background for particle regeneration in DVH.
+- **[Smagorinsky1963]** Smagorinsky, J. (1963). General circulation experiments with the primitive equations. *Monthly Weather Review* 91(3), 99–164. Strain-based eddy viscosity.
+- **[Lilly1966]** Lilly, D. K. (1966). On the application of the eddy viscosity concept in the inertial subrange of turbulence. NCAR Manuscript 123. Coefficient scaling.
+- **[Yoshizawa1985]** Yoshizawa, A. (1985). A statistically-derived subgrid model. *Physics of Fluids* 28, 1377. Equilibrium subgrid kinetic energy.
+- **[MKM1998]** Mansfield, J. R., Knio, O. M. & Meneveau, C. (1998). A dynamic LES scheme for the vorticity transport equation. *Journal of Computational Physics* 145, 693–730. Vortex-method LES context. OpenONDA uses $\Delta=V_p^{1/3}$ by default, not particle core radius.
 
-For Winckelmans core spreading, OpenONDA uses the second-moment model
-`dσ²/dt = 4ν`, not an exact algebraic-kernel heat solution. Comparisons using
-another matching principle must account for that model choice.
+## Vortex lattice method
 
-## LES / subgrid modelling
+- **[KP2001]** Katz, J. & Plotkin, A. (2001). *Low-Speed Aerodynamics*, 2nd ed. Cambridge University Press. Lattice geometry, quarter-/three-quarter-chord rule, Kutta condition and horseshoe influence coefficients.
+- **Kelvin's circulation theorem:** spanwise circulation differences and temporal bound-circulation changes supply the emitted wake. The [flat-plate case](../../../tutorials/vpm/04_flat_plate/README.md) checks bound/wake closure and force/impulse balance.
 
-- **[Smagorinsky1963]** Smagorinsky, J. (1963). General circulation experiments
-  with the primitive equations. *Mon. Weather Rev.* 91(3), 99–164.
-- **[Lilly1966]** Lilly, D. K. (1966). On the application of the eddy viscosity
-  concept in the inertial subrange of turbulence. NCAR Manuscript 123. C_s ≈ 0.17.
-  → `config/constants.py:SMAGORINSKY_CONSTANT`
-- **[Yoshizawa1985]** Yoshizawa, A. (1985). A statistically-derived subgrid model.
-  *Phys. Fluids* 28, 1377. The k-equilibrium form ν_t = C_k Δ √k_eq used here,
-  with C_k = (C_s²√C_e)^(2/3).
-  → `turbulence/smagorinsky.py`
-- **[MKM1998]** Mansfield, J. R., Knio, O. M. & Meneveau, C. (1998). A dynamic
-  LES scheme for the vorticity transport equation. *J. Comput. Phys.* 145, 693–730.
-  The vortex-method-specific LES literature. Note this implementation uses
-  Δ = V^(1/3) rather than σ, deliberately, so the filter width does not inflate
-  under core spreading — a VPM-specific choice worth reading alongside [MKM1998].
+## Redistribution and stabilization
 
-## Vortex lattice method and wake shedding
+The [leapfrogging tutorial](../../../tutorials/vpm/03_vortex_interactions/readme.md) compares stabilization models separately.
 
-- **[KP2001]** Katz, J. & Plotkin, A. (2001). *Low-Speed Aerodynamics*, 2nd ed.
-  Cambridge University Press. Lattice construction, the 1/4–3/4 chord rule,
-  Kutta condition, and horseshoe influence coefficients.
-  → `boundary_elements/vlm/solver/`
-
-- **Kelvin's circulation theorem** — the shed-wake contract. The shipped kernel
-  sheds the spanwise *difference* of cumulative circulation at each trailing-edge
-  edge (−ΔΓ at interior edges, −Γ₁ and +Γ_n at the tips), which telescopes to
-  exactly zero net shed streamwise circulation, plus a transverse particle
-  carrying −(Γ(t) − Γ(t−Δt)) span for the unsteady term.
-  → `boundary_elements/vlm/solver/kernels.py:shed_wake_particles_kernel`,
-  pinned by `tests/vpm/test_audit_2026_08_regressions.py`
-
-## Divergence control and stabilization
-
-- **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos,
-  P. (2011). A comparison of vortex and pseudo-spectral methods for the
-  simulation of periodic vortical flows at high Reynolds numbers. J. Comput.
-  Phys. 230, 2794–2805. https://doi.org/10.1016/j.jcp.2010.11.031
-  Section 2.1 combines remeshing with spectral solenoidal reprojection.
-  The padded Gaussian grid projection here is an experimental adaptation;
-  it retains treecode evolution and has not qualified collision breakdown.
-  → `stabilization/remeshing.py:project_grid_strength`
-
-- **[W1995]** Winckelmans, G. S. (1995). Some progress in large-eddy
-  simulation using the 3-D vortex particle method. CTR Annual Research
-  Briefs, 391–415. Eq. 11 gives regularized P-relaxation with factor f*dt;
-  eq. 12 describes W-relaxation. The magnitude renormalization and nine-moment
-  restoration in OpenONDA are additional adaptations.
-  https://ntrs.nasa.gov/api/citations/19960022324/downloads/19960022324.pdf
-  → `stabilization/operators.py`, `stabilization/divergence_relaxation.py`
-
-- **[Rossi1996]** Rossi, L. F. (1996). Resurrecting core spreading vortex
-  methods: a new scheme that is both deterministic and convergent. SIAM J.
-  Sci. Comput. 17(2), 370–397. https://doi.org/10.1137/S1064827593254397
-  Core-size control is essential for consistent long-time core spreading.
-  OpenONDA filament refinement leaves sigma unchanged and is not this method.
-  The Gaussian core remap uses a separate convolution/redistribution approach.
-  → `stabilization/filament_refinement.py`, `stabilization/remeshing.py`
-
-- **[WL1993]**, **[CK2000 §5.3]** — the discrete vorticity field is not
-  solenoidal and stretching amplifies its divergent part; this motivates the
-  projection.
-  → `stabilization/divergence_relaxation.py`
-
-- **[Pedrizzetti1992]** as above — the local alternative to that projection:
-  rotate Γ_p toward ω(x_p) by a fixed fraction each step. It is not a
-  projection onto a conserved subspace, so the rotation's transfer of
-  vortex strength and impulse is reported rather than gated.
-  → `config/types.py:StabilizationConfig.pedrizzetti_relaxation`,
-  `stabilization/manager.py:StabilizationManager.apply_relaxation`
+- **[Pedrizzetti1992]** Pedrizzetti, G. (1992). Insight into singular vortex flows. *Fluid Dynamics Research* 10, 101–115. Strength alignment toward local vorticity. OpenONDA's optional global moment restoration is an additional correction.
+- **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos, P. (2011). [A comparison of vortex and pseudo-spectral methods for the simulation of periodic vortical flows at high Reynolds numbers](https://doi.org/10.1016/j.jcp.2010.11.031). *Journal of Computational Physics* 230, 2794–2805. Remeshing and solenoidal reprojection; OpenONDA's padded-grid adaptation remains experimental.
+- **[W1995]** Winckelmans, G. S. (1995). [Some progress in large-eddy simulation using the 3-D vortex particle method](https://ntrs.nasa.gov/citations/19960022324). CTR Annual Research Briefs, 391–415. Relaxation and selective eddy viscosity. Global moment restoration is an OpenONDA adaptation.
+- **[Rossi1996]** Rossi, L. F. (1996). [Resurrecting core spreading vortex methods: a new scheme that is both deterministic and convergent](https://doi.org/10.1137/S1064827593254397). *SIAM Journal on Scientific Computing* 17(2), 370–397. Core-size control and redistribution. Fixed-core particle splitting alone does not perform core redistribution.

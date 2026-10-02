@@ -1,0 +1,4496 @@
+{
+  "date": "2026-10-02",
+  "style_source": "Thesis/thesis_visuals/VISUAL_STYLE.md",
+  "width_mm": 125,
+  "export_pairs": 408,
+  "figures": [
+    {
+      "file": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/figures/cylinder_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1307
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/figures/reference_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1307
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/figures/reference_profiles.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/figures/cylinder_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1307
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t0.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t0.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t0.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t1.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t1.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t1.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t1.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t10.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t10.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t10.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t10.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t11.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t11.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t11.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t11.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t12.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t12.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t12.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t12.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t13.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t13.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t13.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t13.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t14.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t14.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t14.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t14.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t15.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t15.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t15.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t15.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t16.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t16.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t16.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t16.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t17.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t17.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t17.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t17.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t18.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t18.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t18.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t18.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t19.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t19.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t19.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t19.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t2.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t2.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t2.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t2.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t20.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t20.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t20.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t20.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t21.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t21.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t21.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t21.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t22.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t3.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t3.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t3.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t3.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t4.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t4.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t4.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t4.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t5.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t5.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t5.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t5.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t6.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t6.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t6.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t6.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t7.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t7.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t7.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t7.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t8.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t8.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t8.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t8.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t9.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t9.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t9.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupled_fvm_vpm_fields_t9.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/coupling_diagnostics.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 105.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1653
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t0.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t0.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t0.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t1.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t1.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t1.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t1.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t10.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t10.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t10.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t10.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t11.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t11.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t11.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t11.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t12.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t12.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t12.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t12.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t13.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t13.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t13.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t13.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t14.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t14.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t14.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t14.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t15.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t15.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t15.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t15.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t16.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t16.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t16.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t16.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t17.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t17.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t17.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t17.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t18.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t18.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t18.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t18.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t19.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t19.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t19.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t19.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t2.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t2.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t2.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t2.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t20.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t20.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t20.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t20.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t21.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t21.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t21.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t21.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t22.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t3.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t3.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t3.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t3.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t4.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t4.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t4.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t4.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t5.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t5.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t5.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t5.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t6.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t6.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t6.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t6.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t7.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t7.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t7.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t7.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t8.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t8.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t8.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t8.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t9.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t9.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t9.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_coupled_fvm_fields_t9.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t0.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t0.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t0.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t1.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t1.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t1.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t1.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t10.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t10.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t10.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t10.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t11.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t11.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t11.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t11.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t12.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t12.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t12.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t12.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t13.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t13.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t13.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t13.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t14.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t14.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t14.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t14.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t15.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t15.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t15.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t15.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t16.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t16.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t16.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t16.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t17.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t17.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t17.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t17.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t18.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t18.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t18.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t18.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t19.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t19.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t19.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t19.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t2.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t2.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t2.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t2.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t20.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t20.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t20.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t20.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t21.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t21.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t21.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t21.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t22.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t3.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t3.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t3.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t3.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t4.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t4.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t4.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t4.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t5.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t5.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t5.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t5.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t6.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t6.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t6.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t6.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t7.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t7.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t7.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t7.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t8.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t8.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t8.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t8.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t9.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t9.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t9.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/reference_fvm_vpm_fields_t9.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 119.9998,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1889
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t0.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t1.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t10.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t10.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t10.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t10.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t11.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t11.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t11.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t11.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t12.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t12.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t12.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t12.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t13.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t13.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t13.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t13.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t14.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t14.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t14.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t14.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t15.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t15.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t15.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t15.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t16.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t16.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t16.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t16.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t17.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t17.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t17.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t17.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t18.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t18.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t18.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t18.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t19.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t19.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t19.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t19.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t2.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t20.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t20.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t20.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t20.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t21.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t21.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t21.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t21.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t22.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t3.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t4.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t5.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t6.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t7.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t8.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t9.00.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t9.25.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t9.50.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/figures/velocity_profiles_t9.75.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/figures/grid_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/figures/grid_forces_fluctuations.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 80.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1259
+      ]
+    },
+    {
+      "file": "tutorials/fvm/airfoil_flow/figures/airfoil_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/fvm/airfoil_flow/figures/airfoil_surface_cp.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/airfoil_flow/figures/airfoil_velocity.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 80.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1259
+      ]
+    },
+    {
+      "file": "tutorials/fvm/boundary_layer/figures/blasius_profiles.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/boundary_layer/figures/skin_friction.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/cylinder_ibm/figures/field_velocity_magnitude.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/cylinder_ibm/figures/field_vorticity.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/cylinder_ibm/figures/forces_cylinder.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/fvm/cylinder_ibm/figures/wake_centreline.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/step_profile/figures/step_comparison.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/fvm/step_profile/figures/step_evolution.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/fvm/taylor_green/figures/taylor_green_decay.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/dipole_comparison.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 94.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1496
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/lamboseen_energy.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 131.2499,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2066
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/mergingRenderFinal.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 85.0,
+      "png": true,
+      "png_dpi": 600,
+      "png_pixels": [
+        2952,
+        2007
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/mergingRenderT0.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 85.0,
+      "png": true,
+      "png_dpi": 600,
+      "png_pixels": [
+        2952,
+        2007
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/merging_comparison.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/vortex_comparison.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/01_lamb_oseen_vortex/figures/vortex_surface_fields.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 54.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        850
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_circulation.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_energy.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 90.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1417
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_motion.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1322
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_schematic.pdf",
+      "width_mm": 124.9994,
+      "height_mm": 81.9997,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1969,
+        1292
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_snapshots.pdf",
+      "width_mm": 124.9994,
+      "height_mm": 73.9997,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1969,
+        1166
+      ]
+    },
+    {
+      "file": "tutorials/vpm/02_vortex_ring/figures/vortex_ring_stability.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 80.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1259
+      ]
+    },
+    {
+      "file": "tutorials/vpm/03_vortex_interactions/figures/core_sections.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/03_vortex_interactions/figures/core_trajectories.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/vpm/03_vortex_interactions/figures/diagnostic_histories.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 134.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2125
+      ]
+    },
+    {
+      "file": "tutorials/vpm/03_vortex_interactions/figures/group_history.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1307
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/flat_plate_kelvin.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 91.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1448
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/flat_plate_wake.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 62.5009,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1969,
+        985
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_impulse.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 128.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2015
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_polar.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 164.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2582
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_spanwise.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 55.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        881
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_startup.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 91.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1448
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_staticvsmoving.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 91.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1448
+      ]
+    },
+    {
+      "file": "tutorials/vpm/04_flat_plate/figures/plate_velocity.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 91.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1448
+      ]
+    },
+    {
+      "file": "tutorials/vpm/05_delta_wing/figures/partial/delta_wing_circulation_history.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/vpm/05_delta_wing/figures/partial/delta_wing_force_cycles.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 83.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1307
+      ]
+    },
+    {
+      "file": "tutorials/vpm/05_delta_wing/figures/partial/delta_wing_forces.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 105.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1653
+      ]
+    },
+    {
+      "file": "tutorials/vpm/05_delta_wing/figures/partial/delta_wing_wake_streamwise.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 75.5043,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1189
+      ]
+    },
+    {
+      "file": "tutorials/vpm/05_delta_wing/figures/partial/delta_wing_wake_vertical.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 75.5043,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1189
+      ]
+    },
+    {
+      "file": "tutorials/vpm/06_rotor_flow/figures/rotor_loading_validation.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 100.0002,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1574
+      ]
+    },
+    {
+      "file": "tutorials/vpm/06_rotor_flow/figures/rotor_performance.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 110.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1732
+      ]
+    },
+    {
+      "file": "tutorials/vpm/06_rotor_flow/figures/rotor_streamwise.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 125.0001,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1968
+      ]
+    },
+    {
+      "file": "tutorials/vpm/06_rotor_flow/figures/rotor_wake_planes.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 110.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1732
+      ]
+    },
+    {
+      "file": "tutorials/vpm/07_quadcopter/figures/quadcopter_performance.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 159.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        2519
+      ]
+    },
+    {
+      "file": "tutorials/vpm/07_quadcopter/figures/quadcopter_vorticity_history.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 69.9999,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1102
+      ]
+    },
+    {
+      "file": "tutorials/vpm/07_quadcopter/figures/quadcopter_wake.pdf",
+      "width_mm": 125.0001,
+      "height_mm": 68.0,
+      "png": true,
+      "png_dpi": 400,
+      "png_pixels": [
+        1968,
+        1070
+      ]
+    }
+  ]
+}

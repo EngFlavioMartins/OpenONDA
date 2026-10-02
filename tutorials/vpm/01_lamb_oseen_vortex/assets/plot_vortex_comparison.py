@@ -72,7 +72,7 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    centered_subplots_adjust(fig, outer=0.14, hspace=0.12, top=0.94, bottom=0.24)
+    centered_subplots_adjust(fig, outer=0.117, hspace=0.12, top=0.953, bottom=0.195)
 
     time_scale = run_kinematic_viscosity / ac0**2
     comparison_time = latest_common_time(samples_dir)
@@ -135,7 +135,7 @@ def plot_vortex_case(args) -> int:
         )
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
-    ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "-"}
+    ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "--"}
     theory_t = run_t0 + elapsed_time
     tv, to, _ = lamb_oseen_profile(r_line, theory_t, run_circulation, run_kinematic_viscosity)
     tg = np.gradient(tv, r_line)

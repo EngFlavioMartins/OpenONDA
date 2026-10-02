@@ -184,7 +184,7 @@ def plot_energy_enstrophy(args) -> int:
         sharex="col",
         sharey="row",
     )
-    centered_subplots_adjust(fig, outer=0.16, wspace=0.09, hspace=0.12, top=0.94, bottom=0.25)
+    centered_subplots_adjust(fig, outer=0.1485, wspace=0.09, hspace=0.12, top=0.955, bottom=0.225)
 
     plotted = False
     for column, (case_prefix, title, n_vortices) in enumerate(ENERGY_CASES):

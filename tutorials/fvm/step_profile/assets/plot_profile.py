@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from ._common import (  # noqa: E402
@@ -58,10 +59,10 @@ def main():
     ax.axvline(0.0, color=COLORS["reference"], linewidth=0.8, linestyle="--")
     ax.set_xlabel(r"$u/U_b$")
     ax.set_ylabel(r"$y/h$")
-    ax.set_title("Downstream velocity profiles")
     ax.set_ylim(0.0, 2.0)
     ax.legend()
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
+    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.968)
     save_fig(fig, "step_evolution.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

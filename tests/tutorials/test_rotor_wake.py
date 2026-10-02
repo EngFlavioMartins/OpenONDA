@@ -20,7 +20,7 @@ native_plane_windows = wake_planes.native_plane_windows
 plane_profiles = wake_planes.plane_profiles
 
 
-def published_planes(directory, defect=None):
+def published_planes(directory, defect=None, *, stations=(12.0, 24.0), canonical_names=False):
     times = np.arange(1, 49) / 8
     if defect == "stale":
         times = times[:-3]
@@ -32,12 +32,13 @@ def published_planes(directory, defect=None):
         times[20] += 0.01
     points = np.array([[0, -1, -1], [0, 1, -1], [0, -1, 1], [0, 1, 1]], dtype=float)
     samplers = []
-    for index, downstream in enumerate((12.0, 24.0)):
-        name = f"slice_x{int(downstream)}m"
+    for index, downstream in enumerate(stations):
+        name = f"wake_{downstream / 12:g}D" if canonical_names else f"slice_x{int(downstream)}m"
         samplers.append(
             {
                 "type": "SurfaceSampler",
                 "file_name": name,
+                "point": [downstream, 0.0, 0.0],
                 "schedule": {"type": "EverySteps", "interval": 1, "start_time": 0.0},
             }
         )
@@ -88,6 +89,23 @@ def test_complete_periodic_native_planes_pass(tmp_path, schedule_type):
     rows = native_plane_windows(p, require_complete=True)
     assert len(rows) == 2
     assert all(row["complete"] and row["induced_field_drift"] < 1e-12 for row in rows)
+
+
+def test_disk_and_downstream_planes_share_a_complete_native_window(tmp_path):
+    p = published_planes(tmp_path, stations=(0.0, 12.0, 24.0), canonical_names=True)
+    rows = native_plane_windows(
+        p, require_complete=True, required_names=rotor_common.REQUIRED_PLANE_NAMES
+    )
+    assert [row["points"][0, 0] for row in rows] == [0.0, 12.0, 24.0]
+    assert all(row["complete"] and row["induced_field_drift"] < 1e-12 for row in rows)
+
+
+def test_downstream_only_records_cannot_qualify_a_disk_comparison(tmp_path):
+    p = published_planes(tmp_path, canonical_names=True)
+    with pytest.raises(ValueError, match="Missing required rotor planes.*wake_0D"):
+        native_plane_windows(
+            p, require_complete=True, required_names=rotor_common.REQUIRED_PLANE_NAMES
+        )
 
 
 @pytest.mark.parametrize(
@@ -157,8 +175,9 @@ def test_operating_point_uses_shared_five_revolution_window(monkeypatch):
 
     ct, cp = rotor_common.read_operating_point()
 
-    assert ct == pytest.approx(data.loc[data.time > 5.0, "CT"].mean())
-    assert cp == pytest.approx(data.loc[data.time > 5.0, "CP"].mean())
+    # Exact integral over [5, 10], including both bracketed boundaries.
+    assert ct == pytest.approx(7.5)
+    assert cp == pytest.approx(15.0)
 
 
 def test_complete_window_must_not_be_redefined_by_a_late_sampler_start(tmp_path):
@@ -314,7 +333,7 @@ def test_profiles_time_weight_irregular_frames_and_exclude_partial_annuli(monkey
     np.testing.assert_allclose(row["mean"][np.isfinite(row["mean"])], 1.5, atol=1e-12)
 
 
-def test_finite_distance_profiles_report_both_induction_components(monkeypatch):
+def test_downstream_diagnostic_excludes_disk_and_preserves_induction_components(monkeypatch):
     y, z = np.meshgrid(np.linspace(-1, 1, 17), np.linspace(-1, 1, 17))
     points = np.column_stack((np.full(y.size, 12.0), y.ravel(), z.ravel()))
     times = np.array([0.0, 0.5, 1.0])
@@ -334,10 +353,13 @@ def test_finite_distance_profiles_report_both_induction_components(monkeypatch):
         "circulation": np.array([1.0, 1.0, 0.8, 0.5, 0.2]),
         "tangential_induction_factor": np.array([0.08, 0.06, 0.04, 0.02, 0.01]),
     }
+    disk_points = points.copy()
+    disk_points[:, 0] = 0.0
+    disk = {**record, "name": "wake_0D", "points": disk_points}
     monkeypatch.setattr(
         wake_planes,
         "native_plane_windows",
-        lambda *args, **kwargs: [record],
+        lambda *args, **kwargs: [disk, record],
     )
     monkeypatch.setattr(
         wake_planes,
@@ -356,7 +378,9 @@ def test_finite_distance_profiles_report_both_induction_components(monkeypatch):
             }
         },
     )
-    row = finite_distance_profiles(p, rotations=6)[0]
+    rows = finite_distance_profiles(p, rotations=6)
+    assert [row["name"] for row in rows] == ["wake_1D"]
+    row = rows[0]
     for key in (
         "actual_axial_induction",
         "reference_axial_induction",

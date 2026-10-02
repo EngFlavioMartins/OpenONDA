@@ -2,6 +2,5 @@
 set -e
 cd -- "$(dirname -- "$0")"
 
-./allclean.sh
-
-python setup.py "$@"
+# One selected mesh. Preserve completed results and resume native backups.
+python setup.py -h 0.04 "$@"

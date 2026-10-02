@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import pytest
 
-ASSETS = Path(__file__).resolve().parents[2]/"tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets"
+ASSETS = Path(__file__).resolve().parents[2]/"tests/support/cylinder"
 
 
 def load(name):
@@ -39,12 +39,14 @@ def test_phase_driver_accepts_qualified_cuda_without_starting_solver(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_queue_explicit_backend_agrees_with_driver(tmp_path):
+def test_retired_queue_cannot_create_or_launch_a_campaign(tmp_path, monkeypatch, capsys):
     queue = load("queue_phase_benchmark")
-    driver = load("run_phase_benchmark")
-    command = queue.benchmark_command(ASSETS, "coupled", tmp_path, "--pilot")
-    args = driver.parse_args(command[2:])
-    assert args.device == "CPU" and args.pilot
+    monkeypatch.chdir(tmp_path)
+    assert queue.main() == 2
+    message = capsys.readouterr().err
+    assert "retired" in message and "./allcontinue.sh" in message
+    assert not hasattr(queue, "launch") and not hasattr(queue, "worker")
+    assert not list(tmp_path.iterdir())
 
 
 def test_reference_and_coupled_phase_contract():

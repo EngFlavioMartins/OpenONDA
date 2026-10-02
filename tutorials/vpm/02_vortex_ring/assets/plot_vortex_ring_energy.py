@@ -58,7 +58,7 @@ def main() -> None:
     load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=(125 / 25.4, 90 / 25.4), sharex=True)
-    centered_subplots_adjust(fig, outer=0.15, wspace=0.60, top=0.90, bottom=0.35)
+    centered_subplots_adjust(fig, outer=0.125, wspace=0.60, top=0.935, bottom=0.285)
     legend_handles = []
     legend_labels = []
     n_skip = 14  # plot every n-th marker

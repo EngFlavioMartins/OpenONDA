@@ -28,7 +28,7 @@ COMPARISONS = {
     ),
 }
 
-FIELD_OUTER = 0.105
+FIELD_OUTER = 0.0975
 # The axes are square (equal data aspect) and four centimetres high on a
 # 12.5-cm canvas.  Matching the allocated width to that physical width keeps
 # Matplotlib from shrinking the plotting boxes inward and breaking the
@@ -128,11 +128,11 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
         low, high = low - 0.01, high + 0.01
     maximum = max(stats["sampled_max_percent"], 1e-6)
 
-    height_cm = 12.0
+    height_cm = 11.0
     fig = plt.figure(figsize=util.figure_size(height_cm), dpi=dpi)
     axes = [
-        fig.add_axes((FIELD_OUTER, 7.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
-        fig.add_axes((FIELD_RIGHT_LEFT, 7.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_OUTER, 6.52 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
+        fig.add_axes((FIELD_RIGHT_LEFT, 6.52 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
         fig.add_axes((FIELD_OUTER, 1.2 / height_cm, FIELD_WIDTH, 4.0 / height_cm)),
     ]
     velocity_bar = fig.add_axes((FIELD_RIGHT_LEFT, 3.55 / height_cm, FIELD_WIDTH, 0.16 / height_cm))
@@ -201,14 +201,9 @@ def _field_figure(time, x, y, left, right, left_title, right_title, name, fmt, d
     )
     velocity_colorbar.ax.xaxis.labelpad = 1.0
     error_colorbar.ax.xaxis.labelpad = 1.0
-    fig.text(
-        FIELD_RIGHT_LEFT + FIELD_WIDTH / 2,
-        0.75 / height_cm,
-        rf"RMS: {stats['rms_percent']:.2g}\%"
-        "\n"
-        rf"Max: {stats['sampled_max_percent']:.2g}\%",
-        ha="center",
-        va="center",
+    print(
+        f"{name} at t={time:g}: RMS={stats['rms_percent']:.2g}%, "
+        f"max={stats['sampled_max_percent']:.2g}%"
     )
     util.save(fig, f"{name}_t{time:.2f}", fmt, dpi)
     plt.close(fig)
@@ -259,7 +254,7 @@ def plot_frame(
 
 def main(comparison="coupled_fvm_vpm_fields"):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="png")
+    parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="both")
     parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
     util.validate_plot_inputs()

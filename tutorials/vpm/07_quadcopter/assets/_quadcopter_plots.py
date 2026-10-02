@@ -41,8 +41,8 @@ def plot_vorticity_history(
     ax.plot(data["time"], data["total_enstrophy"], "-o", color=_COLORS["VPMpurple"])
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"Enstrophy [m$^3$/s$^2$]")
-    ax.set_title("Quadcopter wake enstrophy history")
     figures_dir.mkdir(parents=True, exist_ok=True)
+    _theme.centered_subplots_adjust(fig, outer=.104, bottom=.22, top=.923)
     _theme.save_fig(
         fig,
         figures_dir / "quadcopter_vorticity_history.png",
@@ -146,32 +146,37 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     reference = p.density * np.pi * p.radius**2 * (p.omega * p.radius) ** 2
     ct_bem = bem.attrs["thrust"] / reference
     cp_bem = bem.attrs["power"] / (reference * p.omega * p.radius)
-    fig, rows = plt.subplots(
-        4, 1, figsize=(12.5 * _theme.CM, 22 * _theme.CM), constrained_layout=True
-    )
+    fig, rows = plt.subplots(4, 1, figsize=(12.5 * _theme.CM, 16 * _theme.CM))
+    _theme.centered_subplots_adjust(fig, outer=0.21, bottom=0.09, top=0.955, hspace=0.55)
     axes = np.array([[rows[0], rows[2]], [rows[1], rows[3]]])
-    for rotor, rows in data.groupby("rotor"):
-        axes[0, 0].plot(rows.revolutions, rows.CT, label=rotor.replace("_", " "))
-        axes[1, 0].plot(rows.revolutions, rows.CP)
-    axes[0, 0].axhline(ct_bem, color="0.3", ls="--", label="Isolated-rotor BEM")
-    axes[1, 0].axhline(cp_bem, color="0.3", ls="--")
-    axes[0, 0].set(ylabel=r"Thrust coefficient $C_T$")
-    axes[1, 0].set(xlabel="Nominal revolutions", ylabel=r"Power coefficient $C_P$")
-    axes[0, 0].legend()
+    for index, (rotor, rows) in enumerate(data.groupby("rotor")):
+        style = dict(
+            color=_theme.COLOR_CYCLE[index],
+            marker=("o", "s", "D", "^")[index],
+            markevery=60,
+            ms=2.5,
+        )
+        axes[0, 0].plot(rows.revolutions, rows.CT, label=rotor.replace("_", " "), **style)
+        axes[1, 0].plot(rows.revolutions, rows.CP, **style)
+    axes[0, 0].axhline(ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
+    axes[1, 0].axhline(cp_bem, color=_COLORS["reference"], ls="--")
+    axes[0, 0].set(ylabel=r"$C_T$")
+    axes[1, 0].set(xlabel="Nominal revolutions", ylabel=r"$C_P$")
+    axes[0, 0].legend(ncol=2, loc="upper right", handlelength=1.2, columnspacing=0.7)
     tail = data[data.time > data.time.max() - 6 * p.period]
     start, end = tail.revolutions.agg(["min", "max"])
+    print(f"Performance mean: revolutions {start:.1f}–{end:.1f}")
     ct_max = max(ct_bem, tail.CT.max()) * 1.15
     ct = np.linspace(0, ct_max, 150)
     advance = p.climb / (p.omega * p.radius)
     ideal = ct * 0.5 * (advance + np.sqrt(advance**2 + 2 * ct))
-    axes[0, 1].plot(ct, ideal, color="0.3", ls=":", label="Ideal axial momentum")
+    axes[0, 1].plot(ct, ideal, color=_COLORS["reference"], ls=":", label="Axial momentum")
     for rotor, rows in tail.groupby("rotor"):
         axes[0, 1].plot(rows.CT.mean(), rows.CP.mean(), "o", ms=4)
-    axes[0, 1].plot(ct_bem, cp_bem, "x", color="black", label="Isolated-rotor BEM")
+    axes[0, 1].plot(ct_bem, cp_bem, "x", color=_COLORS["reference"], label="BEM")
     axes[0, 1].set(
         xlabel=r"$C_T$",
         ylabel=r"$C_P$",
-        title=f"Mean, rev {start:.1f}–{end:.1f}",
     )
     axes[0, 1].legend()
     total = data.groupby("step").agg(
@@ -185,16 +190,17 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
         total.time / p.period,
         total.power,
         color=_COLORS["VPMpurple"],
-        ls="--",
+        ls="-",
         label="Total shaft input",
     )
     axes[1, 1].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
     power_axis.set_ylabel("Power [W]", color=_COLORS["VPMpurple"])
-    _theme.save_fig(
+    _theme.centered_subplots_adjust(fig, outer=0.092, top=0.966)
+    _theme.validate_thesis_figure(fig, fig.axes)
+    _theme.export_figure(
         fig,
         figures_dir / "quadcopter_performance.png",
         figure_format=figure_format,
-        bbox_inches=None,
     )
 
 
@@ -234,21 +240,18 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
     if not planes:
         raise FileNotFoundError(f"No published quadcopter wake planes in {samples_dir}")
     fig, axes = plt.subplots(
-        len(planes),
         1,
-        figsize=(12.5 * _theme.CM, 14 * _theme.CM),
-        constrained_layout=True,
-        sharex=True,
+        len(planes),
+        figsize=(12.5 * _theme.CM, 7.4 * _theme.CM),
+        sharey=True,
         squeeze=False,
     )
+    _theme.centered_subplots_adjust(fig, outer=0.135, bottom=0.375, top=0.922, wspace=0.33)
     records = []
     for ax, plane in zip(axes.flat, planes, strict=True):
         start, end = plane["times"][[0, -1]]
         mean = -plane["velocity"][:, :, 2].mean(axis=0)
         records.append((ax, plane["points"], mean))
-        ax.set_title(
-            f"z = {plane['points'][0, 2]:g} m\nrev {start / p.period:.1f}–{end / p.period:.1f}"
-        )
     low = min(record[2].min() for record in records)
     high = max(record[2].max() for record in records)
     centers = {
@@ -257,19 +260,26 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
     }
     for ax, points, mean in records:
         artist = ax.tricontourf(
-            points[:, 0], points[:, 1], mean, levels=np.linspace(low, high, 24), cmap="viridis"
+            points[:, 0],
+            points[:, 1],
+            mean,
+            levels=np.linspace(low, high, 24),
+            cmap=_theme.COLORMAPS["velocity"],
         )
         for x, y, _ in centers:
             ax.add_patch(Circle((x, y), p.radius, fill=False, color="white", lw=0.6, ls="--"))
-        ax.set(xlabel="x [m]", aspect="equal")
+        ax.set(xlabel="$x$ [m]", aspect="equal", title=rf"$z={points[0, 2]:g}$ m")
+        ax.locator_params(axis="both", nbins=3)
     axes[0, 0].set_ylabel("y [m]")
+    outer = 0.135
+    cax = fig.add_axes([outer, 0.175, 1 - 2 * outer, 0.035])
     fig.colorbar(
         artist,
-        ax=axes,
-        label=r"Mean downward velocity $-u_z$ [m/s]",
-        format="%.2f",
-        ticks=np.linspace(low, high, 5),
+        cax=cax,
+        orientation="horizontal",
+        label=r"$-\overline{u_z}$ [m/s]",
+        format="%.2g",
+        ticks=np.linspace(low, high, 3),
     )
-    _theme.save_fig(
-        fig, figures_dir / "quadcopter_wake.png", figure_format=figure_format, bbox_inches=None
-    )
+    _theme.validate_thesis_figure(fig, (*axes.flat, cax))
+    _theme.export_figure(fig, figures_dir / "quadcopter_wake.png", figure_format=figure_format)

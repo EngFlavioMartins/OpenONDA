@@ -7,9 +7,9 @@ if not __package__:
 
     __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from openonda.validation import time_mean
 from ._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
@@ -18,6 +18,8 @@ from ._common import (
     build_arg_parser,
     load_theme,
     rotor_inputs,
+    rotor_subplots,
+    save_rotor_figure,
 )
 
 
@@ -172,10 +174,12 @@ def shared_vlm_window(
         if recorded_end > end_time + 1.0e-10:
             raise ValueError("native VLM histories extend beyond the recorded native horizon")
     cutoff = end_time - revolutions * rotation_period
-    if span_times[0] > cutoff + max(1.0e-10, expected_cadence or 0.0):
+    if span_times[0] > cutoff:
         raise ValueError("native VLM histories do not cover the requested final window")
-    span_window = span[span.time >= cutoff - 1.0e-12].copy()
-    chord_window = chord[chord.time >= cutoff - 1.0e-12].copy()
+    # Retain the lower bracketing snapshot for an exact physical-time mean.
+    first = span_times[np.searchsorted(span_times, cutoff, side="right") - 1]
+    span_window = span[span.time >= first].copy()
+    chord_window = chord[chord.time >= first].copy()
     window_span_steps, window_span_times = _native_vlm_clock(span_window, "spanwise window")
     window_chord_steps, window_chord_times = _native_vlm_clock(chord_window, "chordwise window")
     if not np.array_equal(window_span_steps, window_chord_steps) or not np.allclose(
@@ -222,7 +226,6 @@ def main():
         expected_chord_panels=expected_chord_panels,
         cadence_start_time=inputs.metadata["state"]["initial_time"],
     )
-    start, end = cutoff / inputs.rotation_period, end_time / inputs.rotation_period
     positions = chord.groupby(["step", "station_id"])[["bound_y", "bound_z"]].mean()
     positions["radius"] = np.linalg.norm(positions, axis=1)
     sampled = span.merge(
@@ -233,18 +236,17 @@ def main():
     )
     if sampled["radius"].isna().any():
         raise ValueError("chordwise sectional positions are missing for spanwise keys")
-    sampled = (
-        sampled.groupby("station_id")
-        .agg(
-            radius=("radius", "mean"),
-            circulation=("circulation_magnitude", "mean"),
-            cl=("section_lift_coefficient_from_circulation", "mean"),
-        )
-        .sort_values("radius")
-    )
+    fields = ["radius", "circulation_magnitude", "section_lift_coefficient_from_circulation"]
+    sampled = pd.DataFrame(
+        [
+            time_mean(rows.time, rows[fields], cutoff, end_time)
+            for _, rows in sampled.groupby("station_id")
+        ],
+        columns=["radius", "circulation", "cl"],
+    ).sort_values("radius")
     bem = bem_reference()
-    colors, theme = load_theme()
-    fig, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), constrained_layout=True)
+    colors, _ = load_theme()
+    fig, axes = rotor_subplots(2, height_cm=10, sharex=True)
     circulation_scale = inputs.freestream_speed * inputs.rotor_radius
     for axis, actual, reference in [
         (axes[0], sampled.circulation / circulation_scale, bem.circulation / circulation_scale),
@@ -256,21 +258,21 @@ def main():
             "o-",
             ms=3,
             color=colors["VPMpurple"],
-            label=f"Mean, rev {start:.1f}–{end:.1f}",
+            label="VLM+VPM",
         )
         axis.plot(
             bem.normalized_radial_position, reference, "--", color=colors["reference"], label="BEM"
         )
-        axis.set_xlabel(r"Radius, $r/R$")
-        axis.legend()
-    axes[0].set(ylabel=r"Circulation, $\Gamma/(U_\infty R)$", title="Blade circulation")
-    axes[1].set(ylabel=r"Section lift, $c_l$", title="Local aerodynamic loading")
-    theme.save_fig(
+        axis.set_xlim(inputs.hub_radius / inputs.rotor_radius, 1)
+        axis.legend(loc="lower right" if axis is axes[0] else "lower left", frameon=False)
+    axes[0].set_ylabel(r"$\Gamma/(U_\infty R)$")
+    axes[1].set_ylabel(r"$c_l$")
+    axes[-1].set_xlabel(r"Radius, $r/R$")
+    save_rotor_figure(
         fig,
         FIGURES_DIR / "rotor_loading_validation.png",
         figure_format=args.format,
         dpi=args.dpi,
-        bbox_inches=None,
     )
 
 
