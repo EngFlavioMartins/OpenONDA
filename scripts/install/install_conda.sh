@@ -5,10 +5,19 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTIVATION_FILE="${1:?Run source install.sh from the repository root.}"
 
+# Pin the bootstrap and its upstream SHA-256 together. The unversioned
+# Miniforge asset has no .sha256 companion, and "latest" can change mid-download.
+MINIFORGE_VERSION=26.7.2-0
 case "$(uname -s):$(uname -m)" in
-    Linux:x86_64) PLATFORM=Linux; ARCH=x86_64 ;;
-    Darwin:x86_64) PLATFORM=MacOSX; ARCH=x86_64 ;;
-    Darwin:arm64) PLATFORM=MacOSX; ARCH=arm64 ;;
+    Linux:x86_64)
+        PLATFORM=Linux; ARCH=x86_64
+        MINIFORGE_SHA256=281b0ac7d550802efc81af633225a5e6116d29ae72f3ab4eae7168c3931a4c05 ;;
+    Darwin:x86_64)
+        PLATFORM=MacOSX; ARCH=x86_64
+        MINIFORGE_SHA256=b00e7798658f92721a3ae2f6b9832695ffc6baf07758894d726268055359f6c5 ;;
+    Darwin:arm64)
+        PLATFORM=MacOSX; ARCH=arm64
+        MINIFORGE_SHA256=d70bfa2e97afcda96927c9b9ca0e2316cb7750e4ce651c94388267cbe9588711 ;;
     *) echo 'OpenONDA supports Linux x86-64 and macOS (Intel/Apple Silicon).' >&2; exit 1 ;;
 esac
 
@@ -28,20 +37,19 @@ do
 done
 
 if [[ -z "$CONDA_COMMAND" ]]; then
-    INSTALLER="Miniforge3-${PLATFORM}-${ARCH}.sh"
+    INSTALLER="Miniforge3-${MINIFORGE_VERSION}-${PLATFORM}-${ARCH}.sh"
     DOWNLOAD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openonda-miniforge.XXXXXX")"
     trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
-    URL="https://github.com/conda-forge/miniforge/releases/latest/download/$INSTALLER"
-    for suffix in '' '.sha256'; do
-        if command -v curl >/dev/null 2>&1; then
-            curl --fail --location --retry 3 --output "$DOWNLOAD_DIR/$INSTALLER$suffix" "$URL$suffix"
-        elif command -v wget >/dev/null 2>&1; then
-            wget --output-document="$DOWNLOAD_DIR/$INSTALLER$suffix" "$URL$suffix"
-        else
-            echo 'Downloading Miniforge requires curl or wget.' >&2
-            exit 1
-        fi
-    done
+    URL="https://github.com/conda-forge/miniforge/releases/download/$MINIFORGE_VERSION/$INSTALLER"
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --location --retry 3 --output "$DOWNLOAD_DIR/$INSTALLER" "$URL"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --output-document="$DOWNLOAD_DIR/$INSTALLER" "$URL"
+    else
+        echo 'Downloading Miniforge requires curl or wget.' >&2
+        exit 1
+    fi
+    printf '%s  %s\n' "$MINIFORGE_SHA256" "$INSTALLER" > "$DOWNLOAD_DIR/$INSTALLER.sha256"
     (
         cd "$DOWNLOAD_DIR"
         if command -v sha256sum >/dev/null 2>&1; then

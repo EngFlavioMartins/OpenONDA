@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,61 @@ def executable(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     path.chmod(0o755)
+
+
+@pytest.mark.parametrize("system,architecture,checksum", [
+    ("Linux", "x86_64", "sha256sum"),
+    ("Darwin", "x86_64", "shasum"),
+    ("Darwin", "arm64", "shasum"),
+])
+@pytest.mark.parametrize("valid_digest", [False, True])
+def test_fresh_bootstrap_uses_pinned_asset_and_checks_before_execution(
+    tmp_path, system, architecture, checksum, valid_digest,
+):
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    for name in ("bash", "dirname", "mktemp", "rm", "cat", checksum):
+        binary = shutil.which(name)
+        if binary is None:
+            pytest.skip(f"{name} is not installed")
+        (commands / name).symlink_to(binary)
+    executable(commands / "uname", f'''#!/bin/bash
+case "$1" in -s) echo {system};; -m) echo {architecture};; esac
+''')
+    payload = b'#!/bin/bash\nprintf installed > "$INSTALL_TEST_MARKER"\nexit 37\n'
+    archive = tmp_path / "fixture.sh"
+    archive.write_bytes(payload)
+    executable(commands / "curl", '''#!/bin/bash
+while [[ $# -gt 0 ]]; do
+    case "$1" in --output) destination="$2"; shift;; esac
+    url="$1"
+    shift
+done
+printf '%s\n' "$url" >> "$INSTALL_TEST_LOG"
+cat "$INSTALL_TEST_ARCHIVE" > "$destination"
+''')
+    source = (ROOT / "scripts/install/install_conda.sh").read_text()
+    if valid_digest:
+        source = re.sub(r"MINIFORGE_SHA256=[0-9a-f]{64}",
+                        "MINIFORGE_SHA256=" + hashlib.sha256(payload).hexdigest(), source)
+    worker = tmp_path / "scripts/install/install_conda.sh"
+    executable(worker, source)
+    marker, log = tmp_path / "installed", tmp_path / "downloads"
+    result = subprocess.run(
+        [str(commands / "bash"), str(worker), str(tmp_path / "activation")],
+        env={"HOME": str(tmp_path), "PATH": str(commands),
+             "INSTALL_TEST_ARCHIVE": str(archive), "INSTALL_TEST_MARKER": str(marker),
+             "INSTALL_TEST_LOG": str(log)}, capture_output=True, text=True, check=False,
+    )
+    platform = "Linux" if system == "Linux" else "MacOSX"
+    assert log.read_text().splitlines() == [
+        "https://github.com/conda-forge/miniforge/releases/download/26.7.2-0/"
+        f"Miniforge3-26.7.2-0-{platform}-{architecture}.sh"
+    ]
+    assert marker.exists() == valid_digest
+    assert result.returncode == (37 if valid_digest else 1), result.stderr
+    if not valid_digest:
+        assert "FAILED" in result.stdout
 
 
 @pytest.mark.parametrize("failure", ["", "conda", "tex", "package"])
