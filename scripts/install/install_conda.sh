@@ -72,9 +72,35 @@ conda activate OpenONDA
 # OpenFOAM/ParaView startup entries may therefore still precede it. Activate
 # this environment with its own tools first, without leaving duplicate entries
 # behind when Conda subsequently deactivates it.
-mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
+mkdir -p "$CONDA_PREFIX/etc/conda/activate.d" "$CONDA_PREFIX/etc/conda/deactivate.d"
 cat > "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh" <<'HOOK'
 export PATH="$("$CONDA_PREFIX/bin/python" -c 'import os; p=os.path.join(os.environ["CONDA_PREFIX"], "bin"); print(os.pathsep.join([p] + [v for v in os.environ["PATH"].split(os.pathsep) if v != p]))')"
+# GLVND searches system vendor directories by default, so merely installing
+# Conda's Mesa does not expose its software renderer on a bare Linux machine.
+# Keep system/custom drivers available and add the environment's Mesa vendor.
+if [[ -f "$CONDA_PREFIX/share/glvnd/egl_vendor.d/50_mesa.json" ]]; then
+    if [[ "${_OPENONDA_EGL_DIRS_SAVED+x}" != x ]]; then
+        export _OPENONDA_EGL_DIRS_SAVED="${__EGL_VENDOR_LIBRARY_DIRS+x}"
+        export _OPENONDA_EGL_DIRS_VALUE="${__EGL_VENDOR_LIBRARY_DIRS-}"
+    fi
+    case ":${__EGL_VENDOR_LIBRARY_DIRS-}:" in
+        *":$CONDA_PREFIX/share/glvnd/egl_vendor.d:"*) ;;
+        *)
+            export __EGL_VENDOR_LIBRARY_DIRS="${__EGL_VENDOR_LIBRARY_DIRS-/etc/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d}"
+            export __EGL_VENDOR_LIBRARY_DIRS="${__EGL_VENDOR_LIBRARY_DIRS:+${__EGL_VENDOR_LIBRARY_DIRS}:}$CONDA_PREFIX/share/glvnd/egl_vendor.d"
+            ;;
+    esac
+fi
+HOOK
+cat > "$CONDA_PREFIX/etc/conda/deactivate.d/openonda.sh" <<'HOOK'
+if [[ "${_OPENONDA_EGL_DIRS_SAVED+x}" == x ]]; then
+    if [[ "$_OPENONDA_EGL_DIRS_SAVED" == x ]]; then
+        export __EGL_VENDOR_LIBRARY_DIRS="$_OPENONDA_EGL_DIRS_VALUE"
+    else
+        unset __EGL_VENDOR_LIBRARY_DIRS
+    fi
+    unset _OPENONDA_EGL_DIRS_SAVED _OPENONDA_EGL_DIRS_VALUE
+fi
 HOOK
 source "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh"
 "$CONDA_PREFIX/bin/python" "$REPO_ROOT/scripts/install/install_tex.py"

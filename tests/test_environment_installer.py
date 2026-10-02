@@ -109,7 +109,8 @@ cat "$INSTALL_TEST_ARCHIVE" > "$destination"
 
 @pytest.mark.parametrize("failure", ["", "conda", "tex", "package"])
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
-def test_sourced_install_activates_only_after_success(tmp_path, failure, shell):
+@pytest.mark.parametrize("egl_dirs", [None, "", "/custom/gpu"])
+def test_sourced_install_activates_only_after_success(tmp_path, failure, shell, egl_dirs):
     shell_executable = shutil.which(shell)
     if shell_executable is None:
         pytest.skip(f"{shell} is not installed")
@@ -119,6 +120,9 @@ def test_sourced_install_activates_only_after_success(tmp_path, failure, shell):
     shutil.copy(ROOT / "scripts/install/install_conda.sh", checkout / "scripts/install")
     conda_root = tmp_path / "conda with spaces"
     environment = conda_root / "envs/OpenONDA"
+    mesa = environment / "share/glvnd/egl_vendor.d/50_mesa.json"
+    mesa.parent.mkdir(parents=True)
+    mesa.write_text("{}")
     log = tmp_path / "calls.log"
     executable(
         conda_root / "bin/conda",
@@ -156,6 +160,26 @@ case "$1:$INSTALL_TEST_FAILURE" in
 esac
 """,
     )
+    process_environment = {
+        **os.environ,
+        "CONDA_EXE": str(conda_root / "bin/conda"),
+        "CONDA_DEFAULT_ENV": "previous",
+        "SHELL": f"/bin/{shell}",
+        "INSTALL_TEST_ROOT": str(conda_root),
+        "INSTALL_TEST_ENV": str(environment),
+        "INSTALL_TEST_LOG": str(log),
+        "INSTALL_TEST_FAILURE": failure,
+        "INSTALL_TEST_PYTHON": sys.executable,
+        "__EGL_VENDOR_LIBRARY_FILENAMES": "/custom/nvidia.json",
+    }
+    for variable in (
+        "__EGL_VENDOR_LIBRARY_DIRS",
+        "_OPENONDA_EGL_DIRS_SAVED",
+        "_OPENONDA_EGL_DIRS_VALUE",
+    ):
+        process_environment.pop(variable, None)
+    if egl_dirs is not None:
+        process_environment["__EGL_VENDOR_LIBRARY_DIRS"] = egl_dirs
     result = subprocess.run(
         [
             shell_executable,
@@ -167,6 +191,15 @@ source "$1/install.sh"
 install_exit=$?
 printf 'status=%s env=%s cwd=%s flags=%s/%s\n' "$install_exit" "$CONDA_DEFAULT_ENV" "$PWD" "$before_flags" "$-"
 printf 'first_path=%s\n' "${PATH%%:*}"
+if [[ "$install_exit" == 0 ]]; then
+    printf 'egl_active=%s\n' "$__EGL_VENDOR_LIBRARY_DIRS"
+    source "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh"
+    printf 'egl_again=%s\n' "$__EGL_VENDOR_LIBRARY_DIRS"
+    source "$CONDA_PREFIX/etc/conda/deactivate.d/openonda.sh"
+fi
+printf 'egl_restored=%s:%s\n' "${__EGL_VENDOR_LIBRARY_DIRS+x}" "${__EGL_VENDOR_LIBRARY_DIRS-}"
+printf 'egl_files=%s\n' "$__EGL_VENDOR_LIBRARY_FILENAMES"
+[[ "${_OPENONDA_EGL_DIRS_SAVED+x}" == x ]] && exit 81
 type _openonda_install >/dev/null 2>&1 && exit 80
 exit "$install_exit"
 """,
@@ -177,21 +210,14 @@ exit "$install_exit"
         capture_output=True,
         text=True,
         check=False,
-        env={
-            **os.environ,
-            "CONDA_EXE": str(conda_root / "bin/conda"),
-            "CONDA_DEFAULT_ENV": "previous",
-            "SHELL": f"/bin/{shell}",
-            "INSTALL_TEST_ROOT": str(conda_root),
-            "INSTALL_TEST_ENV": str(environment),
-            "INSTALL_TEST_LOG": str(log),
-            "INSTALL_TEST_FAILURE": failure,
-            "INSTALL_TEST_PYTHON": sys.executable,
-        },
+        env=process_environment,
     )
     calls = log.read_text()
     assert "env update --name OpenONDA --file" in calls
     assert f"cwd={tmp_path}" in result.stdout
+    restored = ":" if egl_dirs is None else f"x:{egl_dirs}"
+    assert f"egl_restored={restored}\n" in result.stdout
+    assert "egl_files=/custom/nvidia.json" in result.stdout
     if failure:
         assert result.returncode == {"conda": 17, "tex": 18, "package": 19}[failure]
         assert "env=previous" in result.stdout
@@ -206,6 +232,14 @@ exit "$install_exit"
         assert "install.py --with-environment" in calls
         assert f"conda:init --quiet {shell}" in calls
         assert calls.index("install_tex.py") < calls.index("install.py --with-environment")
+        drivers = (
+            "/etc/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d"
+            if egl_dirs is None
+            else egl_dirs
+        )
+        expected = f"{drivers + ':' if drivers else ''}{mesa.parent}"
+        assert f"egl_active={expected}\n" in result.stdout
+        assert f"egl_again={expected}\n" in result.stdout
     flags = result.stdout.split("flags=", 1)[1].splitlines()[0].split("/")
     assert flags[0] == flags[1]
 
