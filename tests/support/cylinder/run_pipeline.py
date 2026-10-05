@@ -9,9 +9,18 @@ import math
 from pathlib import Path
 import sys
 
-from openonda.cylinder_campaign import collect_cost, compare_profiles, profile_statistics, run_trial
-from openonda.cylinder_case import new_run_directory
-from openonda.tutorial_runner import load_case_module
+from openonda.tutorial_runner import case_package, load_case_module
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .campaign import (
+    collect_cost,
+    compare_profiles,
+    profile_statistics,
+    run_trial,
+)
+from .provenance import new_run_directory
 
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
@@ -165,6 +174,7 @@ def main() -> int:
     root.mkdir(parents=True, exist_ok=True)
     records = []
     post = load_case_module(Path(__file__).resolve().parent, "postprocess_grid_study")
+    coupled_module = load_case_module(CASE_DIR)
     grids = args.grids[:1] if args.pilot else args.grids
     force_grids = []
     report = {
@@ -276,8 +286,14 @@ def main() -> int:
             matches = list(fine_coupled.rglob(name + ".csv"))
             if len(matches) != 1:
                 raise ValueError(f"expected one {name} profile in {fine_coupled}")
-            candidate = profile_statistics(matches[0])
-            reference = profile_statistics(fine_reference_directory / (name + ".csv"))
+            candidate = profile_statistics(
+                matches[0], coupled_module.STATISTICS_START, coupled_module.END_TIME
+            )
+            reference = profile_statistics(
+                fine_reference_directory / (name + ".csv"),
+                coupled_module.STATISTICS_START,
+                coupled_module.END_TIME,
+            )
             report["span_profiles"][name] = {
                 "coupled": candidate,
                 "reference": reference,

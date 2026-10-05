@@ -14,7 +14,12 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 
-from openonda.tutorial_support.fvm_cube_flow.mesh_square import square_cylinder_mesh
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.mesh_square import square_cylinder_mesh
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -27,6 +32,11 @@ REYNOLDS_NUMBER = 100.0
 FINAL_TIME = 120.0  # simulation duration [s]
 
 # Mesh
+X_BOUNDS = (-10.0, 25.0)  # domain bounds / side length
+Y_BOUNDS = (-10.0, 10.0)
+CORE_X = (-2.0, 8.0)  # uniform core bounds / side length
+CORE_Y = (-2.0, 2.0)
+MESH_STRETCHING = 1.10
 SPACING = 0.0625  # core grid spacing next to the cylinder [m]
 
 # Time stepping and numerics
@@ -94,7 +104,16 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
 
 
 def main() -> None:
-    mesh = partial(square_cylinder_mesh, grid_spacing=SPACING, side_length=SIDE)
+    mesh = partial(
+        square_cylinder_mesh,
+        grid_spacing=SPACING,
+        side_length=SIDE,
+        x_bounds=X_BOUNDS,
+        y_bounds=Y_BOUNDS,
+        core_x=CORE_X,
+        core_y=CORE_Y,
+        ratio=MESH_STRETCHING,
+    )
     solver = fvm.create_fvm_solver(
         create_fvm_setup(SPACING), case_dir=Path(__file__).parent, mesh=mesh
     )

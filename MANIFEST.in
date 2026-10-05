@@ -18,7 +18,7 @@ prune tutorials/*/*/.matplotlib
 prune tutorials/*/*/*/solution
 prune tutorials/*/*/*/samples
 prune tutorials/*/*/*/figures
-prune tutorials/vpm/06_rotor_flow_PENDING/assets/animation
+prune tutorials/*/*/*/.matplotlib
 
 global-exclude .DS_Store *.py[cod] *.gif *.png *.pdf *.pvsm *.msh *.pvd *.vts *.so
 global-exclude paraview_state.py paraview_tracer.py
@@ -26,6 +26,14 @@ global-exclude run_manifest.json
 
 # Exclude generated trees at every depth, including campaign sub-runs.
 recursive-exclude tutorials **/solutions/* **/solution/* **/samples/* **/figures/* **/study_results/* **/animation/*
+recursive-exclude tutorials **/previous_runs/* **/drag_recovery/* **/frames/*
+
+prune tutorials/*/*/previous_runs
+prune tutorials/*/*/drag_recovery
+prune tutorials/*/*/assets/frames
+prune tutorials/*/*/*/previous_runs
+prune tutorials/*/*/*/drag_recovery
+prune tutorials/*/*/*/assets/frames
 
 prune tutorials/*/*/study_results
 prune tutorials/*/*/solutions

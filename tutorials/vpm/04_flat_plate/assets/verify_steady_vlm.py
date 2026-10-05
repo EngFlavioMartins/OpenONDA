@@ -16,11 +16,11 @@ import numpy as np
 import taichi as ti
 
 from openonda.tutorial_runner import case_package
-from openonda.tutorial_support.vpm_flat_plate.generate_surface import create_flat_plate
 from source.solvers.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
+from .generate_surface import create_flat_plate
 from .theoretical_model import lifting_line_polar
 
 

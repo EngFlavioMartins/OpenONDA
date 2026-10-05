@@ -15,8 +15,13 @@ import numpy as np
 
 import openonda.fvm as fvm
 
-from openonda.tutorial_support.fvm_step_profile.mesh_step import backward_facing_step_mesh
-from openonda.tutorial_support.fvm_step_profile.reattachment import (
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.mesh_step import backward_facing_step_mesh
+from .assets.reattachment import (
     history_row,
     write_solution_tables,
 )
@@ -32,6 +37,8 @@ REYNOLDS_NUMBER = 100.0
 FINAL_TIME = 12.0  # [s]
 
 # Mesh
+UPSTREAM_LENGTH = 4.0  # upstream domain length / step height
+DOWNSTREAM_LENGTH = 20.0  # downstream domain length / step height
 N_UPSTREAM = 24  # cells upstream of the step (x/h < 0)
 N_DOWNSTREAM = 120  # cells downstream of the step (x/h > 0)
 N_HEIGHT = 16  # cells across the inlet channel height h
@@ -109,6 +116,8 @@ def main() -> None:
     mesh = partial(
         backward_facing_step_mesh,
         step_height=STEP_HEIGHT,
+        upstream_length=UPSTREAM_LENGTH,
+        downstream_length=DOWNSTREAM_LENGTH,
         n_upstream=N_UPSTREAM,
         n_downstream=N_DOWNSTREAM,
         n_height=N_HEIGHT,

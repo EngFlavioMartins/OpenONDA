@@ -18,13 +18,22 @@ import json
 from pathlib import Path
 
 import openonda.coupler as coupling
-from openonda.cylinder_campaign import positive_coupling_steps
 import openonda.fvm as fvm
 import openonda.vpm as vpm
 
 TUTORIAL = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 )
+
+
+def _positive_integer(value):
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if result < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return result
 
 
 def main(argv=None):
@@ -35,7 +44,7 @@ def main(argv=None):
     restart.add_argument("--resume", action="store_true")
     parser.add_argument("--mesh", type=Path, default=TUTORIAL / "solution/fvm/mesh.npz")
     parser.add_argument("--end-time", type=float)
-    parser.add_argument("--max-coupling-steps", type=positive_coupling_steps)
+    parser.add_argument("--max-coupling-steps", type=_positive_integer)
     parser.add_argument("--forces-only", action="store_true")
     options = parser.parse_args(argv)
     options.output_dir = options.output_dir.resolve()

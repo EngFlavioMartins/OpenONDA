@@ -21,7 +21,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def graded_coords(lo, core_lo, core_hi, hi, grid_spacing, ratio=1.10):
+def graded_coords(lo, core_lo, core_hi, hi, grid_spacing, ratio):
     """1D node coordinates: uniform ``grid_spacing`` in [core_lo, core_hi], geometric
     stretching (factor ``ratio``) out to ``lo`` and ``hi``."""
     n_core = max(int(round((core_hi - core_lo) / grid_spacing)), 1)
@@ -185,13 +185,13 @@ def rectilinear_box_with_hole(x, y, depth, hole):
 
 
 def square_cylinder_mesh(
-    grid_spacing=0.0625,
-    side_length=1.0,
-    x_bounds=(-10.0, 25.0),
-    y_bounds=(-10.0, 10.0),
-    core_x=(-2.0, 8.0),
-    core_y=(-2.0, 2.0),
-    ratio=1.10,
+    grid_spacing,
+    side_length,
+    x_bounds,
+    y_bounds,
+    core_x,
+    core_y,
+    ratio,
 ):
     """Standard cube_flow mesh: uniform ``grid_spacing`` around the square cylinder at the
     origin and along the near wake, stretched to the far field.  All bounds are

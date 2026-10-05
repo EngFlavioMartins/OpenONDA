@@ -21,7 +21,7 @@ def parameters(case_dir: Path, name: str | None = None) -> dict:
     metadata = json.loads(record.read_text())
     vlm = metadata["configuration"]["numerics"]["vlm"]
     surface = vlm["surfaces"][0]
-    refs = read_vlm_surface(surface, case_dir / "assets" / "surfaces")["refs"]
+    refs = read_vlm_surface(surface)["refs"]
     motion = surface["kinematics"]
     return {
         "status": metadata["lifecycle"]["status"],

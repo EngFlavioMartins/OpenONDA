@@ -192,15 +192,19 @@ def main() -> None:
     formats = requested_formats(arguments.format)
     frames = []
     set_thesis_style()
-    for time, frame_profiles, samples, provenance in coincident_velocity_profiles(profiles, geometry):
+    for time, frame_profiles, samples, provenance in coincident_velocity_profiles(
+        profiles, geometry
+    ):
         name = f"velocity_profiles_t{time:.12g}"
         errors = plot_frame(frame_profiles, samples, name, arguments.format, geometry)
-        frames.append({
-            "time": time,
-            "files": [f"{name}.{ext}" for ext in formats],
-            "errors": errors,
-            "native_fvm_profiles": provenance,
-        })
+        frames.append(
+            {
+                "time": time,
+                "files": [f"{name}.{ext}" for ext in formats],
+                "errors": errors,
+                "native_fvm_profiles": provenance,
+            }
+        )
 
     data.write_json(
         "velocity_profile_errors.json",
@@ -220,13 +224,11 @@ def main() -> None:
     for extension in formats:
         for prefix in ("reference_profiles", "velocity_profiles"):
             for path in data.FIGURES.glob(f"{prefix}*.{extension}"):
-                if re.fullmatch(
-                    rf"{prefix}(?:_t[0-9.eE+-]+)?\.{extension}", path.name
-                ) and path.name not in expected:
+                if (
+                    re.fullmatch(rf"{prefix}(?:_t[0-9.eE+-]+)?\.{extension}", path.name)
+                    and path.name not in expected
+                ):
                     path.unlink()
-    legacy_report = data.AUXILIARY / "reference_profile_errors.json"
-    if legacy_report.is_file():
-        legacy_report.unlink()
     print(
         f"Profile comparison: {len(frames)} common saved states, "
         f"t={frames[0]['time']:g}–{frames[-1]['time']:g} s."

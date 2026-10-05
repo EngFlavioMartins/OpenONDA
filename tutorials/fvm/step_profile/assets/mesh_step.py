@@ -8,12 +8,12 @@ import numpy as np
 
 def backward_facing_step_mesh(
     *,
-    step_height: float = 1.0,
-    upstream_length: float = 4.0,
-    downstream_length: float = 20.0,
-    n_upstream: int = 24,
-    n_downstream: int = 120,
-    n_height: int = 16,
+    step_height: float,
+    upstream_length: float,
+    downstream_length: float,
+    n_upstream: int,
+    n_downstream: int,
+    n_height: int,
 ):
     """Return a single-cell-thick hexahedral mesh with a 2:1 expansion.
 

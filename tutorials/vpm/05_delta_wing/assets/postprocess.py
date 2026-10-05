@@ -4,7 +4,7 @@ This module owns the explicit source lineage, its finalization, the CSV/sample
 readers, wake-plane loading and period averaging, figure-layout helpers,
 completed-run validation and the coupled native-backup GIF renderer. It exposes
 no figure; the ``plot_<figure>.py`` scripts hold one thesis figure each and call
-this module for data, validation and layout. The installed geometry helper builds the
+this module for data, validation and layout. The local geometry helper builds the
 VLM geometry and ``setup.py`` owns the physics.
 """
 

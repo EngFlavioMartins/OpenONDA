@@ -5,13 +5,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from openonda.cylinder_case import align_cylinder_sampling
 from openonda.tutorial_runner import load_case_module
 from tests.coupler.test_cylinder_support_execution import CASE
 
 
 def _sampling(end_time, exchange_dt=0.04):
-    return align_cylinder_sampling(
+    return load_case_module(CASE).align_cylinder_sampling(
         end_time=end_time,
         exchange_dt=exchange_dt,
         fvm_time_step=0.01,
@@ -63,7 +62,9 @@ def test_off_cadence_horizon_covers_registered_statistics_without_extrapolation(
         header="time,drag_coefficient,lift_coefficient,side_force_coefficient",
         comments="",
     )
-    post = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "postprocess_grid_study")
+    post = load_case_module(
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "postprocess_grid_study"
+    )
     result = post.force_statistics(history, 40, 100)
     assert result["mean_drag"] == pytest.approx(1.3)
     assert result["strouhal"] == pytest.approx(0.2, abs=0.001)

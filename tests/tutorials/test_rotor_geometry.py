@@ -3,12 +3,26 @@
 import numpy as np
 import pytest
 
-from openonda.tutorial_support.vpm_quadcopter.generate_blade import create_rotor_blade
+from tests._tutorial_helpers import load_tutorial_module
+
+create_rotor_blade = load_tutorial_module(
+    "vpm/quadcopter", "assets.generate_blade"
+).create_rotor_blade
 
 
 @pytest.mark.parametrize("clockwise", [False, True])
 def test_quadcopter_blades_face_the_flow_and_have_radial_quarter_chords(clockwise):
-    blade = create_rotor_blade(clockwise=clockwise)
+    blade = create_rotor_blade(
+        R_hub=0.03,
+        R_tip=0.15,
+        chord_root=0.025,
+        chord_tip=0.015,
+        pitch_root_deg=12.0,
+        pitch_tip_deg=6.0,
+        n_chord=4,
+        n_span=10,
+        clockwise=clockwise,
+    )
     segment = next(iter(next(iter(blade.wings.values())).segments.values()))
     a, b, c, d = (segment.vertex_position[key] for key in "abcd")
     omega = np.array([0.0, 0.0, -400.0 if clockwise else 400.0])

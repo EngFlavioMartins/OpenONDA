@@ -26,7 +26,7 @@ VELOCITY_COLUMNS = tuple(f"velocity_{axis}" for axis in "xyz")
 
 
 def reference_directory(root: Path = REFERENCE_ROOT) -> Path:
-    """Use the explicit local reference, or an explicitly qualified legacy grid.
+    """Use the local reference or an explicitly qualified grid-study selection.
 
     The ordinary single-mesh comparison is not a grid-independence claim.
     """

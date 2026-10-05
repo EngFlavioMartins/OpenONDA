@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def naca4_vertices(code: str, chord: float, n_chord: int = 161) -> np.ndarray:
+def naca4_vertices(code: str, chord: float, n_chord: int) -> np.ndarray:
     """Return a closed clockwise polygon for a four-digit NACA section."""
     m = int(code[0]) / 100.0
     max_camber_position = int(code[1]) / 10.0

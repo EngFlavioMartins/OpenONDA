@@ -245,10 +245,9 @@ def test_native_five_revolution_mean_cannot_hide_first_revolution_transient(tmp_
     assert all(row["window_mean_velocity"][:, 0].mean() < 99.0 for row in rows)
 
 
-@pytest.mark.parametrize("layout", ["", "vpm"])
-def test_checkpoint_particle_front_brackets_remain_unqualified_arrival_evidence(tmp_path, layout):
+def test_checkpoint_particle_front_brackets_remain_unqualified_arrival_evidence(tmp_path):
     solution = tmp_path / "solution"
-    frames = solution / layout
+    frames = solution / "vpm"
     frames.mkdir(parents=True)
     for index, (time, maximum_x) in enumerate(((0.0, 5.0), (1.0, 13.0), (2.0, 25.0))):
         with h5py.File(frames / f"vpm_{index:06d}.h5", "w") as archive:
@@ -275,14 +274,15 @@ def test_checkpoint_particle_front_brackets_report_unavailable_invalid_and_order
     )
 
     solution = tmp_path / "solution"
-    solution.mkdir()
-    with h5py.File(solution / "vpm_000000.h5", "w") as archive:
+    frames = solution / "vpm"
+    frames.mkdir(parents=True)
+    with h5py.File(frames / "vpm_000000.h5", "w") as archive:
         solver = archive.create_group("solver")
         solver.attrs["time"] = 1.0
         solver.attrs["step"] = 1
         particles = archive.create_group("particles")
         particles.create_dataset("position", data=[[5.0, 0.0, 0.0]])
-    with h5py.File(solution / "vpm_000001.h5", "w") as archive:
+    with h5py.File(frames / "vpm_000001.h5", "w") as archive:
         solver = archive.create_group("solver")
         solver.attrs["time"] = 0.0
         solver.attrs["step"] = 0
@@ -295,9 +295,10 @@ def test_checkpoint_particle_front_brackets_report_unavailable_invalid_and_order
     )
 
     malformed = tmp_path / "malformed"
-    malformed.mkdir()
+    frames = malformed / "vpm"
+    frames.mkdir(parents=True)
     for index in range(2):
-        with h5py.File(malformed / f"vpm_{index:06d}.h5", "w") as archive:
+        with h5py.File(frames / f"vpm_{index:06d}.h5", "w") as archive:
             solver = archive.create_group("solver")
             solver.attrs["time"] = float(index)
             solver.attrs["step"] = index

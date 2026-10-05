@@ -18,7 +18,7 @@ from openonda.tutorials import _EXCLUDED_PARTS, TUTORIALS, materialize_tutorial
 def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
     """Guard setups, launchers and assets against reintroducing MPI workarounds."""
     root = Path(__file__).resolve().parents[2] / "tutorials"
-    runtime_modules = ("mpi4py", "petsc4py", "openonda.runtime", "source.solvers.fvm.core.parallel")
+    runtime_modules = ("mpi4py", "petsc4py", "source.solvers.fvm.core.parallel")
     runtime_attributes = {
         "COMM_WORLD",
         "Get_rank",
@@ -27,9 +27,6 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
         "ParallelContext",
         "ensure_mpi",
         "ensure_runtime",
-        "is_root",
-        "is_master",
-        "is_host",
     }
     runtime_tokens = re.compile(
         r"\b(?:mpiexec|mpirun|PYTHONPATH|OPENONDA_MPIEXEC|FVM_PETSC_\w+|"
@@ -133,7 +130,7 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "from pathlib import Path\n"
-        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
+        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or sys.argv[1:3] == ['-m', 'openonda.tutorial_runner'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
         "with open(os.environ['CALLS'], 'a') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "raise SystemExit(int(os.environ['FAIL']))\n"

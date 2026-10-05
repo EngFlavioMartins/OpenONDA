@@ -407,12 +407,19 @@ def main():
             report_path.write_text(json.dumps(record, indent=2) + "\n")
         try:
             if args.ordinary_initialization:
-                from openonda.cylinder_campaign import initialize_cylinder_perturbation
+                from openonda.tutorial_runner import load_case_module
+
+                initialize_cylinder_perturbation = load_case_module(
+                    case, "assets.startup"
+                ).initialize_cylinder_perturbation
 
                 solver.initialize()
                 induction = particles.numerics.induction
                 initialize_cylinder_perturbation(
-                    solver.fvm_solver, induction.z_max - induction.z_min
+                    solver.fvm_solver,
+                    induction.z_max - induction.z_min,
+                    perturbation=module.INITIAL_PERTURBATION,
+                    freestream_velocity=module.STARTUP_FREESTREAM_VELOCITY,
                 )
             if args.profile_components or args.trace_induction_reuse:
                 solver.initialize()

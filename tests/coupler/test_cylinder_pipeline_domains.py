@@ -12,7 +12,9 @@ from openonda.tutorial_runner import load_case_module
 SUPPORT = Path(__file__).resolve().parents[1] / "support/cylinder"
 
 
-@pytest.mark.parametrize("fine_xmax, qualified", [(2.4 + 1e-13, True), (2.432, False), (None, False)])
+@pytest.mark.parametrize(
+    "fine_xmax, qualified", [(2.4 + 1e-13, True), (2.432, False), (None, False)]
+)
 def test_pipeline_preserves_metrics_but_gates_gci_on_actual_domains(
     tmp_path, monkeypatch, fine_xmax, qualified
 ):
@@ -73,10 +75,17 @@ def test_pipeline_preserves_metrics_but_gates_gci_on_actual_domains(
         richardson_gci=gci,
         relative_change=post.relative_change,
     )
-    monkeypatch.setattr(pipeline, "load_case_module", lambda *_: fake_post)
+    actual_case = pipeline.load_case_module(pipeline.CASE_DIR)
+    monkeypatch.setattr(
+        pipeline,
+        "load_case_module",
+        lambda directory, *args: actual_case if directory == pipeline.CASE_DIR else fake_post,
+    )
     monkeypatch.setattr(pipeline, "run_trial", fake_trial)
-    monkeypatch.setattr(pipeline, "collect_cost", lambda _: {"unconverged_stationary_intervals": 0})
-    monkeypatch.setattr(pipeline, "profile_statistics", lambda _: {"retained": True})
+    monkeypatch.setattr(
+        pipeline, "collect_cost", lambda _, **kwargs: {"unconverged_stationary_intervals": 0}
+    )
+    monkeypatch.setattr(pipeline, "profile_statistics", lambda *_: {"retained": True})
     monkeypatch.setattr(pipeline, "compare_profiles", lambda *_: {"mean_velocity_l2": 0})
     monkeypatch.setattr(pipeline, "plot_results", lambda *_: None)
     output = tmp_path / "study"
@@ -98,7 +107,7 @@ def test_pipeline_preserves_metrics_but_gates_gci_on_actual_domains(
         assert all(not row["valid"] for row in report["coupled_convergence"].values())
 
 
-@pytest.mark.parametrize("contents", ["invalid json", '{}', '{"fvm_solver": []}'])
+@pytest.mark.parametrize("contents", ["invalid json", "{}", '{"fvm_solver": []}'])
 def test_unreadable_domain_metadata_does_not_supply_requested_geometry(tmp_path, contents):
     pipeline = load_case_module(SUPPORT, "run_pipeline")
     (tmp_path / "solution").mkdir()

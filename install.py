@@ -13,7 +13,6 @@ import tempfile
 
 def main(arguments=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--gaussian-mesh-cuda12",
         action="store_true",

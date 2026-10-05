@@ -27,10 +27,10 @@ openonda tutorial plot fvm/taylor_green --workspace ./first-flow
 
 This case follows viscous decay of a periodic vortex. Choose other flows from the [tutorial index](tutorials.md), or configure a case with the [FVM](fvm.md), [VPM/VLM](vpm.md), or [coupling](coupling.md) guide.
 
-CPU execution is available with the standard installation. GPU cases require a device and drivers compatible with the selected `compute_device`. The optional CUDA Gaussian slab backend additionally needs a compatible NVIDIA driver, CUDA 12 libraries and headers, and CuPy:
+CPU execution is available with the standard installation. GPU cases require a device and drivers compatible with the selected `compute_device`. On Linux, the optional CUDA Gaussian slab installation supplies CuPy and its matched CUDA 12 libraries and headers; a compatible NVIDIA driver is required:
 
 ```bash
 python install.py --gaussian-mesh-cuda12
 ```
 
-Run this command in the activated environment. For that backend, `GaussianSlabPolicy(backend="cpu")` selects CPU evaluation and `backend="cupy_cuda"` requires CUDA; the default `"auto"` permits CPU fallback. See [slab boundary conditions](coupling.md) before selecting this physical model.
+Run this command in the activated environment. The CuPy [`ctk` extra](https://docs.cupy.dev/en/stable/install.html) supplies discoverable toolkit components without a tutorial-specific CUDA path. For that backend, `GaussianSlabPolicy(backend="cpu")` selects CPU evaluation and `backend="cupy_cuda"` requires CUDA; the default `"auto"` permits CPU fallback. See [slab boundary conditions](coupling.md) before selecting this physical model.

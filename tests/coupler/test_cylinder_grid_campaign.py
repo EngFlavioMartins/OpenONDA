@@ -96,7 +96,7 @@ def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):
     subprocess.run(["/bin/bash", str(case_copy / "allrun.sh")], env=environment, check=True)
 
     calls = [shlex.split(line) for line in (tmp_path / "calls").read_text().splitlines()]
-    assert calls == [["setup.py", "-h", "0.04"]]
+    assert calls == [["-m", "openonda.tutorial_runner", ".", "setup"]]
 
 
 def test_setup_exposes_only_name_spacing_and_help(monkeypatch, capsys):

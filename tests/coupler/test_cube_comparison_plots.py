@@ -153,10 +153,9 @@ def test_pimple_comparison_uses_current_executable_controls(modules):
     fields, _ = modules
     util = fields.util
     current = {name: index for index, name in enumerate(util._PIMPLE_COMPARISON_FIELDS)}
-    recorded_before_alias_removal = {**current, "n_orthogonal_correctors": 1}
-    assert util._pimple_configurations_match(current, recorded_before_alias_removal)
+    assert util._pimple_configurations_match(current, current.copy())
     for name in util._PIMPLE_COMPARISON_FIELDS:
-        changed = {**recorded_before_alias_removal, name: object()}
+        changed = {**current, name: object()}
         assert not util._pimple_configurations_match(current, changed)
     missing = current.copy()
     missing.pop("n_nonorthogonal_correctors")

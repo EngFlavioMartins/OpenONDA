@@ -21,7 +21,12 @@ import numpy as np
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-from openonda.tutorial_support.vpm_delta_wing.generate_surface import (
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.generate_surface import (
     create_delta_wing,
     save_surface,
 )
@@ -37,6 +42,9 @@ ROOT_CHORD = 0.5
 TIP_CHORD = 0.1
 HALF_SPAN = 0.5
 ANGLE_OF_ATTACK = 15.0
+SWEEP_ANGLE = 45.0
+CHORDWISE_PANELS = 8
+SPANWISE_PANELS = 18
 AIR_DENSITY = 1.225  # [kg/m^3]
 WING_SEPARATION = 5.0 * HALF_SPAN
 
@@ -84,9 +92,10 @@ def _write_surface() -> Path:
             root_chord=ROOT_CHORD,
             tip_chord=TIP_CHORD,
             half_span=HALF_SPAN,
+            sweep_angle_degrees=SWEEP_ANGLE,
             angle_of_attack_degrees=ANGLE_OF_ATTACK,
-            n_chordwise_panels=8,
-            n_spanwise_panels=18,
+            n_chordwise_panels=CHORDWISE_PANELS,
+            n_spanwise_panels=SPANWISE_PANELS,
         ),
         str(surface_file),
     )

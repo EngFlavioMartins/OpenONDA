@@ -84,7 +84,7 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
         path.unlink()
         record = build_manifest(solver)["configuration"]["numerics"]["vlm"]["surfaces"][0]
         assert record["geometry"] == surface_to_dict(plate)
-        assert read_vlm_surface(record, tmp_path) == surface_to_dict(plate)
+        assert read_vlm_surface(record) == surface_to_dict(plate)
     finally:
         solver.close()
 

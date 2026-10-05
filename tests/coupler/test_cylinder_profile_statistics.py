@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openonda.cylinder_campaign import compare_profiles, profile_statistics
+from tests.support.cylinder.campaign import compare_profiles, profile_statistics
 
 
 def test_profile_statistics_weight_irregular_times_and_interpolate_endpoints(tmp_path):

@@ -4,10 +4,14 @@ import numpy as np
 import pytest
 
 import openonda.fvm as fvm
-from openonda.tutorial_support.fvm_cylinder_ibm.mesh_rectilinear import rectilinear_box_2d
 from source.solvers.fvm.core.solver import FVMSolver
 from source.solvers.fvm.io.backup import capture_restart_payload, publish_restart_payload
 from source.solvers.fvm.solve import simple_solver
+from tests._tutorial_helpers import load_tutorial_module
+
+rectilinear_box_2d = load_tutorial_module(
+    "fvm/cylinder_ibm", "assets.mesh_rectilinear"
+).rectilinear_box_2d
 
 
 def make_solver(directory, immersed):

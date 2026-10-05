@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run one isolated reference or coupled phase-benchmark stage (no cleaning)."""
+
 import argparse
 import json
 from pathlib import Path
@@ -52,7 +53,7 @@ def main():
         raise FileExistsError(result_path)
     if not args.resume and any((out / n).exists() for n in ("samples", "solution")):
         raise FileExistsError(f"Refusing to overwrite existing output: {out}")
-    from openonda.cylinder_campaign import run_coupled_cylinder
+    startup = case.load_case_module(case.CASE, "assets.startup")
 
     started = time.monotonic()
     try:
@@ -62,13 +63,14 @@ def main():
                 "phase_h004", case.H, output_root=out, end_time=case.END
             ) as solver:
                 reference.run_solver(solver, start_from="latest" if args.resume else "initial")
-                assert solver.run_status == "complete" and abs(solver.time-case.END) < 1e-8
+                assert solver.run_status == "complete" and abs(solver.time - case.END) < 1e-8
                 result = {"status": "completed", "time": solver.time, "step": solver.step}
         else:
+
             def build_case(*, end_time, overrides):
                 return case.coupled_case(end=end_time, device=args.device)
 
-            last = run_coupled_cylinder(
+            last = startup.run_coupled_cylinder(
                 build_case,
                 output_root=out,
                 end_time=case.END,
@@ -77,6 +79,7 @@ def main():
                 startup_duration=case.module.STARTUP_DURATION,
                 startup_transition_duration=case.module.STARTUP_TRANSITION_DURATION,
                 steady_freestream_velocity=case.module.FREESTREAM_VELOCITY,
+                perturbation=case.module.INITIAL_PERTURBATION,
             )
             expected = case.steps(case.END, case.EXCHANGE)
             if args.pilot:

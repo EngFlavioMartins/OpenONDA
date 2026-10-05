@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from openonda import cylinder_campaign, cylinder_case
+from tests.support.cylinder import campaign, provenance
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "tests/support/cylinder"
@@ -24,7 +24,7 @@ def load_asset(name: str):
 
 
 def test_run_trial_terminates_a_timed_out_process_group(tmp_path):
-    record = cylinder_campaign.run_trial(
+    record = campaign.run_trial(
         [sys.executable, "-c", "import time; time.sleep(30)"],
         tmp_path / "trial",
         cwd=tmp_path,
@@ -39,8 +39,8 @@ def test_run_trial_terminates_a_timed_out_process_group(tmp_path):
 
 def test_run_trial_resume_accumulates_matching_attempt_cost(tmp_path):
     command = [sys.executable, "-c", "pass", "--resume"]
-    first = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2)
-    second = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2)
+    first = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2)
+    second = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2)
     payload = json.loads((tmp_path / "trial" / "trial.json").read_text())
 
     assert first["returncode"] == second["returncode"] == 0
@@ -54,7 +54,7 @@ def test_run_trial_resume_accumulates_matching_attempt_cost(tmp_path):
 
 
 def test_run_trial_records_process_tree_rss_and_collect_cost_marks_missing_rank_rss(tmp_path):
-    record = cylinder_campaign.run_trial(
+    record = campaign.run_trial(
         [sys.executable, "-c", "import time; x=bytearray(8*1024*1024); time.sleep(.6)"],
         tmp_path / "trial",
         cwd=tmp_path,
@@ -66,21 +66,19 @@ def test_run_trial_records_process_tree_rss_and_collect_cost_marks_missing_rank_
     journal = tmp_path / "output" / "performance.jsonl"
     journal.parent.mkdir()
     journal.write_text(json.dumps({"time": 0.0, "step_seconds": {"max": 0.1}}) + "\n")
-    assert (
-        cylinder_campaign.collect_cost(tmp_path / "output")["peak_rank_aggregate_rss_bytes"] is None
-    )
+    assert campaign.collect_cost(tmp_path / "output")["peak_rank_aggregate_rss_bytes"] is None
 
 
 def test_manifest_works_from_an_installed_style_tree_without_git(tmp_path, monkeypatch):
-    fake_module = tmp_path / "installed" / "openonda" / "cylinder_case.py"
+    fake_module = tmp_path / "installed" / "openonda" / "provenance.py"
     fake_module.parent.mkdir(parents=True)
     fake_module.write_text("# installed\n")
     input_file = tmp_path / "setup.py"
     input_file.write_text("setup = 1\n")
-    monkeypatch.setattr(cylinder_case, "__file__", str(fake_module))
+    monkeypatch.setattr(provenance, "__file__", str(fake_module))
 
     destination = tmp_path / "run" / "campaign_manifest.json"
-    cylinder_case.write_manifest(
+    provenance.write_manifest(
         destination, status="running", config={"kind": "pilot"}, inputs=(input_file,)
     )
     payload = json.loads(destination.read_text())
@@ -99,11 +97,11 @@ def test_software_fingerprint_is_portable_and_tracks_solver_source(tmp_path):
     second = tmp_path / "second"
     shutil.copytree(first, second)
 
-    left = cylinder_case.software_fingerprint(first)
-    right = cylinder_case.software_fingerprint(second)
+    left = provenance.software_fingerprint(first)
+    right = provenance.software_fingerprint(second)
     assert left["digest"] == right["digest"]
     (second / "source" / "numerics.py").write_text("VALUE = 3\n")
-    changed = cylinder_case.software_fingerprint(second)
+    changed = provenance.software_fingerprint(second)
     assert changed["digest"] != left["digest"]
 
 
@@ -206,9 +204,14 @@ def test_span_sensitivity_keeps_particle_spacing_fixed(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sensitivity, "run_trial", fake_trial)
     monkeypatch.setattr(
-        sensitivity, "collect_cost", lambda _root: {"unconverged_stationary_intervals": 0}
+        sensitivity, "collect_cost", lambda _root, **kwargs: {"unconverged_stationary_intervals": 0}
     )
-    monkeypatch.setattr(sensitivity, "load_case_module", lambda *args: Post())
+    actual_case = sensitivity.load_case_module(sensitivity.CASE_DIR)
+    monkeypatch.setattr(
+        sensitivity,
+        "load_case_module",
+        lambda directory, *args: actual_case if directory == sensitivity.CASE_DIR else Post(),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -258,9 +261,14 @@ def test_screen_sensitivity_matches_physical_duration_across_exchange_clocks(tmp
 
     monkeypatch.setattr(sensitivity, "run_trial", fake_trial)
     monkeypatch.setattr(
-        sensitivity, "collect_cost", lambda _root: {"unconverged_stationary_intervals": 0}
+        sensitivity, "collect_cost", lambda _root, **kwargs: {"unconverged_stationary_intervals": 0}
     )
-    monkeypatch.setattr(sensitivity, "load_case_module", lambda *args: Post())
+    actual_case = sensitivity.load_case_module(sensitivity.CASE_DIR)
+    monkeypatch.setattr(
+        sensitivity,
+        "load_case_module",
+        lambda directory, *args: actual_case if directory == sensitivity.CASE_DIR else Post(),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -296,8 +304,7 @@ def test_interaction_selector_rejects_invalid_body_authority_pair():
     sensitivity = load_asset("run_sensitivity.py")
 
     class Builder:
-        def build_case(self, *, end_time, overrides):
-            assert end_time == 100.0
+        def build_case(self, *, overrides):
             if overrides.get("particle_spacing_ratio") == 1.5 and overrides.get(
                 "blend_width_ratio"
             ) == pytest.approx(7.0 * 0.08 / 0.12):
@@ -588,15 +595,15 @@ def _write_prior_trial(path, command, wall_seconds=2.0):
 
 def test_run_trial_first_attempt_receives_full_wall_limit(monkeypatch, tmp_path):
     waits = []
-    monkeypatch.setattr(cylinder_campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
+    monkeypatch.setattr(campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: _BudgetChild(waits),
     )
     command = [sys.executable, "-c", "pass"]
 
-    record = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=3.5)
+    record = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=3.5)
 
     assert waits == [pytest.approx(3.5)]
     assert record["returncode"] == 0
@@ -605,9 +612,9 @@ def test_run_trial_first_attempt_receives_full_wall_limit(monkeypatch, tmp_path)
 
 def test_run_trial_resume_uses_remaining_case_budget(monkeypatch, tmp_path):
     waits = []
-    monkeypatch.setattr(cylinder_campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
+    monkeypatch.setattr(campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: _BudgetChild(waits),
     )
@@ -615,7 +622,7 @@ def test_run_trial_resume_uses_remaining_case_budget(monkeypatch, tmp_path):
     normalized = [sys.executable, "-c", "pass"]
     _write_prior_trial(tmp_path / "trial", normalized, wall_seconds=2.25)
 
-    record = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=5.0)
+    record = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=5.0)
 
     assert waits == [pytest.approx(2.75)]
     assert record["returncode"] == 0
@@ -624,9 +631,9 @@ def test_run_trial_resume_uses_remaining_case_budget(monkeypatch, tmp_path):
 
 def test_run_trial_changed_resume_command_consumes_prior_budget(monkeypatch, tmp_path):
     waits = []
-    monkeypatch.setattr(cylinder_campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
+    monkeypatch.setattr(campaign, "_ProcessTreeRSSSampler", _BudgetSampler)
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: _BudgetChild(waits),
     )
@@ -634,7 +641,7 @@ def test_run_trial_changed_resume_command_consumes_prior_budget(monkeypatch, tmp
     _write_prior_trial(tmp_path / "trial", normalized, wall_seconds=2.25)
     command = [sys.executable, "-c", "pass", "--end-time", "2", "--resume"]
 
-    record = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=5.0)
+    record = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=5.0)
 
     assert waits == [pytest.approx(2.75)]
     assert len(record["attempts"]) == 2
@@ -648,11 +655,11 @@ def test_run_trial_exhausted_resume_does_not_spawn(monkeypatch, tmp_path):
     _write_prior_trial(tmp_path / "trial", normalized, wall_seconds=2.0)
 
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: pytest.fail("an exhausted case must not spawn"),
     )
-    record = cylinder_campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2.0)
+    record = campaign.run_trial(command, tmp_path / "trial", cwd=tmp_path, wall_limit=2.0)
 
     assert record["returncode"] == 124
     assert record["timed_out"] is True
@@ -669,13 +676,13 @@ def test_run_trial_malformed_resume_record_fails_closed(monkeypatch, tmp_path, p
     trial.mkdir()
     (trial / "trial.json").write_text(payload)
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: pytest.fail("malformed resume must not spawn"),
     )
 
     with pytest.raises(ValueError, match="malformed trial record"):
-        cylinder_campaign.run_trial(
+        campaign.run_trial(
             [sys.executable, "-c", "pass", "--resume"],
             trial,
             cwd=tmp_path,
@@ -700,13 +707,13 @@ def test_run_trial_invalid_prior_wall_seconds_fails_closed(monkeypatch, tmp_path
         )
     )
     monkeypatch.setattr(
-        cylinder_campaign.subprocess,
+        campaign.subprocess,
         "Popen",
         lambda *args, **kwargs: pytest.fail("invalid resume must not spawn"),
     )
 
     with pytest.raises(ValueError, match="malformed trial attempt"):
-        cylinder_campaign.run_trial(
+        campaign.run_trial(
             [sys.executable, "-c", "pass", "--resume"],
             trial,
             cwd=tmp_path,

@@ -9,9 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from openonda import cylinder_campaign
+from openonda.tutorial_runner import load_case_module
 
 SUPPORT = Path(__file__).resolve().parents[1] / "support/cylinder"
+CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+startup = load_case_module(CASE, "assets.startup")
 
 
 @pytest.fixture
@@ -25,7 +27,9 @@ def driver(monkeypatch):
 
 
 @pytest.mark.parametrize("resume", [False, True])
-def test_phase_reference_uses_reference_factory_and_startup_runner(driver, tmp_path, monkeypatch, resume):
+def test_phase_reference_uses_reference_factory_and_startup_runner(
+    driver, tmp_path, monkeypatch, resume
+):
     calls = []
     solver = SimpleNamespace(run_status="complete", time=driver.case.END, step=12500)
 
@@ -38,19 +42,23 @@ def test_phase_reference_uses_reference_factory_and_startup_runner(driver, tmp_p
         calls.append(kwargs)
 
     reference = SimpleNamespace(create_solver=create, run_solver=run)
-    monkeypatch.setattr(driver.case, "load_case_module", lambda _: reference)
+    monkeypatch.setattr(driver.case, "load_case_module", lambda *args: reference)
     args = ["phase", "reference", "--root", str(tmp_path)] + (["--resume"] if resume else [])
     monkeypatch.setattr(sys, "argv", args)
     driver.main()
     assert calls[0] == (
-        "phase_h004", 0.04, {"output_root": tmp_path / "reference", "end_time": driver.case.END}
+        "phase_h004",
+        0.04,
+        {"output_root": tmp_path / "reference", "end_time": driver.case.END},
     )
     assert calls[1] == {"start_from": "latest" if resume else "initial"}
     path = tmp_path / "reference" / ("continuation-result.json" if resume else "run-result.json")
     assert json.loads(path.read_text())["status"] == "completed"
 
 
-@pytest.mark.parametrize("pilot,resume,last", [(True, False, 20), (True, True, 40), (False, True, 2500)])
+@pytest.mark.parametrize(
+    "pilot,resume,last", [(True, False, 20), (True, True, 40), (False, True, 2500)]
+)
 def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
     driver, tmp_path, monkeypatch, pilot, resume, last
 ):
@@ -65,7 +73,7 @@ def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
         assert build(end_time=kwargs["end_time"], overrides=None) == "case"
         return last
 
-    monkeypatch.setattr(cylinder_campaign, "run_coupled_cylinder", run)
+    monkeypatch.setattr(startup, "run_coupled_cylinder", run)
     args = ["phase", "coupled", "--root", str(tmp_path), "--device", "CUDA"]
     args += ["--pilot"] if pilot else []
     args += ["--resume"] if resume else []
@@ -79,6 +87,7 @@ def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
         "startup_duration": 2.0,
         "startup_transition_duration": 1.0,
         "steady_freestream_velocity": (1.0, 0.0, 0.0),
+        "perturbation": driver.case.module.INITIAL_PERTURBATION,
     }
     assert factory_calls == [{"end": 100.0, "device": "CUDA"}]
     label = "pilot" if pilot else "continuation"
@@ -91,7 +100,7 @@ def test_phase_failure_is_recorded_and_propagated(driver, tmp_path, monkeypatch)
     def fail(*args, **kwargs):
         raise RuntimeError("native admission failed")
 
-    monkeypatch.setattr(cylinder_campaign, "run_coupled_cylinder", fail)
+    monkeypatch.setattr(startup, "run_coupled_cylinder", fail)
     monkeypatch.setattr(sys, "argv", ["phase", "coupled", "--root", str(tmp_path)])
     with pytest.raises(RuntimeError, match="native admission failed"):
         driver.main()

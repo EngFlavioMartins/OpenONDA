@@ -35,7 +35,7 @@ REQUIRED_PLANE_NAMES = tuple(f"wake_{distance}D" for distance in WAKE_PLANE_DIAM
 
 def blade_geometry(vlm):
     """Read the actual first blade's radial chord/pitch schedule, without regenerating it."""
-    geometry = theme.read_vlm_surface(vlm["surfaces"][0], ASSETS_DIR)
+    geometry = theme.read_vlm_surface(vlm["surfaces"][0])
     rows = []
     # The tutorial's first blade is unrotated; its rotor axis is global x.
     for wing in geometry["wings"]:

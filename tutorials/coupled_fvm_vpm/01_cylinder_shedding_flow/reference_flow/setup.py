@@ -4,12 +4,17 @@
 import argparse
 import math
 from pathlib import Path
+import sys
 
 import openonda.fvm as fvm
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.startup import run_reference_cylinder
+from .assets.configuration import align_cylinder_sampling, steps
 import openonda.fvm.mesher as msh
-from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
-from openonda.cylinder_reference_startup import run_reference_cylinder
-from openonda.tutorial_support import cylinder_sampling as observations
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
@@ -19,12 +24,13 @@ FREESTREAM_VELOCITY = 1.0
 STARTUP_FREESTREAM_VELOCITY = (1.0, 0.1, 0.0)
 STARTUP_DURATION = 2.0
 STARTUP_TRANSITION_DURATION = 1.0
+INITIAL_PERTURBATION = {"amplitude": 1e-3, "radius": 0.5, "centre": 0.65}
 DENSITY = 1.0
 REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
 
 # Domain and mesh refinement
-SPAN = DEFAULT_CYLINDER_CASE.resolved_span
+SPAN = 0.96
 DOMAIN = (-8.0, 24.0, -10.0, 10.0, -0.5 * SPAN, 0.5 * SPAN)
 BACKGROUND_CELL_SIZE_RATIO = 16.0
 NEAR_WAKE_CELL_SIZE_RATIO = 2.0
@@ -34,13 +40,116 @@ NEAR_WAKE = (-2.0, 6.0, -2.0, 2.0)
 WAKE = (-2.5, 12.0, -2.5, 2.5)
 
 # Time, output and sampling
+DEFAULT_NAME = "phase_h004"
+DEFAULT_H = 0.04
 CORES = 6
-END_TIME = DEFAULT_CYLINDER_CASE.reference_end_time
+END_TIME = 100.0
+STATISTICS_START = 40.0
 TIME_STEP_SIZE = 0.008
 EXCHANGE_TIME_STEP_SIZE = 0.04
 
+# Physical output intervals
+FORCES = 0.04
+PROFILES = 0.2
+SLICES = 0.4
+BACKUPS = 1.0
+VOLUMES = 4.0
+
 CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
+
+
+def phase_lines(outer=False):
+    """Identical coordinates in the reference and corresponding coupled region."""
+    lo, hi, count = (1.6, 8.0, 65) if outer else (0.6, 1.4, 9)
+    region = "wake" if outer else "near"
+    return [
+        (f"phase_{region}_{side}", [lo, y, 0.0], [hi, y, 0.0], count)
+        for side, y in (("upper", 0.6), ("lower", -0.6))
+    ]
+
+
+def field_lines(reference, *, span):
+    lines = [("centreline", [0.6, 0.0, 0.0], [1.4, 0.0, 0.0], 11)]
+    for label, z in (("lower", -span / 4), ("middle", 0.0), ("upper", span / 4)):
+        lines.append((f"span_{label}", [1.0, -1.2, z], [1.0, 1.2, z], 31))
+    if reference:
+        for x in (2, 4):
+            lines.append((f"transverse_x{x}", [x, -2.0, 0.0], [x, 2.0, 0.0], 51))
+    return lines
+
+
+def sampling_plan(period, *, end, exchange_dt, fvm_time_step):
+    """Resolve physical periods onto the actual accepted exchange clock."""
+    steps(exchange_dt, fvm_time_step)
+    steps(end, exchange_dt)
+    return align_cylinder_sampling(
+        end_time=end,
+        exchange_dt=exchange_dt,
+        fvm_time_step=fvm_time_step,
+        sample_period=period,
+        slice_period=SLICES,
+        output_period=VOLUMES,
+    )
+
+
+def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_dt, fvm_time_step):
+    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+    force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
+    fast = fvm.RunSchedule(every_n_steps=force.fvm_sample_steps)
+    slow = fvm.RunSchedule(every_n_steps=profile.fvm_sample_steps)
+    samplers = [
+        fvm.ForceSampler(
+            patch_names=["cylinder"],
+            reference_velocity=freestream_speed,
+            reference_area=diameter * span,
+            reference_length=diameter,
+            file_name="forces_history",
+            schedule=fast,
+        )
+    ]
+    for name, start, end, count in phase_lines() + (phase_lines(True) if reference else []):
+        samplers.append(
+            fvm.LineSampler(
+                start=start,
+                end=end,
+                n_points=count,
+                k=12,
+                reconstruction="affine",
+                file_name=name,
+                schedule=fast,
+            )
+        )
+    for name, start, end, count in field_lines(reference, span=span):
+        samplers.append(
+            fvm.LineSampler(
+                start=start,
+                end=end,
+                n_points=count,
+                k=12,
+                reconstruction="affine",
+                file_name=name,
+                schedule=slow,
+            )
+        )
+    samplers.append(
+        fvm.SurfaceSampler(
+            point=[0.0, 0.0, 0.0],
+            normal=[0.0, 0.0, 1.0],
+            bounds=[
+                -1.6,
+                8.0 if reference else 1.6,
+                -2.0 if reference else -1.6,
+                2.0 if reference else 1.6,
+            ],
+            spacing=0.1,
+            file_name="midspan",
+            schedule=fvm.RunSchedule(every_n_steps=profile.fvm_slice_steps),
+            body_bounds=[-0.5, 0.5, -0.5, 0.5, -6.0, 6.0],
+            body_geometry="cylinder_z",
+        )
+    )
+    return tuple(samplers)
 
 
 def build_case(
@@ -96,8 +205,8 @@ def build_case(
     clocks = dict(
         end=physical_end, exchange_dt=EXCHANGE_TIME_STEP_SIZE, fvm_time_step=TIME_STEP_SIZE
     )
-    sampling = observations.sampling_plan(observations.PROFILES, **clocks)
-    backups = observations.sampling_plan(observations.BACKUPS, **clocks)
+    sampling = sampling_plan(PROFILES, **clocks)
+    backups = sampling_plan(BACKUPS, **clocks)
     setup = fvm.FVMSetup(
         backup=fvm.BackupConfig(
             schedule=fvm.RunSchedule(every_n_steps=backups.fvm_sample_steps), write_at_end=True
@@ -122,7 +231,7 @@ def build_case(
         pimple=fvm.PimpleControl(
             n_outer_correctors=2, n_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
         ),
-        samplers=observations.fvm_samplers(
+        samplers=fvm_samplers(
             True, span=SPAN, freestream_speed=FREESTREAM_VELOCITY, diameter=DIAMETER, **clocks
         ),
         transport=fvm.TransportConfig(
@@ -175,15 +284,23 @@ def run_solver(solver: fvm.FVMSolver, *, start_from=START_FROM) -> None:
         startup_transition_duration=STARTUP_TRANSITION_DURATION,
         startup_freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
         steady_freestream_velocity=tuple(VELOCITY),
+        perturbation=INITIAL_PERTURBATION,
     )
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, add_help=False)
     parser.add_argument("--help", action="help", help="Show this help message and exit.")
-    parser.add_argument("--name", default="phase_h004")
-    parser.add_argument("-h", type=float, default=0.04)
-    arguments = parser.parse_args()
+    parser.add_argument("--name", default=DEFAULT_NAME)
+    parser.add_argument("-h", type=float, default=DEFAULT_H)
+    parser.add_argument("--fresh", action="store_true", help="Archive outputs and start from zero.")
+    arguments = parser.parse_args(argv)
+    if arguments.fresh:
+        from .assets.prepare_fresh_run import archive_previous_run
+
+        archive_previous_run(CASE_DIR)
+        if "--fresh" in sys.argv:
+            sys.argv.remove("--fresh")
 
     with create_solver(arguments.name, arguments.h) as solver:
         run_solver(solver)

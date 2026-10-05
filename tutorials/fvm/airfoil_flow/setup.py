@@ -14,14 +14,21 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-from openonda.tutorial_support.fvm_airfoil_flow.generate_surface import create_airfoil_surface
-from openonda.tutorial_support.fvm_airfoil_flow.surface_pressure import write_surface_cp
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.generate_surface import create_airfoil_surface
+from .assets.surface_pressure import write_surface_cp
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "airfoil_flow"
 CHORD = 1.0  # airfoil chord length [m]
+CHORD_COUNT = 80  # surface geometry resolution
+THICKNESS_RATIO = 0.12
 DEPTH = 0.8  # finite-span extrusion depth [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
 DENSITY = 1.0  # fluid density [kg/m^3]
@@ -40,7 +47,7 @@ AIRFOIL_STL = Path(__file__).resolve().parent / "assets" / "airfoil.stl"
 
 def create_fvm_mesh() -> msh.CartesianMesher:
     """Declare the native surface-driven mesh for the finite wing."""
-    create_airfoil_surface(AIRFOIL_STL, CHORD, DEPTH)
+    create_airfoil_surface(AIRFOIL_STL, CHORD, DEPTH, CHORD_COUNT, THICKNESS_RATIO)
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,

@@ -10,25 +10,32 @@ import os
 from pathlib import Path
 import sys
 
-from openonda.cylinder_case import (
-    DEFAULT_CYLINDER_CASE,
-    as_config,
+from openonda.tutorial_runner import case_package, load_case_module
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .provenance import (
     file_hash,
     new_run_directory,
     software_fingerprint,
     write_complete_marker,
     write_manifest,
 )
-from openonda.tutorial_runner import load_case_module
 
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 )
 REFERENCE_DIR = CASE_DIR / "reference_flow"
-INPUTS = (CASE_DIR / "setup.py", CASE_DIR / "assets" / "cylinder_long.stl")
+INPUTS = (
+    CASE_DIR / "setup.py",
+    CASE_DIR / "assets" / "cylinder_long.stl",
+    *sorted((CASE_DIR / "assets").glob("*.py")),
+)
 REFERENCE_INPUTS = (
     REFERENCE_DIR / "setup.py",
     REFERENCE_DIR / "assets" / "cylinder_long.stl",
+    *sorted((REFERENCE_DIR / "assets").glob("*.py")),
 )
 
 
@@ -85,7 +92,7 @@ def _explicit_mpi() -> bool:
     """Whether this process was started directly inside an MPI world.
 
     ``ensure_runtime`` marks its own relaunched workers with
-    ``_OPENONDA_MPI_CHILD``.  Those workers intentionally retain the old
+    ``_OPENONDA_MPI_CHILD``.  Those workers use the solver-managed
     launch contract, while an externally invoked ``mpiexec python
     run_campaign.py`` must coordinate its filesystem work here.
     """
@@ -153,7 +160,8 @@ def selected_grids(options: argparse.Namespace) -> list[tuple[str, float]]:
                 raise ValueError(f"grid must be NAME=positive_spacing, got {item!r}")
             values.append((name, float(spacing)))
         return values
-    grids = list(DEFAULT_CYLINDER_CASE.reference_grid())
+    module = load_case_module(REFERENCE_DIR)
+    grids = [(module.DEFAULT_NAME, module.DEFAULT_H)]
     return grids[:1] if options.pilot else grids
 
 
@@ -337,7 +345,7 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
     end_time = (
         4.0
         if options.pilot and options.end_time is None
-        else DEFAULT_CYLINDER_CASE.reference_end_time
+        else module.END_TIME
         if options.end_time is None
         else options.end_time
     )
@@ -360,7 +368,6 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
         return
     run_dir.mkdir(parents=True, exist_ok=True)
     config = {
-        **as_config(),
         "kind": "reference",
         "grids": [_grid_config(module, name, h, end_time, cores) for name, h in pending],
         "end_time": end_time,
@@ -404,8 +411,8 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
         report = postprocess.analyse_forces(
             samples_dir=run_dir / "samples",
             output_dir=run_dir / "figures",
-            start=DEFAULT_CYLINDER_CASE.reference_force_window[0],
-            end=DEFAULT_CYLINDER_CASE.reference_force_window[1],
+            start=module.STATISTICS_START,
+            end=module.END_TIME,
         )
         if len(report["grids"]) < 3:
             raise RuntimeError("reference campaign did not produce three valid grids")
@@ -475,7 +482,6 @@ def run_coupled(options: argparse.Namespace, run_dir: Path) -> None:
         return
     run_dir.mkdir(parents=True, exist_ok=True)
     config = {
-        **as_config(),
         "kind": "coupled",
         "max_coupling_steps": max_steps,
         "resume": options.resume,

@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -21,35 +22,40 @@ import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
-from openonda.cylinder_campaign import positive_coupling_steps, run_coupled_cylinder
-from openonda.cylinder_case import (
-    DEFAULT_CYLINDER_CASE,
-    resolve_cylinder_particle_spacing,
-    resolve_cylinder_variant,
-    validate_cylinder_authority,
-)
-from openonda.tutorial_support import cylinder_sampling as observations
 from openonda.vpm import Backup, Samplers
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.startup import run_coupled_cylinder
+from .assets.configuration import (
+    align_cylinder_sampling,
+    positive_coupling_steps,
+    steps,
+    validate_inputs,
+    validate_authority,
+)
+from .assets.mesh_cache import cached_mesh_matches_case, mesh_cache_identity, resolve_mesh
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
 
 CASE_NAME = "coupled_cylinder_flow"
-DIAMETER = DEFAULT_CYLINDER_CASE.diameter
+DIAMETER = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
-# Break transverse symmetry early, then smoothly remove forcing by t=2 s.
-# The nominal speed above still defines Re and the reported force coefficients.
 STARTUP_FREESTREAM_VELOCITY = (1.0, 0.1, 0.0)
 STARTUP_DURATION = 2.0
 STARTUP_TRANSITION_DURATION = 1.0
+INITIAL_PERTURBATION = {"amplitude": 1e-3, "radius": 0.5, "centre": 0.65}
 DENSITY = 1.0
-REYNOLDS_NUMBER = DEFAULT_CYLINDER_CASE.reynolds_number
+REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
 
 # FVM domain and mesh
 FVM_CORES = 4
-CELL_SIZE = DEFAULT_CYLINDER_CASE.coupled_wall_spacing
-FVM_RESOLVED_SPAN = DEFAULT_CYLINDER_CASE.resolved_span
+CELL_SIZE = 0.04
+FVM_RESOLVED_SPAN = 0.96
 FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
 FVM_BOX = (
     -1.60,
@@ -68,23 +74,32 @@ TRANSFER_REGION_BOX = (
     FVM_HALF_SPAN,
 )
 
-# VPM domain and resolution. Choose a spanwise lattice spacing that closes the
-# physical slab exactly; the slab induction wrapper supplies the free-slip
-# images at its two span boundaries.
+# VPM domain and resolution.
 VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
 # Keep renewal and grid-based diffusion on one VPM lattice.
 PARTICLE_LIMIT = 1_000_000
-# Converged exchanges can seed the safeguarded predictor. Three sweeps often
-# stopped just above tolerance at startup, preventing this performance reuse.
-INTERFACE_ITERATIONS = 4
+PARTICLE_SPACING_RATIO = 1.0
+CORE_RADIUS_RATIO = 1.0
+BLEND_WIDTH_RATIO = 6.0
+RELEASE_WIDTH_RATIO = 2.0
+COMPUTE_DEVICE = "AUTO"
+INTERFACE_ITERATIONS = 3
 INTERFACE_TOLERANCE = 1.0e-5
 
 # Time and output
 FVM_TIME_STEP_SIZE = 0.008
 VPM_TIME_STEP_MULTIPLIER = 5
 VPM_TIME_STEP_SIZE = VPM_TIME_STEP_MULTIPLIER * FVM_TIME_STEP_SIZE
-END_TIME = DEFAULT_CYLINDER_CASE.coupled_end_time
+END_TIME = 100.0
+STATISTICS_START = 40.0
 GBD_VORTICITY_FLOOR = 0.01
+
+# Physical output intervals
+FORCES = 0.04
+PROFILES = 0.2
+SLICES = 0.4
+BACKUPS = 1.0
+VOLUMES = 4.0
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -100,46 +115,179 @@ FVM_PATCHES = msh.BoxPatches(
 )
 
 
+def phase_lines(outer=False):
+    """Identical coordinates in the reference and corresponding coupled region."""
+    lo, hi, count = (1.6, 8.0, 65) if outer else (0.6, 1.4, 9)
+    region = "wake" if outer else "near"
+    return [
+        (f"phase_{region}_{side}", [lo, y, 0.0], [hi, y, 0.0], count)
+        for side, y in (("upper", 0.6), ("lower", -0.6))
+    ]
+
+
+def field_lines(reference, *, span):
+    lines = [("centreline", [0.6, 0.0, 0.0], [1.4, 0.0, 0.0], 11)]
+    for label, z in (("lower", -span / 4), ("middle", 0.0), ("upper", span / 4)):
+        lines.append((f"span_{label}", [1.0, -1.2, z], [1.0, 1.2, z], 31))
+    if reference:
+        for x in (2, 4):
+            lines.append((f"transverse_x{x}", [x, -2.0, 0.0], [x, 2.0, 0.0], 51))
+    return lines
+
+
+def sampling_plan(period, *, end, exchange_dt, fvm_time_step):
+    """Resolve physical periods onto the actual accepted exchange clock."""
+    steps(exchange_dt, fvm_time_step)
+    steps(end, exchange_dt)
+    return align_cylinder_sampling(
+        end_time=end,
+        exchange_dt=exchange_dt,
+        fvm_time_step=fvm_time_step,
+        sample_period=period,
+        slice_period=SLICES,
+        output_period=VOLUMES,
+    )
+
+
+def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_dt, fvm_time_step):
+    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+    force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
+    fast = fvm.RunSchedule(every_n_steps=force.fvm_sample_steps)
+    slow = fvm.RunSchedule(every_n_steps=profile.fvm_sample_steps)
+    samplers = [
+        fvm.ForceSampler(
+            patch_names=["cylinder"],
+            reference_velocity=freestream_speed,
+            reference_area=diameter * span,
+            reference_length=diameter,
+            file_name="forces_history",
+            schedule=fast,
+        )
+    ]
+    for name, start, end, count in phase_lines() + (phase_lines(True) if reference else []):
+        samplers.append(
+            fvm.LineSampler(
+                start=start,
+                end=end,
+                n_points=count,
+                k=12,
+                reconstruction="affine",
+                file_name=name,
+                schedule=fast,
+            )
+        )
+    for name, start, end, count in field_lines(reference, span=span):
+        samplers.append(
+            fvm.LineSampler(
+                start=start,
+                end=end,
+                n_points=count,
+                k=12,
+                reconstruction="affine",
+                file_name=name,
+                schedule=slow,
+            )
+        )
+    samplers.append(
+        fvm.SurfaceSampler(
+            point=[0.0, 0.0, 0.0],
+            normal=[0.0, 0.0, 1.0],
+            bounds=[
+                -1.6,
+                8.0 if reference else 1.6,
+                -2.0 if reference else -1.6,
+                2.0 if reference else 1.6,
+            ],
+            spacing=0.1,
+            file_name="midspan",
+            schedule=fvm.RunSchedule(every_n_steps=profile.fvm_slice_steps),
+            body_bounds=[-0.5, 0.5, -0.5, 0.5, -6.0, 6.0],
+            body_geometry="cylinder_z",
+        )
+    )
+    return tuple(samplers)
+
+
+def vpm_samplers(*, end, exchange_dt, fvm_time_step):
+    """Particle-side observations shared by the ordinary tutorial entry point."""
+    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+    force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
+    substeps = steps(exchange_dt, fvm_time_step)
+    samples = []
+    for name, start, finish, count in phase_lines() + phase_lines(True):
+        samples.append(
+            vpm.LineSampler(
+                start=start,
+                end=finish,
+                spacing=math.dist(start, finish) / (count - 1) * (1 + 1e-12),
+                file_name="vpm_" + name,
+                schedule=vpm.EverySteps(force.sample_steps),
+            )
+        )
+    for x in (2, 4):
+        samples.append(
+            vpm.LineSampler(
+                start=[x, -2.0, 0.0],
+                end=[x, 2.0, 0.0],
+                spacing=0.08 * (1 + 1e-12),
+                file_name=f"vpm_transverse_x{x}",
+                schedule=vpm.EverySteps(profile.sample_steps),
+            )
+        )
+    samples.append(
+        vpm.SurfaceSampler(
+            point=[0.0, 0.0, 0.0],
+            normal=[0.0, 0.0, 1.0],
+            bounds=[1.6, 8.0, -2.0, 2.0],
+            spacing=0.1,
+            file_name="vpm_midspan",
+            include_derivatives=False,
+            schedule=vpm.EverySteps(profile.fvm_slice_steps // substeps),
+        )
+    )
+    return tuple(samples)
+
+
 def build_case(
     *,
     end_time: float | None = None,
     overrides: dict[str, object] | None = None,
 ):
     """Construct the physical case, mesh and accepted-time schedules."""
-    overrides = {
-        "hxy": CELL_SIZE,
-        "dz": CELL_SIZE,
-        "particle_spacing_ratio": 1.0,
-        "compute_device": "AUTO",
-        **(overrides or {}),
-    }
-    variant = resolve_cylinder_variant(
-        overrides,
-        hxy=CELL_SIZE,
-        span=FVM_RESOLVED_SPAN,
-        exchange_dt=VPM_TIME_STEP_SIZE,
-        cores=FVM_CORES,
-        particle_limit=PARTICLE_LIMIT,
-        end_time=END_TIME if end_time is None else end_time,
-        fvm_time_step=FVM_TIME_STEP_SIZE,
+    values = dict(overrides or {})
+    hxy = float(values.pop("hxy", CELL_SIZE))
+    span = float(values.pop("span", FVM_RESOLVED_SPAN))
+    dz_target = float(values.pop("dz", hxy))
+    hp_ratio = float(values.pop("particle_spacing_ratio", PARTICLE_SPACING_RATIO))
+    core_ratio = float(values.pop("core_radius_ratio", CORE_RADIUS_RATIO))
+    blend_ratio = float(values.pop("blend_width_ratio", BLEND_WIDTH_RATIO))
+    release_ratio = float(values.pop("release_width_ratio", RELEASE_WIDTH_RATIO))
+    exchange_dt = float(values.pop("exchange_dt", VPM_TIME_STEP_SIZE))
+    cores = int(values.pop("cores", FVM_CORES))
+    compute_device = str(values.pop("compute_device", COMPUTE_DEVICE))
+    particle_limit = int(values.pop("particle_limit", PARTICLE_LIMIT))
+    physical_end = END_TIME if end_time is None else float(end_time)
+    validate_inputs(
+        hxy,
+        span,
+        dz_target,
+        hp_ratio,
+        core_ratio,
+        exchange_dt,
+        physical_end,
+        release_ratio,
+        blend_ratio,
+        cores,
+        particle_limit,
     )
-    hxy, span, dz_target = variant.hxy, variant.span, variant.dz
-    hp_ratio, core_ratio = variant.particle_spacing_ratio, variant.core_radius_ratio
-    blend_ratio, release_ratio = variant.blend_width_ratio, variant.release_width_ratio
-    exchange_dt, physical_end = variant.exchange_dt, variant.end_time
-    cores, compute_device = variant.cores, variant.compute_device
-    particle_limit = variant.particle_limit
-    values = dict(variant.coupler_overrides)
+    steps(exchange_dt, FVM_TIME_STEP_SIZE)
+    steps(physical_end, exchange_dt)
     half_span = span / 2.0
     fvm_box = (*FVM_BOX[:4], -half_span, half_span)
     transfer_box = (*TRANSFER_REGION_BOX[:4], -half_span, half_span)
-    particle_spacing = resolve_cylinder_particle_spacing(span=span, hxy=hxy, ratio=hp_ratio)
-    validate_cylinder_authority(
-        # The wake box is asymmetric; every side must retain wall authority.
-        transfer_edge_x=min(-transfer_box[0], transfer_box[1], -transfer_box[2], transfer_box[3]),
-        radius=DIAMETER / 2.0,
-        blend_width=blend_ratio * particle_spacing,
-    )
+    particle_spacing = span / max(6, math.ceil(span / (hxy * hp_ratio)))
+    authority_edge = min(-transfer_box[0], transfer_box[1], -transfer_box[2], transfer_box[3])
+    validate_authority(authority_edge, blend_ratio * particle_spacing, DIAMETER / 2, 1e-6)
     axial_layers = max(4, math.ceil(span / dz_target))
     realized_dz = span / axial_layers
     vpm_domain = (*VPM_DOMAIN[:4], -half_span, half_span)
@@ -166,7 +314,7 @@ def build_case(
     )
 
     clocks = dict(end=physical_end, exchange_dt=exchange_dt, fvm_time_step=FVM_TIME_STEP_SIZE)
-    sampling = observations.sampling_plan(observations.PROFILES, **clocks)
+    sampling = sampling_plan(PROFILES, **clocks)
     fvm_setup = fvm.FVMSetup(
         case_name=CASE_NAME,
         cores=cores,
@@ -191,7 +339,7 @@ def build_case(
             n_outer_correctors=2, n_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
         ),
         backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-        samplers=observations.fvm_samplers(
+        samplers=fvm_samplers(
             False,
             span=span,
             freestream_speed=float(np.linalg.norm(FREESTREAM_VELOCITY)),
@@ -241,7 +389,7 @@ def build_case(
             domain_bounds=vpm_domain,
         ),
         backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),
-        samplers=Samplers(samples=observations.vpm_samplers(**clocks)),
+        samplers=Samplers(samples=vpm_samplers(**clocks)),
         run=vpm.RunPlan(steps=round(physical_end / exchange_dt)),
         directory=CASE_DIR,
     )
@@ -256,47 +404,11 @@ def build_case(
         interface_iterations=INTERFACE_ITERATIONS,
         interface_normal_tolerance=INTERFACE_TOLERANCE,
         interface_gradient_tolerance=INTERFACE_TOLERANCE,
-        backup_interval_steps=max(1, round(observations.BACKUPS / exchange_dt)),
+        backup_interval_steps=max(1, round(BACKUPS / exchange_dt)),
         transfer_diagnostic_interval_steps=max(1, round(2.4 / exchange_dt)),
     )
     coupler_setup = coupling.CouplerSetup(**{**coupling_values, **values})
     return fvm_setup, vpm_case, coupler_setup, mesh
-
-
-def mesh_cache_identity(mesh: msh.ExtrudedCartesianMesher) -> str:
-    """Include surface contents, mesher controls/code and extrusion geometry."""
-    from source.solvers.fvm.mesh.cache import CachedMesh
-
-    specification = {
-        "source": CachedMesh(mesh.source, CASE_DIR / "unused.npz").identity(),
-        "bounds": mesh.domain.bounds,
-        "levels": mesh.levels,
-    }
-    return hashlib.sha256(json.dumps(specification, sort_keys=True).encode()).hexdigest()
-
-
-def cached_mesh_matches_case(
-    path: Path, mesh: msh.ExtrudedCartesianMesher, *, require_identity: bool = False
-) -> bool:
-    """Admit a cached mesh only for the current resolved box and resolution."""
-    try:
-        with np.load(path, allow_pickle=False) as saved:
-            metadata = json.loads(str(saved["metadata"]))
-        identity = metadata.get("cylinder_mesh_cache_identity")
-        if (require_identity or identity is not None) and identity != mesh_cache_identity(mesh):
-            return False
-        generation = metadata.get("mesh_generation", {})
-        bounds = generation.get("domain", ())
-        levels = generation.get("extrusion_levels", ())
-        return bool(
-            len(bounds) == 6
-            and np.allclose(bounds, mesh.domain.bounds, rtol=0, atol=1e-12)
-            and len(levels) == len(mesh.levels)
-            and np.allclose(levels, mesh.levels, rtol=0, atol=1e-12)
-            and generation.get("resolved_background_cell_size") == mesh.max_cell_size
-        )
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
 
 
 def create_solver(
@@ -311,26 +423,11 @@ def create_solver(
 
     def resolved_case(**kwargs):
         setup, particles, coupling_setup, mesh = build_case(**kwargs)
-        # This is the ordinary case mesh cache, not a separate run directory.
-        cached_mesh = (
-            CASE_DIR if output_root is None else Path(output_root)
-        ) / "solution/fvm/mesh.npz"
-        if cached_mesh.is_file() and not kwargs.get("overrides"):
-            if not cached_mesh_matches_case(cached_mesh, mesh):
-                raise ValueError(
-                    "Cached cylinder mesh differs from this setup. Run ./allrun.sh --fresh "
-                    "to archive the previous results and start from zero."
-                )
-            mesh = cached_mesh
-        elif not kwargs.get("overrides"):
-            builder = mesh
-
-            def generate_with_identity():
-                result = builder.build()
-                result["cylinder_mesh_cache_identity"] = mesh_cache_identity(builder)
-                return result
-
-            mesh = generate_with_identity
+        mesh = resolve_mesh(
+            mesh,
+            CASE_DIR if output_root is None else output_root,
+            reuse=not kwargs.get("overrides"),
+        )
         return setup, particles, coupling_setup, mesh
 
     return run_coupled_cylinder(
@@ -344,6 +441,7 @@ def create_solver(
         startup_duration=STARTUP_DURATION,
         startup_transition_duration=STARTUP_TRANSITION_DURATION,
         steady_freestream_velocity=FREESTREAM_VELOCITY,
+        perturbation=INITIAL_PERTURBATION,
     )
 
 
@@ -355,7 +453,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Stop after this many accepted exchanges and save a native checkpoint; "
         "the configured 100 s physical horizon is unchanged.",
     )
+    parser.add_argument("--fresh", action="store_true", help="Archive outputs and start from zero.")
     options = parser.parse_args(argv)
+    if options.fresh:
+        from .assets.prepare_fresh_run import archive_previous_run
+
+        archive_previous_run(CASE_DIR, reuse_mesh=True)
+        if "--fresh" in sys.argv:
+            sys.argv.remove("--fresh")
     create_solver(max_coupling_steps=options.max_coupling_steps)
     return 0
 

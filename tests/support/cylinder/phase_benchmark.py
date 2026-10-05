@@ -4,11 +4,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from openonda.tutorial_runner import load_case_module
-from openonda.tutorial_support import cylinder_sampling as sampling
 
 CASE = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 H = 0.04
 module = load_case_module(CASE)
+sampling = module
 SPAN = module.FVM_RESOLVED_SPAN
 DT = module.FVM_TIME_STEP_SIZE
 EXCHANGE = module.VPM_TIME_STEP_SIZE
@@ -59,14 +59,14 @@ def contract():
     assert a.time.adjustment is b.time.adjustment is None
     assert len(am.levels) == len(bm.levels) == 25
     assert particles.numerics.viscous.particle_spacing == H
-    assert tuple(a.initial_velocity) == tuple(b.initial_velocity) == tuple(
-        module.STARTUP_FREESTREAM_VELOCITY
+    assert (
+        tuple(a.initial_velocity)
+        == tuple(b.initial_velocity)
+        == tuple(module.STARTUP_FREESTREAM_VELOCITY)
     )
     assert reference.STARTUP_DURATION == module.STARTUP_DURATION
     assert reference.STARTUP_TRANSITION_DURATION == module.STARTUP_TRANSITION_DURATION
-    assert tuple(reference.STARTUP_FREESTREAM_VELOCITY) == tuple(
-        module.STARTUP_FREESTREAM_VELOCITY
-    )
+    assert tuple(reference.STARTUP_FREESTREAM_VELOCITY) == tuple(module.STARTUP_FREESTREAM_VELOCITY)
     assert tuple(reference.VELOCITY) == tuple(module.FREESTREAM_VELOCITY)
     common = {s.name: sampler_to_dict(s) for s in a.samplers if s.name != "midspan"}
     for sampler in b.samplers:

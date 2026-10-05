@@ -1,16 +1,15 @@
 """Accepted-clock startup forcing survives bounded native continuation."""
 
-from copy import deepcopy
 from dataclasses import dataclass, replace
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from openonda import cylinder_campaign as campaign
 import openonda.coupler as coupling
-from openonda.cylinder_startup import startup_velocity
+from openonda.tutorial_runner import load_case_module
 from source.solvers.fvm import TimeConfig
 
 STARTUP = (1.0, 0.1, 0.0)
@@ -139,6 +138,8 @@ def staged_case(tmp_path, monkeypatch):
             build,
             output_root=tmp_path,
             startup_duration=kwargs.pop("startup_duration", 0.12),
+            startup_transition_duration=kwargs.pop("startup_transition_duration", 0.08),
+            perturbation=PERTURBATION,
             steady_freestream_velocity=kwargs.pop("steady_freestream_velocity", STEADY),
             **kwargs,
         )
@@ -146,59 +147,14 @@ def staged_case(tmp_path, monkeypatch):
     return SimpleNamespace(run=run, created=created, root=tmp_path, build=build, flow=flow)
 
 
-def test_full_startup_switches_once_without_reinitializing_state(staged_case):
-    assert staged_case.run() == 8
-    solver = staged_case.created[-1]
-    assert [item for item in solver.events if item[0] == "advance"] == [
-        ("advance", 0, 3, STARTUP),
-        ("advance", 3, 8, STEADY),
-    ]
-    initial = [item[1] for item in solver.events if item[0] == "initial"]
-    assert len(initial) == 1
-    np.testing.assert_allclose(
-        initial[0], campaign.cylinder_initial_velocity(solver.positions, 0.96) + [0, 0.1, 0]
-    )
-    assert [item for item in solver.events if item[0] == "initialize"] == [("initialize", STARTUP)]
+CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+tutorial = load_case_module(CASE)
+PERTURBATION = tutorial.INITIAL_PERTURBATION
+campaign = load_case_module(CASE, "assets.startup")
+startup_velocity = campaign.startup_velocity
 
 
-@pytest.mark.parametrize("first_stop", [1, 3, 5])
-def test_bounded_restart_before_at_and_after_switch_preserves_total_cap(staged_case, first_stop):
-    assert staged_case.run(max_coupling_steps=first_stop) == first_stop
-    assert staged_case.run(max_coupling_steps=2) == first_stop + 2
-    resumed = staged_case.created[-1]
-    assert ("initialize", STARTUP) in resumed.events
-    assert not any(item[0] == "initial" for item in resumed.events)
-    expected_loaded_background = STARTUP if first_stop <= 3 else STEADY
-    assert ("load", first_stop, expected_loaded_background) in resumed.events
-    advanced = [item for item in resumed.events if item[0] == "advance"]
-    assert sum(item[2] - item[1] for item in advanced) == 2
-    assert all(item[3] == (STARTUP if item[1] < 3 else STEADY) for item in advanced)
-    assert staged_case.run() == 8
-    # Repeated latest on a completed series must not advance or reset it.
-    assert staged_case.run() == 8
-    assert not any(item[0] in {"initial", "advance"} for item in staged_case.created[-1].events)
-
-
-def test_bounded_resume_crossing_switch_uses_remaining_not_full_cap(staged_case):
-    assert staged_case.run(max_coupling_steps=2) == 2
-    assert staged_case.run(max_coupling_steps=3) == 5
-    assert [item for item in staged_case.created[-1].events if item[0] == "advance"] == [
-        ("advance", 2, 3, STARTUP),
-        ("advance", 3, 5, STEADY),
-    ]
-
-
-def test_exact_switch_checkpoint_with_steady_policy_is_also_admitted(staged_case):
-    assert staged_case.run(max_coupling_steps=3) == 3
-    path = staged_case.root / "solution/backups/manifest.json"
-    manifest = json.loads(path.read_text())
-    manifest["config"]["coupler"]["freestream_velocity"] = list(STEADY)
-    path.write_text(json.dumps(manifest))
-    assert staged_case.run(max_coupling_steps=1) == 4
-    assert ("load", 3, STEADY) in staged_case.created[-1].events
-
-
-@pytest.mark.parametrize("defect", ["missing", "changed", "wrong_stage"])
+@pytest.mark.parametrize("defect", ["missing", "changed", "schema", "wrong_stage"])
 def test_resume_rejects_unknown_schedule_or_inconsistent_stage_before_load(staged_case, defect):
     assert staged_case.run(max_coupling_steps=1) == 1
     if defect == "missing":
@@ -207,6 +163,11 @@ def test_resume_rejects_unknown_schedule_or_inconsistent_stage_before_load(stage
         path = staged_case.root / "solution/cylinder_startup.json"
         saved = json.loads(path.read_text())
         saved["startup_duration"] = 0.2
+        path.write_text(json.dumps(saved))
+    elif defect == "schema":
+        path = staged_case.root / "solution/cylinder_startup.json"
+        saved = json.loads(path.read_text())
+        saved["schema"] = "unsupported forcing policy"
         path.write_text(json.dumps(saved))
     else:
         path = staged_case.root / "solution/backups/manifest.json"
@@ -227,8 +188,6 @@ def test_explicit_initial_restarts_forcing_from_zero(staged_case):
 @pytest.mark.parametrize(
     "kwargs,match",
     [
-        ({"startup_duration": None}, "supplied together"),
-        ({"steady_freestream_velocity": None}, "supplied together"),
         ({"startup_duration": 0.13}, "integer number"),
         ({"startup_duration": float("nan")}, "finite"),
         ({"steady_freestream_velocity": (2, 0, 0)}, "startup lattice"),
@@ -237,7 +196,7 @@ def test_explicit_initial_restarts_forcing_from_zero(staged_case):
         ({"max_coupling_steps": True}, "positive integer"),
     ],
 )
-def test_invalid_startup_policy_fails_before_factory_construction(staged_case, kwargs, match):
+def test_invalid_startup_policy_fails_before_solver_construction(staged_case, kwargs, match):
     with pytest.raises(ValueError, match=match):
         staged_case.run(**kwargs)
     assert not staged_case.created
@@ -247,48 +206,6 @@ def test_mismatched_physical_end_is_rejected(staged_case):
     staged_case.flow.time = replace(staged_case.flow.time, end_time=0.3)
     with pytest.raises(ValueError, match="matching FVM/VPM"):
         staged_case.run()
-
-
-def test_worker_uses_broadcast_selection_without_reading_checkpoint(tmp_path, monkeypatch):
-    # Test the actual collective-phase wrapper with deterministic root messages.
-    schedule = {
-        "switch_step": 3,
-        "startup_freestream_velocity": list(STARTUP),
-        "steady_freestream_velocity": list(STEADY),
-        "end_time": 0.32,
-        "exchange_time_step": 0.04,
-    }
-    path = tmp_path / "root-only-checkpoint"
-    comm = SimpleNamespace(
-        Get_size=lambda: 2,
-        Ibarrier=lambda: SimpleNamespace(Test=lambda: True),
-        allgather=lambda local: [None, local],
-        bcast=lambda value, root: (path, deepcopy(list(STEADY)), schedule),
-    )
-    particles = Particles(Numerics(), SimpleNamespace(steps=8))
-    solver = RecordingSolver(
-        tmp_path,
-        particles,
-        coupling.CouplerSetup(freestream_velocity=list(STARTUP)),
-        comm=comm,
-        master=False,
-    )
-
-    def load(selected):
-        assert selected == path
-        assert solver.setup.freestream_velocity == list(STEADY)
-        solver.step = 5
-        return 5
-
-    solver.load_backup = load
-    import source.restart
-
-    monkeypatch.setattr(
-        source.restart, "select_backup", lambda *args, **kwargs: pytest.fail("worker read")
-    )
-    assert campaign._run_cylinder_startup(solver, particles, schedule, "latest", None, 1) == 6
-    assert ("advance", 5, 6, STEADY) in solver.events
-    assert not (solver.solution_dir / "cylinder_startup.json").exists()
 
 
 def test_smooth_startup_uses_endpoints_in_one_native_solve(staged_case):
@@ -331,25 +248,6 @@ def test_smooth_restart_before_inside_at_and_after_taper(staged_case, first_stop
     ]
 
 
-def test_new_factory_adopts_exact_legacy_native_schedule_without_rewriting(staged_case):
-    assert staged_case.run(max_coupling_steps=2) == 2
-    sidecar = staged_case.root / "solution/cylinder_startup.json"
-    original = sidecar.read_bytes()
-    assert staged_case.run(startup_transition_duration=0.08, max_coupling_steps=3) == 5
-    assert sidecar.read_bytes() == original
-    assert [event for event in staged_case.created[-1].events if event[0] == "advance"] == [
-        ("advance", 2, 3, STARTUP),
-        ("advance", 3, 5, STEADY),
-    ]
-
-
-def test_legacy_adoption_still_rejects_other_policy_changes(staged_case):
-    assert staged_case.run(max_coupling_steps=2) == 2
-    with pytest.raises(ValueError, match="identical.*schedule"):
-        staged_case.run(startup_duration=0.16, startup_transition_duration=0.08)
-    assert not any(event[0] == "load" for event in staged_case.created[-1].events)
-
-
 @pytest.mark.parametrize("defect", ["start_velocity", "different_taper"])
 def test_smooth_resume_rejects_wrong_clock_background_or_schedule(staged_case, defect):
     kwargs = {"startup_transition_duration": 0.08}
@@ -366,7 +264,7 @@ def test_smooth_resume_rejects_wrong_clock_background_or_schedule(staged_case, d
     assert not any(event[0] == "load" for event in staged_case.created[-1].events)
 
 
-@pytest.mark.parametrize("duration", [-0.04, 0.16, float("nan"), 0.06])
+@pytest.mark.parametrize("duration", [-0.04, 0.0, 0.16, float("nan"), 0.06])
 def test_invalid_taper_duration_rejected_before_solver_construction(staged_case, duration):
     with pytest.raises(ValueError, match="startup_transition_duration"):
         staged_case.run(startup_transition_duration=duration)
@@ -414,7 +312,9 @@ def test_smooth_worker_reconstructs_taper_from_broadcast_without_checkpoint_read
     staged_case, tmp_path, monkeypatch
 ):
     flow, particles, policy, _ = staged_case.build()
-    schedule = campaign._cylinder_startup_schedule(flow, particles, policy, 0.12, STEADY, 0.08)
+    schedule = campaign._cylinder_startup_schedule(
+        flow, particles, policy, 0.12, STEADY, 0.08, PERTURBATION
+    )
     path = tmp_path / "root-only-checkpoint"
     saved_velocity = list(startup_velocity(0.08, 0.12, 0.08, STARTUP, STEADY))
     comm = SimpleNamespace(
@@ -437,7 +337,10 @@ def test_smooth_worker_reconstructs_taper_from_broadcast_without_checkpoint_read
     monkeypatch.setattr(
         source.restart, "select_backup", lambda *args, **kwargs: pytest.fail("worker read")
     )
-    assert campaign._run_cylinder_startup(solver, particles, schedule, "latest", None, 2) == 4
+    assert (
+        campaign._run_cylinder_startup(solver, particles, schedule, "latest", None, 2, PERTURBATION)
+        == 4
+    )
     assert [event for event in solver.events if event[0] == "exchange"] == [
         ("exchange", 3, STEADY),
         ("exchange", 4, STEADY),

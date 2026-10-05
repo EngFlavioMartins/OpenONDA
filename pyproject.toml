@@ -63,10 +63,10 @@ openonda = "openonda.cli:main"
 openonda-verify-install = "openonda.verify_install:main"
 
 [project.optional-dependencies]
-# Explicit CUDA-12 Gaussian image fields. Ordinary CPU/FMM installations do
-# not import or require CuPy. CUDA toolkit/driver installation stays explicit.
+# Optional CUDA-12 Gaussian image fields include matched toolkit headers.
+# CPU/FMM installations do not require CuPy; the CUDA driver stays external.
 gaussian-mesh-cuda12 = [
-    "cupy-cuda12x>=14.2,<15; platform_system=='Linux'",
+    "cupy-cuda12x[ctk]>=14.2,<15; platform_system=='Linux'",
 ]
 
 # External Gmsh input/generation and accelerated STL reading. Native meshers
@@ -126,7 +126,7 @@ version = {attr = "source.version.__version__"}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["openonda*", "source*", "tutorials*"]
-exclude = ["tests*", "examples*", "*.solution*", "*.samples*", "*.figures*", "*.study_results*", "*.animation*", "*.__pycache__*"]
+exclude = ["tests*", "examples*", "*.solution*", "*.samples*", "*.figures*", "*.study_results*", "*.previous_runs*", "*.drag_recovery*", "*.animation*", "*.frames*", "*.__pycache__*"]
 
 [tool.setuptools]
 include-package-data = false
@@ -141,6 +141,7 @@ include-package-data = false
     "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
     "**/solution_*/*", "**/solutions_*/*",
     "**/study_results/*", "**/animation/*", "**/assets/results/*", "**/__pycache__/*",
+    "**/previous_runs/*", "**/drag_recovery/*", "**/frames/*",
     "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
 ]
 

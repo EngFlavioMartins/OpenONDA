@@ -9,11 +9,7 @@ import pytest
 
 @pytest.mark.parametrize("asset", ["run_pipeline", "run_sensitivity"])
 def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, monkeypatch):
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "tests/support/cylinder"
-        / f"{asset}.py"
-    )
+    path = Path(__file__).resolve().parents[2] / "tests/support/cylinder" / f"{asset}.py"
     spec = importlib.util.spec_from_file_location(asset, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -26,12 +22,17 @@ def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, mon
 
     monkeypatch.setattr(module, "run_trial", run_trial)
 
-    def collect_cost(root):
+    def collect_cost(root, **kwargs):
         cost_roots.append(root)
         return {"unconverged_stationary_intervals": 0}
 
     monkeypatch.setattr(module, "collect_cost", collect_cost)
-    monkeypatch.setattr(module, "load_case_module", lambda *args: object())
+    actual_case = module.load_case_module(module.CASE_DIR)
+    monkeypatch.setattr(
+        module,
+        "load_case_module",
+        lambda directory, *args: actual_case if directory == module.CASE_DIR else object(),
+    )
     mode = (
         ["--pilot", "--sensitivity", "none", "--reference-cores", "1"]
         if asset == "run_pipeline"

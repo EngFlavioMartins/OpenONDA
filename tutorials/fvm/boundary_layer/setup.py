@@ -13,8 +13,13 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 
-from openonda.tutorial_support.fvm_boundary_layer.mesh_plate import flat_plate_mesh
-from openonda.tutorial_support.fvm_boundary_layer.profiles import write_profiles
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.mesh_plate import flat_plate_mesh
+from .assets.profiles import write_profiles
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -28,6 +33,8 @@ FINAL_TIME = 8.0  # [s]
 STATIONS = (0.25, 0.5, 0.75)  # x/L positions of the Blasius profiles
 
 # Mesh
+UPSTREAM_LIMIT = -0.25  # start of the frictionless run-in [m]
+N_UPSTREAM = 10
 N_PLATE = 72  # cells along the plate
 DOMAIN_HEIGHT = 0.35  # height of the domain [m]
 WALL_CELL_HEIGHT = 0.0015  # height of the first cell next to the wall [m]
@@ -87,6 +94,8 @@ def main() -> None:
     kinematic_viscosity = FREESTREAM_VELOCITY * PLATE_LENGTH / REYNOLDS_NUMBER
     mesh = partial(
         flat_plate_mesh,
+        x_up=UPSTREAM_LIMIT,
+        n_up=N_UPSTREAM,
         plate_length=PLATE_LENGTH,
         height=DOMAIN_HEIGHT,
         n_plate=N_PLATE,

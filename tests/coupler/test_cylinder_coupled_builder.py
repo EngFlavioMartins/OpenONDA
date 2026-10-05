@@ -25,7 +25,7 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     module = _setup_module()
     fvm, vpm, coupler, mesh = module.build_case()
     assert fvm.samplers[0].reference_area == pytest.approx(0.96)
-    assert coupler.interface_iterations == 4
+    assert coupler.interface_iterations == module.INTERFACE_ITERATIONS
     assert coupler.interface_normal_tolerance == pytest.approx(1e-5)
     assert coupler.interface_gradient_tolerance == pytest.approx(1e-5)
     assert coupler.freestream_velocity == [1.0, 0.1, 0.0]
@@ -83,16 +83,16 @@ def test_builder_resolves_independent_span_dz_and_particle_spacing():
     assert (vpm.numerics.induction.z_min, vpm.numerics.induction.z_max) == (-0.24, 0.24)
     assert coupler.eta_blend_width == pytest.approx(0.64)
     assert coupler.vpm_only_width == pytest.approx(0.16)
-    assert coupler.interface_iterations == 4
+    assert coupler.interface_iterations == module.INTERFACE_ITERATIONS
 
 
 def test_builder_rejects_exchange_clock_and_release_width_errors():
     module = _setup_module()
-    with pytest.raises(ValueError, match="integer multiple"):
+    with pytest.raises(ValueError, match="exchange_dt|physical accepted time"):
         module.build_case(overrides={"exchange_dt": 0.041})
-    with pytest.raises(ValueError, match="release_width_ratio"):
+    with pytest.raises(ValueError, match="release width"):
         module.build_case(overrides={"blend_width_ratio": 2.0, "release_width_ratio": 2.0})
-    with pytest.raises(ValueError, match="authority ramp begins inside"):
+    with pytest.raises(ValueError, match="full FVM authority"):
         module.build_case(overrides={"hxy": 0.08, "span": 0.96, "blend_width_ratio": 10.0})
 
 

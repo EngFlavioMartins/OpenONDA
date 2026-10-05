@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def graded_coords(lo, core_lo, core_hi, hi, grid_spacing, ratio=1.10):
+def graded_coords(lo, core_lo, core_hi, hi, grid_spacing, ratio):
     """1D node coordinates: uniform ``grid_spacing`` in [core_lo, core_hi], geometric
     stretching (factor ``ratio``) out to ``lo`` and ``hi``."""
     n_core = max(int(round((core_hi - core_lo) / grid_spacing)), 1)
@@ -140,13 +140,13 @@ def rectilinear_box_2d(x, y, depth):
 
 
 def cylinder_ibm_mesh(
-    grid_spacing=0.0625,
-    diameter=1.0,
-    x_bounds=(-8.0, 16.0),
-    y_bounds=(-8.0, 8.0),
-    core_x=(-1.5, 3.0),
-    core_y=(-1.5, 1.5),
-    ratio=1.10,
+    grid_spacing,
+    diameter,
+    x_bounds,
+    y_bounds,
+    core_x,
+    core_y,
+    ratio,
 ):
     """Standard cylinder_ibm mesh: uniform ``grid_spacing`` around the cylinder at the
     origin, stretched to the far field.  Returns ``(mesh_data, depth)``."""

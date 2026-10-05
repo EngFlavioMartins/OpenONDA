@@ -8,12 +8,12 @@ import pytest
 
 from openonda import vpm
 from openonda.tutorial_runner import load_case_module
-from openonda.tutorial_support import cylinder_sampling as observations
 from source.coupler.backup import config_mapping_digest
 from source.solvers.vpm.config.fingerprint import numerical_configuration
 from source.solvers.vpm.config.restart import canonical_restart_configuration
 
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+observations = load_case_module(CASE)
 
 # Identity recorded by the native Gaussian continuation at step 281 / 11.24 s.
 # Keep this small regression independent of generated/untracked backup files.

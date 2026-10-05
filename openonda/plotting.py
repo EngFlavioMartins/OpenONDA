@@ -14,19 +14,13 @@ import numpy as np
 from source.solution_layout import collection_path
 
 
-def read_vlm_surface(surface_record: dict, geometry_directory: str | Path) -> dict:
-    """Read the run's native geometry snapshot, including older saved cases.
+def read_vlm_surface(surface_record: dict) -> dict:
+    """Read the geometry snapshot recorded by the run.
 
-    Current VPM metadata embeds the geometry loaded by the solver, so plotting
-    remains valid after input files change or disappear. Older records retain
-    a filename; resolve those within the copied tutorial's geometry directory.
+    VPM metadata embeds the geometry loaded by the solver, so plotting
+    remains valid after input files change or disappear.
     """
-    import json
-
-    if "geometry" in surface_record:
-        return surface_record["geometry"]
-    path = Path(geometry_directory) / Path(surface_record["surface"]).name
-    return json.loads(path.read_text())
+    return surface_record["geometry"]
 
 
 def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
@@ -277,9 +271,6 @@ VORTEX_RING_VARIANT_STYLE = {
     "dns_transposed": {"color": COLORS["vpm"], "marker": "s", "linestyle": "-"},
     "dns_mixed": {"color": PALETTE["amber"], "marker": "^", "linestyle": "-"},
     "les_transposed": {"color": COLORS["teal"], "marker": "v", "linestyle": "-"},
-    # Saved schema-2 case names use the corresponding transposed styles.
-    "dns_treecode": {"color": COLORS["vpm"], "marker": "s", "linestyle": "-"},
-    "les_treecode": {"color": COLORS["teal"], "marker": "v", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["linewidth"] = LINE_WIDTH
@@ -290,8 +281,6 @@ VORTEX_RING_VARIANT_LABEL = {
     "dns_transposed": "DNS Transposed",
     "dns_mixed": "DNS Mixed",
     "les_transposed": "LES Transposed",
-    "dns_treecode": "DNS Transposed",
-    "les_treecode": "LES Transposed",
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {

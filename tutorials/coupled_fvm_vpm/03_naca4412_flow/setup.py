@@ -22,13 +22,19 @@ import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-from openonda.tutorial_support.coupled_fvm_vpm_naca4412_flow.airfoil_geometry import naca4_vertices
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.airfoil_geometry import naca4_vertices
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_DIR = Path(__file__).resolve().parent
 # Physical parameters
 NACA_CODE = "4412"
+N_CHORD = 161  # surface geometry resolution
 ALPHA_DEG = 10.0
 CHORD = 1.0
 SPAN = 5.0
@@ -53,7 +59,7 @@ FVM_LOGGING_INTERVAL_STEPS = round(SAMPLE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
 VPM_LOGGING_INTERVAL_STEPS = round(SAMPLE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
 
-AIRFOIL_VERTICES = naca4_vertices(NACA_CODE, CHORD)
+AIRFOIL_VERTICES = naca4_vertices(NACA_CODE, CHORD, N_CHORD)
 FVM_MESH = partial(msh.coupling_box_mesh, FVM_BOX, SPACING, patch_name="numericalBoundary")
 AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,

@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def wall_normal_coords(height, dy_wall=0.0015, ratio=1.12):
+def wall_normal_coords(height, dy_wall, ratio):
     """Node coordinates from y = 0 with geometric stretching to ``height``."""
     y = [0.0]
     dy = dy_wall
@@ -32,7 +32,7 @@ def wall_normal_coords(height, dy_wall=0.0015, ratio=1.12):
     return np.asarray(y)
 
 
-def plate_coords(x_up=-0.25, plate_length=1.0, n_up=10, n_plate=72):
+def plate_coords(x_up, plate_length, n_up, n_plate):
     """Node coordinates: uniform run-in [x_up, 0], uniform plate [0, L]."""
     up = np.linspace(x_up, 0.0, n_up + 1)
     plate = np.linspace(0.0, plate_length, n_plate + 1)
@@ -40,13 +40,13 @@ def plate_coords(x_up=-0.25, plate_length=1.0, n_up=10, n_plate=72):
 
 
 def flat_plate_mesh(
-    x_up=-0.25,
-    plate_length=1.0,
-    height=0.35,
-    n_up=10,
-    n_plate=72,
-    dy_wall=0.0015,
-    ratio=1.12,
+    x_up,
+    plate_length,
+    height,
+    n_up,
+    n_plate,
+    dy_wall,
+    ratio,
 ):
     """Flat-plate mesh with leading edge at the origin.
 

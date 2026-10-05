@@ -29,7 +29,12 @@ from pathlib import Path
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-from openonda.tutorial_support.vpm_flat_plate.generate_surface import (
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.generate_surface import (
     create_flat_plate,
     save_surface,
 )

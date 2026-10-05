@@ -12,6 +12,7 @@ import importlib
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 import runpy
+import subprocess
 import sys
 from types import ModuleType
 
@@ -39,6 +40,28 @@ def case_package(directory: str | Path) -> str:
     return load_case_module(directory, "").__name__
 
 
+def _run_setup(directory: Path, arguments: list[str]) -> int:
+    """Keep a portable case lock while the setup launches and waits for MPI."""
+    import fcntl
+
+    with (directory / ".openonda-run.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"OpenONDA case is already running: {directory}", file=sys.stderr)
+            return 75
+        with subprocess.Popen(
+            [sys.executable, str(directory / "setup.py"), *arguments], cwd=directory
+        ) as child:
+            while True:
+                try:
+                    return child.wait()
+                except KeyboardInterrupt:
+                    # The child receives the same terminal interrupt. Retain
+                    # ownership until its solver finishes stopping safely.
+                    continue
+
+
 def main(arguments: list[str] | None = None) -> int:
     """Execute a case module with the remaining command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -46,6 +69,8 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("module")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(arguments)
+    if args.module == "setup":
+        return _run_setup(args.directory.resolve(), args.arguments)
     # Register the package without importing the executable module twice.
     parent, _, _ = args.module.rpartition(".")
     package = load_case_module(args.directory, parent)

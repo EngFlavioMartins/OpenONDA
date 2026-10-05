@@ -26,8 +26,13 @@ PRESERVING_RUNS = {
 def _variants():
     for case in CASES:
         for line in (ROOT / case / "allcontinue.sh").read_text().splitlines():
-            if line.startswith("python setup.py"):
-                yield case, [arg for arg in shlex.split(line)[2:] if arg != "$@"]
+            command = shlex.split(line)
+            if command[:1] == ["exec"]:
+                command = command[1:]
+            if command[:2] == ["python", "setup.py"]:
+                yield case, [arg for arg in command[2:] if arg != "$@"]
+            elif command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]:
+                yield case, [arg for arg in command[5:] if arg != "$@"]
 
 
 @pytest.mark.parametrize("relative,arguments", list(_variants()))
@@ -44,7 +49,9 @@ import runpy
 import sys
 import numpy as np
 from openonda import fvm, vpm, coupler
-import openonda.cylinder_campaign as campaign
+from pathlib import Path
+from types import SimpleNamespace
+import source.restart
 class Done(Exception):
     pass
 def selected(value):
@@ -55,6 +62,10 @@ class Driver:
     geo_data = {"cell_centre": np.zeros((1, 3))}
     mesh_data = {"n_cells": 1}
     fvm_solver = None
+    _comm, _is_master = None, True
+    step = 0
+    solution_dir = Path(sys.argv[1]).parent / "solution"
+    parallel = SimpleNamespace(comm=None, is_root=True)
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def run(self, *args, start_from=None, **kwargs): selected(start_from)
@@ -63,10 +74,14 @@ class Driver:
     def write_csv(self, *args, **kwargs): pass
     def set_initial_velocity(self, *args): pass
     def evaluate(self, *args): return 1.0, 1.0
-fvm.create_fvm_solver = lambda *args, **kwargs: Driver()
+def fvm_driver(setup, *args, **kwargs):
+    driver = Driver()
+    driver.setup = driver._resolved_setup = setup
+    return driver
+fvm.create_fvm_solver = fvm_driver
 vpm.VPMSolver = lambda *args, **kwargs: Driver()
 coupler.create_coupler = lambda *args, **kwargs: Driver()
-campaign.initialize_cylinder_perturbation = lambda *args: None
+source.restart.select_backup = lambda selection, **kwargs: selected(selection)
 sys.argv = sys.argv[1:]
 try:
     runpy.run_path(sys.argv[0], run_name="__main__")
@@ -114,10 +129,11 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
             assert continuing_run == fresh_run + ["--resume"]
         else:
             assert fresh_run == continuing_run
-            assert continuing_run[:2] in (
+            command = continuing_run[1:] if continuing_run[:1] == ["exec"] else continuing_run
+            assert command[:2] in (
                 ["python", "setup.py"],
                 ["python", "assets/rwm_ensemble.py"],
-            )
+            ) or command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]
     assert os.access(directory / "allcontinue.sh", os.X_OK)
     tree = ast.parse((directory / "setup.py").read_text())
     assert any(

@@ -1,8 +1,23 @@
 """The span probe must exercise 3D dynamics without violating slip symmetry."""
 
+from pathlib import Path
+
 import numpy as np
 
-from openonda.cylinder_campaign import cylinder_initial_velocity
+from openonda.tutorial_runner import load_case_module
+
+CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+tutorial = load_case_module(CASE)
+initial_velocity = load_case_module(CASE, "assets.startup").cylinder_initial_velocity
+
+
+def cylinder_initial_velocity(positions, span):
+    return initial_velocity(
+        positions,
+        span,
+        **tutorial.INITIAL_PERTURBATION,
+        freestream_velocity=tutorial.FREESTREAM_VELOCITY,
+    )
 
 
 def test_perturbation_is_solenoidal_compact_and_respects_slip_planes():

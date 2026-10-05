@@ -9,13 +9,18 @@ import math
 from pathlib import Path
 import sys
 
-from openonda.cylinder_campaign import collect_cost, compare_profiles, profile_statistics, run_trial
-from openonda.cylinder_case import (
-    DEFAULT_CYLINDER_CASE,
-    new_run_directory,
-    resolve_cylinder_particle_spacing,
+from openonda.tutorial_runner import case_package, load_case_module
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .campaign import (
+    collect_cost,
+    compare_profiles,
+    profile_statistics,
+    run_trial,
 )
-from openonda.tutorial_runner import load_case_module
+from .provenance import new_run_directory
 
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
@@ -36,12 +41,15 @@ FACTORS = {
 def _study_overrides(requested, *, cores=4, compute_device="CPU"):
     """Vary requested factors while keeping independent physical lengths fixed."""
     hxy = 0.08
-    span = float(requested.get("span", DEFAULT_CYLINDER_CASE.resolved_span))
+    module = load_case_module(CASE_DIR)
+    span = float(requested.get("span", module.FVM_RESOLVED_SPAN))
     hp_ratio = float(requested.get("particle_spacing_ratio", 1.0))
-    baseline_hp = resolve_cylinder_particle_spacing(
-        span=DEFAULT_CYLINDER_CASE.resolved_span, hxy=hxy, ratio=1.0
+    baseline = module.build_case(overrides={"hxy": hxy, "particle_spacing_ratio": 1.0})
+    baseline_hp = baseline[1].numerics.viscous.particle_spacing
+    variant = module.build_case(
+        overrides={"hxy": hxy, "span": span, "particle_spacing_ratio": hp_ratio}
     )
-    hp = resolve_cylinder_particle_spacing(span=span, hxy=hxy, ratio=hp_ratio)
+    hp = variant[1].numerics.viscous.particle_spacing
     physical = {
         "core_radius": baseline_hp * float(requested.get("core_radius_ratio", 1.0)),
         "blend_width": baseline_hp * float(requested.get("blend_width_ratio", 6.0)),
@@ -85,7 +93,7 @@ def _select_interaction(candidates, coupled_module):
             }
             overrides, _ = _study_overrides(combined)
             try:
-                coupled_module.build_case(end_time=100.0, overrides=overrides)
+                coupled_module.build_case(overrides=overrides)
             except ValueError as error:
                 rejected.append(
                     {
@@ -101,7 +109,7 @@ def _select_interaction(candidates, coupled_module):
 
 def _screen_steps(max_coupling_steps: int, exchange_dt: float) -> tuple[int, float]:
     """Convert the baseline-clock screen budget to a variant step count."""
-    physical_time = 0.04 * max_coupling_steps
+    physical_time = load_case_module(CASE_DIR).VPM_TIME_STEP_SIZE * max_coupling_steps
     requested_steps = physical_time / exchange_dt
     rounded_steps = round(requested_steps)
     if not math.isclose(requested_steps, rounded_steps, rel_tol=0.0, abs_tol=1.0e-12):
@@ -143,6 +151,7 @@ def main() -> int:
             "Existing report must use the current openonda-cylinder-sensitivity/3 schema"
         )
     post = load_case_module(Path(__file__).resolve().parent, "postprocess_grid_study")
+    coupled_module = load_case_module(CASE_DIR)
     variants = [("baseline", {}, "baseline")]
     for factor in FACTORS if args.factor == "all" else (args.factor,):
         variants.extend(
@@ -150,7 +159,7 @@ def main() -> int:
         )
     records = []
     rejected_interactions = []
-    screen_physical_time = 0.04 * args.max_coupling_steps
+    screen_physical_time = coupled_module.VPM_TIME_STEP_SIZE * args.max_coupling_steps
     independent_count = len(variants)
     for label, override, factor_name in variants:
         run_dir = root / label
@@ -175,8 +184,8 @@ def main() -> int:
             "overrides": values,
             **run_trial(command, root / "logs" / label, cwd=CASE_DIR, wall_limit=args.timeout),
         }
-        record["cost"] = collect_cost(run_dir)
-        physical_duration = screen_physical_time if args.screen else 100.0
+        record["cost"] = collect_cost(run_dir, statistics_start=coupled_module.STATISTICS_START)
+        physical_duration = screen_physical_time if args.screen else coupled_module.END_TIME
         record["screened_physical_time"] = physical_duration if args.screen else None
         record["screened_exchange_steps"] = screen_steps if args.screen else None
         record["seconds_per_physical_time"] = record["wall_seconds"] / physical_duration
@@ -191,7 +200,9 @@ def main() -> int:
                     paths = list((run_dir / "samples").rglob(name + ".csv"))
                     if len(paths) != 1:
                         raise ValueError(f"expected one {name} profile")
-                    record["profiles"][name] = profile_statistics(paths[0])
+                    record["profiles"][name] = profile_statistics(
+                        paths[0], coupled_module.STATISTICS_START, coupled_module.END_TIME
+                    )
             except ValueError as error:
                 record["qualification_error"] = str(error)
         records.append(record)

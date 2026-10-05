@@ -24,7 +24,7 @@ def test_travel_uses_recorded_motion_and_geometry_without_rewriting_samples(tmp_
     contents = "time,lift_coefficient,drag_coefficient\n0,0,0\n0.5,1,0.1\n1,1,0.1\n"
     raw.write_text(contents)
     (tmp_path / "setup.py").write_text("raise RuntimeError('Do not import changed inputs')\n")
-    (geometry / f"{name}.json").write_text(json.dumps({"refs": {"chord": 2, "span": 8}}))
+    (geometry / f"{name}.json").write_text(json.dumps({"refs": {"chord": 200, "span": 800}}))
     motion = (
         vpm.SmoothRampVLM(final_velocity=[-4, 0, 0], acceleration_time=0.5)
         if moving
@@ -38,7 +38,8 @@ def test_travel_uses_recorded_motion_and_geometry_without_rewriting_samples(tmp_
                     "freestream_velocity": [4, 0, 0],
                     "surfaces": [
                         {
-                            "surface": f"/old/moved/case/assets/surfaces/{name}.json",
+                            "surface": str(geometry / f"{name}.json"),
+                            "geometry": {"refs": {"chord": 2, "span": 8}},
                             "kinematics": _manifest_value(motion),
                         }
                     ],

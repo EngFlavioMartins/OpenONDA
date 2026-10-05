@@ -5,11 +5,15 @@ from pathlib import Path
 import re
 import shlex
 
+from openonda.tutorials import _EXCLUDED_PARTS
+
 TUTORIALS = Path(__file__).resolve().parents[2] / "tutorials"
 
 
 def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_surface():
     for setup in TUTORIALS.rglob("setup*.py"):
+        if any(part in _EXCLUDED_PARTS for part in setup.relative_to(TUTORIALS).parts):
+            continue
         source = setup.read_text()
         tree = ast.parse(source)
         assert not any(
@@ -22,6 +26,8 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
         assert not re.search(r"parents\[[3-9]", source), setup
 
     for script in TUTORIALS.rglob("all*.sh"):
+        if any(part in _EXCLUDED_PARTS for part in script.relative_to(TUTORIALS).parts):
+            continue
         assert script.name in {"allrun.sh", "allplot.sh", "allclean.sh", "allcontinue.sh"}, script
         for line in script.read_text().splitlines():
             if not line or line.startswith("#") or line == "set -e":
@@ -36,9 +42,16 @@ def test_tutorials_keep_configuration_and_infrastructure_out_of_the_learning_sur
                 continue
             if script.name == "allrun.sh" and line in ("./allclean.sh", "./allclean.sh || exit 1"):
                 continue
-            assert line.startswith("python "), (script, line)
             command = shlex.split(line)
+            if command[0] == "exec":
+                command = command[1:]
+            assert command[0] == "python", (script, line)
             assert "||" not in command, (script, line)
+            if command[:3] == ["python", "-m", "openonda.tutorial_runner"]:
+                assert script.name in {"allrun.sh", "allcontinue.sh"}, (script, line)
+                assert command[3:5] == [".", "setup"], (script, line)
+                assert (script.parent / "setup.py").is_file(), script
+                continue
             if script.name == "allplot.sh" and command[:4] == [
                 "python",
                 "-m",

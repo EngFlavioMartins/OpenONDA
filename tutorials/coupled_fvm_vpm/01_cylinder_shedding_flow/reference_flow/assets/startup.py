@@ -7,11 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.cylinder_campaign import initialize_cylinder_perturbation
-from openonda.cylinder_startup import startup_velocity
+from .initial_conditions import initialize_cylinder_perturbation, startup_velocity
 
 
-def _schedule(solver, span, duration, startup, steady, transition_duration=0.0):
+def _schedule(solver, span, duration, startup, steady, transition_duration, perturbation):
     setup = getattr(solver, "_resolved_setup", solver.setup)
     clock = setup.time
     dt = float(clock.time_step_size)
@@ -23,8 +22,10 @@ def _schedule(solver, span, duration, startup, steady, transition_duration=0.0):
         raise ValueError("span must be finite and positive")
     if not np.isfinite(duration) or duration <= 0:
         raise ValueError("startup_duration must be finite and positive")
-    if not np.isfinite(transition_duration) or not 0 <= transition_duration <= duration:
-        raise ValueError("startup_transition_duration must lie between zero and startup_duration")
+    if not np.isfinite(transition_duration) or not 0 < transition_duration <= duration:
+        raise ValueError(
+            "startup_transition_duration must lie greater than zero and at most startup_duration"
+        )
     if clock.start_time != 0 or clock.adjustment is not None:
         raise ValueError("Reference startup requires fixed FVM steps starting at time zero")
     switch = round(duration / dt)
@@ -54,7 +55,7 @@ def _schedule(solver, span, duration, startup, steady, transition_duration=0.0):
                 "Reference startup requires configured lateral slip/zeroGradient boundaries"
             )
     schedule = {
-        "schema": "openonda-reference-cylinder-startup/1",
+        "schema": "openonda-reference-cylinder-startup/2",
         "startup_duration": duration,
         "switch_step": switch,
         "startup_freestream_velocity": startup.tolist(),
@@ -64,15 +65,13 @@ def _schedule(solver, span, duration, startup, steady, transition_duration=0.0):
         "inlet": "fixedValue",
         "lateral_velocity": "startup prescribed normal background/zero tangential gradient; steady slip",
         "lateral_pressure": "zeroGradient",
-        "initial_disturbance": "compact divergence-free 3D curl; amplitude 0.001",
+        "initial_disturbance": f"compact divergence-free 3D curl; amplitude {perturbation['amplitude']:g}",
     }
-    if transition_duration > 0:
-        schedule.update(
-            schema="openonda-reference-cylinder-startup/2",
-            startup_transition_duration=transition_duration,
-            startup_transition_profile="quintic-C2",
-            boundary_time_evaluation="accepted endpoint",
-        )
+    schedule.update(
+        startup_transition_duration=transition_duration,
+        startup_transition_profile="quintic-C2",
+        boundary_time_evaluation="accepted endpoint",
+    )
     return schedule
 
 
@@ -81,10 +80,11 @@ def run_reference_cylinder(
     *,
     span: float,
     start_from="latest",
-    startup_duration: float = 2.0,
-    startup_transition_duration: float = 0.0,
-    startup_freestream_velocity=(1.0, 0.1, 0.0),
-    steady_freestream_velocity=(1.0, 0.0, 0.0),
+    startup_duration: float,
+    startup_transition_duration: float,
+    startup_freestream_velocity,
+    steady_freestream_velocity,
+    perturbation,
 ) -> None:
     """Apply the cylinder trigger while retaining the native FVM run lifecycle.
 
@@ -104,9 +104,7 @@ def run_reference_cylinder(
 
     ``solution/reference_startup.json`` identifies the immutable forcing
     policy; copy it beside an explicitly relocated native backup. End time is
-    excluded so native continuation may extend the physical horizon. Known
-    schema-1 checkpoints retain their original abrupt switch and step timing,
-    even when the current factory requests a smooth policy for new runs.
+    excluded so native continuation may extend the physical horizon.
     """
     from source.restart import select_backup
     from source.simulation.parallel import collective_phase
@@ -118,9 +116,7 @@ def run_reference_cylinder(
         startup_freestream_velocity,
         steady_freestream_velocity,
         startup_transition_duration,
-    )
-    legacy_schedule = _schedule(
-        solver, span, startup_duration, startup_freestream_velocity, steady_freestream_velocity
+        perturbation,
     )
     setup = getattr(solver, "_resolved_setup", solver.setup)
     solution = Path(solver.solution_dir)
@@ -136,7 +132,6 @@ def run_reference_cylinder(
                 start_from, directory=solution, kind="fvm", backup_path=setup.backup.path
             )
             source = metadata if selected is None else selected.parent / metadata.name
-            resuming = selected is not None or in_memory_resume
             if (selected is not None or in_memory_resume) and not source.is_file():
                 raise ValueError(
                     "Reference resume requires its reference_startup.json; "
@@ -153,10 +148,6 @@ def run_reference_cylinder(
                         "Cannot read reference_startup.json; use './allrun.sh --fresh' "
                         "to archive old outputs and start this policy from zero"
                     ) from error
-                # Only an actual continuation may retain a known old policy;
-                # starting fresh must use the explicitly requested policy.
-                if candidate == source and resuming and recorded == legacy_schedule:
-                    admitted = legacy_schedule
                 if recorded != admitted:
                     raise ValueError(
                         "reference_startup.json describes a different forcing policy; "
@@ -179,24 +170,18 @@ def run_reference_cylinder(
     # ordered patch on root and empty arrays on workers; setters scatter it.
     normals = {name: solver.get_boundary_face_normal(name) for name in ("inlet", "ymin", "ymax")}
     previous_background = None
-    smooth = schedule["schema"] == "openonda-reference-cylinder-startup/2"
 
     def update_boundary(*, endpoint=False):
         nonlocal previous_background
-        evaluation_step = solver.step + int(endpoint and smooth)
+        evaluation_step = solver.step + int(endpoint)
         background = np.asarray(
             startup_velocity(
                 evaluation_step * schedule["fvm_time_step"],
                 schedule["startup_duration"],
-                schedule.get("startup_transition_duration", 0.0),
+                schedule["startup_transition_duration"],
                 schedule["startup_freestream_velocity"],
                 schedule["steady_freestream_velocity"],
-            )
-            if smooth
-            else schedule[
-                ("startup" if solver.step < schedule["switch_step"] else "steady")
-                + "_freestream_velocity"
-            ],
+            ),
             dtype=np.float64,
         )
         if previous_background is not None and np.array_equal(previous_background, background):
@@ -227,7 +212,10 @@ def run_reference_cylinder(
     update_boundary()
     if not restored:
         initialize_cylinder_perturbation(
-            solver, span, freestream_velocity=startup_freestream_velocity
+            solver,
+            span,
+            freestream_velocity=startup_freestream_velocity,
+            perturbation=perturbation,
         )
     with collective_phase(comm, "reference startup schedule publication"):
         if root and not metadata.exists():

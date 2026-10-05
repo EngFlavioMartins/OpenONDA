@@ -22,7 +22,12 @@ import numpy as np
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-from openonda.tutorial_support.vpm_quadcopter.generate_blade import create_rotor_blade, save_blade
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.generate_blade import create_rotor_blade, save_blade
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 

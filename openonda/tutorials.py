@@ -99,9 +99,12 @@ _EXCLUDED_PARTS: Final = {
     "samples",
     "figures",
     "study_results",
+    "previous_runs",
+    "drag_recovery",
     "__pycache__",
     ".matplotlib",
     "animation",
+    "frames",
     "results",
 }
 _EXCLUDED_NAMES: Final = {

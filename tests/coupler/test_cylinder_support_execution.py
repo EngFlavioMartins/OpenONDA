@@ -1,21 +1,15 @@
-"""Installed campaign support preserves local physical factories and lifecycle."""
+"""Tutorial-owned configuration preserves its physical factory and lifecycle."""
 
-from dataclasses import FrozenInstanceError, asdict
+from dataclasses import asdict
 from pathlib import Path
-from types import SimpleNamespace
 
-import pytest
-
-from openonda import cylinder_campaign
-import openonda.coupler as coupling
-from openonda.cylinder_case import resolve_cylinder_variant
 from openonda.tutorial_runner import load_case_module
 
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 
 
 def test_native_configuration_matches_selected_reference_physics_and_schedules():
-    """The selected ordinary run must match the reference, not the old campaign."""
+    """The selected ordinary run and reference share declared physical inputs."""
     setup = load_case_module(CASE)
     reference = load_case_module(CASE / "reference_flow")
     flow, particles, policy, mesh = setup.build_case()
@@ -30,98 +24,6 @@ def test_native_configuration_matches_selected_reference_physics_and_schedules()
     assert policy.backup_interval_steps == 25
     assert flow.samplers[0].schedule.every_n_steps == 5
     assert particles.samplers.samples[0].schedule.interval == 1
-
-
-def test_resolved_campaign_inputs_are_immutable():
-    inputs = resolve_cylinder_variant(
-        {"interface_iterations": 4},
-        hxy=0.08,
-        span=0.96,
-        exchange_dt=0.04,
-        cores=4,
-        particle_limit=400000,
-        end_time=0.8,
-        fvm_time_step=0.01,
-    )
-    with pytest.raises(FrozenInstanceError):
-        inputs.hxy = 0.1
-    with pytest.raises(TypeError):
-        inputs.coupler_overrides["interface_iterations"] = 2
-
-
-@pytest.mark.parametrize(
-    "start_from,explicit", [("latest", False), ("initial", False), ("latest", True)]
-)
-def test_execution_helper_uses_local_factory_and_native_selection(
-    tmp_path, monkeypatch, start_from, explicit
-):
-    calls = []
-    flow, policy, mesh = object(), object(), object()
-    particles = SimpleNamespace(
-        numerics=SimpleNamespace(induction=SimpleNamespace(z_min=-0.48, z_max=0.48))
-    )
-    restart = tmp_path / "native-backup" if explicit else None
-    overrides = {"hxy": 0.08}
-
-    def local_factory(**kwargs):
-        calls.append(("build", kwargs))
-        return flow, particles, policy, mesh
-
-    class Solver:
-        fvm_solver = object()
-
-        def __enter__(self):
-            calls.append(("enter",))
-            return self
-
-        def __exit__(self, *args):
-            calls.append(("exit",))
-
-        def initialize(self):
-            calls.append(("initialize",))
-
-        def run(self, **kwargs):
-            calls.append(("run", kwargs))
-            return 2
-
-    solver = Solver()
-
-    def create(*args, **kwargs):
-        assert args == (flow, particles, policy)
-        assert kwargs == {"mesh": mesh, "case_dir": tmp_path}
-        return solver
-
-    monkeypatch.setattr(coupling, "create_coupler", create)
-    monkeypatch.setattr(
-        cylinder_campaign,
-        "initialize_cylinder_perturbation",
-        lambda fvm, span: calls.append(("perturb", fvm, span)),
-    )
-    assert (
-        cylinder_campaign.run_coupled_cylinder(
-            local_factory,
-            start_from=start_from,
-            output_root=tmp_path,
-            end_time=0.8,
-            restart_from=restart,
-            max_coupling_steps=2,
-            overrides=overrides,
-        )
-        == 2
-    )
-    assert calls[0] == ("build", {"end_time": 0.8, "overrides": overrides})
-    assert calls[-1] == ("exit",)
-    run = next(item[1] for item in calls if item[0] == "run")
-    assert run == {
-        "restart_from": restart,
-        "start_from": None if explicit else start_from,
-        "max_coupling_steps": 2,
-        "backup_at_stop": True,
-    }
-    assert any(item[0] == "initialize" for item in calls) is not explicit
-    assert any(item[0] == "perturb" for item in calls) is not explicit
-    if not explicit:
-        assert next(item for item in calls if item[0] == "perturb")[1:] == (solver.fvm_solver, 0.96)
 
 
 def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path, monkeypatch):
@@ -156,6 +58,7 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         "startup_duration": setup.STARTUP_DURATION,
         "startup_transition_duration": setup.STARTUP_TRANSITION_DURATION,
         "steady_freestream_velocity": setup.FREESTREAM_VELOCITY,
+        "perturbation": setup.INITIAL_PERTURBATION,
     }
     resolved = tuple(object() for _ in range(4))
     monkeypatch.setattr(setup, "build_case", lambda **kwargs: resolved)

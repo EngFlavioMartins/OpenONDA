@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 cd -- "$(dirname -- "$0")"
 
-exec ./allrun.sh "$@"
+python -m openonda.tutorial_runner . setup "$@"

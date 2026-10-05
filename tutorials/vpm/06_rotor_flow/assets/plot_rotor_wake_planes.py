@@ -27,7 +27,6 @@ from ._common import (
     OPERATING_WINDOW_REVOLUTIONS,
     SIGNAL_ONSET_PERSISTENCE_FRAMES,
     SIGNAL_ONSET_RELATIVE_THRESHOLD,
-    WAKE_PLANE_DIAMETERS,
     bem_reference,
     build_arg_parser,
     rotor_inputs,
@@ -487,26 +486,14 @@ def native_plane_windows(
     if require_complete:
         station_radius = getattr(p, "station_radius", p.rotor_radius)
         stations = {row["name"]: row["points"][0, 0] / (2 * station_radius) for row in records}
-        if required_names is None:
-            # Current metadata declares the actual station origins. Older
-            # fixtures/records without origins retain the legacy 1D/2D check.
-            expected_stations = (
-                {round(float(item["point"][0]) / (2 * station_radius), 6) for item in declared}
-                if all("point" in item for item in declared)
-                else {1.0, 2.0}
-            )
-            if (
-                len(stations) != len(expected_stations)
-                or set(np.round(np.asarray(tuple(stations.values())), 6)) != expected_stations
-            ):
-                raise ValueError("Rotor series has unexpected declared plane stations")
-        else:
-            expected = {f"wake_{distance}D": distance for distance in WAKE_PLANE_DIAMETERS}
-            if set(stations) != set(required_names) or any(
-                not np.isclose(stations[name], expected.get(name, np.nan), rtol=0, atol=1e-6)
-                for name in required_names
-            ):
-                raise ValueError("Rotor validation requires the configured native plane stations")
+        expected_stations = {
+            item["file_name"]: float(item["point"][0]) / (2 * station_radius) for item in declared
+        }
+        if set(stations) != set(expected_stations) or any(
+            not np.isclose(stations[name], expected_stations[name], rtol=0, atol=1e-6)
+            for name in expected_stations
+        ):
+            raise ValueError("Rotor series has unexpected declared plane stations")
     return records
 
 

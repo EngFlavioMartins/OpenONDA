@@ -31,15 +31,30 @@ def test_default_launchers_run_one_local_case_and_preserve_outputs(tmp_path, arg
     history.write_text("historical")
     subprocess.run(
         ["bash", str(tmp_path / "allcontinue.sh"), *arguments],
-        cwd="/tmp", env=environment, check=True
+        cwd="/tmp",
+        env=environment,
+        check=True,
     )
     assert current.read_text() == "checkpoint"
-    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", *arguments]
-    subprocess.run(["bash", str(tmp_path / "allrun.sh"), *arguments],
-                   cwd="/tmp", env=environment, check=True)
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == [
+        "-m",
+        "openonda.tutorial_runner",
+        ".",
+        "setup",
+        *arguments,
+    ]
+    subprocess.run(
+        ["bash", str(tmp_path / "allrun.sh"), *arguments], cwd="/tmp", env=environment, check=True
+    )
     assert current.read_text() == "checkpoint"
     assert history.read_text() == "historical"
-    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", *arguments]
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == [
+        "-m",
+        "openonda.tutorial_runner",
+        ".",
+        "setup",
+        *arguments,
+    ]
 
 
 def test_reference_launcher_selects_one_mesh_and_preserves_outputs(tmp_path):
@@ -53,7 +68,12 @@ def test_reference_launcher_selects_one_mesh_and_preserves_outputs(tmp_path):
     environment = {**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]}
     subprocess.run(["bash", str(tmp_path / "allrun.sh")], env=environment, check=True)
     assert checkpoint.read_text() == "checkpoint"
-    assert (tmp_path / "invocation.txt").read_text().splitlines() == ["setup.py", "-h", "0.04"]
+    assert (tmp_path / "invocation.txt").read_text().splitlines() == [
+        "-m",
+        "openonda.tutorial_runner",
+        ".",
+        "setup",
+    ]
 
 
 def test_reference_default_factory_uses_plain_case_directories(monkeypatch):
@@ -71,7 +91,9 @@ def test_reference_default_factory_uses_plain_case_directories(monkeypatch):
 
 
 def campaign(monkeypatch):
-    module = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_campaign")
+    module = load_case_module(
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_campaign"
+    )
     monkeypatch.setattr(module, "_collective_preflight", lambda action: action())
     monkeypatch.setattr(module, "_collective_root_action", lambda action: action())
     monkeypatch.setattr(module, "_collective_barrier", lambda: None)
@@ -122,10 +144,12 @@ def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path
     launcher.run_reference(options, tmp_path)
     assert calls == [{"start_from": "latest"}, {"start_from": "latest"}]
     assert [kwargs["solution_dir"] for _, kwargs in created] == [
-        tmp_path / "solution/grid", tmp_path / "solution/fine"
+        tmp_path / "solution/grid",
+        tmp_path / "solution/fine",
     ]
     assert [kwargs["samples_dir"] for _, kwargs in created] == [
-        tmp_path / "samples/grid", tmp_path / "samples/fine"
+        tmp_path / "samples/grid",
+        tmp_path / "samples/fine",
     ]
 
 
@@ -222,7 +246,9 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
 
 @pytest.mark.parametrize("format", ["png", "pdf"])
 def test_synthetic_campaign_plots_pass_thesis_contract(tmp_path, format):
-    pipeline = load_case_module(Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_pipeline")
+    pipeline = load_case_module(
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_pipeline"
+    )
     rows = [
         {
             "h": h,

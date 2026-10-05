@@ -27,7 +27,6 @@ import sys
 import numpy as np
 
 import openonda.coupler as coupling
-from openonda.cylinder_campaign import positive_coupling_steps
 import openonda.fvm as fvm
 import openonda.vpm as vpm
 from source.restart import select_backup
@@ -38,6 +37,16 @@ SPAN = 0.96
 H = 0.04
 FVM_DT = 0.008
 EXCHANGE_DT = 0.04
+
+
+def _positive_integer(value):
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if result < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return result
 
 
 def planar_initial_velocity(positions, *, transverse_speed, amplitude=1.0e-3):
@@ -298,9 +307,9 @@ def main(argv=None):
     parser.add_argument("--trigger-velocity", type=float, default=0.1)
     parser.add_argument("--trigger-duration", type=float, default=2.0)
     parser.add_argument("--device", choices=("CPU", "CUDA"), default="CPU")
-    parser.add_argument("--cores", type=positive_coupling_steps, default=1)
-    parser.add_argument("--particle-limit", type=positive_coupling_steps, default=200_000)
-    parser.add_argument("--max-coupling-steps", type=positive_coupling_steps)
+    parser.add_argument("--cores", type=_positive_integer, default=1)
+    parser.add_argument("--particle-limit", type=_positive_integer, default=200_000)
+    parser.add_argument("--max-coupling-steps", type=_positive_integer)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--baseline-renewal",

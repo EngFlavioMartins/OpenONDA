@@ -18,7 +18,7 @@ from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_su
 def create_flat_plate_vertices(
     chord: float,
     half_span: float,
-    angle_of_attack_degrees: float = 0.0,
+    angle_of_attack_degrees: float,
 ) -> dict:
     """
     Create vertex_position for a flat rectangular plate at angle of attack.
@@ -80,11 +80,11 @@ def create_flat_plate_vertices(
 
 
 def create_flat_plate(
-    chord: float = 0.5,
-    span: float = 1.0,
-    angle_of_attack_degrees: float = 0.0,
-    n_chordwise_panels: int = 8,
-    n_spanwise_panels: int = 20,
+    chord: float,
+    span: float,
+    angle_of_attack_degrees: float,
+    n_chordwise_panels: int,
+    n_spanwise_panels: int,
 ) -> Aircraft:
     """
     Create a flat rectangular plate aircraft geometry.

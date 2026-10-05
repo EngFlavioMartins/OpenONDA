@@ -20,7 +20,7 @@ def create_delta_wing_vertices(
     tip_chord: float,
     half_span: float,
     sweep_angle_degrees: float,
-    angle_of_attack_degrees: float = 0.0,
+    angle_of_attack_degrees: float,
 ) -> dict:
     """
     Create vertex_position for a delta wing (trapezoidal planform) at angle of attack.
@@ -88,13 +88,13 @@ def create_delta_wing_vertices(
 
 
 def create_delta_wing(
-    root_chord: float = 0.5,
-    tip_chord: float = 0.1,
-    half_span: float = 0.5,
-    sweep_angle_degrees: float = 45.0,
-    angle_of_attack_degrees: float = 0.0,
-    n_chordwise_panels: int = 8,
-    n_spanwise_panels: int = 20,
+    root_chord: float,
+    tip_chord: float,
+    half_span: float,
+    sweep_angle_degrees: float,
+    angle_of_attack_degrees: float,
+    n_chordwise_panels: int,
+    n_spanwise_panels: int,
 ) -> Aircraft:
     """
     Create a delta wing aircraft geometry.

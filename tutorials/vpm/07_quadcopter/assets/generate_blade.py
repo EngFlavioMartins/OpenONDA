@@ -12,15 +12,15 @@ from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_su
 
 
 def create_rotor_blade(
-    R_hub: float = 0.03,
-    R_tip: float = 0.15,
-    chord_root: float = 0.025,
-    chord_tip: float = 0.015,
-    pitch_root_deg: float = 12.0,
-    pitch_tip_deg: float = 6.0,
-    n_chord: int = 4,
-    n_span: int = 10,
-    clockwise: bool = False,
+    R_hub: float,
+    R_tip: float,
+    chord_root: float,
+    chord_tip: float,
+    pitch_root_deg: float,
+    pitch_tip_deg: float,
+    n_chord: int,
+    n_span: int,
+    clockwise: bool,
 ) -> Aircraft:
     """
     Create a rotor blade surface as an Aircraft object.
@@ -30,7 +30,7 @@ def create_rotor_blade(
     aircraft = Aircraft(uid="rotor_blade")
     wing = Wing(uid="blade_0", symmetry=0)
 
-    def pitched_vertices(chord, y, pitch_deg, cw=False):
+    def pitched_vertices(chord, y, pitch_deg, cw):
         pitch = np.radians(pitch_deg)
         cos_p = np.cos(pitch)
         sin_p = np.sin(pitch)

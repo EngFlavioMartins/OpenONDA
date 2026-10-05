@@ -67,22 +67,6 @@ def _append_rows(
     os.replace(temporary, path)
 
 
-def vortex_ring_mode_sampler(*, reference_radius: float, schedule) -> RingModeDiagnosticsSampler:
-    """Build this tutorial's fixed-resolution Widnall-mode diagnostic.
-
-    The bin and mode counts are analysis choices for the vortex-ring tutorial,
-    not solver-wide VPM settings.  Keeping them here makes the case setup
-    describe physics and run cadence without embedding post-processing detail.
-    """
-    return RingModeDiagnosticsSampler(
-        max_mode=40,
-        azimuthal_bins=128,
-        reference_radius=reference_radius,
-        transverse_origin=(0.0, 0.0),
-        schedule=schedule,
-    )
-
-
 class RingDiagnosticsSampler:
     """Sample ring motion and vortex strength without writing a particle backup."""
 
@@ -178,9 +162,9 @@ class RingModeDiagnosticsSampler:
     def __init__(
         self,
         *,
-        max_mode: int = 40,
-        azimuthal_bins: int = 128,
-        reference_radius: float = 1.0,
+        max_mode: int,
+        azimuthal_bins: int,
+        reference_radius: float,
         transverse_origin: tuple[float, float] | None = None,
         schedule=None,
     ) -> None:

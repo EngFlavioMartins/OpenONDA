@@ -5,13 +5,15 @@ from pathlib import Path
 import numpy as np
 
 
-def create_airfoil_surface(path: Path, chord: float, depth: float, chord_count: int = 80) -> Path:
+def create_airfoil_surface(
+    path: Path, chord: float, depth: float, chord_count: int, thickness_ratio: float
+) -> Path:
     """Write a closed, finite-span NACA 0012 surface."""
 
     x_values = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, chord_count + 1)))
     thickness_values = (
         5.0
-        * 0.12
+        * thickness_ratio
         * (
             0.2969 * np.sqrt(x_values)
             - 0.1260 * x_values

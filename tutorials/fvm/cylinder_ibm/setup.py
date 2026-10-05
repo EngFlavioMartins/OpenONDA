@@ -13,7 +13,12 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 
-from openonda.tutorial_support.fvm_cylinder_ibm.mesh_rectilinear import cylinder_ibm_mesh
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.mesh_rectilinear import cylinder_ibm_mesh
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -26,6 +31,11 @@ REYNOLDS_NUMBER = 30.0
 FINAL_TIME = 60.0  # [s]
 
 # Mesh and IBM markers
+X_BOUNDS = (-8.0, 16.0)  # domain bounds [m]
+Y_BOUNDS = (-8.0, 8.0)
+CORE_X = (-1.5, 3.0)  # uniform core bounds / diameter
+CORE_Y = (-1.5, 1.5)
+MESH_STRETCHING = 1.10
 SPACING = 0.0625  # uniform grid spacing next to the cylinder [m]
 MARKER_ALPHA = 1.0  # marker spacing / grid spacing ratio
 
@@ -91,7 +101,16 @@ def main() -> None:
     max_time_step_size = min(MAX_TIME_STEP_SIZE, fourier_limit)
     time_step_size = min(TIME_STEP_SIZE, fourier_limit)
 
-    mesh = partial(cylinder_ibm_mesh, grid_spacing=SPACING, diameter=DIAMETER)
+    mesh = partial(
+        cylinder_ibm_mesh,
+        grid_spacing=SPACING,
+        diameter=DIAMETER,
+        x_bounds=X_BOUNDS,
+        y_bounds=Y_BOUNDS,
+        core_x=CORE_X,
+        core_y=CORE_Y,
+        ratio=MESH_STRETCHING,
+    )
     depth = SPACING
 
     fvm_setup = create_fvm_setup(

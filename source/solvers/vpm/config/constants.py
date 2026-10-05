@@ -42,11 +42,6 @@ import taichi as ti
 NP_FLOAT = np.float32  # NumPy float type (for all numpy arrays)
 TI_FLOAT = ti.f32  # Taichi float type (for all Taichi fields)
 
-# PERIODIC BOX PROPERTIES
-BOX_SIZE = 2 * PI
-BOX_MAX = 2 * PI
-BOX_MIN = 0.0
-
 # Default hard particle capacity
 MAX_N_PARTICLES = 500000
 
@@ -61,12 +56,6 @@ DEFAULT_TIME_STEP = 0.01
 
 # Default cutoff radius factor for particle interactions
 DEFAULT_CUTOFF_RADIUS_FACTOR = 100
-
-# Default core radius [m]
-DEFAULT_CORE_RADIUS = 0.05
-
-# Default particle volume [m³]
-DEFAULT_PARTICLE_VOLUME = 1e-3
 
 # Gaussian q uses its integrated series below this radius to avoid
 # small-radius cancellation. Host, direct/FMM and LBVH share the coefficients
@@ -131,13 +120,6 @@ VLM_SMALL_VELOCITY = 1e-10
 LARGE_DOMAIN_SIZE = 1e6
 
 THREADS_PER_BLOCK = 256
-
-# PERIODIC KERNEL PARAMETERS
-# Default box width for periodic boundary conditions
-BOX_WIDTH = BOX_SIZE  # Must match DEFAULT_DOMAIN_BOUNDS
-
-# Number of periodic images considered in calculations
-MAX_IMAGES = 3
 
 # DEBUGGING AND DEVELOPMENT
 

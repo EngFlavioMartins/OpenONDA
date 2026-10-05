@@ -58,8 +58,7 @@ def test_installer_rejects_unsupported_interpreter_before_pip(
     assert "requires CPython 3.11" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("dev", [False, True])
-def test_installer_runs_install_check_and_isolated_verification(monkeypatch, dev):
+def test_installer_runs_install_check_and_isolated_verification(monkeypatch):
     calls = []
 
     def run(command, *, cwd, check):
@@ -70,7 +69,7 @@ def test_installer_runs_install_check_and_isolated_verification(monkeypatch, dev
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(install.subprocess, "run", run)
-    assert install.main(["--dev"] if dev else []) == 0
+    assert install.main([]) == 0
     assert calls[0][:4] == [install.sys.executable, "-m", "pip", "install"]
     assert calls[0][4:] == ["-e", f"{ROOT}[dev]"]
     assert calls[1] == [install.sys.executable, "-m", "pip", "check"]

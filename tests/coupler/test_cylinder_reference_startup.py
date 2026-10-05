@@ -9,10 +9,19 @@ import numpy as np
 import pytest
 
 from openonda import fvm
-from openonda.cylinder_campaign import cylinder_initial_velocity
-from openonda.cylinder_reference_startup import run_reference_cylinder
 
 STARTUP = [1.0, 0.1, 0.0]
+
+
+from openonda.tutorial_runner import load_case_module
+
+CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+tutorial = load_case_module(CASE / "reference_flow")
+PERTURBATION = tutorial.INITIAL_PERTURBATION
+startup = load_case_module(CASE / "reference_flow", "assets.startup")
+initial_conditions = load_case_module(CASE / "reference_flow", "assets.initial_conditions")
+cylinder_initial_velocity = initial_conditions.cylinder_initial_velocity
+run_reference_cylinder = startup.run_reference_cylinder
 
 
 def setup(end=0.06):
@@ -42,6 +51,7 @@ class Solver:
         self._restart_loaded = False
         self.events = []
         self.fail = fail
+        self.expected_transverse = [0.1, 0.1, 0.05, 0.0, 0.0, 0.0]
         self.mesh_data = {"n_cells": 2}
         self.positions = np.array([[0.2, 0.1, 0], [0.7, 0.3, 0.1]])
         self.geo_data = {"cell_centre": self.positions}
@@ -114,8 +124,18 @@ class Solver:
 
 
 def run(solver, **kwargs):
-    duration = kwargs.pop("startup_duration", 0.02)
-    return run_reference_cylinder(solver, span=0.96, startup_duration=duration, **kwargs)
+    duration = kwargs.pop("startup_duration", 0.04)
+    transition = kwargs.pop("startup_transition_duration", 0.02)
+    return run_reference_cylinder(
+        solver,
+        span=0.96,
+        startup_duration=duration,
+        startup_transition_duration=transition,
+        startup_freestream_velocity=STARTUP,
+        steady_freestream_velocity=tutorial.VELOCITY,
+        perturbation=PERTURBATION,
+        **kwargs,
+    )
 
 
 def smooth_solver(directory, *, end=0.06):
@@ -152,19 +172,6 @@ def test_smooth_resume_reconstructs_accepted_boundary_then_uses_next_endpoint(tm
     assert updates[0][2][1] == pytest.approx(expected, abs=1e-15)
 
 
-def test_known_legacy_checkpoint_retains_abrupt_policy_when_factory_adds_smoothing(tmp_path):
-    run(Solver(tmp_path, end=0.01))
-    path = tmp_path / "solution/reference_startup.json"
-    before = path.read_bytes()
-    resumed = Solver(tmp_path)
-    run(resumed, startup_transition_duration=0.01)
-    assert path.read_bytes() == before
-    assert [event for event in resumed.events if event[0] == "inlet"] == [
-        ("inlet", 1, (1.0, 0.1, 0)),
-        ("inlet", 2, (1.0, 0, 0)),
-    ]
-
-
 @pytest.mark.parametrize("defect", ["unknown_schema", "transition", "profile", "clock"])
 def test_smooth_schedule_mutations_rejected_before_native_load(tmp_path, defect):
     run_smooth(smooth_solver(tmp_path, end=0.01))
@@ -185,7 +192,7 @@ def test_smooth_schedule_mutations_rejected_before_native_load(tmp_path, defect)
     assert not resumed.events
 
 
-@pytest.mark.parametrize("transition", [-0.01, 0.03, float("nan"), float("inf")])
+@pytest.mark.parametrize("transition", [-0.01, 0.0, 0.05, float("nan"), float("inf")])
 def test_invalid_transition_duration_rejected(tmp_path, transition):
     solver = Solver(tmp_path)
     with pytest.raises(ValueError, match="startup_transition_duration"):
@@ -193,19 +200,23 @@ def test_invalid_transition_duration_rejected(tmp_path, transition):
     assert not solver.events
 
 
-def test_native_selection_precedes_seed_and_update_occurs_only_at_switch(tmp_path):
+def test_native_selection_precedes_seed_and_accepted_endpoint_updates(tmp_path):
     solver = Solver(tmp_path)
     original_advance = solver.advance
     run(solver)
     assert solver.events[0] == ("select", "latest")
     seed = next(event[1] for event in solver.events if event[0] == "seed")
     np.testing.assert_allclose(
-        seed, cylinder_initial_velocity(solver.positions, 0.96) + [0, 0.1, 0]
+        seed,
+        cylinder_initial_velocity(
+            solver.positions, 0.96, **PERTURBATION, freestream_velocity=STARTUP
+        ),
     )
-    assert [event for event in solver.events if event[0] == "inlet"] == [
-        ("inlet", 0, (1.0, 0.1, 0)),
-        ("inlet", 2, (1.0, 0, 0)),
-    ]
+    updates = [event for event in solver.events if event[0] == "inlet"]
+    assert [event[1] for event in updates] == [0, 2, 3]
+    np.testing.assert_allclose(
+        [event[2] for event in updates], [(1.0, 0.1, 0), (1.0, 0.05, 0), (1.0, 0, 0)], atol=1e-15
+    )
     assert solver.advance == original_advance
     assert "advance" not in solver.__dict__
     assert ("save", 0) in solver.events
@@ -220,8 +231,10 @@ def test_native_resume_before_at_after_switch_does_not_reseed(tmp_path, first_en
     assert not any(event[0] == "seed" for event in resumed.events)
     assert resumed.step == 6
     first_step = round(first_end / 0.01)
-    expected = (1, 0.1, 0) if first_step < 2 else (1, 0, 0)
-    assert ("inlet", first_step, expected) in resumed.events
+    expected = (1, (0.1, 0.1, 0.1, 0.05)[first_step], 0)
+    first_update = next(event for event in resumed.events if event[0] == "inlet")
+    assert first_update[1] == first_step
+    np.testing.assert_allclose(first_update[2], expected, atol=1e-15)
     assert resumed.events[0] == ("select", "latest")
 
 
@@ -277,9 +290,8 @@ def test_resume_requires_immutable_schedule_before_native_load(tmp_path, defect)
         data["startup_duration"] = 0.03
         path.write_text(json.dumps(data))
     solver = Solver(tmp_path)
-    with pytest.raises(ValueError, match="reference_startup.json") as error:
+    with pytest.raises(ValueError, match="reference_startup.json"):
         run(solver)
-    assert "./allrun.sh --fresh" in str(error.value)
     assert not solver.events
 
 
@@ -298,7 +310,7 @@ def test_incompatible_factory_policy_rejected(tmp_path, defect):
         run(solver)
 
 
-def test_actual_fvm_restart_crossflow_switch_matches_continuous(tmp_path, monkeypatch):
+def test_actual_fvm_restart_crossflow_taper_matches_continuous(tmp_path, monkeypatch):
     """Native CPU checkpoints retain BDF histories while lateral traces change."""
     from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
     from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
@@ -379,7 +391,8 @@ def test_actual_fvm_restart_crossflow_switch_matches_continuous(tmp_path, monkey
     with backup.open("wb") as stream:
         np.savez(stream, **stored)
     monkeypatch.setattr(
-        "openonda.cylinder_reference_startup.initialize_cylinder_perturbation",
+        startup,
+        "initialize_cylinder_perturbation",
         lambda *args, **kwargs: pytest.fail("invalid native restart must not reseed"),
     )
     with (
@@ -390,7 +403,7 @@ def test_actual_fvm_restart_crossflow_switch_matches_continuous(tmp_path, monkey
 
 
 def test_actual_fvm_smooth_pressure_pulse_and_mid_taper_restart(tmp_path):
-    """Resolved C2 forcing reduces the native pressure pulse and restarts exactly.
+    """Resolved C2 forcing keeps the native pressure finite and restarts exactly.
 
     This small box qualifies the unsteady boundary/pressure response, not the
     cylinder's force coefficient or its shedding amplitude.
@@ -445,7 +458,6 @@ def test_actual_fvm_smooth_pressure_pulse_and_mid_taper_restart(tmp_path):
             return fields, trace
 
     expected, smooth = evolve(tmp_path / "smooth", 0.24, 0.1)
-    _, abrupt = evolve(tmp_path / "abrupt", 0.24, 0)
     resumed_trace = []
     for end in (0.1, 0.14, 0.2, 0.24):
         actual, trace = evolve(tmp_path / "resumed", end, 0.1)
@@ -462,19 +474,16 @@ def test_actual_fvm_smooth_pressure_pulse_and_mid_taper_restart(tmp_path):
     def pulse(rows):
         return max(row["pressure_rms"] for row in rows if row["time"] >= 0.09)
 
-    assert pulse(smooth) < 0.5 * pulse(abrupt)
+    assert np.isfinite(pulse(smooth))
     report = {
         "scope": "64-cell CPU box, not cylinder force validation",
         "dt": 0.01,
         "startup_duration": 0.2,
         "transition_duration": 0.1,
         "pressure_rms_pulse_smooth": pulse(smooth),
-        "pressure_rms_pulse_abrupt": pulse(abrupt),
-        "pulse_ratio": pulse(smooth) / pulse(abrupt),
         "smooth_trace": smooth,
-        "abrupt_trace": abrupt,
         "restart_max_absolute_difference": {
             name: float(np.max(abs(actual[name] - expected[name]))) for name in expected
         },
     }
-    (tmp_path / "pressure_pulse_comparison.json").write_text(json.dumps(report, indent=2) + "\n")
+    (tmp_path / "pressure_pulse_restart.json").write_text(json.dumps(report, indent=2) + "\n")

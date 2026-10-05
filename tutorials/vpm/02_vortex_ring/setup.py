@@ -16,9 +16,14 @@ import numpy as np
 
 import openonda.vpm as vpm
 
-from openonda.tutorial_support.vpm_vortex_ring.ring_diagnostics import (
+from openonda.tutorial_runner import case_package
+
+if not __package__:
+    __package__ = case_package(Path(__file__).resolve().parent)
+
+from .assets.ring_diagnostics import (
     RingDiagnosticsSampler,
-    vortex_ring_mode_sampler,
+    RingModeDiagnosticsSampler,
 )
 
 
@@ -41,6 +46,8 @@ MAX_N_PARTICLES = 100_000
 
 # Perturbation and model controls
 WIDNALL_MODES = 24
+DIAGNOSTIC_MAX_MODE = 40
+DIAGNOSTIC_AZIMUTHAL_BINS = 128
 DEFAULT_WIDNALL_AMPLITUDE = 0.005
 TOROIDAL_TAIL_FRACTION = 0.05
 RANDOM_SEED = 42
@@ -138,7 +145,10 @@ def build_case(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps), initial=True),
                 RingDiagnosticsSampler(schedule=vpm.EverySteps(sample_steps)),
-                vortex_ring_mode_sampler(
+                RingModeDiagnosticsSampler(
+                    max_mode=DIAGNOSTIC_MAX_MODE,
+                    azimuthal_bins=DIAGNOSTIC_AZIMUTHAL_BINS,
+                    transverse_origin=(0.0, 0.0),
                     reference_radius=RING_RADIUS,
                     schedule=vpm.EverySteps(sample_steps),
                 ),
