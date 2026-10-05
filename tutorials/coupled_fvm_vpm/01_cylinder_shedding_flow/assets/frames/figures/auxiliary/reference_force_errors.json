@@ -1,0 +1,53 @@
+{
+  "reference": "reference_flow/samples",
+  "reference_scope": "single-mesh comparison; not a grid-independence claim",
+  "time_interval": [
+    0.04,
+    41.04000000000038
+  ],
+  "errors": {
+    "drag_coefficient": {
+      "rms": 0.1710538113539565,
+      "maximum": 3.657999014962008
+    },
+    "lift_coefficient": {
+      "rms": 0.3284526611612115,
+      "maximum": 7.5792312982504555
+    }
+  },
+  "display_only_startup_omission": {
+    "enabled": true,
+    "column": "lift_coefficient",
+    "source": "coupled",
+    "reason": "isolated pressure impulse from the original abrupt transverse-velocity switch",
+    "recorded_startup_schema": "openonda-cylinder-startup/1",
+    "open_display_gap_seconds": [
+      2.0,
+      2.08
+    ],
+    "omitted_native_time": 2.0400000000000014,
+    "omitted_native_lift_coefficient": -7.576140283760505,
+    "omitted_common_grid_times": [
+      2.0400000000000014
+    ],
+    "raw_history_modified": false,
+    "error_statistics_include_omitted_sample": true,
+    "restoration_option": "--include-startup-impulse"
+  },
+  "available_time_intervals": {
+    "coupled": [
+      0.04,
+      41.04000000000038
+    ],
+    "reference": [
+      0.0,
+      99.99999999998808
+    ]
+  },
+  "comparison_time_interval": [
+    0.04,
+    41.04000000000038
+  ],
+  "time_alignment": "piecewise-linear interpolation on the common interval; no time shift",
+  "scope": "available samples only; not a completion, periodicity or phase-convergence claim"
+}

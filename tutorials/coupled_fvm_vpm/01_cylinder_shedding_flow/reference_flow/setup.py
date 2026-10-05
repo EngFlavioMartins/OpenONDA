@@ -37,6 +37,7 @@ WAKE = (-2.5, 12.0, -2.5, 2.5)
 # Time, output and sampling
 DEFAULT_NAME = "phase_h004"
 DEFAULT_H = 0.04
+GRID_SPACINGS = (0.09, 0.06, DEFAULT_H)  # Refine only the in-plane mesh, by 1.5.
 CORES = 1
 END_TIME = 100.0
 STATISTICS_START = 40.0

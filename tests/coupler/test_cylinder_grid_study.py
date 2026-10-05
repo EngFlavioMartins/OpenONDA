@@ -50,7 +50,7 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
     assert captured["samples_dir"] == CASE / "samples"
 
     config = captured["config"]
-    assert config.cores == 6
+    assert config.cores == 1
     assert config.time.end_time == 100.0
     assert config.time.adjustment is None
     assert config.time.time_step_size == 0.008
@@ -70,6 +70,40 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
         "midspan",
     }
     assert samplers["forces_history"].schedule.every_n_steps * config.time.time_step_size == 0.04
+
+
+@pytest.mark.parametrize("h", load_setup().GRID_SPACINGS)
+def test_reference_grid_family_refines_xy_only_with_matching_startup(h):
+    module = load_setup()
+    config, mesh = module.build_case("grid", h)
+    assert config.cores == 1
+    assert mesh.domain.bounds == module.DOMAIN
+    assert mesh.levels == (-0.5, 0.5)
+    assert mesh.effective_cell_size(mesh.source.patch_refinements[0].cell_size) == pytest.approx(h)
+    patches = {patch.name: patch for patch in config.boundaries}
+    for name, neighbour in (("zmin", "zmax"), ("zmax", "zmin")):
+        assert patches[name].velocity_type == patches[name].pressure_type == "cyclic"
+        assert patches[name].neighbour_patch == neighbour
+    force = next(sample for sample in config.samplers if sample.file_name == "forces_history")
+    assert force.reference_area == force.reference_velocity == 1.0
+    for boundary in config.velocity_boundaries:
+        ramp = boundary.velocity
+        assert ramp.start_time == 1.0 and ramp.end_time == 2.0
+        assert ramp.initial == (1.0, 0.1, 0.0) and ramp.final == (1.0, 0.0, 0.0)
+
+
+def test_reference_study_defaults_to_three_grids_including_the_production_spacing():
+    from tests.support.cylinder import run_parameter_study
+
+    reference = load_setup()
+    grids = run_parameter_study.selected_grids(SimpleNamespace(grid=None, pilot=False))
+    assert len(grids) == 3
+    assert [h for _, h in grids] == list(reference.GRID_SPACINGS)
+    assert grids[-1][1] == reference.DEFAULT_H
+    assert all(name.startswith("grid_h") for name, _ in grids)
+    ratios = np.array(reference.GRID_SPACINGS[:-1]) / reference.GRID_SPACINGS[1:]
+    np.testing.assert_allclose(ratios, 1.5)
+    assert run_parameter_study.selected_grids(SimpleNamespace(grid=None, pilot=True)) == grids[:1]
 
 
 def test_allrun_dispatches_single_grid_from_an_isolated_copy(tmp_path):

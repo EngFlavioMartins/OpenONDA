@@ -158,7 +158,10 @@ def selected_grids(options: argparse.Namespace) -> list[tuple[str, float]]:
             values.append((name, float(spacing)))
         return values
     module = load_case_module(REFERENCE_DIR)
-    grids = [(module.DEFAULT_NAME, module.DEFAULT_H)]
+    grids = [
+        ("grid_h" + format(spacing, ".8g").replace(".", "p"), spacing)
+        for spacing in module.GRID_SPACINGS
+    ]
     return grids[:1] if options.pilot else grids
 
 
@@ -245,7 +248,7 @@ def _grid_config(
         "span_layers": 1,
         "dz": float(module.SPAN),
         "end_time": float(end_time),
-        "cores": getattr(module, "CORES", 6) if cores is None else cores,
+        "cores": module.CORES if cores is None else cores,
         "fvm_time_step": float(module.TIME_STEP_SIZE),
         "source_hash": file_hash(REFERENCE_DIR / "setup.py"),
         "geometry_hash": file_hash(REFERENCE_DIR / "assets" / "cylinder_long.stl"),

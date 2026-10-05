@@ -27,10 +27,17 @@ def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, mon
 
     monkeypatch.setattr(module, "collect_cost", collect_cost)
     actual_case = module.load_case_module(module.CASE_DIR)
+    reference_case = module.load_case_module(module.CASE_DIR / "reference_flow")
     monkeypatch.setattr(
         module,
         "load_case_module",
-        lambda directory, *args: actual_case if directory == module.CASE_DIR else object(),
+        lambda directory, *args: (
+            actual_case
+            if directory == module.CASE_DIR
+            else reference_case
+            if directory == module.CASE_DIR / "reference_flow"
+            else object()
+        ),
     )
     mode = (
         ["--pilot", "--sensitivity", "none", "--reference-cores", "1"]
@@ -61,7 +68,7 @@ def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, mon
             command for command in calls if command[command.index("--kind") + 1] == "reference"
         )
         assert reference[reference.index("--reference-cores") + 1] == "1"
-        assert cost_roots[0] == tmp_path / "run/reference/solution/grid_h0p1"
+        assert cost_roots[0] == tmp_path / "run/reference/solution/grid_h0p09"
 
 
 def test_reference_factory_accepts_serial_execution_without_mpi_allocation(monkeypatch):

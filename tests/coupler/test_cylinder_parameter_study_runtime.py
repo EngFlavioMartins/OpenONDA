@@ -123,7 +123,8 @@ def test_solver_comparison_uses_one_wall_limit_per_case_and_resume_without_overw
         }
 
     monkeypatch.setattr(solver_comparison, "run_trial", fake_trial)
-    monkeypatch.setattr(solver_comparison, "load_case_module", lambda *args: object())
+    reference = solver_comparison.load_case_module(solver_comparison.CASE_DIR / "reference_flow")
+    monkeypatch.setattr(solver_comparison, "load_case_module", lambda *args: reference)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -141,10 +142,13 @@ def test_solver_comparison_uses_one_wall_limit_per_case_and_resume_without_overw
     assert len(calls) == 2
     assert all(call[3] == 43200 for call in calls)
     assert [call[0][call[0].index("--kind") + 1] for call in calls] == ["reference", "coupled"]
+    reference_command, coupled_command = calls[0][0], calls[1][0]
+    assert reference_command[reference_command.index("--reference-cores") + 1] == "1"
+    assert "cores=1" in coupled_command
     assert (tmp_path / "solver_comparison" / "solver_comparison.json").is_file()
 
     (tmp_path / "solver_comparison" / "reference").mkdir()
-    (tmp_path / "solver_comparison" / "coupled" / "grid_h0p1").mkdir(parents=True)
+    (tmp_path / "solver_comparison" / "coupled" / "grid_h0p09").mkdir(parents=True)
     calls.clear()
     monkeypatch.setattr(
         sys,
@@ -354,6 +358,7 @@ def test_reference_grid_completion_requires_matching_resolved_record(tmp_path):
     class ReferenceModule:
         SPAN = 1.0
         TIME_STEP_SIZE = 0.001
+        CORES = 1
 
     config = parameter_study._grid_config(ReferenceModule, "grid_h008", 0.08, 4.0)
     assert config["span"] == config["dz"] == 1.0
@@ -380,6 +385,7 @@ def test_incomplete_reference_output_requires_resume(tmp_path, monkeypatch):
     class ReferenceModule:
         SPAN = 1.0
         TIME_STEP_SIZE = 0.001
+        CORES = 1
 
     monkeypatch.setattr(parameter_study, "load_case_module", lambda *args: ReferenceModule)
     partial = tmp_path / "samples" / "grid_h008"

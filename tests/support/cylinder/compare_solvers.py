@@ -139,6 +139,7 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
 
 
 def main() -> int:
+    reference_module = load_case_module(CASE_DIR / "reference_flow")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=CASE_DIR / "study_results" / "cylinder")
     parser.add_argument("--run-dir", type=Path)
@@ -146,13 +147,13 @@ def main() -> int:
     parser.add_argument("--pilot", action="store_true")
     parser.add_argument("--reference-only", action="store_true")
     parser.add_argument("--timeout", type=float, default=43200, help="seconds per individual case")
-    parser.add_argument("--grids", type=float, nargs="+", default=(0.1, 0.08, 0.064))
+    parser.add_argument("--grids", type=float, nargs="+", default=reference_module.GRID_SPACINGS)
     parser.add_argument("--sensitivity", choices=("full", "screen", "none"), default="full")
     parser.add_argument(
         "--compute-device", choices=("AUTO", "CPU", "CUDA", "VULKAN", "METAL"), default="CPU"
     )
-    parser.add_argument("--coupled-cores", type=int, default=4)
-    parser.add_argument("--reference-cores", type=int, default=6)
+    parser.add_argument("--coupled-cores", type=int, default=1)
+    parser.add_argument("--reference-cores", type=int, default=reference_module.CORES)
     args = parser.parse_args()
     if min(args.coupled_cores, args.reference_cores) < 1:
         raise ValueError("coupled-cores and reference-cores must be positive")

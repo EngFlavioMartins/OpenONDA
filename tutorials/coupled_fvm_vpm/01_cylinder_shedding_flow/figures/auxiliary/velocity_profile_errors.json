@@ -1,0 +1,210 @@
+{
+  "reference": "reference_flow/samples",
+  "time_alignment": "common saved physical states; clock roundoff only, no time interpolation",
+  "profile_positions_x": [
+    2.0,
+    4.0
+  ],
+  "normalization": {
+    "diameter": 1.0,
+    "freestream_speed": 1.0
+  },
+  "coupled_fvm_domain": {
+    "xmin": -1.6000000000000005,
+    "xmax": 2.4000000000000004,
+    "ymin": -1.6000000000000005,
+    "ymax": 1.6000000000000005,
+    "zmin": -0.5,
+    "zmax": 0.5
+  },
+  "transfer_region": {
+    "xmin": -1.25,
+    "xmax": 2.05,
+    "ymin": -1.25,
+    "ymax": 1.25,
+    "zmin": -0.5,
+    "zmax": 0.5
+  },
+  "frames": [
+    {
+      "time": 1.0000000000000007,
+      "files": [
+        "velocity_profiles_t1.pdf",
+        "velocity_profiles_t1.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.009283444134006221,
+          "maximum": 0.014448265301504226
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.009111015847695232,
+          "maximum": 0.014811185947526506
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.10753058716236247,
+          "maximum": 0.11625473491903884
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.10606819878657339,
+          "maximum": 0.11675964812881648
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.0036405037487955757,
+          "maximum": 0.005381773122768108
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.1023051669026064,
+          "maximum": 0.10304095479378682
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 1.0000000000000007,
+          "native_field": "solution/fvm/fvm_000125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 2.0000000000000013,
+      "files": [
+        "velocity_profiles_t2.pdf",
+        "velocity_profiles_t2.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.014808480997818679,
+          "maximum": 0.02442560793212034
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.013469016065945659,
+          "maximum": 0.022863439626347404
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.01309460070726833,
+          "maximum": 0.03381512772147392
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.011828273498966245,
+          "maximum": 0.03383155576876318
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.003959334510308453,
+          "maximum": 0.005854022653227542
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0015652204893173483,
+          "maximum": 0.0023739169276245546
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 2.0000000000000013,
+          "native_field": "solution/fvm/fvm_000250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 3.000000000000002,
+      "files": [
+        "velocity_profiles_t3.pdf",
+        "velocity_profiles_t3.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.018924926195565055,
+          "maximum": 0.03892233604433071
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.018135872931284585,
+          "maximum": 0.042270235779881205
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.0065886705306646325,
+          "maximum": 0.012232392288092392
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.006272695463135123,
+          "maximum": 0.01283844741723475
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.004528439326786865,
+          "maximum": 0.008112842327952174
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0025698801776217156,
+          "maximum": 0.004021534955308688
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 3.000000000000002,
+          "native_field": "solution/fvm/fvm_000375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 4.000000000000003,
+      "files": [
+        "velocity_profiles_t4.pdf",
+        "velocity_profiles_t4.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.02693802093569383,
+          "maximum": 0.06559054127167985
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.025257320498584174,
+          "maximum": 0.06638347324878191
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.039444568169704326,
+          "maximum": 0.09497820729053175
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.03546872807180456,
+          "maximum": 0.09528919432924225
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.006393373802569151,
+          "maximum": 0.011690992377608955
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.004631199778928698,
+          "maximum": 0.009482741496134739
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 4.000000000000003,
+          "native_field": "solution/fvm/fvm_000500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    }
+  ]
+}

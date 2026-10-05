@@ -13,11 +13,11 @@ paraview.simple._DisableFirstRenderCameraReset()
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
 renderView1.Set(
-    ViewSize=[2114, 700],
+    ViewSize=[1476, 945],
     CenterOfRotation=[6.689284026622772, 0.09856688976287842, 0.0],
-    CameraPosition=[22.9749152749447, 14.519996912743792, 38.756079931653986],
-    CameraFocalPoint=[10.477682328184754, 3.266512867938319, 7.208746490881597],
-    CameraViewUp=[-0.061596409003043404, 0.9475527078411198, -0.3136076342516099],
+    CameraPosition=[35.39356855145382, 37.96404779836762, 39.550147390859],
+    CameraFocalPoint=[11.283491635691707, 5.410651525576483, 6.404905151003726],
+    CameraViewUp=[-0.29448492380718744, 0.7801237097540099, -0.5519833576566564],
     CameraViewAngle=8.520584936750893,
 )
 
@@ -30,7 +30,7 @@ SetActiveView(None)
 # create new layout object 'Layout #1'
 layout1 = CreateLayout(name='Layout #1')
 layout1.AssignView(0, renderView1)
-layout1.SetSize(2114, 700)
+layout1.SetSize(1476, 945)
 
 # ----------------------------------------------------------------
 # restore active view
@@ -44,6 +44,10 @@ SetActiveView(renderView1)
 # create a new 'PVD Reader'
 vpmpvd = PVDReader(registrationName='vpm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm.pvd')
 vpmpvd.PointArrays = ['velocity', 'vortex_strength', 'vorticity', 'core_radius', 'particle_volume', 'kinematic_viscosity', 'eddy_viscosity', 'effective_viscosity', 'group_id', 'zone_id']
+
+# create a new 'PVD Reader'
+fvmpvd = PVDReader(registrationName='fvm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/fvm.pvd')
+fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
 
 # create a new 'STL Reader'
 cylinder_longstl = STLReader(registrationName='cylinder_long.stl', FileNames=['/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_long.stl'])
@@ -59,10 +63,6 @@ clip1.ClipType.Set(
 
 # init the 'Plane' selected for 'HyperTreeGridClipper'
 clip1.HyperTreeGridClipper.Origin = [0.07856833934783936, -0.001432955265045166, 0.0]
-
-# create a new 'PVD Reader'
-fvmpvd = PVDReader(registrationName='fvm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/fvm.pvd')
-fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
 
 # create a new 'Slice'
 slice1 = Slice(registrationName='Slice1', Input=fvmpvd)
@@ -91,8 +91,8 @@ slice1Display = Show(slice1, renderView1, 'GeometryRepresentation')
 vorticityLUT = GetColorTransferFunction('vorticity')
 vorticityLUT.Set(
     RGBPoints=GenerateRGBPoints(
-        range_min=0.0026500159892106313,
-        range_max=21.850916122469133,
+        range_min=0.008085733880965923,
+        range_max=4.3179068568774355,
     ),
     ScalarRangeInitialized=1.0,
 )
@@ -170,7 +170,7 @@ vorticityLUTColorBar = GetScalarBar(vorticityLUT, renderView1)
 vorticityLUTColorBar.Set(
     AutoOrient=0,
     WindowLocation='Any Location',
-    Position=[0.8490823084200568, 0.6063444108761329],
+    Position=[0.08789313973323809, 0.26095238095238094],
     Title='vorticity',
     ComponentTitle='Magnitude',
     HorizontalTitle=1,
@@ -179,7 +179,7 @@ vorticityLUTColorBar.Set(
     LabelFontFamily='Times',
     LabelFontSize=24,
     ScalarBarThickness=18,
-    ScalarBarLength=0.19999999999999984,
+    ScalarBarLength=0.1999999999999998,
     DrawScalarBarOutline=1,
     ScalarBarOutlineColor=[0.0, 0.0, 0.0],
     ScalarBarOutlineThickness=2,
@@ -230,17 +230,17 @@ Hide(clip1, renderView1)
 # note: the Get..() functions create a new object, if needed
 # ----------------------------------------------------------------
 
+# get opacity transfer function/opacity map for 'vorticity'
+vorticityPWF = GetOpacityTransferFunction('vorticity')
+vorticityPWF.Set(
+    Points=[0.008085733880965923, 0.0, 0.5, 0.0, 4.3179068568774355, 1.0, 0.5, 0.0],
+    ScalarRangeInitialized=1,
+)
+
 # get opacity transfer function/opacity map for 'STLSolidLabeling'
 sTLSolidLabelingPWF = GetOpacityTransferFunction('STLSolidLabeling')
 sTLSolidLabelingPWF.Set(
     Points=[0.0, 0.0, 0.5, 0.0, 1.1757813367477812e-38, 1.0, 0.5, 0.0],
-    ScalarRangeInitialized=1,
-)
-
-# get opacity transfer function/opacity map for 'vorticity'
-vorticityPWF = GetOpacityTransferFunction('vorticity')
-vorticityPWF.Set(
-    Points=[0.0026500159892106313, 0.0, 0.5, 0.0, 2.3135495421724763, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
@@ -253,6 +253,7 @@ vorticityPWF.Set(
 timeKeeper1 = GetTimeKeeper()
 
 # initialize the timekeeper
+timeKeeper1.SuppressedTimeSources = fvmpvd
 
 # get time animation track
 timeAnimationCue1 = GetTimeTrack()
@@ -267,7 +268,7 @@ animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
     AnimationTime=0.0,
-    EndTime=33.0,
+    EndTime=41.0,
     PlayMode='Snap To TimeSteps',
 )
 
@@ -275,7 +276,7 @@ animationScene1.Set(
 
 # ----------------------------------------------------------------
 # restore active source
-SetActiveSource(fvmpvd)
+SetActiveSource(vpmpvd)
 # ----------------------------------------------------------------
 
 
