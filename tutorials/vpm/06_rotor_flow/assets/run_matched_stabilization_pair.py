@@ -16,7 +16,7 @@ Examples::
         --variant selective_eddy_viscosity --output-tag matched_stabilized_7p5 \
         --endpoint 7.5
     python assets/run_matched_stabilization_pair.py \
-        --variant baseline --resume solution/matched_baseline_7p5/vpm_001250.h5 \
+        --variant baseline --resume solution/matched_baseline_7p5/vpm/vpm_001250.h5 \
         --output-tag matched_baseline_9p0 --endpoint 9.0
 """
 
@@ -27,7 +27,6 @@ from dataclasses import replace
 from pathlib import Path
 import re
 
-import h5py
 import numpy as np
 
 import openonda.vpm as vpm
@@ -128,18 +127,6 @@ def build_trial_case(
     )
 
 
-def _checkpoint_state(path: Path) -> tuple[int, float, float]:
-    if not path.is_file():
-        raise FileNotFoundError(f"restart checkpoint does not exist: {path}")
-    with h5py.File(path, "r") as archive:
-        solver = archive["solver"]
-        return (
-            int(solver.attrs["step"]),
-            float(solver.attrs["time"]),
-            float(solver.attrs["time_step_size"]),
-        )
-
-
 def _require_fresh_namespace(output_tag: str) -> tuple[Path, Path]:
     solution_directory, sample_directory = _output_directories(output_tag)
     for relative in (solution_directory, sample_directory):
@@ -170,12 +157,6 @@ def run(
         resume = Path(resume)
         if not resume.is_absolute():
             resume = TUTORIAL_DIR / resume
-        source_step, source_time, source_dt = _checkpoint_state(resume)
-        if not np.isclose(time_step_size, source_dt, rtol=0.0, atol=1.0e-12):
-            raise ValueError(
-                "same-model extension must retain the checkpoint time step; "
-                f"requested {time_step_size:.17g}, stored {source_dt:.17g}"
-            )
     steps = _steps_to_endpoint(source_time, endpoint, time_step_size)
     case = build_trial_case(
         variant,
@@ -187,7 +168,9 @@ def run(
     solver = vpm.VPMSolver(case)
     try:
         if resume is not None:
-            solver.load_backup(resume)
+            solver.start_from(resume)
+            source_step, source_time = solver.step, solver.time
+            steps = _steps_to_endpoint(source_time, endpoint, time_step_size)
         solver.run()
     finally:
         solver.close()

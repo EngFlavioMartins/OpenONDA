@@ -255,8 +255,7 @@ VPM_CASE = vpm.VPMCase(
 
 
 def main() -> int:
-    mesh = msh.CachedMesh(FVM_MESH, CASE_DIR / "constant" / "mesh.npz")
-    with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=mesh) as solver:
+    with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=FVM_MESH) as solver:
         solver.run(start_from=START_FROM)
     return 0
 

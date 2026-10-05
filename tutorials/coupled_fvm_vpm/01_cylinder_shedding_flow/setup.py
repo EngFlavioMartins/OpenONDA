@@ -14,7 +14,6 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -36,7 +35,6 @@ from .assets.configuration import (
     validate_inputs,
     validate_authority,
 )
-from .assets.mesh_cache import cached_mesh_matches_case, mesh_cache_identity, resolve_mesh
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
@@ -421,17 +419,8 @@ def create_solver(
 ) -> int:
     """Run the coupled case in an optional isolated campaign directory."""
 
-    def resolved_case(**kwargs):
-        setup, particles, coupling_setup, mesh = build_case(**kwargs)
-        mesh = resolve_mesh(
-            mesh,
-            CASE_DIR if output_root is None else output_root,
-            reuse=not kwargs.get("overrides"),
-        )
-        return setup, particles, coupling_setup, mesh
-
     return run_coupled_cylinder(
-        resolved_case,
+        build_case,
         start_from=START_FROM,
         output_root=output_root,
         end_time=end_time,
@@ -453,14 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Stop after this many accepted exchanges and save a native checkpoint; "
         "the configured 100 s physical horizon is unchanged.",
     )
-    parser.add_argument("--fresh", action="store_true", help="Archive outputs and start from zero.")
     options = parser.parse_args(argv)
-    if options.fresh:
-        from .assets.prepare_fresh_run import archive_previous_run
-
-        archive_previous_run(CASE_DIR, reuse_mesh=True)
-        if "--fresh" in sys.argv:
-            sys.argv.remove("--fresh")
     create_solver(max_coupling_steps=options.max_coupling_steps)
     return 0
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,7 +10,6 @@ from ..io.sampling.schedule import OutputSchedule
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
-    from ..io.sampler import SamplingContext
 
 RING_DIAGNOSTIC_COLUMNS = (
     "time",
@@ -37,7 +34,7 @@ RING_DIAGNOSTIC_COLUMNS = (
 
 
 class RingDiagnosticsSampler:
-    """Write one compact diagnostic row per particle group and sample time.
+    """Sample one compact diagnostic row per particle group and accepted time.
 
     These are strength-weighted group centroids and radii, not vorticity maxima.
     A group remains an ancestry contribution after rings merge; its centroid
@@ -45,6 +42,8 @@ class RingDiagnosticsSampler:
     contributions for this interpretation (nearest-source relabelling does not).
     The sampler owns its schedule and canonical output name.
     """
+
+    csv_columns = RING_DIAGNOSTIC_COLUMNS[2:]
 
     def __init__(
         self,
@@ -59,10 +58,10 @@ class RingDiagnosticsSampler:
         ----------
         schedule : OutputSchedule or None, optional
             Optional time/step schedule. ``None`` leaves scheduling to the
-            caller while :meth:`write` still enforces monotonic output.
+            caller. The output manager owns atomic, monotonic persistence.
         file_name : str, default="ring_diagnostics"
             Stem of the CSV file written below the active output directory;
-            ``.csv`` is appended by :meth:`write`.
+            ``.csv`` is appended by the output manager.
         initial : bool or None, default=None
             Include the initial state. ``None`` retains a subclass's policy.
 
@@ -91,66 +90,24 @@ class RingDiagnosticsSampler:
         """
         return type(self), self.file_name
 
-    def save_csv(
-        self,
-        solver: VPMSolver,
-        path: Path,
-        *,
-        time: float,
-        step: int | None = None,
-    ) -> None:
-        """Append per-ring diagnostics for one solver state."""
+    def sample(self, solver: VPMSolver) -> dict[str, np.ndarray]:
+        """Return grouped ring diagnostics for framework-owned CSV output."""
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_header = not path.exists() or path.stat().st_size == 0
-        with path.open("a", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            if write_header:
-                writer.writerow(RING_DIAGNOSTIC_COLUMNS)
-            for group_id in np.unique(particle_group_id):
-                selected = particle_group_id == group_id
-                row = self._sample_group(position[selected], vortex_strength[selected])
-                writer.writerow([time, step, int(group_id), *row])
-
-    def write(self, context: SamplingContext) -> None:
-        """Write one atomic, monotonic ring-diagnostics event."""
-        path = context.output_directory / f"{self.file_name}.csv"
-        existing: list[list[str]] = []
-        if context.continuing_output and path.exists() and path.stat().st_size:
-            with path.open(newline="", encoding="utf-8") as stream:
-                reader = csv.reader(stream)
-                next(reader, None)
-                existing = [row for row in reader if row]
-            if existing and float(existing[-1][0]) >= context.time:
-                raise ValueError(
-                    "ring-diagnostics CSV event is duplicate or nonmonotonic during resume: "
-                    f"path={path}, existing step={existing[-1][1]}, time={existing[-1][0]}; "
-                    f"requested step={context.step}, time={context.time}"
-                )
-        position = np.asarray(context.solver.particle_position, dtype=np.float64)
-        vortex_strength = np.asarray(context.solver.particle_vortex_strength, dtype=np.float64)
-        particle_group_id = np.asarray(context.solver.particle_group_id, dtype=np.int32)
-        rows: list[list[object]] = []
+        rows = []
         for group_id in np.unique(particle_group_id):
             selected = particle_group_id == group_id
             rows.append(
-                [
-                    context.time,
-                    context.step,
-                    int(group_id),
-                    *self._sample_group(position[selected], vortex_strength[selected]),
-                ]
+                [int(group_id), *self._sample_group(position[selected], vortex_strength[selected])]
             )
-        temporary = path.with_name(f".{path.name}.tmp")
-        with temporary.open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            writer.writerow(RING_DIAGNOSTIC_COLUMNS)
-            writer.writerows(existing)
-            writer.writerows(rows)
-        temporary.replace(path)
+        return {
+            name: np.asarray(
+                [row[index] for row in rows],
+                dtype=np.int32 if name == "group_id" else np.float64,
+            )
+            for index, name in enumerate(self.csv_columns)
+        }
 
     @staticmethod
     def _sample_group(

@@ -38,7 +38,7 @@ From this directory in an [installed environment](../../../docs/installation.md)
 ./allplot.sh
 ```
 
-The [standalone FVM reference](reference_flow/README.md) is needed for force/profile comparison, but the coupled solver runs independently. Existing reference results can be plotted, but an older reference without the startup trigger does not provide a matching transient comparison. Fresh runs of both cases use the same smooth startup. `./allrun.sh --fresh` archives previous coupled outputs under `previous_runs/`, preserves a compatible mesh cache, and starts at zero. It leaves `reference_flow/`, `drag_recovery/`, assets and study results untouched. Stop an active run before requesting a fresh one. The previous compact-box checkpoints are incompatible with this revised setup.
+The [standalone FVM reference](reference_flow/README.md) is needed for force/profile comparison, but the coupled solver runs independently. Existing reference results can be plotted, but an older reference without the startup trigger does not provide a matching transient comparison. Fresh runs of both cases use the same smooth startup. `./allrun.sh --fresh` archives previous coupled outputs, including the native mesh, under `previous_runs/` and starts at zero. It leaves `reference_flow/`, `drag_recovery/`, assets and study results untouched. Stop an active run before requesting a fresh one. The previous compact-box checkpoints are incompatible with this revised setup.
 
 Without `--fresh`, `./allrun.sh` preserves outputs and resumes a compatible backup; `./allcontinue.sh` does the same. `./allcontinue.sh --max-coupling-steps 25` stops after 25 accepted exchanges in total, including across the trigger switch, and saves a checkpoint. `./allclean.sh` deletes generated results.
 

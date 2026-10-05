@@ -1,64 +1,112 @@
-"""Reuse a native Cartesian mesh only when its complete specification matches."""
+"""Specification-based reuse at the native FVM mesh construction boundary."""
 
 from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
+from zipfile import BadZipFile
 
-from ..io.mesh_storage import load_native_mesh, save_native_mesh
+from ..io.mesh_storage import load_native_mesh
+from .cartesian.config import (
+    BoundaryLayers,
+    BoxDomain,
+    BoxPatches,
+    BoxRefinement,
+    ConeRefinement,
+    FeatureRefinement,
+    LineRefinement,
+    PatchRefinement,
+    SphereRefinement,
+    STLSurface,
+)
+from .cartesian.extrusion import ExtrudedCartesianMesher
 from .cartesian.mesher import CartesianMesher
 from .progress import mesh_event
 
 
-class CachedMesh:
-    """Cache one Cartesian mesher's result as a portable native archive.
+def can_reuse_mesh(mesher) -> bool:
+    """Reuse only native implementations whose complete inputs are known."""
+    if type(mesher) is ExtrudedCartesianMesher:
+        return (
+            can_reuse_mesh(mesher.source)
+            and type(mesher.domain) is BoxDomain
+            and type(mesher.domain.patches) is BoxPatches
+        )
+    if type(mesher) is not CartesianMesher:
+        return False
+    return (
+        all(
+            type(domain) is BoxDomain and type(domain.patches) is BoxPatches
+            for domain in (mesher.domain, mesher.requested_domain)
+        )
+        and all(type(surface) is STLSurface for surface in mesher.surfaces)
+        and all(
+            type(value) in (BoxRefinement, SphereRefinement, ConeRefinement, LineRefinement)
+            for value in mesher.refinements
+        )
+        and all(type(value) is PatchRefinement for value in mesher.patch_refinements)
+        and all(type(value) is BoundaryLayers for value in mesher.boundary_layers)
+        and (mesher.features is None or type(mesher.features) is FeatureRefinement)
+    )
 
-    Geometry content, all meshing controls, and mesher source code form the
-    identity. A changed specification rebuilds automatically. Solver controls
-    and output paths do not change the mesh. Delete the archive to force a build.
-    """
 
-    def __init__(self, mesher: CartesianMesher, path: str | Path):
-        if not isinstance(mesher, CartesianMesher):
-            raise TypeError("CachedMesh currently supports CartesianMesher")
-        self.mesher, self.path = mesher, Path(path)
-
-    def identity(self) -> str:
-        m = self.mesher
-        data = {
-            name: getattr(m, name)
-            for name in (
-                "max_cell_size",
-                "boundary_cell_size",
-                "min_cell_size",
-                "cell_size_anchor",
-                "surface_may_cross_domain_boundary",
-            )
+def _specification(mesher):
+    if type(mesher) is ExtrudedCartesianMesher:
+        return {
+            "type": "extruded",
+            "source": _specification(mesher.source),
+            "domain": asdict(mesher.domain),
+            "levels": tuple(float(value) for value in mesher.levels),
         }
-        data["domain"] = asdict(m.domain)
-        data["requested_domain"] = asdict(m.requested_domain)
-        data["surfaces"] = [
-            {"sha256": s.sha256, "patch": s.patch, "allow_open": s.allow_open} for s in m.surfaces
-        ]
-        for name in ("refinements", "patch_refinements", "boundary_layers"):
-            data[name] = [asdict(value) for value in getattr(m, name)]
-        data["features"] = None if m.features is None else asdict(m.features)
-        source = Path(__file__).parent
-        digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode())
-        for path in sorted(source.rglob("*.py")):
-            if path != Path(__file__):
-                digest.update(str(path.relative_to(source)).encode())
-                digest.update(path.read_bytes())
-        return digest.hexdigest()
+    data = {
+        name: getattr(mesher, name)
+        for name in (
+            "max_cell_size",
+            "boundary_cell_size",
+            "min_cell_size",
+            "cell_size_anchor",
+            "surface_may_cross_domain_boundary",
+        )
+    }
+    data["type"] = "cartesian"
+    data["domain"] = asdict(mesher.domain)
+    data["requested_domain"] = asdict(mesher.requested_domain)
+    data["surfaces"] = [
+        {"sha256": surface.sha256, "patch": surface.patch, "allow_open": surface.allow_open}
+        for surface in mesher.surfaces
+    ]
+    for name in ("refinements", "patch_refinements", "boundary_layers"):
+        data[name] = [asdict(value) for value in getattr(mesher, name)]
+    data["features"] = None if mesher.features is None else asdict(mesher.features)
+    return data
 
-    def build(self):
-        identity = self.identity()
-        if self.path.is_file():
-            mesh = load_native_mesh(self.path)
-            if mesh.get("cartesian_cache_identity") == identity:
-                mesh_event("mesh cache hit", path=self.path.resolve(), cells=mesh["n_cells"])
-                return mesh
-        mesh = self.mesher.build()
-        mesh["cartesian_cache_identity"] = identity
-        save_native_mesh(mesh, self.path)
-        return mesh
+
+def mesh_identity(mesher) -> str:
+    """Hash meshing inputs and implementation without machine or output paths."""
+    if not can_reuse_mesh(mesher):
+        raise TypeError("Mesh identity requires native meshing implementations and inputs")
+    digest = hashlib.sha256(
+        json.dumps(_specification(mesher), sort_keys=True, allow_nan=False).encode()
+    )
+    source = Path(__file__).parent
+    for path in sorted(source.rglob("*.py")):
+        if path != Path(__file__):
+            digest.update(path.relative_to(source).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def materialize_cached_mesh(mesher, path: Path):
+    """Reuse matching native input; let the factory publish generated meshes."""
+    identity = mesh_identity(mesher)
+    if path.is_file():
+        try:
+            mesh = load_native_mesh(path)
+        except (OSError, ValueError, KeyError, TypeError, EOFError, BadZipFile):
+            mesh = None
+        if mesh is not None and mesh.get("mesh_cache_identity") == identity:
+            mesh_event("mesh cache hit", path=path.resolve(), cells=mesh["n_cells"])
+            return mesh
+    mesh = mesher.build()
+    mesh["mesh_cache_identity"] = identity
+    return mesh

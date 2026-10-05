@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 
 import numpy as np
@@ -117,26 +116,3 @@ def test_grid_family_reports_anchored_outer_xy_box(hxy, downstream):
     assert mesh.source.requested_domain.bounds[:4] == pytest.approx((-1.6, 2.4, -1.6, 1.6))
     assert mesh.source.domain.bounds[:4] == pytest.approx((-1.6, downstream, -1.6, 1.6))
     assert mesh.domain.bounds[:4] == pytest.approx((-1.6, downstream, -1.6, 1.6))
-
-
-def test_fresh_mesh_reuse_requires_matching_surface_and_mesher_identity(tmp_path):
-    module = _setup_module()
-    *_, mesh = module.build_case()
-    metadata = {
-        "mesh_generation": {
-            "domain": mesh.domain.bounds,
-            "extrusion_levels": mesh.levels,
-            "resolved_background_cell_size": mesh.max_cell_size,
-        },
-    }
-    path = tmp_path / "mesh.npz"
-    np.savez(path, metadata=json.dumps(metadata))
-    assert module.cached_mesh_matches_case(path, mesh)
-    assert not module.cached_mesh_matches_case(path, mesh, require_identity=True)
-    metadata["cylinder_mesh_cache_identity"] = module.mesh_cache_identity(mesh)
-    np.savez(path, metadata=json.dumps(metadata))
-    assert module.cached_mesh_matches_case(path, mesh, require_identity=True)
-    changed_surface = tmp_path / "cylinder.stl"
-    changed_surface.write_bytes(module.CYLINDER_STL.read_bytes() + b"\n")
-    mesh.source.surfaces = (module.msh.STLSurface(changed_surface, patch="cylinder"),)
-    assert not module.cached_mesh_matches_case(path, mesh)

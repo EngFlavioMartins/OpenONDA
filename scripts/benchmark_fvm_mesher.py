@@ -48,7 +48,7 @@ def main() -> int:
     import numpy as np
 
     from source.solvers.fvm.io.mesh_storage import save_native_mesh
-    from source.solvers.fvm.mesh.cache import CachedMesh
+    from source.solvers.fvm.mesh.cache import mesh_identity
     from source.solvers.fvm.mesh.progress import mesher_log_session
 
     output = (args.output or Path(tempfile.mkdtemp(prefix="openonda-mesher-"))).resolve()
@@ -56,7 +56,7 @@ def main() -> int:
     results = []
     for run in range(1, args.runs + 1):
         mesher = runpy.run_path(str(args.case.resolve()))[args.mesh_name]
-        identity = CachedMesh(mesher, output / "cache.npz").identity()
+        identity = mesh_identity(mesher)
         log = output / f"run-{run}.log"
         # A new file keeps repeated invocations from mixing stage timings.
         log.write_text("")
@@ -84,11 +84,11 @@ def main() -> int:
             "sha256": hashes,
             "surface_constraint": mesh["mesh_generation"]["surface_constraint"],
             "quality": mesher.report.as_dict()["diagnostics"]["quality"],
-            "cartesian_cache_identity": identity,
+            "mesh_cache_identity": identity,
         }
         results.append(result)
         if args.save_mesh:
-            mesh["cartesian_cache_identity"] = identity
+            mesh["mesh_cache_identity"] = identity
             save_native_mesh(mesh, output / f"run-{run}.npz")
         (output / "benchmark.json").write_text(
             json.dumps(

@@ -1,7 +1,6 @@
 """Reference forcing matches the coupled benchmark without changing force scales."""
 
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
@@ -53,6 +52,7 @@ def test_reference_runner_passes_the_same_schedule(monkeypatch):
                 "startup_transition_duration": 1.0,
                 "startup_freestream_velocity": (1.0, 0.1, 0.0),
                 "steady_freestream_velocity": (1.0, 0.0, 0.0),
+                "perturbation": reference.INITIAL_PERTURBATION,
             },
         )
     ]
@@ -74,25 +74,58 @@ def test_reference_campaign_factory_accepts_independent_grid_paths(tmp_path, mon
 
 
 def test_reference_fresh_archive_preserves_coupled_and_diagnostic_outputs(tmp_path):
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    script = assets / "prepare_fresh_run.py"
-    shutil.copy2(CASE / "assets/prepare_fresh_run.py", script)
     for name in (
         "solution/coupled",
         "drag_recovery/evidence",
+        "assets/geometry",
+        "study_results/evidence",
         "reference_flow/solution/reference",
+        "reference_flow/solution/fvm/mesh.npz",
         "reference_flow/samples/forces",
+        "reference_flow/figures/forces.png",
+        "reference_flow/run.log",
     ):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(name)
-    subprocess.run([sys.executable, str(script), "--reference"], check=True, capture_output=True)
-    assert (tmp_path / "solution/coupled").read_text() == "solution/coupled"
-    assert (tmp_path / "drag_recovery/evidence").read_text() == "drag_recovery/evidence"
-    assert not (tmp_path / "reference_flow/solution").exists()
-    assert not (tmp_path / "reference_flow/samples").exists()
-    archives = list((tmp_path / "reference_flow/previous_runs").iterdir())
+    reference = tmp_path / "reference_flow"
+    (reference / "setup.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "assert sys.argv[1:] == ['--name', 'grid']\n"
+        "assert not Path('solution').exists()\n"
+        "assert not Path('samples').exists()\n"
+        "assert not Path('figures').exists()\n"
+        "assert not Path('run.log').exists()\n"
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "openonda.tutorial_runner",
+            str(reference),
+            "setup",
+            "--fresh",
+            "--name",
+            "grid",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    for name in (
+        "solution/coupled",
+        "drag_recovery/evidence",
+        "assets/geometry",
+        "study_results/evidence",
+    ):
+        assert (tmp_path / name).read_text() == name
+    archives = list((reference / "previous_runs").iterdir())
     assert len(archives) == 1
-    assert (archives[0] / "solution/reference").read_text() == "reference_flow/solution/reference"
-    assert (archives[0] / "samples/forces").read_text() == "reference_flow/samples/forces"
+    for name in (
+        "solution/reference",
+        "solution/fvm/mesh.npz",
+        "samples/forces",
+        "figures/forces.png",
+        "run.log",
+    ):
+        assert (archives[0] / name).read_text() == f"reference_flow/{name}"

@@ -22,7 +22,6 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -172,13 +171,6 @@ def experiment_settings(options):
         "initial_disturbance": "compact XY curl; amplitude 0.001; no span variation",
         "force_reference_velocity": 1.0,
     }
-    baseline = getattr(options, "baseline_renewal", None)
-    if baseline is not None:
-        settings["baseline_renewal"] = {
-            "path": str(baseline),
-            "sha256": hashlib.sha256(baseline.read_bytes()).hexdigest(),
-            "replaced_function": "blend_represented_state",
-        }
     mesh = getattr(options, "mesh", None)
     if mesh is not None:
         settings["mesh"] = {
@@ -186,20 +178,6 @@ def experiment_settings(options):
             "sha256": hashlib.sha256(mesh.read_bytes()).hexdigest(),
         }
     return settings
-
-
-def install_baseline_renewal(path):
-    """Use only the archived blend function for a controlled baseline run."""
-    from source.coupler import stable_renewal
-
-    # Keep the package prefix so the archived module's relative lattice import
-    # resolves normally. Its other helpers remain private to the control.
-    name = "source.coupler._drag_recovery_baseline"
-    spec = importlib.util.spec_from_file_location(name, path)
-    baseline = importlib.util.module_from_spec(spec)
-    sys.modules[name] = baseline
-    spec.loader.exec_module(baseline)
-    stable_renewal.blend_represented_state = baseline.blend_represented_state
 
 
 def run(options):
@@ -220,15 +198,10 @@ def run(options):
     trigger_step = round(options.trigger_duration / EXCHANGE_DT)
     end_step = round(options.end_time / EXCHANGE_DT)
     setup, particles, exchange, mesh = build_experiment(options)
-    if getattr(options, "baseline_renewal", None) is not None:
-        install_baseline_renewal(options.baseline_renewal)
-    cached_mesh = options.output_dir / "solution/fvm/mesh.npz"
     if getattr(options, "mesh", None) is not None:
         # Native factory/initialization checks still apply. The mesh is only
         # an input; require_empty_output below protects the new destination.
         mesh = options.mesh
-    elif options.resume and cached_mesh.is_file():
-        mesh = cached_mesh
     with coupling.create_coupler(
         setup,
         particles,
@@ -311,17 +284,10 @@ def main(argv=None):
     parser.add_argument("--particle-limit", type=_positive_integer, default=200_000)
     parser.add_argument("--max-coupling-steps", type=_positive_integer)
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--baseline-renewal",
-        type=Path,
-        help="Archived stable_renewal.py whose blend function supplies the control; SHA-256 is recorded",
-    )
     options = parser.parse_args(argv)
     options.output_dir = options.output_dir.resolve()
     if options.mesh is not None:
         options.mesh = options.mesh.resolve(strict=True)
-    if options.baseline_renewal is not None:
-        options.baseline_renewal = options.baseline_renewal.resolve(strict=True)
     for name in ("end_time", "trigger_duration"):
         value = getattr(options, name)
         if (

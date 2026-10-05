@@ -41,14 +41,11 @@ def main(directory, cores):
             ),
         ),
     )
-    mesh = case["msh"].CachedMesh(
-        case["msh"].CartesianMesher(
-            domain=case["FVM_MESH"].requested_domain,
-            surfaces=case["FVM_MESH"].surfaces,
-            max_cell_size=0.25,
-            cell_size_anchor=0.25,
-        ),
-        directory / "constant/mesh.npz",
+    mesh = case["msh"].CartesianMesher(
+        domain=case["FVM_MESH"].requested_domain,
+        surfaces=case["FVM_MESH"].surfaces,
+        max_cell_size=0.25,
+        cell_size_anchor=0.25,
     )
 
     def build(name):

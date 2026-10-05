@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-
 import numpy as np
 
 CSV_COLUMNS = (
@@ -43,42 +38,18 @@ MODE_CSV_COLUMNS = (
 )
 
 
-def _append_rows(
-    path: Path, columns: tuple[str, ...], rows: list[list[object]], time: float
-) -> None:
-    """Atomically append one scheduled event without admitting duplicate time."""
-    existing: list[list[str]] = []
-    if path.exists() and path.stat().st_size:
-        with path.open(newline="", encoding="utf-8") as stream:
-            reader = csv.reader(stream)
-            next(reader, None)
-            existing = [row for row in reader if row]
-        if existing and float(existing[-1][0]) >= time:
-            raise ValueError("CSV event is duplicate or nonmonotonic during resume")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w", newline="", encoding="utf-8", dir=path.parent, delete=False
-    ) as stream:
-        temporary = Path(stream.name)
-        writer = csv.writer(stream, lineterminator="\n")
-        writer.writerow(columns)
-        writer.writerows(existing)
-        writer.writerows(rows)
-    os.replace(temporary, path)
-
-
 class RingDiagnosticsSampler:
     """Sample ring motion and vortex strength without writing a particle backup."""
 
     file_name = "ring_diagnostics"
+    csv_columns = CSV_COLUMNS[2:]
     initial = True
 
     def __init__(self, *, schedule=None) -> None:
         self.schedule = schedule
 
-    def write(self, context) -> None:
-        """Write one scheduled ring diagnostic sample."""
-        solver = context.solver
+    def sample(self, solver) -> dict[str, np.ndarray]:
+        """Return one scheduled ring diagnostic table."""
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
@@ -86,13 +57,14 @@ class RingDiagnosticsSampler:
         for group_id in np.unique(particle_group_id):
             selected = particle_group_id == group_id
             row = self._sample_group(position[selected], vortex_strength[selected])
-            rows.append([context.time, context.step, int(group_id), *row])
-        _append_rows(
-            context.output_directory / f"{self.file_name}.csv",
-            CSV_COLUMNS,
-            rows,
-            context.time,
-        )
+            rows.append([int(group_id), *row])
+        return {
+            name: np.asarray(
+                [row[index] for row in rows],
+                dtype=np.int32 if name == "group_id" else np.float64,
+            )
+            for index, name in enumerate(self.csv_columns)
+        }
 
     @staticmethod
     def _sample_group(
@@ -157,6 +129,7 @@ class RingModeDiagnosticsSampler:
     """
 
     file_name = "ring_modes"
+    csv_columns = MODE_CSV_COLUMNS[2:]
     initial = True
 
     def __init__(
@@ -180,9 +153,8 @@ class RingModeDiagnosticsSampler:
         self.reference_radius = reference_radius
         self.transverse_origin = transverse_origin
 
-    def write(self, context) -> None:
-        """Write one scheduled Widnall-mode sample."""
-        solver = context.solver
+    def sample(self, solver) -> dict[str, np.ndarray]:
+        """Return one scheduled Widnall-mode table."""
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
@@ -190,13 +162,14 @@ class RingModeDiagnosticsSampler:
         for group_id in np.unique(particle_group_id):
             selected = particle_group_id == group_id
             sampled_rows = self._sample_group(position[selected], vortex_strength[selected])
-            rows.extend([context.time, context.step, int(group_id), *row] for row in sampled_rows)
-        _append_rows(
-            context.output_directory / f"{self.file_name}.csv",
-            MODE_CSV_COLUMNS,
-            rows,
-            context.time,
-        )
+            rows.extend([int(group_id), *row] for row in sampled_rows)
+        return {
+            name: np.asarray(
+                [row[index] for row in rows],
+                dtype=np.int32 if name in {"group_id", "mode"} else np.float64,
+            )
+            for index, name in enumerate(self.csv_columns)
+        }
 
     def _sample_group(
         self,

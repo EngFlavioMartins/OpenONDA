@@ -427,7 +427,12 @@ class FVMSolver(CouplerInterfaceMixin):
                     ),
                     mesh_stage("mesh materialization") as materialization,
                 ):
-                    mesh_data = _materialize_mesh(mesh_source, is_root=materialize_here)
+                    mesh_data = _materialize_mesh(
+                        mesh_source,
+                        is_root=materialize_here,
+                        cache_path=component_directory(requested_solution.resolve(), "fvm")
+                        / "mesh.npz",
+                    )
                     if mesh_data is not None:
                         materialization.details(
                             cells=mesh_data.get("n_cells"),

@@ -11,6 +11,14 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CASE = ROOT / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+OUTPUT_FILES = (
+    "solution/fvm/mesh.npz",
+    "solution/backups/checkpoint",
+    "solutions/grid/backup",
+    "samples/forces_history.csv",
+    "figures/forces.png",
+    "run.log",
+)
 
 
 def fake_case(tmp_path, reference):
@@ -19,6 +27,10 @@ def fake_case(tmp_path, reference):
     source = CASE / "reference_flow" if reference else CASE
     for name in ("allrun.sh", "allcontinue.sh"):
         shutil.copy2(source / name, case / name)
+    for name in OUTPUT_FILES:
+        path = case / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(name)
     binary = tmp_path / "bin"
     binary.mkdir()
     python = binary / "python"
@@ -29,8 +41,7 @@ def fake_case(tmp_path, reference):
         "from pathlib import Path\n"
         "with open(os.environ['CALL_LOG'], 'a') as stream:\n"
         "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        "if '--fresh' in sys.argv:\n"
-        "    Path(os.environ['ARCHIVED']).touch()\n"
+        "assert '--fresh' not in sys.argv\n"
         "os.closerange(3, 1024)\n"
         "os.execv(sys.executable, [sys.executable, '-c',\n"
         '    "import os,time; from pathlib import Path; "\n'
@@ -43,7 +54,6 @@ def fake_case(tmp_path, reference):
         "CALL_LOG": str(tmp_path / "calls.jsonl"),
         "READY": str(tmp_path / "ready"),
         "RELEASE": str(tmp_path / "release"),
-        "ARCHIVED": str(tmp_path / "archived"),
     }
     return case, environment
 
@@ -79,7 +89,9 @@ def test_duplicate_launch_rejected_after_child_closes_fds_and_execs(
         assert duplicate.returncode == 75, duplicate.stderr
         assert "already running" in duplicate.stderr
         assert len(Path(environment["CALL_LOG"]).read_text().splitlines()) == 1
-        assert not Path(environment["ARCHIVED"]).exists()
+        assert not (case / "previous_runs").exists()
+        for name in OUTPUT_FILES:
+            assert (case / name).read_text() == name
     finally:
         Path(environment["RELEASE"]).touch()
         stdout, stderr = first.communicate(timeout=10)
@@ -95,7 +107,12 @@ def test_duplicate_launch_rejected_after_child_closes_fds_and_execs(
         timeout=10,
     )
     assert next_run.returncode == 0, next_run.stderr
-    assert Path(environment["ARCHIVED"]).exists()
+    assert Path(environment["CALL_LOG"]).read_text().splitlines() == ["[]", "[]"]
+    archives = list((case / "previous_runs").iterdir())
+    assert len(archives) == 1
+    for name in OUTPUT_FILES:
+        assert not (case / name).exists()
+        assert (archives[0] / name).read_text() == name
 
 
 @pytest.mark.parametrize("reference", [False, True], ids=["coupled", "reference"])

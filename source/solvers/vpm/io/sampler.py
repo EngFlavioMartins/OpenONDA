@@ -116,7 +116,12 @@ class _CsvSampler(Protocol):
 @runtime_checkable
 class _TableSampler(Protocol):
     def sample(self, solver: SamplerRuntimeSolver) -> dict[str, np.ndarray]:
-        """Return one-dimensional, equal-length columns for CSV output."""
+        """Return equal-length columns for CSV output.
+
+        Custom tables declare ``csv_columns`` as an ordered tuple of field
+        names. The framework adds the accepted ``time`` and ``step`` columns.
+        Field samplers use the canonical velocity/vorticity schema.
+        """
 
 
 @dataclass
@@ -534,8 +539,24 @@ class OutputManager:
     @staticmethod
     def _append_csv(sampler: _TableSampler, context: SamplingContext, filepath: Path) -> None:
         """Validate one table sample and append it to an atomic CSV rewrite."""
+        declared_columns = getattr(sampler, "csv_columns", None)
+        if declared_columns is None:
+            columns = sampler_csv_columns(sampler)
+        else:
+            if (
+                not isinstance(declared_columns, tuple | list)
+                or not declared_columns
+                or any(
+                    not isinstance(name, str) or not name or name in {"time", "step"}
+                    for name in declared_columns
+                )
+                or len(set(declared_columns)) != len(declared_columns)
+            ):
+                raise ValueError("csv_columns must contain unique field names excluding time/step")
+            columns = list(declared_columns)
         data = sampler.sample(context.solver)
-        columns = sampler_csv_columns(sampler)
+        if declared_columns is not None and set(data) != set(columns):
+            raise ValueError("Sampler result does not match its declared csv_columns")
         missing = [name for name in columns if name not in data]
         if missing:
             raise ValueError(f"Sampler result is missing columns: {', '.join(missing)}")

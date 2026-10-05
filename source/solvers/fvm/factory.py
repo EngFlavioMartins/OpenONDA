@@ -124,6 +124,7 @@ def _materialize_mesh(
     mesh: MeshSource | None,
     *,
     is_root: bool,
+    cache_path: Path,
 ) -> dict[str, Any] | None:
     if mesh is None or not is_root:
         return None
@@ -132,7 +133,11 @@ def _materialize_mesh(
         return _load_mesh_file(mesh)
 
     mesh_event("mesh source", kind=type(mesh).__name__)
-    if callable(mesh):
+    from .mesh.cache import can_reuse_mesh, materialize_cached_mesh
+
+    if can_reuse_mesh(mesh):
+        generated = materialize_cached_mesh(mesh, cache_path)
+    elif callable(mesh):
         generated = mesh()
     elif isinstance(mesh, BuildableMesh):
         generated = mesh.build()
@@ -379,7 +384,11 @@ def create_fvm_solver(
             ),
         ):
             with mesh_stage("mesh materialization") as materialization:
-                mesh_data = _materialize_mesh(mesh, is_root=materialize_mesh_here)
+                mesh_data = _materialize_mesh(
+                    mesh,
+                    is_root=materialize_mesh_here,
+                    cache_path=component_directory(resolved_solution_dir, "fvm") / "mesh.npz",
+                )
                 if mesh_data is not None:
                     materialization.details(
                         cells=mesh_data.get("n_cells"),

@@ -1,19 +1,17 @@
-"""Source-level contracts for the ordinary rotor launcher and restart pilot."""
+"""Contracts for the ordinary rotor launcher and matched physical variants."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
-import sys
 
 import numpy as np
+import pytest
 
 from tests._tutorial_helpers import load_tutorial_module
 
 setup = load_tutorial_module("vpm/rotor_flow")
 matched_pair = load_tutorial_module("vpm/rotor_flow", "assets.run_matched_stabilization_pair")
-pilot = load_tutorial_module("vpm/rotor_flow", "assets.run_restart_pilot")
 
 
 def test_ordinary_rotor_case_keeps_native_controls() -> None:
@@ -79,70 +77,6 @@ def test_streamwise_lines_resolve_signed_fields_through_rotor_and_wake() -> None
         assert line.schedule.interval == setup.FIELD_SAMPLE_INTERVAL_TIME
 
 
-def test_restart_pilot_is_explicitly_bounded_and_cpu_selected() -> None:
-    plan = pilot._pilot_run_plan(pilot.PILOT_STEPS)
-
-    assert plan.steps == pilot.PILOT_STEPS
-    assert plan.initial_samples is False
-    assert plan.final_backup is True
-    assert plan.health_limit_action == "STOP"
-    assert plan.wall_time_limit_seconds is None
-    assert plan.runtime_compute_device == "CPU"
-
-
-def test_restart_preflight_has_no_scientific_samplers() -> None:
-    solution_directory = Path("solution/test_pilot")
-    sample_directory = Path("samples/rotor/test_pilot")
-    case = setup.build_case(
-        time_step_size=0.001,
-        steps=pilot.PILOT_STEPS,
-        solution_directory=solution_directory,
-        sample_directory=sample_directory,
-        run_plan=pilot._pilot_run_plan(pilot.PILOT_STEPS),
-    )
-    preflight = pilot._preflight_case(case, solution_directory, sample_directory, pilot.PILOT_STEPS)
-
-    assert preflight.run.steps == pilot.PREFLIGHT_STEPS
-    assert preflight.run.wall_time_limit_seconds is None
-    assert preflight.run.runtime_compute_device == "CPU"
-    assert preflight.samplers.samples == ()
-    assert preflight.backup.directory == "solution/test_pilot/preflight"
-    assert preflight.samplers.directory == "rotor/test_pilot/preflight"
-
-
-def test_restart_preflight_caps_steps_near_authored_endpoint() -> None:
-    solution_directory = Path("solution/test_near_end")
-    sample_directory = Path("samples/rotor/test_near_end")
-    case = setup.build_case(
-        time_step_size=0.001,
-        steps=3,
-        solution_directory=solution_directory,
-        sample_directory=sample_directory,
-        run_plan=pilot._pilot_run_plan(3),
-    )
-    preflight = pilot._preflight_case(case, solution_directory, sample_directory, 3)
-
-    assert pilot._remaining_steps(setup.END_TIME - 3 * 0.001, 0.001) == 3
-    assert preflight.run.steps == 3
-
-
-def test_restart_pilot_help_is_lightweight() -> None:
-    script = Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow/assets/run_restart_pilot.py"
-    result = subprocess.run(
-        [sys.executable, str(script), "--help"],
-        cwd=script.parent.parent,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "--resume" in result.stdout
-    assert "--resume-dt" in result.stdout
-    assert "--attempt" in result.stdout
-
-
 def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
     baseline = matched_pair.build_trial_case(
         "baseline",
@@ -165,6 +99,68 @@ def test_matched_stabilization_pair_uses_fresh_public_model_variants() -> None:
     )
     assert baseline.numerics.stabilization != stabilized.numerics.stabilization
     assert matched_pair._steps_to_endpoint(7.5, 9.0, setup.TIME_STEP_SIZE) == 250
+
+
+def test_matched_continuation_uses_native_clock_and_absolute_target(tmp_path, monkeypatch, capsys):
+    calls = []
+
+    class Solver:
+        def __init__(self, case):
+            assert case.run.steps == 1500
+            assert not case.run.initial_samples
+
+        def start_from(self, checkpoint):
+            calls.append(checkpoint)
+            self.step, self.time = 1250, 7.5
+
+        def run(self):
+            calls.append("run")
+            self.run_status = "completed"
+
+        def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(matched_pair, "TUTORIAL_DIR", tmp_path)
+    monkeypatch.setattr(matched_pair.vpm, "VPMSolver", Solver)
+    matched_pair.run(
+        variant="baseline",
+        output_tag="continued",
+        endpoint=9.0,
+        resume=Path("solution/prior/vpm/vpm_001250.h5"),
+    )
+
+    assert calls == [tmp_path / "solution/prior/vpm/vpm_001250.h5", "run", "close"]
+    report = capsys.readouterr().out
+    assert "source_step=1250; source_time=7.5" in report
+    assert "target_time=9; steps=250" in report
+
+
+def test_matched_continuation_propagates_native_admission_failure(tmp_path, monkeypatch):
+    calls = []
+
+    class Solver:
+        def __init__(self, _case):
+            pass
+
+        def start_from(self, _checkpoint):
+            raise ValueError("native checkpoint numerical identity differs")
+
+        def run(self):
+            raise AssertionError("rejected checkpoint must not advance")
+
+        def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(matched_pair, "TUTORIAL_DIR", tmp_path)
+    monkeypatch.setattr(matched_pair.vpm, "VPMSolver", Solver)
+    with pytest.raises(ValueError, match="native checkpoint numerical identity"):
+        matched_pair.run(
+            variant="baseline",
+            output_tag="rejected",
+            endpoint=9.0,
+            resume=Path("solution/prior/vpm/vpm_001250.h5"),
+        )
+    assert calls == ["close"]
 
 
 def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:

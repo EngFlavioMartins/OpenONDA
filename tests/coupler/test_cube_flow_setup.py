@@ -104,8 +104,6 @@ def test_cube_uses_only_bounded_domain_stabilization_and_retains_health_limits()
 def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
     setup = _load_setup(CASE_DIR / "setup.py", "cube_run_factory")
     events = []
-    mesh = object()
-    monkeypatch.setattr(setup.msh, "CachedMesh", lambda *args: mesh)
 
     class Driver:
         def __enter__(self):
@@ -123,7 +121,7 @@ def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
         assert fvm is setup.FVM_SETUP
         assert vpm is setup.VPM_CASE
         assert config is setup.COUPLER_SETUP
-        assert kwargs == {"mesh": mesh}
+        assert kwargs == {"mesh": setup.FVM_MESH}
         return Driver()
 
     monkeypatch.setattr(setup.coupling, "create_coupler", create_coupler)

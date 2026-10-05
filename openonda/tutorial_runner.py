@@ -8,12 +8,14 @@ configuration and assets rather than the immutable installed template.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import importlib
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 import runpy
 import subprocess
 import sys
+import tempfile
 from types import ModuleType
 
 
@@ -40,6 +42,34 @@ def case_package(directory: str | Path) -> str:
     return load_case_module(directory, "").__name__
 
 
+def _archive_outputs(directory: Path) -> None:
+    """Archive this case's output before a fresh setup, retaining its inputs."""
+    from .runtime import detected_world_size
+
+    if detected_world_size() != 1:
+        raise RuntimeError("Launch --fresh outside mpiexec; the solver establishes MPI")
+    paths = [directory / name for name in ("solution", "solutions", "samples", "figures")]
+    paths.extend(sorted(directory.glob("*.log")))
+    paths = [path for path in paths if path.exists() or path.is_symlink()]
+    if not paths:
+        return
+    previous = directory / "previous_runs"
+    previous.mkdir(exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    archive = Path(tempfile.mkdtemp(prefix=f"{stamp}-", dir=previous))
+    moved = []
+    try:
+        for path in paths:
+            path.rename(archive / path.name)
+            moved.append(path)
+    except OSError:
+        for path in reversed(moved):
+            (archive / path.name).rename(path)
+        archive.rmdir()
+        raise
+    print(f"Previous outputs archived in {archive}", flush=True)
+
+
 def _run_setup(directory: Path, arguments: list[str]) -> int:
     """Keep a portable case lock while the setup launches and waits for MPI."""
     import fcntl
@@ -50,6 +80,9 @@ def _run_setup(directory: Path, arguments: list[str]) -> int:
         except BlockingIOError:
             print(f"OpenONDA case is already running: {directory}", file=sys.stderr)
             return 75
+        if "--fresh" in arguments:
+            _archive_outputs(directory)
+            arguments = [argument for argument in arguments if argument != "--fresh"]
         with subprocess.Popen(
             [sys.executable, str(directory / "setup.py"), *arguments], cwd=directory
         ) as child:

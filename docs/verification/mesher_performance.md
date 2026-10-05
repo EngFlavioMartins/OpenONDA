@@ -53,9 +53,10 @@ NUMBA_CACHE_DIR=/tmp/openonda-mesher-jit-fresh python scripts/benchmark_fvm_mesh
 ```
 
 Use a previously nonexistent compilation-cache directory for the first command.
-The benchmark bypasses `CachedMesh` and leaves tutorial solution/cache files
-alone. `--save-mesh` optionally writes the validated native mesh in its output
-directory. Ordinary tutorial launches continue using their existing cache.
+The benchmark calls the configured mesher directly and leaves tutorial output
+files untouched. `--save-mesh` optionally writes the validated native mesh in
+its output directory. Ordinary tutorial launches reuse the solver-owned mesh
+when its identity matches the configured geometry and meshing controls.
 
 ## Verification
 

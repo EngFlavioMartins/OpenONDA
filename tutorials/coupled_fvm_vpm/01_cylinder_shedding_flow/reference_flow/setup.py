@@ -4,7 +4,6 @@
 import argparse
 import math
 from pathlib import Path
-import sys
 
 import openonda.fvm as fvm
 from openonda.tutorial_runner import case_package
@@ -293,15 +292,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--help", action="help", help="Show this help message and exit.")
     parser.add_argument("--name", default=DEFAULT_NAME)
     parser.add_argument("-h", type=float, default=DEFAULT_H)
-    parser.add_argument("--fresh", action="store_true", help="Archive outputs and start from zero.")
     arguments = parser.parse_args(argv)
-    if arguments.fresh:
-        from .assets.prepare_fresh_run import archive_previous_run
-
-        archive_previous_run(CASE_DIR)
-        if "--fresh" in sys.argv:
-            sys.argv.remove("--fresh")
-
     with create_solver(arguments.name, arguments.h) as solver:
         run_solver(solver)
 

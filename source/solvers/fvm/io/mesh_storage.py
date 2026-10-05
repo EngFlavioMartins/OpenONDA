@@ -106,6 +106,8 @@ def load_native_mesh(path: str | Path) -> dict[str, Any]:
         if missing:
             raise ValueError(f"Invalid native FVM mesh; missing fields: {sorted(missing)}")
         metadata = json.loads(str(np.asarray(archive["metadata"]).item()))
+        if not isinstance(metadata, dict):
+            raise ValueError("Native FVM mesh metadata must be a JSON object")
         version = int(metadata.pop("format_version", -1))
         if version != FORMAT_VERSION:
             raise ValueError(

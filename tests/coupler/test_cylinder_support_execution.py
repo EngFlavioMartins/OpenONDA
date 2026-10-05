@@ -48,6 +48,7 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         == 3
     )
     factory = captured.pop("factory")
+    assert factory is setup.build_case
     assert captured == {
         "start_from": setup.START_FROM,
         "output_root": tmp_path,
@@ -60,6 +61,3 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         "steady_freestream_velocity": setup.FREESTREAM_VELOCITY,
         "perturbation": setup.INITIAL_PERTURBATION,
     }
-    resolved = tuple(object() for _ in range(4))
-    monkeypatch.setattr(setup, "build_case", lambda **kwargs: resolved)
-    assert factory(end_time=0.8, overrides=overrides) == resolved
