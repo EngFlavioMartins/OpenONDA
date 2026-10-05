@@ -143,7 +143,7 @@ def test_vlm_stage_contribution_forwards_temporary_targets_and_stage_time():
     np.testing.assert_allclose(velocity[:, 2], 1.75)
 
 
-def test_callable_stage_contribution_can_contract_external_gradient_into_rate():
+def test_callable_stage_contribution_can_conditions_external_gradient_into_rate():
     def evaluate(_time, _position, _strength, _velocity, _rate, gradient_out):
         gradient_out[:, 1, 0] = 2.0
 

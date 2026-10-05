@@ -1,4 +1,4 @@
-"""Current pressure settings are restored with strict numerical identity."""
+"""Current pressure settings are restored with strict numerical configuration."""
 
 import contextlib
 from dataclasses import replace

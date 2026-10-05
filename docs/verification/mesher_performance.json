@@ -83,7 +83,7 @@
           "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
         },
         "surface_constraint": {
-          "method": "transactional_column_preserving_surface_projection",
+          "method": "validated_column_preserving_surface_projection",
           "max_distance_before": 6.405844894530333e-07,
           "max_distance_after": 8.326672684688674e-17,
           "moved_inner_points": 3458,
@@ -280,7 +280,7 @@
           "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
         },
         "surface_constraint": {
-          "method": "transactional_column_preserving_surface_projection",
+          "method": "validated_column_preserving_surface_projection",
           "max_distance_before": 6.405844894530333e-07,
           "max_distance_after": 8.326672684688674e-17,
           "moved_inner_points": 3458,
@@ -478,7 +478,7 @@
           "neighbours": "91ad47f44b321ca685381e4c8c3e608c0e04ef14492889701889cef837c353c0"
         },
         "surface_constraint": {
-          "method": "transactional_column_preserving_surface_projection",
+          "method": "validated_column_preserving_surface_projection",
           "max_distance_before": 6.405844894530333e-07,
           "max_distance_after": 8.326672684688674e-17,
           "moved_inner_points": 3458,

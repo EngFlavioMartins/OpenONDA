@@ -26,7 +26,7 @@ Toroidal particles have $h=\sigma=0.05$ m with physical-core compensation. All c
 | `pedrizzetti_relaxation` | Aligns strength toward local vorticity, with global strength/impulse restoration. |
 | `particle_splitting` | Every five steps, bisects particles whose strength doubles; children retain core radius. |
 
-The added models can change leapfrogging timing and dissipation. Longer survival does not establish improved physical accuracy. A numerical health stop leaves a partial trajectory.
+The added models can change leapfrogging timing and dissipation. Longer survival does not establish improved physical accuracy. A particle state limit stop leaves a partial trajectory.
 
 ## Read the results
 

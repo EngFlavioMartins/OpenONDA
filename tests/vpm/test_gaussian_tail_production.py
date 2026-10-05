@@ -1,4 +1,4 @@
-"""Independent direct-tail validation, owned value identity and admission."""
+"""Independent direct-tail validation, immutable source values and validation."""
 
 from dataclasses import FrozenInstanceError
 import gc
@@ -10,17 +10,21 @@ import pytest
 
 from source.solvers.vpm.physics.induction.gaussian_tail import (
     SourceValueMismatchError,
-    certificate,
     prepare_tail_source,
     query_tail_bound,
     validate_source_values,
 )
+from source.solvers.vpm.physics.induction.gaussian_tail import (
+    error_bounds as tail_error_bounds,
+)
 from tests.vpm._gaussian_tail_reference import cloud, explicit_tail
 
 
-@pytest.mark.parametrize("kind", ["random", "cancelled", "axial", "translated", "near_admission"])
+@pytest.mark.parametrize(
+    "kind", ["random", "cancelled", "axial", "translated", "near_distance_limit"]
+)
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_production_certificate_bounds_independent_direct_shell_sums(kind, dtype):
+def test_production_error_bound_bounds_independent_direct_shell_sums(kind, dtype):
     x, g, sigma, targets, zmin, zmax, _ = cloud(kind)
     x, g, sigma = (value.astype(dtype) for value in (x, g, sigma))
     source = prepare_tail_source(x, g, sigma, z_min=zmin, z_max=zmax)
@@ -52,8 +56,8 @@ def test_original_dtype_shape_and_signed_zero_are_part_of_exact_identity():
     x = np.array([[0.0, 0.1, 0.25]], dtype=np.float32)
     g, sigma = np.ones((1, 3), dtype=np.float32), np.ones(1, dtype=np.float32) * 0.04
     source = prepare_tail_source(x, g, sigma, z_min=0.0, z_max=1.0)
-    assert source.source_identity.arrays[0].dtype == x.dtype.str
-    assert source.source_identity.arrays[0].shape == (1, 3)
+    assert source.source_data.arrays[0].dtype == x.dtype.str
+    assert source.source_data.arrays[0].shape == (1, 3)
     with pytest.raises(SourceValueMismatchError):
         validate_source_values(source, x.astype(np.float64), g, sigma, z_min=0.0, z_max=1.0)
     x[0, 0] = -0.0
@@ -66,9 +70,9 @@ def test_original_dtype_shape_and_signed_zero_are_part_of_exact_identity():
         validate_source_values(source, x.reshape(3), g, sigma, z_min=0.0, z_max=1.0)
 
 
-def test_byte_equality_not_digest_equality_controls_admission(monkeypatch):
+def test_byte_equality_not_digest_equality_controls_validation(monkeypatch):
     x, g, sigma, _, zmin, zmax, _ = cloud("random")
-    monkeypatch.setattr(certificate, "_identity_digest", lambda identity: "same-hash")
+    monkeypatch.setattr(tail_error_bounds, "_source_data_hash", lambda source_data: "same-hash")
     source = prepare_tail_source(x, g, sigma, z_min=zmin, z_max=zmax)
     g[0, 0] += 0.1
     other = prepare_tail_source(x, g, sigma, z_min=zmin, z_max=zmax)
@@ -85,8 +89,8 @@ def test_snapshot_owns_bytes_and_does_not_retain_caller_arrays():
     del x, g, sigma
     gc.collect()
     assert all(ref() is None for ref in references)
-    assert source.source_identity.retained_bytes == byte_count
-    assert all(type(item.payload) is bytes for item in source.source_identity.arrays)
+    assert source.source_data.retained_bytes == byte_count
+    assert all(type(item.data_bytes) is bytes for item in source.source_data.arrays)
     with pytest.raises(FrozenInstanceError):
         source.origin = (0.0, 0.0, 0.0)
 
@@ -108,7 +112,7 @@ def test_unsupported_source_dtypes_fail_before_preparation(dtype):
 
 
 @pytest.mark.parametrize("count", [0, 3])
-def test_zero_source_identity_and_zero_field_admission(count):
+def test_zero_source_identity_and_zero_field_validation(count):
     x, g, sigma = np.zeros((count, 3)), np.zeros((count, 3)), np.ones(count)
     source = prepare_tail_source(x, g, sigma, z_min=-0.5, z_max=0.5)
     validate_source_values(source, x, g, sigma, z_min=-0.5, z_max=0.5)
@@ -123,7 +127,7 @@ def test_bad_floating_environment_fails_closed_before_source_or_query_work(monke
     def fail():
         raise RuntimeError("injected unsupported floating environment")
 
-    monkeypatch.setattr(certificate, "_platform", fail)
+    monkeypatch.setattr(tail_error_bounds, "_platform", fail)
     with pytest.raises(RuntimeError, match="floating environment"):
         prepare_tail_source(x, g, sigma, z_min=-0.5, z_max=0.5)
     with pytest.raises(RuntimeError, match="floating environment"):
@@ -141,7 +145,7 @@ def test_query_failure_does_not_damage_owned_snapshot():
 
 
 def test_production_package_has_no_test_or_prototype_imports():
-    package = Path(certificate.__file__).parent
+    package = Path(tail_error_bounds.__file__).parent
     for path in package.glob("*.py"):
         assert "from tests" not in path.read_text()
         assert "import tests" not in path.read_text()

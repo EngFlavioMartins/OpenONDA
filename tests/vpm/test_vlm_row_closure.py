@@ -114,7 +114,7 @@ def test_virtual_row_rates_and_reaction_match_independent_pair_operator(name):
     position.from_numpy(x)
     strength.from_numpy(gamma)
     radius.from_numpy(core)
-    owners = np.array([0, 1, 1, 0], dtype=np.int32)
+    strip_indices = np.array([0, 1, 1, 0], dtype=np.int32)
     kernel = make_virtual_wake_kernel(name, ti.f64)
     # The enum is obtained from the public formulation map, not assumed here.
     from source.solvers.vpm.physics.induction.base import _STRETCHING_MODES
@@ -130,7 +130,7 @@ def test_virtual_row_rates_and_reaction_match_independent_pair_operator(name):
         sx,
         sg,
         sc,
-        owners,
+        strip_indices,
         exchange,
         count,
         sources,
@@ -164,7 +164,7 @@ def test_virtual_row_rates_and_reaction_match_independent_pair_operator(name):
         sx,
         sg,
         sc,
-        owners,
+        strip_indices,
         exchange,
         count,
         sources,

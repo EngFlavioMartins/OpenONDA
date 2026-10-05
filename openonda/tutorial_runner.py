@@ -141,7 +141,7 @@ def _run_locked(directory: Path, module: str, arguments: list[str]) -> int:
                     return child.wait()
                 except KeyboardInterrupt:
                     # The child receives the same terminal interrupt. Retain
-                    # ownership until its solver finishes stopping safely.
+                    # the case lock until its solver finishes stopping safely.
                     continue
 
 

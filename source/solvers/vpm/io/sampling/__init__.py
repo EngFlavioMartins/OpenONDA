@@ -2,7 +2,7 @@
 
 ``SurfaceSampler`` and ``LineSampler`` sample VPM-induced fields (velocity,
 vorticity, strain, velocity gradients) onto fixed grid points or line points.
-The canonical CSV schema is ``SAMPLER_CSV_COLUMNS``; ``resolve_samples_dir``
+The standard CSV schema is ``SAMPLER_CSV_COLUMNS``; ``resolve_samples_dir``
 fixed the output root from a backup directory.
 """
 

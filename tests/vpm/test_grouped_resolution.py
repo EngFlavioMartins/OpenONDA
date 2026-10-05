@@ -3,20 +3,20 @@
 import numpy as np
 import pytest
 
-from source.solvers.vpm.diagnostics.resolution import discretization_health
+from source.solvers.vpm.diagnostics.resolution import particle_resolution_metrics
 
 
 @pytest.mark.parametrize("sample_all", [False, True])
 @pytest.mark.parametrize("count", [50, 600])
-def test_coincident_group_contributions_leave_field_health_unchanged(count, sample_all):
+def test_coincident_group_contributions_leave_resolution_metrics_unchanged(count, sample_all):
     rng = np.random.default_rng(20)
     position = rng.normal(size=(count, 3)) * 0.2
     strength = rng.normal(size=(count, 3))
     core = np.full(count, 0.15)
-    reference = discretization_health(position, strength, core, sample_all=sample_all)
+    reference = particle_resolution_metrics(position, strength, core, sample_all=sample_all)
     # Labels can even have different directions while their sum is identical.
     component = rng.normal(size=(count, 3)) * 0.1
-    actual = discretization_health(
+    actual = particle_resolution_metrics(
         np.concatenate((position, position)),
         np.concatenate((0.3 * strength + component, 0.7 * strength - component)),
         np.concatenate((core, core)),
@@ -45,7 +45,7 @@ def test_full_divergence_measurement_matches_direct_gaussian_derivatives(monkeyp
     expected = np.average(local_error, weights=weights)
 
     monkeypatch.setattr(resolution, "_MAX_PROBES", 4)
-    sampled = discretization_health(position, strength, core)
-    full = discretization_health(position, strength, core, sample_all=True)
+    sampled = particle_resolution_metrics(position, strength, core)
+    full = particle_resolution_metrics(position, strength, core, sample_all=True)
     assert sampled["vorticity_divergence_error"] != pytest.approx(expected, abs=1e-3)
     assert full["vorticity_divergence_error"] == pytest.approx(expected, abs=1e-12)

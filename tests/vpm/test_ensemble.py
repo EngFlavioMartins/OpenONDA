@@ -16,7 +16,7 @@ from source.solvers.vpm.io.ensemble import (
 
 def metadata():
     record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "solver": "VPM",
         "case_name": "realization_0",
         "configuration": {
@@ -62,7 +62,7 @@ def tables():
     ]
 
 
-def test_realizations_admit_portable_output_and_execution_choices_without_mutation():
+def test_realizations_validate_portable_output_and_execution_choices_without_mutation():
     records = metadata()
     records[1]["configuration"]["numerics"]["compute_device"] = "METAL"
     records[1]["configuration"]["samplers"] = {"directory": "another/machine"}
@@ -76,11 +76,11 @@ def test_vlm_physics_uses_recorded_geometry_identity_instead_of_machine_paths():
     records = metadata()
     for index, record in enumerate(records):
         record["configuration"]["numerics"]["vlm"] = {
-            "physics_identity": {"geometry": "loaded-surface", "velocity": [1, 0, 0]},
+            "physics_hash": {"geometry": "loaded-surface", "velocity": [1, 0, 0]},
             "surfaces": [{"surface_file": f"machine-{index}/surface.json"}],
         }
     realization_metadata(records)
-    records[1]["configuration"]["numerics"]["vlm"]["physics_identity"]["velocity"] = [2, 0, 0]
+    records[1]["configuration"]["numerics"]["vlm"]["physics_hash"]["velocity"] = [2, 0, 0]
     with pytest.raises(ValueError, match="physical configurations"):
         realization_metadata(records)
 

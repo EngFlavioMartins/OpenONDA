@@ -1,13 +1,13 @@
-"""Gaussian infinite-image tail certificates; no solver-policy integration.
+"""Gaussian infinite-image tail error_bounds; no solver-settings integration.
 
 Callers must provide a round-to-nearest, gradual-underflow environment for
 preparation and queries. These functions never switch FENV controls; a caller
 such as a Taichi host may require a separately owned save/restore scope.
-Snapshots retain original immutable source bytes for explicit exact admission.
-Their certificates do not certify finite-image interpolation or GPU fields.
+Snapshots retain original immutable source bytes for explicit exact validation.
+Their error_bounds do not validate finite-image interpolation or GPU fields.
 """
 
-from .certificate import (
+from .error_bounds import (
     PreparedTailSource,
     QueryTailBound,
     SourceValueMismatchError,

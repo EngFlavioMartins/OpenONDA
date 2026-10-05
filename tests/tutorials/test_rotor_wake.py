@@ -27,7 +27,7 @@ native_plane_windows = __import__(
 plane_profiles = wake_planes.plane_profiles
 
 
-def published_planes(directory, defect=None, *, stations=(12.0, 24.0), canonical_names=False):
+def saved_planes(directory, defect=None, *, stations=(12.0, 24.0), sampler_names=False):
     times = np.arange(1, 49) / 8
     if defect == "stale":
         times = times[:-3]
@@ -40,7 +40,7 @@ def published_planes(directory, defect=None, *, stations=(12.0, 24.0), canonical
     points = np.array([[0, -1, -1], [0, 1, -1], [0, -1, 1], [0, 1, 1]], dtype=float)
     samplers = []
     for index, downstream in enumerate(stations):
-        name = f"wake_{downstream / 12:g}D" if canonical_names else f"slice_x{int(downstream)}m"
+        name = f"wake_{downstream / 12:g}D" if sampler_names else f"slice_x{int(downstream)}m"
         samplers.append(
             {
                 "type": "SurfaceSampler",
@@ -89,7 +89,7 @@ def published_planes(directory, defect=None, *, stations=(12.0, 24.0), canonical
 
 @pytest.mark.parametrize("schedule_type", ["EverySteps", "EveryTime"])
 def test_complete_periodic_native_planes_pass(tmp_path, schedule_type):
-    p = published_planes(tmp_path)
+    p = saved_planes(tmp_path)
     if schedule_type == "EveryTime":
         for sampler in p.metadata["configuration"]["samplers"]["items"]:
             sampler["schedule"] = {"type": "EveryTime", "interval": 0.125, "start_time": 0.0}
@@ -99,7 +99,7 @@ def test_complete_periodic_native_planes_pass(tmp_path, schedule_type):
 
 
 def test_disk_and_downstream_planes_share_a_complete_native_window(tmp_path):
-    p = published_planes(tmp_path, stations=(0.0, 12.0, 24.0), canonical_names=True)
+    p = saved_planes(tmp_path, stations=(0.0, 12.0, 24.0), sampler_names=True)
     rows = native_plane_windows(
         p, require_complete=True, required_names=rotor_common.REQUIRED_PLANE_NAMES
     )
@@ -108,7 +108,7 @@ def test_disk_and_downstream_planes_share_a_complete_native_window(tmp_path):
 
 
 def test_downstream_only_records_cannot_qualify_a_disk_comparison(tmp_path):
-    p = published_planes(tmp_path, canonical_names=True)
+    p = saved_planes(tmp_path, sampler_names=True)
     with pytest.raises(ValueError, match="Missing required rotor planes.*wake_0D"):
         native_plane_windows(
             p, require_complete=True, required_names=rotor_common.REQUIRED_PLANE_NAMES
@@ -129,13 +129,13 @@ def test_downstream_only_records_cannot_qualify_a_disk_comparison(tmp_path):
     ],
 )
 def test_files_alone_do_not_qualify_a_native_wake(tmp_path, defect):
-    p = published_planes(tmp_path, defect)
+    p = saved_planes(tmp_path, defect)
     with pytest.raises((ValueError, OSError)):
         native_plane_windows(p, require_complete=True)
 
 
 def test_spatial_cancellation_and_large_freestream_do_not_hide_changes(tmp_path):
-    p = published_planes(tmp_path, "cancelling_drift")
+    p = saved_planes(tmp_path, "cancelling_drift")
     rows = native_plane_windows(p, require_complete=True)
     for row in rows:
         # Axial disc means are unchanged; the resolved vector field is not.
@@ -143,7 +143,7 @@ def test_spatial_cancellation_and_large_freestream_do_not_hide_changes(tmp_path)
 
 
 def test_pure_freestream_is_not_a_resolved_stationary_wake(tmp_path):
-    rows = native_plane_windows(published_planes(tmp_path, "no_wake"), require_complete=True)
+    rows = native_plane_windows(saved_planes(tmp_path, "no_wake"), require_complete=True)
     assert all(not np.isfinite(row["induced_field_drift"]) for row in rows)
 
 
@@ -152,8 +152,8 @@ def test_signal_onset_requires_a_persistent_induced_signal(tmp_path):
     missing_directory = tmp_path / "missing"
     arrived_directory.mkdir()
     missing_directory.mkdir()
-    arrived = published_planes(arrived_directory)
-    missing = published_planes(missing_directory, "no_wake")
+    arrived = saved_planes(arrived_directory)
+    missing = saved_planes(missing_directory, "no_wake")
 
     arrived_assessment = assess_wake_signal_onset(arrived, "slice_x12m")
     missing_assessment = assess_wake_signal_onset(missing, "slice_x12m")
@@ -188,7 +188,7 @@ def test_operating_point_uses_shared_five_revolution_window(monkeypatch):
 
 
 def test_complete_window_must_not_be_redefined_by_a_late_sampler_start(tmp_path):
-    p = published_planes(tmp_path)
+    p = saved_planes(tmp_path)
     for sampler in p.metadata["configuration"]["samplers"]["items"]:
         sampler["schedule"]["start_time"] = 4.0
     with pytest.raises(ValueError, match="incomplete"):
@@ -243,7 +243,7 @@ def test_phase_aware_drift_never_extrapolates_missing_window_boundaries():
 def test_native_five_revolution_mean_cannot_hide_first_revolution_transient(tmp_path):
     directory = tmp_path / "first_transient"
     directory.mkdir()
-    p = published_planes(directory, "first_revolution_transient")
+    p = saved_planes(directory, "first_revolution_transient")
 
     rows = native_plane_windows(p, require_complete=True)
 
@@ -409,10 +409,10 @@ def test_downstream_diagnostic_excludes_disk_and_preserves_induction_components(
 
 
 def test_native_window_ends_at_shared_sample_when_accepted_clock_is_unaligned(tmp_path):
-    p = published_planes(tmp_path)
+    p = saved_planes(tmp_path)
     p.metadata["state"].update(step=49, time=6.125)
     p.metadata["configuration"]["numerics"]["time_step_size"] = 0.125
-    # The owner advances past the last field output while a coarser field
+    # The solver advances past the last field output while a coarser field
     # schedule has not yet become due. Every due field sample remains present.
     for item in p.metadata["configuration"]["samplers"]["items"]:
         item["schedule"] = {"type": "EveryTime", "interval": 0.25, "start_time": 0.0}

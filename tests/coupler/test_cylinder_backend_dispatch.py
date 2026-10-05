@@ -1,18 +1,17 @@
-"""Explicit portable backends propagate through campaign workers."""
+"""Explicit portable backends propagate through parameter study workers."""
 
-import importlib.util
 from pathlib import Path
 import sys
 
 import pytest
 
+from openonda.tutorial_runner import load_case_module
 
-@pytest.mark.parametrize("asset", ["run_pipeline", "run_sensitivity"])
+
+@pytest.mark.parametrize("asset", ["compare_solvers", "run_sensitivity"])
 def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, monkeypatch):
     path = Path(__file__).resolve().parents[2] / "tests/support/cylinder" / f"{asset}.py"
-    spec = importlib.util.spec_from_file_location(asset, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_case_module(path.parent, asset)
     calls = []
     cost_roots = []
 
@@ -35,7 +34,7 @@ def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, mon
     )
     mode = (
         ["--pilot", "--sensitivity", "none", "--reference-cores", "1"]
-        if asset == "run_pipeline"
+        if asset == "compare_solvers"
         else ["--screen", "--factor", "span"]
     )
     monkeypatch.setattr(
@@ -57,7 +56,7 @@ def test_backend_and_core_budget_reach_every_coupled_worker(asset, tmp_path, mon
     coupled = [command for command in calls if command[command.index("--kind") + 1] == "coupled"]
     assert coupled
     assert all("compute_device=CPU" in command and "cores=2" in command for command in coupled)
-    if asset == "run_pipeline":
+    if asset == "compare_solvers":
         reference = next(
             command for command in calls if command[command.index("--kind") + 1] == "reference"
         )

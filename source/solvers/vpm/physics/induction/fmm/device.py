@@ -23,7 +23,7 @@ from ....io.logging import Logging
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ..base import _STRETCHING_MODES, normalize_stretching_scheme
 from ..stretching import stretching_rate
-from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _OwnedFields
+from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _DeviceFields
 from .diagnostics import FMMDiagnostics
 
 _EXPANSION_ORDER = 3
@@ -281,7 +281,7 @@ class FMMDeviceWorkspace:
             hierarchy_only=True,
             max_evaluation_points=self.target_batch_capacity,
         )
-        fields = _OwnedFields()
+        fields = _DeviceFields()
         self.multipole = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _MOMENT_COUNT)
         self.local = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _LOCAL_COUNT)
         # Expansions are needed only on the interaction tree, which stops at
@@ -356,7 +356,7 @@ class FMMDeviceWorkspace:
         self._rate_norm_sum = fields.scalar(dtype=ti.f32, shape=())
         self._rate_defect = fields.scalar(dtype=ti.f32, shape=())
         fields.finalize()
-        self._field_owner = fields
+        self._device_fields = fields
         coefficient_array = np.asarray(_MULTI_INDICES, dtype=np.int32)
         self._coefficient_a.from_numpy(coefficient_array[:, 0])
         self._coefficient_b.from_numpy(coefficient_array[:, 1])
@@ -382,7 +382,7 @@ class FMMDeviceWorkspace:
     def destroy(self) -> None:
         """Release the disposable FMM and hierarchy scratch fields."""
         self.tree.destroy()
-        self._field_owner.destroy()
+        self._device_fields.destroy()
 
     @property
     def max_pairs(self) -> int:
@@ -1286,7 +1286,7 @@ class FMMInduction:
 
     The backend performs P2M, M2M, M2L, L2L, L2P, and kernel-specific near-field
     P2P passes on device-resident particle fields. It computes a velocity
-    gradient from the same expansion and contracts that gradient into the
+    gradient from the same expansion and conditions that gradient into the
     requested particle-strength rate. The stretching formulation is
     independent of the FMM approximation.
 
@@ -1320,7 +1320,7 @@ class FMMInduction:
         Parameters
         ----------
         stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
-            Formulation used to contract the computed velocity gradient into
+            Formulation used to conditions the computed velocity gradient into
             ``dGamma/dt``. It does not change hierarchy construction or
             induced velocity.
 
@@ -1473,7 +1473,7 @@ class FMMInduction:
             self._reclaim_stage_cache()
         ti.sync()
         # Target kernels close over the source workspace's fields. Release
-        # them before destroying those fields, never retarget a compiled owner.
+        # them before destroying those fields, never retarget a compiled solver.
         self._release_target_workspace()
         self.workspace = None
         self._last_tree_key = None
@@ -1509,7 +1509,7 @@ class FMMInduction:
         """Release this evaluator's scratch, never caller physics/particle fields.
 
         Call before resetting its Taichi runtime. A wrapper which borrows this
-        evaluator must not close it implicitly; the evaluator's owner chooses
+        evaluator must not close it implicitly; the evaluator's solver chooses
         teardown. Rebinding a closed evaluator is supported.
         """
         if getattr(self, "_fixed_source_key", None) is not None:
@@ -1530,10 +1530,10 @@ class FMMInduction:
 
         Only standard autonomous backend bindings qualify. Aliased/unknown
         fields and custom methods keep the original fresh-preparation path.
-        No geometry validity escapes this context, although its bounded owner
+        No geometry validity escapes this context, although its bounded solver
         survives to avoid global Taichi JIT invalidation between image stages.
         """
-        from ..reuse_backends import StandardFMMReuseContract, _standard_methods
+        from ..reuse_backends import FMMReuseConditions, _standard_methods
         from .target_geometry import TargetGeometryCache, disjoint_fields, scratch_fields
         from .targets import FMMTargetEvaluator
 
@@ -1553,7 +1553,7 @@ class FMMInduction:
         retained = scratch_fields(None if cache is None else cache.storage)
         if (
             not standard_target
-            or StandardFMMReuseContract(self)() is None
+            or FMMReuseConditions(self)() is None
             or not disjoint_fields(read_fields, writable + retained)
             or not disjoint_fields(retained, writable)
         ):
@@ -1617,7 +1617,7 @@ class FMMInduction:
         max_pairs: int | None = None,
         _list_capacities: _ListCapacities | None = None,
     ) -> int:
-        """Estimate fixed FMM and hierarchy field payloads for a capacity.
+        """Estimate fixed FMM and hierarchy field arrays for a capacity.
 
         Parameters
         ----------
@@ -1634,7 +1634,7 @@ class FMMInduction:
         Returns
         -------
         int
-            Approximate bytes for the fixed FMM and LBVH field payloads,
+            Approximate bytes for the fixed FMM and LBVH field arrays,
             including target traversal stacks. Taichi allocator metadata,
             compiled kernels, and driver allocations are excluded.
 
@@ -1659,7 +1659,9 @@ class FMMInduction:
         if max_pairs is not None and _list_capacities is not None:
             raise ValueError("specify either equal or independent FMM scratch capacities")
         initial = _PAIR_CAPACITY_FACTOR * capacity if max_pairs is None else max_pairs
-        pairs = _normalize_list_capacities(initial if _list_capacities is None else _list_capacities)
+        pairs = _normalize_list_capacities(
+            initial if _list_capacities is None else _list_capacities
+        )
         coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
         interaction_bytes = pairs.storage_bytes + 4  # Queue high-water counter.
         near_adjacency_bytes = node_count * 3 * 4
@@ -1725,7 +1727,7 @@ class FMMInduction:
             Copy the FMM stretching rate when true; otherwise explicitly zero
             the output rate.
         stage_time : float, default=0.0
-            Stage time in seconds, accepted for the common contract and unused
+            Stage time in seconds, accepted for the common conditions and unused
             by this autonomous backend.
 
         Raises

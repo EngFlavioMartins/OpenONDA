@@ -11,9 +11,9 @@ from typing import Any, NotRequired, TypeAlias, TypedDict
 import numpy as np
 
 from source.solvers.fvm.io.backup import (
-    RestartPayload,
-    capture_restart_payload,
-    publish_restart_payload,
+    RestartState,
+    capture_restart_state,
+    restore_restart_state,
 )
 
 from .boundary import advance_fvm, update_boundary_history_after_replacement
@@ -66,7 +66,7 @@ class IterationRow(TypedDict):
 
 
 class TrialFallback(TypedDict):
-    fvm: RestartPayload
+    fvm: RestartState
     fvm_attributes: dict[str, Any]
     fvm_patch: dict[str, Any] | None
     particles: Any
@@ -142,7 +142,7 @@ def _capture_trial_fallback(
         else None
     )
     return {
-        "fvm": capture_restart_payload(fvm),
+        "fvm": capture_restart_state(fvm),
         "fvm_attributes": {
             name: deepcopy(getattr(fvm, name))
             for name in _FVM_ROLLBACK_ATTRIBUTES
@@ -180,7 +180,7 @@ def _capture_trial_fallback(
 
 def _restore_trial_fallback(coupler, fallback: TrialFallback):
     fvm = coupler.fvm_solver
-    publish_restart_payload(fvm, fallback["fvm"])
+    restore_restart_state(fvm, fallback["fvm"])
     for name, value in fallback["fvm_attributes"].items():
         setattr(fvm, name, value)
     if fallback["fvm_patch"] is not None:
@@ -224,7 +224,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     comm = getattr(fvm.parallel, "comm", None)
     snapshot_started = perf_counter()
     with collective_phase(comm, "interface initial state capture"):
-        fvm_start = capture_restart_payload(fvm)
+        fvm_start = capture_restart_state(fvm)
         predictor = (
             _particle_state_snapshot(vpm, slot="coupler-predictor") if coupler._is_master else None
         )
@@ -244,7 +244,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     if history is not None:
         started = perf_counter()
         seed, prediction = history.prepare(coupler, geometry, old, raw_predictor)
-        prediction["identity_seconds"] = perf_counter() - started
+        prediction["input_check_seconds"] = perf_counter() - started
         prediction["snapshot_seconds"] = 0.0
         if seed is not None:
             snapshot_started = perf_counter()
@@ -268,7 +268,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         picard_sweep = sweep - int(probing)
         if picard_sweep > 1:
             started = perf_counter()
-            publish_restart_payload(fvm, fvm_start)
+            restore_restart_state(fvm, fvm_start)
             if coupler._is_master:
                 _restore_particle_state(vpm, predictor)
             transfer.step = transfer_step

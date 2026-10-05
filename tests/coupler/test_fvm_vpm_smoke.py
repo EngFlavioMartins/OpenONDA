@@ -86,9 +86,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     first_stop = coupler.run(max_coupling_steps=1, backup_at_stop=True)
     assert first_stop == 1
     first_backup = tmp_path / "solution" / "backups"
-    first_manifest = json.loads((first_backup / "manifest.json").read_text())
-    assert first_manifest["coupling_step"] == 1
-    assert all("000001" in name for name in first_manifest["artifacts"].values())
+    first_checkpoint_info = json.loads((first_backup / "checkpoint_info.json").read_text())
+    assert first_checkpoint_info["coupling_step"] == 1
+    assert all("000001" in name for name in first_checkpoint_info["checkpoint_files"].values())
     seed_backup = tmp_path / "seed_backup"
     shutil.copytree(first_backup, seed_backup)
     first_metadata = json.loads((tmp_path / "solution" / "run_metadata.json").read_text())
@@ -142,17 +142,19 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "coupled backup interval" in coupler_log.lower()
     assert "COUPLED BACKUP" in coupler_log
     backup = sol / "backups"
-    manifest = json.loads((backup / "manifest.json").read_text())
-    assert manifest["format_version"] == 12
-    assert manifest["kind"] == "openonda.coupled_backup"
-    assert all((backup / name).is_file() for name in manifest["artifacts"].values())
-    assert {name: Path(relative).name for name, relative in manifest["artifacts"].items()} == {
+    checkpoint_info = json.loads((backup / "checkpoint_info.json").read_text())
+    assert checkpoint_info["format_version"] == 13
+    assert checkpoint_info["kind"] == "openonda.coupled_backup"
+    assert all((backup / name).is_file() for name in checkpoint_info["checkpoint_files"].values())
+    assert {
+        name: Path(relative).name for name, relative in checkpoint_info["checkpoint_files"].items()
+    } == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
         "vpm_vtu": "vpm_000002.vtu",
         "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
-    assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
+    assert set(checkpoint_info["file_sha256"]) == set(checkpoint_info["checkpoint_files"])
     assert len(list(backup.glob("checkpoint-*"))) == 1
     assert not list(backup.rglob("*_000001*"))
     assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.h5")) == [
@@ -206,7 +208,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         "stop_time": pytest.approx(2 * VPM_TIME_STEP_SIZE),
         "is_limited": False,
     }
-    # No external solver case artifacts were created anywhere.
+    # No external solver case checkpoint_files were created anywhere.
     assert not (tmp_path / "constant").exists()
     assert not (tmp_path / "system").exists()
 

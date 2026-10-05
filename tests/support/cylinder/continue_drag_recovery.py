@@ -1,8 +1,8 @@
-"""Continue the production 3D cylinder from an authenticated native checkpoint.
+"""Continue the production 3D cylinder from a hash-verified native checkpoint.
 
 Run into a new directory; the input checkpoint and tutorial samples remain
-untouched. --forces-only changes output lifecycle policy, which native restart
-admission excludes from the numerical identity, while retaining all equations,
+untouched. --forces-only changes output run_stages settings, which native restart
+validation excludes from the numerical configuration, while retaining all equations,
 the exact saved mesh, 24 span layers and the SlipSlabInduction configuration.
 No startup perturbation is applied to a developed checkpoint.
 """
@@ -49,18 +49,18 @@ def main(argv=None):
     options = parser.parse_args(argv)
     options.output_dir = options.output_dir.resolve()
     mesh = options.mesh.resolve(strict=True)
-    source_identity = None
+    source_description = None
     if not options.resume:
         options.restart_from = options.restart_from.resolve(strict=True)
-        manifest_path = options.restart_from / "manifest.json"
-        manifest_bytes = manifest_path.read_bytes()
-        manifest = json.loads(manifest_bytes)
-        source_identity = {
+        metadata_path = options.restart_from / "checkpoint_info.json"
+        metadata_bytes = metadata_path.read_bytes()
+        checkpoint_info = json.loads(metadata_bytes)
+        source_description = {
             "restart_from": str(options.restart_from),
-            "source_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-            "source_configuration_sha256": manifest["config_sha256"],
-            "source_time": manifest["time"],
-            "source_coupling_step": manifest["coupling_step"],
+            "source_checkpoint_info_sha256": hashlib.sha256(metadata_bytes).hexdigest(),
+            "source_configuration_sha256": checkpoint_info["config_sha256"],
+            "source_time": checkpoint_info["time"],
+            "source_coupling_step": checkpoint_info["coupling_step"],
         }
     spec = importlib.util.spec_from_file_location(
         "cylinder_3d_drag_recovery_case", TUTORIAL / "setup.py"
@@ -99,11 +99,11 @@ def main(argv=None):
                     json.dumps(
                         {
                             "scope": "production three-dimensional slip-slab continuation",
-                            **source_identity,
+                            **source_description,
                             "mesh": str(mesh),
                             "end_time": setup.time.end_time,
                             "forces_only": options.forces_only,
-                            "numerical_restart_allowlist": [],
+                            "numerical_restart_allowed_paths": [],
                             "source_sha256": source_hashes,
                         },
                         indent=2,

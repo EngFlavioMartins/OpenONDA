@@ -33,7 +33,7 @@ def test_completed_resume_keeps_original_particle_cloud(scene, tmp_path):
     metadata.write_text(
         json.dumps(
             {
-                "lifecycle": {"status": "completed"},
+                "run_status": {"status": "completed"},
                 "state": {"initial_step": 927, "initial_n_particles_total": 0},
             }
         )

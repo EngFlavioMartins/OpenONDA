@@ -1,7 +1,7 @@
 """Optional compiled numerical support; project metadata lives in pyproject.toml.
 
 Failure to build this small helper leaves existing solver backends available.
-Certified Gaussian-tail users explicitly require it at admission. Nothing is
+Gaussian-tail error checks require this helper before evaluation. Nothing is
 compiled on first solver use.
 """
 

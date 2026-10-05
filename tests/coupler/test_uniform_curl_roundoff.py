@@ -1,4 +1,4 @@
-"""The canonical velocity-trace transfer preserves uniform and weak flows."""
+"""The velocity-trace transfer preserves uniform and weak flows."""
 
 from types import SimpleNamespace
 

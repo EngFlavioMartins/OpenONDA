@@ -1,6 +1,6 @@
 """Shared, bounded-width reports for OpenONDA console and file sinks.
 
-Numerical owners pass already computed scalar values and short vectors. Rendering
+Solvers pass already computed scalar values and short vectors. Rendering
 never reads a solver, downloads a field, or performs a numerical reduction.
 """
 

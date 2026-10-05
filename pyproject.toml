@@ -77,7 +77,7 @@ meshing = [
     "numpy-stl>=3.2",
 ]
 
-# Minimal contract-test runner.
+# Minimal solver-test runner.
 test = [
     "pytest>=8.0.0",
 ]
@@ -159,9 +159,6 @@ exclude = [
     "build/",
     "dist/",
     ".eggs/",
-    # Byte-identical provenance artifacts; their sha256 contract in the
-    # study manifest forbids any reformatting by ruff.
-    "**/provenance/frozen_scripts/",
 ]
 
 [tool.ruff.lint]
@@ -258,10 +255,10 @@ minversion = "6.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 markers = [
-    "unit: fast, isolated numerical or API contract",
+    "unit: fast, isolated numerical or solver-interface check",
     "integration: interaction between real solver subsystems",
     "qualification: independent analytical, manufactured, or convergence evidence",
-    "tutorial: executable tutorial construction and output-schema contract",
+    "tutorial: executable case setup and output-format check",
     "slow: test whose normal runtime is unsuitable for the fast feedback loop",
     "gpu: test that requires or qualifies a GPU backend",
     "stochastic: seeded ensemble or random-process qualification",

@@ -1,4 +1,4 @@
-"""LES turbulence-model orchestration for the VPM solver."""
+"""LES turbulence-model execution for the VPM solver."""
 
 import taichi as ti
 

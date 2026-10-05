@@ -133,9 +133,9 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         images.append(figure_frame(figure))
     plt.close(figure)
     export_animation(images, output, fps=fps)
-    output_manifest = output.with_suffix(".json")
+    animation_information = output.with_suffix(".json")
     write_text(
-        output_manifest,
+        animation_information,
         json.dumps(
             {
                 "gif": str(output),

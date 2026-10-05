@@ -35,7 +35,7 @@ class ParticleMutationPort(Protocol):
         ...
 
 
-class _ParticleMutationOwner(Protocol):
+class _ParticleSolver(Protocol):
     """Concrete solver operations used by :class:`SolverParticleMutations`."""
 
     np_dtype: np.dtype
@@ -76,28 +76,28 @@ class _ParticleMutationOwner(Protocol):
 class SolverParticleMutations:
     """Adapter exposing the solver's approved particle-mutation operations."""
 
-    owner: _ParticleMutationOwner
+    solver: _ParticleSolver
     state: StabilizationStepState
 
     def replace(self, **properties: object) -> None:
         """Delegate an atomic particle-state replacement to the solver."""
-        self.owner.replace_vortex_particles(**properties)
+        self.solver.replace_vortex_particles(**properties)
         self._sync_removal_accounting()
 
     def set_properties(self, **properties: object) -> None:
         """Delegate a validated particle-property update to the solver."""
-        self.owner.set_particles_properties(**properties)
+        self.solver.set_particles_properties(**properties)
 
     def remove_by_bounds(self, bounds: list, *, invert_selection: bool = False) -> int:
         """Delegate bounded particle removal and synchronize accounting."""
-        removed = self.owner.remove_particles_by_bounds(bounds, invert_selection=invert_selection)
+        removed = self.solver.remove_particles_by_bounds(bounds, invert_selection=invert_selection)
         self._sync_removal_accounting()
         return removed
 
     def _sync_removal_accounting(self) -> None:
-        self.state.particles_removed = int(self.owner._particles_removed_this_step)
+        self.state.particles_removed = int(self.solver._particles_removed_this_step)
         self.state.vortex_strength_removed = np.asarray(
-            self.owner._vortex_strength_removed_this_step, dtype=self.owner.np_dtype
+            self.solver._vortex_strength_removed_this_step, dtype=self.solver.np_dtype
         ).copy()
 
 

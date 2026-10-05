@@ -16,7 +16,7 @@ from typing import Protocol, cast, runtime_checkable
 import defusedxml.ElementTree as ET  # noqa: N817
 import numpy as np
 
-from ..config.artifacts import Samplers
+from ..config.output import Samplers
 from .logging import Logging
 from .sampling import OutputSchedule, resolve_samples_dir, sampler_csv_columns
 
@@ -27,7 +27,7 @@ class SamplerRuntimeSolver(Protocol):
     Implementations expose an accepted `step`/`time`, case/output paths, and
     the configured time-step size. `_write_backup()` is called only when the
     accepted-step backup cadence is due; a scientific sampler must not infer
-    backup ownership from that hook.
+    backup writing from that hook.
     """
 
     case: object
@@ -41,7 +41,7 @@ class SamplerRuntimeSolver(Protocol):
 
 
 class OutputEvent(StrEnum):
-    """Lifecycle events accepted by the VPM output runtime.
+    """Run events accepted by the VPM output runtime.
 
     `INITIAL` and `FINAL` are explicit framework events; `ACCEPTED_STEP` is
     emitted after a committed physical step; `FAILED` is a notification-only
@@ -69,7 +69,7 @@ class SamplingContext:
     time : float
         Accepted physical time in seconds.
     event : OutputEvent
-        Lifecycle event that selected the sampler.
+        Run events event that selected the sampler.
     continuing_output : bool
         ``True`` when the writer must append to an existing stream from a
         loaded numerical restart or an earlier event in this process. ``False``
@@ -120,7 +120,7 @@ class _TableSampler(Protocol):
 
         Custom tables declare ``csv_columns`` as an ordered tuple of field
         names. The framework adds the accepted ``time`` and ``step`` columns.
-        Field samplers use the canonical velocity/vorticity schema.
+        Field samplers use the standard velocity/vorticity schema.
         """
 
 
@@ -136,8 +136,8 @@ class OutputManager:
     """Own VPM sampler schedules, output paths, and restart-safe indexes.
 
     The manager separates immutable sampler configuration from mutable PVD/CSV
-    runtime state. It dispatches only after accepted lifecycle events, creates
-        the owner-controlled sample destination, writes VTK/CSV files atomically
+    runtime state. It dispatches only after accepted run events, creates
+        the solver-controlled sample destination, writes VTK/CSV files atomically
         where supported, and raises a sampler-specific `RuntimeError` on failed
         scientific output.
     """
@@ -158,11 +158,11 @@ class OutputManager:
         self._runtime = _SamplerRuntime()
 
     def dispatch(self, event: OutputEvent) -> None:
-        """Deliver samplers selected by one lifecycle event.
+        """Deliver samplers selected by one run event.
 
         `ACCEPTED_STEP` may trigger a numerical backup independently of sampler
         selection. `FAILED` performs no writes. Sampler exceptions are wrapped
-        with name/step/time context and propagated to the owning lifecycle.
+        with name/step/time context and propagated to the solver run.
         """
         if event is OutputEvent.FAILED:
             return
@@ -188,7 +188,7 @@ class OutputManager:
         if event is OutputEvent.FAILED:
             raise ValueError("manual sampler execution cannot use the failed event")
         for sampler in self.samplers.samples:
-            if skip_current and self._runtime.last_written.get(self._output_identity(sampler)) == (
+            if skip_current and self._runtime.last_written.get(self._output_key(sampler)) == (
                 self.solver.step,
                 self.solver.time,
             ):
@@ -230,7 +230,7 @@ class OutputManager:
         )
 
     def rewind_histories(self, time: float) -> None:
-        """Reconcile VPM scientific output with an accepted restart time.
+        """Align VPM scientific output with an accepted restart time.
 
         Parameters
         ----------
@@ -246,8 +246,8 @@ class OutputManager:
         resumed writer reject the first repeated event as duplicate or
         nonmonotonic. Only configured sampler streams are owned here;
         unrecognized files in the shared samples directory are preserved.
-        Superseded PVD indexes are copied to ``restart-branches`` before the
-        active index is replaced. Snapshot payloads remain in place because
+        Superseded PVD indexes are copied to ``restart_history`` before the
+        active index is replaced. Snapshot arrays remain in place because
         they are immutable and may be useful when inspecting the interrupted
         branch.
         """
@@ -260,7 +260,7 @@ class OutputManager:
             self._runtime.last_written.clear()
             return
 
-        # Admit the last retained geometry before rewriting any observations,
+        # Validate the last retained geometry before rewriting any observations,
         # not at its next scheduled write after an expensive resumed step.
         self._prepare_existing_vtk_series(output_directory, through_time=time)
 
@@ -337,7 +337,7 @@ class OutputManager:
             else:
                 needs_rewrite = True
         if needs_rewrite or len(kept) != len(rows):
-            branch_root = filepath.parent / "restart-branches"
+            branch_root = filepath.parent / "restart_history"
             branch_root.mkdir(parents=True, exist_ok=True)
             branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
             shutil.copy2(filepath, branch / f"{filepath.name}.superseded")
@@ -345,7 +345,7 @@ class OutputManager:
 
     @classmethod
     def _replace_csv(cls, filepath: Path, header: list[str], rows: list[list[str]]) -> None:
-        """Atomically replace a CSV stream after history reconciliation."""
+        """Atomically replace a CSV stream after output history trimming."""
         with NamedTemporaryFile(
             "w", newline="", encoding="utf-8", dir=filepath.parent, delete=False
         ) as stream:
@@ -369,7 +369,7 @@ class OutputManager:
         if len(kept) == len(entries):
             return
 
-        branch_root = output_directory / "restart-branches"
+        branch_root = output_directory / "restart_history"
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(pvd_path, branch / pvd_path.name)
@@ -386,7 +386,7 @@ class OutputManager:
         cls._write_pvd(output_directory, name, kept)
 
     def _selected(self, event: OutputEvent) -> tuple[object, ...]:
-        """Select configured samplers for one lifecycle event."""
+        """Select configured samplers for one run event."""
         if event is OutputEvent.ACCEPTED_STEP:
             return tuple(
                 sample
@@ -419,15 +419,15 @@ class OutputManager:
 
     def _execute_one(self, sampler: object, event: OutputEvent) -> None:
         """Write one sampler atomically and update its last-written index."""
-        identity = self._output_identity(sampler)
+        output_key = self._output_key(sampler)
         if getattr(self.solver, "_restart_output_time", None) == self.solver.time:
             from source.restart import output_has_time
 
             directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
             if output_has_time(directory, self._name(sampler), self.solver.time):
-                self._runtime.last_written[identity] = (self.solver.step, self.solver.time)
+                self._runtime.last_written[output_key] = (self.solver.step, self.solver.time)
                 return
-        if event is OutputEvent.FINAL and self._runtime.last_written.get(identity) == (
+        if event is OutputEvent.FINAL and self._runtime.last_written.get(output_key) == (
             self.solver.step,
             self.solver.time,
         ):
@@ -441,7 +441,8 @@ class OutputManager:
         directory = resolve_samples_dir(self.solver.case_dir, self.samplers.directory)
         directory.mkdir(parents=True, exist_ok=True)
         continuing_output = bool(
-            getattr(self.solver, "_restart_loaded", False) or identity in self._runtime.last_written
+            getattr(self.solver, "_restart_loaded", False)
+            or output_key in self._runtime.last_written
         )
         context = SamplingContext(
             self.solver,
@@ -453,7 +454,7 @@ class OutputManager:
         )
         try:
             self._write(sampler, context)
-            self._runtime.last_written[identity] = (context.step, context.time)
+            self._runtime.last_written[output_key] = (context.step, context.time)
         except Exception as exc:
             prefix = self._name(sampler)
             raise RuntimeError(
@@ -461,16 +462,16 @@ class OutputManager:
             ) from exc
 
     @staticmethod
-    def _output_identity(sampler: object) -> Hashable:
+    def _output_key(sampler: object) -> Hashable:
         """Allow equivalent scheduled writers to declare one scientific output.
 
-        An explicit identity must include every option affecting the sampled
+        An explicit output key must include every option affecting the sampled
         values and destination, excluding scheduling. Other samplers retain
-        instance identity; a matching filename alone cannot establish equality.
+        instance object id; a matching filename alone cannot establish equality.
         This index covers successful writes by this manager, never pre-existing
         disk data, which remain subject to the writer's resume checks.
         """
-        return cast(Hashable, getattr(sampler, "output_identity", id(sampler)))
+        return cast(Hashable, getattr(sampler, "output_key", id(sampler)))
 
     @staticmethod
     def _name(sampler: object) -> str:

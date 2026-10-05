@@ -313,7 +313,7 @@ def _bad_face_scan_kernel(
 
         # pyramidPointFaceRef has the opposite sign to the stored face area
         # for the owner side.  Testing the equivalent dot products avoids a
-        # second polygon triangulation and matches the VSMALL=1e-300 gate.
+        # second polygon triangulation and matches the VSMALL=1e-300 check.
         if _dot_offset(area, centre, cell_centres[owner]) <= 0.0:
             bad.add(face_id)
         if face_id < len(neighbours):
@@ -364,7 +364,7 @@ def _cfmesh_low_quality_faces(
     cell_face_order: Sequence[Sequence[int]] | None = None,
     cell_faces: Sequence[Sequence[int]] | None = None,
 ) -> set[int]:
-    """Return faces exceeding cfMesh's 65-degree or 2.0 skew gates."""
+    """Return faces exceeding cfMesh's 65-degree or 2.0 skew checks."""
     face_centres, face_areas = _face_geometry(points, faces)
     cell_centres = _cfmesh_cell_centres(
         points,

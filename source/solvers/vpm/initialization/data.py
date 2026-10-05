@@ -1,4 +1,4 @@
-"""Typed, immutable array contracts used by VPM initial conditions."""
+"""Typed, immutable array conditions used by VPM initial conditions."""
 
 from __future__ import annotations
 

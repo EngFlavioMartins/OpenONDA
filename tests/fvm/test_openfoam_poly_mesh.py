@@ -1,4 +1,4 @@
-"""OpenFOAM interchange canonicalizes addressing without changing geometry."""
+"""OpenFOAM interchange sorts face addressing without changing geometry."""
 
 import numpy as np
 import pytest

@@ -224,7 +224,7 @@ class RungeKutta:
             gradient remains after return.
         accepted_position_projector : callable or None, default=None
             Project the combined accepted position inside the provider step
-            context, so a rejected projection rolls back provider ledgers.
+            context, so a rejected projection rolls back provider exchange increments.
 
         Raises
         ------
@@ -343,7 +343,7 @@ class RungeKutta:
                 *padded(coefficients),
                 count,
             )
-            # The accepted wall projection belongs to the same transaction as
+            # The accepted wall projection belongs to the same state update as
             # the RK stages: a rejection must roll back provider exchange.
             if accepted_position_projector is not None:
                 accepted_position_projector(position, vortex_strength, count)

@@ -43,7 +43,7 @@ class CouplingStepper:
         elif particles_before is not None:
             particles_added = solver.particles.n_particles_total - particles_before
             if particles_added > 0 and solver.stabilization.reference_vortex_strength is not None:
-                # VLM inserts on the device; read only its shed batch for lineage.
+                # VLM inserts on the device; read only its shed batch for refinement reference.
                 lattice = solver.vlm_solver.lattice
                 strength = lattice.wake_vortex_strength.to_numpy()[:particles_added]
                 volume = lattice.wake_volume.to_numpy()[:particles_added]

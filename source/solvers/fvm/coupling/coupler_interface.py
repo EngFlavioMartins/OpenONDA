@@ -69,8 +69,8 @@ class CouplerInterfaceMixin:
         parallel = getattr(self, "parallel", None)
         if parallel is None or not parallel.is_parallel:
             return values
-        payload = values if parallel.is_root else None
-        return parallel.bcast(payload, root=0)
+        rank_field_data = values if parallel.is_root else None
+        return parallel.bcast(rank_field_data, root=0)
 
     def _cached_partition_ids(self, cache_name, local_ids):
         """Gather immutable partition IDs once and reuse the rank layout."""
@@ -117,8 +117,8 @@ class CouplerInterfaceMixin:
         ids_by_rank = self._cached_partition_ids(
             "_coupling_owned_cell_ids_by_rank", partition.owned_global_ids
         )
-        payload = (None if error else np.ascontiguousarray(local[:n_owned]), error)
-        gathered = parallel.comm.gather(payload, root=0)
+        rank_field_data = (None if error else np.ascontiguousarray(local[:n_owned]), error)
+        gathered = parallel.comm.gather(rank_field_data, root=0)
 
         result = None
         collective_error = None
@@ -134,7 +134,9 @@ class CouplerInterfaceMixin:
                         collective_error = "Partition contains an out-of-range global cell ID"
                         break
                     if np.any(seen[global_ids]):
-                        collective_error = "Partition contains duplicate global cell ownership"
+                        collective_error = (
+                            "Partition contains duplicate global cell rank assignment"
+                        )
                         break
                     result[global_ids] = owned_values
                     seen[global_ids] = True
@@ -162,7 +164,7 @@ class CouplerInterfaceMixin:
         requested_ids = self._cached_partition_ids(
             "_coupling_local_cell_ids_by_rank", partition.local_global_ids
         )
-        payloads = None
+        rank_fields = None
         error = None
         if parallel.is_root:
             global_values = np.asarray(values, dtype=np.float64)
@@ -172,13 +174,13 @@ class CouplerInterfaceMixin:
             elif not np.all(np.isfinite(global_values)):
                 error = "Global cell field must contain only finite values"
             else:
-                payloads = [
+                rank_fields = [
                     np.ascontiguousarray(global_values[global_ids]) for global_ids in requested_ids
                 ]
         error = parallel.comm.bcast(error, root=0)
         if error is not None:
             raise ValueError(error)
-        return np.ascontiguousarray(parallel.comm.scatter(payloads, root=0))
+        return np.ascontiguousarray(parallel.comm.scatter(rank_fields, root=0))
 
     def _optional_patch(self, patch_name):
         """Return the local patch, or ``None`` when this rank owns no faces."""
@@ -212,8 +214,8 @@ class CouplerInterfaceMixin:
                 f"{local.shape}; expected {expected}"
             )
         ids_by_rank = self._cached_patch_ids(patch_name, global_ids)
-        payload = (None if error else np.ascontiguousarray(local), error)
-        gathered = parallel.comm.gather(payload, root=0)
+        rank_field_data = (None if error else np.ascontiguousarray(local), error)
+        gathered = parallel.comm.gather(rank_field_data, root=0)
 
         result = None
         collective_error = None
@@ -226,7 +228,7 @@ class CouplerInterfaceMixin:
                 all_values = np.concatenate([item[0] for item in gathered], axis=0)
                 if len(np.unique(all_ids)) != len(all_ids):
                     collective_error = (
-                        f"Patch {patch_name!r} contains duplicate global face ownership"
+                        f"Patch {patch_name!r} contains duplicate global face rank assignment"
                     )
                 else:
                     order = np.argsort(all_ids, kind="stable")
@@ -249,7 +251,7 @@ class CouplerInterfaceMixin:
 
         _, local_ids, _ = self._local_patch_face_ids(patch_name)
         ids_by_rank = self._cached_patch_ids(patch_name, local_ids)
-        payloads = None
+        rank_fields = None
         error = None
         if parallel.is_root:
             all_ids = np.concatenate(ids_by_rank)
@@ -257,7 +259,7 @@ class CouplerInterfaceMixin:
             field = np.asarray(values, dtype=np.float64)
             expected = (len(sorted_ids), *trailing_shape)
             if len(np.unique(sorted_ids)) != len(sorted_ids):
-                error = f"Patch {patch_name!r} contains duplicate global face ownership"
+                error = f"Patch {patch_name!r} contains duplicate global face rank assignment"
             elif field.shape != expected:
                 error = (
                     f"Global patch {patch_name!r} field must have shape {expected}; "
@@ -266,14 +268,14 @@ class CouplerInterfaceMixin:
             elif not np.all(np.isfinite(field)):
                 error = f"Global patch {patch_name!r} field must contain only finite values"
             else:
-                payloads = [
+                rank_fields = [
                     np.ascontiguousarray(field[np.searchsorted(sorted_ids, rank_ids)])
                     for rank_ids in ids_by_rank
                 ]
         error = parallel.comm.bcast(error, root=0)
         if error is not None:
             raise ValueError(error)
-        return np.ascontiguousarray(parallel.comm.scatter(payloads, root=0))
+        return np.ascontiguousarray(parallel.comm.scatter(rank_fields, root=0))
 
     # Patch lookup.
     def _patch(self, patch_name):
@@ -621,15 +623,15 @@ class CouplerInterfaceMixin:
 
     # Setters: scalar parameters.
     def set_time_step(self, time_step_size):
-        """Reject post-construction changes to the FVM time-step contract.
+        """Reject post-construction changes to the FVM time-step comparison_settings.
 
         Configure ``TimeConfig.time_step_size`` and its optional
         ``MaximumCourantTimeStep`` before solver creation. Mutating the
-        persistent policy would invalidate BDF history and restart identity.
+        persistent settings would invalidate BDF history and restart configuration.
         """
         del time_step_size
         raise RuntimeError(
-            "FVM time-step policy is immutable after solver creation; "
+            "FVM time-step settings are immutable after solver creation; "
             "configure TimeConfig before constructing the solver"
         )
 

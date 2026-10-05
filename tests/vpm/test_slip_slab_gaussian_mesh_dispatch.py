@@ -1,7 +1,7 @@
 """Gaussian slab dispatch: real Taichi publication with a bounded fake session.
 
-These are ordering/lifecycle tests, NOT Gaussian numerical qualification. CPU
-runtime rejection is separately checked before patching CUDA admission for the
+These are ordering/run phases tests, NOT Gaussian numerical qualification. CPU
+runtime rejection is separately checked before patching CUDA validation for the
 fake session; no CuPy allocation or physical solver advance occurs here.
 """
 
@@ -12,15 +12,15 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.config.fingerprint import _canonical_value
+from source.solvers.vpm.config.configuration_values import _configuration_value
 from source.solvers.vpm.core import solver as solver_module
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction import slip_slab as module
 from source.solvers.vpm.physics.induction.direct import DirectInduction
 from source.solvers.vpm.physics.induction.fmm import FMMInduction
-from source.solvers.vpm.physics.induction.gaussian_mesh.session import GaussianSlabPolicy
-from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
+from source.solvers.vpm.physics.induction.gaussian_mesh.session import GaussianSlabSettings
+from source.solvers.vpm.physics.induction.reuse_backends import FMMReuseConditions
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -70,7 +70,7 @@ class Harness:
         monkeypatch.setattr(module, "_mesh_runtime_is_cuda", lambda: True)
         # This fixture qualifies publication/order with a fake session, not
         # optional CUDA-library availability (covered by separate tests).
-        monkeypatch.setattr(module, "_admit_mesh_installation", lambda: None)
+        monkeypatch.setattr(module, "_check_cuda_mesh_installation", lambda: None)
         monkeypatch.setattr(module, "_new_mesh_session", FakeSession)
         self.physics = PhysicsBase("GAUSSIAN", 2, ti.f64, max_evaluation_points=3)
         self.slab = module.SlipSlabInduction(
@@ -145,7 +145,7 @@ def test_stage_preserves_primary_and_adds_correct_stretching(monkeypatch, scheme
     expected = primary[2] + np.einsum("nij,nj->ni", contraction, h.g.to_numpy()) if rate else 0
     np.testing.assert_allclose(h.rate.to_numpy(), expected, rtol=1e-13, atol=1e-13)
     assert not h.slab._mesh_session.calls[0][-1]
-    assert h.slab.last_tail["contract"] == "gaussian_interval_remainder_v1"
+    assert h.slab.last_tail["tail_error_method"] == "gaussian_interval_remainder_v1"
     assert h.slab._block_velocity.shape == (1,)
 
 
@@ -177,18 +177,18 @@ def test_target_role_is_whole_source_only_and_freestream_once(
 def test_tail_failure_precedes_primary_and_preserves_outputs(monkeypatch):
     h = Harness(monkeypatch)
     h.slab._mesh_session = FakeSession(dtype="float64")
-    h.slab._mesh_session.failure = RuntimeError("tail admission rejected")
+    h.slab._mesh_session.failure = RuntimeError("tail validation rejected")
     monkeypatch.setattr(
         h.slab.base, "evaluate_stage", lambda **_: pytest.fail("early primary publication")
     )
-    with pytest.raises(RuntimeError, match="tail admission"):
+    with pytest.raises(RuntimeError, match="tail validation"):
         h.stage()
     np.testing.assert_array_equal(h.u.to_numpy(), 19)
     np.testing.assert_array_equal(h.j.to_numpy(), 23)
     np.testing.assert_array_equal(h.rate.to_numpy(), 29)
 
 
-def test_empty_alias_mutation_and_rebind_contract(monkeypatch):
+def test_empty_alias_mutation_and_rebind_conditions(monkeypatch):
     h = Harness(monkeypatch)
     h.targets(sources=0)
     np.testing.assert_array_equal(h.u.to_numpy(), np.broadcast_to([1, 2, 3], (3, 3)))
@@ -202,18 +202,18 @@ def test_empty_alias_mutation_and_rebind_contract(monkeypatch):
     h.u = h.q
     with pytest.raises(ValueError, match="must not alias"):
         h.targets()
-    h.slab.gaussian_mesh_policy = None
+    h.slab.gaussian_mesh_settings = None
     with pytest.raises(RuntimeError, match="controls changed"):
         h.targets()
 
 
-def test_prebind_runtime_and_kernel_admission_has_no_base_side_effect(monkeypatch):
+def test_prebind_runtime_and_kernel_validation_has_no_base_side_effect(monkeypatch):
     physics = PhysicsBase("GAUSSIAN", 1, ti.f64, max_evaluation_points=1)
     slab = module.SlipSlabInduction(
         DirectInduction(),
         z_min=-1,
         z_max=1,
-        gaussian_mesh_policy=GaussianSlabPolicy(backend="cupy_cuda"),
+        gaussian_mesh_settings=GaussianSlabSettings(backend="cupy_cuda"),
     )
     monkeypatch.setattr(slab.base, "bind", lambda *_, **__: pytest.fail("unsupported base bind"))
     monkeypatch.setattr(module, "_mesh_runtime_is_cuda", lambda: False)
@@ -225,21 +225,21 @@ def test_prebind_runtime_and_kernel_admission_has_no_base_side_effect(monkeypatc
     assert slab.physics is None and slab._mesh_session is None
 
 
-def test_default_policy_build_fingerprint_and_fmm_reuse_decline():
+def test_default_settings_build_configuration_and_fmm_reuse_decline():
     default = module.SlipSlabInduction(DirectInduction(), z_min=-1, z_max=1)
-    assert default.gaussian_mesh_policy == GaussianSlabPolicy()
-    assert _canonical_value(default) == _canonical_value(default.build())
-    policy = GaussianSlabPolicy()
+    assert default.gaussian_mesh_settings == GaussianSlabSettings()
+    assert _configuration_value(default) == _configuration_value(default.build())
+    settings = GaussianSlabSettings()
     slab = module.SlipSlabInduction(
-        DirectInduction(), z_min=-1, z_max=1, gaussian_mesh_policy=policy
+        DirectInduction(), z_min=-1, z_max=1, gaussian_mesh_settings=settings
     )
     copied = slab.build()
-    assert copied.base is not slab.base and copied.gaussian_mesh_policy == policy
-    identity = _canonical_value(slab)
-    assert identity["gaussian_mesh_policy"]["tail_contract"] == policy.tail_contract
-    copied.gaussian_mesh_policy = replace(policy, max_sources=999)
-    assert identity != _canonical_value(copied)
-    assert StandardFMMReuseContract(slab)() is None
+    assert copied.base is not slab.base and copied.gaussian_mesh_settings == settings
+    identity = _configuration_value(slab)
+    assert identity["gaussian_mesh_settings"]["tail_error_method"] == settings.tail_error_method
+    copied.gaussian_mesh_settings = replace(settings, max_sources=999)
+    assert identity != _configuration_value(copied)
+    assert FMMReuseConditions(slab)() is None
 
 
 def test_mesh_shell_ceiling_rejected_before_binding():
@@ -250,7 +250,7 @@ def test_mesh_shell_ceiling_rejected_before_binding():
             z_min=-1,
             z_max=1,
             max_shells=1025,
-            gaussian_mesh_policy=GaussianSlabPolicy(),
+            gaussian_mesh_settings=GaussianSlabSettings(),
         ).bind(physics)
     # Other radial kernels retain their existing shell controls.
     assert (
@@ -261,7 +261,7 @@ def test_mesh_shell_ceiling_rejected_before_binding():
 
 def test_gaussian_operator_cannot_be_disabled_or_called_as_reflected_kernel(monkeypatch):
     with pytest.raises(TypeError, match="cannot disable"):
-        module.SlipSlabInduction(DirectInduction(), z_min=-1, z_max=1, gaussian_mesh_policy=None)
+        module.SlipSlabInduction(DirectInduction(), z_min=-1, z_max=1, gaussian_mesh_settings=None)
     h = Harness(monkeypatch)
     with pytest.raises(RuntimeError, match="field mesh operator"):
         h.slab._images(h.x, h.g, h.r, h.q, 2, 3, h.u, h.j)
@@ -307,7 +307,7 @@ def test_solver_closes_only_owned_mesh_and_never_resets_after_uncertainty(monkey
     monkeypatch.setattr(
         slab.base, "close", lambda: pytest.fail("shared base closed"), raising=False
     )
-    owner = SimpleNamespace(
+    field = SimpleNamespace(
         _closed=False,
         induction=slab,
         _run_started=True,
@@ -320,16 +320,16 @@ def test_solver_closes_only_owned_mesh_and_never_resets_after_uncertainty(monkey
     if failure:
         for _ in range(2):
             with pytest.raises(RuntimeError, match="uncertain cleanup"):
-                solver_module.VPMSolver.close(owner)
-        assert owner._backend_claimed and "reset" not in events
+                solver_module.VPMSolver.close(field)
+        assert field._backend_claimed and "reset" not in events
         assert session.closes == 1
     else:
-        solver_module.VPMSolver.close(owner)
+        solver_module.VPMSolver.close(field)
         assert events == ["cache", "reset"] and session.closes == 1
 
 
 def test_unknown_induction_close_is_not_called(monkeypatch):
-    owner = SimpleNamespace(
+    field = SimpleNamespace(
         _closed=False,
         induction=SimpleNamespace(
             close_mesh_session=lambda: pytest.fail("custom shared backend closed")
@@ -340,8 +340,8 @@ def test_unknown_induction_close_is_not_called(monkeypatch):
         _particle_snapshot_buffers={},
     )
     monkeypatch.setattr(solver_module, "reset_taichi_backend", lambda **_: None)
-    solver_module.VPMSolver.close(owner)
-    assert owner._closed
+    solver_module.VPMSolver.close(field)
+    assert field._closed
 
 
 def _stage_reservation(monkeypatch, harness, ensure):
@@ -355,7 +355,7 @@ def _stage_reservation(monkeypatch, harness, ensure):
     return state
 
 
-def test_source_scratch_precedes_mesh_admission_and_warm_cache_is_retained(monkeypatch):
+def test_source_scratch_precedes_mesh_validation_and_warm_cache_is_retained(monkeypatch):
     h = Harness(monkeypatch)
     old = h.slab._mesh_session = FakeSession(dtype="float64")
     capacity, events = 1, []
@@ -399,7 +399,7 @@ def test_interaction_growth_reclaims_mesh_but_preserves_completed_host_results(m
 
     def grow_then_compute(**kwargs):
         session = h.slab._mesh_session
-        assert len(session.calls) == 1  # Image admission has completed.
+        assert len(session.calls) == 1  # Image validation has completed.
         state._reclaim_stage_cache()
         reclaimed.append(session)
         assert session.closes == 1 and h.slab._mesh_session is None
@@ -410,7 +410,7 @@ def test_interaction_growth_reclaims_mesh_but_preserves_completed_host_results(m
 
     monkeypatch.setattr(h.slab.base, "evaluate_stage", grow_then_compute)
     h.stage()
-    image_u = np.broadcast_to([.5, -.25, .75], (2, 3))
+    image_u = np.broadcast_to([0.5, -0.25, 0.75], (2, 3))
     image_j = np.broadcast_to(np.arange(9).reshape(3, 3) / 100, (2, 3, 3))
     np.testing.assert_allclose(h.u.to_numpy()[:2], primary[0][:2] + image_u, rtol=1e-13)
     np.testing.assert_allclose(h.j.to_numpy()[:2], primary[1][:2] + image_j, rtol=1e-13)
@@ -419,7 +419,7 @@ def test_interaction_growth_reclaims_mesh_but_preserves_completed_host_results(m
     np.testing.assert_array_equal(h.u.to_numpy()[2:], 19)
     np.testing.assert_array_equal(h.j.to_numpy()[2:], 23)
     assert len(reclaimed) == 1 and state._reclaim_stage_cache is None
-    assert h.slab.last_tail["contract"] == "gaussian_interval_remainder_v1"
+    assert h.slab.last_tail["tail_error_method"] == "gaussian_interval_remainder_v1"
 
 
 def test_interaction_growth_cleanup_failure_precedes_all_output_publication(monkeypatch):

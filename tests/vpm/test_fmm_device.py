@@ -77,8 +77,8 @@ def test_fmm_scratch_grows_with_active_sources_and_releases_old_fields():
     expanded_radius = np.concatenate((radius, np.full(3, 0.1, dtype=np.float32)))
     harness.evaluate(expanded_position, expanded_strength, expanded_radius)
     assert induction.workspace.max_n_particles == 5
-    assert previous._field_owner.tree is None
-    assert previous.tree._field_owner.tree is None
+    assert previous._device_fields.tree is None
+    assert previous.tree._device_fields.tree is None
     after = harness.evaluate(position, strength, radius)
     for first, second in zip(before, after, strict=True):
         np.testing.assert_array_equal(first, second)
@@ -335,7 +335,7 @@ def _cartesian_far_field_at_centre(position, strength, target, order):
     return velocity, gradient
 
 
-def test_analytic_m2l_oracle_converges_as_the_private_source_order_increases():
+def test_analytic_m2l_reference_converges_as_the_private_source_order_increases():
     rng = np.random.default_rng(20260907)
     position = rng.normal(scale=0.08, size=(40, 3))
     strength = rng.normal(scale=0.02, size=(40, 3))
@@ -566,7 +566,7 @@ def test_device_fmm_recovers_overflow_without_changing_stage_results():
     np.testing.assert_array_equal(harness.position.to_numpy(), position)
     np.testing.assert_array_equal(harness.strength.to_numpy(), strength)
     np.testing.assert_array_equal(harness.radius.to_numpy(), radius)
-    assert old._field_owner.tree is None and old.tree._field_owner.tree is None
+    assert old._device_fields.tree is None and old.tree._device_fields.tree is None
     assert harness.induction.workspace.max_n_particles == 64
     assert harness.induction.workspace.max_pairs > 1
     assert harness.induction.workspace.profile_passes
@@ -645,7 +645,7 @@ def test_fmm_grows_real_pair_arrays_and_matches_oversized_control():
         with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
             actual = subject.evaluate(position, strength, radius)
         assert subject.induction.workspace.near_source.shape[0] >= 4096
-        assert old._field_owner.tree is None
+        assert old._device_fields.tree is None
         assert int(subject.induction.workspace._near_count[None]) == 4096
         for first, second in zip(expected, actual, strict=True):
             np.testing.assert_allclose(second, first, rtol=2e-6, atol=2e-7)

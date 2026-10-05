@@ -10,7 +10,7 @@ from .filament_refinement import FilamentRefinementConfig
 
 @dataclass(frozen=True)
 class StabilizationConfig:
-    """Configure accepted-step VPM correction, refinement, and retention policies.
+    """Configure accepted-step VPM correction, refinement, and retention settings.
 
     Parameters
     ----------
@@ -34,9 +34,9 @@ class StabilizationConfig:
         Restore net vector strength and first moments when the correction is
         well conditioned; this can change individual particle magnitudes.
     filament_refinement : FilamentRefinementConfig
-        Conservative particle-splitting policy.
+        Conservative particle-splitting settings.
     divergence_relaxation : DivergenceRelaxationConfig
-        Guarded divergence-projection policy.
+        Guarded divergence-projection settings.
     remove_particles_by_bounds : tuple[float, ...] or None, optional
         Cartesian keep-box ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
     regularization_interval_steps, regularization_start_step : int
@@ -69,12 +69,12 @@ class StabilizationConfig:
         Maximum relative projection correction, strictly between 0 and 1.
     max_vortex_strength_error, max_vortex_strength_growth,
     max_vorticity_growth : float
-        Non-negative conservation and relative-growth gates applied to proposals.
+        Non-negative conservation and relative-growth checks applied to proposals.
 
     Notes
     -----
     All enabled operators run after a physical time step has been accepted.
-    They mutate particle fields transactionally: rejected proposals restore the
+    They mutate particle fields with state restoration on failure: rejected proposals restore the
     pre-event state and do not advance time.
     """
 

@@ -15,7 +15,7 @@ import pytest
 from source.coupler import boundary as boundary_module
 from source.coupler.backup import (
     _backup_config,
-    artifact_digest,
+    checkpoint_path_hash,
     config_difference_paths,
     load_coupled_backup,
     publish_vpm_snapshot,
@@ -47,7 +47,7 @@ def test_backup_config_records_transfer_lattice_phase():
 
 @pytest.fixture(autouse=True)
 def _serialize_the_minimal_fake_vpm_setup(monkeypatch):
-    """Explicit fake schema/inspection; real native admission has separate tests."""
+    """Explicit fake schema/inspection; real native validation has separate tests."""
     monkeypatch.setattr(
         "source.coupler.backup._vpm_numerical_config",
         lambda setup: {
@@ -338,7 +338,7 @@ def test_post_renewal_particle_history_is_published_outside_the_rolling_backup(t
 def test_backup_rejects_unsynchronized_state_before_writing(tmp_path, defect):
     coupler = _make_coupler()
     save_coupled_backup(coupler, tmp_path, coupling_step=1)
-    before = artifact_digest(tmp_path)
+    before = checkpoint_path_hash(tmp_path)
     if defect == "fvm_time":
         coupler.fvm_solver.time += 0.05
     elif defect == "fvm_step":
@@ -351,7 +351,7 @@ def test_backup_rejects_unsynchronized_state_before_writing(tmp_path, defect):
         coupler.fvm_solver.time = np.nan
     with pytest.raises(ValueError, match="backup"):
         save_coupled_backup(coupler, tmp_path, coupling_step=1)
-    assert artifact_digest(tmp_path) == before
+    assert checkpoint_path_hash(tmp_path) == before
 
 
 @pytest.mark.parametrize("step", [-1, 0, 1.5, True])
@@ -373,15 +373,15 @@ def test_long_run_clock_roundoff_survives_save_and_restart(tmp_path):
     assert abs(coupler.fvm_solver.time - coupler.vpm_solver.time) > 1e-12
     save_coupled_backup(coupler, tmp_path, coupling_step=2500)
     assert load_coupled_backup(coupler, tmp_path) == 2500
-    before = artifact_digest(tmp_path)
+    before = checkpoint_path_hash(tmp_path)
     coupler.fvm_solver.time += 1e-8
     with pytest.raises(ValueError, match="not synchronized"):
         save_coupled_backup(coupler, tmp_path, coupling_step=2500)
-    assert artifact_digest(tmp_path) == before
+    assert checkpoint_path_hash(tmp_path) == before
 
 
 @pytest.mark.parametrize("step", [1, 2])
-@pytest.mark.parametrize("failure", ["vpm", "manifest"])
+@pytest.mark.parametrize("failure", ["vpm", "checkpoint_info"])
 def test_failed_save_preserves_committed_pair_even_at_same_step(
     tmp_path, monkeypatch, step, failure
 ):
@@ -389,8 +389,8 @@ def test_failed_save_preserves_committed_pair_even_at_same_step(
 
     coupler = _make_coupler()
     save_coupled_backup(coupler, tmp_path, coupling_step=1)
-    original_manifest = (tmp_path / "manifest.json").read_bytes()
-    manifest = json.loads(original_manifest)
+    original_checkpoint_info = (tmp_path / "checkpoint_info.json").read_bytes()
+    checkpoint_info = json.loads(original_checkpoint_info)
     coupler.fvm_solver.step = 2 * step
     coupler.vpm_solver.step = step
     coupler.fvm_solver.time = coupler.vpm_solver.time = 0.1 * step
@@ -405,17 +405,17 @@ def test_failed_save_preserves_committed_pair_even_at_same_step(
         else:
             replace = backup_module.os.replace
 
-            def fail_manifest(source, destination):
-                if Path(destination) == tmp_path / "manifest.json":
-                    raise OSError("injected manifest commit failure")
+            def fail_checkpoint_info(source, destination):
+                if Path(destination) == tmp_path / "checkpoint_info.json":
+                    raise OSError("injected checkpoint_info commit failure")
                 return replace(source, destination)
 
-            patch.setattr(backup_module.os, "replace", fail_manifest)
+            patch.setattr(backup_module.os, "replace", fail_checkpoint_info)
         with pytest.raises(OSError, match="injected"):
             save_coupled_backup(coupler, tmp_path, coupling_step=step)
-    assert (tmp_path / "manifest.json").read_bytes() == original_manifest
-    for name, relative in manifest["artifacts"].items():
-        assert artifact_digest(tmp_path / relative) == manifest["artifact_sha256"][name]
+    assert (tmp_path / "checkpoint_info.json").read_bytes() == original_checkpoint_info
+    for name, relative in checkpoint_info["checkpoint_files"].items():
+        assert checkpoint_path_hash(tmp_path / relative) == checkpoint_info["file_sha256"][name]
     assert load_coupled_backup(_make_coupler(), tmp_path) == 1
     save_coupled_backup(coupler, tmp_path, coupling_step=step)
     assert len(list(tmp_path.glob("checkpoint-*"))) == 1
@@ -436,33 +436,38 @@ def test_config_difference_paths_are_recursive_and_distinguish_missing_from_none
     }
 
 
-def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path, monkeypatch):
+def test_hash_verified_coupled_checkpoint_info_requires_matching_stabilization(
+    tmp_path, monkeypatch
+):
     import json
 
     from source.coupler.backup import config_mapping_digest
 
     writer = _make_coupler()
-    policy = {"selective_eddy_viscosity_coefficient": 0.5, "regularization_preserve_groups": False}
-    writer.vpm_solver.setup.mapping["stabilization"] = dict(policy)
+    settings = {
+        "selective_eddy_viscosity_coefficient": 0.5,
+        "regularization_preserve_groups": False,
+    }
+    writer.vpm_solver.setup.mapping["stabilization"] = dict(settings)
     save_coupled_backup(writer, tmp_path, coupling_step=1)
     reader = _make_coupler()
-    reader.vpm_solver.setup.mapping["stabilization"] = policy
+    reader.vpm_solver.setup.mapping["stabilization"] = settings
     assert load_coupled_backup(reader, tmp_path) == 1
-    policy["regularization_preserve_groups"] = True
+    settings["regularization_preserve_groups"] = True
     with pytest.raises(ValueError, match="regularization_preserve_groups"):
         load_coupled_backup(reader, tmp_path)
-    policy["regularization_preserve_groups"] = False
-    policy["selective_eddy_viscosity_coefficient"] = 0.75
+    settings["regularization_preserve_groups"] = False
+    settings["selective_eddy_viscosity_coefficient"] = 0.75
     with pytest.raises(ValueError, match="vpm.stabilization.selective_eddy_viscosity_coefficient"):
         load_coupled_backup(reader, tmp_path)
 
-    manifest_path = tmp_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    policy["selective_eddy_viscosity_coefficient"] = 0.5
-    manifest["config"]["vpm"]["stabilization"]["selective_eddy_viscosity_coefficient"] = 0.75
+    metadata_path = tmp_path / "checkpoint_info.json"
+    checkpoint_info = json.loads(metadata_path.read_text())
+    settings["selective_eddy_viscosity_coefficient"] = 0.5
+    checkpoint_info["config"]["vpm"]["stabilization"]["selective_eddy_viscosity_coefficient"] = 0.75
     # A valid checksum does not authorize a changed numerical configuration.
-    manifest["config_sha256"] = config_mapping_digest(manifest["config"])
-    manifest_path.write_text(json.dumps(manifest))
+    checkpoint_info["config_sha256"] = config_mapping_digest(checkpoint_info["config"])
+    metadata_path.write_text(json.dumps(checkpoint_info))
     monkeypatch.setattr(
         reader.fvm_solver, "load_state", lambda *args: pytest.fail("premature state load")
     )
@@ -480,7 +485,9 @@ def test_authenticated_coupled_manifest_requires_matching_stabilization(tmp_path
         ("coupler.interface_normal_tolerance", {"interface_normal_tolerance": 2e-6}),
     ],
 )
-def test_restart_config_changes_require_the_exact_allowlist_path(tmp_path, path, changed, caplog):
+def test_restart_config_changes_require_the_exact_allowed_setting_path(
+    tmp_path, path, changed, caplog
+):
     backup = tmp_path / "backup"
     save_coupled_backup(_make_coupler(), backup, coupling_step=1)
 

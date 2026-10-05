@@ -95,6 +95,7 @@ def test_interrupt_after_native_return_preserves_outer_scope(native_bridge, monk
                 if name == boundary:
                     raise KeyboardInterrupt("injected after native boundary")
                 return result
+
             return call
 
     before = _probe()

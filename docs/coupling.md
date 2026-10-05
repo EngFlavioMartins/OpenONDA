@@ -77,7 +77,7 @@ Boundary-only least-squares stencils reuse static mesh geometry and include real
 
 Every coupled case uses M4-prime particle renewal with an advective release buffer and GBD diffusion. Set the particle and GBD grid spacings equal, use M4-prime remeshing and choose an absolute vorticity pruning threshold. FVM replaces the inner particle representation while VPM retains the released wake.
 
-`eta_blend_width` is the inward width, in metres, over which FVM authority increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. The tutorials use widths $6h$ and $2h$, respectively.
+`eta_blend_width` is the inward width, in metres, over which the FVM blending weight increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. The tutorials use widths $6h$ and $2h$, respectively.
 
 Renewal compares FVM vorticity with the Gaussian field represented by the particles, then corrects the existing particle strengths using that difference. An already matching pair of fields is unchanged by this representation correction. Directly blending FVM vorticity with particle coefficients would apply an extra smoothing at each exchange. `transfer_amplification_cap` limits the local correction to avoid accumulating large coefficients when a near-wall target cannot be resolved by the particle cores. Remeshing and pruning have their own errors, so this consistency property does not replace resolution checks.
 

@@ -21,7 +21,7 @@ import numpy as np
 def _polygon_contains_xy(
     points: np.ndarray, vertex_position: np.ndarray, include_boundary: bool
 ) -> np.ndarray:
-    """Vectorized point-in-polygon test with an explicit boundary policy."""
+    """Vectorized point-in-polygon test with an explicit boundary settings."""
     result = np.zeros(len(points), dtype=bool)
     if len(points) == 0:
         return result
@@ -162,7 +162,7 @@ class ImmersedBody:
 
     @property
     def revision(self) -> str:
-        """Stable identity of current solid metadata and marker geometry."""
+        """Hash of current solid metadata and marker geometry."""
 
         def serializable(value):
             if isinstance(value, np.ndarray):
@@ -171,11 +171,11 @@ class ImmersedBody:
                 return value.item()
             raise TypeError(f"Unsupported immersed geometry value: {type(value).__name__}")
 
-        payload = json.dumps(
+        geometry_json = json.dumps(
             self._geometry, sort_keys=True, default=serializable, separators=(",", ":")
         ).encode()
         digest = hashlib.blake2b(digest_size=16)
-        digest.update(payload)
+        digest.update(geometry_json)
         digest.update(np.ascontiguousarray(self.position, dtype=np.float64).tobytes())
         return digest.hexdigest()
 
@@ -206,7 +206,7 @@ class ImmersedBody:
         -------
         ndarray, shape (N,)
             New Boolean mask; true entries lie in the solid under the selected
-            boundary policy.
+            boundary settings.
 
         Raises
         ------

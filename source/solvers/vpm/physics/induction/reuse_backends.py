@@ -1,4 +1,4 @@
-"""Explicit reuse contracts for the standard FMM implementations.
+"""Explicit reuse conditions for the standard FMM implementations.
 
 This is a whitelist, not duck-typing of purportedly autonomous operators.
 Only the exact FMM and SlipSlab-FMM classes, standard physics workspaces and
@@ -28,7 +28,7 @@ from .fmm import target_geometry as geometry_module
 from .fmm import targets as target_module
 from .fmm.device import FMMDeviceWorkspace, FMMInduction
 from .fmm.targets import FMMTargetEvaluator
-from .reuse import InductionReuseContract, _canonical_key, _primitive_key
+from .reuse import InductionReuseConditions, _primitive_key, _typed_value_key
 from .slip_slab import SlipSlabInduction
 from .treecode.lbvh import TaichiTreecode
 
@@ -91,7 +91,7 @@ def _standard_methods(instance, cls):
 def _same_standard_function(actual, expected):
     """Compare standard factory code and immutable closure values, not names.
 
-    Callable identity alone would admit a stateful custom closure. Both the
+    Comparing function objects alone would accept a stateful custom closure. Both the
     Taichi wrapper code and its original Python code must be standard, and
     every captured value must recursively equal the reference factory value.
     Mutable captures and callable objects are intentionally unsupported.
@@ -114,7 +114,7 @@ def _same_standard_function(actual, expected):
             if not _same_standard_function(value, standard):
                 return False
         elif _primitive_key(standard):
-            if not _primitive_key(value) or _canonical_key(value) != _canonical_key(standard):
+            if not _primitive_key(value) or _typed_value_key(value) != _typed_value_key(standard):
                 return False
         elif standard == ti.f32:
             if type(value) is not type(standard) or value != ti.f32:
@@ -141,23 +141,23 @@ def _standard_tree_functions(tree):
     )
 
 
-def _fields_alive(owner, name="_field_owner"):
-    fields = getattr(owner, name, None)
+def _fields_alive(operator, name="_device_fields"):
+    fields = getattr(operator, name, None)
     return fields is not None and fields.tree is not None
 
 
-def _tables(owner, names):
+def _tables(operator, names):
     # These are small immutable-by-API operator tables, not particle data.
     # Exact bytes also detect unsupported direct edits instead of trusting a
     # field's identity or a probabilistic checksum.
     result = []
     for name in names:
-        array = getattr(owner, name).to_numpy()
+        array = getattr(operator, name).to_numpy()
         result.append((name, array.dtype.str, array.shape, array.tobytes()))
     return tuple(result)
 
 
-def _field_layout(owner, names):
+def _field_layout(operator, names):
     return tuple(
         (
             name,
@@ -168,7 +168,7 @@ def _field_layout(owner, names):
             getattr(field, "m", 1),
         )
         for name in names
-        for field in (getattr(owner, name),)
+        for field in (getattr(operator, name),)
     )
 
 
@@ -180,13 +180,13 @@ def _constants(module):
     )
 
 
-def _scalars(owner, names):
-    values = tuple((name, getattr(owner, name)) for name in names)
+def _scalars(operator, names):
+    values = tuple((name, getattr(operator, name)) for name in names)
     return values if _primitive_key(values) else _UNSUPPORTED
 
 
-class StandardFMMReuseContract:
-    """Callable contract provider, deliberately not installed by construction.
+class FMMReuseConditions:
+    """Callable conditions provider, deliberately not installed by construction.
 
     A complete backend rebind/reallocation changes binding identities and
     safely causes a miss. The first call which grows scratch may therefore
@@ -214,7 +214,7 @@ class StandardFMMReuseContract:
         if slab is not None and (
             slab.physics is None or slab.physics.particle_kernel == "GAUSSIAN"
         ):
-            # Gaussian images require their own source/tail/lifecycle guards.
+            # Gaussian images require their own source/tail/run phases guards.
             return None
         base = slab.base if slab is not None else self.backend
         if not _standard_methods(base, FMMInduction):
@@ -260,8 +260,8 @@ class StandardFMMReuseContract:
             id(kernel),
             id(radial),
             id(workspace),
-            id(workspace._field_owner.tree),
-            id(tree._field_owner.tree),
+            id(workspace._device_fields.tree),
+            id(tree._device_fields.tree),
             str(physics.accumulator_dtype),
             _scalars(physics, ("particle_kernel", "max_n_particles", "max_evaluation_points")),
             _scalars(
@@ -325,7 +325,7 @@ class StandardFMMReuseContract:
         )
         geometry = base._image_geometry_cache
         geometry_key = None
-        if not geometry_module.certified_geometry(geometry):
+        if not geometry_module.valid_geometry_storage(geometry):
             return None
         if geometry is not None:
             storage = geometry.storage
@@ -336,7 +336,7 @@ class StandardFMMReuseContract:
                 if storage is None
                 else (
                     id(storage),
-                    id(storage.owner.tree),
+                    id(storage.fields.tree),
                     storage.capacity,
                     storage.bytes,
                     _field_layout(storage, geometry_module._STORAGE_FIELDS),
@@ -346,7 +346,7 @@ class StandardFMMReuseContract:
         key += (geometry_key,)
         if slab is not None:
             # The other two kernels use PhysicsBase's direct target kernels,
-            # whose extra function-closure contract is not certified here.
+            # whose extra function-closure conditions are not validated here.
             if kernel.name not in {"GAUSSIAN", "WINCKELMANS"}:
                 return None
             if not _standard_methods(slab, SlipSlabInduction) or slab.physics is not physics:
@@ -384,7 +384,7 @@ class StandardFMMReuseContract:
                     ),
                     # These arrays are disposable geometry scratch, not part
                     # of the cached physical result.  Their bindings/layouts
-                    # still belong to the operational backend contract: a
+                    # still belong to the operational backend conditions: a
                     # hit must not hide a changed bounded ancestry workspace.
                     _field_layout(
                         target, ("target_path", "target_path_length", "target_path_error")
@@ -468,7 +468,7 @@ class StandardFMMReuseContract:
             base._last_tree_key = None
             base._source_moments_ready = False
 
-        return InductionReuseContract(
+        return InductionReuseConditions(
             operator_key=key,
             autonomous=True,
             sources_are_read_only=True,
@@ -479,4 +479,4 @@ class StandardFMMReuseContract:
         )
 
 
-__all__ = ["StandardFMMReuseContract"]
+__all__ = ["FMMReuseConditions"]

@@ -42,6 +42,6 @@ def test_documented_example(tmp_path, document, solver, directory, steps, time):
     solution = tmp_path / directory / "solution"
     assert (solution / f"{solver}.pvd").is_file()
     metadata = json.loads((solution / f"{solver}_metadata.json").read_text())
-    assert metadata["lifecycle"]["status"] == {"fvm": "complete", "vpm": "completed"}[solver]
+    assert metadata["run_status"]["status"] == {"fvm": "complete", "vpm": "completed"}[solver]
     assert metadata["state"]["step"] == steps
     assert metadata["state"]["time"] == pytest.approx(time)

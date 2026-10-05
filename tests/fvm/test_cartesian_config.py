@@ -126,7 +126,7 @@ def test_surface_index_and_features_are_deterministic_for_smooth_and_sharp_input
     assert len(classify_features(sharp.triangles, 35.0).edges) == len(sharp_features.edges)
 
 
-def test_repeated_cartesian_builds_are_canonically_equal(tmp_path: Path):
+def test_repeated_cartesian_builds_are_numerically_equal(tmp_path: Path):
     surface = msh.STLSurface(make_acceptance_fixtures(tmp_path)["ellipsoid"].paths[0], patch="body")
     mesher = msh.CartesianMesher(domain=_domain(), surfaces=(surface,), max_cell_size=0.5)
     first = mesher.build()

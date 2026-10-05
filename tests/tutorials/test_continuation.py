@@ -1,4 +1,4 @@
-"""Tutorial launchers retain their declared fresh/continue contracts."""
+"""Tutorial launchers retain their configured fresh and continuation behavior."""
 
 import ast
 from importlib.util import find_spec
@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import pytest
 
-from openonda.tutorials import TUTORIALS, materialize_tutorial
+from openonda.tutorials import TUTORIALS, copy_tutorial
 
 ROOT = Path(__file__).resolve().parents[2] / "tutorials"
 CASES = [tutorial.relative_path for tutorial in TUTORIALS]
@@ -32,13 +32,13 @@ def _variants():
 
 
 @pytest.mark.parametrize("relative,arguments", list(_variants()))
-def test_every_launcher_variant_reaches_the_latest_start_policy(tmp_path, relative, arguments):
+def test_every_launcher_variant_reaches_the_latest_restart_selection(tmp_path, relative, arguments):
 
     case = tmp_path / "case"
-    # Materialize via the public catalog to exclude retained simulation data.
+    # Copy through the public tutorial catalog to exclude retained simulation data.
     public = next((item for item in TUTORIALS if item.relative_path == relative), None)
     assert public is not None
-    case = materialize_tutorial(public.name, tmp_path)
+    case = copy_tutorial(public.name, tmp_path)
     probe = tmp_path / "probe.py"
     probe.write_text("""
 import sys
@@ -84,7 +84,7 @@ try:
 except Done:
     pass
 else:
-    raise AssertionError("No start policy selected")
+    raise AssertionError("No restart mode selected")
 """)
     result = subprocess.run(
         [sys.executable, str(probe), str(case / "setup.py"), *arguments],
@@ -134,11 +134,11 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
 
 
 @pytest.mark.parametrize("relative", CASES, ids=str)
-def test_cleanup_removes_materialized_restart_data_only(tmp_path, relative):
+def test_cleanup_removes_copied_restart_data_only(tmp_path, relative):
     """Exercise cleanup only in a throw-away tutorial copy, never in the repository."""
     public = next((item for item in TUTORIALS if item.relative_path == relative), None)
     assert public is not None
-    case = materialize_tutorial(public.name, tmp_path)
+    case = copy_tutorial(public.name, tmp_path)
 
     backup = case / "solution" / "backup" / "restart.bin"
     backup.parent.mkdir(parents=True)
@@ -161,7 +161,7 @@ def test_cleanup_removes_materialized_restart_data_only(tmp_path, relative):
 def test_custom_history_continues_and_completed_invocation_is_idle(tmp_path, name, cores):
     if cores > 1 and (find_spec("mpi4py") is None or find_spec("petsc4py") is None):
         pytest.skip("MPI and PETSc required")
-    case = materialize_tutorial(f"fvm/{name}", tmp_path)
+    case = copy_tutorial(f"fvm/{name}", tmp_path)
     wrapper = tmp_path / "small_case.py"
     wrapper.write_text("""
 import sys

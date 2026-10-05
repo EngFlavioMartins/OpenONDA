@@ -239,7 +239,7 @@ class BoundaryConfig:
 class MeshQualityConfig:
     """Optional hard mesh-quality limits checked during FVM construction.
 
-    ``None`` disables an individual gate. The limits are validation thresholds,
+    ``None`` disables an individual check. The limits are validation thresholds,
     not mesh-generation targets; a passing mesh still requires a resolution and
     convergence study.
 
@@ -293,7 +293,7 @@ class MaximumCourantTimeStep:
     target.  ``maximum_time_step_size`` provides the optional ``maxDeltaT``
     equivalent in seconds.
 
-    This object and :class:`TimeConfig` are immutable.  Time-step policy is a
+    This object and :class:`TimeConfig` are immutable.  Time-step control is a
     numerical construction choice: configure it before creating the solver;
     the solver alone owns the evolving runtime time-step size afterward.
     """
@@ -324,11 +324,11 @@ class MaximumCourantTimeStep:
 
 @dataclass(frozen=True, slots=True)
 class TimeConfig:
-    """Immutable time integration, output cadence, and step-control policy.
+    """Immutable time integration, output cadence, and step-control settings.
 
     ``time_step_size`` is the initial step size.  Fixed stepping is used when
     ``adjustment`` is ``None``; pass :class:`MaximumCourantTimeStep` to make
-    step selection a solver-owned maximum-Courant policy.
+    step selection solver-controlled maximum-Courant step selection.
 
     Attributes
     ----------
@@ -339,7 +339,7 @@ class TimeConfig:
     output_schedule : RunSchedule
         Cadence evaluated from accepted step/time state.
     adjustment : MaximumCourantTimeStep or None
-        Optional CFL-based adaptive policy. The selected runtime step is
+        Optional CFL-based adaptive settings. The selected runtime step is
         mutable solver state and is not written back to this object.
     """
 
@@ -440,7 +440,7 @@ class DiscretizationConfig:
 
 @dataclass
 class LinearSolverConfig:
-    """Momentum/pressure linear-algebra policy for one FVM case.
+    """Momentum/pressure linear-algebra settings for one FVM case.
 
     Parameters
     ----------
@@ -457,7 +457,7 @@ class LinearSolverConfig:
         Action when an iterative solve does not converge. The default
         ``raise`` never silently replaces the configured numerical method.
     reuse_ilu : bool
-        Reuse an ILU preconditioner while matrix-change gates permit it.
+        Reuse an ILU preconditioner while matrix-change checks permit it.
     momentum_tolerance, pressure_tolerance : float
         Positive absolute residual tolerances in assembled equation units.
     momentum_relative_tolerance, pressure_relative_tolerance : float
@@ -474,10 +474,10 @@ class LinearSolverConfig:
     ilu_drop_tolerance, ilu_fill_factor : float
         Positive SciPy ILU sparsification and fill controls.
     ilu_reuse_tolerance : float or None
-        Optional non-negative dimensionless matrix-change gate for ILU reuse.
+        Optional non-negative dimensionless matrix-change check for ILU reuse.
 
     Momentum and pressure may select different methods; pressure also has an
-    explicit constant-nullspace policy. Absolute tolerances are in assembled
+    explicit constant-nullspace settings. Absolute tolerances are in assembled
     equation residual units and relative tolerances are normalized against the
     initial residual. ``linear_failure_action='raise'`` is the safe default;
     ``'direct_fallback'`` explicitly permits a fallback solve.
@@ -485,7 +485,7 @@ class LinearSolverConfig:
     Raises
     ------
     TypeError
-        If Boolean/integer policy fields have invalid types.
+        If Boolean/integer settings fields have invalid types.
     ValueError
         If a method is unsupported or a tolerance/count violates its range.
     """
@@ -646,9 +646,9 @@ class PimpleControl:
     min_outer_correctors : int, default=1
         Minimum passes before residual-based early termination.
     outer_residual_tolerance : float or None
-        Optional positive maximum equation-residual gate for early exit.
+        Optional positive maximum equation-residual check for early exit.
     outer_continuity_tolerance : float or None
-        Optional positive maximum cell-divergence gate in 1/s.
+        Optional positive maximum cell-divergence check in 1/s.
     max_iterations, tolerance : int, float
         Positive SIMPLE iteration cap and convergence tolerance.
     velocity_relaxation, pressure_relaxation : float
@@ -953,21 +953,21 @@ class ComputeConfig:
     linear_backend : {'scipy', 'petsc'}, default='scipy'
         Sparse linear-algebra runtime.
     parallel_mode : {'serial', 'petsc_replicated', 'petsc_partitioned'}
-        Ownership model. Replicated mode stores a global mesh per rank;
+        Mesh distribution model. Replicated mode stores a global mesh per rank;
         partitioned mode stores owned plus halo cells.
     output_mode : {'synchronous', 'threaded'}, default='synchronous'
         Whether visualization writes complete inline or on a background thread.
 
     ``operator_backend`` selects NumPy/Numba/Taichi kernels;
     ``linear_backend`` selects SciPy or PETSc; ``parallel_mode`` selects serial,
-    replicated PETSc, or partitioned PETSc ownership; and ``output_mode`` selects
+    replicated PETSc, or partitioned PETSc rank assignment; and ``output_mode`` selects
     synchronous or threaded visualization. Serial mode requires SciPy, and
     partitioned PETSc does not support threaded output.
 
     Raises
     ------
     ValueError
-        If a choice is unsupported or backend/ownership/output combinations
+        If a choice is unsupported or backend/rank assignment/output combinations
         are incompatible.
     """
 
@@ -1032,16 +1032,16 @@ class ComputeConfig:
 
 @dataclass
 class OutputConfig:
-    """Cell-centred appended-binary VTK visualization policy.
+    """Cell-centred appended-binary VTK visualization settings.
 
     Parameters
     ----------
     format : {'vtk_xml'}, default='vtk_xml'
         Visualization container; only VTK XML is supported.
     data_location : {'cell'}, default='cell'
-        Authoritative field location. FVM solution values are cell-centred.
+        Specified field location. FVM solution values are cell-centred.
     encoding : {'appended'}, default='appended'
-        VTK binary payload encoding.
+        VTK binary field data encoding.
     compression : {'lz4', 'none', 'zlib'}, default='zlib'
         Appended-data compression codec.
     precision : {'f32', 'f64'}, default='f32'
@@ -1052,11 +1052,11 @@ class OutputConfig:
     ghost_layers : {0, 1}, default=1
         Number of boundary ghost layers included in parallel visualization.
     point_interpolation : {'none', 'boundary_weighted'}, default='none'
-        Optional derived vertex view. It never changes authoritative cell data.
+        Optional derived vertex view. It never changes specified cell data.
 
     Visualization precision is independent of compute precision. The current
     format/data-location/encoding are fixed to ``vtk_xml``/``cell``/``appended``;
-    ``compression`` controls payload compression, ``ghost_layers`` controls
+    ``compression`` controls field data compression, ``ghost_layers`` controls
     boundary-ghost inclusion, and ``point_interpolation`` optionally creates a
     point-view copy. When ``asynchronous`` is true, writer failures surface at
     ``flush_output`` or finalization.
@@ -1129,7 +1129,7 @@ class RunAcceptanceLimits:
 
     Continuity thresholds are in 1/s and Courant thresholds are dimensionless;
     equation residuals use their reported solver convention. A warning is recorded,
-    while an abort rejects the candidate according to the solver lifecycle.
+    while an abort rejects the candidate according to the solver run.
     ``sustained_steps`` controls the required consecutive observations.
 
     Raises
@@ -1215,7 +1215,7 @@ class LoggingConfig:
 
 @dataclass(frozen=True, slots=True)
 class BackupConfig:
-    """Automatic restart-backup policy.
+    """Automatic restart-backup settings.
 
     Parameters
     ----------
@@ -1260,7 +1260,7 @@ class FVMSetup:
         Positive requested execution size.
     mesh, execution, output, acceptance, logging, backup, time, schemes,
     linear, pimple, transport : corresponding configuration objects
-        Low-level policies consumed when the solver is materialized.
+        Low-level settings consumed when the solver is created.
     boundaries : list[BoundaryConfig]
         Patch conditions keyed by unique mesh-patch name.
     samplers : tuple
@@ -1274,7 +1274,7 @@ class FVMSetup:
         Uniform initial ``p/rho`` in m²/s².
 
     Prefer :class:`source.solvers.fvm.config.case.FVMCase` for new standalone
-    applications. This mutable object supplies materialized controls to
+    applications. This mutable object supplies resolved controls to
     coupled drivers and direct factory callers. Its fields group
     mesh-quality, execution, output, acceptance/logging, backup/time,
     discretization/linear/coupling, transport, boundaries, samplers, turbulence,
@@ -1384,7 +1384,7 @@ class FVMSetup:
         return merged
 
     def save(self, filepath: str) -> None:
-        """Serialize this setup using canonical field names."""
+        """Serialize this setup using standard field names."""
         from source.solvers.fvm.sampling.base import (
             sampler_to_dict,
         )
@@ -1401,7 +1401,7 @@ class FVMSetup:
 
     @classmethod
     def load(cls, filepath: str) -> FVMSetup:
-        """Load a canonical FVM setup JSON file."""
+        """Load a standard FVM setup JSON file."""
         with open(filepath, encoding="utf-8") as stream:
             data = json.load(stream)
 
@@ -1489,9 +1489,9 @@ class FVMSetup:
 
 
 def validate_fvm_setup(setup: FVMSetup) -> None:
-    """Revalidate a setup at the solver admission boundary.
+    """Revalidate a setup at the solver validation boundary.
 
-    Construction controls are mutable until admission. A caller can therefore
+    Construction controls are mutable until validation. A caller can therefore
     mutate a nested object after its
     dataclass constructor has run.  Re-running the small, side-effect-free
     validators here prevents such a mutation from reaching mesh allocation,

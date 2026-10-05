@@ -34,7 +34,7 @@ import defusedxml.ElementTree as ET  # noqa: N817
 
 from ..config.scheduling import RunSchedule
 
-# Canonical CSV column order for FVM field samplers. The leading coordinates
+# Standard CSV column order for FVM field samplers. The leading coordinates
 # and vector components match the VPM sampler so one reader serves both
 # solvers. This list is the single source of truth for headers and rows.
 SAMPLER_CSV_COLUMNS = [
@@ -60,7 +60,7 @@ class Sampler:
     """Base class for FVM samplers.
 
     Subclasses implement :meth:`sample`, which returns a plain dict of
-    canonical columns; the write methods are provided by the subclass.
+    standard columns; the write methods are provided by the subclass.
     ``file_name`` defaults to the lower-cased class name without the
     ``Sampler`` suffix.
 
@@ -93,13 +93,13 @@ class Sampler:
             Output stem. When omitted, the lower-case concrete class name
             without ``sampler`` is used.
         schedule : RunSchedule or None, default=None
-            Accepted-step/physical-time selection policy. ``None`` selects
+            Accepted-step/physical-time selection settings. ``None`` selects
             every accepted step.
 
         Notes
         -----
         The sampler stores configuration and may accumulate runtime stencil
-        caches; output directory ownership remains with the solver/executor.
+        caches; output directory rank assignment remains with the solver/executor.
         """
         self.file_name = file_name
         self.schedule = schedule if schedule is not None else RunSchedule(every_n_steps=1)
@@ -118,7 +118,7 @@ class Sampler:
 
         This is what makes ``FVMSetup.save()/load()`` round-trips and
         ``config_hash`` stable: two equivalent explicit samplers compare equal
-        without relying on object identity.
+        without relying on object reference.
         """
         return type(self) is type(other) and self.config_dict() == other.config_dict()
 
@@ -129,7 +129,7 @@ class Sampler:
     __hash__ = None
 
     def sample(self, context) -> dict[str, object] | None:
-        """Return canonical columns for one accepted solver context.
+        """Return standard columns for one accepted solver context.
 
         Subclasses must return equal-length columns keyed by the schema they
         advertise to their writer, or ``None`` when no sample is applicable.

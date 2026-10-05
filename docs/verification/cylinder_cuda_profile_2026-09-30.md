@@ -17,10 +17,10 @@ The t = 0.24 s and t = 0.36 s end-state checks found finite FVM velocity and
 pressure, finite particle positions and strengths, positive finite particle
 cores and volumes, and zero particles in strict solid interiors. Scheduled
 force/probe sampling at t = 0.20 s and field/slice/checkpoint output at
-t = 0.24 s succeeded. The native restart passed configuration and artifact
+t = 0.24 s succeeded. The native restart passed configuration and checkpoint-file
 validation, continued the journal without duplicate steps, and wrote a final
 checkpoint with coupling/VPM step 9, FVM step 90, and time 0.36 s. The final
-artifact hashes and stored particle arrays also passed verification. Renewal
+checkpoint-file hashes and stored particle arrays also passed verification. Renewal
 strength and linear-impulse residuals remained within their recorded tolerances
 at all nine accepted intervals.
 
@@ -51,7 +51,7 @@ These startup costs are separate from advancement.
 
 For a representative warmed interval, step 2 divides approximately as follows.
 Boundary refresh is separated from the transfer total because it evaluates
-particle-induced fields. Health refresh also evaluates fields after renewal.
+particle-induced fields. Particle state checks also evaluates fields after renewal.
 
 | Sequential phase | Seconds |
 | --- | ---: |
@@ -59,7 +59,7 @@ particle-induced fields. Health refresh also evaluates fields after renewal.
 | Particle advancement, including wall/GBD handling | 12.610 |
 | Boundary induction and post-renewal refresh | 5.545 |
 | Transfer calculations and gathers | 1.569 |
-| Accepted-state health/field refresh | 0.489 |
+| Particle state checks/field refresh | 0.489 |
 | Interface state capture and restore | 0.132 |
 | Accepted FVM output | 0.003 |
 
@@ -96,7 +96,7 @@ segments with exactly identical starts reuse that start's signed distance.
 Distinct starts retain the existing path; query order, triangle intersection
 tests, cache bounds, and numerical tolerances are preserved. Temporary storage
 is linear in the query batch. There is no geometry recognition or case-specific
-branch. The FMM allocation policy was retained because changing its memory/JIT
+branch. The FMM memory allocation settings was retained because changing its memory/JIT
 tradeoff needs broader GPU qualification.
 
 A paired host benchmark compared frozen, hash-verified before/after source

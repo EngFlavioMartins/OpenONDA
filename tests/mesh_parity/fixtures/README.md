@@ -1,7 +1,7 @@
 # Native cfMesh regression fixtures
 
 These compressed NumPy arrays contain native outputs, not fitted targets.
-Load with `allow_pickle=False`. All captures use the provenance below.
+Load with `allow_pickle=False`. All captures use the source information below.
 
 | File | Coverage | SHA256 |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Load with `allow_pickle=False`. All captures use the provenance below.
 | `cfmesh_boundary_volume_pass.npz` | One unconstrained boundary-volume pass | `924678ede899a182a4b60b2adaffbbb763ed79e4358ca70f878cea222d93b01c` |
 
 The template/projection/assignment fixture is an independent end-to-end native
-run using the binary64 FTR oracle. The surface and volume fixtures intentionally
+run using the binary64 FTR reference. The surface and volume fixtures intentionally
 start both implementations from identical intermediate coordinates. They isolate
 arithmetic and state handling; they are not independent full-mesh parity claims.
 
@@ -25,7 +25,7 @@ Forcing `OMP_THREAD_LIMIT=1` is unsafe in this native build.
 The original capture report was identified as
 `docs/verification/cartesian_mesher/progress_2026-09-06/REPORT.md`; it is not
 present in this checkout. The hashes and capture details below are the retained
-provenance. These fixtures do not establish the report's broader acceptance gates.
+source information. These fixtures do not establish the report's broader acceptance numerical_checks.
 
 ## Volume decomposition details
 
@@ -36,7 +36,7 @@ and cell-face order, the 2,124-node / 7,740-tetrahedron decomposition, and nativ
 positions after Knupp, geometric untangling, and ten volume-smoothing iterations.
 Load with `allow_pickle=False`.
 
-Provenance (2026-09-06):
+Source information (2026-09-06):
 
 - cfMesh source: `3ff8555514827646c34cacfe5f0f691e49cdbc96`;
 - OpenFOAM-v2412, `_8dbc61e11c-20241220`, double precision, 32-bit labels;

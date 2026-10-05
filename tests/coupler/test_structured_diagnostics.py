@@ -144,7 +144,7 @@ def test_complete_record_step_with_structured_tail_reaches_backup_and_jsonl(tmp_
         (0.02, 0.01, 0.03, 0.04),
         None,
         logger=logging.getLogger("test.structured_reporting"),
-        health_output_time=0.01,
+        state_checks_and_sampling_seconds=0.01,
     )
     rows = (tmp_path / "coupler_diagnostics.jsonl").read_text().splitlines()
     assert len(rows) == len(coupler.coupling_diagnostics) == len(backups) == 1

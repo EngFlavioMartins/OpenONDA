@@ -1,6 +1,6 @@
 """Read-only, benchmark-only attribution of exact-induction reuse decisions.
 
-Wrap the actual contract-provider invocation, not a numerical backend and not
+Wrap the actual reuse_conditions-provider invocation, not a numerical backend and not
 an extra operator-key evaluation. No source/device field is read by this hook.
 """
 
@@ -10,9 +10,9 @@ import hashlib
 import struct
 
 
-def _canonical(value):
+def _comparison_value(value):
     if type(value) is tuple:
-        return "tuple", tuple(_canonical(item) for item in value)
+        return "tuple", tuple(_comparison_value(item) for item in value)
     if type(value) is float:
         return "float64", struct.pack("!d", value)
     return type(value).__name__, value
@@ -56,10 +56,10 @@ def _differences(left, right, *, limit=8):
 def capture_induction_reuse_requests(coupler, records, *, max_records=128):
     """Append compact per-request records, restoring every Python hook on exit.
 
-Nest either inside or outside profile_components; restoration respects the
-previous instance binding. Only the VPM owner records, and the numerical
-backend's methods remain untouched so whitelist admission is not affected.
-"""
+    Nest either inside or outside profile_components; restoration respects the
+    previous instance binding. Only the VPM owner records, and the numerical
+    backend's methods remain untouched so supported-backend validation is not affected.
+    """
     if not coupler._is_master:
         yield
         return
@@ -71,36 +71,39 @@ backend's methods remain untouched so whitelist admission is not affected.
 
     def evaluator():
         cache = original["_induction_evaluator"]()
-        if not hasattr(cache, "contract_provider"):
+        if not hasattr(cache, "conditions_provider"):
             return cache
         if active:
             active[-1]["cache"] = cache
             active[-1]["before"] = asdict(cache.statistics)
         if any(owner is cache for owner, _, _ in providers):
             return cache
-        provider = cache.contract_provider
+        provider = cache.conditions_provider
 
         def forwarded():
-            contract = provider() if provider is not None else None
+            reuse_conditions = provider() if provider is not None else None
             if active:
                 row = active[-1]["row"]
-                row["contract_calls"] += 1
+                row["evaluation_calls"] += 1
                 row.update(
                     previous_valid=bool(cache._valid),
                     previous_count=int(cache._count),
-                    contract_present=contract is not None,
+                    conditions_present=reuse_conditions is not None,
                 )
-                if contract is not None and getattr(contract, "operator_key", None) is not None:
+                if (
+                    reuse_conditions is not None
+                    and getattr(reuse_conditions, "operator_key", None) is not None
+                ):
                     old = cache._key
-                    current = id(cache.backend), _canonical(contract.operator_key)
+                    current = id(cache.backend), _comparison_value(reuse_conditions.operator_key)
                     row["operator_key_equal"] = old == current
-                    row["backend_identity_equal"] = old is not None and old[0] == current[0]
+                    row["same_backend_settings"] = old is not None and old[0] == current[0]
                     row["operator_key_differences"] = (
                         [] if old is None else _differences(old[1], current[1])
                     )
-            return contract
+            return reuse_conditions
 
-        cache.contract_provider = forwarded
+        cache.conditions_provider = forwarded
         providers.append((cache, provider, forwarded))
         return cache
 
@@ -110,7 +113,7 @@ backend's methods remain untouched so whitelist admission is not affected.
             "stage_index": stage_state.stage_index,
             "stage_time": float(stage_time),
             "count": int(stage_state.count),
-            "contract_calls": 0,
+            "evaluation_calls": 0,
         }
         frame = {"row": row}
         active.append(frame)
@@ -136,8 +139,8 @@ backend's methods remain untouched so whitelist admission is not affected.
         yield
     finally:
         for owner, provider, proxy in reversed(providers):
-            if owner.contract_provider is proxy:
-                owner.contract_provider = provider
+            if owner.conditions_provider is proxy:
+                owner.conditions_provider = provider
         for name, (existed, value) in instance.items():
             if existed:
                 setattr(rhs, name, value)

@@ -14,9 +14,9 @@ from tests.support.fvm_mesh import structured_box
 @pytest.mark.parametrize("components", [1, 3])
 def test_native_skew_boundary_gradient_preserves_affine_tensor(scheme, backend, components):
     mesh = structured_box(4, 3, 3)
-    mesh["vertex_position"] = mesh["vertex_position"] @ np.array(
-        [[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]
-    ).T
+    mesh["vertex_position"] = (
+        mesh["vertex_position"] @ np.array([[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]).T
+    )
     for patch in mesh["boundary"]:
         patch["velocity_type"] = "normalValueTangentialGradient"
     geometry = compute_mesh_geometry(mesh, gradient_scheme=scheme)
@@ -27,11 +27,11 @@ def test_native_skew_boundary_gradient_preserves_affine_tensor(scheme, backend, 
     exact = exact[:, :components]
     locations = np.concatenate((geometry["cell_centre"], geometry["face_centre"][n_interior:]))
     values = locations @ exact + np.arange(components)[None, :] * 0.3
-    gradient = _resolve_gradient_fn(geometry)(values[:, 0] if components == 1 else values, mesh, geometry)
-
-    np.testing.assert_allclose(
-        gradient, np.broadcast_to(exact, gradient.shape), rtol=0, atol=8e-14
+    gradient = _resolve_gradient_fn(geometry)(
+        values[:, 0] if components == 1 else values, mesh, geometry
     )
+
+    np.testing.assert_allclose(gradient, np.broadcast_to(exact, gradient.shape), rtol=0, atol=8e-14)
     if components == 3:
         # Constant affine incompressible flow has spatially constant stress.
         # This checks its divergence through the actual momentum source,

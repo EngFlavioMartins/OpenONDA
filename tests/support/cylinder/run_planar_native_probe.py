@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import time
 
-from source.coupler.backup import artifact_digest
+from source.coupler.backup import checkpoint_path_hash
 from source.solvers.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
 from source.solvers.fvm.mesh.cartesian.extrusion import extrude_mesh_section
 from tests.coupler.test_cylinder_planar_native import _advance, _physical_case
@@ -42,11 +42,11 @@ def run(directory, source_mesh, *, coordinate=0.02, h=0.04, end_time=0.08, excha
     report = {
         "scope": "bounded fresh CPU probe; not developed shedding or production GPU speed qualification",
         "source_mesh": str(source_mesh.resolve()),
-        "source_mesh_sha256": artifact_digest(source_mesh),
+        "source_mesh_sha256": checkpoint_path_hash(source_mesh),
         "source_mesh_cells": old_mesh["n_cells"],
         "mesh_section_coordinate": coordinate,
         "mesh_preparation_seconds": preparation_seconds,
-        "mesh_provenance": "native source XY geometry; new unit-span extrusion and fresh initial fields",
+        "mesh_source information": "native source XY geometry; new unit-span extrusion and fresh initial fields",
         "cell_count": result["cells"],
         "h": h,
         "span": 1.0,
@@ -54,9 +54,9 @@ def run(directory, source_mesh, *, coordinate=0.02, h=0.04, end_time=0.08, excha
         "particle_z_rows": 1,
         "particle_count": len(result["positions"]),
         "particle_volume": h**2,
-        "covered_flow_time": [0.0, result["manifest"]["time"]],
+        "covered_flow_time": [0.0, result["checkpoint_info"]["time"]],
         "accepted_exchanges": result["accepted"],
-        "committed_checkpoint_time": result["manifest"]["time"],
+        "committed_checkpoint_time": result["checkpoint_info"]["time"],
         "exchanges": result["exchanges"],
         "forces": result["forces"],
     }

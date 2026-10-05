@@ -30,42 +30,42 @@ from source.solvers.vpm.io.logging import Logging
 from ..config import constants as constants_module
 
 # Taichi owns one process-global runtime.  VPM solvers may share that runtime
-# only when they use the same effective backend/precision.  A weak owner set
+# only when they use the same effective backend/precision.  A weak solver set
 # avoids keeping abandoned interactive solver objects alive, while ensuring
 # that closing one solver never silently tears down another live solver.
-_BACKEND_OWNERS: weakref.WeakSet[object] = weakref.WeakSet()
+_BACKEND_SOLVERS: weakref.WeakSet[object] = weakref.WeakSet()
 _BACKEND_CONFIGURATION: tuple[str, str] | None = None
-_BACKEND_OWNER_LOCK = threading.RLock()
+_BACKEND_SOLVER_LOCK = threading.RLock()
 
 
 def acquire_taichi_backend(
-    owner: object,
+    solver: object,
     *,
     preferred_backend: str = "AUTO",
     precision: str = "f32",
 ) -> None:
-    """Reserve a compatible lease on the process-global Taichi runtime.
+    """Reserve a compatible solver on the process-global Taichi runtime.
 
     Taichi can share a runtime between compatible VPM objects, but it cannot
     safely mix precision or effective backend settings.  Unsupported mixes
-    fail at admission before output or field allocation begins.
+    fail at validation before output or field allocation begins.
     """
     global _BACKEND_CONFIGURATION
-    with _BACKEND_OWNER_LOCK:
+    with _BACKEND_SOLVER_LOCK:
         # A solver that was abandoned without an explicit ``close()`` can be
         # held in a reference cycle by Taichi/Python callback objects.  The
-        # ownership set is weak, but its callbacks cannot run until that cycle
-        # is collected.  Reclaim those dead leases before deciding whether a
+        # solver set holds weak references, but its callbacks cannot run until that cycle
+        # is collected.  Reclaim those dead solver references before deciding whether a
         # new precision/backend request is compatible with the live runtime.
         gc.collect()
 
-        # If the previous owner was abandoned rather than closed, its Taichi
+        # If the previous solver was abandoned rather than closed, its Taichi
         # program may still be initialized with an incompatible default
         # precision/backend.  Once no tracked solver remains, it is safe to
         # reset that unowned runtime; doing so preserves the mixed-live-solver
         # guard below while allowing ordinary sequential cases to choose their
         # declared configuration.
-        if not _BACKEND_OWNERS and _BACKEND_CONFIGURATION is not None:
+        if not _BACKEND_SOLVERS and _BACKEND_CONFIGURATION is not None:
             active_backend, active_precision = _BACKEND_CONFIGURATION
             requested_backend = str(preferred_backend).upper()
             requested_precision = str(precision).lower()
@@ -79,7 +79,7 @@ def acquire_taichi_backend(
                 constants_module.TAICHI_BACKEND = "UNKNOWN"
                 _BACKEND_CONFIGURATION = None
 
-        if owner in _BACKEND_OWNERS:
+        if solver in _BACKEND_SOLVERS:
             return
         if _BACKEND_CONFIGURATION is not None:
             active_backend, active_precision = _BACKEND_CONFIGURATION
@@ -94,18 +94,18 @@ def acquire_taichi_backend(
                     "The Taichi backend is already initialized as "
                     f"{active_backend!r}; requested {requested_backend!r}"
                 )
-        _BACKEND_OWNERS.add(owner)
+        _BACKEND_SOLVERS.add(solver)
 
 
-def _release_taichi_backend(owner: object | None) -> None:
-    """Release an ownership reservation without touching Taichi state."""
+def _release_taichi_backend(solver: object | None) -> None:
+    """Release an runtime reservation without touching Taichi state."""
     global _BACKEND_CONFIGURATION
-    with _BACKEND_OWNER_LOCK:
-        if owner is not None:
-            _BACKEND_OWNERS.discard(owner)
+    with _BACKEND_SOLVER_LOCK:
+        if solver is not None:
+            _BACKEND_SOLVERS.discard(solver)
         else:
-            _BACKEND_OWNERS.clear()
-        if not _BACKEND_OWNERS:
+            _BACKEND_SOLVERS.clear()
+        if not _BACKEND_SOLVERS:
             _BACKEND_CONFIGURATION = None
 
 
@@ -408,11 +408,11 @@ def _build_backend_chain(
     return _supported_backend_chain(chain, supported_devices)
 
 
-def reset_taichi_backend(*, owner: object | None = None) -> None:
+def reset_taichi_backend(*, solver: object | None = None) -> None:
     """Fully reset the Taichi runtime, releasing all GPU memory.
 
     Call this **after** the active :class:`VPMSolver` has been closed, or pass
-    that solver as ``owner`` from its cleanup path.  Resetting a runtime owned
+    that solver as ``solver`` from its cleanup path.  Resetting a runtime owned
     by another live solver is rejected because every Taichi field, kernel, and
     ndarray from that solver becomes invalid after ``ti.reset()``.
 
@@ -430,24 +430,24 @@ def reset_taichi_backend(*, owner: object | None = None) -> None:
     occurs when accumulated GPU allocations leave no room for staging buffers.
     """
     global _BACKEND_CONFIGURATION
-    with _BACKEND_OWNER_LOCK:
-        # Remove weak leases held only by abandoned reference cycles before
-        # enforcing the live-owner safety check.  An explicit class-level
+    with _BACKEND_SOLVER_LOCK:
+        # Remove weak solver references held only by abandoned reference cycles before
+        # enforcing the live-solver safety check.  An explicit class-level
         # reset should be useful for ordinary sequential scripts even when a
         # previous interactive solver forgot to call ``close()``.
         gc.collect()
-        if owner is None and _BACKEND_OWNERS:
+        if solver is None and _BACKEND_SOLVERS:
             raise RuntimeError(
                 "Cannot reset the Taichi backend while a VPM solver is live; "
                 "close all live solvers first"
             )
-        if owner is not None:
-            if owner not in _BACKEND_OWNERS:
+        if solver is not None:
+            if solver not in _BACKEND_SOLVERS:
                 return
-            _BACKEND_OWNERS.discard(owner)
-            if _BACKEND_OWNERS:
+            _BACKEND_SOLVERS.discard(solver)
+            if _BACKEND_SOLVERS:
                 # Other compatible solvers still use this process-global
-                # runtime.  Releasing this lease must not invalidate them.
+                # runtime.  Releasing this scope must not invalidate them.
                 return
         try:
             # Flush all pending GPU work before tearing down the runtime so the

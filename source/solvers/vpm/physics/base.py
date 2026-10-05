@@ -47,7 +47,7 @@ class PhysicsBase:
     - Field evaluation methods (velocity, vorticity, gradients)
 
     The concrete PhysicsEngine provides shared fields and physical operators;
-    coupled inviscid rates are selected through the induction contract.
+    coupled inviscid rates are selected through the induction conditions.
     """
 
     def __init__(
@@ -107,7 +107,7 @@ class PhysicsBase:
 
         # The solver binds the selected induction backend here after all
         # device fields are initialized.  Target queries use this same
-        # contract when available; standalone PhysicsEngine users retain the
+        # conditions when available; standalone PhysicsEngine users retain the
         # direct-kernel fallback below.
         self.induction = None
 
@@ -828,7 +828,7 @@ class PhysicsBase:
             self.accumulator_dtype,
         )
 
-        # Retain the authoritative device radial functions for induction
+        # Retain the device radial functions for induction
         # backends that assemble additional device-resident passes (notably the
         # production FMM).  The public physics surface remains the assembled
         # kernels below; this private registry avoids a second q/zeta selector.

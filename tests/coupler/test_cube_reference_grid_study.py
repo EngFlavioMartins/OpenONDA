@@ -1,4 +1,4 @@
-"""The public FVM grid-study API produces numerical and plot artifacts."""
+"""The public FVM grid-study API produces numerical and plot checkpoint_files."""
 
 import csv
 import json

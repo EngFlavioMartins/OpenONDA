@@ -35,12 +35,12 @@ def test_fixed_predictor_map_does_not_accumulate_time_or_particles(monkeypatch, 
     iteration._write_trace(c, old)
     starts = []
 
-    monkeypatch.setattr(iteration, "capture_restart_payload", lambda f: (f.step, f.time))
+    monkeypatch.setattr(iteration, "capture_restart_state", lambda f: (f.step, f.time))
 
     def restore(f, state):
         f.step, f.time = state
 
-    monkeypatch.setattr(iteration, "publish_restart_payload", restore)
+    monkeypatch.setattr(iteration, "restore_restart_state", restore)
     monkeypatch.setattr(iteration, "_particle_state_snapshot", lambda v, **kwargs: v.strength)
     monkeypatch.setattr(
         iteration, "_restore_particle_state", lambda v, p: setattr(v, "strength", p)

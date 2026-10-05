@@ -30,8 +30,8 @@ def _trace(owner, *, old=False, velocity=None):
 def _clocks(owner):
     return {
         name: {
-            "step": int(getattr(getattr(owner, name + "_solver"), "step")),
-            "time": float(getattr(getattr(owner, name + "_solver"), "time")),
+            "step": int(getattr(owner, name + "_solver").step),
+            "time": float(getattr(owner, name + "_solver").time),
         }
         for name in ("fvm", "vpm")
     }
@@ -43,7 +43,7 @@ def capture_interface_traces(owner, prefix, reports, *, max_exchanges, iteration
 
     All ranks may enter, but only ``owner`` on the VPM-owning master captures
     arrays or writes. ``reports`` receives one JSON-compatible entry per saved
-    exchange. Existing artifacts are never replaced. The context patches only
+    exchange. Existing checkpoint_files are never replaced. The context patches only
     the benchmark process's module bindings and restores them even on errors.
     """
     if isinstance(max_exchanges, bool) or not isinstance(max_exchanges, int) or max_exchanges < 1:
@@ -99,7 +99,7 @@ def capture_interface_traces(owner, prefix, reports, *, max_exchanges, iteration
         comm = getattr(getattr(owner.fvm_solver, "parallel", None), "comm", None)
         collective = comm is not None and comm.Get_size() > 1
         stream = None
-        admission_error = None
+        validation_error = None
         if owner._is_master:
             try:
                 if active is not None:
@@ -131,14 +131,14 @@ def capture_interface_traces(owner, prefix, reports, *, max_exchanges, iteration
                 append_trace("old_physical_endpoint", _trace(owner, old=True))
                 append_trace("raw_predictor", _trace(owner, velocity=next_velocity))
             except BaseException as exc:
-                admission_error = repr(exc)
+                validation_error = repr(exc)
                 if stream is not None:
                     stream.close()
                 active = None
         if collective:
-            admission_error = comm.bcast(admission_error, root=0)
-        if admission_error is not None:
-            raise RuntimeError("Interface trace capture admission failed: " + admission_error)
+            validation_error = comm.bcast(validation_error, root=0)
+        if validation_error is not None:
+            raise RuntimeError("Interface trace capture validation failed: " + validation_error)
         solve_failed = False
         save_error = None
         try:

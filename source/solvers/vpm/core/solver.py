@@ -27,18 +27,18 @@ from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.case import Numerics, RestartState, VPMCase
 from ..config.constants import MAX_N_PARTICLES
-from ..config.health import (
-    HealthError,
-    HealthSnapshot,
-    accepted_step_health,
-)
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
+from ..config.state_limits import (
+    ParticleStateError,
+    ParticleStateMetrics,
+    check_accepted_particle_state,
+)
 from ..coupling import CouplingStepper
-from ..diagnostics.resolution import discretization_health
+from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
-from ..io.manifest import write_manifest
+from ..io.metadata import write_metadata
 from ..io.physics_events import LoggingPhysicsEventObserver
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import OutputEvent, OutputManager
@@ -100,7 +100,7 @@ class VelocityOverrideBlender(Protocol):
 class VPMSolver:
     """Own and advance one complete Vortex Particle Method simulation.
 
-    The solver is the owner of the mutable particle fields, accepted clock,
+    The solver is the solver of the mutable particle fields, accepted clock,
     induction backend, Runge--Kutta workspace, viscous/turbulence models,
     optional VLM coupling, diagnostics, samplers, and restart I/O. A
     particle's ``vortex_strength`` is the particle-strength/circulation vector
@@ -111,7 +111,7 @@ class VPMSolver:
     ----------
     case : VPMCase
         Immutable construction object containing numerical, physical, output,
-        and initial-condition policies. The case is validated before device
+        and initial-condition settings. The case is validated before device
         fields are allocated.
 
     Attributes
@@ -129,7 +129,7 @@ class VPMSolver:
     Notes
     -----
     Constructing a solver claims/configures the process Taichi backend and
-    creates output directories. :meth:`run` owns the complete lifecycle and
+    creates output directories. :meth:`run` owns the complete run phases and
     closes resources on success or failure; interactive callers may use
     :meth:`advance` and then :meth:`close` explicitly. Numerical state is
     updated in place, while an accepted step is committed only after all
@@ -167,7 +167,7 @@ class VPMSolver:
         installs logging/output managers. On successful construction it also
         writes ``vpm_metadata.json`` in the configured backup directory. It
         does not populate declarative initial conditions until the first
-        lifecycle operation.
+        run phases operation.
         """
         if not isinstance(case, VPMCase):
             raise TypeError("VPMSolver requires a VPMCase construction object")
@@ -183,7 +183,7 @@ class VPMSolver:
         )
         self._backend_claimed = True
         self.restart_state = RestartState()
-        self._restart_provenance: dict | None = None
+        self._restart_details: dict | None = None
         self._restart_loaded = False
         self._restart_terminal_noop = False
         self._restart_particle_count: int | None = None
@@ -210,7 +210,7 @@ class VPMSolver:
             Logging.set_routine_messages_enabled(True)
             Logging.startup(self)
             self._configuration_logged = True
-            self._write_run_manifest("created", None)
+            self._write_run_metadata("created", None)
             # Declarative or externally supplied initial particles are populated
             # after construction.  Keep those setup mutations out of the runtime
             # event stream; the first requested diagnostics describe their state.
@@ -241,10 +241,10 @@ class VPMSolver:
 
         Call before constructing a new solver when several VPM cases are run
         sequentially in the same Python process.  When called through a live
-        solver instance, its ownership lease is released first; a shared
+        solver instance, its runtime reservation is released first; a shared
         runtime is reset only when no compatible solver remains.
         """
-        reset_taichi_backend(owner=self)
+        reset_taichi_backend(solver=self)
 
     def _cleanup_failed_construction(self) -> None:
         """Release every resource acquired before construction failed."""
@@ -255,7 +255,7 @@ class VPMSolver:
         if getattr(self, "_backend_claimed", False):
             # Preserve the original construction exception if cleanup fails.
             with suppress(Exception):
-                reset_taichi_backend(owner=self)
+                reset_taichi_backend(solver=self)
             self._backend_claimed = False
 
     @staticmethod
@@ -317,7 +317,7 @@ class VPMSolver:
         # DVH's compact heat support is a resolved transfer only when
         # beta*R_d²/(4*nu) has elapsed.  Accumulate smaller accepted steps and
         # apply the full physical interval once the lattice can represent it;
-        # direct diffusion calls validate the same contract.
+        # direct diffusion calls validate the same conditions.
         self._n_steps_per_dvh_diffusion: int = 1
         self._n_steps_since_dvh_diffusion: int = 0
         if (
@@ -347,7 +347,7 @@ class VPMSolver:
         self.viscous_scheme = final_setup.viscous.scheme
         self._viscous_config = final_setup.viscous
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
-        self.health_limits = final_setup.health_limits
+        self.state_limits = final_setup.state_limits
         self.particle_kernel = final_setup.particle_kernel.upper()
         return final_setup
 
@@ -395,7 +395,7 @@ class VPMSolver:
         print_openonda_header(self.precision)
         # Initialization can call the same particle/model helpers used at run
         # time.  Suppress their routine event records until the complete,
-        # authoritative configuration is printed once after initial conditions.
+        # resolved configuration is printed once after initial conditions.
         Logging.set_routine_messages_enabled(False)
         set_flow_model(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
@@ -419,9 +419,9 @@ class VPMSolver:
                 kernel=make_vortex_kernel(self.particle_kernel),
             )
         # Target diagnostics and coupling queries must use the same selected
-        # induction contract as RK particle stages.  PhysicsBase keeps a
+        # induction conditions as RK particle stages.  PhysicsBase keeps a
         # direct fallback for standalone users, but a solver-owned backend is
-        # authoritative here (including FMM).
+        # used here (including FMM).
         self.physics.induction = self.induction
         if hasattr(self.induction, "estimated_workspace_bytes"):
             self.fmm_workspace_bytes = self.induction.estimated_workspace_bytes(max_p)
@@ -520,8 +520,8 @@ class VPMSolver:
             self.induction if hasattr(self.induction, "planar_span") else None
         )
         self._flow_integrals: dict = {}
-        self._discretization_health: dict = {}
-        self._accepted_health_snapshot: HealthSnapshot | None = None
+        self._particle_resolution_metrics: dict = {}
+        self._accepted_state_metrics: ParticleStateMetrics | None = None
         self._body_induced_fn = None
         self._stretch_time_step_size_warned: bool = False
         self._particles_removed_this_step = 0
@@ -671,7 +671,7 @@ class VPMSolver:
         Parameters
         ----------
         filename : str
-            Destination path. Parent-directory creation and overwrite policy
+            Destination path. Parent-directory creation and overwrite settings
             are delegated to :class:`SolverIO`.
 
         Notes
@@ -734,9 +734,9 @@ class VPMSolver:
         Parameters
         ----------
         defer_output : bool, default=False
-            When false, refresh accepted-step health/diagnostics and dispatch
+            When false, refresh accepted-step particle state/diagnostics and dispatch
             the accepted-step output event before returning. Coupled drivers
-            set true while they exchange the authoritative particle cloud and
+            set true while they exchange the accepted particle cloud and
             call :meth:`execute_scheduled_samplers` afterward.
 
         Raises
@@ -744,7 +744,7 @@ class VPMSolver:
         RuntimeError
             If a previous physical step failed or the solver cannot continue.
         Exception
-            Any numerical, health, stabilization, or callback exception is
+            Any numerical, particle state, stabilization, or callback exception is
             propagated. A failed physical step marks this solver terminally
             invalid so partial device mutation cannot be mistaken for an
             accepted state.
@@ -796,7 +796,7 @@ class VPMSolver:
                 self._backup_path,
                 kind="vpm",
                 samples_dir=self.samples_dir,
-                owned_sample_names=owned_names,
+                sample_names=owned_names,
             )
             self.output_manager.rewind_histories(-1.0e100)
             self._run_to_step = self.case.run.steps
@@ -812,7 +812,7 @@ class VPMSolver:
         return path is not None
 
     def _start_run_from(self, selection) -> bool:
-        """Start a lifecycle continuation without loading an already complete state."""
+        """Start a run phases continuation without loading an already complete state."""
         from source.restart import select_backup
 
         if selection == "initial":
@@ -842,14 +842,14 @@ class VPMSolver:
         return True
 
     def run(self, *, start_from=None) -> None:
-        """Execute the complete framework-owned lifecycle for this case.
+        """Execute the complete framework-owned run phases for this case.
 
         With ``start_from="latest"``, discover a native checkpoint and treat
         ``RunPlan.steps`` as the total destination step. A path selects an
         explicit checkpoint and ``"initial"`` starts a new output history. With
         ``None``, preserve the in-memory state and run that many more steps.
 
-        The lifecycle has one owner: it constructs declarative initial
+        The solver constructs declarative initial
         conditions, dispatches initial/accepted/final output events, records an
         atomic progress and terminal metadata, and releases logger/backend resources on
         both successful and failed runs.  ``advance`` remains available for
@@ -858,12 +858,12 @@ class VPMSolver:
         Raises
         ------
         RuntimeError
-            If the lifecycle was already started or a failed step made the
+            If the run phases was already started or a failed step made the
             solver terminally invalid.
         Exception
             The primary evolution/output/finalization failure is re-raised
             after failed-event output, metadata writing, and resource cleanup
-            have been attempted. With ``health_limit_action="STOP"``, a rejected
+            have been attempted. With ``state_limit_action="STOP"``, a rejected
             nonfinite accepted state instead returns with ``run_status="unstable"``;
             its failure reason remains in ``run_failure`` and native logging.
 
@@ -896,7 +896,7 @@ class VPMSolver:
             self._sync_restart_state()
             try:
                 Logging.run_finished(self, self.run_status)
-                self._write_run_manifest(self.run_status, None)
+                self._write_run_metadata(self.run_status, None)
             finally:
                 self.close()
             return
@@ -911,10 +911,10 @@ class VPMSolver:
             if start_from is not None and not getattr(self, "_restart_loaded", False):
                 self.save_backup()
             self.run_status = "running"
-            self._write_run_manifest(self.run_status, None)
+            self._write_run_metadata(self.run_status, None)
             self._log_configuration_once()
-            health_limit_failure = None
-            invalid_health_failure = None
+            state_limit_failure = None
+            invalid_state_failure = None
             if getattr(self, "_restart_loaded", False):
                 self.output_manager.resume()
             if self.case.run.initial_samples and not getattr(self, "_restart_loaded", False):
@@ -926,39 +926,39 @@ class VPMSolver:
                     break
                 try:
                     self.advance()
-                except HealthError as exc:
-                    if self.case.run.health_limit_action == "RAISE":
+                except ParticleStateError as exc:
+                    if self.case.run.state_limit_action == "RAISE":
                         raise
                     if not exc.restartable:
-                        invalid_health_failure = exc
+                        invalid_state_failure = exc
                     else:
-                        health_limit_failure = exc
+                        state_limit_failure = exc
                     break
-            if invalid_health_failure is not None:
+            if invalid_state_failure is not None:
                 status = "unstable"
-                failure = invalid_health_failure
+                failure = invalid_state_failure
             else:
                 with self._output_preparation():
                     self._refresh_diagnostics_for_output()
                     if self.case.run.final_backup:
                         self._save_final_backup()
                 try:
-                    if budget_exhausted or health_limit_failure is not None:
+                    if budget_exhausted or state_limit_failure is not None:
                         self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
                     else:
                         self.output_manager.dispatch(OutputEvent.FINAL)
                 except Exception as output_failure:
-                    if health_limit_failure is not None:
+                    if state_limit_failure is not None:
                         output_failure.add_note(
-                            "Final output followed a health limit: "
-                            f"{type(health_limit_failure).__name__}: {health_limit_failure}"
+                            "Final output followed a particle state limit: "
+                            f"{type(state_limit_failure).__name__}: {state_limit_failure}"
                         )
                     raise
                 if budget_exhausted:
                     status = "wall_time_limit"
-                elif health_limit_failure is not None:
+                elif state_limit_failure is not None:
                     status = "resolution_lost"
-                    failure = health_limit_failure
+                    failure = state_limit_failure
                 else:
                     status = "completed"
         except BaseException as exc:
@@ -980,7 +980,7 @@ class VPMSolver:
             self._sync_restart_state()
             for finalizer in (
                 lambda: Logging.run_finished(self, self.run_status, self.run_failure),
-                lambda: self._write_run_manifest(self.run_status, self.run_failure),
+                lambda: self._write_run_metadata(self.run_status, self.run_failure),
                 self.close,
             ):
                 try:
@@ -1022,17 +1022,17 @@ class VPMSolver:
         )
         self._initial_conditions_built = True
 
-    def _write_run_manifest(self, status: str, failure: BaseException | None) -> None:
+    def _write_run_metadata(self, status: str, failure: BaseException | None) -> None:
         """Record universal solver state beside numerical backups.
 
-        ``failure`` remains part of the lifecycle-finalizer callback contract,
+        ``failure`` remains part of the run phases-finalizer callback conditions,
         but exception details are intentionally excluded from solver metadata.
         """
         if status == "created":
             from source.restart import archive_run_metadata
 
             archive_run_metadata(self._backup_path / "vpm_metadata.json")
-        write_manifest(
+        write_metadata(
             self,
             self._backup_path / "vpm_metadata.json",
             status=status,
@@ -1050,7 +1050,7 @@ class VPMSolver:
         if getattr(self, "_closed", False):
             return
         primary_failure: BaseException | None = None
-        # Only the concrete slab's optional private CuPy owner is ours here.
+        # Only the concrete slab's optional private CuPy solver is ours here.
         # Never close an arbitrary configured/shared induction or its base.
         from ..physics.induction.slip_slab import SlipSlabInduction
 
@@ -1085,7 +1085,7 @@ class VPMSolver:
             if mesh_failure is not None:
                 status = "failed"
             try:
-                self._write_run_manifest(status, self._evolution_failure or mesh_failure)
+                self._write_run_metadata(status, self._evolution_failure or mesh_failure)
             except BaseException as error:
                 if primary_failure is None:
                     primary_failure = error
@@ -1098,7 +1098,7 @@ class VPMSolver:
                     primary_failure = error
         if getattr(self, "_backend_claimed", False) and mesh_failure is None:
             try:
-                reset_taichi_backend(owner=self)
+                reset_taichi_backend(solver=self)
                 self._backend_claimed = False
             except BaseException as error:
                 if primary_failure is None:
@@ -1149,15 +1149,15 @@ class VPMSolver:
         if getattr(self, "_preparing_output", False):
             self._prepared_backup_velocity = self._backup_velocity_key()
 
-    def _refresh_accepted_step_health(self) -> None:
+    def _check_accepted_particle_state(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
         self._refresh_particle_diagnostic_fields()
-        if self.health_limits.divergence.maximum is not None or (
-            self.health_limits.misalignment.maximum_degrees is not None
+        if self.state_limits.divergence.maximum is not None or (
+            self.state_limits.misalignment.maximum_degrees is not None
         ):
-            self._update_discretization_health()
-        self._accepted_health_snapshot = accepted_step_health(
-            limits=self.health_limits,
+            self._update_particle_resolution_metrics()
+        self._accepted_state_metrics = check_accepted_particle_state(
+            limits=self.state_limits,
             step=self.step,
             time_step_size=self.time_step_size,
             position=self.particle_position,
@@ -1166,10 +1166,10 @@ class VPMSolver:
             vortex_strength=self.particle_vortex_strength,
             core_radius=self.particle_core_radius,
             particle_volume=self.particle_volume,
-            resolution=self._discretization_health,
-            previous=self._accepted_health_snapshot,
+            resolution=self._particle_resolution_metrics,
+            previous=self._accepted_state_metrics,
         )
-        self.stabilization.lagrangian_cfl = self._accepted_health_snapshot.strain_increment_infinity
+        self.stabilization.lagrangian_cfl = self._accepted_state_metrics.strain_increment_infinity
 
     def _refresh_diagnostics_for_output(self) -> None:
         """Refresh dependencies before framework-owned diagnostics are sampled."""
@@ -1185,13 +1185,13 @@ class VPMSolver:
     def execute_scheduled_samplers(self) -> None:
         """Execute due time- or step-scheduled field samplers."""
         self._log_configuration_once()
-        # Coupled drivers call this after replacing their authoritative part of
-        # the particle cloud, so the accepted health state must be measured
+        # Coupled drivers call this after replacing their computed part of
+        # the particle cloud, so the accepted particle fields must be checked
         # here rather than before that synchronization.
         started = perf_counter()
         with self._output_preparation():
-            self._refresh_accepted_step_health()
-            health_finished = perf_counter()
+            self._check_accepted_particle_state()
+            state_check_finished = perf_counter()
             if self.vlm_solver is not None:
                 self._record_vlm_diagnostics()
             if self.output_manager.flow_integrals_due(self.step, self.time):
@@ -1200,8 +1200,8 @@ class VPMSolver:
             self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
         Logging.section(
             "OUTPUT TIMING",
-            ("Accepted-state health", health_finished - started, "s"),
-            ("Flow and VLM diagnostics", diagnostics_finished - health_finished, "s"),
+            ("Particle state checks", state_check_finished - started, "s"),
+            ("Flow and VLM diagnostics", diagnostics_finished - state_check_finished, "s"),
             ("Backups and samplers", perf_counter() - diagnostics_finished, "s"),
         )
 
@@ -1303,12 +1303,12 @@ class VPMSolver:
         self._flow_integrals = self.field_diagnostics.compute_flow_integrals(
             self.particles, self.time
         )
-        self._update_discretization_health()
+        self._update_particle_resolution_metrics()
         self._record_vortex_centroid_history()
         self._record_time_history()
         self._flow_integrals_step = self.step
 
-    def _update_discretization_health(self) -> None:
+    def _update_particle_resolution_metrics(self) -> None:
         """Refresh field quality, confirming sampled limit crossings at all blobs.
 
         A bounded spatial sample is sufficient for routine monitoring, but its
@@ -1317,12 +1317,12 @@ class VPMSolver:
         distinct blob, retaining the configured threshold and physical state.
         """
         if self.particles.n_particles_total == 0:
-            self._discretization_health = {}
+            self._particle_resolution_metrics = {}
             return
         # The stored particle vorticity is only reconstructed for backups and
         # initially contains Gamma/V. It is not an accepted-step field. Use
         # curl(u) from the freshly evaluated Jacobian, as the P-relaxation
-        # operator does; otherwise the health stop depends on backup cadence.
+        # operator does; otherwise the particle-state stop depends on backup cadence.
         gradient = self.particles.velocity_gradient_cpu(use_cache=False)
         vorticity = np.column_stack(
             (
@@ -1334,31 +1334,31 @@ class VPMSolver:
         position = self.particle_position
         strength = self.particle_vortex_strength
         core_radius = self.particle_core_radius
-        metrics = discretization_health(
+        metrics = particle_resolution_metrics(
             position,
             strength,
             core_radius,
             vorticity=vorticity,
         )
         limits = (
-            ("vorticity_divergence_error", self.health_limits.divergence.maximum),
+            ("vorticity_divergence_error", self.state_limits.divergence.maximum),
             (
                 "vortex_strength_misalignment_degrees",
-                self.health_limits.misalignment.maximum_degrees,
+                self.state_limits.misalignment.maximum_degrees,
             ),
         )
         if any(
             maximum is not None and (not np.isfinite(metrics[name]) or metrics[name] > maximum)
             for name, maximum in limits
         ):
-            metrics = discretization_health(
+            metrics = particle_resolution_metrics(
                 position,
                 strength,
                 core_radius,
                 vorticity=vorticity,
                 sample_all=True,
             )
-        self._discretization_health = metrics
+        self._particle_resolution_metrics = metrics
 
     def _record_vortex_centroid_history(self) -> None:
         """Record the vortex-strength-magnitude-weighted particle centroid."""
@@ -1450,7 +1450,7 @@ class VPMSolver:
 
     @property
     def kinetic_energy_rate_source(self) -> str:
-        """Return the native provenance of the reported energy-rate value."""
+        """Return the native source information of the reported energy-rate value."""
         return self._flow_integrals.get("kinetic_energy_rate_source", "unknown")
 
     @property
@@ -1994,7 +1994,7 @@ class VPMSolver:
         # velocity, velocity gradient, and width-rate fields.  Those are
         # derived state, so a deferred-output advance may leave them stale
         # until another diagnostic refreshes them.  Refresh the complete
-        # stage contract here, including external/body contributions, so the
+        # stage conditions here, including external/body contributions, so the
         # pressure result is independent of diagnostic call order.
         if self.particles.n_particles_total > 0:
             self.stepper._update_velocity_and_gradients()
@@ -2066,7 +2066,7 @@ class VPMSolver:
             Logging.set_routine_messages_enabled(True)
             return
         # Lightweight unit doubles created without a VPMCase have no reportable
-        # configuration and should retain the numerical facade contract.
+        # configuration and should retain the numerical facade conditions.
         if not hasattr(self, "case") or not hasattr(self, "setup"):
             return
         Logging.set_routine_messages_enabled(True)
@@ -2090,7 +2090,7 @@ class VPMSolver:
 
         Side Effects
         ------------
-        Compacts device particle fields, updates stabilization lineage, and
+        Compacts device particle fields, updates stabilization refinement reference, and
         stores removed count/circulation for diagnostics.
         """
         if particle_indices is not None and len(particle_indices) > 0:
@@ -2110,7 +2110,7 @@ class VPMSolver:
             self._particles_removed_this_step = 0
             self._vortex_strength_removed_this_step = np.zeros(3)
 
-        # Trim the stabilization lineage references to match the removed set.
+        # Trim the stabilization refinement references to match the removed set.
         if remove_all:
             self.stabilization.on_removal(remove_all=True)
         elif particle_indices is not None and len(particle_indices) > 0:
@@ -2163,7 +2163,7 @@ class VPMSolver:
         Side Effects
         ------------
         Appends and copies the batch into device fields, resets axisymmetric
-        orbit validation, and updates stabilization lineage/reference totals.
+        orbit validation, and updates stabilization refinement reference/reference totals.
         """
         if hasattr(self.induction, "planar_span"):
             self.induction.validate_source_arrays(position, vortex_strength)
@@ -2292,7 +2292,7 @@ class VPMSolver:
     def capture_particle_snapshot(self, *, slot: str):
         """Capture a provisional device state in an explicitly named scratch slot.
 
-        Distinct nested transactions must use different slots. Reusing a slot
+        Distinct nested state updates must use different slots. Reusing a slot
         invalidates its previous handle; restoring it then fails before mutation.
         This is not a restart or a cache: every call copies current device state.
         """
@@ -2316,7 +2316,7 @@ class VPMSolver:
             buffer = buffers[slot] = replacement
         return buffer.capture(
             self.particles,
-            prepare_lineage=self.stabilization.reference_vortex_strength is not None,
+            prepare_refinement_reference=self.stabilization.reference_vortex_strength is not None,
         )
 
     def restore_particle_snapshot(self, snapshot) -> None:
@@ -2326,15 +2326,15 @@ class VPMSolver:
         if not isinstance(snapshot, ParticleSnapshot):
             raise TypeError("Expected a particle snapshot from this solver")
         snapshot._validate(self.particles)
-        lineage = (
-            snapshot.prepare_lineage()
+        refinement_reference = (
+            snapshot.prepare_refinement_reference()
             if self.stabilization.reference_vortex_strength is not None
             else None
         )
         snapshot.restore(self.particles)
         self._axisymmetric_orbits_validated = False
-        if lineage is not None:
-            self.stabilization.on_replacement(*lineage)
+        if refinement_reference is not None:
+            self.stabilization.on_replacement(*refinement_reference)
 
     def update_particle_vortex_strength(
         self,
@@ -2374,12 +2374,12 @@ class VPMSolver:
             Input path in a format supported by :class:`SolverIO`.
         remove_current_particles : bool, default=False
             Clear the current cloud before loading when true; otherwise follow
-            the file-loader append/replace policy.
+            the file-loader append/replace settings.
 
         Side Effects
         ------------
         Reads external data, mutates the active particle fields, and may reset
-        stabilization lineage according to the loader's contract.
+        stabilization refinement reference according to the loader's conditions.
         """
         self.io.load_particle_field(particle_file_name, remove_current_particles)
 
@@ -2389,12 +2389,12 @@ class VPMSolver:
         prop_value,
         n_particles_total: int,
     ) -> np.ndarray:
-        """Validate one canonical active-particle field before device upload.
+        """Validate one standard active-particle field before device upload.
 
         Parameters
         ----------
         prop_name : str
-            Canonical field name, used to select the expected trailing shape.
+            Standard field name, used to select the expected trailing shape.
         prop_value : array-like
             Candidate values. It is converted to a NumPy array when needed.
         n_particles_total : int
@@ -2442,7 +2442,7 @@ class VPMSolver:
         return prop_value
 
     def set_particles_properties(self, **properties: object) -> None:
-        """Update canonical particle fields after validating shape and finiteness.
+        """Update standard particle fields after validating shape and finiteness.
 
         Parameters
         ----------
@@ -2547,7 +2547,9 @@ class VPMSolver:
         filename = str(filename)
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(
-            self, path, time_step_size=time_step_size,
+            self,
+            path,
+            time_step_size=time_step_size,
             allowed_config_differences=allowed_config_differences,
             expected_config_differences=expected_config_differences,
         )
@@ -2575,7 +2577,7 @@ class VPMSolver:
         # A growth limit compares adjacent accepted states.  A loaded restart
         # begins a new in-memory history, so its first accepted state becomes
         # the baseline rather than being compared to a discarded cloud.
-        self._accepted_health_snapshot = None
+        self._accepted_state_metrics = None
 
     def load_backup(
         self,
@@ -2605,19 +2607,20 @@ class VPMSolver:
             ``time_step_size`` argument, never this allowlist.
         expected_config_differences : mapping or None, default=None
             Optional ``path: (stored_value, current_value)`` expectations.
-            Required for structural or absent-key changes, so admitting a
-            policy mapping never implicitly admits extra policy fields. Use
+            Required for structural or absent-key changes, so accepting a
+            settings mapping never implicitly accepts extra settings fields. Use
             ``config.restart_changes.MISSING_CONFIGURATION_VALUE`` for a
             missing key (distinct from ``None``). All particle/schema/dtype
             validation remains mandatory, independent of these permissions.
 
         Side Effects
         ------------
-        Replaces particle fields and accepted clock, resets health history, and
+        Replaces particle fields and accepted clock, resets particle-state metrics, and
         invalidates derived/cache state. The case configuration is unchanged.
         """
         self._load_backup_from(
-            filename, time_step_size=time_step_size,
+            filename,
+            time_step_size=time_step_size,
             allowed_config_differences=allowed_config_differences,
             expected_config_differences=expected_config_differences,
         )
@@ -2631,7 +2634,7 @@ class VPMSolver:
         """
         self._sync_restart_state()
         self._write_prepared_backup(self.io.write_backup)
-        self._write_run_manifest("running" if self._run_started else "partial", None)
+        self._write_run_metadata("running" if self._run_started else "partial", None)
         self._last_backup_state = (self.step, self.time, self.particles.state_revision)
 
     def _write_prepared_backup(self, writer) -> None:
@@ -2653,7 +2656,7 @@ class VPMSolver:
         )
 
     def _write_backup(self) -> None:
-        """Write the backup selected by the sole output-schedule owner."""
+        """Write the backup selected by the sole output-schedule solver."""
         self._allow_backup_velocity_reuse = True
         try:
             self.save_backup()

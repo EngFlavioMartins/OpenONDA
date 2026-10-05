@@ -34,8 +34,8 @@ def test_phase_driver_accepts_qualified_cuda_without_starting_solver(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_reference_and_coupled_phase_contract():
-    data = case.contract()
+def test_reference_and_coupled_phase_conditions():
+    data = case.comparison_settings()
     assert data["h"] == 0.04 and data["span"] == 1.0
     assert data["span_layers"] == data["particle_span_layers"] == 1
     assert data["spanwise_boundary"] == "periodic"

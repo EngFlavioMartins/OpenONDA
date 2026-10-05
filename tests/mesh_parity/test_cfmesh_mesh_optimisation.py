@@ -1,4 +1,4 @@
-"""Focused contracts for the cfMesh finite-volume optimization port."""
+"""Focused requirements for the cfMesh finite-volume optimization port."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def test_bad_face_scan_detects_an_inward_boundary_face():
 
 
 @pytest.mark.parametrize("angle, expected", [(64.0, False), (67.0, True), (71.0, True)])
-def test_low_quality_nonorthogonality_uses_native_65_degree_gate(angle, expected):
+def test_low_quality_nonorthogonality_uses_native_65_degree_check(angle, expected):
     shear = np.tan(np.deg2rad(angle))
     points = np.asarray(
         [(x, y + x * shear, z) for x in range(3) for y in range(2) for z in range(2)]
@@ -158,7 +158,7 @@ def test_surface_optimizer_uses_cfmesh_branch_for_symmetric_simplex(optimizer):
 
     # Regenerated from these exact (rounded) input coordinates through
     # tools/mesh_parity/native_surface_optimizer, linked to cfMesh 3ff85555.
-    # A result captured before rounding is not a valid symmetric-branch oracle.
+    # A result captured before rounding is not a valid symmetric-branch reference.
     assert result == pytest.approx(
         (0.22429483774729889, 0.02784879347021511, 0.0), abs=1.0e-14, rel=0.0
     )

@@ -142,7 +142,7 @@ def vortex_strength_from_velocity_trace(
     return strength
 
 
-def inward_cosine_authority(
+def inward_cosine_blend_weight(
     positions: np.ndarray,
     transfer_box: np.ndarray | list[float] | tuple[float, ...],
     ramp_width: float,
@@ -151,15 +151,15 @@ def inward_cosine_authority(
     planar: bool = False,
     slip_slab: bool = False,
 ) -> np.ndarray:
-    """Return the dimensionless FVM authority at each world-frame point.
+    """Return the dimensionless FVM blending weight at each world-frame point.
 
     Positions have shape (N,3), and transfer_box contains
-    (xmin,xmax,ymin,ymax,zmin,zmax), all in m. The authority is zero through
+    (xmin,xmax,ymin,ymax,zmin,zmax), all in m. The blending weight is zero through
     vpm_dead_zone measured inward from each face, rises with a cosine and
     reaches one at ramp_width (both nonnegative, in m). A zero ramp gives a
-    sharp interior mask. With planar=True, z faces do not limit authority.
-    With slip_slab=True, z faces retain full authority through the closed
-    physical span but points outside it have zero authority.
+    sharp interior mask. With planar=True, z faces do not limit the blending weight.
+    With slip_slab=True, z faces retain full blending weight through the closed
+    physical span but points outside it have zero blending weight.
     The returned independent float64 array has shape (N,) and values in [0,1].
     Invalid bounds, vectors or widths raise ValueError; inputs are unchanged.
     """
@@ -171,7 +171,7 @@ def inward_cosine_authority(
         raise ValueError("vpm_dead_zone must be smaller than ramp_width")
 
     if planar and slip_slab:
-        raise ValueError("planar and slip_slab authority modes are exclusive")
+        raise ValueError("planar and slip_slab blending modes are exclusive")
     skip_z_ramp = planar or slip_slab
     face_distance = np.minimum.reduce(
         [
@@ -183,21 +183,21 @@ def inward_cosine_authority(
             np.full(len(position), np.inf) if skip_z_ramp else bounds[5] - position[:, 2],
         ]
     )
-    authority = np.zeros(len(position), dtype=np.float64)
+    blend_weight = np.zeros(len(position), dtype=np.float64)
     if width == 0.0:
-        authority[face_distance > 0.0] = 1.0
+        blend_weight[face_distance > 0.0] = 1.0
         if slip_slab:
-            authority[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
-        return authority
+            blend_weight[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
+        return blend_weight
 
-    authority[face_distance >= width] = 1.0
+    blend_weight[face_distance >= width] = 1.0
     ramp = (face_distance > dead_zone) & (face_distance < width)
     if np.any(ramp):
         phase = (face_distance[ramp] - dead_zone) / (width - dead_zone)
-        authority[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
+        blend_weight[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
     if slip_slab:
-        authority[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
-    return authority
+        blend_weight[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
+    return blend_weight
 
 
 @dataclass(frozen=True)
@@ -373,7 +373,7 @@ def recover_planar_vortex_invariants(
         return strength.copy()
     # The preserved wake can retain an f32 plane while the renewal lattice
     # uses its f64 declaration; use the same geometric tolerance as the
-    # planar source contract, without changing any coordinates.
+    # planar source requirements, without changing any coordinates.
     if np.max(np.abs(position[:, 2] - position[0, 2])) > 1e-6:
         raise ValueError("planar invariant recovery requires one common source plane")
 
@@ -428,7 +428,7 @@ class StableRenewalLattice:
     """Fixed Cartesian renewal geometry and dimensionless transfer weights.
 
     Lengths, bounds and positions are in m. ``shape`` is (nx,ny,nz), with
-    positions flattened in C order. mesh_weight, fluid_weight, fvm_authority
+    positions flattened in C order. mesh_weight, fluid_weight, fvm_blend_weight
     and solid_interior each have one entry per node. ``planar_span=None``
     selects cubic particles; a positive span L uses one z plane and volume h²L.
     The frozen dataclass prevents attribute reassignment but does not make its
@@ -446,7 +446,7 @@ class StableRenewalLattice:
     mesh_weight: np.ndarray
     fluid_weight: np.ndarray
     solid_interior: np.ndarray
-    fvm_authority: np.ndarray
+    fvm_blend_weight: np.ndarray
     planar_span: float | None = None
     slip_slab: bool = False
     wall_links: np.ndarray | None = None
@@ -471,7 +471,7 @@ def build_stable_renewal_lattice(
     particle_spacing: float,
     *,
     buffer_length: float,
-    authority_ramp_width: float,
+    blend_ramp_width: float,
     vpm_dead_zone: float = 0.0,
     lattice_anchor: np.ndarray | None = None,
     mesh_weight_at_node: ArrayFunction | None = None,
@@ -491,9 +491,9 @@ def build_stable_renewal_lattice(
         (xmin,xmax,ymin,ymax,zmin,zmax) in m, with increasing bounds.
     particle_spacing : float
         Positive uniform node spacing h in m.
-    buffer_length, authority_ramp_width, vpm_dead_zone : float
+    buffer_length, blend_ramp_width, vpm_dead_zone : float
         Nonnegative lengths in m. The dead zone must be narrower than a
-        nonzero authority ramp.
+        nonzero blending ramp.
     lattice_anchor : array_like, shape (3,), optional
         Fixed lattice phase in m. Nodes align to this phase when provided.
     mesh_weight_at_node, fluid_weight_at_node : callable, optional
@@ -502,12 +502,12 @@ def build_stable_renewal_lattice(
         Maps world points (N,3) in m to the solid-interior mask (N,).
     planar_span : float or None, default=None
         Positive represented span L in m. None builds a cubic lattice;
-        otherwise nz=1 and no authority taper is applied at artificial z ends.
+        otherwise nz=1 and no blending-weight taper is applied at artificial z ends.
     plane_z : float, default=0.0
         Planar source height in m, within transfer_box's z bounds. Ignored
         for the cubic lattice.
     slip_slab : bool, default=False
-        Use physical z faces without a z ownership ramp; ghost support nodes
+        Use physical z faces without a spanwise blending ramp; ghost support nodes
         remain on the lattice with zero fluid weight.
     solid_boundary : optional
         Static solid-query interface. Its segment queries cache blocked lattice
@@ -537,10 +537,10 @@ def build_stable_renewal_lattice(
     bounds = _bounds(transfer_box)
     spacing = _positive_finite("particle_spacing", particle_spacing)
     buffer = _nonnegative_finite("buffer_length", buffer_length)
-    width = _nonnegative_finite("authority_ramp_width", authority_ramp_width)
+    width = _nonnegative_finite("blend_ramp_width", blend_ramp_width)
     dead_zone = _nonnegative_finite("vpm_dead_zone", vpm_dead_zone)
     if width > 0.0 and dead_zone >= width:
-        raise ValueError("vpm_dead_zone must be smaller than authority_ramp_width")
+        raise ValueError("vpm_dead_zone must be smaller than blend_ramp_width")
 
     renewal_bounds = bounds.copy()
     renewal_bounds[::2] -= buffer
@@ -582,8 +582,8 @@ def build_stable_renewal_lattice(
     )
     if solid_interior.shape != (count,):
         raise ValueError(f"interior_at_node returned {solid_interior.shape}, expected ({count},)")
-    authority = (
-        inward_cosine_authority(
+    blend_weight = (
+        inward_cosine_blend_weight(
             positions, bounds, width, dead_zone, planar=planar_span is not None, slip_slab=slip_slab
         )
         * mesh_weight
@@ -605,7 +605,7 @@ def build_stable_renewal_lattice(
         mesh_weight=mesh_weight,
         fluid_weight=fluid_weight,
         solid_interior=solid_interior,
-        fvm_authority=authority,
+        fvm_blend_weight=blend_weight,
         planar_span=planar_span,
         slip_slab=slip_slab,
         wall_links=wall_links,
@@ -864,7 +864,7 @@ class RepresentedStateBlend:
 def blend_represented_state(
     vpm_vortex_strength: np.ndarray,
     fvm_target_vortex_strength: np.ndarray,
-    fvm_authority: np.ndarray,
+    fvm_blend_weight: np.ndarray,
     shape: tuple[int, int, int],
     particle_spacing: float,
     *,
@@ -884,7 +884,7 @@ def blend_represented_state(
     changes the represented kernel, not the stored strength units.
     With a binary output support mask, matching FVM/represented-VPM fields on
     active nodes are a fixed point, including through a spatially varying
-    authority ramp. Fractional output weights additionally scale coefficients.
+    blending ramp. Fractional output weights additionally scale coefficients.
     The approximate inverse acts only on the active physical mismatch.
     Each correction is limited along its update direction so
     no node grows beyond the larger of its previous magnitude and ``cap``
@@ -896,8 +896,8 @@ def blend_represented_state(
         raise ValueError("amplification_cap must be finite and at least one")
     vpm_strength = _vectors("vpm_vortex_strength", vpm_vortex_strength)
     fvm_strength = _vectors("fvm_target_vortex_strength", fvm_target_vortex_strength)
-    authority = np.asarray(fvm_authority, dtype=np.float64).reshape(-1)
-    if vpm_strength.shape != fvm_strength.shape or authority.shape != (len(vpm_strength),):
+    blend_weight = np.asarray(fvm_blend_weight, dtype=np.float64).reshape(-1)
+    if vpm_strength.shape != fvm_strength.shape or blend_weight.shape != (len(vpm_strength),):
         raise ValueError("blend inputs must share one lattice shape")
     weight: np.ndarray | None = None
     if output_weight is not None:
@@ -926,15 +926,15 @@ def blend_represented_state(
         slip_slab_bounds=slip_slab_bounds,
         lattice_origin_z=lattice_origin_z,
     )
-    physical_target = represented_vpm + authority[:, None] * (fvm_strength - represented_vpm)
+    physical_target = represented_vpm + blend_weight[:, None] * (fvm_strength - represented_vpm)
     physical_target[~physical] = 0.0
 
     # FVM values are physical vorticity; VPM values are Gaussian coefficients.
     # Blending those two representations directly would damp even F = G(v).
     # Instead invert only r = eta * (F - G(v)), with eta inside the operator:
-    # v_new = v + [I + beta * (I - G)] r. This also retains the authority-ramp
+    # v_new = v + [I + beta * (I - G)] r. This also retains the blending-weight ramp
     # commutator; multiplying a deconvolved difference by eta is not equivalent.
-    mismatch = authority[:, None] * (fvm_strength - represented_vpm)
+    mismatch = blend_weight[:, None] * (fvm_strength - represented_vpm)
     mismatch[~physical] = 0.0
     represented_mismatch = gaussian_represented_vortex_strength(
         mismatch,
@@ -1172,7 +1172,7 @@ def renew_stable_overlap(
     ``fvm_vortex_strength_at_node`` and may then atomically replace the VPM
     particle arrays with the returned state. ``prune_threshold`` is the
     particle-strength cutoff in the FVM-owned interior. A distinct
-    ``release_prune_threshold`` is blended in as FVM authority decreases and
+    ``release_prune_threshold`` is blended in as FVM blending weight decreases and
     applies at the transfer surface; ``None`` uses a uniform threshold.
     """
     position_dtype = np.asarray(positions).dtype
@@ -1268,7 +1268,7 @@ def renew_stable_overlap(
     blend = blend_represented_state(
         vpm_lattice_strength,
         fvm_target,
-        lattice.fvm_authority,
+        lattice.fvm_blend_weight,
         lattice.shape,
         spacing,
         core_radius=base_core_radius,
@@ -1314,7 +1314,7 @@ def renew_stable_overlap(
     )
     # Interior state is regenerated from the FVM. At the release surface the
     # VPM is the sole owner, so pruning must fall to its own resolved GBD floor.
-    local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_authority
+    local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_blend_weight
     shrunk, removed = soft_prune_vortex_strength(pre_prune_strength, local_threshold)
     if lattice.planar_span is None:
         redistributed = redistribute_pruned_vortex_strength_locally(
@@ -1718,7 +1718,7 @@ __all__ = [
     "blend_represented_state",
     "build_stable_renewal_lattice",
     "gaussian_represented_vortex_strength",
-    "inward_cosine_authority",
+    "inward_cosine_blend_weight",
     "m4_prime",
     "maximum_stable_time_step",
     "recover_vortex_invariants",

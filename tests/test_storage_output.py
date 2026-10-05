@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import csv
-import importlib.util
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -13,6 +10,7 @@ import numpy as np
 from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 from source.solvers.vpm.io.sampling.field_samplers import SAMPLER_BASE_CSV_COLUMNS
 from source.write_precision import cast_for_write
+from tests._tutorial_helpers import load_tutorial_module
 
 
 class _SamplerSolver:
@@ -29,35 +27,18 @@ class _SamplerSolver:
 
 
 def _assert_appended_raw(path):
-    payload = path.read_bytes()
-    assert b'<AppendedData encoding="raw">' in payload
-    assert b'format="appended"' in payload
-    assert b'compressor="vtkZLibDataCompressor"' in payload
+    file_bytes = path.read_bytes()
+    assert b'<AppendedData encoding="raw">' in file_bytes
+    assert b'format="appended"' in file_bytes
+    assert b'compressor="vtkZLibDataCompressor"' in file_bytes
 
 
 def _load_lamb_oseen_diagnostics():
-    assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/01_lamb_oseen_vortex/assets"
-    spec = importlib.util.spec_from_file_location(
-        "lamb_oseen_diagnostics",
-        assets / "postprocess.py",
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
 
 
 def _load_rotor_wake_plotter():
-    assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/06_rotor_flow/assets"
-    spec = importlib.util.spec_from_file_location(
-        "rotor_wake_plotter",
-        assets / "plot_rotor_wake_planes.py",
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_tutorial_module("vpm/rotor_flow", "assets.plot_rotor_wake_planes")
 
 
 def test_write_precision_preserves_integers_and_makes_paraview_safe_float16():
@@ -186,7 +167,7 @@ def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_p
     import pandas as pd
     import pytest
 
-    from source.solvers.vpm.config.artifacts import Backup, Samplers
+    from source.solvers.vpm.config.output import Backup, Samplers
     from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
     from source.solvers.vpm.io.sampling import EverySteps
 

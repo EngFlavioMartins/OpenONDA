@@ -223,7 +223,7 @@ class Logging:
         """Open a bounded buffer for a trial step; never announce acceptance here.
 
         Routine measurements from an unreported preceding step are discarded.
-        Native scientific records keep their own sampling and persistence policy.
+        Native scientific records keep their own sampling and persistence settings.
         One latest report per component is retained, independent of particle count.
         """
         Logging.set_routine_messages_enabled(True)
@@ -547,7 +547,7 @@ class Logging:
         """Return the solution-check, stabilization, and particle-retention rows."""
         rows: list[log_style.Row] = []
         cfg = getattr(system.setup, "stabilization", None)
-        stability_limit = system.health_limits.lagrangian_cfl.maximum
+        stability_limit = system.state_limits.lagrangian_cfl.maximum
         if stability_limit is None:
             rows.append(("solution stability check", "disabled"))
         else:
@@ -774,11 +774,11 @@ class Logging:
         """Configure process-global VPM output redirection.
 
         Only one solver can own ``sys.stdout``/``sys.stderr`` at a time. Before
-        a new solver takes ownership, any previous VPM redirection is restored
+        a new solver takes allocation lifetime, any previous VPM redirection is restored
         and its log file is closed. This prevents sequential solver construction
         from leaking one file descriptor per solver.
 
-        The canonical log filename is always ``vpm.log``.
+        The standard log filename is always ``vpm.log``.
         """
         import atexit
         import sys

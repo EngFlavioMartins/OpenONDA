@@ -28,7 +28,7 @@ def ieee_alignment_weights():
 
     Taichi can leave flush-to-zero enabled after reset. A fresh process keeps
     the smallest-subnormal case independent of previously executed GPU/CPU
-    tests, while evaluating the same production function and Decimal oracle.
+    tests, while evaluating the same production function and Decimal reference.
     Decimal strings also keep parameter construction independent of FP mode.
     """
     script = """

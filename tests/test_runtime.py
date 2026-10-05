@@ -141,10 +141,10 @@ def test_mpi_relaunch_preserves_module_execution_and_case_arguments(tmp_path, mo
 def test_mpi_worker_suppresses_only_uncaught_exception_rendering(monkeypatch, rank, suppressed):
     import openonda.runtime as runtime
 
-    def owner_hook(_type, _value, _traceback):
+    def rank_zero_exception_hook(_type, _value, _traceback):
         return None
 
-    monkeypatch.setattr(sys, "excepthook", owner_hook)
+    monkeypatch.setattr(sys, "excepthook", rank_zero_exception_hook)
     monkeypatch.setitem(
         sys.modules,
         "mpi4py",
@@ -153,7 +153,7 @@ def test_mpi_worker_suppresses_only_uncaught_exception_rendering(monkeypatch, ra
 
     runtime._configure_mpi_exception_reporting()
 
-    assert (sys.excepthook is not owner_hook) is suppressed
+    assert (sys.excepthook is not rank_zero_exception_hook) is suppressed
     assert sys.excepthook(RuntimeError, RuntimeError("failure"), None) is None
 
 

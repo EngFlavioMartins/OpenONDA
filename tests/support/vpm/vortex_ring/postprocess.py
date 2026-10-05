@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check and summarize the vortex-ring instability results.
 
-Strict validation certifies a comparable four-case instability-onset campaign.
+Strict validation validates a comparable four-case instability-onset parameter study.
 ``--available`` only checks the sample files consumed by the plots, allowing
 figures to be rebuilt while another variant is still running.
 Figure checks use PNG by default; pass ``--format pdf`` after PDF exports.
@@ -41,7 +41,7 @@ saffman_speed = load_tutorial_module("vpm/vortex_ring", "assets.ring_metrics").s
 
 VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
 ALLOWED_RUN_STATUSES = {"completed", "resolution_lost", "wall_time_limit"}
-INITIAL_HEALTH_COLUMNS = {
+INITIAL_DIAGNOSTIC_COLUMNS = {
     "strain_increment_infinity",
     "strain_increment_spectral",
     "maximum_particle_strength",
@@ -86,7 +86,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         completed_steps = int(state["step"])
         completed_time = float(state["time"])
         interval_steps = int(configuration["backup"]["interval_steps"])
-        status = str(metadata["lifecycle"]["status"])
+        status = str(metadata["run_status"]["status"])
     except (KeyError, TypeError, ValueError) as error:
         return metadata, set(), [f"{name}: invalid run metadata ({error})"]
 
@@ -110,7 +110,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
     expected = {
         "solver": "VPM",
         "case_name": name,
-        "schema_version": 1,
+        "schema_version": 2,
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
@@ -126,7 +126,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
             expected_scheme,
         ),
         "viscous scheme": (numerics.get("viscous", {}).get("scheme"), "CS"),
-        "health-limit action": (run.get("health_limit_action"), "STOP"),
+        "particle state-limit action": (run.get("state_limit_action"), "STOP"),
     }
     for label, (actual, expected_value) in expected_numerics.items():
         if actual != expected_value:
@@ -182,7 +182,7 @@ def _readable_finite_csv(path: Path) -> bool:
         return False
     if not {"time", "step"}.issubset(data.columns):
         return False
-    for column in INITIAL_HEALTH_COLUMNS & set(numeric.columns):
+    for column in INITIAL_DIAGNOSTIC_COLUMNS & set(numeric.columns):
         invalid = numeric[column].isna() & (data["step"] != 0)
         if invalid.any():
             return False
@@ -235,7 +235,7 @@ def validate_available(pre_plot: bool, figure_format: str = "png") -> int:
 
 
 def validate(pre_plot: bool, figure_format: str = "png") -> int:
-    """Require a complete, comparable instability-onset campaign."""
+    """Require a complete, comparable instability-onset parameter study."""
     failures: list[str] = []
     outcomes: list[tuple[float, str, str]] = []
     for name in VARIANTS:
@@ -314,7 +314,7 @@ def validate(pre_plot: bool, figure_format: str = "png") -> int:
     if failures:
         print("\n".join(f"[FAIL] {failure}" for failure in failures))
         return 1
-    print("[OK] vortex_ring certification passed")
+    print("[OK] vortex_ring validation passed")
     return 0
 
 
@@ -328,7 +328,7 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
         numerics = configuration.get("numerics", {})
         state = raw.get("state", {})
         metadata = {
-            "status": raw.get("lifecycle", {}).get("status", "missing"),
+            "status": raw.get("run_status", {}).get("status", "missing"),
             "completed_steps": state.get("step"),
             "requested_steps": configuration.get("run", {}).get("steps"),
             "final_time": state.get("time"),
@@ -401,7 +401,7 @@ def main() -> int:
     parser.add_argument(
         "--available",
         action="store_true",
-        help="validate available plotting inputs without requiring a complete campaign",
+        help="validate available plotting inputs without requiring a complete parameter study",
     )
     args = parser.parse_args()
     if args.available:

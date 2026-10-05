@@ -1,8 +1,8 @@
-"""Finite Gaussian fields with private GPU ownership.
+"""Finite Gaussian fields with private GPU allocations.
 
 Used by Gaussian SlipSlab sessions. Finite mesh/core accuracy and
-infinite-tail admission remain separate caller responsibilities; this storage
-owner alone grants neither. No CuPy import at module load.
+infinite-tail validation remain separate caller responsibilities; this storage
+solver alone grants neither. No CuPy import at module load.
 """
 
 from contextlib import contextmanager
@@ -21,12 +21,12 @@ from .planning import (
     query_batch_size,
     required_channels,
 )
-from .runtime import DeviceOwner, FFTPlanPair, positive_integer
+from .runtime import CUDAMemoryPool, FFTPlanPair, positive_integer
 from .stencil import cardinal_stencil_gpu
 
 
 def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
-    """Conservative admission to the *logical* linear-convolution output.
+    """Conservative validation to the *logical* linear-convolution output.
 
     Source assignment occupies only logical indices [0,n-1]. If every query
     stencil also lies there, all source/query lags lie in [-(n-1),n-1], which
@@ -34,7 +34,7 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
     FFT padding itself is NEVER a query domain. A one-ULP enclosure of the
     host subtraction covers the device's rounded f64 subtraction before
     floor; a point exactly at a limiting stencil boundary may conservatively
-    miss. The actual GPU stencil builder remains authoritative on evaluation.
+    miss. The actual GPU stencil builder checks every evaluated query.
     """
     points, offset = np.asarray(lattice, dtype=np.float64), np.asarray(origin, dtype=np.float64)
     if (
@@ -50,11 +50,16 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
         or order not in (4, 6, 8, 10)
         or len(shape) != 3
         or any(type(n) is not int or not order <= n <= 2**30 for n in shape)
-        or (fft_shape is not None and (
-            len(fft_shape) != 3
-            or any(type(f) is not int or f < 2 * n - 1
-                   for n, f in zip(shape, fft_shape, strict=True))
-        ))
+        or (
+            fft_shape is not None
+            and (
+                len(fft_shape) != 3
+                or any(
+                    type(f) is not int or f < 2 * n - 1
+                    for n, f in zip(shape, fft_shape, strict=True)
+                )
+            )
+        )
     ):
         raise RuntimeError("invalid logical/linear-convolution domain metadata")
     with np.errstate(over="ignore", invalid="ignore"):
@@ -67,15 +72,13 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
 
 
 def _target_stencil_window(lattice, origin, order, shape):
-    """Integer output crop enclosing every admitted initial query stencil.
+    """Integer output crop enclosing every checked initial query stencil.
 
     Keep the original logical origin for coordinate subtraction and cardinal
     weights. The crop changes only which inverse-FFT cells are retained.
-    One-ULP bounds cover the same device subtraction as logical admission.
+    One-ULP bounds cover the same device subtraction as logical validation.
     """
-    if len(lattice) == 0 or not _logical_stencils_fit(
-        lattice, origin, order, shape, None
-    ):
+    if len(lattice) == 0 or not _logical_stencils_fit(lattice, origin, order, shape, None):
         raise ValueError("initial query stencils must fit the logical field")
     coordinate = np.asarray(lattice, dtype=np.float64) - np.asarray(origin, dtype=np.float64)
     lower = np.floor(np.nextafter(coordinate, -np.inf)).min(axis=0) - order // 2 + 1
@@ -85,19 +88,30 @@ def _target_stencil_window(lattice, origin, order, shape):
     return start, retained
 
 
-def _retained_stencils_fit(lattice, origin, order, shape, fft_shape, start, retained_shape,
-                          *, source_shape=None):
-    """Admit only complete original stencils inside the retained output crop."""
-    if (len(start) != 3 or len(retained_shape) != 3
-            or any(type(s) is not int or type(n) is not int
-                   or s < 0 or n < order or s + n > full
-                   for s, n, full in zip(start, retained_shape, shape, strict=True))):
+def _retained_stencils_fit(
+    lattice, origin, order, shape, fft_shape, start, retained_shape, *, source_shape=None
+):
+    """Validate only complete original stencils inside the retained output crop."""
+    if (
+        len(start) != 3
+        or len(retained_shape) != 3
+        or any(
+            type(s) is not int or type(n) is not int or s < 0 or n < order or s + n > full
+            for s, n, full in zip(start, retained_shape, shape, strict=True)
+        )
+    ):
         raise RuntimeError("invalid retained query-window metadata")
     if source_shape is not None:
-        if (len(source_shape) != 3 or len(fft_shape) != 3
-                or any(type(s) is not int or not order <= s <= full
-                       or type(f) is not int or f < s + q - 1
-                       for s, q, full, f in zip(source_shape, retained_shape, shape, fft_shape, strict=True))):
+        if (
+            len(source_shape) != 3
+            or len(fft_shape) != 3
+            or any(
+                type(s) is not int or not order <= s <= full or type(f) is not int or f < s + q - 1
+                for s, q, full, f in zip(
+                    source_shape, retained_shape, shape, fft_shape, strict=True
+                )
+            )
+        ):
             raise RuntimeError("invalid source/query linear-convolution metadata")
         fft_shape = None
     if not _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
@@ -105,8 +119,10 @@ def _retained_stencils_fit(lattice, origin, order, shape, fft_shape, start, reta
     coordinate = np.asarray(lattice, dtype=np.float64) - np.asarray(origin, dtype=np.float64)
     lower = np.floor(np.nextafter(coordinate, -np.inf)) - order // 2 + 1
     upper = np.floor(np.nextafter(coordinate, np.inf)) - order // 2 + 1 + order
-    return bool(np.all(lower >= np.asarray(start))
-                and np.all(upper <= np.asarray(start) + np.asarray(retained_shape)))
+    return bool(
+        np.all(lower >= np.asarray(start))
+        and np.all(upper <= np.asarray(start) + np.asarray(retained_shape))
+    )
 
 
 _GAUSSIAN_RADIAL_CUDA = r"""    if(rho2<(real)1) {
@@ -313,7 +329,7 @@ def channel_routes(channel):
 
 
 class GaussianImageFields:
-    """Owned finite source-only field; NOT an image-tail or solver admission.
+    """Owned finite source-only field; NOT an image-tail or solver validation.
 
     Default image-only mode excludes the primary descriptor (0, False).
     Explicit source_only_primary=True permits a coherent source-only target
@@ -350,7 +366,7 @@ class GaussianImageFields:
         profile=False,
         _lattice_origin=None,
     ):
-        self._owner = self._plans = self._correction = None
+        self._memory_pool = self._plans = self._correction = None
         self._compact_fields = self._kernel_scratch = self._inverse = None
         self._result_spectra = ()
         self.spectra, self._source_stencils = {}, {}
@@ -414,8 +430,11 @@ class GaussianImageFields:
         self.origin = np.floor(points.min(axis=0)) - order
         if _lattice_origin is not None:
             supplied_origin = np.array(_lattice_origin, dtype=np.float64, copy=True)
-            if (supplied_origin.shape != (3,) or not np.isfinite(supplied_origin).all()
-                    or np.any(supplied_origin != np.floor(supplied_origin))):
+            if (
+                supplied_origin.shape != (3,)
+                or not np.isfinite(supplied_origin).all()
+                or np.any(supplied_origin != np.floor(supplied_origin))
+            ):
                 raise ValueError("shared lattice origin must contain three finite integers")
             self.origin = supplied_origin
         dimensions = np.ceil(points.max(axis=0) - self.origin) + order + 1
@@ -433,7 +452,8 @@ class GaussianImageFields:
             q, self.origin, order, self.shape
         )
         self.lag_offset = tuple(
-            target - source for target, source in zip(self.compact_start, self.source_start, strict=True)
+            target - source
+            for target, source in zip(self.compact_start, self.source_start, strict=True)
         )
         # Only target stencil cells are observed. Every queried source lag
         # lies in [-(source_size-1), target_size-1], so this shorter padding
@@ -459,20 +479,25 @@ class GaussianImageFields:
             0,
             retained_shape=self.compact_shape,
         )
-        self.estimated_payload_bytes = self.execution_plan.payload_bytes
+        self.estimated_field_bytes = self.execution_plan.field_bytes
         started = time.perf_counter()
         try:
-            self._owner = DeviceOwner(self.max_scratch_bytes)
-            self.cp, self.pool = self._owner.cp, self._owner.pool
-            self.stream = self._owner.stream
+            self._memory_pool = CUDAMemoryPool(self.max_scratch_bytes)
+            self.cp, self.pool = self._memory_pool.cp, self._memory_pool.pool
+            self.stream = self._memory_pool.stream
             # Build the exact source index before measuring live free memory.
             # Its configured cap is an upper bound, not an allocation required
             # by every source/query block. Keep the handle through failures.
             self._correction = GaussianCoreCorrectionGPU.__new__(GaussianCoreCorrectionGPU)
             self._correction.__init__(
-                self.host_x, self.host_gamma, self._host_sigma,
-                tau=tau, cutoff=cutoff, accumulation_dtype=correction_dtype,
-                max_scratch_bytes=self.max_correction_bytes, max_images=self.max_images,
+                self.host_x,
+                self.host_gamma,
+                self._host_sigma,
+                tau=tau,
+                cutoff=cutoff,
+                accumulation_dtype=correction_dtype,
+                max_scratch_bytes=self.max_correction_bytes,
+                max_images=self.max_images,
             )
             self._correction.release_build_scratch()
             free, total = self.cp.cuda.runtime.memGetInfo()
@@ -480,23 +505,42 @@ class GaussianImageFields:
             measured_work = None
             try:
                 self.execution_plan, self.effective_smooth_pool_cap = device_field_execution_plan(
-                    self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-                    self.max_scratch_bytes, self.max_plan_bytes, query_reserve, int(free),
+                    self.shape,
+                    self.fft_shape,
+                    count,
+                    len(q),
+                    order,
+                    self.dtype.itemsize,
+                    self.max_scratch_bytes,
+                    self.max_plan_bytes,
+                    query_reserve,
+                    int(free),
                     retained_shape=self.compact_shape,
                 )
             except MemoryError:
-                # Reject impossible array payloads before constructing plans.
+                # Reject impossible array arrays before constructing plans.
                 # Driver free was captured before probing, so measured plan
                 # storage is counted once against this complete live budget.
                 _, self.effective_smooth_pool_cap = device_field_execution_plan(
-                    self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-                    self.max_scratch_bytes, 0, query_reserve, int(free),
+                    self.shape,
+                    self.fft_shape,
+                    count,
+                    len(q),
+                    order,
+                    self.dtype.itemsize,
+                    self.max_scratch_bytes,
+                    0,
+                    query_reserve,
+                    int(free),
                     retained_shape=self.compact_shape,
                 )
                 self.pool.set_limit(size=self.effective_smooth_pool_cap)
                 self._plans = FFTPlanPair.__new__(FFTPlanPair)
                 self._plans.__init__(
-                    self._owner, self.fft_shape, self.dtype, self.max_plan_bytes,
+                    self._memory_pool,
+                    self.fft_shape,
+                    self.dtype,
+                    self.max_plan_bytes,
                     single_workspace=True,
                 )
                 measured_work = self._plans.measure_directional_work()
@@ -504,8 +548,14 @@ class GaussianImageFields:
                 if combined_work <= self.max_plan_bytes:
                     try:
                         candidate = field_execution_plan(
-                            self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-                            self.effective_smooth_pool_cap, combined_work,
+                            self.shape,
+                            self.fft_shape,
+                            count,
+                            len(q),
+                            order,
+                            self.dtype.itemsize,
+                            self.effective_smooth_pool_cap,
+                            combined_work,
                             retained_shape=self.compact_shape,
                         )
                     except MemoryError:
@@ -517,13 +567,20 @@ class GaussianImageFields:
                     self._plans.retain_both_directions()
                 else:
                     self.execution_plan = field_execution_plan(
-                        self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
-                        self.effective_smooth_pool_cap, max(measured_work),
-                        retained_shape=self.compact_shape, allow_all_channels=False,
+                        self.shape,
+                        self.fft_shape,
+                        count,
+                        len(q),
+                        order,
+                        self.dtype.itemsize,
+                        self.effective_smooth_pool_cap,
+                        max(measured_work),
+                        retained_shape=self.compact_shape,
+                        allow_all_channels=False,
                     )
-            self.estimated_payload_bytes = self.execution_plan.payload_bytes
+            self.estimated_field_bytes = self.execution_plan.field_bytes
             self.pool.set_limit(size=self.effective_smooth_pool_cap)
-            self.device_admission = {
+            self.device_checks = {
                 "free_device_bytes": int(free),
                 "total_device_bytes": int(total),
                 "configured_smooth_pool_cap": self.max_scratch_bytes,
@@ -533,10 +590,11 @@ class GaussianImageFields:
                 "correction_reserve_bytes": query_reserve,
             }
             if measured_work is not None:
-                self.device_admission["measured_forward_workspace_bytes"] = measured_work[0]
-                self.device_admission["measured_inverse_workspace_bytes"] = measured_work[1]
-                self.device_admission["workspace_reserve_bytes"] = (
-                    sum(measured_work) if self.execution_plan.mode == "all_channels"
+                self.device_checks["measured_forward_workspace_bytes"] = measured_work[0]
+                self.device_checks["measured_inverse_workspace_bytes"] = measured_work[1]
+                self.device_checks["workspace_reserve_bytes"] = (
+                    sum(measured_work)
+                    if self.execution_plan.mode == "all_channels"
                     else max(measured_work)
                 )
             code = _cuda_source(dtype)
@@ -565,14 +623,14 @@ class GaussianImageFields:
         self.initial_diagnostics = {
             "setup_seconds": time.perf_counter() - started,
             "runtime_admissible": False,
-            "tail_certified": False,
+            "tail_bound_checked": False,
         }
 
     @staticmethod
     def _immutable_snapshot(array):
         # A write-disabled owning ndarray is not immutable: setflags(write=True)
         # can enable mutation and desynchronise cached smooth families from the
-        # core-correction source copy. A bytes owner cannot be made writable.
+        # core-correction source copy. A bytes solver cannot be made writable.
         return np.frombuffer(array.tobytes(order="C"), dtype=array.dtype).reshape(array.shape)
 
     @staticmethod
@@ -584,39 +642,42 @@ class GaussianImageFields:
             raise ValueError(f"{name} must be finite (N,3)")
         return GaussianImageFields._immutable_snapshot(array)
 
-    def _admit_integer_images(self, integer):
+    def _validate_image_indices(self, integer):
         # The CUDA kernel casts the DIFFERENCE lz-shift, not shift alone.
         # Shifted lags span [offset-(source_size-1), offset+target_size-1].
         # Check every endpoint before the cast; FFT indices alone are smaller
-        # than physical lags for remote queries and cannot admit precision.
+        # than physical lags for remote queries and cannot check_context precision.
         exact_limit = 2 ** (24 if self.dtype == np.dtype("float32") else 53)
         bounds = [
-            (self.lag_offset[a] - self.source_shape[a] + 1,
-             self.lag_offset[a] + self.compact_shape[a] - 1)
+            (
+                self.lag_offset[a] - self.source_shape[a] + 1,
+                self.lag_offset[a] + self.compact_shape[a] - 1,
+            )
             for a in range(3)
         ]
-        if (any(max(abs(low), abs(high)) > exact_limit for low, high in bounds[:2])
-                or any(max(abs(bounds[2][0] - shift), abs(bounds[2][1] - shift)) > exact_limit
-                       for shift, _ in integer)):
+        if any(max(abs(low), abs(high)) > exact_limit for low, high in bounds[:2]) or any(
+            max(abs(bounds[2][0] - shift), abs(bounds[2][1] - shift)) > exact_limit
+            for shift, _ in integer
+        ):
             raise ValueError("image lags exceed exact kernel-coordinate qualification")
 
-    def _admit(self):
-        if self.closed or self._owner is None:
-            raise RuntimeError("finite Gaussian image owner is closed")
-        self._owner.admit()
+    def _check_context(self):
+        if self.closed or self._memory_pool is None:
+            raise RuntimeError("finite Gaussian image solver is closed")
+        self._memory_pool.check_context()
 
     def can_evaluate_targets(self, targets):
         """Whether complete target stencils fit this retained output window.
 
         This read-only geometry check allocates no GPU storage, performs no
-        extrapolation and certifies no tail/correction or finite-mesh error.
+        extrapolation and validates no tail/correction or finite-mesh error.
         Session callers must still validate exact sources/role and the new
         query's mathematical bounds. Queries can differ from the initial
         points if their complete stencils fit the retained integer window.
-        True is geometry admission only, not a promise of query scratch
+        True is geometry validation only, not a promise of query scratch
         capacity; evaluation retains its capped allocation and device guards.
         """
-        self._admit()
+        self._check_context()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         _, world, _ = finite_images(
@@ -643,8 +704,13 @@ class GaussianImageFields:
             raise ValueError("bounded finite targets (N,3) required")
         lattice, _, _ = slab_coordinates(query, self.zmin, self.zmax, float(self.steps[0]))
         return _retained_stencils_fit(
-            lattice, self.origin, self.order, self.shape, self.fft_shape,
-            self.compact_start, self.compact_shape,
+            lattice,
+            self.origin,
+            self.order,
+            self.shape,
+            self.fft_shape,
+            self.compact_start,
+            self.compact_shape,
             source_shape=self.source_shape,
         )
 
@@ -674,7 +740,9 @@ class GaussianImageFields:
             *(np.int32(n) for n in self.fft_shape),
             *(np.int64(n) for n in self.lag_offset),
             *(self.real_type(h) for h in self.steps),
-            shifts, np.int32(len(shifts)), self.real_type(self.tau),
+            shifts,
+            np.int32(len(shifts)),
+            self.real_type(self.tau),
         )
 
     def _prepare_family(self, odd, diagnostics):
@@ -836,7 +904,7 @@ class GaussianImageFields:
                         diagnostics["inverse_transforms"] += 1
 
     def _all_channel_fields(self, families, diagnostics):
-        """Original fused layout, unchanged when its bounded payload fits."""
+        """Original fused layout, unchanged when its bounded field_bytes fits."""
         result_hat = self._result_spectra
         for spectrum in result_hat:
             spectrum.fill(0)
@@ -877,8 +945,8 @@ class GaussianImageFields:
                 diagnostics["inverse_transforms"] += 1
 
     def prepare(self, images):
-        """Prepare compact finite smooth fields; no tail or runtime admission."""
-        self._admit()
+        """Prepare compact finite smooth fields; no tail or runtime validation."""
+        self._check_context()
         cp = self.cp
         self._prepared_images = self._prepared_world_images = None
         descriptors, world, integer = finite_images(
@@ -889,7 +957,7 @@ class GaussianImageFields:
             self.max_images,
             include_primary=self.source_only_primary,
         )
-        self._admit_integer_images(integer)
+        self._validate_image_indices(integer)
         diagnostics = {
             "runtime_admissible": False,
             "dtype": self.dtype.name,
@@ -905,7 +973,7 @@ class GaussianImageFields:
             "source_shape": self.source_shape,
             "lag_offset": self.lag_offset,
             "spacing": self.steps.tolist(),
-            "estimated_payload_bytes": self.estimated_payload_bytes,
+            "estimated_field_bytes": self.estimated_field_bytes,
             "passes": {},
             "inverse_transforms": 0,
             "kernel_forward_transforms": 0,
@@ -913,12 +981,12 @@ class GaussianImageFields:
             "core_correction_included": False,
         }
         diagnostics["execution_plan"] = vars(self.execution_plan).copy()
-        diagnostics["device_admission"] = self.device_admission.copy()
+        diagnostics["device_checks"] = self.device_checks.copy()
         started = time.perf_counter()
-        with self._owner.allocation_scope():
+        with self._memory_pool.allocation_scope():
             if self._plans is None:
                 self._plans = FFTPlanPair(
-                    self._owner,
+                    self._memory_pool,
                     self.fft_shape,
                     self.dtype,
                     self.max_plan_bytes,
@@ -976,7 +1044,7 @@ class GaussianImageFields:
                 device_total_bytes=total,
             )
             self._prepared_images, self._prepared_world_images = descriptors, world
-            diagnostics.update(tail_certified=False, compact_bytes=self.compact_bytes)
+            diagnostics.update(tail_bound_checked=False, compact_bytes=self.compact_bytes)
             return diagnostics
 
     def evaluate_prepared(self, targets):
@@ -984,9 +1052,9 @@ class GaussianImageFields:
 
         The complete public output is fresh device storage. Query coordinates,
         stencils and correction results live only for the active batch, so a
-        later, larger query does not require a larger persistent field owner.
+        later, larger query does not require a larger persistent field solver.
         """
-        self._admit()
+        self._check_context()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         if isinstance(targets, self.cp.ndarray):
@@ -998,8 +1066,13 @@ class GaussianImageFields:
             raise ValueError("bounded targets (N,3) required")
         lattice, _, _ = slab_coordinates(q, self.zmin, self.zmax, float(self.steps[0]))
         if not _retained_stencils_fit(
-            lattice, self.origin, self.order, self.shape, self.fft_shape,
-            self.compact_start, self.compact_shape,
+            lattice,
+            self.origin,
+            self.order,
+            self.shape,
+            self.fft_shape,
+            self.compact_start,
+            self.compact_shape,
             source_shape=self.source_shape,
         ):
             raise ValueError("query stencil lies outside the retained Gaussian field window")
@@ -1018,13 +1091,13 @@ class GaussianImageFields:
             + self.pool.free_bytes()
             + self._correction.pool.free_bytes(),
         )
-        with self._owner.allocation_scope():
-            # One allocation preserves the admitted 12*N-element footprint.
+        with self._memory_pool.allocation_scope():
+            # One allocation preserves the checked 12*N-element footprint.
             # Both public views are contiguous, so host copies need no
             # contiguous-device temporary in CuPy's unrelated default pool.
             output = self.cp.empty(12 * len(q), dtype=self.dtype)
-            velocity = output[:3 * len(q)].reshape(-1, 3)
-            gradient = output[3 * len(q):].reshape(-1, 3, 3)
+            velocity = output[: 3 * len(q)].reshape(-1, 3)
+            gradient = output[3 * len(q) :].reshape(-1, 3, 3)
             gather_seconds, batches, retries, first_target = 0.0, 0, 0, 0
             stencil, correction = None, None
             evaluated_images = set()
@@ -1086,7 +1159,7 @@ class GaussianImageFields:
                         if count == 1:
                             raise
                         # A driver allocation or a split cached block can fail
-                        # despite scalar admission. Retry this unpublished
+                        # despite scalar validation. Retry this unpublished
                         # chunk after reducing only its execution batch. Every
                         # gather overwrites all columns before correction.
                         batch, retry = max(1, count // 2), True
@@ -1108,7 +1181,7 @@ class GaussianImageFields:
                         stencil["max_batch_points"] = max(stencil["max_batch_points"], count)
                         for name in (
                             "copy_seconds",
-                            "kernel_and_admission_seconds",
+                            "kernel_and_check_seconds",
                             "wall_seconds",
                         ):
                             stencil[name] += current_stencil[name]
@@ -1134,7 +1207,7 @@ class GaussianImageFields:
                 # any partial query output is private and is not published.
                 raise
             except BaseException:
-                # CUDA/evaluation failures cannot leave a seemingly certified
+                # CUDA/evaluation failures cannot leave a seemingly validated
                 # reusable result.
                 self._prepared_images = self._prepared_world_images = None
                 raise
@@ -1162,7 +1235,7 @@ class GaussianImageFields:
                 gradient,
                 {
                     "runtime_admissible": False,
-                    "tail_certified": False,
+                    "tail_bound_checked": False,
                     "core_correction_included": True,
                     "source_replaced": False,
                     "target_count": len(q),
@@ -1197,11 +1270,11 @@ class GaussianImageFields:
             ) from self._cleanup_failure
         if self.closed:
             return
-        if self._owner is None:
+        if self._memory_pool is None:
             self.closed = True
             return
         try:
-            self._owner.admit()
+            self._memory_pool.check_context()
             self.stream.synchronize()
         except BaseException as error:
             self._cleanup_failure = error
@@ -1225,7 +1298,7 @@ class GaussianImageFields:
         self._source_stencils.clear()
         self._program = None
         try:
-            self._owner.close()
+            self._memory_pool.close()
         except BaseException as error:
             failure = failure or error
         if failure is not None:
@@ -1233,7 +1306,7 @@ class GaussianImageFields:
             raise failure
 
     def __enter__(self):
-        self._admit()
+        self._check_context()
         return self
 
     def __exit__(self, *_):

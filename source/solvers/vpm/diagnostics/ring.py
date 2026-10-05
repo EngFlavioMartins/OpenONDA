@@ -40,7 +40,7 @@ class RingDiagnosticsSampler:
     A group remains an ancestry contribution after rings merge; its centroid
     does not establish a separate physical core. Remeshing must preserve group
     contributions for this interpretation (nearest-source relabelling does not).
-    The sampler owns its schedule and canonical output name.
+    The sampler owns its schedule and standard output name.
     """
 
     csv_columns = RING_DIAGNOSTIC_COLUMNS[2:]
@@ -63,7 +63,7 @@ class RingDiagnosticsSampler:
             Stem of the CSV file written below the active output directory;
             ``.csv`` is appended by the output manager.
         initial : bool or None, default=None
-            Include the initial state. ``None`` retains a subclass's policy.
+            Include the initial state. ``None`` retains a subclass's settings.
 
         Raises
         ------
@@ -82,7 +82,7 @@ class RingDiagnosticsSampler:
             self.initial = initial
 
     @property
-    def output_identity(self) -> tuple[type, str]:
+    def output_key(self) -> tuple[type, str]:
         """Periodic and final schedules share the same grouped CSV event.
 
         Ring diagnostics have no sampling options beyond their destination;

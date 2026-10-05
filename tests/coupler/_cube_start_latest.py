@@ -73,8 +73,8 @@ def main(directory, cores):
             assert "interrupted initial VPM backup" in str(error)
         else:
             raise AssertionError("Initial backup should have failed")
-    manifest = directory / "continued/solution/backups/manifest.json"
-    assert not manifest.exists()
+    checkpoint_info = directory / "continued/solution/backups/checkpoint_info.json"
+    assert not checkpoint_info.exists()
 
     with build("continued") as first:
         assert first.run(start_from="latest", max_coupling_steps=1) == 1
@@ -82,14 +82,14 @@ def main(directory, cores):
             assert first.vorticity_transfer.solid_boundary is not None
             assert first.vorticity_transfer._solid_bodies
             assert first.vpm_solver.particles.n_particles_total > 0
-    assert json.loads(manifest.read_text())["coupling_step"] == 1
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 1
     log = (directory / "continued/solution/coupler.log").read_bytes()
 
     with build("continued") as resumed:
         assert resumed.run(start_from="latest") == 2
         actual_velocity = resumed.fvm_solver.get_velocity_field().copy()
         actual_pressure = resumed.fvm_solver.get_pressure_field().copy()
-    assert json.loads(manifest.read_text())["coupling_step"] == 2
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 2
     assert (directory / "continued/solution/coupler.log").read_bytes().startswith(log)
     history = directory / "continued/solution/coupler_diagnostics.jsonl"
     assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1, 2]
@@ -152,7 +152,7 @@ def main(directory, cores):
         assert restarted.run(start_from="initial", max_coupling_steps=1) == 1
         assert restarted.fvm_solver.step == restarted.n_fvm_substeps
     assert not stale_frame.exists()
-    assert json.loads(manifest.read_text())["coupling_step"] == 1
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 1
     assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1]
     with build("continued") as renewed:
         assert renewed.run(start_from="latest") == 2

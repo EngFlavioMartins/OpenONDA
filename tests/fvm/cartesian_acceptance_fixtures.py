@@ -288,7 +288,7 @@ def make_acceptance_fixtures(directory: Path) -> dict[str, AcceptanceFixture]:
             _write_ascii_stl(directory / "body_a.stl", two_body_a, "body_a"),
             _write_ascii_stl(directory / "body_b.stl", two_body_b, "body_b"),
         ),
-        "multiple surfaces and patch identity",
+        "multiple surfaces and patch configuration",
     )
 
     box = box_triangles((-0.4, 0.4, -0.4, 0.4, -0.4, 0.4))

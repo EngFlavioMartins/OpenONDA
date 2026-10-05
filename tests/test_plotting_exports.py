@@ -1,4 +1,4 @@
-"""Publication export contracts independent of any solver's numerical arrays."""
+"""Figure export checks preserve the solver's numerical arrays."""
 
 import matplotlib
 

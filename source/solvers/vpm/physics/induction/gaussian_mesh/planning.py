@@ -1,4 +1,4 @@
-"""Shape-only finite-field execution plans; never an accuracy admission.
+"""Shape-only finite-field execution plans; never an accuracy validation.
 
 V is the source/query convolution's padded real-grid volume, S its RFFT
 half-spectrum and L the retained query grid. The full path keeps six source
@@ -10,10 +10,10 @@ grids and one inverse grid. All plans for a given source/query job retain the
 same twelve channels and use the same assignment and convolution geometry.
 
 The particle/stencil estimate deliberately remains conservative, including
-both source families and all admitted initial queries even when temporaries
+both source families and all checked initial queries even when temporaries
 are not simultaneously live. Plan workspaces have a separate unchanged cap.
 Pool fragmentation and cuFFT/context allocations still need runtime guards;
-this arithmetic does not claim that every otherwise admitted CUDA allocation
+this arithmetic does not claim that every otherwise checked CUDA allocation
 will succeed. No numerical parameter participates in execution-plan choice.
 """
 
@@ -27,7 +27,7 @@ class FieldExecutionPlan:
     output_batch: int
     source_families: int
     kernel_channels: int
-    payload_bytes: int
+    field_bytes: int
     metadata_bytes: int
     radial_grid_passes: int
     kernel_forward_transforms: int
@@ -36,33 +36,56 @@ class FieldExecutionPlan:
 
 def required_channels(columns):
     """Unique Gaussian derivative channels used by explicit curl columns."""
-    derivatives = (((0, -1),), ((1, -1),), ((2, -1),),
-                   ((0, 0),), ((0, 1), (1, 0)), ((0, 2), (2, 0)),
-                   ((1, 1),), ((1, 2), (2, 1)), ((2, 2),))
+    derivatives = (
+        ((0, -1),),
+        ((1, -1),),
+        ((2, -1),),
+        ((0, 0),),
+        ((0, 1), (1, 0)),
+        ((0, 2), (2, 0)),
+        ((1, 1),),
+        ((1, 2), (2, 1)),
+        ((2, 2),),
+    )
     needed = []
     for channel, pairs in enumerate(derivatives):
         for axis, derivative in pairs:
             for row, (a, b) in enumerate(((1, 2), (2, 0), (0, 1))):
-                column = row if derivative < 0 else 3+3*row+derivative
+                column = row if derivative < 0 else 3 + 3 * row + derivative
                 if axis in (a, b) and column in columns and channel not in needed:
                     needed.append(channel)
     return tuple(needed)
 
 
-def field_execution_plan(shape, fft_shape, source_count, target_count, order,
-                         itemsize, pool_cap, plan_cap, *, retained_shape=None,
-                         allow_all_channels=True):
+def field_execution_plan(
+    shape,
+    fft_shape,
+    source_count,
+    target_count,
+    order,
+    itemsize,
+    pool_cap,
+    plan_cap,
+    *,
+    retained_shape=None,
+    allow_all_channels=True,
+):
     retained = shape if retained_shape is None else retained_shape
-    if (len(retained) != 3 or any(type(n) is not int or not order <= n <= full
-                                for n, full in zip(retained, shape, strict=True))):
+    if len(retained) != 3 or any(
+        type(n) is not int or not order <= n <= full
+        for n, full in zip(retained, shape, strict=True)
+    ):
         raise ValueError("retained query window must fit the logical field")
     v, logical = math.prod(fft_shape), math.prod(retained)
-    spectrum = fft_shape[0]*fft_shape[1]*(fft_shape[2]//2+1)
-    metadata = ((2*source_count+target_count)*(12+3*order*itemsize)
-                +(source_count+target_count)*24+target_count*12*itemsize)
-    compact = 12*logical*itemsize
-    full = (40*spectrum+10*v)*itemsize+compact+metadata
-    available = pool_cap-plan_cap
+    spectrum = fft_shape[0] * fft_shape[1] * (fft_shape[2] // 2 + 1)
+    metadata = (
+        (2 * source_count + target_count) * (12 + 3 * order * itemsize)
+        + (source_count + target_count) * 24
+        + target_count * 12 * itemsize
+    )
+    compact = 12 * logical * itemsize
+    full = (40 * spectrum + 10 * v) * itemsize + compact + metadata
+    available = pool_cap - plan_cap
     if allow_all_channels and full <= available:
         return FieldExecutionPlan("all_channels", 12, 2, 9, full, metadata, 2, 18, 12)
     # The expensive work is the radial finite-image sum, not just the number
@@ -72,28 +95,54 @@ def field_execution_plan(shape, fft_shape, source_count, target_count, order,
     candidates = []
     for families in (2, 1):
         for batch in range(12, 0, -1):
-            spectra = 3*families+batch+3
-            counts = [len(required_channels(range(first, min(first+batch, 12))))
-                      for first in range(0, 12, batch)]
+            spectra = 3 * families + batch + 3
+            counts = [
+                len(required_channels(range(first, min(first + batch, 12))))
+                for first in range(0, 12, batch)
+            ]
             for kernels in range(1, 10):
-                payload = (2*spectra*spectrum+(kernels+1)*v)*itemsize+compact+metadata
-                if payload <= available:
-                    passes = 2*sum(math.ceil(count/kernels) for count in counts)
-                    transforms, inverse = 2*sum(counts), 12 if families == 2 else 24
-                    plan = FieldExecutionPlan("streamed", batch, families, kernels,
-                                              payload, metadata, passes, transforms, inverse)
-                    candidates.append(((passes, transforms, inverse, -families, payload), plan))
+                field_bytes = (
+                    (2 * spectra * spectrum + (kernels + 1) * v) * itemsize + compact + metadata
+                )
+                if field_bytes <= available:
+                    passes = 2 * sum(math.ceil(count / kernels) for count in counts)
+                    transforms, inverse = 2 * sum(counts), 12 if families == 2 else 24
+                    plan = FieldExecutionPlan(
+                        "streamed",
+                        batch,
+                        families,
+                        kernels,
+                        field_bytes,
+                        metadata,
+                        passes,
+                        transforms,
+                        inverse,
+                    )
+                    candidates.append(((passes, transforms, inverse, -families, field_bytes), plan))
     if candidates:
         return min(candidates, key=lambda item: item[0])[1]
-    raise MemoryError("finite field payload exceeds smooth pool admission even with streaming")
+    raise MemoryError(
+        "Gaussian field memory exceeds the smooth FFT workspace limit even with streaming"
+    )
 
 
-def device_field_execution_plan(shape, fft_shape, source_count, target_count, order,
-                                itemsize, pool_cap, plan_cap, correction_cap, free_bytes,
-                                *, retained_shape=None):
-    """Select exact execution batches within both policy and live-device bounds.
+def device_field_execution_plan(
+    shape,
+    fft_shape,
+    source_count,
+    target_count,
+    order,
+    itemsize,
+    pool_cap,
+    plan_cap,
+    correction_cap,
+    free_bytes,
+    *,
+    retained_shape=None,
+):
+    """Select exact execution batches within both settings and live-device bounds.
 
-    Other owners (including the primary particle operator) legitimately occupy
+    Other field allocations (including the primary particle operator) legitimately occupy
     the same device. A configured maximum is not available memory. The caller
     has already constructed its correction index, so free_bytes excludes that
     live storage. correction_cap reserves additional query scratch, not the
@@ -101,16 +150,26 @@ def device_field_execution_plan(shape, fft_shape, source_count, target_count, or
     and its separate plan cap. Smaller batches change storage, not the grid,
     precision, physical sources, images, or mathematical error budgets.
     """
-    effective_cap = min(pool_cap, free_bytes-correction_cap)
+    effective_cap = min(pool_cap, free_bytes - correction_cap)
     try:
-        plan = field_execution_plan(shape, fft_shape, source_count, target_count,
-                                    order, itemsize, effective_cap, plan_cap,
-                                    retained_shape=retained_shape)
+        plan = field_execution_plan(
+            shape,
+            fft_shape,
+            source_count,
+            target_count,
+            order,
+            itemsize,
+            effective_cap,
+            plan_cap,
+            retained_shape=retained_shape,
+        )
     except MemoryError as error:
-        raise MemoryError("insufficient free device memory for exact Gaussian field execution: "
-                          f"free={free_bytes}, correction_reserve={correction_cap}, "
-                          f"smooth_cap={pool_cap}, available_smooth={effective_cap}, "
-                          f"plan_cap={plan_cap}, fft_shape={fft_shape}") from error
+        raise MemoryError(
+            "insufficient free device memory for exact Gaussian field execution: "
+            f"free={free_bytes}, correction_reserve={correction_cap}, "
+            f"smooth_cap={pool_cap}, available_smooth={effective_cap}, "
+            f"plan_cap={plan_cap}, fft_shape={fft_shape}"
+        ) from error
     return plan, effective_cap
 
 
@@ -121,14 +180,23 @@ def correction_query_reserve(target_count, itemsize):
     return ((8192 + target_count * (24 + 12 * itemsize + 12) + 511) // 512) * 512
 
 
-def query_batch_size(target_count, order, itemsize, correction_itemsize, *,
-                     smooth_cap, smooth_used, correction_cap, correction_used,
-                     device_available):
+def query_batch_size(
+    target_count,
+    order,
+    itemsize,
+    correction_itemsize,
+    *,
+    smooth_cap,
+    smooth_used,
+    correction_cap,
+    correction_used,
+    device_available,
+):
     """Fit fresh query scratch around retained fields and one complete output.
 
     Queries can grow after the original field was built. Their coordinates,
     stencils and local corrections need not coexist for the entire query.
-    The public device output does, and is admitted before any batch runs.
+    The public device output does, and is checked before any batch runs.
     The caller supplies current owned-pool usage and driver free memory plus
     its own unused cached blocks; unrelated cached allocations are excluded.
     Fixed reserves cover allocation rounding and scalar/reduction scratch.
@@ -136,22 +204,27 @@ def query_batch_size(target_count, order, itemsize, correction_itemsize, *,
     """
     if target_count == 0:
         return 0
-    output = ((12*target_count*itemsize+511)//512)*512
+    output = ((12 * target_count * itemsize + 511) // 512) * 512
     smooth_fixed, correction_fixed = 4096, 8192
     # Includes the host-coordinate transfer, complete stencil, and a bounded
     # isfinite check. Correction input/results and their finite check use
     # their independently selected arithmetic precision.
-    smooth_per_target = 24+12+3*order*itemsize+12
-    correction_per_target = 24+12*correction_itemsize+12
-    smooth = smooth_cap-smooth_used-output-smooth_fixed
-    correction = correction_cap-correction_used-correction_fixed
-    device = device_available-output-smooth_fixed-correction_fixed
-    batch = min(target_count, smooth//smooth_per_target,
-                correction//correction_per_target,
-                device//(smooth_per_target+correction_per_target))
+    smooth_per_target = 24 + 12 + 3 * order * itemsize + 12
+    correction_per_target = 24 + 12 * correction_itemsize + 12
+    smooth = smooth_cap - smooth_used - output - smooth_fixed
+    correction = correction_cap - correction_used - correction_fixed
+    device = device_available - output - smooth_fixed - correction_fixed
+    batch = min(
+        target_count,
+        smooth // smooth_per_target,
+        correction // correction_per_target,
+        device // (smooth_per_target + correction_per_target),
+    )
     if batch < 1:
-        raise MemoryError("insufficient memory for complete Gaussian query output and one exact batch: "
-                          f"targets={target_count}, output_bytes={output}, "
-                          f"smooth_available={smooth}, correction_available={correction}, "
-                          f"device_available={device}")
+        raise MemoryError(
+            "insufficient memory for complete Gaussian query output and one exact batch: "
+            f"targets={target_count}, output_bytes={output}, "
+            f"smooth_available={smooth}, correction_available={correction}, "
+            f"device_available={device}"
+        )
     return int(batch)

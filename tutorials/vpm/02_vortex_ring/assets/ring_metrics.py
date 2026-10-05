@@ -71,7 +71,7 @@ def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
         results.append(
             {
                 "variant": variant,
-                "status": metadata["lifecycle"]["status"],
+                "status": metadata["run_status"]["status"],
                 "step": state["step"],
                 "time": state["time"],
                 "normalized_time": state["time"] / REFERENCE_TIME,

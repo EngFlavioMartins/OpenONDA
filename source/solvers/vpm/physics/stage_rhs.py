@@ -158,7 +158,7 @@ class CallableStageContribution:
         vortex_strength = _stage_array(stage_state.vortex_strength, count, self.physics)
         velocity = np.zeros((count, 3), dtype=np.float64)
         strength_rate = np.zeros((count, 3), dtype=np.float64)
-        # Keep the callback contract stable: every output is writable even when
+        # Keep the callback conditions stable: every output is writable even when
         # the caller did not request a diagnostic gradient destination.
         gradient = np.zeros((count, 3, 3), dtype=np.float64)
         self.evaluate(
@@ -199,12 +199,12 @@ def _accumulate_vlm_stretching(
 class VLMStageContribution:
     """Add a stage-consistent VLM bound field at RK stage positions.
 
-    The default ``lagged`` VLM policy holds accepted circulation fixed while
-    evaluating temporary stage targets.  The declarative ``responsive``
-    policy instead solves an isolated temporary boundary system from the
-    supplied stage particle fields and stage-time geometry.  Either policy
-    publishes exchange only through the owning accepted RK integration step;
-    no stage query emits wake particles or commits VLM history.
+    The default ``lagged`` VLM treatment holds accepted circulation fixed while
+    evaluating temporary stage targets. The ``responsive`` treatment instead
+    solves an isolated temporary boundary system from the supplied stage
+    particle fields and stage-time geometry. Both treatments exchange vortex
+    strength only through the accepted RK integration step; no stage query
+    emits wake particles or commits VLM history.
     """
 
     def __init__(self, vlm_solver, physics=None, particles=None) -> None:
@@ -376,9 +376,9 @@ class StageRHS:
             strength-rate output after all providers run, while velocity and
             diagnostic gradients remain evaluated.
         reuse_induction : bool, default=True
-            Reuse pure fields only for explicitly certified standard FMM
+            Reuse pure fields only for explicitly validated standard FMM
             backends and bitwise-identical ordered particle inputs. Guards,
-            providers, health checks and other induction methods are unchanged.
+            providers, particle state checks and other induction methods are unchanged.
             False retains the uncached control path.
         """
         self.induction = induction
@@ -398,7 +398,7 @@ class StageRHS:
 
         The public ``induction`` remains the original operator. Profilers
         should wrap :meth:`evaluate_induction`, not patch numerical methods
-        on the certified backend (custom methods intentionally bypass reuse).
+        on the validated backend (custom methods intentionally bypass reuse).
         """
         return self._induction_reuse
 
@@ -429,7 +429,7 @@ class StageRHS:
 
     @property
     def induction_reuse_statistics(self):
-        """Detached cumulative reuse counters, including released cache owners.
+        """Detached cumulative reuse counters, including released cached fields.
 
         Storage reports only the currently owned allocation; closed caches
         contribute their actual request/hit/miss counters but zero bytes.
@@ -451,7 +451,7 @@ class StageRHS:
         if self._closed:
             raise RuntimeError("StageRHS is closed")
         cache = self._induction_reuse
-        mesh = getattr(self.induction, "gaussian_mesh_policy", None) is not None
+        mesh = getattr(self.induction, "gaussian_mesh_settings", None) is not None
         kind = "gaussian_slab" if mesh else "standard_fmm"
         if cache is not None and (
             not self.reuse_induction
@@ -468,7 +468,7 @@ class StageRHS:
             # cycle, and unknown/custom operators retain their exact call API.
             from .induction.fmm.device import FMMInduction
             from .induction.reuse import ExactContentInductionReuse
-            from .induction.reuse_backends import StandardFMMReuseContract
+            from .induction.reuse_backends import FMMReuseConditions
             from .induction.slip_slab import SlipSlabInduction
 
             base = self.induction
@@ -487,27 +487,27 @@ class StageRHS:
             cache = ExactContentInductionReuse(
                 self.induction,
                 max_particles=capacity,
-                contract_provider=StandardFMMReuseContract(self.induction)
+                conditions_provider=FMMReuseConditions(self.induction)
                 if not mesh
-                else self._gaussian_reuse_contract(),
+                else self._gaussian_reuse_conditions(),
             )
             self._induction_reuse = cache
             self._induction_reuse_kind = kind
         return cache
 
-    def _gaussian_reuse_contract(self):
+    def _gaussian_reuse_conditions(self):
         # Distinct capability; the FMM adapter still declines mesh
-        # policies and cannot silently skip their additional admission gates.
-        from .induction.gaussian_mesh.reuse_contract import StandardGaussianSlabReuseContract
+        # settings and cannot silently skip their additional validation checks.
+        from .induction.gaussian_mesh.reuse_conditions import GaussianSlabReuseConditions
 
-        return StandardGaussianSlabReuseContract(self.induction)
+        return GaussianSlabReuseConditions(self.induction)
 
     def evaluate_induction(self, stage_state, stage_time, stage_rates):
         """Dispatch only pure induction after the current position guard.
 
         This is also the stable outer timing hook: every request reaches it,
         while cache counters distinguish actual backend misses from hits.
-        No guard, provider, or health observation is cached by this method.
+        No guard, provider, or particle state observation is cached by this method.
         """
         self._induction_evaluator().evaluate_stage(
             position=stage_state.position,
@@ -523,7 +523,7 @@ class StageRHS:
 
     @contextmanager
     def integration_step(self, tableau, time_step_size):
-        """Commit provider exchange ledgers with the common particle RK step."""
+        """Commit provider exchange increments with the common particle RK step."""
         with ExitStack() as stack:
             for provider in self.providers:
                 context = getattr(provider, "integration_step", None)
@@ -677,7 +677,7 @@ class ParticleExternalStageContribution:
     stage positions, never the accepted particle field.
     """
 
-    def __init__(self, particles, physics, source_owner=None) -> None:
+    def __init__(self, particles, physics, surface_sources=None) -> None:
         """Create a provider for particle background/body/source fields.
 
         Parameters
@@ -687,7 +687,7 @@ class ParticleExternalStageContribution:
         physics : PhysicsEngine
             Device workspace used for source kernels, stage transfers, and
             optional body callbacks.
-        source_owner : object, optional
+        surface_sources : object, optional
             Object exposing source arrays and ``n_sources`` for surface-source
             or blockage contributions.
 
@@ -699,7 +699,7 @@ class ParticleExternalStageContribution:
         """
         self.particles = particles
         self.physics = physics
-        self.source_owner = source_owner
+        self.surface_sources = surface_sources
         self._source_gradient = ti.Matrix.field(
             3, 3, dtype=physics.accumulator_dtype, shape=(physics.max_n_particles,)
         )
@@ -728,13 +728,13 @@ class ParticleExternalStageContribution:
         # a diagnostic-only target correction.  Evaluate them against the exact
         # temporary RK positions so every coupled stage sees the same source
         # contribution as arbitrary target queries.
-        owner = self.source_owner
-        source_count = int(getattr(owner, "n_sources", 0)) if owner is not None else 0
+        sources = self.surface_sources
+        source_count = int(getattr(sources, "n_sources", 0)) if sources is not None else 0
         source_gradient = None
         if source_count:
             batches = (
-                owner._surface_source_batches()
-                if hasattr(owner, "_surface_source_batches")
+                sources._surface_source_batches()
+                if hasattr(sources, "_surface_source_batches")
                 else (source_count,)
             )
             need_gradient = (
@@ -745,9 +745,9 @@ class ParticleExternalStageContribution:
             for batch_count in batches:
                 self.physics.kernels["compute_target_source_velocity_kernel"](
                     stage_state.position,
-                    owner.source_position,
-                    owner.source_strength,
-                    owner.source_core_radius,
+                    sources.source_position,
+                    sources.source_strength,
+                    sources.source_core_radius,
                     stage_rates.velocity,
                     count,
                     batch_count,
@@ -755,9 +755,9 @@ class ParticleExternalStageContribution:
                 if need_gradient:
                     self.physics.kernels["compute_target_source_velocity_gradient_kernel"](
                         stage_state.position,
-                        owner.source_position,
-                        owner.source_strength,
-                        owner.source_core_radius,
+                        sources.source_position,
+                        sources.source_strength,
+                        sources.source_core_radius,
                         self._source_gradient,
                         count,
                         batch_count,
@@ -914,7 +914,7 @@ class ParticleExternalStageContribution:
 
         # Body/source/override gradients use J[i,j] = d u_i / d x_j.  The
         # vortex-strength stretching convention is J^T Γ, matching the
-        # self-induced induction contract.
+        # self-induced induction conditions.
         if not override_replaces_rhs and np.any(external_gradient):
             strength = _stage_array(stage_state.vortex_strength, count, self.physics)
             external_rate = np.einsum("nji,nj->ni", external_gradient, strength)

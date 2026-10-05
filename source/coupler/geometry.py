@@ -79,7 +79,7 @@ class TriangulatedWall:
 
     @classmethod
     def from_box(cls, bounds, domain_bounds):
-        """Represent a box through the same surface-query contract as any wall."""
+        """Represent a box through the same surface-query interface as any wall."""
         lower, upper = np.asarray(bounds)[::2], np.asarray(bounds)[1::2]
         vertices = np.array(
             [
@@ -206,7 +206,7 @@ class TriangulatedWall:
 
 
 class SolidBoundary:
-    """One geometric contract for transfer, particle motion and grid diffusion.
+    """One geometric description for transfer, particle motion and grid diffusion.
 
     Bodies supply signed distance and membership. Native triangulated walls
     also supply exact nearest points and line intersections. Distance-based
@@ -251,8 +251,8 @@ class SolidBoundary:
             result |= body.contains(points, include_boundary=include_boundary)
         return result
 
-    def grid_geometry_contract(self):
-        """Certify standard static wall queries for exact diffusion-grid reuse.
+    def grid_geometry_queries(self):
+        """Verify standard static wall queries for exact diffusion-grid reuse.
 
         No fitted geometry or bounding-box classification is introduced. The
         signature covers the current predicate implementation and every array
@@ -261,21 +261,33 @@ class SolidBoundary:
         """
         from source.solvers.vpm.physics.diffusion.body_geometry import ImmutableBodyGeometryQueries
 
-        identity = self._grid_geometry_identity()
-        if identity is None:
+        geometry_signature = self._grid_geometry_signature()
+        if geometry_signature is None:
             return None
-        return ImmutableBodyGeometryQueries(self.contains, self.blocks_segments,
-                                            self._grid_geometry_identity, identity[1], identity[2])
+        return ImmutableBodyGeometryQueries(
+            self.contains,
+            self.blocks_segments,
+            self._grid_geometry_signature,
+            geometry_signature[1],
+            geometry_signature[2],
+        )
 
-    def _grid_geometry_identity(self):
+    def _grid_geometry_signature(self):
         from vtkmodules.util.numpy_support import vtk_to_numpy
         from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkStaticCellLocator
         from vtkmodules.vtkFiltersCore import vtkImplicitPolyDataDistance
 
-        if ((SolidBoundary, TriangulatedWall) != _GRID_GEOMETRY_CLASSES
-                or type(self) is not SolidBoundary or type(self.bodies) is not tuple or not self.bodies):
+        if (
+            (SolidBoundary, TriangulatedWall) != _GRID_GEOMETRY_CLASSES
+            or type(self) is not SolidBoundary
+            or type(self.bodies) is not tuple
+            or not self.bodies
+        ):
             return None
-        for instance, cls in ((self, SolidBoundary), *((body, TriangulatedWall) for body in self.bodies)):
+        for instance, cls in (
+            (self, SolidBoundary),
+            *((body, TriangulatedWall) for body in self.bodies),
+        ):
             if type(instance) is not cls:
                 return None
             for name, method in _GRID_GEOMETRY_METHODS[cls].items():
@@ -284,20 +296,36 @@ class SolidBoundary:
         digest = hashlib.sha256()
         runtime = []
         for body in self.bodies:
-            if (type(body.revision) is not str or type(body._surface) is not vtkPolyData
-                    or type(body._distance) is not vtkImplicitPolyDataDistance
-                    or type(body._locator) is not vtkStaticCellLocator
-                    or body._locator.GetDataSet() is not body._surface
-                    or body._distance.GetTransform() is not None):
+            if (
+                type(body.revision) is not str
+                or type(body._surface) is not vtkPolyData
+                or type(body._distance) is not vtkImplicitPolyDataDistance
+                or type(body._locator) is not vtkStaticCellLocator
+                or body._locator.GetDataSet() is not body._surface
+                or body._distance.GetTransform() is not None
+            ):
                 return None
             coordinates = body._surface.GetPoints().GetData()
             topology = []
-            for cells in (body._surface.GetVerts(), body._surface.GetLines(),
-                          body._surface.GetPolys(), body._surface.GetStrips()):
-                topology.extend((vtk_to_numpy(cells.GetOffsetsArray()),
-                                 vtk_to_numpy(cells.GetConnectivityArray())))
-            arrays = (vtk_to_numpy(coordinates), *topology, body._normals,
-                      body._bounds, body.surface_bounds)
+            for cells in (
+                body._surface.GetVerts(),
+                body._surface.GetLines(),
+                body._surface.GetPolys(),
+                body._surface.GetStrips(),
+            ):
+                topology.extend(
+                    (
+                        vtk_to_numpy(cells.GetOffsetsArray()),
+                        vtk_to_numpy(cells.GetConnectivityArray()),
+                    )
+                )
+            arrays = (
+                vtk_to_numpy(coordinates),
+                *topology,
+                body._normals,
+                body._bounds,
+                body.surface_bounds,
+            )
             for array in arrays:
                 array = np.asarray(array)
                 if array.dtype.kind not in "fiu" or not np.all(np.isfinite(array)):
@@ -308,10 +336,16 @@ class SolidBoundary:
             if not np.isfinite(tolerance) or tolerance < 0:
                 return None
             digest.update(np.float64(tolerance).tobytes())
-            for values in (body._distance.GetTolerance(), body._distance.GetNoValue(),
-                           body._distance.GetNoGradient(), body._distance.GetNoClosestPoint()):
+            for values in (
+                body._distance.GetTolerance(),
+                body._distance.GetNoValue(),
+                body._distance.GetNoGradient(),
+                body._distance.GetNoClosestPoint(),
+            ):
                 digest.update(np.asarray(values, dtype=np.float64).tobytes())
-            digest.update(str((id(body), id(body._surface), id(body._distance), id(body._locator))).encode())
+            digest.update(
+                str((id(body), id(body._surface), id(body._distance), id(body._locator))).encode()
+            )
             runtime.append((body._distance.GetMTime(), body._locator.GetMTime()))
         return self.revision, digest.digest(), tuple(runtime)
 

@@ -1,9 +1,8 @@
 """Discover, copy, and execute OpenONDA's installed tutorial templates.
 
-Tutorials are immutable resources inside the installed distribution.  Before
-execution they are copied to a normal user-owned workspace, so solver output
-never modifies ``site-packages`` and the resulting case remains inspectable,
-editable, and reproducible.
+Installed tutorial inputs are copied to an editable working directory before
+execution. Solver output stays in that directory, and the installed inputs
+remain available for another case.
 """
 
 from __future__ import annotations
@@ -145,7 +144,7 @@ def default_workspace(tutorial: Tutorial | str, directory: Path | None = None) -
 
 
 def tutorial_case_path(workspace: Path, tutorial: Tutorial | str) -> Path:
-    """Return a materialized case directory below ``workspace``."""
+    """Return the copied case directory below ``workspace``."""
     item = get_tutorial(tutorial) if isinstance(tutorial, str) else tutorial
     return Path(workspace).expanduser().resolve() / "tutorials" / item.relative_path
 
@@ -193,10 +192,10 @@ def _installed_root() -> Path:
     return package.resolve().parent
 
 
-def materialize_tutorial(name: str, workspace: Path) -> Path:
-    """Copy one installed tutorial into a user-owned workspace.
+def copy_tutorial(name: str, workspace: Path) -> Path:
+    """Copy one installed tutorial into an editable workspace.
 
-    The destination may already contain other materialized tutorials, but an
+    The destination may already contain other copied tutorials, but an
     existing case is never overwritten.  The returned path is the directory
     containing ``setup.py`` and the ``all*.sh`` launchers.
 
@@ -249,11 +248,11 @@ def materialize_tutorial(name: str, workspace: Path) -> Path:
 
 
 def ensure_tutorial(name: str, workspace: Path) -> tuple[Path, bool]:
-    """Return a case path, materializing it when it is not present."""
+    """Return the case directory, copying installed inputs when it is absent."""
     case_path = tutorial_case_path(workspace, name)
     if case_path.is_dir():
         return case_path, False
-    return materialize_tutorial(name, workspace), True
+    return copy_tutorial(name, workspace), True
 
 
 def execute_tutorial(name: str, workspace: Path, action: TutorialAction = "run") -> int:
@@ -270,7 +269,7 @@ def execute_tutorial(name: str, workspace: Path, action: TutorialAction = "run")
         case_path, _ = ensure_tutorial(tutorial.name, workspace)
     elif not case_path.is_dir():
         raise FileNotFoundError(
-            f"No materialized tutorial at {case_path}. Run `openonda tutorial create "
+            f"No copied tutorial at {case_path}. Run `openonda tutorial create "
             f"{tutorial.name} {workspace}` first."
         )
 
@@ -306,7 +305,7 @@ __all__ = [
     "ensure_tutorial",
     "execute_tutorial",
     "get_tutorial",
-    "materialize_tutorial",
+    "copy_tutorial",
     "tutorial_case_path",
     "tutorial_names",
 ]

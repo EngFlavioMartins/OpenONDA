@@ -1,4 +1,4 @@
-"""Reference cases own their assets and preserve refinement/output contracts."""
+"""Reference cases use local assets and preserve refinement and output settings."""
 
 from types import SimpleNamespace
 
@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 
 from openonda.tutorial_runner import load_case_module
-from openonda.tutorials import materialize_tutorial
+from openonda.tutorials import copy_tutorial
 
 
 def test_cylinder_reference_owns_geometry_and_refines_requested_sizes(tmp_path, monkeypatch):
-    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow/reference_flow", tmp_path)
+    case = copy_tutorial("coupled_fvm_vpm/cylinder_shedding_flow/reference_flow", tmp_path)
     # Move the case away from every parent tutorial directory.
     standalone = tmp_path / "standalone"
     case.rename(standalone)
@@ -40,7 +40,7 @@ def test_cylinder_reference_owns_geometry_and_refines_requested_sizes(tmp_path, 
 
 
 def test_cube_reference_owns_geometry_and_uses_explicit_spacing(tmp_path, monkeypatch):
-    case = materialize_tutorial("coupled_fvm_vpm/cube_flow/reference_flow", tmp_path)
+    case = copy_tutorial("coupled_fvm_vpm/cube_flow/reference_flow", tmp_path)
     standalone = tmp_path / "standalone"
     case.rename(standalone)
     module = load_case_module(standalone)
@@ -62,7 +62,7 @@ def test_cube_reference_owns_geometry_and_uses_explicit_spacing(tmp_path, monkey
 
 
 def test_cylinder_coupled_mesh_is_uniform_at_the_reference_fine_spacing(tmp_path):
-    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
+    case = copy_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
     mesh = module.build_case()[3]
     assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
@@ -85,7 +85,7 @@ def test_cylinder_coupled_mesh_is_uniform_at_the_reference_fine_spacing(tmp_path
 
 def test_cylinder_transfer_region_fits_boundary_face_centres(tmp_path):
     """Keep exchange support inside the face-centre box used by the coupler."""
-    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
+    case = copy_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
     face_centre_box = np.asarray((*module.FVM_BOX[:4], -module.FVM_HALF_SPAN, module.FVM_HALF_SPAN))
     module.build_case()[2].validate_transfer_region_box(face_centre_box)
@@ -93,7 +93,7 @@ def test_cylinder_transfer_region_fits_boundary_face_centres(tmp_path):
 
 def test_cylinder_gbd_grid_is_aligned_and_within_gpu_budget(tmp_path):
     """Keep renewal and GBD aligned without overcommitting the fixed grid."""
-    case = materialize_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
+    case = copy_tutorial("coupled_fvm_vpm/cylinder_shedding_flow", tmp_path)
     module = load_case_module(case)
     flow, particles, _, _ = module.build_case()
     viscous = particles.numerics.viscous

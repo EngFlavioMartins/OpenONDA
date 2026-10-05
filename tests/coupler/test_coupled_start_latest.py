@@ -64,12 +64,12 @@ def test_coupled_latest_replays_tail_and_stops_at_configured_end(tmp_path):
         first.solve(start_step=2)
         expected = first.fvm_solver.velocity.copy()
     # The tail at step three has samples but no scheduled atomic checkpoint.
-    manifest_path = tmp_path / "solution/backups/manifest.json"
-    assert json.loads(manifest_path.read_text())["coupling_step"] == 2
+    metadata_path = tmp_path / "solution/backups/checkpoint_info.json"
+    assert json.loads(metadata_path.read_text())["coupling_step"] == 2
     with _coupler(tmp_path) as resumed:
         assert resumed.run(start_from="latest") == 3
         np.testing.assert_allclose(resumed.fvm_solver.velocity, expected, atol=1e-13, rtol=0)
-    assert json.loads(manifest_path.read_text())["coupling_step"] == 3
+    assert json.loads(metadata_path.read_text())["coupling_step"] == 3
     history = tmp_path / "solution/coupler_diagnostics.jsonl"
     assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1, 2, 3]
     before = history.read_bytes()
@@ -82,44 +82,44 @@ def test_coupled_zero_backup_does_not_repeat_initial_transfer(tmp_path):
     with _coupler(tmp_path) as first:
         first.initialize()
         first.solve(max_coupling_steps=1, backup_at_start=True)
-    manifest = tmp_path / "solution/backups/manifest.json"
-    assert json.loads(manifest.read_text())["coupling_step"] == 0
+    checkpoint_info = tmp_path / "solution/backups/checkpoint_info.json"
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 0
     with _coupler(tmp_path) as resumed:
         resumed.run(start_from="latest", max_coupling_steps=1)
         # One initialization transfer, then one accepted transfer.
         assert resumed.vorticity_transfer.step == 2
 
 
-@pytest.mark.parametrize("corrupt_manifest", [False, True])
+@pytest.mark.parametrize("corrupt_checkpoint_info", [False, True])
 def test_coupled_initial_replaces_prior_run_and_latest_continues_new_branch(
-    tmp_path, corrupt_manifest
+    tmp_path, corrupt_checkpoint_info
 ):
     case = tmp_path / "restarted"
     with _coupler(case) as previous:
         assert previous.run(start_from="latest", max_coupling_steps=2) == 2
 
-    manifest = case / "solution/backups/manifest.json"
-    assert json.loads(manifest.read_text())["coupling_step"] == 2
+    checkpoint_info = case / "solution/backups/checkpoint_info.json"
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 2
     # This frame is intentionally invalid. A fresh run must remove it from
-    # native discovery, even though the coupled manifest owns the restart.
+    # native discovery, even though the coupled checkpoint_info owns the restart.
     old_frame = case / "solution/vpm/vpm_999999.h5"
     old_frame.parent.mkdir(parents=True, exist_ok=True)
     old_frame.write_bytes(b"stale VPM frame from the previous run")
-    if corrupt_manifest:
-        manifest.write_text("{invalid prior manifest")
+    if corrupt_checkpoint_info:
+        checkpoint_info.write_text("{invalid prior checkpoint_info")
 
     with _coupler(case) as fresh:
         assert fresh.run(start_from="initial", max_coupling_steps=1) == 1
         assert fresh.fvm_solver.step == fresh.n_fvm_substeps
         assert fresh.vpm_solver.step == 1
     assert not old_frame.exists()
-    assert json.loads(manifest.read_text())["coupling_step"] == 1
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 1
 
     with _coupler(case) as resumed:
         assert resumed.run(start_from="latest") == 3
         actual_velocity = resumed.fvm_solver.velocity.copy()
         actual_pressure = resumed.fvm_solver.get_pressure_field().copy()
-    assert json.loads(manifest.read_text())["coupling_step"] == 3
+    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 3
     history = case / "solution/coupler_diagnostics.jsonl"
     assert [json.loads(row)["step"] for row in history.read_text().splitlines()] == [1, 2, 3]
     before = history.read_bytes()

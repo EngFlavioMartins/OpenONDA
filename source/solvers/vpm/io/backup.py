@@ -1,4 +1,4 @@
-"""Native VPM backups with one current numerical schema and canonical names."""
+"""Native VPM backups with one current numerical schema and standard names."""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ import numpy as np
 from source.solution_layout import collection_path, component_directory
 from source.write_precision import DEFAULT_WRITE_PRECISION
 
-from ..config.fingerprint import numerical_configuration
-from ..config.restart_changes import admit_configuration_changes
+from ..config.configuration_values import numerical_configuration
+from ..config.restart_changes import validate_configuration_changes
 from .logging import Logging
 
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "10.2"
+_BACKUP_FORMAT_VERSION = "10.3"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -77,28 +77,28 @@ def _stabilization(solver: Any):
     return getattr(solver, "stabilization", None)
 
 
-def _read_attribute(group: h5py.Group, canonical_name: str) -> Any:
-    if canonical_name not in group.attrs:
-        raise KeyError(f"Backup is missing solver attribute {canonical_name!r}")
-    return group.attrs[canonical_name]
+def _read_attribute(group: h5py.Group, field_name: str) -> Any:
+    if field_name not in group.attrs:
+        raise KeyError(f"Backup is missing solver attribute {field_name!r}")
+    return group.attrs[field_name]
 
 
 def _read_particle_count(group: h5py.Group) -> int:
-    """Read the canonical particle count."""
+    """Read the standard particle count."""
     return int(_read_attribute(group, "n_particles_total"))
 
 
 def _read_dataset(
     group: h5py.Group,
-    canonical_name: str,
+    field_name: str,
     *,
     required: bool = True,
 ):
-    if canonical_name not in group:
+    if field_name not in group:
         if not required:
             return None
-        raise KeyError(f"Backup is missing particle field {canonical_name!r}")
-    return group[canonical_name][:]
+        raise KeyError(f"Backup is missing particle field {field_name!r}")
+    return group[field_name][:]
 
 
 def _restart_dtype(solver: Any) -> np.dtype:
@@ -129,7 +129,7 @@ def _numerical_configuration(solver: Any) -> dict[str, Any]:
     return numerical_configuration(solver.setup)
 
 
-def _canonical_configuration(configuration: dict[str, Any]) -> str:
+def _configuration_values(configuration: dict[str, Any]) -> str:
     """Serialize a numerical configuration deterministically for a restart."""
     return json.dumps(configuration, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -197,10 +197,9 @@ class _BackupIO:
 
         ``time_step_size`` is an explicit continuation override.  It permits
         only the numerical-configuration ``time_step_size`` field to differ;
-        every other unlisted restart identity remains strict. Exact scalar
-        configuration differences require an explicit allowlist; structural
-        differences also require exact stored/current expectations. The
-        complete checkpoint
+        all other numerical settings must match. Exact scalar configuration
+        differences must be explicitly listed; structural differences also
+        require exact stored/current expectations. The complete checkpoint
         is restored first, including the accepted clock and optional VLM
         state, and the override is applied only after that restore succeeds.
         """
@@ -241,7 +240,7 @@ class _BackupIO:
         _BackupIO._load_numerical_data(solver, path)
         if time_step_size is not None:
             solver.time_step_size = float(time_step_size)
-            solver._restart_provenance = {
+            solver._restart_details = {
                 "kind": "explicit_changed_time_step_continuation",
                 "source_checkpoint": str(Path(path).resolve()),
                 "source": {
@@ -256,9 +255,9 @@ class _BackupIO:
                 },
             }
         else:
-            solver._restart_provenance = None
+            solver._restart_details = None
         if configuration_changes:
-            provenance = solver._restart_provenance or {
+            source_information = solver._restart_details or {
                 "kind": "explicit_changed_configuration_continuation",
                 "source_checkpoint": str(Path(path).resolve()),
                 "source": {
@@ -271,8 +270,8 @@ class _BackupIO:
                     "accepted_time": float(solver.time),
                 },
             }
-            provenance["configuration_changes"] = configuration_changes
-            solver._restart_provenance = provenance
+            source_information["configuration_changes"] = configuration_changes
+            solver._restart_details = source_information
 
     @staticmethod
     def save(
@@ -389,14 +388,14 @@ class _BackupIO:
         hdf5_file: str,
         time: float,
     ) -> None:
-        """Write canonical solver and particle state."""
+        """Write standard solver and particle state."""
         write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
         restart_dtype = _restart_dtype(solver)
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
             solver_group.attrs["backup_format_version"] = _BACKUP_FORMAT_VERSION
             solver_group.attrs["write_precision"] = write_precision
-            configuration = _canonical_configuration(_numerical_configuration(solver))
+            configuration = _configuration_values(_numerical_configuration(solver))
             solver_group.attrs["numerical_configuration"] = configuration
             solver_group.attrs["numerical_configuration_sha256"] = hashlib.sha256(
                 configuration.encode("utf-8")
@@ -491,7 +490,7 @@ class _BackupIO:
         vtu_file: str,
         time: float,
     ) -> None:
-        """Write a VTK particle frame using canonical field names.
+        """Write a VTK particle frame using standard field names.
 
         One ``VTK_POLY_VERTEX`` cell spans the full particle cloud, matching
         the solver's Polyvertex particle topology. The points and arrays retain
@@ -563,7 +562,7 @@ class _BackupIO:
         Parameters
         ----------
         solution_directory : str or pathlib.Path
-            Case solution root. Canonical ``vpm_XXXXXX.h5`` and
+            Case solution root. Standard ``vpm_XXXXXX.h5`` and
             ``vpm_XXXXXX.vtu`` pairs are stored below ``vpm/``.
 
         Returns
@@ -582,7 +581,7 @@ class _BackupIO:
 
         Notes
         -----
-        The atomically written native HDF5 clock is authoritative for the
+        The atomically written native HDF5 clock determines the
         visualization series. Rebuilding the small index from retained frames
         makes scheduled output and coupled publication resume-safe without
         keeping a second in-memory clock.
@@ -632,7 +631,7 @@ class _BackupIO:
     def _load_auxiliary_particle_fields(
         particles_group: h5py.Group,
     ) -> dict[str, np.ndarray | None]:
-        """Load required auxiliary fields and optional filament lineage."""
+        """Load required auxiliary fields and optional filament refinement references."""
         return {
             "zone_id": _read_dataset(
                 particles_group,
@@ -659,7 +658,7 @@ class _BackupIO:
         solver,
         hdf5_file: str,
     ) -> None:
-        """Load canonical HDF5 state without reducing precision."""
+        """Load standard HDF5 state without reducing precision."""
         with h5py.File(hdf5_file, "r") as file:
             solver_group = file["solver"]
             particles_group = file["particles"]
@@ -878,9 +877,7 @@ class _BackupIO:
                 )
                 computed_hash = hashlib.sha256(configuration_text.encode("utf-8")).hexdigest()
                 if configuration_hash != computed_hash:
-                    invalid(
-                        "numerical configuration fingerprint does not match its stored configuration"
-                    )
+                    invalid("numerical configuration hash does not match its stored configuration")
                 try:
                     stored_configuration = json.loads(configuration_text)
                 except json.JSONDecodeError as exc:
@@ -889,7 +886,7 @@ class _BackupIO:
                     invalid("numerical configuration must be a JSON object")
                 if expected_configuration is not None:
                     try:
-                        configuration_changes = admit_configuration_changes(
+                        configuration_changes = validate_configuration_changes(
                             expected_configuration,
                             stored_configuration,
                             allowed_config_differences=allowed_config_differences,
@@ -988,7 +985,7 @@ class _BackupIO:
                     "filament_reference_length",
                 }
                 if len(particle_field_names & filament_fields) == 1:
-                    invalid("filament-lineage fields must be stored together")
+                    invalid("filament refinement reference fields must be stored together")
                 refinement = stored_configuration.get("stabilization", {}).get(
                     "filament_refinement", {}
                 )
@@ -997,7 +994,7 @@ class _BackupIO:
                     and refinement.get("interval_steps", 0) > 0
                     and not filament_fields <= particle_field_names
                 ):
-                    invalid("enabled filament refinement requires its lineage fields")
+                    invalid("enabled filament refinement requires its refinement reference fields")
                 vector_fields = (
                     "position",
                     "velocity",

@@ -14,7 +14,7 @@ import numpy as np
 
 
 def apply_random_walk(
-    owner,
+    physics,
     particles,
     time_step_size: float,
     *,
@@ -49,9 +49,9 @@ def apply_random_walk(
             "use DVH or GBD for variable-viscosity diffusion"
         )
 
-    owner._resize_temp_fields(N)
+    physics._resize_temp_fields(N)
     # No temp field is touched, so the temp-field zeroing is deliberately skipped.
-    owner.update_position_rwm_kernel(
+    physics.update_position_rwm_kernel(
         particles.position,
         particles.effective_viscosity,
         time_step_size,

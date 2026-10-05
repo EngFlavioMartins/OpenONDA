@@ -186,7 +186,7 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
             monkeypatch.setattr(solver.physics, name, forbid_direct_fallback)
 
     # Analytical pair Jacobians are independently checked against finite
-    # differences in test_vortex_kernel_contract, and use unequal pair cores.
+    # differences in test_vortex_kernel_formulation, and use unequal pair cores.
     kernel = make_vortex_kernel("GAUSSIAN")
     displacement = position[:, None, :].astype(float) - position[None, :, :]
     expected_velocity = kernel.velocity_pair(

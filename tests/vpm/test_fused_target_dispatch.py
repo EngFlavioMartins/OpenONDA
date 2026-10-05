@@ -117,7 +117,7 @@ def test_fused_backend_fields_and_mixed_trace_match_separate_calls(runtime, name
         expected_trace = (
             normal_gradient - np.einsum("fi,fi->f", normal_gradient, unit)[:, None] * unit
         )
-        owner = SimpleNamespace(
+        solver = SimpleNamespace(
             physics=physics,
             particles=cloud,
             vlm_solver=None,
@@ -126,13 +126,13 @@ def test_fused_backend_fields_and_mixed_trace_match_separate_calls(runtime, name
             _add_target_velocity_corrections=lambda points, velocity, **kwargs: velocity,
         )
         velocity, trace = VPMSolver.compute_velocity_and_tangential_normal_gradient_at_points(
-            owner, targets, normals, particle_spacing=0.04
+            solver, targets, normals, particle_spacing=0.04
         )
         np.testing.assert_allclose(velocity, expected_velocity, rtol=2e-6, atol=3e-7)
         np.testing.assert_allclose(trace, expected_trace, rtol=2e-6, atol=8e-7)
 
 
-def test_fused_empty_and_background_contracts_do_not_dispatch(runtime):
+def test_fused_empty_and_background_conditions_do_not_dispatch(runtime):
     physics = PhysicsBase("GAUSSIAN", 4, ti.f32, max_evaluation_points=3)
     physics.velocity_method = "FMM"
 
@@ -167,18 +167,18 @@ def test_treecode_fused_route_and_direct_fallback_select_requested_backend():
         calls.append((args, kwargs))
         return result
 
-    owner = SimpleNamespace(
+    solver = SimpleNamespace(
         velocity_method="TREECODE",
         velocity_theta=0.25,
         compute_target_velocity_and_gradients_hierarchical=hierarchical,
     )
-    method = MethodType(PhysicsBase.compute_target_velocity_and_gradients_consistent, owner)
+    method = MethodType(PhysicsBase.compute_target_velocity_and_gradients_consistent, solver)
     assert method(particles, points, include_freestream=False) is result
     assert len(calls) == 1
     assert calls[0][0] == (particles, points)
     assert calls[0][1] == {"theta": 0.25, "include_freestream": False}
-    owner.velocity_method = "DIRECT"
-    owner.compute_target_velocity = lambda *args, **kwargs: result[0]
-    owner.compute_target_velocity_gradient = lambda *args, **kwargs: result[1]
+    solver.velocity_method = "DIRECT"
+    solver.compute_target_velocity = lambda *args, **kwargs: result[0]
+    solver.compute_target_velocity_gradient = lambda *args, **kwargs: result[1]
     actual = method(particles, points)
     assert actual[0] is result[0] and actual[1] is result[1]

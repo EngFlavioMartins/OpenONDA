@@ -89,7 +89,7 @@ A powered-off copy of the clean baseline was exported to:
 ```
 
 The approximately 755 MiB appliance contains the guest disk and VM configuration.
-Both entries passed their exported SHA-256 manifest checks. `SHA256SUMS` beside
+Both entries passed their exported SHA-256 checksum checks. `SHA256SUMS` beside
 the appliance records the checksum of the complete OVA:
 
 ```text
@@ -101,7 +101,7 @@ VM's snapshots. Its adjacent `access/` directory contains the matching SSH key
 and host record; retain these private files with the backup. The backup and
 keys are local files, not repository contents.
 
-## Baseline provenance
+## Baseline environment
 
 The machine was created on 2026-10-02 with VirtualBox 7.2.6 from Ubuntu's
 [official Noble cloud OVA](https://cloud-images.ubuntu.com/noble/20260926/).

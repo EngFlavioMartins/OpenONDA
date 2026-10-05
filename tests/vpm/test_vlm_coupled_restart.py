@@ -55,7 +55,7 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
         save_surface,
         surface_to_dict,
     )
-    from source.solvers.vpm.io.manifest import build_manifest
+    from source.solvers.vpm.io.metadata import build_metadata
 
     plate = create_flat_plate(
         chord=1,
@@ -82,7 +82,7 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
     )
     try:
         path.unlink()
-        record = build_manifest(solver)["configuration"]["numerics"]["vlm"]["surfaces"][0]
+        record = build_metadata(solver)["configuration"]["numerics"]["vlm"]["surfaces"][0]
         assert record["geometry"] == surface_to_dict(plate)
         assert read_vlm_surface(record) == surface_to_dict(plate)
     finally:
@@ -258,7 +258,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         resumed.load_backup(checkpoint)
         restored_forces = resumed.vlm_solver.compute_forces(1.3)
         # A manual backup immediately after restore must retain the derived
-        # frame fields and dimensional-force provenance, before another solve.
+        # frame fields and dimensional-force source information, before another solve.
         resumed.save_backup()
         immediate = pv.read(tmp_path / "resumed/solution/vlm/vlm_000002.vtp")
         np.testing.assert_array_equal(

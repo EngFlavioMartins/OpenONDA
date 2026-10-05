@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Render deterministic visual evidence for a Cartesian-mesher manifest.
+"""Render deterministic visual evidence for a Cartesian-mesher checkpoint_info.
 
 The renderer deliberately uses only native ``.npz`` meshes from the
 acceptance bundle.  It produces an overview, three orthogonal sections, a wall
@@ -205,14 +205,14 @@ def _save_transitions(mesh: dict[str, Any], result: dict[str, Any], path: Path) 
     plt.close(fig)
 
 
-def render_manifest(manifest_path: Path, *, mark_inspected: bool = False) -> None:
+def render_report(metadata_path: Path, *, mark_inspected: bool = False) -> None:
     # Set a writable cache location before importing pyplot in the renderers.
     import os
 
-    os.environ.setdefault("MPLCONFIGDIR", str(manifest_path.parent / ".matplotlib"))
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    output = manifest_path.parent
-    for result in manifest.get("results", []):
+    os.environ.setdefault("MPLCONFIGDIR", str(metadata_path.parent / ".matplotlib"))
+    checkpoint_info = json.loads(metadata_path.read_text(encoding="utf-8"))
+    output = metadata_path.parent
+    for result in checkpoint_info.get("results", []):
         if result.get("status") != "pass":
             continue
         name, mode = str(result["name"]).split(":", 1)
@@ -230,24 +230,24 @@ def render_manifest(manifest_path: Path, *, mark_inspected: bool = False) -> Non
         if mark_inspected:
             result["image_review"] = "inspected"
     if mark_inspected:
-        manifest["image_review_policy"] = (
+        checkpoint_info["image_review_requirement"] = (
             "release requires inspected images; human review acknowledged"
         )
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    metadata_path.write_text(
+        json.dumps(checkpoint_info, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--checkpoint_info", type=Path, required=True)
     parser.add_argument(
         "--mark-inspected",
         action="store_true",
         help="record explicit human inspection after rendering",
     )
     args = parser.parse_args()
-    render_manifest(args.manifest, mark_inspected=args.mark_inspected)
+    render_report(args.report, mark_inspected=args.mark_inspected)
     return 0
 
 

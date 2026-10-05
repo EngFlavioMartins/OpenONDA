@@ -412,12 +412,12 @@ def _try_set_analysis_input(vsp: Any, analysis: str, key: str, value: int | str)
             ("SetDoubleAnalysisInput", [float(value)]),
         )
 
-    for setter_name, payload in setters:
+    for setter_name, blade_data in setters:
         setter = getattr(vsp, setter_name, None)
         if not callable(setter):
             continue
         try:
-            setter(analysis, key, payload)
+            setter(analysis, key, blade_data)
             return True
         except Exception:
             continue

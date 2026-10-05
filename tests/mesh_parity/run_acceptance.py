@@ -9,9 +9,9 @@ repair loop can be rerun without relying on files in ``/private/tmp``.
 Examples::
 
     python tests/mesh_parity/run_acceptance.py --suite quick \
-        --output artifacts/mesher-acceptance
+        --output checkpoint_files/mesher-acceptance
     python tests/mesh_parity/run_acceptance.py --suite release \
-        --output artifacts/mesher-acceptance
+        --output checkpoint_files/mesher-acceptance
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _git_value(*arguments: str) -> str:
 
 
 def _diff_hash() -> str:
-    """Hash the mesher-scoped dirty identity without invoking LFS filters."""
+    """Hash the mesher-scoped dirty configuration without invoking LFS filters."""
     digest = hashlib.sha256()
     try:
         status = subprocess.check_output(
@@ -211,7 +211,7 @@ def _build_case(
                 "report": mesher.report.as_dict() if mesher.report is not None else None,
             }
         )
-    except Exception as exc:  # noqa: BLE001 - the manifest must record diagnostics.
+    except Exception as exc:  # noqa: BLE001 - the checkpoint information must record diagnostics.
         result["error_type"] = type(exc).__name__
         result["error"] = str(exc)
     result["elapsed_seconds"] = time.perf_counter() - started
@@ -223,13 +223,13 @@ def _build_case(
 
 def run(suite: str, output: Path) -> int:
     output.mkdir(parents=True, exist_ok=True)
-    previous_manifest: dict[str, Any] = {}
-    previous_path = output / "manifest.json"
+    previous_info: dict[str, Any] = {}
+    previous_path = output / "checkpoint_info.json"
     if previous_path.exists():
         try:
-            previous_manifest = json.loads(previous_path.read_text(encoding="utf-8"))
+            previous_info = json.loads(previous_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            previous_manifest = {}
+            previous_info = {}
     fixture_dir = output / "inputs"
     fixtures = make_acceptance_fixtures(fixture_dir)
     if suite == "quick":
@@ -251,17 +251,15 @@ def run(suite: str, output: Path) -> int:
         for mode in modes
     ]
     # Preserve an explicit visual-review acknowledgement only when the exact
-    # code/input/configuration identity is being rerun and the reviewed image
+    # code/input/configuration configuration is being rerun and the reviewed image
     # files still exist.  Any source or fixture change naturally resets the
-    # mandatory release gate to ``not_inspected``.
-    previous_results = {
-        str(item.get("name")): item for item in previous_manifest.get("results", [])
-    }
-    same_identity = (
-        previous_manifest.get("revision") == _git_value("rev-parse", "HEAD")
-        and previous_manifest.get("dirty_diff_sha256") == _diff_hash()
+    # mandatory release check to ``not_inspected``.
+    previous_results = {str(item.get("name")): item for item in previous_info.get("results", [])}
+    same_configuration = (
+        previous_info.get("revision") == _git_value("rev-parse", "HEAD")
+        and previous_info.get("dirty_diff_sha256") == _diff_hash()
     )
-    if same_identity:
+    if same_configuration:
         for result in results:
             previous = previous_results.get(str(result["name"]))
             image_paths = tuple(previous.get("image_paths", ())) if previous else ()
@@ -275,7 +273,7 @@ def run(suite: str, output: Path) -> int:
             ):
                 result["image_review"] = "inspected"
                 result["image_paths"] = list(image_paths)
-    manifest = {
+    checkpoint_info = {
         "schema": "openonda.cartesian-mesher.acceptance.v1",
         "suite": suite,
         "revision": _git_value("rev-parse", "HEAD"),
@@ -283,12 +281,12 @@ def run(suite: str, output: Path) -> int:
         "python": sys.version,
         "platform": sys.platform,
         "required_cases": len(results),
-        "image_review_policy": "release requires inspected images; this runner records status",
+        "image_review_requirement": "release requires inspected images; this runner records status",
         "results": results,
         "generated_at_epoch": time.time(),
     }
-    (output / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
+    (output / "checkpoint_info.json").write_text(
+        json.dumps(checkpoint_info, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
     )
     failures = [
         item

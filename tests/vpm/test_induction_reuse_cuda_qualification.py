@@ -77,7 +77,7 @@ def _worker(directory):
         for check in (
             checks.test_count_order_signed_zero_and_rollback_are_exact,
             checks.test_identical_stage_zero_copy_hits_but_equal_time_changed_stage_misses,
-            checks.test_health_rate_disabled_then_full_stage_uses_complete_private_result,
+            checks.test_state_check_rate_disabled_then_full_stage_uses_complete_private_result,
             checks.test_failed_miss_leaves_caller_unpublished_and_entry_invalid,
             checks.test_output_precision_mismatch_bypasses_without_rounding,
             checks.test_growth_rebinds_storage_and_matches_original_backend,

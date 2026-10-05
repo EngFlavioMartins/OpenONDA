@@ -93,13 +93,13 @@ def install_tex(prefix: Path) -> None:
     if len(managers) != 1:
         raise RuntimeError(f"Cannot locate TinyTeX's package manager in {tex_root}")
     manager = managers[0]
-    manifest = tex_root / ".openonda-packages.json"
+    package_record = tex_root / ".openonda-packages.json"
     # A working TeX tree remains usable after the yearly upstream repository
     # rollover, and rerunning the installer need not download it again.
-    if not manifest.is_file() or json.loads(manifest.read_text()) != list(PACKAGES):
+    if not package_record.is_file() or json.loads(package_record.read_text()) != list(PACKAGES):
         subprocess.run([str(manager), "update", "--self"], check=True)
         subprocess.run([str(manager), "install", *PACKAGES], check=True)
-        manifest.write_text(json.dumps(PACKAGES) + "\n")
+        package_record.write_text(json.dumps(PACKAGES) + "\n")
     # TeX tools become available through ordinary Conda activation. Keep their
     # actual tree inside this environment, with no system-wide TeX changes.
     for executable in manager.parent.iterdir():

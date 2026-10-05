@@ -1,4 +1,4 @@
-"""Launcher/native-continuation contracts and explicitly synthetic plot rendering."""
+"""Launcher/native-continuation requirements and explicitly synthetic plot rendering."""
 
 import os
 from pathlib import Path
@@ -26,7 +26,7 @@ def test_default_launchers_run_one_local_case_and_preserve_outputs(tmp_path, arg
     current = tmp_path / "solution/native_backup"
     current.parent.mkdir(parents=True)
     current.write_text("checkpoint")
-    history = tmp_path / "study_results/cylinder/historical/pipeline_manifest.json"
+    history = tmp_path / "study_results/cylinder/historical/solver_comparison.json"
     history.parent.mkdir(parents=True)
     history.write_text("historical")
     subprocess.run(
@@ -90,19 +90,21 @@ def test_reference_default_factory_uses_plain_case_directories(monkeypatch):
     assert captured["samples_dir"] == CASE / "reference_flow/samples"
 
 
-def campaign(monkeypatch):
+def parameter_study(monkeypatch):
     module = load_case_module(
-        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_campaign"
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_parameter_study"
     )
     monkeypatch.setattr(module, "_collective_preflight", lambda action: action())
     monkeypatch.setattr(module, "_collective_root_action", lambda action: action())
     monkeypatch.setattr(module, "_collective_barrier", lambda: None)
-    monkeypatch.setattr(module, "write_manifest", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "write_metadata", lambda *args, **kwargs: None)
     return module
 
 
-def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path, monkeypatch):
-    launcher = campaign(monkeypatch)
+def test_reference_parameter_study_resumes_incomplete_grid_using_native_latest(
+    tmp_path, monkeypatch
+):
+    launcher = parameter_study(monkeypatch)
     calls = []
     created = []
 
@@ -153,8 +155,10 @@ def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path
     ]
 
 
-def test_coupled_campaign_uses_native_latest_without_special_backup_manifest(tmp_path, monkeypatch):
-    launcher = campaign(monkeypatch)
+def test_coupled_parameter_study_uses_native_latest_without_special_backup_checkpoint_info(
+    tmp_path, monkeypatch
+):
+    launcher = parameter_study(monkeypatch)
     calls = []
 
     def create_solver(**kwargs):
@@ -177,8 +181,8 @@ def test_coupled_campaign_uses_native_latest_without_special_backup_manifest(tmp
 
 
 @pytest.mark.parametrize("kind", ["reference", "coupled"])
-def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kind):
-    launcher = campaign(monkeypatch)
+def test_parameter_study_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kind):
+    launcher = parameter_study(monkeypatch)
     options = SimpleNamespace(
         override=None,
         reference_cores=1,
@@ -216,14 +220,14 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
         monkeypatch.setattr(launcher, "selected_grids", lambda *args: [("grid", 0.1)])
         monkeypatch.setattr(launcher, "_grid_complete", lambda *args: False)
         monkeypatch.setattr(launcher, "_grid_config", lambda *args: {"name": "grid"})
-        message = "FVM restart admission"
+        message = "FVM restart validation"
         error = RuntimeError
     else:
         from source.coupler.backup import load_coupled_backup
 
         directory = tmp_path / "solution/backups"
         directory.mkdir(parents=True)
-        (directory / "manifest.json").write_text("{corrupt")
+        (directory / "checkpoint_info.json").write_text("{corrupt")
 
         def create_solver(**kwargs):
             path = select_backup(
@@ -237,7 +241,7 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
         monkeypatch.setattr(
             launcher, "_resolved_coupled_config", lambda *args: {"exchange_dt": 0.02}
         )
-        message = "Invalid coupled backup manifest"
+        message = "Invalid coupled backup information"
         error = ValueError
     monkeypatch.setattr(launcher, "load_case_module", lambda *args: setup)
     with pytest.raises(error, match=message):
@@ -245,9 +249,9 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
 
 
 @pytest.mark.parametrize("format", ["png", "pdf"])
-def test_synthetic_campaign_plots_pass_thesis_contract(tmp_path, format):
-    pipeline = load_case_module(
-        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "run_pipeline"
+def test_synthetic_parameter_study_plots_pass_thesis_conditions(tmp_path, format):
+    solver_comparison = load_case_module(
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder", "compare_solvers"
     )
     rows = [
         {
@@ -267,6 +271,6 @@ def test_synthetic_campaign_plots_pass_thesis_contract(tmp_path, format):
             name: {"reference": profile, "coupled": profile} for name in ("span_middle",)
         },
     }
-    pipeline.plot_results(report, tmp_path, format)
+    solver_comparison.plot_results(report, tmp_path, format)
     for name in ("grid_comparison", "span_profiles"):
         assert (tmp_path / f"{name}.{format}").stat().st_size > 1000

@@ -1,4 +1,4 @@
-"""Treecode traversal ownership marker."""
+"""Treecode traversal implementation module."""
 
 from .evaluator import TreecodeInduction
 

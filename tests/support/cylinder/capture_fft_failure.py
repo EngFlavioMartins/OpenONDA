@@ -1,9 +1,9 @@
 """Read-only traceback evidence for an opt-in, failed native qualification.
 
 No device operation is retried and no array is copied back from the GPU. The
-exception's live frames retain the admitted host sources/query and FFT layout,
+exception's live frames retain the validated host sources/query and FFT layout,
 even after the ordinary owner cleanup. This is diagnostic capture, not restart
-state; the coupled committed checkpoint remains the only restart authority.
+state; the coupled committed checkpoint remains the only restart blend_weight.
 """
 
 from dataclasses import asdict, is_dataclass
@@ -25,8 +25,10 @@ def _exceptions(error):
 def _array_layout(array):
     pointer = getattr(getattr(array, "data", None), "ptr", None)
     return {
-        "shape": list(array.shape), "strides": list(array.strides),
-        "dtype": str(array.dtype), "c_contiguous": bool(array.flags.c_contiguous),
+        "shape": list(array.shape),
+        "strides": list(array.strides),
+        "dtype": str(array.dtype),
+        "c_contiguous": bool(array.flags.c_contiguous),
         "pointer": None if pointer is None else int(pointer),
         "pointer_mod_8": None if pointer is None else int(pointer) % 8,
         "pointer_mod_16": None if pointer is None else int(pointer) % 16,
@@ -34,8 +36,12 @@ def _array_layout(array):
 
 
 def collect_fft_failure(error):
-    report = {"scope": "failed-operation layout and unchanged host inputs; NOT a restart checkpoint",
-              "exceptions": [], "fft_frames": [], "field_frames": []}
+    report = {
+        "scope": "failed-operation layout and unchanged host inputs; NOT a restart checkpoint",
+        "exceptions": [],
+        "fft_frames": [],
+        "field_frames": [],
+    }
     arrays = {}
     for exception in _exceptions(error):
         report["exceptions"].append({"type": type(exception).__name__, "message": str(exception)})
@@ -51,16 +57,40 @@ def collect_fft_failure(error):
                     for key in ("array", "output", "result"):
                         if key in local:
                             entry[key] = _array_layout(local[key])
-                    for key in ("shape", "spectrum_shape", "work_bytes", "max_plan_bytes",
-                                "single_workspace", "plan_builds", "closed"):
+                    for key in (
+                        "shape",
+                        "spectrum_shape",
+                        "work_bytes",
+                        "max_plan_bytes",
+                        "single_workspace",
+                        "plan_builds",
+                        "closed",
+                    ):
                         value = getattr(owner, key, None)
                         entry[key] = list(value) if isinstance(value, tuple) else value
                     report["fft_frames"].append(entry)
-                elif path.name == "fields.py" and name in ("__init__", "_stream_fields", "_all_channel_fields"):
-                    entry = {"file": str(path), "function": name, "line": trace.tb_lineno,
-                             "slot": local.get("slot"), "channel": local.get("channel")}
-                    for key in ("shape", "fft_shape", "volume", "spacing", "tau", "cutoff",
-                                "order", "source_only_primary"):
+                elif path.name == "fields.py" and name in (
+                    "__init__",
+                    "_stream_fields",
+                    "_all_channel_fields",
+                ):
+                    entry = {
+                        "file": str(path),
+                        "function": name,
+                        "line": trace.tb_lineno,
+                        "slot": local.get("slot"),
+                        "channel": local.get("channel"),
+                    }
+                    for key in (
+                        "shape",
+                        "fft_shape",
+                        "volume",
+                        "spacing",
+                        "tau",
+                        "cutoff",
+                        "order",
+                        "source_only_primary",
+                    ):
                         value = getattr(owner, key, None)
                         entry[key] = list(value) if isinstance(value, tuple) else value
                     plan = getattr(owner, "execution_plan", None)
@@ -69,18 +99,31 @@ def collect_fft_failure(error):
                         for key in ("free", "total"):
                             value = local.get(key)
                             entry[key + "_device_bytes"] = None if value is None else int(value)
-                        for key in ("estimated_payload_bytes", "max_scratch_bytes", "max_plan_bytes",
-                                    "max_correction_bytes", "max_total_bytes"):
+                        for key in (
+                            "estimated_field_bytes",
+                            "max_scratch_bytes",
+                            "max_plan_bytes",
+                            "max_correction_bytes",
+                            "max_total_bytes",
+                        ):
                             entry[key] = getattr(owner, key, None)
                     report["field_frames"].append(entry)
                 elif path.name == "session.py" and name == "evaluate" and not arrays:
                     source = local.get("source")
                     query = local.get("query")
-                    if (isinstance(source, tuple) and len(source) == 3
-                            and all(isinstance(value, np.ndarray) for value in (*source, query))):
-                        arrays = {key: np.array(value, copy=True, order="C") for key, value in zip(
-                            ("source_position", "source_strength", "source_core", "query"),
-                            (*source, query), strict=True)}
+                    if (
+                        isinstance(source, tuple)
+                        and len(source) == 3
+                        and all(isinstance(value, np.ndarray) for value in (*source, query))
+                    ):
+                        arrays = {
+                            key: np.array(value, copy=True, order="C")
+                            for key, value in zip(
+                                ("source_position", "source_strength", "source_core", "query"),
+                                (*source, query),
+                                strict=True,
+                            )
+                        }
                         report["source_only_primary"] = local.get("source_only")
                         report["images"] = local.get("images")
             trace = trace.tb_next
@@ -94,8 +137,11 @@ def save_fft_failure(error, prefix):
         raise FileExistsError("FFT failure evidence already exists")
     report, arrays = collect_fft_failure(error)
     if not report["fft_frames"] and not report["field_frames"]:
-        return {"captured": False, "reason": "no Gaussian FFT or field-construction traceback frame"}
-    # Validate JSON serialization before creating either artifact.
+        return {
+            "captured": False,
+            "reason": "no Gaussian FFT or field-construction traceback frame",
+        }
+    # Validate JSON serialization before creating either checkpoint_file.
     json.dumps(report, allow_nan=False)
     if arrays:
         with archive.open("xb") as stream:

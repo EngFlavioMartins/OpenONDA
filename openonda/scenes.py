@@ -157,7 +157,7 @@ def render_streamlines(canvas, zbuffer, segments, colors, lower, upper, line_rad
 
 
 def export_scene(output_dir, prepare, *, dpi, pvpython=None):
-    """Publish an explicitly authored scene while owning build resources."""
+    """Render the configured scene and remove its temporary files afterward."""
     from openonda.results import write_json
 
     output_dir = Path(output_dir)

@@ -1,0 +1,119 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "602c7e517294567f8a0caf07d1942a1cf5ed6026a875b590ae2d28b2d7da2d9b",
+  "archive_size": 1369920,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/fvm-boundary_layer-data.tar.gz",
+  "excluded_files": [],
+  "files": [
+    {
+      "path": "samples/forces_history.csv",
+      "sha256": "abefbfcbda4729e0ef67073cdcd85428d7f0dedd121c2ef9a5e5a64d3834a349",
+      "size": 279307
+    },
+    {
+      "path": "solution/backup",
+      "sha256": "bb80375a3a2a8f484c6f2372a932baa2dee5150b0a1be16feab982e765f951a2",
+      "size": 104540
+    },
+    {
+      "path": "solution/cf.csv",
+      "sha256": "0b44f6adf7b30ab966584be0d8bd4aa12f6ef695d8f50678fb5b73b2ff985cd9",
+      "size": 8659
+    },
+    {
+      "path": "solution/diagnostics.jsonl",
+      "sha256": "6326c07a6738d0f170b9e86638da9247336782b691efdef0c31e25323dc92566",
+      "size": 2943947
+    },
+    {
+      "path": "solution/fvm.log",
+      "sha256": "8ed825720738ca368d43f5d0b36e9abb88c3c226dbc7394f06d77818927bc6af",
+      "size": 717978
+    },
+    {
+      "path": "solution/fvm.pvd",
+      "sha256": "fb9fdc7e6ea1b0cc81381ea903b00f15f1befc87689887f850b8b29b6b033b4a",
+      "size": 502
+    },
+    {
+      "path": "solution/fvm/fvm_000000.vtu",
+      "sha256": "c3f152eac4cfd931a8a939825f87bbef9fc652ad623b7d9773b280f75c54c819",
+      "size": 43569
+    },
+    {
+      "path": "solution/fvm/fvm_000217.vtu",
+      "sha256": "071b009a57f95a045a66d14f6844571b51c4701f7eb27e7bf5bd1f5e85ecb6df",
+      "size": 89370
+    },
+    {
+      "path": "solution/fvm/fvm_000433.vtu",
+      "sha256": "bdaed785048dc203902f1ada4882a4c73496804bbf76e8348748e2813de3412d",
+      "size": 89390
+    },
+    {
+      "path": "solution/fvm/fvm_000649.vtu",
+      "sha256": "a30b142b079b2b820ddaba16881d3f5aed78c9b93c450bdd1f43149b1e5d42be",
+      "size": 89390
+    },
+    {
+      "path": "solution/fvm/fvm_000865.vtu",
+      "sha256": "bdaed785048dc203902f1ada4882a4c73496804bbf76e8348748e2813de3412d",
+      "size": 89390
+    },
+    {
+      "path": "solution/fvm/mesh.npz",
+      "sha256": "db5b4dc004764b9712284dcb41cf7b096ccde9325295343a29c1bc5a050ffa12",
+      "size": 104578
+    },
+    {
+      "path": "solution/fvm/mesh.vtu",
+      "sha256": "6874016fb38acffeff921dfe4d0bb56bcbe6c47ddda9b86b9870ea5245b7855f",
+      "size": 42679
+    },
+    {
+      "path": "solution/fvm_metadata.json",
+      "sha256": "7374a260b3a73e32f5d8e18bc54f89156f021566632f1da8480a093412c75189",
+      "size": 8001
+    },
+    {
+      "path": "solution/mesher.log",
+      "sha256": "896b45e2568f70d68472d44bfc1a0fe5b1ab2419b21c4c0db31db272395152cb",
+      "size": 3008
+    },
+    {
+      "path": "solution/performance.jsonl",
+      "sha256": "139317b6e295f4c2226058e789d33d55a34ab60c81af3f440c6ce5e2dc391134",
+      "size": 5310821
+    },
+    {
+      "path": "solution/profiles.csv",
+      "sha256": "01ce496cd473b54dac989755b30bea2cf8ae169dce25b454be3fb19e8af60c62",
+      "size": 7285
+    }
+  ],
+  "source_information": {
+    "commands": [
+      {
+        "launcher": "allrun.sh",
+        "returncode": 0,
+        "wall_seconds": 232.72526329500033
+      },
+      {
+        "launcher": "allplot.sh",
+        "returncode": 0,
+        "wall_seconds": 24.166252891998738
+      }
+    ],
+    "execution": "unchanged installed tutorial, allrun.sh then allplot.sh",
+    "native_outputs": "all samples and solution files preserved losslessly",
+    "setup_sha256": "d685a504ad87f48191ed068d3f1e802db778b912ef1ec9460493fa88dbfc8ca5",
+    "source_commit": "91b668b5",
+    "wheel_sha256": "4fe0599e9cdfaf3822375612dca80d582dcc76f94c6d3d2551121373c29bea15"
+  },
+  "restore_roots": [
+    "samples",
+    "solution"
+  ],
+  "schema_version": 2,
+  "scientific_status": "completed default run to t=8 s; profile and skin-friction comparisons remain out of band (maximum profile error 0.0759, mean skin-friction error 15.34%); not grid-converged qualification"
+}

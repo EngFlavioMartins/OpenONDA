@@ -1,4 +1,4 @@
-"""Particle geometry and canonical VPM flow attribution."""
+"""Particle geometry and standard VPM flow attribution."""
 
 import numpy as np
 import pytest

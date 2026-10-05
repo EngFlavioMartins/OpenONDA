@@ -124,7 +124,7 @@ def build_case(
             induction=vpm.TreecodeInduction(stretching_scheme=stretching_scheme(variant)),
             max_n_particles=MAX_N_PARTICLES,
             random_seed=RANDOM_SEED,
-            health_limits=vpm.HealthLimits(
+            state_limits=vpm.ParticleStateLimits(
                 lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=MAX_LAGRANGIAN_CFL),
                 divergence=vpm.DivergenceLimit(maximum=MAX_VORTICITY_DIVERGENCE),
                 misalignment=vpm.MisalignmentLimit(maximum_degrees=MAX_VORTEX_MISALIGNMENT),
@@ -153,7 +153,7 @@ def build_case(
         run=vpm.RunPlan(
             steps=n_steps,
             final_backup=True,
-            health_limit_action="STOP",
+            state_limit_action="STOP",
         ),
     )
 

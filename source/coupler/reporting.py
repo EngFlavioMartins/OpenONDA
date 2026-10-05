@@ -40,10 +40,10 @@ def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
     if not isinstance(value, Mapping | list | tuple | np.ndarray):
         raise TypeError(f"unsupported diagnostic value {type(value).__name__} at {path}")
     active = set() if _active is None else _active
-    identity = id(value)
-    if identity in active:
+    object_id = id(value)
+    if object_id in active:
         raise ValueError(f"cyclic diagnostic structure at {path}")
-    active.add(identity)
+    active.add(object_id)
     try:
         if isinstance(value, np.ndarray):
             return _diagnostic_json_value(value.tolist(), path, _active=active)
@@ -59,7 +59,7 @@ def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
             for index, child in enumerate(value)
         ]
     finally:
-        active.remove(identity)
+        active.remove(object_id)
 
 
 class OutputRedirector:
@@ -145,9 +145,9 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.Fil
             logger.removeHandler(handler)
             handler.close()
 
-    for policy in list(logger.filters):
-        if isinstance(policy, _CouplingProgress):
-            logger.removeFilter(policy)
+    for progress_filter in list(logger.filters):
+        if isinstance(progress_filter, _CouplingProgress):
+            logger.removeFilter(progress_filter)
     logger.addFilter(_CouplingProgress())
     has_external_handlers = bool(logger.handlers)
     logger.setLevel(logging.INFO)
@@ -237,16 +237,16 @@ class _CouplingProgress(logging.Filter):
 
 def begin_coupling_step(logger: logging.Logger, step: int, n_steps: int, time_end: float) -> None:
     """Collect the next coupling interval without claiming its acceptance."""
-    for policy in logger.filters:
-        if isinstance(policy, _CouplingProgress):
-            policy.begin(step, n_steps, time_end)
+    for progress_filter in logger.filters:
+        if isinstance(progress_filter, _CouplingProgress):
+            progress_filter.begin(step, n_steps, time_end)
 
 
 def finish_coupling_step(logger: logging.Logger, *, final: bool = False) -> None:
     """Close accepted console reporting independently of native diagnostic output."""
-    for policy in logger.filters:
-        if isinstance(policy, _CouplingProgress):
-            policy.finish(logger, final=final)
+    for progress_filter in logger.filters:
+        if isinstance(progress_filter, _CouplingProgress):
+            progress_filter.finish(logger, final=final)
 
 
 def format_coupler_log(topic: str, *rows: log_style.Row) -> log_style.Event:
@@ -352,8 +352,13 @@ def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: f
     if "seconds" in tail:
         summary["induction_seconds"] = tail["seconds"]
     for name in (
-        "source_snapshot_seconds", "query_certificate_seconds", "owner_build_seconds",
-        "owner_prepare_seconds", "owner_close_seconds", "field_owner_hit", "finite_images",
+        "source_snapshot_seconds",
+        "tail_bound_seconds",
+        "field_build_seconds",
+        "field_prepare_seconds",
+        "field_close_seconds",
+        "field_reused",
+        "finite_images",
     ):
         if name in mesh:
             summary[name] = mesh[name]
@@ -724,13 +729,13 @@ def record_step(
     logger: logging.Logger,
     comm=None,
     exchange_started: float | None = None,
-    health_output_time: float = 0.0,
+    state_checks_and_sampling_seconds: float = 0.0,
 ) -> None:
     """Report one accepted exchange through its scheduled checkpoint attempt.
 
     Boundary time includes the initial trace and all post-renewal refreshes.
     Transfer includes renewal and interface state capture/restoration. The four
-    evolution timers exclude health/output and backup. The end-to-end
+    evolution timers exclude state checks/output and backup. The end-to-end
     clock includes those phases, reporting preparation, logging and collective
     waits. Publishing this final timing record itself is outside its scope.
     Nested breakdowns (for example donor gather) are descriptive, not additive.
@@ -753,7 +758,7 @@ def record_step(
             "fvm": float(t_fvm),
             "transfer": float(t_transfer),
             "evolution_total": float(sum(timing)),
-            "health_and_samplers": float(health_output_time),
+            "state_checks_and_samplers": float(state_checks_and_sampling_seconds),
         }
         stats = getattr(coupler, "_step_transfer_stats", None) or {}
         timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
@@ -813,7 +818,7 @@ def record_step(
     backup_time = time.perf_counter() - backup_started
     # save_backup already owns its MPI collectives. Only propagate the captured
     # local failure here, after that call has returned/raised on every rank; no
-    # rank skips publication while another is entering its collective.
+    # rank skips output writing while another is entering its collective.
     try:
         with collective_phase(comm, "accepted exchange backup completion"):
             if backup_failure is not None:
@@ -821,25 +826,25 @@ def record_step(
     except BaseException as error:
         backup_failure = error
     measured_end = time.perf_counter()
-    phases = float(sum(timing) + health_output_time + reporting_time + backup_time)
+    phases = float(sum(timing) + state_checks_and_sampling_seconds + reporting_time + backup_time)
     total = phases if exchange_started is None else measured_end - exchange_started
     timing_data.update(
         {
             "reporting": float(reporting_time),
             "backup": float(backup_time),
-            "orchestration_and_wait": float(total - phases),
+            "coupling_control_and_wait": float(total - phases),
             "total": float(total),
         }
     )
     try:
-        with collective_phase(comm, "accepted exchange timing publication"):
+        with collective_phase(comm, "accepted exchange timing output writing"):
             if coupler._is_master:
                 diagnostics.update(
                     {
                         "step": int(step),
                         "time": float(time_end),
                         "timing_seconds": timing_data,
-                        "timing_scope": "accepted exchange through checkpoint attempt, before timing publication",
+                        "timing_scope": "accepted exchange through checkpoint attempt, before timing output writing",
                         "backup_phase": {
                             "scheduled": backup_due,
                             "status": (
@@ -872,19 +877,23 @@ def record_step(
                         ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
                         ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
                         ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
-                        ("  health and samplers", f"{health_output_time:.3f}", "s"),
+                        (
+                            "  state checks and samplers",
+                            f"{state_checks_and_sampling_seconds:.3f}",
+                            "s",
+                        ),
                         ("  reporting", f"{reporting_time:.3f}", "s"),
                         ("  backup", f"{backup_time:.3f}", "s"),
-                        ("  orchestration and wait", f"{total - phases:.3f}", "s"),
+                        ("  control and wait", f"{total - phases:.3f}", "s"),
                     )
                 )
                 flush_log(logger)
-    except BaseException as publication_failure:
+    except BaseException as output_failure:
         if backup_failure is None:
             raise
         backup_failure.add_note(
-            "Accepted-step diagnostic publication also failed: "
-            f"{type(publication_failure).__name__}: {publication_failure}"
+            "Accepted-step diagnostic output writing also failed: "
+            f"{type(output_failure).__name__}: {output_failure}"
         )
     if backup_failure is not None:
         raise backup_failure.with_traceback(backup_failure.__traceback__)

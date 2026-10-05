@@ -1,4 +1,4 @@
-"""Two-rank speculative seed admission, rollback, and cold-history checks."""
+"""Two-rank speculative seed validation, rollback, and cold-history checks."""
 
 import json
 from types import SimpleNamespace
@@ -45,9 +45,9 @@ def run_case(comm, *, correction, cold_worker=False, failure_at=None, failure_ra
     iteration._write_trace(c, old, old=True)
     iteration._write_trace(c, raw)
     operator = object()
-    prediction._identity = lambda owner, geo: ("exact-fixture-controls", (operator,))
+    prediction._prediction_inputs = lambda owner, geo: ("exact-fixture-controls", (operator,))
     c.interface_predictor._history = {
-        "identity": prediction._identity(c, geometry),
+        "inputs": prediction._prediction_inputs(c, geometry),
         "clock": (10, 0.5),
         "endpoint": prediction._copy_trace(old),
         "correction": trace(correction),
@@ -55,12 +55,12 @@ def run_case(comm, *, correction, cold_worker=False, failure_at=None, failure_ra
     if cold_worker and not master:
         c.interface_predictor.reset()
     starts, inputs, outputs = [], [], []
-    iteration.capture_restart_payload = lambda local: (local.step, local.time, local.value)
+    iteration.capture_restart_state = lambda local: (local.step, local.time, local.value)
 
     def restore(local, state):
         local.step, local.time, local.value = state
 
-    iteration.publish_restart_payload = restore
+    iteration.restore_restart_state = restore
     iteration._particle_state_snapshot = lambda owner, **kwargs: owner.strength
     iteration._restore_particle_state = lambda owner, state: setattr(owner, "strength", state)
 
@@ -108,7 +108,7 @@ def run_case(comm, *, correction, cold_worker=False, failure_at=None, failure_ra
 
     if failure_at is not None and comm.Get_rank() == failure_rank:
         hooks = {
-            "initial_capture": (iteration, "capture_restart_payload"),
+            "initial_capture": (iteration, "capture_restart_state"),
             "eligibility": (prediction, "_clock"),
             "seed_algebra": (prediction, "_same_arrays"),
             "worker_placeholder": (prediction, "_copy_trace"),
@@ -135,7 +135,7 @@ def run_case(comm, *, correction, cold_worker=False, failure_at=None, failure_ra
             assert caught is failure
         assert c.interface_predictor._history is None
         assert c.interface_predictor._pending is None
-        assert c.interface_predictor._active_identity is None
+        assert c.interface_predictor._active_inputs is None
         assert len(inputs) == (1 if failure_at in ("seed_restore", "stage") else 0)
         assert len(outputs) == (1 if failure_at == "stage" else 0)
         c.interface_predictor.commit()

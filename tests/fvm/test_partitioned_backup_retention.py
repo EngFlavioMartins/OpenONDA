@@ -62,12 +62,12 @@ def test_writer_keeps_two_committed_generations_and_unrelated_files(tmp_path, so
     for step in range(4):
         solver.step = step
         partitioned.save_partitioned_solver_backup(solver, tmp_path)
-        generations.append(json.loads((tmp_path / "manifest.json").read_text()))
-    assert json.loads((tmp_path / "manifest.previous.json").read_text()) == generations[-2]
-    for manifest in generations[-2:]:
-        assert all((tmp_path / name).is_file() for name in manifest["files"])
-    for manifest in generations[:-2]:
-        assert all(not (tmp_path / name).exists() for name in manifest["files"])
+        generations.append(json.loads((tmp_path / "checkpoint_info.json").read_text()))
+    assert json.loads((tmp_path / "checkpoint_info.previous.json").read_text()) == generations[-2]
+    for checkpoint_info in generations[-2:]:
+        assert all((tmp_path / name).is_file() for name in checkpoint_info["files"])
+    for checkpoint_info in generations[:-2]:
+        assert all(not (tmp_path / name).exists() for name in checkpoint_info["files"])
     assert unrelated.read_text() == "unrelated data"
 
 
@@ -85,19 +85,21 @@ def test_failed_archive_preserves_current_and_previous(tmp_path, solver, monkeyp
     assert before == {path.name: path.read_bytes() for path in tmp_path.iterdir()}
 
 
-def test_failed_manifest_commit_never_prunes_committed_generations(tmp_path, solver, monkeypatch):
+def test_failed_checkpoint_info_commit_never_prunes_committed_generations(
+    tmp_path, solver, monkeypatch
+):
     for _ in range(2):
         partitioned.save_partitioned_solver_backup(solver, tmp_path)
     before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
     replace = partitioned.os.replace
 
-    def fail_manifest(source, destination):
-        if str(destination).endswith("/manifest.json"):
-            raise OSError("simulated manifest publication failure")
+    def fail_checkpoint_info(source, destination):
+        if str(destination).endswith("/checkpoint_info.json"):
+            raise OSError("simulated checkpoint_info output failure")
         return replace(source, destination)
 
-    monkeypatch.setattr(partitioned.os, "replace", fail_manifest)
-    with pytest.raises(RuntimeError, match="simulated manifest publication failure"):
+    monkeypatch.setattr(partitioned.os, "replace", fail_checkpoint_info)
+    with pytest.raises(RuntimeError, match="simulated checkpoint_info output failure"):
         partitioned.save_partitioned_solver_backup(solver, tmp_path)
     for name, content in before.items():
         assert (tmp_path / name).read_bytes() == content

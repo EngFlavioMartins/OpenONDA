@@ -40,7 +40,10 @@ class ModeProbe:
         self.library = ctypes.PyDLL(str(library))
         self.library.openonda_modes_enter.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)]
         self.library.openonda_modes_enter.restype = ctypes.c_int
-        self.library.openonda_modes_observe.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+        self.library.openonda_modes_observe.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
         self.library.openonda_modes_observe.restype = ctypes.c_int
         self.library.openonda_modes_raise_underflow.argtypes = []
         self.library.openonda_modes_raise_underflow.restype = ctypes.c_int
@@ -110,11 +113,11 @@ def test_restores_actual_rounding_and_preexisting_exception_flags(mode_probe, mo
 
 
 @pytest.mark.parametrize("mode", [1, 2, 3])
-def test_production_admission_rejects_each_actual_nonnearest_mode(mode_probe, mode):
+def test_production_validation_rejects_each_actual_nonnearest_mode(mode_probe, mode):
     with mode_probe.altered(mode):
         with pytest.raises(RuntimeError, match="round-to-nearest"):
             _platform()
-        # The admission probe does not silently change controls to succeed.
+        # The validation probe does not silently change controls to succeed.
         assert mode_probe.observe()[0] == mode
         with ieee.ieee_arithmetic():
             _platform()
@@ -151,13 +154,13 @@ def test_production_tail_after_taichi_restores_actual_host_environment(mode_prob
 
     # This qualification-only outer capture preserves pytest's initial state;
     # Taichi initialization is deliberately OUTSIDE the production arithmetic
-    # scope, whose contract admits synchronous host mathematics only.
+    # scope, whose conditions accepts synchronous host mathematics only.
     with mode_probe.altered(0):
         ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=1)
         try:
-            position = np.array([[.125, -.25, .125]], dtype=np.float32)
-            strength = np.array([[.01, -.02, .03]], dtype=np.float32)
-            radius = np.array([.04], dtype=np.float32)
+            position = np.array([[0.125, -0.25, 0.125]], dtype=np.float32)
+            strength = np.array([[0.01, -0.02, 0.03]], dtype=np.float32)
+            radius = np.array([0.04], dtype=np.float32)
             try:
                 _platform()
             except RuntimeError:
@@ -169,14 +172,12 @@ def test_production_tail_after_taichi_restores_actual_host_environment(mode_prob
             assert mode_probe.observe() == before
             with ieee.ieee_arithmetic():
                 _platform()
-                snapshot = prepare_tail_source(position, strength, radius,
-                                               z_min=-.5, z_max=.5)
-                validate_source_values(snapshot, position, strength, radius,
-                                       z_min=-.5, z_max=.5)
-                result = query_tail_bound(snapshot, [-1., -1., -.5], [1., 1., .5], shells=128)
+                snapshot = prepare_tail_source(position, strength, radius, z_min=-0.5, z_max=0.5)
+                validate_source_values(snapshot, position, strength, radius, z_min=-0.5, z_max=0.5)
+                result = query_tail_bound(snapshot, [-1.0, -1.0, -0.5], [1.0, 1.0, 0.5], shells=128)
             assert mode_probe.observe() == before
-            assert 0. < result.velocity_upper < 1.e-4
-            assert 0. < result.gradient_upper < 1.e-4
+            assert 0.0 < result.velocity_upper < 1.0e-4
+            assert 0.0 < result.gradient_upper < 1.0e-4
             if needs_scope:
                 with pytest.raises(RuntimeError):
                     _platform()

@@ -5,7 +5,7 @@ import pytest
 from scipy.integrate import quad
 from scipy.special import j0, k0
 
-from tests.vpm._slip_periodic_gaussian_oracle import slip_periodic_gaussian
+from tests.vpm._slip_periodic_gaussian_reference import slip_periodic_gaussian
 from tests.vpm._slip_spectral_green_reference import (
     _radial_mode,
     compact_padding_is_alias_free,
@@ -31,7 +31,7 @@ def test_truncated_bessel_formula_matches_independent_radial_quadrature(mu, s):
         assert truncated_green_transform(s, mu, radius) == radius**2 / 4
 
 
-def test_smooth_continuous_fourier_field_matches_independent_infinite_image_oracle():
+def test_smooth_continuous_fourier_field_matches_independent_infinite_image_reference():
     position, strength = [[0.05, -0.05, 0.18]], [[0.2, -0.3, 0.7]]
     targets = [[0.3, 0.1, 0.27], [0.05, -0.05, 0.18]]
     tau = 0.22

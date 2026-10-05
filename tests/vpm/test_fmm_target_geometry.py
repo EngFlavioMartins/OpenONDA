@@ -1,4 +1,4 @@
-"""Reflected-FMM geometry ownership, alias admission, fallback and reuse checks.
+"""Reflected-FMM geometry storage, alias validation, fallback and reuse checks.
 
 WINCKELMANS exercises reflected FMM targets; Gaussian slabs use the separately
 qualified finite mesh operator.
@@ -15,7 +15,7 @@ from source.solvers.vpm.physics.induction.fmm.target_geometry import (
     TargetGeometryCache,
     TargetGeometrySession,
     TargetGeometryStorage,
-    certified_geometry,
+    valid_geometry_storage,
 )
 from tests.vpm._fmm_geometry_harness import Harness
 from tests.vpm.test_fmm_target_geometry_roundoff import field_repeat_evidence
@@ -50,8 +50,8 @@ def test_production_geometry_preserves_fields_tail_and_allocation_across_scopes(
                 np.testing.assert_array_equal(actual, expected)
             assert tail == control_tail
         cache = h.slab.base._image_geometry_cache
-        assert certified_geometry(cache) and cache.active is None and not cache.scope_open
-        owner = cache.storage
+        assert valid_geometry_storage(cache) and cache.active is None and not cache.scope_open
+        workspace = cache.storage
         diagnostics = h.slab.base.diagnostics
         assert (
             diagnostics.image_target_geometry_builds - before["image_target_geometry_builds"] == 3
@@ -64,7 +64,7 @@ def test_production_geometry_preserves_fields_tail_and_allocation_across_scopes(
         h.positions[:, 0] += 0.19
         h.x.from_numpy(h.positions)
         changed, changed_tail = h.run()
-        assert cache.storage is owner and diagnostics.image_geometry_allocations == 1
+        assert cache.storage is workspace and diagnostics.image_geometry_allocations == 1
         assert (
             diagnostics.image_target_geometry_builds - before["image_target_geometry_builds"] == 6
         )
@@ -82,23 +82,23 @@ def test_production_geometry_preserves_fields_tail_and_allocation_across_scopes(
 
 
 def test_active_scope_rejects_rebind_close_and_complete_field_reuse():
-    from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
+    from source.solvers.vpm.physics.induction.reuse_backends import FMMReuseConditions
 
     h = Harness("WINCKELMANS")
     try:
         h.run()
         base, cache = h.slab.base, h.slab.base._image_geometry_cache
         with cache.scope(h.x, h.n, 4):
-            assert not certified_geometry(cache)
-            assert StandardFMMReuseContract(h.slab)() is None
+            assert not valid_geometry_storage(cache)
+            assert FMMReuseConditions(h.slab)() is None
             with pytest.raises(RuntimeError, match="scope"):
                 base.close()
             with pytest.raises(RuntimeError, match="scope"):
                 base.bind(h.slab.physics)
-        assert certified_geometry(cache)
-        owner = cache.storage
+        assert valid_geometry_storage(cache)
+        workspace = cache.storage
         base.close()
-        assert owner.owner is None and base._image_geometry_cache is None
+        assert workspace.fields is None and base._image_geometry_cache is None
         assert base.workspace is None and base._target_workspace is None
         base.close()
         # Explicit FMM teardown does not destroy any caller-owned state.
@@ -173,7 +173,7 @@ def test_geometry_cache_is_bypassed_by_real_output_component_alias():
 
 
 def test_geometry_storage_layout_rebinding_declines_pure_induction_reuse(monkeypatch):
-    from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
+    from source.solvers.vpm.physics.induction.reuse_backends import FMMReuseConditions
 
     h = Harness("WINCKELMANS")
     try:
@@ -181,9 +181,9 @@ def test_geometry_storage_layout_rebinding_declines_pure_induction_reuse(monkeyp
         cache = h.slab.base._image_geometry_cache
         with monkeypatch.context() as patch:
             patch.setattr(cache.storage, "left", cache.storage.right)
-            assert not certified_geometry(cache)
-            assert StandardFMMReuseContract(h.slab)() is None
-        assert certified_geometry(cache)
+            assert not valid_geometry_storage(cache)
+            assert FMMReuseConditions(h.slab)() is None
+        assert valid_geometry_storage(cache)
     finally:
         h.slab.base.close()
 
@@ -222,12 +222,12 @@ def test_clean_allocation_decline_uses_original_prepare_without_poisoning(monkey
     cache.close()
 
 
-def test_session_class_override_is_not_certified_even_between_scopes(monkeypatch):
+def test_session_class_override_invalidates_storage_between_scopes(monkeypatch):
     cache = TargetGeometryCache(0, FMMDiagnostics())
-    assert certified_geometry(cache)
+    assert valid_geometry_storage(cache)
     with monkeypatch.context() as patch:
         patch.setattr(TargetGeometrySession, "prepare", lambda *args, **kwargs: None)
-        assert not certified_geometry(cache)
+        assert not valid_geometry_storage(cache)
     cache.close()
 
 
@@ -240,17 +240,17 @@ def test_session_class_override_is_not_certified_even_between_scopes(monkeypatch
     ],
 )
 def test_class_override_before_first_scope_uses_original_rebuild(monkeypatch, cls, method):
-    from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
+    from source.solvers.vpm.physics.induction.reuse_backends import FMMReuseConditions
 
     h = Harness("WINCKELMANS")
     calls = []
     try:
         base = h.slab.base
-        assert base._image_geometry_cache is None and certified_geometry(None)
+        assert base._image_geometry_cache is None and valid_geometry_storage(None)
         with monkeypatch.context() as patch:
             patch.setattr(cls, method, lambda *args, **kwargs: calls.append((args, kwargs)))
-            assert not certified_geometry(None)
-            assert StandardFMMReuseContract(h.slab)() is None
+            assert not valid_geometry_storage(None)
+            assert FMMReuseConditions(h.slab)() is None
             with base._fixed_image_targets(
                 h.x,
                 h.n,
@@ -274,10 +274,10 @@ def test_geometry_class_rebinding_fails_closed_before_first_scope(monkeypatch):
 
     with monkeypatch.context() as patch:
         patch.setattr(target_geometry, "TargetGeometryStorage", lambda count: None)
-        assert not certified_geometry(None)
+        assert not valid_geometry_storage(None)
 
 
-def test_session_constructor_failure_never_publishes_open_lease(monkeypatch):
+def test_session_constructor_failure_never_opens_geometry_scope(monkeypatch):
     cache = TargetGeometryCache(96 * 16, FMMDiagnostics())
     try:
         with cache.scope(object(), 11, 4):
@@ -295,9 +295,9 @@ def test_session_constructor_failure_never_publishes_open_lease(monkeypatch):
             ):
                 pytest.fail("failed session must not yield")
         assert not cache.scope_open and cache.active is None and cache.storage is storage
-        assert certified_geometry(cache)
+        assert valid_geometry_storage(cache)
         cache.close()
-        assert storage.owner is None and cache.closed
+        assert storage.fields is None and cache.closed
     finally:
         cache.close()
 

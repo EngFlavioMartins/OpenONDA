@@ -1463,8 +1463,8 @@ def project_cfmesh_template(
     )
     # The native stage performs a local nearest-surface search for each
     # boundary point.  The same geometric predicate is evaluated here in one
-    # compiled VTK/index batch; retaining the canonical combined surface avoids
-    # a second patch-specific geometry authority and keeps this stage bounded
+    # compiled VTK/index batch; retaining the standard combined surface avoids
+    # a second patch-specific reference geometry and keeps this stage bounded
     # for the production reference grid.
     mapped_points, _distances, _triangle_ids = global_index.nearest_points(
         points[boundary_point_ids]

@@ -214,7 +214,7 @@ def test_scheduled_and_manual_backups_share_surface_writer(tmp_path, monkeypatch
         vlm_solver=SimpleNamespace(save_results=save_results),
         _sync_restart_state=lambda: None,
         _refresh_backup_particle_fields=lambda: None,
-        _write_run_manifest=lambda *args: None,
+        _write_run_metadata=lambda *args: None,
         _run_started=True,
     )
     solver.io = SolverIO(solver)

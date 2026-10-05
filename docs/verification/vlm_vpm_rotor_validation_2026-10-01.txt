@@ -14,7 +14,7 @@ wake_1D: finite-distance VC diagnostic axial=0.7622 m/s (48/48 bins, scaled 197.
 wake_2D: finite-distance VC diagnostic axial=1.204 m/s (48/48 bins, scaled 238.30%); azimuthal=0.1364 m/s (48/48 bins, scaled 62.27%)
 [DIAGNOSTIC FLAG] wake_2D: finite-distance axial comparison is outside the predeclared 25% screen
 [DIAGNOSTIC FLAG] wake_2D: finite-distance azimuthal comparison is outside the predeclared 35% screen
-[UNQUALIFIED] Finite-distance vortex-cylinder comparisons are diagnostic only; the screens are not uncertainty-based acceptance gates.
+[UNQUALIFIED] Finite-distance vortex-cylinder comparisons are diagnostic only; the screens are not uncertainty-based accuracy checks.
 [FAIL] configured run is incomplete
 [FAIL] wake_1D: no resolved stationary wake within1% field drift
 [FAIL] wake_2D: no resolved stationary wake within1% field drift

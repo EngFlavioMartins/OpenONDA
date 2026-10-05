@@ -6,7 +6,7 @@ Owns all logic for:
 
 Nothing in this module imports from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
-orchestrator.
+step controller.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: March 2026

@@ -11,10 +11,10 @@ import sys
 
 import pytest
 
-from openonda.tutorials import _EXCLUDED_PARTS, TUTORIALS, materialize_tutorial
+from openonda.tutorials import _EXCLUDED_PARTS, TUTORIALS, copy_tutorial
 
 
-def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
+def test_fvm_tutorials_use_native_mpi_setup_and_rank_assignment():
     """Guard setups, launchers and assets against reintroducing MPI workarounds."""
     root = Path(__file__).resolve().parents[2] / "tutorials"
     runtime_modules = ("mpi4py", "petsc4py", "source.solvers.fvm.core.parallel")
@@ -36,9 +36,9 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
         for path in (root / family).rglob("*"):
             if any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts):
                 continue
-            # Campaign orchestrators are research tools, outside the direct
+            # Parameter studies are research tools, outside the direct
             # tutorial setup/launcher learning surface checked here.
-            if path.name in {"run_campaign.py", "run_pipeline.py", "run_sensitivity.py"}:
+            if path.name in {"run_parameter_study.py", "compare_solvers.py", "run_sensitivity.py"}:
                 continue
             if path.suffix not in (".py", ".sh"):
                 continue
@@ -82,7 +82,7 @@ def test_fvm_tutorials_leave_mpi_configuration_and_ownership_in_the_library():
     ids=lambda tutorial: tutorial.name,
 )
 def test_default_setup_reaches_solver_without_environment_knobs(tmp_path, tutorial):
-    case = materialize_tutorial(tutorial.name, tmp_path / "workspace with spaces")
+    case = copy_tutorial(tutorial.name, tmp_path / "workspace with spaces")
     probe = tmp_path / "probe.py"
     probe.write_text("""
 import sys

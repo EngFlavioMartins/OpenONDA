@@ -51,7 +51,7 @@ def compute_dev2_stress_source(velocity_gradient, kinematic_viscosity, mesh_data
     the cell volume, ready to add to ``source_explicit``.  In a fully periodic
     constant-viscosity domain the transpose-stress divergence is identically
     zero in incompressible flow; the conservative face flux is the discrete
-    divergence authority, so that special case returns zero.  Meshes with
+    divergence measure, so that special case returns zero.  Meshes with
     physical boundaries retain the term so momentum assembly and reported
     wall traction use the same discrete stress.
     """

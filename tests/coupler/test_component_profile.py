@@ -9,8 +9,7 @@ import pytest
 
 def load_profile():
     asset = (
-        Path(__file__).resolve().parents[2]
-        / "tests/support/cylinder/profile_solver_components.py"
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder/profile_solver_components.py"
     )
     spec = importlib.util.spec_from_file_location("component_profile_test_asset", asset)
     module = importlib.util.module_from_spec(spec)
@@ -73,7 +72,7 @@ def test_nonmaster_does_not_access_particle_or_device_state():
     assert measurements == {}
 
 
-def test_reuse_dispatch_is_timed_without_modifying_certified_backend(monkeypatch):
+def test_reuse_dispatch_is_timed_without_modifying_existing_backend(monkeypatch):
     import taichi as ti
 
     monkeypatch.setattr(ti, "sync", lambda: None)
@@ -98,7 +97,9 @@ def test_reuse_dispatch_is_timed_without_modifying_certified_backend(monkeypatch
     coupler = SimpleNamespace(
         _is_master=True,
         vpm_solver=SimpleNamespace(
-            stepper=SimpleNamespace(), stage_rhs=stage, induction=induction,
+            stepper=SimpleNamespace(),
+            stage_rhs=stage,
+            induction=induction,
             output_manager=SimpleNamespace(),
         ),
     )

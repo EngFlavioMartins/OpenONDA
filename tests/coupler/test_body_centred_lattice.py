@@ -1,4 +1,4 @@
-"""Every body uses the same mesh-derived transfer lattice and wall contract."""
+"""Every body uses the same mesh-derived transfer lattice and wall comparison_settings."""
 
 from types import SimpleNamespace
 
@@ -72,7 +72,7 @@ def test_lattice_translates_with_mesh_and_ignores_donor_order(spacing):
     translated = box_transfer(spacing, displacement, seed=59)._stable_renewal_lattice
     np.testing.assert_allclose(translated.positions - displacement, original.positions, atol=2e-14)
     np.testing.assert_allclose(translated.mesh_weight, original.mesh_weight, atol=2e-14)
-    np.testing.assert_allclose(translated.fvm_authority, original.fvm_authority, atol=2e-14)
+    np.testing.assert_allclose(translated.fvm_blend_weight, original.fvm_blend_weight, atol=2e-14)
 
 
 def test_wall_shape_and_patch_partition_do_not_select_a_lattice_phase():

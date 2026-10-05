@@ -5,7 +5,7 @@ import pytest
 
 import openonda.fvm as fvm
 from source.solvers.fvm.core.solver import FVMSolver
-from source.solvers.fvm.io.backup import capture_restart_payload, publish_restart_payload
+from source.solvers.fvm.io.backup import capture_restart_state, restore_restart_state
 from source.solvers.fvm.solve import simple_solver
 from tests._tutorial_helpers import load_tutorial_module
 
@@ -59,12 +59,12 @@ def test_multiple_pressure_correctors_preserve_uniform_flow_and_bounded_ibm_load
         initial_energy = 0.5 * np.sum(volume)
         for step in range(40):
             if immersed and step == 20:
-                checkpoint = capture_restart_payload(solver)
+                checkpoint = capture_restart_state(solver)
                 solver.advance()
                 expected_velocity = solver.velocity.copy()
                 expected_flux = solver.volumetric_face_flux.copy()
                 expected_time = solver.time
-                publish_restart_payload(solver, checkpoint)
+                restore_restart_state(solver, checkpoint)
                 for boundary in solver.boundaries:
                     if boundary.get("velocity_type") == "freestream":
                         boundary["_freestream_outflow"] = ~boundary["_freestream_outflow"]

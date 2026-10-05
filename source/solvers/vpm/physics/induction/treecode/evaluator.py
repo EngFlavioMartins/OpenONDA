@@ -1,4 +1,4 @@
-"""Barnes--Hut induction evaluator behind the common VPM stage contract."""
+"""Barnes--Hut induction evaluator behind the common VPM stage conditions."""
 
 from typing import Self
 
@@ -64,7 +64,7 @@ class TreecodeInduction:
         Parameters
         ----------
         stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
-            Formulation used to contract the hierarchical velocity gradient
+            Formulation used to conditions the hierarchical velocity gradient
             into ``dGamma/dt``. The tree traversal and induced velocity are
             unchanged by this choice.
         theta : float, default=0.1
@@ -251,10 +251,10 @@ class TreecodeInduction:
         velocity_gradient_out : object or None, default=None
             Optional gradient output, shape ``(count, 3, 3)``, in 1/s.
         strength_rate_enabled : bool, default=True
-            If true, contract the same hierarchical gradient used by the
+            If true, conditions the same hierarchical gradient used by the
             backend. If false, explicitly zero the rate field.
         stage_time : float, default=0.0
-            Stage time in seconds; accepted for the common contract and not
+            Stage time in seconds; accepted for the common conditions and not
             used by the autonomous treecode.
 
         Raises

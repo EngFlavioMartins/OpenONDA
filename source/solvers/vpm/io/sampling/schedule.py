@@ -1,7 +1,7 @@
 """Typed schedules for output events.
 
 Schedules are value objects. They retain no event history: exactly-once
-delivery and restart reconciliation are responsibilities of ``OutputManager``.
+delivery and restart history trimming are responsibilities of ``OutputManager``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ class OutputSchedule(Protocol):
 
     Implementations retain no event history. They receive the current accepted
     step/time and the step duration in seconds; exactly-once delivery and
-    restart reconciliation belong to :class:`OutputManager`.
+    restart history trimming belong to :class:`OutputManager`.
     """
 
     @property
@@ -141,7 +141,7 @@ class FinalOnly:
     Notes
     -----
     This parameterless value object retains no state. ``OutputManager`` owns
-    exactly-once final dispatch and restart reconciliation.
+    exactly-once final dispatch and restart history trimming.
     """
 
     @property

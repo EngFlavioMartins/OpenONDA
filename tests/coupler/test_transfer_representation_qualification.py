@@ -84,7 +84,7 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         empty_spanwise=True,
     )
     setup = FVMSetup(
-        case_name=f"oracle_{mode}_{n}",
+        case_name=f"reference_{mode}_{n}",
         time=TimeConfig(
             time_step_size=dt,
             end_time=steps * dt,
@@ -240,7 +240,7 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
     error = float(np.max(np.abs(target - [0.0, 0.0, 1.0])))
     record_property("constant_vorticity_max_error", error)
     assert error < 3.0e-14
-    np.testing.assert_array_equal(lattice.fvm_authority[interior], 1.0)
+    np.testing.assert_array_equal(lattice.fvm_blend_weight[interior], 1.0)
 
 
 @pytest.mark.qualification

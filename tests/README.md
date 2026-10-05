@@ -5,9 +5,9 @@ commands for selecting checks.
 
 | Location | Coverage |
 | --- | --- |
-| [vpm/](vpm/) | Particle methods, Taichi kernels, stage integration, induction, diffusion, turbulence, stabilization, boundary elements, health and restart/output. |
+| [vpm/](vpm/) | Particle methods, Taichi kernels, stage integration, induction, diffusion, turbulence, stabilization, boundary elements, particle state checks and restart/output. |
 | [fvm/](fvm/) | Mesh/field validity, discretization, pressure–velocity solution, time-step control, boundaries and restart. |
-| [coupler/](coupler/) | Transfers, interpolation, ownership, synchronization, conservation and coupled restart/failure behavior. |
+| [coupler/](coupler/) | Transfers, interpolation, cell partitions, synchronization, conservation and coupled restart/failure behavior. |
 | [tutorials/](tutorials/) | Case construction, installed entry points, samples, source selection and tutorial/figure behavior. |
 | [mesh_parity/](mesh_parity/) | Native mesh checks and comparisons requiring their declared reference runtimes. |
 | Root test modules | Public imports/API, installation, process runtime, storage and shared plotting. |
@@ -22,7 +22,7 @@ python -m pytest tests -m "unit and not gpu"
 
 Available markers are declared in [pyproject.toml](../pyproject.toml): `unit`,
 `integration`, `qualification`, `tutorial`, `slow`, `gpu` and `stochastic`.
-A marker describes the check; it does not certify the software's physical scope.
+A marker describes the check; it does not establish the software's physical scope.
 
 GPU checks require a supported device. MPI and external OpenFOAM/cfMesh
 comparisons require their separate runtimes. These are not prerequisites for

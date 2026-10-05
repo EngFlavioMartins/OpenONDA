@@ -9,7 +9,7 @@ from source.simulation.forcing import VelocityRamp
 
 @dataclass(frozen=True)
 class CouplerSetup:
-    """Configure the canonical FVM--VPM exchange.
+    """Configure the standard FVM--VPM exchange.
 
     Solver cases own viscosity, density, geometry, mesh/particle resolution and
     time steps. The driver checks their compatibility. Particle strengths are
@@ -20,11 +20,11 @@ class CouplerSetup:
     freestream_velocity: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     """Cartesian background velocity in m/s; must match the VPM."""
     freestream: VelocityRamp | None = None
-    """Optional accepted-endpoint background history, included in restart identity."""
+    """Optional accepted-endpoint background history, included in restart configuration."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
-    """FVM-authoritative bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m."""
+    """FVM-derived bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m."""
     eta_blend_width: float = 0.0
-    """Width of the smooth authority ramp inside the transfer faces, in m."""
+    """Width of the smooth blending ramp inside the transfer faces, in m."""
     vpm_only_width: float = 0.0
     """VPM-owned band inside transfer faces, in m; smaller than the ramp."""
     transfer_vorticity_cutoff: float = 0.05
@@ -108,7 +108,7 @@ class CouplerSetup:
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
 
     def to_dict(self) -> dict[str, object]:
-        """Return numerical and physical controls for restart identity checks."""
+        """Return numerical and physical controls for restart configuration checks."""
         values = dict(vars(self))
         values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:

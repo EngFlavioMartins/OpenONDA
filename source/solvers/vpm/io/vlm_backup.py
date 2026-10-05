@@ -12,7 +12,7 @@ from ..boundary_elements.vlm.solver.vtk_export import CELL_FIELDS, write_lattice
 
 
 def _read_surface_entries(solution_directory: Path) -> list[tuple[float, str]]:
-    """Read the canonical VLM collection and validate its relative entries."""
+    """Read the standard VLM collection and validate its relative entries."""
     collection = collection_path(solution_directory, "vlm")
     if not collection.is_file():
         return []

@@ -1,4 +1,4 @@
-"""Reusable device-only snapshots for provisional particle transactions.
+"""Reusable device-only snapshots for provisional particle state updates.
 
 These are disposable scratch buffers, not restart files or source-field caches.
 Every capture copies the current device fields. A monotonically increasing
@@ -91,15 +91,15 @@ class ParticleSnapshotBuffer:
         builder.dense(ti.i, self.capacity).place(*fields)
         self._tree = builder.finalize()
 
-    def capture(self, particles, *, prepare_lineage: bool = False):
+    def capture(self, particles, *, prepare_refinement_reference: bool = False):
         count = int(particles.n_particles_total)
         if self._tree is None or count > self.capacity:
             raise RuntimeError("Particle snapshot storage cannot hold the current cloud")
         _copy_fields(particles, self, count, True)
         self.generation += 1
         snapshot = ParticleSnapshot(self, self.generation, count, particles)
-        if prepare_lineage:
-            snapshot.prepare_lineage()
+        if prepare_refinement_reference:
+            snapshot.prepare_refinement_reference()
         return snapshot
 
     def destroy(self) -> None:
@@ -111,18 +111,18 @@ class ParticleSnapshotBuffer:
 
 @dataclass
 class ParticleSnapshot:
-    """Single-generation handle; only its originating particle owner may restore it."""
+    """Single-generation handle; only its originating particle container may restore it."""
 
     buffer: ParticleSnapshotBuffer
     generation: int
     count: int
-    owner: object
-    lineage: tuple[np.ndarray, np.ndarray] | None = None
+    particles: object
+    refinement_reference: tuple[np.ndarray, np.ndarray] | None = None
     finite_validated: bool = False
 
     def _validate(self, particles) -> None:
-        if particles is not self.owner:
-            raise ValueError("Particle snapshot belongs to another solver")
+        if particles is not self.particles:
+            raise ValueError("Particle snapshot belongs to another particle container")
         if self.buffer._tree is None or self.generation != self.buffer.generation:
             raise RuntimeError("Particle snapshot scratch slot has been reused or released")
         if self.count > particles.capacity:
@@ -132,19 +132,19 @@ class ParticleSnapshot:
                 raise ValueError("Particle snapshot contains non-finite replacement fields")
             self.finite_validated = True
 
-    def prepare_lineage(self) -> tuple[np.ndarray, np.ndarray]:
-        """Preserve refinement bookkeeping only when lineage is active.
+    def prepare_refinement_reference(self) -> tuple[np.ndarray, np.ndarray]:
+        """Preserve refinement bookkeeping only when refinement is active.
 
-        Normal coupling needs no particle downloads. Optional refinement lineage
-        still lives on the host, so its two inputs use the existing float64 norm
+        Normal coupling needs no particle downloads. Optional refinement references
+        still live on the host, so its two inputs use the existing float64 norm
         and cube-root path rather than changing reduction precision.
         """
-        self._validate(self.owner)
-        if self.lineage is None:
+        self._validate(self.particles)
+        if self.refinement_reference is None:
             strength = self.buffer.vortex_strength.to_numpy()[: self.count].astype(np.float64)
             volume = self.buffer.particle_volume.to_numpy()[: self.count].copy()
-            self.lineage = (np.linalg.norm(strength, axis=1), volume)
-        return self.lineage
+            self.refinement_reference = (np.linalg.norm(strength, axis=1), volume)
+        return self.refinement_reference
 
     def restore(self, particles) -> None:
         self._validate(particles)

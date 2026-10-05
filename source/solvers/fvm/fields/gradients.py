@@ -201,7 +201,7 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     -----
     Boundary ghost values are copied/interpolated according to patch metadata,
     processor halos are exchanged when partitioned, and boundary-normal
-    components are corrected using the patch ``snGrad`` contract.
+    components are corrected using the patch ``snGrad`` comparison_settings.
     """
 
     # Determine field type

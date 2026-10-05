@@ -18,7 +18,7 @@ from time import perf_counter
 import numpy as np
 import taichi as ti
 
-from ..treecode.lbvh import TaichiTreecode, _OwnedFields
+from ..treecode.lbvh import TaichiTreecode, _DeviceFields
 from .device import (
     _FMM_LEAF_CAPACITY,
     _M2L_BATCH_SIZE,
@@ -99,7 +99,7 @@ class TargetBlockNotWorthwhile(RuntimeError):  # noqa: N818 -- an optional fast-
     """A bounded local-expansion trial declined without publishing any output.
 
     The caller must use its pointwise operator for this complete tile
-    and block. This is a cost decision, never an image truncation or health gate.
+    and block. This is a cost decision, never an image truncation or particle state check.
     """
 
     def __init__(self, required_pairs, capacity, diagnostics=None):
@@ -141,7 +141,7 @@ class FMMTargetEvaluator:
         self.source = source_workspace
         self.monopole_radial_kernel = source_workspace.kernel_name in {"GAUSSIAN", "WINCKELMANS"}
         self.source_separation = 2.0 / math.sqrt(float(source_workspace.tree.theta_sq))
-        # Arbitrary targets require the stricter LBVH blob-tail gate
+        # Arbitrary targets require the stricter LBVH blob-tail check
         # as well as the particle FMM regularization threshold.
         self.target_core_cutoff = max(
             float(source_workspace.tree.regularization_tail_cutoff[None]),
@@ -164,7 +164,7 @@ class FMMTargetEvaluator:
             hierarchy_only=True,
             max_evaluation_points=1,
         )
-        fields = _OwnedFields()
+        fields = _DeviceFields()
         self._fields = fields
         self.zero_strength = fields.vector(3, dtype=ti.f32, shape=self.max_targets)
         self.zero_radius = fields.scalar(dtype=ti.f32, shape=self.max_targets)
@@ -258,7 +258,7 @@ class FMMTargetEvaluator:
             previous = self._pair_fields
             self._pair_fields = None
             previous.destroy()
-        fields = _OwnedFields()
+        fields = _DeviceFields()
         self._pair_fields = fields
         self.m2l_target = fields.scalar(dtype=ti.i32, shape=capacity)
         self.m2l_source = fields.scalar(dtype=ti.i32, shape=capacity)
@@ -284,21 +284,21 @@ class FMMTargetEvaluator:
         self.max_pairs = capacity
 
     def destroy(self):
-        owners = (self._pair_fields, self._fields, self.tree)
+        workspaces = (self._pair_fields, self._fields, self.tree)
         self._pair_fields = self._fields = self.tree = None
-        if not any(owner is not None for owner in owners):
+        if not any(workspace is not None for workspace in workspaces):
             return
         failures = []
         try:
             ti.sync()
         except BaseException as error:
             failures.append(error)
-        # Release independent owners even if synchronization or one release
+        # Release independent workspaces even if synchronization or one release
         # fails, and never retain a handle to already-destroyed scratch.
-        for owner in owners:
-            if owner is not None:
+        for workspace in workspaces:
+            if workspace is not None:
                 try:
-                    owner.destroy()
+                    workspace.destroy()
                 except BaseException as error:
                     failures.append(error)
         if failures:
@@ -307,13 +307,13 @@ class FMMTargetEvaluator:
             raise failures[0]
 
     def estimated_memory_bytes(self):
-        """Owned dense field payload, excluding allocator/compiler overhead."""
+        """Owned dense field data, excluding allocator/compiler overhead."""
         from taichi.lang.field import Field
 
         total = 0
         seen = set()
-        for owner in (self, self.tree):
-            for field in vars(owner).values():
+        for workspace in (self, self.tree):
+            for field in vars(workspace).values():
                 if isinstance(field, Field) and id(field) not in seen:
                     seen.add(id(field))
                     components = getattr(field, "n", 1) * getattr(field, "m", 1)
@@ -861,7 +861,7 @@ class FMMTargetEvaluator:
         else:
             # Internal users can still exercise other radial families, whose
             # source hierarchy uses Gaussian metadata but not Gaussian physics.
-            # Production image-block dispatch currently admits only G/W.
+            # Production image-block dispatch currently accepts only G/W.
             factors = self.source.radial_factors(radius / core, core, True)
             velocity = -factors[0] * cross
             gradient = factors[0] * self.source.tree.skew(strength) + factors[

@@ -1,4 +1,4 @@
-"""Shared geometry helpers for canonical flow initialization."""
+"""Shared geometry helpers for standard flow initialization."""
 
 from __future__ import annotations
 

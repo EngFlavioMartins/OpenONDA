@@ -1,4 +1,4 @@
-"""Independent geometric/partition gates for pressure boundary reconstruction."""
+"""Independent geometric/partition numerical_checks for pressure boundary reconstruction."""
 
 from types import SimpleNamespace
 
@@ -14,9 +14,8 @@ from source.solvers.fvm.mesh.partition import localize_mesh_and_geometry
 from source.solvers.fvm.solve import simple_solver
 from tests.support.fvm_mesh import structured_box
 
-
-JACOBIAN = np.array([[.2, -.7, 1.3], [.6, -.1, -.4], [-.8, 1.2, -.1]])
-TRANSFORM = np.array([[1., .3, -.2], [.1, 1.2, .4], [.2, -.1, .8]])
+JACOBIAN = np.array([[0.2, -0.7, 1.3], [0.6, -0.1, -0.4], [-0.8, 1.2, -0.1]])
+TRANSFORM = np.array([[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]])
 
 
 def _skew_box():
@@ -39,10 +38,13 @@ def test_real_stencil_ignores_poisoned_face_ghosts_and_reuses_geometry_cache():
         is_partitioned=True, exchange_halo=_no_collectives, global_max=_no_collectives
     )
     faces = _boundary_faces(mesh)
-    values = geometry["cell_centre"] @ JACOBIAN.T + [.3, -.2, .1]
+    values = geometry["cell_centre"] @ JACOBIAN.T + [0.3, -0.2, 0.1]
     ghosts = np.full((len(faces), 3), np.nan)
     first = boundary_owner_gradient(
-        np.concatenate((values, ghosts)), mesh, geometry, faces,
+        np.concatenate((values, ghosts)),
+        mesh,
+        geometry,
+        faces,
         displacements=geometry["cell_connection_vector"][faces],
     )
     np.testing.assert_allclose(first, np.broadcast_to(JACOBIAN.T, first.shape), atol=2e-13)
@@ -50,7 +52,10 @@ def test_real_stencil_ignores_poisoned_face_ghosts_and_reuses_geometry_cache():
     # Cached geometry must consume the new real field, never cached values or
     # the physical ghosts. No hidden collective is needed after halo refresh.
     second = boundary_owner_gradient(
-        np.concatenate((-2 * values, np.full_like(ghosts, 1e99))), mesh, geometry, faces,
+        np.concatenate((-2 * values, np.full_like(ghosts, 1e99))),
+        mesh,
+        geometry,
+        faces,
         displacements=geometry["cell_connection_vector"][faces],
     )
     assert geometry["_boundary_owner_lsq_real"] is cache
@@ -69,13 +74,19 @@ def test_rank_two_stencil_accepts_identifiable_plane_and_rejects_span_extrapolat
     matrix[:, 2] = 0
     values = geometry["cell_centre"] @ matrix.T
     actual = boundary_owner_gradient(
-        values, mesh, geometry, in_plane,
+        values,
+        mesh,
+        geometry,
+        in_plane,
         displacements=geometry["cell_connection_vector"][in_plane],
     )
     np.testing.assert_allclose(actual, np.broadcast_to(matrix.T, actual.shape), atol=3e-14)
     with pytest.raises(ValueError, match="cannot resolve extrapolation direction"):
         boundary_owner_gradient(
-            values, mesh, geometry, span,
+            values,
+            mesh,
+            geometry,
+            span,
             displacements=geometry["cell_connection_vector"][span],
         )
 
@@ -89,7 +100,7 @@ def test_native_boundary_gradient_is_affine_exact_at_skew_face_location(componen
         patch.update(velocity_type="fixedValue", pressure_type="fixedValue")
     faces = _boundary_faces(mesh)
     points = np.concatenate((geometry["cell_centre"], geometry["face_centre"][faces]))
-    field = points @ JACOBIAN.T + [.3, -.2, .1]
+    field = points @ JACOBIAN.T + [0.3, -0.2, 0.1]
     if components == 1:
         field = field[:, 0]
     if scheme == "lsq":
@@ -105,9 +116,12 @@ def test_native_boundary_gradient_is_affine_exact_at_skew_face_location(componen
 
 def test_real_processor_neighbors_preserve_serial_boundary_gradient_without_collectives():
     mesh, geometry = _skew_box()
-    field = geometry["cell_centre"] @ JACOBIAN.T + [.3, -.2, .1]
+    field = geometry["cell_centre"] @ JACOBIAN.T + [0.3, -0.2, 0.1]
     expected = boundary_owner_gradient(
-        field, mesh, geometry, _boundary_faces(mesh),
+        field,
+        mesh,
+        geometry,
+        _boundary_faces(mesh),
         displacements=geometry["cell_connection_vector"][_boundary_faces(mesh)],
     )
     global_gradient = np.zeros((mesh["n_faces"], 3, 3))
@@ -122,7 +136,10 @@ def test_real_processor_neighbors_preserve_serial_boundary_gradient_without_coll
         faces = np.flatnonzero(ids >= mesh["n_interior_faces"])
         values = field[partition.local_global_ids]
         actual = boundary_owner_gradient(
-            values, local, geo, faces,
+            values,
+            local,
+            geo,
+            faces,
             displacements=geo["cell_connection_vector"][faces],
         )
         np.testing.assert_allclose(actual, global_gradient[ids[faces]], atol=3e-13)
@@ -132,24 +149,26 @@ def test_real_processor_neighbors_preserve_serial_boundary_gradient_without_coll
     assert saw_processor_neighbor
 
 
-@pytest.mark.parametrize("diagonal", [False, True], ids=["scalar_variable_D", "diagonal_variable_D"])
+@pytest.mark.parametrize(
+    "diagonal", [False, True], ids=["scalar_variable_D", "diagonal_variable_D"]
+)
 def test_skew_linear_pressure_flux_uses_same_variable_inverse_and_no_extra_pressure_data(diagonal):
     mesh, geometry = _skew_box()
     faces = _boundary_faces(mesh)
     owners = mesh["owners"][faces]
     n_cells = mesh["n_cells"]
     normal = geometry["face_area_vector"][faces] / geometry["face_area"][faces, None]
-    gradient = np.array([.7, -.4, .2])
+    gradient = np.array([0.7, -0.4, 0.2])
     centres = geometry["cell_centre"]
-    coefficient = .025 + .003 * centres[:, 0]
+    coefficient = 0.025 + 0.003 * centres[:, 0]
     if diagonal:
-        coefficient = coefficient[:, None] * [1., 1.7, .6]
+        coefficient = coefficient[:, None] * [1.0, 1.7, 0.6]
         component_coefficient = coefficient
     else:
         component_coefficient = coefficient[:, None]
     # This is the exact projection defined by the same owner inverse used by
     # the boundary conductance. Its spatial variation is deliberate.
-    drive_face = geometry["face_centre"][faces] @ JACOBIAN.T + [.3, -.2, .1]
+    drive_face = geometry["face_centre"][faces] @ JACOBIAN.T + [0.3, -0.2, 0.1]
     velocity_face = drive_face - component_coefficient[owners] * gradient
     velocity = np.concatenate((np.zeros((n_cells, 3)), velocity_face))
     pressure = np.concatenate((centres @ gradient, np.full(len(faces), np.nan)))
@@ -157,20 +176,36 @@ def test_skew_linear_pressure_flux_uses_same_variable_inverse_and_no_extra_press
     phi_drive = np.zeros(mesh["n_faces"])
     phi_drive[faces] = np.einsum("fi,fi->f", drive_face, geometry["face_area_vector"][faces])
     for patch in mesh["boundary"]:
-        patch.update(pressure_type="fixedFluxPressure", velocity_type="normalValueTangentialGradient")
+        patch.update(
+            pressure_type="fixedFluxPressure", velocity_type="normalValueTangentialGradient"
+        )
     simple_solver._update_fixed_flux_pressure_boundaries(
-        pressure, velocity, coefficient, mesh, geometry, mesh["boundary"],
-        kinematic_pressure_gradient=grad, pressure_free_face_flux=phi_drive,
+        pressure,
+        velocity,
+        coefficient,
+        mesh,
+        geometry,
+        mesh["boundary"],
+        kinematic_pressure_gradient=grad,
+        pressure_free_face_flux=phi_drive,
     )
-    np.testing.assert_allclose(pressure[n_cells:], geometry["face_centre"][faces] @ gradient, atol=2e-14)
+    np.testing.assert_allclose(
+        pressure[n_cells:], geometry["face_centre"][faces] @ gradient, atol=2e-14
+    )
     for patch in mesh["boundary"]:
         assert "kinematic_pressure_value" not in patch
     # A skew pressure increment represents the physical point difference,
     # including its tangent displacement; it does not alter prescribed flux.
     delta = pressure[n_cells:] - pressure[owners]
-    np.testing.assert_allclose(delta, geometry["cell_connection_vector"][faces] @ gradient, atol=2e-14)
-    recovered_normal = np.einsum("fi,fi->f", drive_face - component_coefficient[owners] * grad[owners], normal)
-    np.testing.assert_allclose(recovered_normal, np.einsum("fi,fi->f", velocity_face, normal), atol=2e-14)
+    np.testing.assert_allclose(
+        delta, geometry["cell_connection_vector"][faces] @ gradient, atol=2e-14
+    )
+    recovered_normal = np.einsum(
+        "fi,fi->f", drive_face - component_coefficient[owners] * grad[owners], normal
+    )
+    np.testing.assert_allclose(
+        recovered_normal, np.einsum("fi,fi->f", velocity_face, normal), atol=2e-14
+    )
 
 
 @pytest.mark.parametrize("skew", [False, True], ids=["orthogonal", "skew"])
@@ -179,40 +214,52 @@ def test_piso_predictor_freeze_preserves_closed_cavity_projection(tmp_path, monk
 
     This cavity has an evolving pressure and velocity, rather than a uniform
     zero-correction state. Rebuilding H/A each PISO iteration provides the
-    previous ownership semantics with every other operator held identical.
+    previous rank assignment semantics with every other operator held identical.
     """
+
     def solve(name):
         mesh = structured_box(6, 6, 1)
         if skew:
-            mesh["vertex_position"][:, 0] += .3 * mesh["vertex_position"][:, 1]
+            mesh["vertex_position"][:, 0] += 0.3 * mesh["vertex_position"][:, 1]
         setup = fvm.FVMSetup(
-            case_name="independent_cavity_predictor_ownership",
+            case_name="independent_cavity_predictor_rank assignment",
             logging=fvm.LoggingConfig(console=False),
             backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-            time=fvm.TimeConfig(time_step_size=.002, end_time=.008),
+            time=fvm.TimeConfig(time_step_size=0.002, end_time=0.008),
             schemes=fvm.DiscretizationConfig(gradient_scheme="lsq", convection_scheme="upwind"),
             linear=fvm.LinearSolverConfig(linear_solver="spsolve", pressure_solver="spsolve"),
-            pimple=fvm.PimpleControl(n_outer_correctors=2, n_correctors=2,
-                                    velocity_relaxation=.7, pressure_relaxation=.3),
-            transport=fvm.TransportConfig(density=1., kinematic_viscosity=.02),
+            pimple=fvm.PimpleControl(
+                n_outer_correctors=2,
+                n_correctors=2,
+                velocity_relaxation=0.7,
+                pressure_relaxation=0.3,
+            ),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.02),
             boundaries=[
                 fvm.BoundaryConfig.wall("xmin"),
                 fvm.BoundaryConfig.wall("xmax"),
                 fvm.BoundaryConfig.wall("ymin"),
-                fvm.BoundaryConfig(name="ymax", velocity_type="fixedValue",
-                                   velocity_value=[.5, 0., 0.], pressure_type="zeroGradient"),
+                fvm.BoundaryConfig(
+                    name="ymax",
+                    velocity_type="fixedValue",
+                    velocity_value=[0.5, 0.0, 0.0],
+                    pressure_type="zeroGradient",
+                ),
                 fvm.BoundaryConfig.empty("zmin"),
                 fvm.BoundaryConfig.empty("zmax"),
             ],
-            initial_velocity=[0., 0., 0.],
+            initial_velocity=[0.0, 0.0, 0.0],
         )
         with FVMSolver(setup, str(tmp_path / name), mesh_data=mesh) as solver:
             solver.auto_write = False
             for _ in range(4):
                 solver.advance()
                 assert solver.last_diagnostics.max_continuity_error < 1e-11
-            return (solver.velocity.copy(), solver.kinematic_pressure.copy(),
-                    solver.volumetric_face_flux.copy())
+            return (
+                solver.velocity.copy(),
+                solver.kinematic_pressure.copy(),
+                solver.volumetric_face_flux.copy(),
+            )
 
     frozen = solve("per_predictor")
     original = simple_solver.assemble_pressure_correction_equation_rhie_chow
@@ -221,9 +268,10 @@ def test_piso_predictor_freeze_preserves_closed_cavity_projection(tmp_path, monk
         kwargs["frozen_velocity_h_over_a"] = None
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(simple_solver, "assemble_pressure_correction_equation_rhie_chow",
-                        rebuild_each_correction)
+    monkeypatch.setattr(
+        simple_solver, "assemble_pressure_correction_equation_rhie_chow", rebuild_each_correction
+    )
     rebuilt = solve("per_correction")
     assert np.linalg.norm(frozen[1]) > 1e-5
-    for actual, expected in zip(frozen, rebuilt):
+    for actual, expected in zip(frozen, rebuilt, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-11)

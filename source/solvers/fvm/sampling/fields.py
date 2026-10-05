@@ -201,7 +201,7 @@ class _PointProbe(Sampler):
         Returns
         -------
         dict[str, numpy.ndarray] or None
-            Canonical columns on root, or ``None`` on non-root MPI ranks.
+            Standard columns on root, or ``None`` on non-root MPI ranks.
         """
         basis = _global_owned_view(context)
         if basis is None:

@@ -20,7 +20,7 @@ def maximum_courant_time_step_size(
     The measured Courant number is proportional to the time-step size for a
     fixed face-flux field.  Consequently ``control.maximum / current`` is the
     factor that would land exactly on the target.  Following OpenFOAM's
-    ``setDeltaT`` policy, reductions are immediate, while growth is limited by
+    ``setDeltaT`` settings, reductions are immediate, while growth is limited by
     both ``1 + 0.1 * factor`` and a hard factor of ``1.2``.  The optional
     ``maximum_time_step_size`` is applied last.
 

@@ -138,7 +138,7 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
         assert "velocity_gradient" not in particles
         assert "strain_rate" not in particles
         assert "backup_store_velocity_gradient" not in archive["solver"].attrs
-        assert archive["solver"].attrs["backup_format_version"] == "10.2"
+        assert archive["solver"].attrs["backup_format_version"] == "10.3"
 
     import pyvista as pv
 
@@ -358,7 +358,7 @@ def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     with h5py.File(backup, "r+") as archive:
         archive["solver"].attrs["backup_format_version"] = "9.0"
 
-    with pytest.raises(ValueError, match=r"9.0.*10.2"):
+    with pytest.raises(ValueError, match=r"9.0.*10.3"):
         solver.load_backup(str(backup))
 
 
@@ -527,10 +527,10 @@ def test_larger_restart_capacity_preserves_the_particle_trajectory(tmp_path, ind
         reader.close()
 
 
-@pytest.mark.parametrize("policy", ("smaller", "remesh"))
-def test_restart_capacity_can_grow_with_regularization_but_cannot_shrink(tmp_path, policy):
+@pytest.mark.parametrize("settings", ("smaller", "remesh"))
+def test_restart_capacity_can_grow_with_regularization_but_cannot_shrink(tmp_path, settings):
     stabilization = StabilizationConfig.disabled()
-    if policy == "remesh":
+    if settings == "remesh":
         stabilization = StabilizationConfig(
             regularization_interval_steps=1, regularization_grid_spacing=0.1
         )
@@ -542,12 +542,12 @@ def test_restart_capacity_can_grow_with_regularization_but_cannot_shrink(tmp_pat
         writer.close()
     reader = _solver(
         tmp_path / "reader",
-        max_n_particles=32 if policy == "smaller" else 128,
+        max_n_particles=32 if settings == "smaller" else 128,
         stabilization=stabilization,
     )
     try:
         checkpoint = tmp_path / "writer/solution/vpm/vpm_000000.h5"
-        if policy == "smaller":
+        if settings == "smaller":
             with pytest.raises(ValueError, match="max_n_particles"):
                 reader.load_backup(checkpoint)
             assert reader.particles.n_particles_total == 0
@@ -661,7 +661,7 @@ def test_regularization_capacity_can_increase_after_rejected_remap(tmp_path):
 def test_regularization_capacity_increase_rejects_changed_physical_model():
     from source.solvers.vpm.config.restart import (
         _configuration_mismatches,
-        canonical_restart_configuration,
+        restart_configuration_values,
     )
 
     saved = _capacity_configuration()
@@ -673,13 +673,13 @@ def test_regularization_capacity_increase_rejects_changed_physical_model():
     current["max_n_particles"] = 128
     assert (
         _configuration_mismatches(
-            canonical_restart_configuration(current), canonical_restart_configuration(saved)
+            restart_configuration_values(current), restart_configuration_values(saved)
         )
         == []
     )
     current["stabilization"]["regularization_grid_spacing"] = 0.11
     assert _configuration_mismatches(
-        canonical_restart_configuration(current), canonical_restart_configuration(saved)
+        restart_configuration_values(current), restart_configuration_values(saved)
     ) == ["stabilization.regularization_grid_spacing"]
 
 
@@ -1166,7 +1166,7 @@ def test_scheduled_backup_reuses_only_its_accepted_state_velocity(tmp_path, monk
         monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
         monkeypatch.setattr(solver.output_manager, "_backup_due", lambda: True)
         solver.advance()
-        assert len(diagnostic_calls) == 1  # health already evaluated transport
+        assert len(diagnostic_calls) == 1  # particle state already evaluated transport
         assert set(solver.last_backup_timing) == {"preparation", "writing"}
         saved = solver.particle_velocity.copy()
         solver.save_backup()  # a separate manual event must refresh external data
@@ -1310,7 +1310,7 @@ def test_final_backup_reuses_final_diagnostic_velocity(tmp_path, monkeypatch):
 
         monkeypatch.setattr(solver.stage_rhs, "evaluate", counted)
         solver.run()
-        # Accepted-step health, then final diagnostics; no third transport
+        # Accepted-step particle state, then final diagnostics; no third transport
         # evaluation just to serialize the already-prepared final state.
         assert calls == [0.01, 0.01]
         with h5py.File(tmp_path / "solution/vpm/vpm_000001.h5") as backup:

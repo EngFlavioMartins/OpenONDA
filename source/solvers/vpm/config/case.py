@@ -2,7 +2,7 @@
 
 The public construction boundary is deliberately small: numerical controls are
 specified once, initial conditions are declarative objects, and the run plan
-defines the finite simulation lifecycle.  Runtime clocks belong to
+defines the finite simulation run.  Runtime clocks belong to
 ``RestartState``, never to the immutable numerical configuration.
 """
 
@@ -20,11 +20,11 @@ from ..boundary_elements.vlm.config import VLMSetup
 from ..numerics.rk_tableaux import SSPRK3, RKTableau
 from ..physics.induction.base import InductionMethod
 from ..physics.induction.direct import DirectInduction
-from .artifacts import Backup, Samplers
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
 from .diagnostics import DiagnosticsConfig
-from .health import HealthLimits
+from .output import Backup, Samplers
 from .stabilization import StabilizationConfig
+from .state_limits import ParticleStateLimits
 from .turbulence import TurbulenceConfig
 from .viscous import ViscousConfig
 
@@ -53,7 +53,7 @@ class Numerics:
     axisymmetric_no_swirl_axis : {'x', 'y', 'z'} or None
         Optional rotational orbit projection axis.
     viscous, turbulence, stabilization : object
-        Diffusion, LES, and accepted-step stabilization policies.
+        Diffusion, LES, and accepted-step stabilization settings.
     vlm : VLMSetup or None
         Optional attached vortex-lattice configuration.
     particle_kernel : str
@@ -61,11 +61,11 @@ class Numerics:
     max_n_particles : int
         Fixed particle capacity.
     compute_device, precision, write_precision : str
-        Device and compute/write precision policies.
+        Device and compute/write precision settings.
     random_seed : int
         Deterministic seed for stochastic diffusion/initializers.
-    diagnostics, health_limits : object
-        Diagnostic and accepted-state validation policies.
+    diagnostics, state_limits : object
+        Diagnostic and accepted-state validation settings.
     freestream_velocity : tuple[float, float, float]
         Uniform background velocity in m/s.
     bodies, domain_bounds : tuple, tuple or None
@@ -100,7 +100,7 @@ class Numerics:
     random_seed: int = 42
     debug_mode: bool = False
     diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
-    health_limits: HealthLimits = field(default_factory=HealthLimits)
+    state_limits: ParticleStateLimits = field(default_factory=ParticleStateLimits)
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     verbose: bool = True
@@ -227,7 +227,7 @@ class Numerics:
 
 @dataclass(frozen=True, slots=True)
 class RunPlan:
-    """Finite solver lifecycle.
+    """Finite solver run.
 
     ``steps`` is the number of accepted VPM steps to execute.  Initial samples
     are dispatched before the first step, final-only samples after the last
@@ -239,8 +239,8 @@ class RunPlan:
     initial diagnostics are usually part of a reproducible case.  A final
     backup defaults to ``True`` to preserve a restart point after completed or
     deliberately stopped runs; it does not schedule scientific samplers.
-    ``health_limit_action``
-    controls an accepted state that crosses a configured health limit:
+    ``state_limit_action``
+    controls an accepted state that crosses a configured particle state limit:
     ``"RAISE"`` preserves the exception behavior, while ``"STOP"`` writes
     terminal samples and a restart before returning with status
     ``"resolution_lost"`` when the state remains finite. A nonfinite state
@@ -252,29 +252,29 @@ class RunPlan:
     steps : int
         Number of accepted VPM steps; required and non-negative.
     initial_samples, final_backup : bool
-        Framework lifecycle switches for initial scientific output and the
+        Scientific output controls for initial scientific output and the
         terminal numerical backup.
-    health_limit_action : {'RAISE', 'STOP'}
-        Policy when an accepted-state health limit is crossed. ``STOP`` also
+    state_limit_action : {'RAISE', 'STOP'}
+        Action when an accepted-state particle state limit is crossed. ``STOP`` also
         records a nonfinite state as ``unstable`` without serializing it.
     wall_time_limit_seconds : float or None
         Optional positive runtime budget checked between accepted steps.
     runtime_compute_device : {'AUTO', 'CPU', 'VULKAN', 'CUDA', 'METAL'} or None
         Optional explicit backend selection for this process invocation. This
-        runtime-only override is excluded from ``Numerics`` restart identity;
-        the manifest records it so diagnostic/pilot runs remain auditable.
+        runtime-only override is excluded from ``Numerics`` restart configuration;
+        the run metadata records it so diagnostic/pilot runs remain auditable.
     """
 
     steps: int
     initial_samples: bool = True
     final_backup: bool = True
-    health_limit_action: Literal["RAISE", "STOP"] = "RAISE"
+    state_limit_action: Literal["RAISE", "STOP"] = "RAISE"
     wall_time_limit_seconds: float | None = None
     runtime_compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] | None = None
     """Optional runtime budget, checked between accepted steps.
 
     Budget stops save terminal samplers and the configured final backup. They
-    have status ``wall_time_limit``, not a numerical health failure. Initial
+    have status ``wall_time_limit``, not a numerical particle state failure. Initial
     construction and sampling count toward the budget; final output can add
     overhead, and an in-flight step is allowed to finish.
     """
@@ -284,10 +284,10 @@ class RunPlan:
             raise TypeError("RunPlan.steps must be an integer")
         if self.steps < 0:
             raise ValueError("RunPlan.steps must be non-negative")
-        action = str(self.health_limit_action).upper()
+        action = str(self.state_limit_action).upper()
         if action not in {"RAISE", "STOP"}:
-            raise ValueError("RunPlan.health_limit_action must be 'RAISE' or 'STOP'")
-        object.__setattr__(self, "health_limit_action", action)
+            raise ValueError("RunPlan.state_limit_action must be 'RAISE' or 'STOP'")
+        object.__setattr__(self, "state_limit_action", action)
         limit = self.wall_time_limit_seconds
         if limit is not None:
             if isinstance(limit, bool) or not isinstance(limit, Real):
@@ -317,7 +317,7 @@ class RestartState:
     backup data; users construct it only for advanced interactive runs.
 
     The object is mutable because the live solver updates it after every
-    accepted step; it is not part of immutable case identity.
+    accepted step; it is not part of immutable case configuration.
     """
 
     time: float = 0.0
@@ -344,11 +344,11 @@ class VPMCase:
 
     ``numerics`` is required and is the only numerical construction object.
     ``backup`` owns restart and log destinations, ``samplers`` owns scientific
-    samples, and ``run`` supplies the finite lifecycle.
+    samples, and ``run`` supplies the finite run.
     ``initial_weak_particle_percent`` optionally removes particles below that
     percentage of the assembled cloud's maximum vortex-strength magnitude.
     ``directory`` is the case root (default current directory) below which
-    framework-owned artifacts are written. Invalid nested plans or an empty
+    solver output files are written. Invalid nested plans or an empty
     directory raise :class:`TypeError` or :class:`ValueError`. ``name`` is an
     optional stable case identifier recorded in solver-owned metadata;
     it does not affect the equations or output paths.
@@ -360,13 +360,13 @@ class VPMCase:
     initial_conditions : tuple[InitialCondition, ...]
         Declarative builders evaluated once at run/first-advance time.
     backup, samplers : Backup, Samplers
-        Restart/log policy and scientific output policy.
+        Restart/log settings and scientific output settings.
     run : RunPlan
-        Finite accepted-step lifecycle.
+        Finite accepted-step run.
     initial_weak_particle_percent : float
         Optional 0--100 percentage threshold for initial strength pruning.
     directory : str or pathlib.Path
-        Case root for framework-owned artifacts.
+        Case root for solver output files.
     name : str or None
         Optional non-empty case identifier stored in ``vpm_metadata.json``.
 
@@ -393,7 +393,7 @@ class VPMCase:
         if not isinstance(self.samplers, Samplers):
             raise TypeError("VPMCase.samplers must be a Samplers instance")
         if self.numerics.vlm is not None:
-            self._validate_coupled_vlm_output_contract()
+            self._validate_coupled_vlm_output()
         percent = self.initial_weak_particle_percent
         if isinstance(percent, bool) or not isinstance(percent, Real):
             raise TypeError("initial_weak_particle_percent must be a real number")
@@ -410,8 +410,8 @@ class VPMCase:
                 raise ValueError("VPMCase.name must be None or a non-empty string")
             object.__setattr__(self, "name", self.name.strip())
 
-    def _validate_coupled_vlm_output_contract(self) -> None:
-        """Keep attached VLM output under the owning VPM lifecycle.
+    def _validate_coupled_vlm_output(self) -> None:
+        """Keep attached VLM output under the VPM run.
 
         Standalone ``VLMSolver`` callers retain their own force
         logging and ``VLMSampler`` API. Once VLM is attached to a VPM case,
@@ -423,7 +423,7 @@ class VPMCase:
         if vlm.logging_interval_steps != 1:
             raise ValueError(
                 "attached VLM cannot configure logging_interval_steps; "
-                "the VPM owner emits mandatory accepted-step samples"
+                "the VPM solver emits mandatory accepted-step samples"
             )
         if not vlm.sample_surface_forces:
             raise ValueError(
@@ -437,6 +437,6 @@ class VPMCase:
         if any(isinstance(sample, VLMSampler) for sample in self.samplers.samples):
             raise ValueError(
                 "VLMSampler is standalone-only for coupled VPM cases; "
-                "surface companions use the VPM backup lifecycle and VLM tables "
-                "use the owner sample path"
+                "surface companions use the VPM backup schedule and VLM tables "
+                "use the solver sample path"
             )

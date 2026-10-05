@@ -1,4 +1,4 @@
-"""Editable-resource verification uses the materializer's exact file filter."""
+"""Installation verification checks the same files selected by the tutorial copier."""
 
 from pathlib import PurePosixPath
 
@@ -12,7 +12,7 @@ from openonda.verify_install import _verify_tutorial_commands, _verify_tutorial_
     "relative",
     [
         "case/study_results/old/worker.py",
-        "case/solution/restart-branches/setup.py",
+        "case/solution/restart_history/setup.py",
         "case/samples/generated.py",
         "case/figures/postprocess.sh",
         "case/__pycache__/generated.py",
@@ -52,7 +52,7 @@ def test_included_source_still_rejects_machine_specific_paths(tmp_path, relative
     assert str(path) in str(error.value)
 
 
-def test_portable_nested_sources_remain_admitted(tmp_path):
+def test_portable_nested_sources_pass_installation_checks(tmp_path):
     source = tmp_path / "case/reference_flow/assets/plot.py"
     source.parent.mkdir(parents=True)
     source.write_text("from pathlib import Path\nROOT = Path(__file__).parent\n")

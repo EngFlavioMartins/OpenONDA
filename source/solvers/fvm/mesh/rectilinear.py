@@ -422,13 +422,13 @@ def box_mesh_3d(
     all_quads = np.vstack(all_quads)
     owners = np.concatenate(all_owners)
 
-    # Compact cell numbering after the carve (identity when there is no hole).
+    # Compact cell numbering after the carve (unchanged when there is no hole).
     new_id = np.cumsum(keep) - 1
     owners = new_id[owners]
     neighbours = new_id[interior_neighbours]
 
     # Store fixed-width quad faces and hex cells as contiguous arrays to avoid
-    # per-face Python allocations. The arrays retain the indexing contract
+    # per-face Python allocations. The arrays retain the indexing requirements
     # used by FVM operators and mesh readers.
     cell_ids = np.flatnonzero(keep)
     cell_i = cell_ids % nx

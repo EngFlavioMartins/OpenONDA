@@ -126,7 +126,7 @@ def main() -> None:
             initial_velocity(fvm_solver.geo_data, fvm_solver.mesh_data["n_cells"])
         )
         restored = fvm_solver.start_from(START_FROM)
-        recorded = fvm_solver.reconcile_history("reattachment_history.csv")
+        recorded = fvm_solver.restore_history("reattachment_history.csv")
         if not restored:
             fvm_solver.save_state(solution_dir / "backup")
             fvm_solver.write_vtk()

@@ -9,7 +9,7 @@ import numpy as np
 
 from source._numba import cacheable_njit as njit
 
-from ..mesh.partition import ownership_ranges
+from ..mesh.partition import cell_partition_offsets
 from .linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
     LINEAR_VERIFICATION_FACTOR,
@@ -57,7 +57,7 @@ class OwnedRowsCSR:
     """Owned-row slice of a global CSR matrix with local RHS.
 
     Each MPI rank stores the rows of the global sparse matrix that it owns
-    (determined by contiguous ownership ranges).  Column indices reference
+    (determined by contiguous rank assignment ranges).  Column indices reference
     global cell IDs so that the PETSc matrix can be assembled with global
     indexing.  The local RHS vector is the corresponding slice of the
     global right-hand side.
@@ -95,7 +95,7 @@ class OwnedRowsCSR:
     def from_global(cls, matrix, rhs, rank: int, size: int) -> OwnedRowsCSR:
         """Create a test/reference partition without retaining the global matrix."""
         matrix = matrix.tocsr()
-        offsets = ownership_ranges(matrix.shape[0], size)
+        offsets = cell_partition_offsets(matrix.shape[0], size)
         start, end = int(offsets[rank]), int(offsets[rank + 1])
         local = matrix[start:end].tocsr()
         return cls(
@@ -162,7 +162,7 @@ class OwnedRowsCSR:
 class PartitionedLinearWorkspace:
     """Persistent PETSc objects for one partitioned equation family.
 
-    Coefficients and RHS values are replaced for every solve; ownership,
+    Coefficients and RHS values are replaced for every solve; rank assignment,
     topology, KSP method, and null-space treatment define the allocation
     signature. Retaining the allocation removes collective object churn.
     Optional preconditioner reuse keeps the equation and verified convergence

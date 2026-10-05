@@ -22,7 +22,7 @@ class OptimisationDiagnostics:
 
     @classmethod
     def from_quality(cls, quality: dict) -> OptimisationDiagnostics:
-        """Adapt authoritative validation metrics into a typed stage result."""
+        """Adapt mesh-quality measurements into a typed stage result."""
         return cls(
             max_non_orthogonality_deg=_optional_float(quality, "max_non_orthogonality_deg"),
             max_skewness=_optional_float(quality, "max_skewness"),
@@ -77,7 +77,7 @@ def agglomerate_small_cut_cells(
     # perimeter face where two wall-adjacent cut cells meet.  Such a face is a
     # legitimate topological connection, but its centre-to-centre direction is
     # nearly tangent to its normal and it dominates the non-orthogonality
-    # metric.  Treat the incident wall cells as transactional agglomeration
+    # metric.  Treat the incident wall cells as validated agglomeration
     # candidates; this is the local wrapper optimisation used by the final
     # quality stage, not a global smoothing or a geometry-specific exception.
     owners = np.asarray(mesh_data["owners"], dtype=np.int64)

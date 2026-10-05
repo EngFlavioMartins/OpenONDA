@@ -21,7 +21,7 @@ import pytest
 
 from openonda import coupler
 from openonda.tutorial_runner import load_case_module
-from source.coupler.backup import artifact_digest, config_mapping_digest
+from source.coupler.backup import checkpoint_path_hash, config_mapping_digest
 
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 
@@ -257,13 +257,13 @@ def _advance(
         ):
             assert recovery[name] < 1e-10
     result["exchanges"] = exchanges
-    manifest = json.loads((directory / "solution/backups/manifest.json").read_text())
-    assert manifest["coupling_step"] == accepted
-    assert manifest["time"] == pytest.approx(accepted * 0.04)
-    assert manifest["config_sha256"] == config_mapping_digest(manifest["config"])
-    for name, relative in manifest["artifacts"].items():
-        artifact = directory / "solution/backups" / relative
-        assert artifact_digest(artifact) == manifest["artifact_sha256"][name]
+    checkpoint_info = json.loads((directory / "solution/backups/checkpoint_info.json").read_text())
+    assert checkpoint_info["coupling_step"] == accepted
+    assert checkpoint_info["time"] == pytest.approx(accepted * 0.04)
+    assert checkpoint_info["config_sha256"] == config_mapping_digest(checkpoint_info["config"])
+    for name, relative in checkpoint_info["checkpoint_files"].items():
+        checkpoint_file = directory / "solution/backups" / relative
+        assert checkpoint_path_hash(checkpoint_file) == checkpoint_info["file_sha256"][name]
     if result["rank"] == 0:
         shutil.copytree(
             directory / "solution/backups", directory / f"checkpoint_after_{accepted:06d}"
@@ -272,7 +272,7 @@ def _advance(
             directory / f"accepted_state_{accepted:06d}.npz",
             **{name: result[name] for name in ("velocity", "pressure", "positions", "strengths")},
         )
-    result["manifest"] = manifest
+    result["checkpoint_info"] = checkpoint_info
     histories = list(directory.glob("samples/**/forces_history.csv"))
     assert len(histories) == 1
     with histories[0].open(newline="") as stream:

@@ -1,6 +1,6 @@
-"""Contracts shared by VPM induction backends.
+"""interface shared by VPM induction backends.
 
-The contract deliberately describes rates rather than a particular numerical
+The conditions deliberately describes rates rather than a particular numerical
 algorithm.  A caller supplies the complete temporary RK stage state and owns
 the output fields.  Implementations must read only that supplied state.
 """
@@ -27,7 +27,7 @@ def normalize_stretching_scheme(scheme: str) -> StretchingScheme:
     Returns
     -------
     StretchingScheme
-        The upper-case canonical literal used by backend constructors.
+        The upper-case standard literal used by backend constructors.
 
     Raises
     ------
@@ -70,7 +70,7 @@ class StageState:
     Notes
     -----
     These fields are temporary RK-stage values and are not necessarily the
-    solver's accepted particle state. The caller retains ownership and must
+    solver's accepted particle state. The caller keeps the supplied arrays alive and must
     not assume that an evaluator copies them.
     """
 

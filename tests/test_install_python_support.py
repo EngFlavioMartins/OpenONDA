@@ -1,4 +1,4 @@
-"""Interpreter admission and installer execution contracts."""
+"""Python version checks and installer execution."""
 
 from pathlib import Path
 import tomllib

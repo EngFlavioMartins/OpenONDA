@@ -1,4 +1,4 @@
-"""Read-only admission and offline initial-guess analysis of captured traces.
+"""Read-only validation and offline initial-guess analysis of captured traces.
 
 Endpoint prediction error is not a fixed-point residual: this tool cannot
 establish convergence, fewer sweeps, stability, or accuracy of a new solver.
@@ -65,21 +65,24 @@ def _same_clock(left, right):
     )
 
 
-def load_manifest(path):
+def load_metadata(path):
     path = Path(path).resolve()
-    payload = path.read_bytes()
-    digest = hashlib.sha256(payload).hexdigest()
-    manifest = json.loads(payload)
-    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 12:
-        raise ValueError("Trace analysis requires a native v12 coupled manifest")
-    config = manifest["config"]
-    if mapping_digest(config) != manifest["config_sha256"]:
-        raise ValueError("Manifest numerical configuration digest mismatch")
+    metadata_bytes = path.read_bytes()
+    digest = hashlib.sha256(metadata_bytes).hexdigest()
+    checkpoint_info = json.loads(metadata_bytes)
+    if (
+        checkpoint_info.get("kind") != "openonda.coupled_backup"
+        or checkpoint_info.get("format_version") != 13
+    ):
+        raise ValueError("Trace analysis requires a native v13 coupled checkpoint_info")
+    config = checkpoint_info["config"]
+    if mapping_digest(config) != checkpoint_info["config_sha256"]:
+        raise ValueError("Checkpoint information numerical configuration digest mismatch")
     settings = {
         "normal_tolerance": float(config["coupler"]["interface_normal_tolerance"]),
         "gradient_tolerance": float(config["coupler"]["interface_gradient_tolerance"]),
         "exchange_dt": float(config["vpm"]["time_step_size"]),
-        "fvm_substeps": manifest["n_fvm_substeps"],
+        "fvm_substeps": checkpoint_info["n_fvm_substeps"],
     }
     if (
         type(settings["fvm_substeps"]) is not int
@@ -92,12 +95,12 @@ def load_manifest(path):
     ):
         raise ValueError("Invalid unchanged interface tolerances or exchange clocks")
     if file_digest(path) != digest:
-        raise ValueError("Manifest changed while being read")
+        raise ValueError("Checkpoint information changed while being read")
     return settings, {
         "path": str(path),
         "sha256": digest,
-        "config_sha256": manifest["config_sha256"],
-        "admission_scope": "Manifest schema/config digest; solver checkpoint artifacts are not reread",
+        "config_sha256": checkpoint_info["config_sha256"],
+        "validation_scope": "Checkpoint information schema/config digest; solver checkpoint checkpoint_files are not reread",
     }
 
 
@@ -114,7 +117,7 @@ def _trace(arrays, event, count):
     return values
 
 
-def _gate_values(before, after, areas):
+def _residual_values(before, after, areas):
     # Preserve the recorded field dtypes/arithmetic when auditing production
     # diagnostics. Analysis vectors are separately promoted to f64 below.
     normal = after["normal_velocity"] - before["normal_velocity"]
@@ -220,7 +223,7 @@ def load_trace(path, settings):
         ):
             raise ValueError("Missing/discontinuous trial numbering")
         before, after = values[2 * index : 2 * index + 2]
-        normal, gradient = _gate_values(before, after, geometry["face_area"])
+        normal, gradient = _residual_values(before, after, geometry["face_area"])
         expected = {
             "normal_residual_rms": normal,
             "gradient_residual_rms": gradient,
@@ -238,10 +241,10 @@ def load_trace(path, settings):
             normal <= settings["normal_tolerance"] and gradient <= settings["gradient_tolerance"]
         )
         if row["converged"] is not converged:
-            raise ValueError("Recorded trial convergence disagrees with unchanged gates")
+            raise ValueError("Recorded trial convergence disagrees with unchanged numerical_checks")
     selected = rows[accepted - 1]
     if selected.get("accepted") is not True or selected.get("converged") is not True:
-        raise ValueError("Selected accepted endpoint did not meet both unchanged gates")
+        raise ValueError("Selected accepted endpoint did not meet both unchanged numerical_checks")
     prediction = diagnostics.get("prediction", {"attempted": False})
     if not isinstance(prediction, dict) or type(prediction.get("attempted")) is not bool:
         raise ValueError("Invalid interface-prediction diagnostics")
@@ -249,7 +252,7 @@ def load_trace(path, settings):
     raw_trial = 2
     if attempted:
         if rows[0].get("prediction_probe") is not True:
-            raise ValueError("Seed probe lacks explicit supported trace provenance")
+            raise ValueError("Seed probe lacks explicit supported trace source information")
         if prediction.get("reason") != "previous_accepted_correction":
             raise ValueError("Unknown interface seed strategy")
         rejected = not rows[0]["converged"]
@@ -331,8 +334,8 @@ def _metrics(vector, areas, settings):
     }
 
 
-def _run_provenance(paths, traces, manifest):
-    reports, provenance, linked, observed_sources = [], [], {}, {}
+def _run_source_information(paths, traces, checkpoint_info):
+    reports, source_information, linked, observed_sources = [], [], {}, {}
     for path in paths:
         path = Path(path).resolve()
         digest = file_digest(path)
@@ -348,7 +351,9 @@ def _run_provenance(paths, traces, manifest):
             or report.get("loaded_source_files_changed_during_run") != []
             or any(after.get(key) != value for key, value in before.items())
         ):
-            raise ValueError("Benchmark source provenance is missing, incomplete or changed")
+            raise ValueError(
+                "Benchmark source source information is missing, incomplete or changed"
+            )
         for key, value in after.items():
             if (
                 not isinstance(value, str)
@@ -359,23 +364,25 @@ def _run_provenance(paths, traces, manifest):
             ):
                 raise ValueError("Source digests are invalid or differ between consecutive runs")
             observed_sources[key] = value
-        _, checkpoint = load_manifest(Path(report["checkpoint"]) / "manifest.json")
-        if checkpoint["config_sha256"] != manifest["config_sha256"]:
-            raise ValueError("Benchmark checkpoint configuration differs from analysis manifest")
+        _, checkpoint = load_metadata(Path(report["checkpoint"]) / "checkpoint_info.json")
+        if checkpoint["config_sha256"] != checkpoint_info["config_sha256"]:
+            raise ValueError(
+                "Benchmark checkpoint configuration differs from analysis checkpoint_info"
+            )
         for trace in report["interface_traces"]:
             key = str(Path(trace["path"]).resolve())
             if key in linked:
                 raise ValueError("A trace is claimed by multiple benchmark records")
             linked[key] = (trace, report)
         reports.append(report)
-        provenance.append(
+        source_information.append(
             {
                 "path": str(path),
                 "sha256": digest,
                 "source_root": report["source_root"],
                 "source_hashes_at_construction": before,
                 "source_hashes_at_completion": after,
-                "checkpoint_manifest": checkpoint,
+                "checkpoint_checkpoint_info": checkpoint,
             }
         )
     if not reports or len({report["source_root"] for report in reports}) != 1:
@@ -395,15 +402,15 @@ def _run_provenance(paths, traces, manifest):
         exchange = [row for row in report["exchanges"] if row["step"] == trace["step"]]
         if len(exchange) != 1 or abs(exchange[0]["time"] - trace["time"]) > _CLOCK_ATOL:
             raise ValueError("Benchmark has no unique accepted exchange at the trace clock")
-    return provenance
+    return source_information
 
 
-def analyze(paths, manifest_path, run_reports):
-    settings, manifest = load_manifest(manifest_path)
+def analyze(paths, metadata_path, run_reports):
+    settings, checkpoint_info = load_metadata(metadata_path)
     traces = [load_trace(path, settings) for path in paths]
     if not traces or len({trace["path"] for trace in traces}) != len(traces):
         raise ValueError("Provide one or more unique traces in physical time order")
-    provenance = _run_provenance(run_reports, traces, manifest)
+    source_information = _run_source_information(run_reports, traces, checkpoint_info)
     first = traces[0]
     areas, normals = first["geometry"]["face_area"], first["geometry"]["face_normal"]
     vectors, rows, corrections = {}, [], []
@@ -452,7 +459,7 @@ def analyze(paths, manifest_path, run_reports):
             if index and trace["prediction"]["attempted"]
             else "not_attempted"
             if not trace["prediction"]["attempted"]
-            else "previous_exchange_not_supplied; gate_verified_only"
+            else "previous_exchange_not_supplied; check_verified_only"
         )
         row["correction_arrays"] = {}
         for field, value in correction.items():
@@ -512,17 +519,17 @@ def analyze(paths, manifest_path, run_reports):
     for trace in traces:
         if file_digest(trace["path"]) != trace["sha256"]:
             raise ValueError("Trace changed during analysis")
-    for document in [manifest, *provenance]:
+    for document in [checkpoint_info, *source_information]:
         if file_digest(document["path"]) != document["sha256"]:
-            raise ValueError("Manifest or benchmark report changed during analysis")
+            raise ValueError("Checkpoint information or benchmark report changed during analysis")
     report = {
         "schema_version": 1,
         "status": "validated_offline_endpoint_analysis",
         "scope": "Candidate-to-accepted endpoint errors are not fixed-point residuals or convergence/accuracy proofs; no time shifts or solver changes",
-        "provenance_limit": "Captured traces have no embedded solver/config hash; completed benchmark trace indexes and unchanged source hashes bind explicit external provenance, audited against captured residuals and clocks",
-        "manifest": manifest,
+        "source information_limit": "Captured traces have no embedded solver/config hash; completed benchmark trace indexes and unchanged source hashes bind explicit external source information, audited against captured residuals and clocks",
+        "checkpoint_info": checkpoint_info,
         "settings": settings,
-        "benchmark_reports": provenance,
+        "benchmark_reports": source_information,
         "inputs": [
             {key: trace[key] for key in ("path", "sha256", "step", "time")} for trace in traces
         ],
@@ -539,7 +546,7 @@ def analyze(paths, manifest_path, run_reports):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--checkpoint_info", type=Path, required=True)
     parser.add_argument("--traces", type=Path, nargs="+", required=True)
     parser.add_argument("--run-reports", type=Path, nargs="+", required=True)
     parser.add_argument(
@@ -559,7 +566,7 @@ def main():
         raise FileExistsError(
             "Analysis outputs must be new; existing evidence is never overwritten"
         )
-    report, vectors = analyze(args.traces, args.manifest, args.run_reports)
+    report, vectors = analyze(args.traces, args.checkpoint_info, args.run_reports)
     with npz_path.open("xb") as stream:
         np.savez(stream, **vectors)
     report["vectors"] = {"path": str(npz_path), "sha256": file_digest(npz_path)}

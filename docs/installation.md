@@ -33,4 +33,4 @@ CPU execution is available with the standard installation. GPU cases require a d
 python install.py --gaussian-mesh-cuda12
 ```
 
-Run this command in the activated environment. The CuPy [`ctk` extra](https://docs.cupy.dev/en/stable/install.html) supplies discoverable toolkit components without a tutorial-specific CUDA path. For that backend, `GaussianSlabPolicy(backend="cpu")` selects CPU evaluation and `backend="cupy_cuda"` requires CUDA; the default `"auto"` permits CPU fallback. See [slab boundary conditions](coupling.md) before selecting this physical model.
+Run this command in the activated environment. The CuPy [`ctk` extra](https://docs.cupy.dev/en/stable/install.html) supplies discoverable toolkit components without a tutorial-specific CUDA path. For that backend, `GaussianSlabSettings(backend="cpu")` selects CPU evaluation and `backend="cupy_cuda"` requires CUDA; the default `"auto"` permits CPU fallback. See [slab boundary conditions](coupling.md) before selecting this physical model.

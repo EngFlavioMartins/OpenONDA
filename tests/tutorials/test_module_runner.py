@@ -1,4 +1,4 @@
-"""Local modules retain case ownership through execution and cleanup."""
+"""Local modules preserve relative imports during execution and file cleanup."""
 
 import json
 import os

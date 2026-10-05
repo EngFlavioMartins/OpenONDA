@@ -85,7 +85,7 @@ def test_checkpoint_identity_allows_moved_geometry_but_rejects_changed_rotation(
             )
         )
         solver.generate_mesh()
-        return solver._restart_identity
+        return solver._restart_configuration_hash
 
     first = identity(paths[0], 2.0)
     assert first == identity(paths[1], 2.0)

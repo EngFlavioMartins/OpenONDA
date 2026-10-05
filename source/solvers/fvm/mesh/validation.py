@@ -526,11 +526,11 @@ def validate_vtk_cell_intersections(dataset, *, maximum_intersections: int = 0) 
     """Reject intersecting VTK cells and report other validator classifications.
 
     VTK's validity state is a bit mask.  Concave cut cells can legitimately be
-    reported as non-convex, so this gate rejects the two geometric
+    reported as non-convex, so this check rejects the two geometric
     intersection bits while the native face-pyramid checks above establish
     finite-volume orientation and star-shapedness about the cell centres.
-    ``maximum_intersections`` is used only for transactional no-regression
-    comparisons; production admission retains the default of zero.
+    ``maximum_intersections`` is used only for validated no-regression
+    comparisons; production validation retains the default of zero.
     """
     try:
         import vtk
@@ -716,7 +716,7 @@ def validate_wall_vertex_conformance(
 
     A positive cell volume is not evidence that a curved wall was recovered:
     a displaced Cartesian staircase can have entirely valid volumes.  This
-    gate measures the actual wall vertices against the immutable triangulated
+    check measures the actual wall vertices against the immutable triangulated
     surface and rejects any partial or silently abandoned projection.
 
     Parameters
@@ -777,7 +777,7 @@ def validate_no_fluid_cell_centres_inside_surface(
 ) -> dict[str, int]:
     """Reject fluid-cell centres classified strictly inside a closed surface.
 
-    This is intentionally a point-classification gate rather than a proxy
+    This is intentionally a point-classification check rather than a proxy
     based on the surface bounding box.  It catches cells left inside a curved
     body when a staircase or incomplete recovery stage is returned.
     """
@@ -940,7 +940,7 @@ def validate_curved_wall_conformance(
     area_tolerance: float = 0.35,
     surface_clip_bounds=None,
 ) -> None:
-    """Sanity gate for a general (curved) conformal mesh.
+    """Sanity check for a general (curved) conformal mesh.
 
     Rejects any cell whose volume is non-positive after surface conformance,
     and rejects a wall patch whose total area deviates from the input STL's

@@ -166,7 +166,7 @@ def main() -> None:
     formats = requested_formats(arguments.format)
     frames = []
     set_thesis_style()
-    for time, frame_profiles, samples, provenance in coincident_velocity_profiles(
+    for time, frame_profiles, samples, source_information in coincident_velocity_profiles(
         profiles, geometry
     ):
         name = f"velocity_profiles_t{time:.12g}"
@@ -176,7 +176,7 @@ def main() -> None:
                 "time": time,
                 "files": [f"{name}.{ext}" for ext in formats],
                 "errors": errors,
-                "native_fvm_profiles": provenance,
+                "native_fvm_profiles": source_information,
             }
         )
 

@@ -10,7 +10,7 @@ import logging
 
 class PortableGaussianImageFields:
     def __init__(self, *args, execution_backend="cpu", **kwargs):
-        self._owner = self._failed_owner = None
+        self._implementation = self._failed_implementation = None
         self._args, self._kwargs = args, kwargs
         self._images = None
         self.closed = False
@@ -18,7 +18,7 @@ class PortableGaussianImageFields:
         self.subdivision_reason = None
         self._using_cuda_blocks = False
         self.execution_backend = execution_backend
-        self._build_owner(execution_backend)
+        self._build_implementation(execution_backend)
 
     def _construct(self, backend):
         if backend == "cupy_cuda":
@@ -27,23 +27,23 @@ class PortableGaussianImageFields:
             from .blocked_fields import GaussianBlockedCUDAFields as Implementation
         else:
             from .host_fields import GaussianHostImageFields as Implementation
-        owner = Implementation.__new__(Implementation)
+        implementation = Implementation.__new__(Implementation)
         try:
-            owner.__init__(*self._args, **self._kwargs)
+            implementation.__init__(*self._args, **self._kwargs)
         except BaseException as error:
             try:
-                owner.close()
+                implementation.close()
             except BaseException as cleanup_error:
-                self._failed_owner = owner
+                self._failed_implementation = implementation
                 error.add_note(f"Finite field construction cleanup failed: {cleanup_error!r}")
                 raise error from cleanup_error
             raise
-        return owner
+        return implementation
 
-    def _build_owner(self, backend):
+    def _build_implementation(self, backend):
         while True:
             try:
-                self._owner = self._construct(backend)
+                self._implementation = self._construct(backend)
                 return
             except MemoryError as error:
                 backend = self._recover_memory(error)
@@ -51,14 +51,14 @@ class PortableGaussianImageFields:
             # can otherwise retain temporary arrays from the failed FFT job.
 
     def _recover_memory(self, error):
-        if self.execution_backend != "cupy_cuda" or self._failed_owner is not None:
+        if self.execution_backend != "cupy_cuda" or self._failed_implementation is not None:
             raise error
-        owner, self._owner = self._owner, None
-        if owner is not None:
+        implementation, self._implementation = self._implementation, None
+        if implementation is not None:
             try:
-                owner.close()
+                implementation.close()
             except BaseException as cleanup_error:
-                self._failed_owner = owner
+                self._failed_implementation = implementation
                 error.add_note(f"Finite field fallback cleanup failed: {cleanup_error!r}")
                 raise error from cleanup_error
         if not self._using_cuda_blocks:
@@ -74,28 +74,28 @@ class PortableGaussianImageFields:
         return "cpu"
 
     def __getattr__(self, name):
-        owner = self.__dict__.get("_owner")
-        if owner is None:
+        implementation = self.__dict__.get("_implementation")
+        if implementation is None:
             raise AttributeError(name)
-        return getattr(owner, name)
+        return getattr(implementation, name)
 
     def prepare(self, images):
         self._images = tuple(images)
         while True:
             try:
-                return self._owner.prepare(self._images)
+                return self._implementation.prepare(self._images)
             except MemoryError as error:
                 backend = self._recover_memory(error)
-            self._build_owner(backend)
+            self._build_implementation(backend)
 
     def evaluate_prepared(self, targets):
         while True:
             try:
-                velocity, gradient, diagnostics = self._owner.evaluate_prepared(targets)
+                velocity, gradient, diagnostics = self._implementation.evaluate_prepared(targets)
                 break
             except MemoryError as error:
                 backend = self._recover_memory(error)
-            self._build_owner(backend)
+            self._build_implementation(backend)
             if self._images is not None:
                 self.prepare(self._images)
         diagnostics["execution_backend"] = self.execution_backend
@@ -104,11 +104,11 @@ class PortableGaussianImageFields:
         return velocity, gradient, diagnostics
 
     def close(self):
-        if self._failed_owner is not None:
+        if self._failed_implementation is not None:
             raise RuntimeError("Finite Gaussian field cleanup remains uncertain")
         if self.closed:
             return
-        if self._owner is not None:
-            self._owner.close()
-            self._owner = None
+        if self._implementation is not None:
+            self._implementation.close()
+            self._implementation = None
         self.closed = True

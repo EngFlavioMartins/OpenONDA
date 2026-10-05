@@ -127,6 +127,6 @@ vpm.VPMSolver(case).run(start_from="latest")
 
 Backups are in `solution/`; open `solution/vpm.pvd` in ParaView. Diagnostics are in `samples/`. Energy, impulse and enstrophy are per unit density: m⁵/s², m⁴/s and m³/s² respectively; VPM enstrophy uses $\int|\boldsymbol{\omega}|^2\,dV$ without a one-half factor. `SurfaceSampler` and `LineSampler` add field probes in metres.
 
-Tutorials use `allrun.sh` to run or resume a case, `allcontinue.sh` for continuation and `allplot.sh` for figures. Set capacity for the full shed/regenerated cloud. `RunPlan.steps` is the total step target, including restored steps; see [continuation](continuation.md). A numerical health stop produces a partial trajectory. A completed run still needs physical convergence checks.
+Tutorials use `allrun.sh` to run or resume a case, `allcontinue.sh` for continuation and `allplot.sh` for figures. Set capacity for the full shed/regenerated cloud. `RunPlan.steps` is the total step target, including restored steps; see [continuation](continuation.md). A particle state limit stop produces a partial trajectory. A completed run still needs physical convergence checks.
 
 [Numerical references](../source/solvers/vpm/REFERENCES.md).

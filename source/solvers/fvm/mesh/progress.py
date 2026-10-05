@@ -14,7 +14,7 @@ from source import log_style
 
 
 class MesherLog:
-    """A line-buffered progress sink owned by one mesh-materialization run."""
+    """A line-buffered progress log for one mesh construction run."""
 
     def __init__(self, path: str | Path, *, reporter: Callable[[str], None] | None = None) -> None:
         """Open a line-buffered meshing log at ``path``.

@@ -1,4 +1,4 @@
-"""Cross-platform VPM compute-device selection contracts."""
+"""Cross-platform VPM compute-device selection conditions."""
 
 from types import SimpleNamespace
 

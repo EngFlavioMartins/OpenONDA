@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from tests.vpm._slip_periodic_gaussian_oracle import gaussian_pairs
+from tests.vpm._slip_periodic_gaussian_reference import gaussian_pairs
 
 
 def explicit_tail(x, gamma, sigma, targets, zmin, zmax, first, last):
@@ -44,7 +44,7 @@ def cloud(kind):
         offset = np.array([1024.0, -512.0, 256.0])
         x, t = x + offset, t + offset
         zmin, zmax = zmin + offset[2], zmax + offset[2]
-    elif kind == "near_admission":
+    elif kind == "near_distance_limit":
         x = np.array([[0.0, 0.0, 0.01], [0.02, -0.01, -0.02]])
         g, sigma = g[:2], np.full(2, 0.01)
         t = np.array([[0.0, 0.0, 2.8], [0.01, -0.02, 2.75]])

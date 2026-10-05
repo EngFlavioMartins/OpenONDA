@@ -45,7 +45,7 @@ class BufferedVTKWriter:
         pvd_path : str
             Destination collection file for the time series.
         output : OutputConfig or None, default=None
-            Visualization precision/format policy. A default policy is used
+            Visualization precision/format settings. A default settings are used
             when omitted.
 
         Notes
@@ -96,7 +96,7 @@ class BufferedVTKWriter:
                 self._pending = None
 
     def rewind(self, time: float) -> None:
-        """Flush pending output and reconcile the worker-owned PVD index."""
+        """Flush pending output and restore the worker-owned PVD index."""
         self.flush()
         if self._pvd is not None:
             self._pvd.rewind(time)

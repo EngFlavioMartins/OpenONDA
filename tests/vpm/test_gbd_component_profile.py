@@ -1,4 +1,4 @@
-"""Device-free contracts for the opt-in cylinder GBD component-profiler asset."""
+"""Device-free conditions for the opt-in cylinder GBD component-profiler asset."""
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -9,8 +9,7 @@ import pytest
 
 def _load_profiler():
     path = (
-        Path(__file__).resolve().parents[2]
-        / "tests/support/cylinder/profile_solver_components.py"
+        Path(__file__).resolve().parents[2] / "tests/support/cylinder/profile_solver_components.py"
     )
     spec = spec_from_file_location("component_profile_test_asset", path)
     module = module_from_spec(spec)
@@ -67,7 +66,7 @@ def _coupler():
     )
 
 
-def test_gbd_timers_follow_lazy_and_replaced_owner_once(monkeypatch):
+def test_gbd_timers_follow_lazy_and_replaced_field_once(monkeypatch):
     module = _load_profiler()
     sync_calls = []
     monkeypatch.setitem(
@@ -91,10 +90,10 @@ def test_gbd_timers_follow_lazy_and_replaced_owner_once(monkeypatch):
     assert first.batch_calls == 6
     assert second.batch_calls == 3
     assert vpm.stepper._apply_grid_diffusion is original_grid_call
-    for owner in (first, second):
-        assert "gbd_diffusion" not in vars(owner)
-        assert "_gbd_diffusion_impl" not in vars(owner)
-        assert "_m4_scatter_gpu_kernel" not in vars(owner)
+    for solver in (first, second):
+        assert "gbd_diffusion" not in vars(solver)
+        assert "_gbd_diffusion_impl" not in vars(solver)
+        assert "_m4_scatter_gpu_kernel" not in vars(solver)
     assert second._allocate_grid is second_instance_allocation
     assert measurements["gbd.gbd_diffusion"]["calls"] == 3
     assert measurements["gbd._gbd_diffusion_impl"]["calls"] == 3

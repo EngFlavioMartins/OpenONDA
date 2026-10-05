@@ -191,7 +191,7 @@ def _build_csr_pattern_numba(
                 cursor[owner] += 1
 
     # Cell stencils are short. Insertion-sorting each row in place avoids an
-    # all-nnz argsort while producing canonical SciPy/PETSc column ordering.
+    # all-nnz argsort while producing standard SciPy/PETSc column ordering.
     unique_counts = np.empty(n_cells, dtype=np.int32)
     for row in range(n_cells):
         start = raw_indptr[row]

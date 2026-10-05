@@ -124,7 +124,7 @@ class ParallelContext:
         Parameters
         ----------
         execution : ComputeConfig
-            FVM execution policy. Supported modes are serial, PETSc replicated,
+            FVM execution settings. Supported modes are serial, PETSc replicated,
             and PETSc partitioned.
         comm, mpi : object or None, optional
             Injected communicator/MPI module for tests or an existing runtime.

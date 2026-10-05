@@ -61,7 +61,7 @@ def resolve_mode(default: str = "simple") -> str:
 
 
 def format_openonda_header(precision: str | None = "f64") -> log_style.FormattedText:
-    """Return the shared run-identity report for the FVM owner."""
+    """Return the shared run configuration report for the FVM owner."""
     return log_style.block_report(
         "OpenONDA FVM",
         [
@@ -279,7 +279,7 @@ class Logging:
         solution_dir : str or pathlib.Path or None, default=None
             Explicit log directory; otherwise ``case_dir/solution``.
         config : LoggingConfig or None, default=None
-            Formatting, filename, console, and cadence policy.
+            Formatting, filename, console, and cadence settings.
         enabled : bool, default=True
             Disable all output while retaining a compatible object for worker
             ranks.
@@ -512,7 +512,7 @@ class Logging:
         )
 
     def warnings_info(self, warnings: tuple[str, ...]) -> None:
-        """Record acceptance-policy warnings raised by the step."""
+        """Record acceptance-settings warnings raised by the step."""
         for warning in warnings:
             self.warning(warning)
 
@@ -910,7 +910,7 @@ class Logging:
         if self._closed:
             return
         self._step = None
-        # Terminal status is a lifecycle record, not a debug-only detail.
+        # Terminal status is a run record, not a debug-only detail.
         # Keep it visible in both simple and debug modes so failed runs never
         # look like successful early exits.
         self.run_summary(status=status, failure=failure)

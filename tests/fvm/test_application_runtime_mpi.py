@@ -110,7 +110,6 @@ rank = MPI.COMM_WORLD.Get_rank()
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
-        "FVM_PETSC_WORKSPACE_POLICY",
         "TI_CPU_MAX_NUM_THREADS",
         "_OPENONDA_MPI_CHILD",
     ):

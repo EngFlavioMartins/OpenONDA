@@ -5,7 +5,7 @@ The approved Thesis palette and figure rules were read before this migration:
 `styles/fonts.py`, `styles/scientific_colormaps.py`, `styles/apply_openonda_theme.py`,
 and `reference_style.py`.
 
-The reusable implementation is `openonda/plotting.py`; the authoring contract is
+The reusable implementation is `openonda/plotting.py`; the figure layout requirements is
 [the tutorial figure standard](../tutorial-figure-style.md). All 18 active
 `allplot.sh` launchers now default to PNG and PDF. Archived source snapshots under
 `solution/` and `study_results/` were not migrated.
@@ -20,7 +20,7 @@ The reusable implementation is `openonda/plotting.py`; the authoring contract is
   flat-plate and ring ParaView scenes, rotor panels, scalar maps and quadcopter.
 - Rebuilt the rotor animation with the same signed/sequential palette.
 - **198 targeted tests passed**: publication exports/layouts, plot inputs, launcher
-  failure propagation, native scene provenance, cube/cylinder plotting, and
+  failure propagation, native scene source information, cube/cylinder plotting, and
   rotor/flat-plate comparison methodology. Ruff checks passed for the plotting files.
 - The [machine-readable export inventory](tutorial-figure-exports-2026-10-02.json)
   records filenames, PDF dimensions, PNG dimensions and raster resolution.
@@ -52,7 +52,7 @@ preserves the decimal time in its filename and leaves the plotted arrays unchang
 The plotting commands referenced by the launchers were exercised separately so
 one missing dataset did not prevent checking other cases. This is not a claim
 that every complete `allplot.sh` currently exits successfully: scientific
-validators and run-completeness gates remain in place. The delta-wing saved run
+validators and run completion checks remain in place. The delta-wing saved run
 failed at 6.9 s, so its partial diagnostics are not final cycle-averaged results.
 Missing-input cases were not populated with invented or substitute data.
 

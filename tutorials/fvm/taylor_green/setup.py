@@ -89,7 +89,7 @@ def main() -> None:
         fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
         initial_total_kinetic_energy, initial_enstrophy = fvm_solver.evaluate(flow_integrals)
         restored = fvm_solver.start_from(START_FROM)
-        recorded = fvm_solver.reconcile_history("history.csv")
+        recorded = fvm_solver.restore_history("history.csv")
         if not restored:
             fvm_solver.save_state(CASE_DIR / "solution" / "backup")
             fvm_solver.write_vtk()

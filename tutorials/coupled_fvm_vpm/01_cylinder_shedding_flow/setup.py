@@ -382,7 +382,7 @@ def create_solver(
     max_coupling_steps: int | None = None,
     overrides: dict[str, object] | None = None,
 ) -> int:
-    """Run the coupled case in an optional isolated campaign directory."""
+    """Run the coupled case in an optional separate parameter-study directory."""
 
     flow, particles, exchange, mesh = build_case(end_time=end_time, overrides=overrides)
     velocity = partial(

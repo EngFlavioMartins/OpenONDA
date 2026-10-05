@@ -12,7 +12,7 @@ import numpy as np
 
 from .storage import require_free_space
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def _jsonable(value: Any) -> Any:
@@ -75,8 +75,8 @@ def save_native_mesh(mesh_data: dict[str, Any], path: str | Path) -> Path:
     arrays["metadata"] = np.asarray(json.dumps(metadata, sort_keys=True, allow_nan=False))
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    payload_bytes = sum(int(value.nbytes) + 4096 for value in arrays.values())
-    require_free_space(destination, payload_bytes + (4 << 20))
+    archive_bytes = sum(int(value.nbytes) + 4096 for value in arrays.values())
+    require_free_space(destination, archive_bytes + (4 << 20))
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".tmp",

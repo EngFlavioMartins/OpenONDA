@@ -1,4 +1,4 @@
-"""Replicated PETSc convergence uses the native algebraic residual contract."""
+"""Replicated PETSc convergence uses the native algebraic residual definition."""
 
 from types import SimpleNamespace
 

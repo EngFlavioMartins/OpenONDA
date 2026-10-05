@@ -10,10 +10,10 @@ robustness lives here, ordered from cheapest to most invasive:
 ``divergence_relaxation``
     Moment-constrained Winckelmans/Helmholtz projection of the vortex_strength.
 ``regularization``
-    Health-triggered conservative redistribution of a distorted cloud.
+    Resolution-triggered conservative redistribution of a distorted cloud.
 ``manager``
     :class:`StabilizationManager`, the single per-step entry point the solver
-    calls, and the owner of every stabilization diagnostic.
+    calls, and the solver of every stabilization diagnostic.
 
 Configuration for all of them is centralized in
 :class:`~source.solvers.vpm.config.types.StabilizationConfig`.
@@ -21,7 +21,7 @@ Configuration for all of them is centralized in
 
 from .divergence_relaxation import DivergenceRelaxationError, DivergenceRelaxationResult
 from .filament_refinement import FilamentRefinementError, FilamentRefinementResult
-from .manager import StabilizationError, StabilizationHealth, StabilizationManager
+from .manager import ParticleStrengthMetrics, StabilizationError, StabilizationManager
 from .operators import StabilizationOperators
 from .regularization import RegularizationOutcome, regularize
 
@@ -32,7 +32,7 @@ __all__ = [
     "FilamentRefinementResult",
     "RegularizationOutcome",
     "StabilizationError",
-    "StabilizationHealth",
+    "ParticleStrengthMetrics",
     "StabilizationManager",
     "StabilizationOperators",
     "regularize",

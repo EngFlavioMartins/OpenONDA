@@ -23,7 +23,7 @@ def test_initial_ignores_even_invalid_native_backups(tmp_path, kind):
     (tmp_path / "vpm").mkdir()
     (tmp_path / "vpm/vpm_999999.h5").write_bytes(b"not HDF5")
     (tmp_path / "backups").mkdir()
-    (tmp_path / "backups/manifest.json").write_bytes(b"not JSON")
+    (tmp_path / "backups/checkpoint_info.json").write_bytes(b"not JSON")
     (tmp_path / "backup").write_bytes(b"not a native state")
     assert select_backup("initial", directory=tmp_path, kind=kind, backup_path="backup") is None
 
@@ -35,17 +35,17 @@ def test_initial_output_reset_retires_all_vpm_candidates_and_preserves_other_fil
     samples.mkdir()
     for relative in ("vpm/vpm_000012.h5", "vpm_000050.h5", "vpm.pvd", "vlm_000012.vtu"):
         (solution / relative).write_text("old or interrupted data")
-    for name in ("owned.csv", "owned.pvd", "unrelated.csv"):
+    for name in ("forces.csv", "forces.pvd", "unrelated.csv"):
         (samples / name).write_text("old data")
     (solution / "vpm_metadata.json").write_text("current constructor metadata")
     (solution / "vpm.log").write_text("open log")
-    reset_run_outputs(solution, kind="vpm", samples_dir=samples, owned_sample_names=["owned"])
+    reset_run_outputs(solution, kind="vpm", samples_dir=samples, sample_names=["forces"])
     assert select_backup("latest", directory=solution, kind="vpm") is None
     assert (samples / "unrelated.csv").read_text() == "old data"
-    assert not (samples / "owned.csv").exists()
+    assert not (samples / "forces.csv").exists()
     assert (solution / "vpm_metadata.json").read_text() == "current constructor metadata"
     assert (solution / "vpm.log").read_text() == "open log"
-    assert list((solution / "restart-branches").glob("initial-before-*/solution/vpm/vpm_000012.h5"))
+    assert list((solution / "restart_history").glob("initial-before-*/solution/vpm/vpm_000012.h5"))
 
 
 @pytest.mark.parametrize(
@@ -101,7 +101,7 @@ def test_latest_without_checkpoint_ignores_output_history(tmp_path, filename, co
 def test_none_preserves_in_memory_selection_despite_corrupt_output(tmp_path, kind):
     (tmp_path / "backup").write_text("corrupt")
     (tmp_path / "backups").mkdir()
-    (tmp_path / "backups/manifest.json").write_text("corrupt")
+    (tmp_path / "backups/checkpoint_info.json").write_text("corrupt")
     (tmp_path / "vpm").mkdir()
     (tmp_path / "vpm/vpm_000001.h5").write_text("corrupt")
     assert select_backup(None, directory=tmp_path, kind=kind, backup_path="backup") is None
@@ -113,7 +113,7 @@ def test_latest_selects_present_corrupt_checkpoint_for_strict_reader(tmp_path, k
     backup.write_text("corrupt")
     bundle = tmp_path / "backups"
     bundle.mkdir()
-    (bundle / "manifest.json").write_text("corrupt")
+    (bundle / "checkpoint_info.json").write_text("corrupt")
     assert select_backup("latest", directory=tmp_path, kind=kind, backup_path="backup") == (
         backup if kind == "fvm" else bundle
     )

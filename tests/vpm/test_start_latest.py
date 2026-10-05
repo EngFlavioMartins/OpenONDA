@@ -99,7 +99,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     from source.solvers.vpm.io.backup import _BackupIO
 
     def reject_numerical_load(*args, **kwargs):
-        raise AssertionError("a completed continuation must not materialize particle fields")
+        raise AssertionError("a completed continuation must not allocate particle fields")
 
     monkeypatch.setattr(_BackupIO, "_load_numerical_data", reject_numerical_load)
     done = vpm.VPMSolver(_build(directory, with_vlm))
@@ -107,7 +107,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     assert done.step == 3
     assert backup.stat().st_mtime_ns == stamp
     assert all(path.read_bytes() == data for path, data in histories.items())
-    assert list((directory / "samples/restart-branches").glob("before-*"))
+    assert list((directory / "samples/restart_history").glob("before-*"))
 
 
 def test_latest_does_not_fall_back_from_corrupt_committed_backup(tmp_path):
@@ -149,7 +149,7 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     solver.run(start_from="initial")
     assert solver.step == 1
     assert list(
-        (tmp_path / "solution/restart-branches").glob("initial-before-*/solution/vpm/vpm_000010.h5")
+        (tmp_path / "solution/restart_history").glob("initial-before-*/solution/vpm/vpm_000010.h5")
     )
 
 

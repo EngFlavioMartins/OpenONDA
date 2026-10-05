@@ -97,21 +97,21 @@ def test_restart_restores_backward_time_history(tmp_path):
 
 
 def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
-    from source.solvers.fvm.io.backup import capture_restart_payload, publish_restart_payload
+    from source.solvers.fvm.io.backup import capture_restart_state, restore_restart_state
 
     solver = _solver(tmp_path / "memory")
     with contextlib.redirect_stdout(io.StringIO()):
         solver.advance()
         solver.advance()
-        snapshot = capture_restart_payload(solver)
+        snapshot = capture_restart_state(solver)
         solver.save_state(tmp_path / "accepted.npz")
         solver.advance()
-        publish_restart_payload(solver, snapshot)
+        restore_restart_state(solver, snapshot)
         solver.advance()
-        from_memory = capture_restart_payload(solver)
+        from_memory = capture_restart_state(solver)
         solver.load_state(tmp_path / "accepted.npz")
         solver.advance()
-        from_disk = capture_restart_payload(solver)
+        from_disk = capture_restart_state(solver)
     for name in from_disk.fields:
         np.testing.assert_array_equal(from_memory.fields[name], from_disk.fields[name])
     assert from_memory.time == from_disk.time
@@ -128,23 +128,23 @@ def test_solver_metadata_serializes_sampler_configuration(tmp_path):
         solver = FVMSolver(setup, str(tmp_path), mesh_data=structured_box(2, 2, 2))
     default_metadata = tmp_path / "solution" / "fvm_metadata.json"
     assert default_metadata.is_file()
-    assert json.loads(default_metadata.read_text(encoding="utf-8"))["lifecycle"] == {
+    assert json.loads(default_metadata.read_text(encoding="utf-8"))["run_status"] == {
         "status": "created"
     }
 
     destination = tmp_path / "metadata.json"
-    solver.write_run_manifest(destination)
+    solver.write_run_metadata(destination)
     solver.close()
 
-    payload = json.loads(destination.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1
-    assert payload["solver"] == "FVM"
-    assert payload["case_name"] == "restart_test"
-    assert payload.get("lifecycle", {}) == {}
-    assert "reason" not in payload
-    assert "failure" not in payload
-    assert "error" not in payload
-    sampler = payload["configuration"]["samplers"][0]
+    saved_data = json.loads(destination.read_text(encoding="utf-8"))
+    assert saved_data["schema_version"] == 2
+    assert saved_data["solver"] == "FVM"
+    assert saved_data["case_name"] == "restart_test"
+    assert saved_data.get("run_status", {}) == {}
+    assert "reason" not in saved_data
+    assert "failure" not in saved_data
+    assert "error" not in saved_data
+    sampler = saved_data["configuration"]["samplers"][0]
     assert sampler["type"] == "LineSampler"
     assert sampler["file_name"] == "centreline"
     assert sampler["n_points"] == 3
@@ -168,7 +168,7 @@ def test_solver_owns_named_solution_and_sample_directories(tmp_path):
         assert solution.is_dir()
         assert samples.is_dir()
         solver.advance()
-    solver.write_run_manifest()
+    solver.write_run_metadata()
     solver.close()
 
     assert Path(solver.solution_dir) == solution
@@ -263,15 +263,15 @@ def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_p
     assert observed["solution_exists"]
     assert observed["samples_exists"]
     assert "FVM STARTUP" in observed["log"]
-    assert "materializing mesh" in observed["log"]
+    assert "building or loading mesh" in observed["log"]
     assert str(solution / "mesher.log") in "".join(observed["log"].split())
     assert str(solution / "mesher.log") in "".join(console.getvalue().split())
     assert "meshing session" in observed["mesher_log"]
-    assert "mesh materialization" in observed["mesher_log"]
-    assert "mesh materialization" in console.getvalue()
+    assert "mesh construction" in observed["mesher_log"]
+    assert "mesh construction" in console.getvalue()
     assert "done" in console.getvalue()
     completed_log = (solution / "mesher.log").read_text(encoding="utf-8")
-    assert "mesh materialization" in completed_log
+    assert "mesh construction" in completed_log
     assert "mesh backup export" in completed_log
     assert "complete" in completed_log
 
@@ -307,7 +307,7 @@ def test_solver_factory_records_mesher_failure_in_solution_log(tmp_path):
         )
 
     mesher_log = (solution / "mesher.log").read_text(encoding="utf-8")
-    assert "mesh materialization" in mesher_log and "failed" in mesher_log
+    assert "mesh construction" in mesher_log and "failed" in mesher_log
     assert "meshing session" in mesher_log and "failed" in mesher_log
     assert "Error type" in mesher_log and "RuntimeError" in mesher_log
     assert "Error" in mesher_log and "deliberate mesher failure" in mesher_log
@@ -328,12 +328,12 @@ def test_public_fvm_case_uses_same_default_solution_mesher_log(tmp_path):
 
     assert Path(solver.solution_dir) == tmp_path / "solution"
     mesher_log = (tmp_path / "solution" / "mesher.log").read_text(encoding="utf-8")
-    assert "mesh materialization" in mesher_log
+    assert "mesh construction" in mesher_log
     assert "complete" in mesher_log
 
 
 @pytest.mark.parametrize("source_kind", ["dictionary", "file"])
-def test_factory_backs_up_loaded_mesh_before_solver_admission(tmp_path, monkeypatch, source_kind):
+def test_factory_backs_up_loaded_mesh_before_solver_validation(tmp_path, monkeypatch, source_kind):
     from source.solvers.fvm.core import solver as solver_module
 
     mesh = structured_box(2, 2, 2)
@@ -345,10 +345,10 @@ def test_factory_backs_up_loaded_mesh_before_solver_admission(tmp_path, monkeypa
 
         assert pv.read(solution / "fvm" / "mesh.vtu").n_cells == 8
         validate_topology(load_native_mesh(solution / "fvm" / "mesh.npz"))
-        raise ValueError("deliberate production admission failure")
+        raise ValueError("deliberate production validation failure")
 
     monkeypatch.setattr(solver_module, "FVMSolver", reject)
-    with pytest.raises(ValueError, match="deliberate production admission"):
+    with pytest.raises(ValueError, match="deliberate production validation"):
         create_fvm_solver(_setup(), case_dir=tmp_path, solution_dir=solution, mesh=source)
 
 

@@ -70,7 +70,7 @@ class SolverIO:
         """Write restart state, its VTU frame, and the ``vpm.pvd`` index.
 
         VLM surface companions share the sparse backup clock with VPM particles.
-        Accepted-step VLM force/loading tables are emitted through the owner's
+        Accepted-step VLM force/loading tables are emitted through the solver's
         sample path; no VLM-specific backup cadence or output root is created.
         """
         os.makedirs(self.export_dir, exist_ok=True)
@@ -209,7 +209,7 @@ class SolverIO:
                 solver.physics.rate_projection_max_correction_ratio
             ),
         }
-        row.update(solver._discretization_health)
+        row.update(solver._particle_resolution_metrics)
         row.update(solver.stabilization.diagnostics)
         vlm = getattr(solver, "vlm_solver", None)
         if vlm is not None:
@@ -225,14 +225,14 @@ class SolverIO:
                 row[f"coupled_vortex_strength_{axis}"] = float(
                     net_vortex_strength[index] + bound_strength[index]
                 )
-        health = getattr(solver, "_accepted_health_snapshot", None)
-        if health is not None:
+        state_metrics = getattr(solver, "_accepted_state_metrics", None)
+        if state_metrics is not None:
             row.update(
                 {
-                    "strain_increment_infinity": health.strain_increment_infinity,
-                    "strain_increment_spectral": health.strain_increment_spectral,
-                    "maximum_particle_strength": health.maximum_particle_strength,
-                    "maximum_particle_vorticity": health.maximum_vorticity,
+                    "strain_increment_infinity": state_metrics.strain_increment_infinity,
+                    "strain_increment_spectral": state_metrics.strain_increment_spectral,
+                    "maximum_particle_strength": state_metrics.maximum_particle_strength,
+                    "maximum_particle_vorticity": state_metrics.maximum_vorticity,
                 }
             )
 
@@ -274,7 +274,7 @@ class SolverIO:
         """Export solver state for visualization and post-processing."""
         if include_particles and self.solver.particles.n_particles_total > 0:
             self.solver.particles.save_vortex_particles(
-                f"{filename}_particles.vtp",
+                f"{filename}_solver.vtp",
                 write_precision=self.solver.write_precision,
             )
 

@@ -9,10 +9,7 @@ from types import SimpleNamespace
 from mpi4py import MPI
 import numpy as np
 
-ASSETS = (
-    Path(__file__).resolve().parents[2]
-    / "tests/support/cylinder"
-)
+ASSETS = Path(__file__).resolve().parents[2] / "tests/support/cylinder"
 
 
 def load(name):
@@ -74,7 +71,7 @@ def scenario(comm, output_dir, kind):
     originals = vars(module).copy()
     original_save = capture.np.savez
     path = output_dir / f"{kind}-step000002.npz"
-    if master and kind == "admission":
+    if master and kind == "validation":
         path.write_bytes(b"preserve me")
     if master and kind == "write_failure":
 
@@ -126,9 +123,9 @@ def scenario(comm, output_dir, kind):
                 ]
     else:
         assert gathered[0]["error"] == gathered[1]["error"] and error is not None, gathered
-        expected = [] if kind == "admission" else ["advance", "refresh"]
+        expected = [] if kind == "validation" else ["advance", "refresh"]
         assert all(row["calls"] == expected for row in gathered)
-        if kind == "admission" and master:
+        if kind == "validation" and master:
             assert path.read_bytes() == b"preserve me"
     comm.Barrier()
     return gathered
@@ -145,13 +142,13 @@ def qualify_preflight(comm, output_dir):
     prefix = solution / "fresh-trace"
     # Rank1 is forbidden from consulting shared existence. After the single
     # collective root decision, fast root writes before the simulated slow
-    # rank finishes. No second per-rank filesystem admission is permitted.
+    # rank finishes. No second per-rank filesystem validation is permitted.
     original_exists = Path.exists
     original_glob = Path.glob
     if comm.Get_rank() != 0:
 
         def forbidden(*args, **kwargs):
-            raise AssertionError("Worker must not recheck shared output admission")
+            raise AssertionError("Worker must not recheck shared output validation")
 
         Path.exists = forbidden
         Path.glob = forbidden
@@ -178,7 +175,7 @@ def main():
     assert comm.Get_size() == 2
     output_dir = Path(sys.argv[1])
     results = [
-        scenario(comm, output_dir, kind) for kind in ("success", "admission", "write_failure")
+        scenario(comm, output_dir, kind) for kind in ("success", "validation", "write_failure")
     ]
     qualify_preflight(comm, output_dir)
     if comm.Get_rank() == 0:

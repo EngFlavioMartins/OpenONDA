@@ -168,7 +168,7 @@ def test_target_local_error_preserves_pointwise_envelope_at_cell_extremes(kernel
             exact, roundoff = _exact_fields_and_roundoff(
                 kernel_name, position, strength, core, targets
             )
-            for quantity, new, old, oracle, allowance in zip(
+            for quantity, new, old, reference, allowance in zip(
                 ("velocity", "Jacobian"),
                 (new_velocity.to_numpy(), new_gradient.to_numpy()),
                 (previous_velocity.to_numpy(), previous_gradient.to_numpy()),
@@ -176,9 +176,9 @@ def test_target_local_error_preserves_pointwise_envelope_at_cell_extremes(kernel
                 roundoff,
                 strict=True,
             ):
-                new_error = np.linalg.norm((new - oracle).reshape(target_count, -1), axis=1)
-                old_error = np.linalg.norm((old - oracle).reshape(target_count, -1), axis=1)
-                norm = max(np.linalg.norm(oracle), np.finfo(np.float64).tiny)
+                new_error = np.linalg.norm((new - reference).reshape(target_count, -1), axis=1)
+                old_error = np.linalg.norm((old - reference).reshape(target_count, -1), axis=1)
+                norm = max(np.linalg.norm(reference), np.finfo(np.float64).tiny)
                 metrics = {
                     "case": label,
                     "quantity": quantity,

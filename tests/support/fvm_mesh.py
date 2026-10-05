@@ -1,4 +1,4 @@
-"""Small native mesh fixtures for solver contract tests."""
+"""Small native mesh fixtures for solver consistency checks."""
 
 import numpy as np
 
@@ -11,7 +11,7 @@ def structured_box(
     ly: float = 1.0,
     lz: float = 1.0,
 ) -> dict:
-    """Build a small native rectilinear box for FVM contract tests."""
+    """Build a small native rectilinear box for FVM consistency checks."""
     if min(nx, ny, nz) < 1 or min(lx, ly, lz) <= 0.0:
         raise ValueError("Cell counts and box lengths must be positive")
     from source.solvers.fvm.mesh.rectilinear import box_mesh_3d

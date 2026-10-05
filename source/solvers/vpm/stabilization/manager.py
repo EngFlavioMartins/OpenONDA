@@ -8,7 +8,7 @@ judges the outcome of each event against one small set of criteria that is the
 same for every mechanism.
 
 The master's criteria are deliberately global, cheap, and physical.  They are
-formed from :class:`StabilizationHealth`, an O(N) snapshot of the particle
+formed from :class:`ParticleStrengthMetrics`, an O(N) snapshot of the particle
 cloud taken from arrays the solver already holds:
 
 ``vortex_strength error``   ``|sum vortex_strength_after - sum vortex_strength_before| / sum |vortex_strength|``
@@ -61,7 +61,7 @@ class StabilizationError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class StabilizationHealth:
+class ParticleStrengthMetrics:
     """Global physical state of the particle cloud, measured in O(N)."""
 
     n_particles_total: int
@@ -71,7 +71,7 @@ class StabilizationHealth:
     max_vorticity_magnitude: float
 
     @classmethod
-    def measure(cls, particles) -> StabilizationHealth:
+    def measure(cls, particles) -> ParticleStrengthMetrics:
         """Snapshot the cloud from the vortex_strength and particle_volume already on hand."""
         count = particles.n_particles_total
         if count == 0:
@@ -89,7 +89,7 @@ class StabilizationHealth:
         )
 
 
-# Lifecycle phases of one VPM time step, in execution order, with the worker
+# Phases of one VPM time step, in execution order, with the worker
 # methods that are allowed to act in each.  The schedule is owned here: a new
 # stabilization worker registers in one of these tuples (and opens the manager
 # call in ``run_phase``); the solver's step loop never grows another apply_*()
@@ -128,7 +128,7 @@ class StabilizationManager:
     """Schedule the stabilization workers and audit what they did.
 
     The solver owns one instance and the step loop calls :meth:`run_phase` at
-    each lifecycle phase declared in :data:`PHASES`; no stabilization state or
+    each run phases phase declared in :data:`PHASES`; no stabilization state or
     bookkeeping lives on the solver itself.  The schedule — which worker runs
     in which phase — is owned here, so adding a stabilization mechanism means
     registering its worker in ``PHASES`` rather than growing the step loop.
@@ -142,7 +142,7 @@ class StabilizationManager:
         context : StabilizationContext
             Shared view of the particle arrays, evaluated induction fields,
             accepted-step metadata, and immutable stabilization configuration.
-            The manager retains this owner-facing context and constructs its
+            The manager retains this solver-facing context and constructs its
             own operator workspace; particle arrays are not copied.
 
         Notes
@@ -174,7 +174,7 @@ class StabilizationManager:
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
         self.lagrangian_cfl = 0.0
-        # Lineage and reference state the workers need across events.  It is
+        # Refinement reference and reference state the workers need across events.  It is
         # part of the restart state, so the backup reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
         self.reference_lengths: np.ndarray | None = None
@@ -182,19 +182,19 @@ class StabilizationManager:
 
     # -- master criteria -------------------------------------------------------
 
-    def measure(self) -> StabilizationHealth:
-        """Return the current cloud health."""
-        return StabilizationHealth.measure(self.ctx.particles)
+    def measure(self) -> ParticleStrengthMetrics:
+        """Return the current particle strength metrics."""
+        return ParticleStrengthMetrics.measure(self.ctx.particles)
 
     def accept(
         self,
         mechanism: str,
-        before: StabilizationHealth,
+        before: ParticleStrengthMetrics,
         *,
         conserves_vortex_strength: bool = True,
         preserves_discretization: bool = True,
         detail: str = "",
-    ) -> StabilizationHealth:
+    ) -> ParticleStrengthMetrics:
         """Judge one completed event and record it, or raise.
 
         The comparison is made on the uploaded field, so it also covers the
@@ -235,7 +235,7 @@ class StabilizationManager:
         self.last_mechanism = mechanism
         # Recorded for every mechanism.  A rotation carries vortex_strength with it
         # by construction, so for those this number is the reported transfer
-        # rather than an error, and only the gate below is skipped.
+        # rather than an error, and only the check below is skipped.
         self.last_vortex_strength_error = vortex_strength_error
         self.last_strength_growth = strength_growth
         self.last_vorticity_growth = vorticity_growth
@@ -281,7 +281,7 @@ class StabilizationManager:
         }
 
     def restore_diagnostics(self, values: dict) -> None:
-        """Restore the complete current diagnostic ledger."""
+        """Restore the current stabilization diagnostics."""
         self.events = int(values["n_stabilization_events"])
         for row, quantity in enumerate(("vortex_strength", "linear_impulse", "angular_impulse")):
             for column, axis in enumerate("xyz"):
@@ -348,11 +348,11 @@ class StabilizationManager:
     def refresh_metrics(
         self, *, kinetic_energy_rate: float, viscous_kinetic_energy_rate: float
     ) -> None:
-        """Publish diagnostics already computed by the evolution pipeline."""
+        """Publish diagnostics already computed by the evolution sequence."""
         self.ctx.metrics.kinetic_energy_rate = kinetic_energy_rate
         self.ctx.metrics.viscous_kinetic_energy_rate = viscous_kinetic_energy_rate
 
-    # -- lifecycle phases -------------------------------------------------------
+    # -- run phases -------------------------------------------------------
 
     def run_phase(self, phase: str, profiler=None) -> None:
         """Run every stabilization worker scheduled in ``phase``.
@@ -381,7 +381,7 @@ class StabilizationManager:
     # -- mechanisms ------------------------------------------------------------
 
     def capture_reference_state(self) -> None:
-        """Capture the lineage and moment references the workers relax toward."""
+        """Capture the refinement reference and moment references the workers relax toward."""
         particles = self.ctx.particles
         if self.reference_vortex_strength is not None and self.reference_moments is not None:
             return
@@ -520,7 +520,7 @@ class StabilizationManager:
 
         if self.reference_vortex_strength is None or self.reference_lengths is None:
             raise FilamentRefinementError(
-                "filament-refinement lineage references were not captured before time integration"
+                "filament-refinement references were not captured before time integration"
             )
         particles = ctx.particles
         position = particles.position_cpu()
@@ -528,7 +528,7 @@ class StabilizationManager:
             self.reference_lengths
         ) != len(position):
             raise FilamentRefinementError(
-                "filament-refinement lineage state no longer matches the particle cloud"
+                "filament-refinement reference state no longer matches the particle cloud"
             )
         capacity = int(particles._max_particles)
 
@@ -616,7 +616,7 @@ class StabilizationManager:
             raise DivergenceRelaxationError(
                 "divergence relaxation currently implements the Gaussian blob/grid "
                 f"operator only, not particle_kernel={particle_kernel}",
-                gate="kernel compatibility",
+                check="kernel compatibility",
             )
 
         if self.reference_moments is None:
@@ -665,7 +665,7 @@ class StabilizationManager:
 
         uploaded_vortex_strength = result.vortex_strength.astype(ctx.np_dtype)
         ctx.mutations.set_properties(vortex_strength=uploaded_vortex_strength)
-        self._rescale_lineage_reference(
+        self._rescale_refinement_reference(
             vortex_strength, uploaded_vortex_strength.astype(np.float64)
         )
         self.accept(
@@ -679,7 +679,7 @@ class StabilizationManager:
         )
 
     def apply_regularization(self) -> None:
-        """Redistribute a distorted cloud when its discretization health demands it."""
+        """Redistribute a distorted cloud when its resolution metrics require it."""
         cfg = self.config
         if not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
             return
@@ -697,7 +697,7 @@ class StabilizationManager:
         self.ctx.state.domain_bounds_enforced = False
         # This worker rebuilds the cloud on its own grid, so total variation and
         # peak vorticity are measured against a different discretization; its
-        # energy and enstrophy limits are the physics gate, enforced inside it.
+        # energy and enstrophy limits are the physics check, enforced inside it.
         self.accept(
             "conservative regularization",
             before,
@@ -718,10 +718,12 @@ class StabilizationManager:
             # Removal compacts the stored vorticity field; no O(N²) rebuild is needed.
             ctx.mutations.remove_by_bounds(bounds, invert_selection=True)
 
-    # -- lineage bookkeeping ---------------------------------------------------
+    # -- refinement reference bookkeeping ---------------------------------------------------
 
-    def _rescale_lineage_reference(self, vortex_strength: np.ndarray, relaxed: np.ndarray) -> None:
-        """Keep the refinement lineage consistent with reassigned vortex_strength."""
+    def _rescale_refinement_reference(
+        self, vortex_strength: np.ndarray, relaxed: np.ndarray
+    ) -> None:
+        """Keep the refinement reference consistent with reassigned vortex_strength."""
         reference = self.reference_vortex_strength
         if reference is None or len(reference) != len(vortex_strength):
             return
@@ -734,8 +736,8 @@ class StabilizationManager:
         updated[~scalable] = np.maximum(updated[~scalable], new_magnitude[~scalable])
         self.reference_vortex_strength = np.maximum(updated, floor)
 
-    def resize_lineage_reference(self, source_index: np.ndarray | None = None) -> None:
-        """Re-map the lineage state after the particle set changed elsewhere."""
+    def resize_refinement_reference(self, source_index: np.ndarray | None = None) -> None:
+        """Re-map the refinement reference state after the particle set changed elsewhere."""
         if self.reference_vortex_strength is None:
             return
         if source_index is None:
@@ -747,10 +749,10 @@ class StabilizationManager:
         self.reference_lengths = self.reference_lengths[source_index]
 
     def on_removal(self, *, indices=None, keep_mask=None, remove_all: bool = False) -> None:
-        """Trim the lineage references to match a particle removal.
+        """Trim the refinement references to match a particle removal.
 
         Called by the solver's particle-mutation entry points so the refinement
-        references never drift from the live cloud.  A no-op when no lineage has
+        references never drift from the live cloud.  A no-op when no refinement reference has
         been captured yet (``reference_strengths is None``).
         """
         if self.reference_vortex_strength is None or self.reference_lengths is None:
@@ -770,7 +772,7 @@ class StabilizationManager:
         self.reference_lengths = np.asarray(self.reference_lengths)[keep]
 
     def on_replacement(self, magnitude: np.ndarray, particle_volume: np.ndarray) -> None:
-        """Reset the lineage references to the new cloud's own magnitudes."""
+        """Reset the refinement references to the new cloud's own magnitudes."""
         if self.reference_vortex_strength is None:
             return
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
@@ -780,14 +782,14 @@ class StabilizationManager:
     def on_add(
         self, magnitude: np.ndarray, particle_volume: np.ndarray, start: int, loading: bool = False
     ) -> None:
-        """Extend the lineage references for an appended batch of particles."""
+        """Extend the refinement references for an appended batch of particles."""
         if self.reference_vortex_strength is None or self.reference_lengths is None:
             return
         if loading:
             return
         if len(self.reference_vortex_strength) != start:
             raise RuntimeError(
-                "filament-refinement lineage state did not match the cloud before insertion"
+                "filament-refinement reference state did not match the cloud before insertion"
             )
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
         self.reference_vortex_strength = np.concatenate(

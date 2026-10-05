@@ -2,7 +2,7 @@
 
 No production backend, gridding, FFT, or physical core change is implemented.
 This module depends only on NumPy and the standard library. Floating point
-evaluations of the analytic bounds are NOT interval-arithmetic certificates.
+evaluations of the analytic bounds are NOT interval-arithmetic error_bounds.
 
 Repository convention (kernels/gaussian.py) is
     Z_s(r) = exp(-(r/s)**2)/(pi**1.5*s**3),
@@ -96,7 +96,7 @@ def gaussian_tail(distance, sigma):
 
 def gaussian_density(distance, sigma):
     sigma = _positive_finite(sigma, "sigma")
-    return _PI15 / sigma**3 * math.exp(-(distance / sigma)**2)
+    return _PI15 / sigma**3 * math.exp(-((distance / sigma) ** 2))
 
 
 def singular_defect_bound(cutoff, sigma, absolute_strength=1.0):
@@ -125,7 +125,7 @@ def broadening_tail_bound(cutoff, sigma, tau, absolute_strength=1.0):
 
 
 def correction_factors(distance, sigma, tau):
-    """Independent positive-integral dA,dB oracle, not production arithmetic.
+    """Independent positive-integral dA,dB reference, not production arithmetic.
 
     Doubling subintervals avoid a narrow endpoint layer when tau/sigma is
     large; fixed Gaussian quadrature is merely a high-accuracy reference,
@@ -151,7 +151,7 @@ def correction_factors(distance, sigma, tau):
         upper = min(2.0 * lower, end)
         nodes = lower + (upper - lower) * (_NODES + 1.0) / 2.0
         weights = _WEIGHTS * (upper - lower) / 2.0
-        exponent = np.exp(-(distance * nodes)**2)
+        exponent = np.exp(-((distance * nodes) ** 2))
         a += float(weights @ (nodes**2 * exponent))
         b += float(weights @ (nodes**4 * exponent))
         lower = upper
@@ -166,14 +166,16 @@ def gaussian_factors(distance, sigma):
         raise ValueError("distance must be nonnegative and finite")
     rho = distance / sigma
     if rho < 1.0:
-        coefficients = np.array([(-1.0)**n / (math.factorial(n) * (2*n+3)) for n in range(24)])
-        derivative = np.array([-2.0*n*coefficients[n] for n in range(1, 24)])
+        coefficients = np.array(
+            [(-1.0) ** n / (math.factorial(n) * (2 * n + 3)) for n in range(24)]
+        )
+        derivative = np.array([-2.0 * n * coefficients[n] for n in range(1, 24)])
         return (
-            _PI15 / sigma**3 * np.polynomial.polynomial.polyval(rho*rho, coefficients),
-            _PI15 / sigma**5 * np.polynomial.polynomial.polyval(rho*rho, derivative),
+            _PI15 / sigma**3 * np.polynomial.polynomial.polyval(rho * rho, coefficients),
+            _PI15 / sigma**5 * np.polynomial.polynomial.polyval(rho * rho, derivative),
         )
     q = 1.0 / _FOUR_PI - gaussian_tail(distance, sigma)
-    return q / distance**3, 3.0*q / distance**5 - gaussian_density(distance, sigma) / distance**2
+    return q / distance**3, 3.0 * q / distance**5 - gaussian_density(distance, sigma) / distance**2
 
 
 def _fields(displacement, strength, factors):
@@ -184,11 +186,11 @@ def _fields(displacement, strength, factors):
     if not np.all(np.isfinite(displacement)) or not np.all(np.isfinite(strength)):
         raise ValueError("vectors must be finite")
     x, y, z = strength
-    cross = np.array([[0., -z, y], [z, 0., -x], [-y, x, 0.]])
+    cross = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
     a, b = factors
     return (
         a * (cross @ displacement),
-        cross @ (a*np.eye(3) - b*np.outer(displacement, displacement)),
+        cross @ (a * np.eye(3) - b * np.outer(displacement, displacement)),
     )
 
 
@@ -198,10 +200,14 @@ def gaussian_fields(displacement, strength, sigma):
 
 def correction_fields(displacement, strength, sigma, tau):
     return _fields(
-        displacement, strength, correction_factors(np.linalg.norm(displacement), sigma, tau),
+        displacement,
+        strength,
+        correction_factors(np.linalg.norm(displacement), sigma, tau),
     )
 
 
 def singular_fields(displacement, strength):
     radius = _positive_finite(np.linalg.norm(displacement), "singular distance")
-    return _fields(displacement, strength, (1.0/(_FOUR_PI*radius**3), 3.0/(_FOUR_PI*radius**5)))
+    return _fields(
+        displacement, strength, (1.0 / (_FOUR_PI * radius**3), 3.0 / (_FOUR_PI * radius**5))
+    )

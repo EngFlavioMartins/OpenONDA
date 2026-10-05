@@ -52,26 +52,28 @@ def test_particle_snapshot_cuda_in_isolated_runtime(tmp_path, record_property):
     print(json.dumps(report, sort_keys=True))
 
 
-def _owner(capacity):
+def _solver(capacity):
     from source.solvers.vpm.core.solver import VPMSolver
     from source.solvers.vpm.particles.container import Particles
     from source.solvers.vpm.stabilization.manager import StabilizationManager
 
     particles = Particles(max_n_particles=capacity, float_dtype="f32")
-    lineage = SimpleNamespace(reference_vortex_strength=None, reference_lengths=None)
-    lineage.on_replacement = MethodType(StabilizationManager.on_replacement, lineage)
-    owner = SimpleNamespace(
+    refinement_reference = SimpleNamespace(reference_vortex_strength=None, reference_lengths=None)
+    refinement_reference.on_replacement = MethodType(
+        StabilizationManager.on_replacement, refinement_reference
+    )
+    solver = SimpleNamespace(
         particles=particles,
-        stabilization=lineage,
+        stabilization=refinement_reference,
         _axisymmetric_orbits_validated=True,
     )
-    owner.capture_particle_snapshot = MethodType(VPMSolver.capture_particle_snapshot, owner)
-    owner.restore_particle_snapshot = MethodType(VPMSolver.restore_particle_snapshot, owner)
-    return owner
+    solver.capture_particle_snapshot = MethodType(VPMSolver.capture_particle_snapshot, solver)
+    solver.restore_particle_snapshot = MethodType(VPMSolver.restore_particle_snapshot, solver)
+    return solver
 
 
-def _release(owner):
-    for buffer in getattr(owner, "_particle_snapshot_buffers", {}).values():
+def _release(solver):
+    for buffer in getattr(solver, "_particle_snapshot_buffers", {}).values():
         buffer.destroy()
 
 
@@ -82,22 +84,22 @@ def _qualify():
         checks.test_device_snapshot_restores_all_fields_without_host_particle_reads,
         checks.test_nested_slots_are_independent_and_reused_handles_fail_before_mutation,
         checks.test_grown_slot_releases_old_allocation_and_empty_snapshot_restores_count,
-        checks.test_snapshot_preserves_refinement_lineage,
-        checks.test_snapshot_cannot_restore_into_another_owner,
+        checks.test_snapshot_preserves_refinement_reference,
+        checks.test_snapshot_cannot_restore_into_another_solver,
         checks.test_invalid_snapshot_is_rejected_before_restoring_any_fields,
     )
     completed = []
     for check in selected:
-        owner = _owner(32)
+        solver = _solver(32)
         try:
             if check is selected[0]:
                 with pytest.MonkeyPatch.context() as patch:
-                    check(owner, patch)
+                    check(solver, patch)
             else:
-                check(owner)
+                check(solver)
             completed.append(check.__name__)
         finally:
-            _release(owner)
+            _release(solver)
     return {"checks": completed, "copied_fields": "bitwise f32", "tests_passed": len(completed)}
 
 

@@ -28,7 +28,7 @@ def summarize():
         reference = rm.saffman_speed(time * rm.REFERENCE_TIME) / rm.REFERENCE_VELOCITY
         valid = time * rm.REFERENCE_TIME <= rm.saffman_valid_time_limit()
         out = {
-            "status": metadata["lifecycle"]["status"],
+            "status": metadata["run_status"]["status"],
             "normalized_end_time": float(d.time.iloc[-1] / rm.REFERENCE_TIME),
             "final_vector_drift": float(drift[-1]),
             "initial_vector_norm": float(np.linalg.norm(vector[0]) / scale),

@@ -5,14 +5,14 @@ transition bands, fluid-region selection, and direct construction of the
 solver's face-based ``mesh_data`` dictionary. It neither reads nor writes an
 external solver case and has no external-mesher runtime dependency.
 
-Algorithmic lineage and credit
+Algorithmic algorithm origins and credit
 ------------------------------
 The workflow is inspired by the open-source cfMesh Cartesian mesher by Dr.
 Franjo Juretic and Creative Fields, Ltd. cfMesh creates an octree background
 and extracts a predominantly hexahedral/polyhedral mesh.  This is an
 independent Python implementation of the octree/extraction stages; it does
 not copy cfMesh source code. Generic patch-normal boundary layers are handled
-by the typed mesher pipeline.
+by the typed mesher sequence.
 
 Both cfMesh and OpenONDA are distributed under GPL-3.0-or-later.  See
 ``CFMESH_ATTRIBUTION.md`` beside this file for upstream links and the precise
@@ -231,7 +231,7 @@ class _SurfaceSolid:
         # collapse adjacent interior faces when those cells are projected.
         # ``overlaps`` still drives full surface refinement; this predicate
         # decides only which side of the interface owns the leaf.
-        # Keep every surface-intersected finest cell for the transactional
+        # Keep every surface-intersected finest cell for the validated
         # cut-cell stage, including cells whose centre lies just inside the
         # solid.  Centre-only retention loses complete wall sectors whenever
         # the intersected leaf on one side of a facet happens to own the solid
@@ -242,7 +242,7 @@ class _SurfaceSolid:
         if bool(self.index.is_inside(centre[None, :])[0]):
             return True
         # Intersected cells on the fluid side are retained.  The staged native
-        # recovery transaction clips them against the exact STL triangles;
+        # recovery state update clips them against the exact STL triangles;
         # deleting them here recreates the staircase that recovery is meant to
         # replace.  Thin bodies without any centre-inside cell are therefore
         # represented by their cut-cell band instead of disappearing.
@@ -324,7 +324,7 @@ def _integer_quotient(value: Fraction) -> int | None:
 
 
 def _as_fraction(value: float) -> Fraction:
-    # No denominator limiting: the body coordinates are geometry authority and
+    # No denominator limiting: the body coordinates are reference geometry and
     # must round-trip exactly.  ``str`` on a float yields the shortest decimal
     # that reproduces it, so the fraction is exact by construction.
     return Fraction(str(value))
@@ -340,7 +340,7 @@ def _resolve_preserved_lattice(
 ) -> _ResolvedCartesianLattice:
     """Resolve a Cartesian lattice that preserves the body exactly.
 
-    The body is the authority: its six faces become exact lattice planes at
+    The body defines the geometry: its six faces become exact lattice planes at
     the finest spacing ``h``.  ``h`` is never coarser than the requested finest
     spacing.  If the requested dyadic spacing already divides every body
     extent, it is kept unchanged.  Otherwise a body-determined common spacing
@@ -1102,18 +1102,18 @@ class CartesianOctree:
         refinements, surface_patch_refinements, merge_outer_patch,
         preserve_outer_patches, surface_may_cross_domain_boundary,
         include_cell_vertex_indices
-            Mesh-quality, refinement, boundary, and topology policies. Lengths
+            Mesh-quality, refinement, boundary, and topology settings. Lengths
             are in metres. Body coordinates are preserved exactly.
 
         Raises
         ------
         ValueError
             If bounds, sizes, surface-source combinations, or refinement
-            policies are inconsistent.
+            settings are inconsistent.
 
         Notes
         -----
-        Construction validates policy and does not materialize the mesh.
+        Construction validates settings and does not build the mesh.
         :meth:`build` performs octree generation and quality checks.
         """
         _validate_bounds(domain, "domain")
@@ -1454,7 +1454,7 @@ class CartesianOctree:
                 ):
                     raise ValueError(
                         "STL surface cuts a leaf cell with positive volume; the body "
-                        "was not modified. The preserved-body contract requires every "
+                        "was not modified. The preserved-body comparison_settings requires every "
                         "body face to be an exact Cartesian lattice plane, so a "
                         "surface_cell_size (or a body position) that aligns the surface "
                         "with the finest level must be used"

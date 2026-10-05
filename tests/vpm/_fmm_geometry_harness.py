@@ -1,4 +1,4 @@
-"""Current reflected-FMM fields used by geometry ownership tests."""
+"""Current reflected-FMM fields used by geometry storage tests."""
 
 import numpy as np
 import taichi as ti

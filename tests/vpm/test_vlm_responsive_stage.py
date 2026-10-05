@@ -7,7 +7,7 @@ import numpy as np
 import taichi as ti
 
 from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.vpm.boundary_elements.vlm.solver.restart import restart_identity
+from source.solvers.vpm.boundary_elements.vlm.solver.restart import restart_configuration_hash
 from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.vpm.numerics.rk_tableaux import RK2
 from source.solvers.vpm.physics.induction.base import StageRates, StageState
@@ -95,15 +95,17 @@ def test_responsive_stage_solve_is_temporary_and_uses_stage_boundary_response():
             provider.add_stage_rates(stage_one, 0.01, rates)
             assert solver._last_stage_near_wake_elapsed == 0.01
             assert solver._last_stage_near_wake_matrix_norm > 0.0
-            # Accepted-state health/output refreshes query the field without
-            # an RK stage identity.  They must not erase the temporal
-            # partial-row evidence from the real stage evaluation.
+            # Accepted-state diagnostics query velocity without an RK stage or
+            # strength exchange. They preserve the recorded stage contribution.
             elapsed = solver._last_stage_near_wake_elapsed
             matrix_norm = solver._last_stage_near_wake_matrix_norm
+            transported_bound = solver._transported_bound.to_numpy().copy()
             field_only = StageState(position, strength, core_radius, count, time=0.01)
-            provider.add_stage_rates(field_only, 0.01, rates)
+            diagnostic_rates = StageRates(velocity, strength_rate, strength_rate_enabled=False)
+            provider.add_stage_rates(field_only, 0.01, diagnostic_rates)
             assert solver._last_stage_near_wake_elapsed == elapsed
             assert solver._last_stage_near_wake_matrix_norm == matrix_norm
+            np.testing.assert_array_equal(solver._transported_bound.to_numpy(), transported_bound)
 
         assert solver._stage_response_active is True
         assert solver._last_stage_boundary_residual < 1.0e-10
@@ -118,7 +120,7 @@ def test_responsive_stage_solve_is_temporary_and_uses_stage_boundary_response():
         ti.reset()
 
 
-def test_boundary_response_policy_is_part_of_restart_identity():
+def test_boundary_response_settings_is_part_of_restart_identity():
     ti.reset()
     ti.init(arch=ti.cpu, default_fp=ti.f64, offline_cache=False, cpu_max_num_threads=2)
     try:
@@ -139,7 +141,7 @@ def test_boundary_response_policy_is_part_of_restart_identity():
         lagged.generate_mesh()
         responsive.generate_mesh()
 
-        assert restart_identity(lagged) != restart_identity(responsive)
-        assert lagged.field_contract.particle_target_radius(0.0) > 0.0
+        assert restart_configuration_hash(lagged) != restart_configuration_hash(responsive)
+        assert lagged.field_settings.particle_target_radius(0.0) > 0.0
     finally:
         ti.reset()

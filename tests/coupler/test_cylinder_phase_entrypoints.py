@@ -1,4 +1,4 @@
-"""Phase runners share the startup lifecycle and preserve bounded output."""
+"""Phase runners share the startup run_stages and preserve bounded output."""
 
 from contextlib import nullcontext
 import json
@@ -76,15 +76,15 @@ def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
     monkeypatch.setattr(
         driver.case,
         "coupled_case",
-        lambda **kwargs: factory_calls.append(kwargs) or ("flow", "particles", "policy", "mesh"),
+        lambda **kwargs: factory_calls.append(kwargs) or ("flow", "particles", "settings", "mesh"),
     )
 
     def run(**kwargs):
         captured.update(kwargs)
         return last
 
-    def create(flow, particles, policy, **kwargs):
-        assert (flow, particles, policy) == ("flow", "particles", "policy")
+    def create(flow, particles, settings, **kwargs):
+        assert (flow, particles, settings) == ("flow", "particles", "settings")
         assert kwargs == {"mesh": "mesh", "case_dir": tmp_path / "coupled"}
         return nullcontext(SimpleNamespace(run=run))
 
@@ -115,12 +115,12 @@ def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
 
 def test_phase_failure_is_recorded_and_propagated(driver, tmp_path, monkeypatch):
     def fail(*args, **kwargs):
-        raise RuntimeError("native admission failed")
+        raise RuntimeError("native validation failed")
 
     monkeypatch.setattr(setup.coupling, "create_coupler", fail)
     monkeypatch.setattr(sys, "argv", ["phase", "coupled", "--root", str(tmp_path)])
-    with pytest.raises(RuntimeError, match="native admission failed"):
+    with pytest.raises(RuntimeError, match="native validation failed"):
         driver.main()
     result = json.loads((tmp_path / "coupled/run-result.json").read_text())
     assert result["status"] == "failed"
-    assert "native admission failed" in result["error"]
+    assert "native validation failed" in result["error"]

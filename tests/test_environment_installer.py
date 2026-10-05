@@ -1,4 +1,4 @@
-"""Exercise installation orchestration without changing the user's environment."""
+"""Check installer commands without changing the user's environment."""
 
 import hashlib
 import importlib.util
@@ -80,9 +80,9 @@ def test_fresh_bootstrap_uses_pinned_asset_and_checks_before_execution(
 case "$1" in -s) echo {system};; -m) echo {architecture};; esac
 """,
     )
-    payload = b'#!/bin/bash\nprintf installed > "$INSTALL_TEST_MARKER"\nexit 37\n'
+    installer_bytes = b'#!/bin/bash\nprintf installed > "$INSTALL_TEST_MARKER"\nexit 37\n'
     archive = tmp_path / "fixture.sh"
-    archive.write_bytes(payload)
+    archive.write_bytes(installer_bytes)
     executable(
         commands / "curl",
         """#!/bin/bash
@@ -99,7 +99,7 @@ cat "$INSTALL_TEST_ARCHIVE" > "$destination"
     if valid_digest:
         source = re.sub(
             r"MINIFORGE_SHA256=[0-9a-f]{64}",
-            "MINIFORGE_SHA256=" + hashlib.sha256(payload).hexdigest(),
+            "MINIFORGE_SHA256=" + hashlib.sha256(installer_bytes).hexdigest(),
             source,
         )
     worker = tmp_path / "scripts/install/install_conda.sh"
@@ -281,13 +281,13 @@ def prepare_tex(monkeypatch, tmp_path, *, bad_digest=False, member=None):
     prefix = tmp_path / "environment with spaces"
     (prefix / "conda-meta").mkdir(parents=True)
     (prefix / "bin").mkdir()
-    payload = tinytex_archive(member) if member else tinytex_archive()
+    installer_bytes = tinytex_archive(member) if member else tinytex_archive()
     downloads, commands = [], []
 
     def download(url, destination):
         downloads.append(url)
         if destination.suffix == ".json":
-            digest = "0" * 64 if bad_digest else hashlib.sha256(payload).hexdigest()
+            digest = "0" * 64 if bad_digest else hashlib.sha256(installer_bytes).hexdigest()
             destination.write_text(
                 json.dumps(
                     {
@@ -302,7 +302,7 @@ def prepare_tex(monkeypatch, tmp_path, *, bad_digest=False, member=None):
                 )
             )
         else:
-            destination.write_bytes(payload)
+            destination.write_bytes(installer_bytes)
 
     monkeypatch.setattr(tex, "download", download)
     monkeypatch.setattr(tex.platform, "system", lambda: "Linux")

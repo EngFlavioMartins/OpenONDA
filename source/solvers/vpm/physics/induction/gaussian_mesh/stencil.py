@@ -15,9 +15,15 @@ import numpy as np
 def _parameters(origin, order, shape, dtype, max_points):
     if isinstance(order, bool) or not isinstance(order, Integral) or order not in (4, 6, 8, 10):
         raise ValueError("even cardinal order4..10 required")
-    if len(shape) != 3 or any(isinstance(v, bool) or not isinstance(v, Integral) or not order <= v <= 2**30 for v in shape):
+    if len(shape) != 3 or any(
+        isinstance(v, bool) or not isinstance(v, Integral) or not order <= v <= 2**30 for v in shape
+    ):
         raise ValueError("three integer assignment dimensions in [order,2**30] required")
-    if isinstance(max_points, bool) or not isinstance(max_points, Integral) or not 0 <= max_points <= 2**30:
+    if (
+        isinstance(max_points, bool)
+        or not isinstance(max_points, Integral)
+        or not 0 <= max_points <= 2**30
+    ):
         raise ValueError("bounded integer max_points required")
     if np.iscomplexobj(origin):
         raise ValueError("real auxiliary origin required")
@@ -30,7 +36,7 @@ def _parameters(origin, order, shape, dtype, max_points):
 
 
 def _source(dtype, order):
-    return r'''
+    return r"""
     typedef WEIGHT Weight;
     extern "C" __global__ void cardinal_stencil(
         const double *point,const double ox,const double oy,const double oz,
@@ -58,11 +64,22 @@ def _source(dtype, order):
         weights[axis*ORDER+i]=(Weight)value;
       }
     }
-    '''.replace("WEIGHT", "float" if np.dtype(dtype) == np.dtype("float32") else "double").replace("ORDER", str(order))
+    """.replace("WEIGHT", "float" if np.dtype(dtype) == np.dtype("float32") else "double").replace(
+        "ORDER", str(order)
+    )
 
 
-def cardinal_stencil_gpu(points, origin, order, shape, *, dtype="float32", pool,
-                         max_points=1_000_000, max_new_bytes=256*1024**2):
+def cardinal_stencil_gpu(
+    points,
+    origin,
+    order,
+    shape,
+    *,
+    dtype="float32",
+    pool,
+    max_points=1_000_000,
+    max_new_bytes=256 * 1024**2,
+):
     """Return fresh `(first_i32, weights, diagnostics)` using caller-owned pool.
 
     Accepts host arrays or a same-device CuPy array. A contiguous f64 device
@@ -75,7 +92,11 @@ def cardinal_stencil_gpu(points, origin, order, shape, *, dtype="float32", pool,
     origin, order, shape, dtype, max_points = _parameters(origin, order, shape, dtype, max_points)
     if not isinstance(pool, cp.cuda.MemoryPool) or not 0 < pool.get_limit() < 2**63:
         raise ValueError("caller must supply a capped CuPy MemoryPool")
-    if isinstance(max_new_bytes, bool) or not isinstance(max_new_bytes, Integral) or max_new_bytes <= 0:
+    if (
+        isinstance(max_new_bytes, bool)
+        or not isinstance(max_new_bytes, Integral)
+        or max_new_bytes <= 0
+    ):
         raise ValueError("positive integer max_new_bytes required")
     stream = cp.cuda.get_current_stream()
     if isinstance(points, cp.ndarray) and points.device.id != cp.cuda.runtime.getDevice():
@@ -87,11 +108,13 @@ def cardinal_stencil_gpu(points, origin, order, shape, *, dtype="float32", pool,
     if np.dtype(points.dtype).kind not in "biuf":
         raise ValueError("real numeric normalized coordinates required")
     count = len(points)
-    borrow = isinstance(points, cp.ndarray) and points.dtype == cp.float64 and points.flags.c_contiguous
-    declared_bytes = count*(12+3*order*dtype.itemsize+(0 if borrow else 24))+4
+    borrow = (
+        isinstance(points, cp.ndarray) and points.dtype == cp.float64 and points.flags.c_contiguous
+    )
+    declared_bytes = count * (12 + 3 * order * dtype.itemsize + (0 if borrow else 24)) + 4
     if declared_bytes > max_new_bytes:
-        raise MemoryError("cardinal coordinate/output admission exceeds max_new_bytes")
-    # No operator action occurs before admission. Input arrays are never used
+        raise MemoryError("cardinal coordinate/output validation exceeds max_new_bytes")
+    # No operator action occurs before validation. Input arrays are never used
     # as scratch or passed to a write-enabled kernel argument.
     stream.synchronize()
     start = time.perf_counter()
@@ -100,28 +123,56 @@ def cardinal_stencil_gpu(points, origin, order, shape, *, dtype="float32", pool,
         copy_started = time.perf_counter()
         coordinate = points if borrow else cp.asarray(points, dtype=cp.float64, order="C")
         stream.synchronize()
-        copy_seconds = time.perf_counter()-copy_started
+        copy_seconds = time.perf_counter() - copy_started
         first = cp.empty((count, 3), dtype=cp.int32)
         weights = cp.empty((count, 3, order), dtype=dtype)
         error = cp.zeros(1, dtype=cp.int32)
         kernel_started = time.perf_counter()
         if count:
-            kernel = cp.RawKernel(_source(dtype, order), "cardinal_stencil", options=("--std=c++11",))
-            kernel(((count*3+255)//256,), (256,),
-                   (coordinate, *map(np.float64, origin), np.int32(count), *map(np.int32, shape), first, weights, error))
+            kernel = cp.RawKernel(
+                _source(dtype, order), "cardinal_stencil", options=("--std=c++11",)
+            )
+            kernel(
+                ((count * 3 + 255) // 256,),
+                (256,),
+                (
+                    coordinate,
+                    *map(np.float64, origin),
+                    np.int32(count),
+                    *map(np.int32, shape),
+                    first,
+                    weights,
+                    error,
+                ),
+            )
         stream.synchronize()
-        kernel_seconds = time.perf_counter()-kernel_started
+        kernel_seconds = time.perf_counter() - kernel_started
         status = int(error.item())
         if status:
-            raise ValueError(f"device cardinal stencil admission failed (flags={status}); no stencil published")
-        diagnostics = {"production_admissible": False, "coordinate_normalization_changed": False,
-                       "source_points_mutated": False, "point_count": count, "order": order,
-                       "dtype": dtype.name, "declared_new_bytes": declared_bytes,
-                       "borrowed_f64_device_coordinates": borrow, "copy_seconds": copy_seconds,
-                       "kernel_and_admission_seconds": kernel_seconds, "wall_seconds": time.perf_counter()-start,
-                       "pool_used_before": before_used, "pool_reserved_before": before_reserved,
-                       "pool_used_after": pool.used_bytes(), "pool_reserved_after": pool.total_bytes(),
-                       "pool_limit": pool.get_limit()}
-    if not all(math.isfinite(diagnostics[name]) for name in ("copy_seconds", "kernel_and_admission_seconds", "wall_seconds")):
+            raise ValueError(
+                f"device cardinal stencil validation failed (flags={status}); no stencil published"
+            )
+        diagnostics = {
+            "production_admissible": False,
+            "coordinate_normalization_changed": False,
+            "source_points_mutated": False,
+            "point_count": count,
+            "order": order,
+            "dtype": dtype.name,
+            "declared_new_bytes": declared_bytes,
+            "borrowed_f64_device_coordinates": borrow,
+            "copy_seconds": copy_seconds,
+            "kernel_and_check_seconds": kernel_seconds,
+            "wall_seconds": time.perf_counter() - start,
+            "pool_used_before": before_used,
+            "pool_reserved_before": before_reserved,
+            "pool_used_after": pool.used_bytes(),
+            "pool_reserved_after": pool.total_bytes(),
+            "pool_limit": pool.get_limit(),
+        }
+    if not all(
+        math.isfinite(diagnostics[name])
+        for name in ("copy_seconds", "kernel_and_check_seconds", "wall_seconds")
+    ):
         raise RuntimeError("invalid qualification timer")
     return first, weights, diagnostics

@@ -2,7 +2,7 @@
 
 No backend methods are wrapped. Atomic interaction-list reservations already
 make independent original rebuilds non-bitwise on CUDA. We measure that control
-spread, compare both paths to the same independent finite-image pair oracle,
+spread, compare both paths to the same independent finite-image pair reference,
 and separately require every saved/restored geometry component to be bitwise.
 The 16-epsilon absolute-conditioning allowance is the existing target-operator
 qualification budget, not a relative tolerance inflated at cancelled values.
@@ -17,7 +17,7 @@ import pytest
 import taichi as ti
 
 from tests.vpm._fmm_geometry_harness import Harness
-from tests.vpm.test_fmm_targets import _slab_oracle
+from tests.vpm.test_fmm_targets import _slab_reference
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -98,7 +98,7 @@ def field_repeat_evidence(h, kernel, controls, candidates):
             assert tail[key] == reference_tail[key], (key, tail, reference_tail)
         assert tail["relative"] <= h.slab.tail_tolerance
     gamma = h.gamma.to_numpy().astype(np.float64)
-    exact, conditioning = _slab_oracle(
+    exact, conditioning = _slab_reference(
         kernel,
         h.positions.astype(np.float64),
         gamma,
@@ -130,7 +130,7 @@ def field_repeat_evidence(h, kernel, controls, candidates):
         }
     # Norm maxima are Lipschitz in their input fields; the same absolute
     # conditioning budget bounds scalar tail differences without shifting or
-    # relaxing the actual convergence gate. Total conditioning overbounds the
+    # relaxing the actual convergence check. Total conditioning overbounds the
     # last block conservatively and is also recorded above for inspection.
     tail_allowance = [16 * np.finfo(np.float32).eps * np.max(c) for c in conditioning[:2]]
     for index, name in enumerate(("velocity", "gradient")):

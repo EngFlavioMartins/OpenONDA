@@ -31,7 +31,7 @@ class _Fields:
 
 @pytest.fixture
 def make_workspace(monkeypatch):
-    monkeypatch.setattr(device, "_OwnedFields", _Fields)
+    monkeypatch.setattr(device, "_DeviceFields", _Fields)
     monkeypatch.setattr(device, "TaichiTreecode", lambda **kwargs: SimpleNamespace(**kwargs))
 
     def make(**kwargs):
@@ -99,7 +99,7 @@ def test_source_growth_preserves_independent_list_history(monkeypatch):
     assert replacements == [(8, (513, 256, 400))]
 
 
-def test_impossible_group_growth_never_replaces_live_owner(monkeypatch):
+def test_impossible_group_growth_never_replaces_live_field(monkeypatch):
     induction = device.FMMInduction()
     capacities = (64, 80, device._MAX_PAIR_CAPACITY)
     induction.workspace = SimpleNamespace(max_n_particles=1, list_capacities=capacities)
@@ -125,8 +125,10 @@ def test_memory_estimate_counts_each_group_and_shared_near_scratch(capacities):
     pairs = device._normalize_list_capacities(capacities)
     pair_reduction = 8 * equal * 4 - pairs.storage_bytes
     derivative_reduction = (
-        min(device._M2L_BATCH_SIZE, equal) - min(device._M2L_BATCH_SIZE, pairs.m2l)
-    ) * device._DERIVATIVE_COUNT * 4
+        (min(device._M2L_BATCH_SIZE, equal) - min(device._M2L_BATCH_SIZE, pairs.m2l))
+        * device._DERIVATIVE_COUNT
+        * 4
+    )
 
     assert baseline - separate == pair_reduction + derivative_reduction
 

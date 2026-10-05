@@ -167,7 +167,7 @@ class RuntimeProfiler:
         self._calls[name] = self._calls.get(name, 0) + 1
         self._last[name] = time_step_size
 
-    # -- lifecycle ---------------------------------------------------------------
+    # -- run phases ---------------------------------------------------------------
     def reset(self) -> None:
         """Clear all accumulated statistics."""
         self._cumulative.clear()

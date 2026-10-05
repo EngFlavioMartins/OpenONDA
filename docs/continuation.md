@@ -10,7 +10,7 @@ python -m openonda.tutorial_runner . setup  # Run or resume the default case.
 
 Tutorials set `START_FROM = "latest"` in `setup.py`. If a numerical backup exists, the solver restores it; otherwise it starts from the configured initial conditions. A completed run adds no steps. To extend it, increase the FVM/coupled end time or the VPM **total** `RunPlan.steps`.
 
-Set `START_FROM = "initial"` to start again with the configured initial conditions. Previous solver output is moved into `restart-branches/`. Most `allrun.sh` launchers call `allclean.sh` and delete generated output; the coupled cylinder, cube, and their FVM references preserve results and resume. Variant arguments resume that variant's own case; see the [tutorial index](tutorials.md).
+Set `START_FROM = "initial"` to start again with the configured initial conditions. Previous solver output is moved into `restart_history/`. Most `allrun.sh` launchers call `allclean.sh` and delete generated output; the coupled cylinder, cube, and their FVM references preserve results and resume. Variant arguments resume that variant's own case; see the [tutorial index](tutorials.md).
 
 ## Preserve the physical case
 
@@ -20,11 +20,11 @@ Keep the mesh, geometry, boundary conditions, viscosity, particle distribution, 
 | --- | --- |
 | FVM | `BackupConfig.path`, normally `solution/backup`; MPI backups require the original rank count. |
 | VPM/VLM | Latest accepted `solution/vpm/vpm_*.h5`; includes particle and attached lifting-surface state. |
-| FVM–VPM | `solution/backups/manifest.json` and both component states; keep the bundle together. |
+| FVM–VPM | `solution/backups/checkpoint_info.json` and both component states; keep the bundle together. |
 
 ParaView files alone cannot restore a simulation. Backup cadence determines how much work is repeated after an interruption. Continuation preserves the model; it does not resolve a numerical instability.
 
-Restarts require the current checkpoint schemas: FVM serial version 10, FVM partitioned version 8, and coupled version 12 with boundary-state schema 4. Checkpoints are admitted without schema migration, and numerical configuration changes require explicit permission.
+Restarts require the current checkpoint formats: FVM serial version 10, FVM partitioned version 9, VPM/VLM version 10.3, and coupled version 13 with boundary-state format 4. Run metadata uses format 2. Checkpoints must use the current file format, and numerical configuration changes require explicit permission. Earlier saved formats require the code version that wrote them.
 
 ## After resuming
 

@@ -4,22 +4,22 @@ Importing this package does not initialize Taichi. Backend initialization occurs
 only when a VPM or VLM solver is constructed.
 """
 
-from .artifacts import Backup, Samplers
 from .case import Numerics, RestartState, RunPlan, VPMCase
 from .diagnostics import DiagnosticsConfig
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
-from .health import (
+from .output import Backup, Samplers
+from .stabilization import StabilizationConfig
+from .state_limits import (
     DivergenceLimit,
     FiniteStateCheck,
     GrowthLimit,
-    HealthError,
-    HealthLimits,
     LagrangianCFLLimit,
     MisalignmentLimit,
+    ParticleStateError,
+    ParticleStateLimits,
     ParticleStrengthLimit,
 )
-from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
 from .viscous import ViscousConfig
 
@@ -32,8 +32,8 @@ __all__ = [
     "FilamentRefinementConfig",
     "Numerics",
     "GrowthLimit",
-    "HealthError",
-    "HealthLimits",
+    "ParticleStateError",
+    "ParticleStateLimits",
     "LagrangianCFLLimit",
     "ParticleStrengthLimit",
     "MisalignmentLimit",

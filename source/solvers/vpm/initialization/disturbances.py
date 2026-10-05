@@ -1,4 +1,4 @@
-"""Explicit disturbance specifications for canonical vortex initializers."""
+"""Explicit disturbance specifications for standard vortex initializers."""
 
 from __future__ import annotations
 

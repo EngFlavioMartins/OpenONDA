@@ -4,7 +4,7 @@
 initialisation).  Each sampler decides, through its own
 :class:`~source.solvers.fvm.config.RunSchedule`, whether it is due; the executor never applies
 a global force cadence.  A ``final_only`` schedule is selected only when the
-caller explicitly dispatches the final lifecycle event.
+caller explicitly dispatches the final run event.
 
 Force, y+ and IBM sampling are MPI-collective in partitioned runs and are never
 wrapped in error handling that could let ranks diverge.  Field samplers (line /
@@ -26,7 +26,7 @@ from .forces import ForceSampler, IBMForceSampler, YPlusSampler
 
 
 class FVMSamplerExecutor:
-    """Orchestrate FVM sampler execution for live and offline contexts.
+    """Run FVM samplers for live and offline contexts.
 
     Field samplers gather partition-owned values to root before writing; force,
     y-plus, and IBM samplers remain collective. The executor is stateless with
@@ -35,7 +35,7 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def execute(solver, *, strict: bool = True, event: str = "accepted") -> None:
-        """Execute samplers for one lifecycle event.
+        """Execute samplers for one run event.
 
         ``initial`` and ``accepted`` evaluate ordinary step/time schedules at
         the current state, including step zero. ``final`` selects only
@@ -137,7 +137,7 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def _handle_failure(solver, sampler, exc: Exception, strict: bool) -> None:
-        """Raise or log a sampler failure according to ``strict`` policy."""
+        """Raise or log a sampler failure according to ``strict`` settings."""
         name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
         if strict:
             raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc

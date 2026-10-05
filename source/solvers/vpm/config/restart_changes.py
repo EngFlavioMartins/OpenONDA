@@ -1,9 +1,8 @@
-"""Exact, opt-in configuration changes during an authenticated VPM restart.
+"""Exact configuration changes when loading a VPM backup.
 
-An allowlisted scalar leaf is not a subtree grant. Structural transitions
-(including absent keys and None-to-policy mappings) additionally require an
-exact stored/current expectation. This module never edits either configuration
-and grants no exemption from checkpoint schema, dtype, field or clock checks.
+Each allowed scalar path applies only to that value. Adding or replacing a
+setting group requires the exact stored and current values. Backup schema,
+precision, field and clock checks always apply.
 """
 
 from collections.abc import Collection, Mapping
@@ -12,7 +11,7 @@ import json
 import re
 from typing import Any
 
-from .restart import _configuration_mismatches, canonical_restart_configuration
+from .restart import _configuration_mismatches, restart_configuration_values
 
 
 class _MissingConfigurationValue(Enum):
@@ -39,10 +38,10 @@ def _value_at(configuration: object, path: str) -> object:
     return value
 
 
-def _identity(value: object) -> str | _MissingConfigurationValue:
+def _configuration_json(value: object) -> str | _MissingConfigurationValue:
     if value is MISSING_CONFIGURATION_VALUE:
         return MISSING_CONFIGURATION_VALUE
-    # Reject non-JSON values and NaN rather than granting equality through
+    # Reject non-JSON values and NaN instead of accepting equality through
     # Python's permissive comparison (notably True == 1).
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -50,10 +49,10 @@ def _identity(value: object) -> str | _MissingConfigurationValue:
 def _evidence(value: object) -> dict[str, Any]:
     if value is MISSING_CONFIGURATION_VALUE:
         return {"present": False}
-    return {"present": True, "value": json.loads(_identity(value))}
+    return {"present": True, "value": json.loads(_configuration_json(value))}
 
 
-def _admit(
+def _validate_changes(
     current: dict[str, Any],
     stored: dict[str, Any],
     mismatches: set[str],
@@ -62,7 +61,7 @@ def _admit(
     expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
     protected_paths: Collection[str] = (),
 ) -> tuple[dict[str, Any], ...]:
-    """Apply exact permissions to an independently computed difference set."""
+    """Check each allowed configuration difference."""
     if isinstance(allowed_config_differences, str | bytes) or not isinstance(
         allowed_config_differences, Collection
     ):
@@ -84,12 +83,12 @@ def _admit(
     else:
         expectations = dict(expected_config_differences)
     if any(type(path) is not str for path in expectations) or set(expectations) - allowed:
-        raise ValueError("configuration expectations require their exact allowlisted paths")
+        raise ValueError("configuration expectations require matching allowed paths")
     frozen_expectations = {}
     for path, values in expectations.items():
         if not isinstance(values, tuple | list) or len(values) != 2:
             raise ValueError(f"configuration expectation {path!r} requires (stored, current)")
-        frozen_expectations[path] = tuple(_identity(value) for value in values)
+        frozen_expectations[path] = tuple(_configuration_json(value) for value in values)
 
     unused = allowed - mismatches
     if unused:
@@ -112,15 +111,15 @@ def _admit(
                 f"structured configuration difference {path!r} requires exact stored/current expectations"
             )
         if path in frozen_expectations and frozen_expectations[path] != (
-            _identity(old),
-            _identity(new),
+            _configuration_json(old),
+            _configuration_json(new),
         ):
             raise ValueError(f"configuration expectation mismatch at {path}")
         evidence.append({"path": path, "stored": _evidence(old), "current": _evidence(new)})
     return tuple(evidence)
 
 
-def admit_configuration_changes(
+def validate_configuration_changes(
     expected: dict[str, Any],
     found: dict[str, Any],
     *,
@@ -133,17 +132,17 @@ def admit_configuration_changes(
     Paths are relative to the VPM configuration, e.g. ``induction.theta``.
     Expectations are ``path: (stored_value, current_value)``. Truly missing
     keys use :data:`MISSING_CONFIGURATION_VALUE`, not ``None``. Every requested
-    path must be an actual incompatible path; parent paths, wildcard grants,
+    path must be an actual incompatible path; parent paths, wildcard paths,
     unused permissions and expectations without permission are rejected.
     ``time_step_size`` is reserved for the separate explicit step-size API.
     Execution placement and hard storage capacity are operational.
     """
-    current = canonical_restart_configuration(expected)
-    stored = canonical_restart_configuration(found)
+    current = restart_configuration_values(expected)
+    stored = restart_configuration_values(found)
     mismatches = set(_configuration_mismatches(current, stored))
     if allow_time_step_size_mismatch:
         mismatches.discard("time_step_size")
-    return _admit(
+    return _validate_changes(
         current,
         stored,
         mismatches,
@@ -168,18 +167,18 @@ def _exact_mismatches(current: object, stored: object, path: str = "") -> set[st
         for index, (new, old) in enumerate(zip(current, stored, strict=True)):
             result.update(_exact_mismatches(new, old, f"{path}[{index}]"))
         return result
-    return set() if _identity(current) == _identity(stored) else {path}
+    return set() if _configuration_json(current) == _configuration_json(stored) else {path}
 
 
-def admit_exact_configuration_changes(
+def validate_exact_configuration_changes(
     expected: dict[str, Any],
     found: dict[str, Any],
     *,
     allowed_config_differences: Collection[str] = (),
     expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Generic exact admission without operational exemptions."""
-    return _admit(
+    """Generic exact validation without operational exemptions."""
+    return _validate_changes(
         expected,
         found,
         _exact_mismatches(expected, found),
@@ -190,6 +189,6 @@ def admit_exact_configuration_changes(
 
 __all__ = [
     "MISSING_CONFIGURATION_VALUE",
-    "admit_configuration_changes",
-    "admit_exact_configuration_changes",
+    "validate_configuration_changes",
+    "validate_exact_configuration_changes",
 ]

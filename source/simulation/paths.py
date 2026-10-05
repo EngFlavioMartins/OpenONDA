@@ -1,8 +1,8 @@
 """Resolve simulation paths once, relative to the case root.
 
-This module contains no solver policy beyond path ownership.  In particular,
+This module contains no solver settings beyond path resolution.  In particular,
 it never creates directories and never decides whether an existing run may be
-overwritten; those decisions belong to the owning lifecycle.
+overwritten; those decisions belong to the solver run.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ def resolve_case_path(case_dir: str | Path, value: str | Path | None, default: s
 
 @dataclass(frozen=True, slots=True)
 class CasePaths:
-    """Canonical artifact roots for one simulation case."""
+    """Standard output directories for one simulation case."""
 
     case_dir: Path
     solution_dir: Path

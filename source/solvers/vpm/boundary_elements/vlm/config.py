@@ -137,7 +137,7 @@ class VLMSetup:
     surfaces : tuple[VLMSurfaceSetup, ...]
         One or more lifting-surface declarations.
     mesh : VLMMeshSetup
-        Shared panel-distribution policy.
+        Shared panel-distribution settings.
     max_n_panels : int or None, optional
         Positive allocation ceiling; ``None`` derives exact capacity.
     dtype : {'f32', 'f64'}, default='f32'
@@ -155,7 +155,7 @@ class VLMSetup:
         row length, for both trailing and transverse wake elements.
         Positive values above one provide overlapping blobs.
     boundary_response : {'lagged', 'responsive'}, default='lagged'
-        Coupled VPM boundary-response policy. ``'lagged'`` preserves the
+        Coupled VPM boundary-response settings. ``'lagged'`` preserves the
         historical accepted-step solve. ``'responsive'`` solves a pure
         temporary VLM system at every particle RK stage from that stage's
         incident wake and prescribed surface geometry; only the accepted
@@ -170,12 +170,12 @@ class VLMSetup:
     logging_interval_steps : int, default=1
         Positive accepted-step force-table cadence for standalone VLM use.
         Coupled VPM cases own scientific output cadence and require this to
-        remain at its owner-step value of one.
+        remain at its solver-step value of one.
     force : ForceConfig
         Aerodynamic-force model.
     sample_surface_forces : bool, default=True
         Write per-surface as well as aggregate force histories. Coupled VPM
-        cases require this owner-sample output and reject an explicit opt-out.
+        cases require this solver-sample output and reject an explicit opt-out.
     """
 
     surfaces: tuple[VLMSurfaceSetup, ...]

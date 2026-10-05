@@ -1,4 +1,4 @@
-"""Curl convention, release support and canonical subcycling."""
+"""Curl convention, release support and fixed subcycling."""
 
 from types import SimpleNamespace
 

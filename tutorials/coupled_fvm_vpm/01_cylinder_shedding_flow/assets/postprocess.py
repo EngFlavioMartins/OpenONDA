@@ -77,8 +77,8 @@ def coincident_profiles(paths):
         yield time, samples
 
 
-def write_json(name: str, payload: dict) -> None:
-    write_record(AUXILIARY / name, payload)
+def write_json(name: str, record: dict) -> None:
+    write_record(AUXILIARY / name, record)
 
 
 def save_figure(fig, axes, name: str, figure_format: str) -> None:

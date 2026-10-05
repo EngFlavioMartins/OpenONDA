@@ -37,12 +37,12 @@ def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
     -------
     pathlib.Path or None
         Snapshot with the greatest recorded physical time, or ``None`` when
-        the solver has not yet published a field time series.
+        the solver has not yet saved a field time series.
 
     Raises
     ------
     ValueError, KeyError
-        If a published metadata or time-series record is malformed.
+        If saved metadata or a time-series record is malformed.
     """
     import json
 
@@ -134,7 +134,7 @@ FORMAT_CHOICES = (*EXPORT_FORMATS, "both")
 MAX_FIGURE_WIDTH_CM = 12.5
 WIDE_FIGURE_WIDTH_CM = 12.5
 MIN_TEXT_CANVAS_PADDING_PT = 2.0
-MIN_LINE_WIDTH_PT = 0.6  # At the native 125 mm publication width.
+MIN_LINE_WIDTH_PT = 0.6  # At the 125 mm printed figure width.
 FONT_PATH = Path(__file__).parent / "_resources" / "DejaVuSerif.ttf"
 
 FIGURE_SIZES_CM = {
@@ -542,7 +542,7 @@ def prepare_figure(fig):
 
 
 def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
-    """Validate the fixed-size, centred, single-font thesis plot contract."""
+    """Check thesis figure size, centring, and consistent fonts."""
     prepare_figure(fig)
     axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
     if not axes:
@@ -659,7 +659,7 @@ def legend_handle_style(style: dict) -> dict:
 
 
 def set_style(*, use_tex: bool = False):
-    """Apply the OpenONDA publication plotting style.
+    """Apply the OpenONDA thesis plotting style.
 
     Matplotlib's built-in math renderer is the portable default. Pass
     ``use_tex=True`` only with a working LaTeX and dvipng installation.
@@ -829,7 +829,7 @@ def validation_legend(fig, axis, *, ncol=2):
 
 
 def save_validation_figure(fig, path, *, figure_format="both", dpi=None):
-    """Check text extents and collisions before publishing a validation figure."""
+    """Check text extents and collisions before saving a comparison figure."""
     prepare_figure(fig)
     validate_thesis_figure(fig, fig.axes)
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)

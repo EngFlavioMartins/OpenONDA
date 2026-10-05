@@ -1,4 +1,4 @@
-"""Canonical online flow-integral sampler."""
+"""Standard online flow-integral sampler."""
 
 from __future__ import annotations
 
@@ -14,19 +14,19 @@ if TYPE_CHECKING:
 
 
 class FlowIntegralsSampler:
-    """Append canonical global VPM invariants and energy diagnostics to CSV.
+    """Append standard global VPM invariants and energy diagnostics to CSV.
 
     Parameters
     ----------
     schedule : OutputSchedule or None, optional
         Accepted-state output cadence. ``None`` lets the output manager apply
-        its default policy.
+        its default settings.
     file_name : str, default='flow_integrals'
         Non-empty basename below the case samples directory; ``.csv`` is added
         by framework-owned dispatch.
     initial : bool or None, default=None
         Sample the initial state as well as the regular cadence. ``None``
-        retains a subclass's initial-state policy (normally disabled).
+        retains a subclass's initial-state settings (normally disabled).
 
     Notes
     -----
@@ -61,14 +61,14 @@ class FlowIntegralsSampler:
         time: float,
         step: int | None = None,
     ) -> None:
-        """Append the canonical integral row for one accepted solver state.
+        """Append the standard integral row for one accepted solver state.
 
         Parameters
         ----------
         solver : VPMSolver
             Solver whose refreshed integral properties are serialized.
         path : pathlib.Path
-            CSV destination; parent-directory ownership belongs to the output
+            CSV destination; parent-directory creation belongs to the output
             manager.
         time : float
             Accepted physical time in s, retained for the common interface.

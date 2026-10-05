@@ -6,7 +6,7 @@ the native metadata and latest backups. All 98 current backups passed the
 solver's HDF5 validation (schema, configuration hash, particle arrays and finite
 values); stored VLM and VPM clocks agree. Archived restart branches were excluded.
 The completion table was refreshed later that day from all 98 native checkpoint
-clocks: 90 completed states, six health stops and two active simulations.
+clocks: 90 completed states, six particle state limit stops and two active simulations.
 At the 20:45 UTC refresh, delta wing had stopped after a keyboard interrupt;
 rotor was still running. Only those two changing histories were reread for this
 refresh; the earlier 98-backup validation remains the coverage of the full audit.
@@ -26,7 +26,7 @@ refresh; the earlier 98-backup validation remains the coverage of the full audit
 | 04 flat plate: 10 static angles | 192 / 192 each | 2.4 / 2.4 | Complete. |
 | 05 delta wing | 2780 / 8000 | 6.95 / 20 | Interrupted after accepted step 2781; the last saved state is step 2780. Continue-ready when no replacement process is active. |
 | 06 rotor flow | 1188 / 1667 | 7.128 / 10.002 | Active; continue only after its current process exits. |
-| 07 quadcopter | 296 / 2304 | 0.04625 / 0.36 | Stopped on the strain health limit; stretching diagnosed, refinement candidate requires a new clean qualification. |
+| 07 quadcopter | 296 / 2304 | 0.04625 / 0.36 | Stopped on the strain limit; stretching diagnosed, refinement candidate requires a new clean qualification. |
 
 The rotor setup requests 10 s, rounded to 1667 steps of 0.006 s (10.002 s).
 The Lamb–Oseen ensemble tables also meet the 7.5% MCSE criterion: maximum
@@ -50,11 +50,11 @@ corresponding live processes. These commands resume the last saved
 state. They do not guarantee that a later physical state will remain resolved.
 Do not use `allrun.sh` to resume; it cleans the existing output first.
 
-The incomplete variants in 02, 03 and 07 are health-limit stops, not ordinary
+The incomplete variants in 02, 03 and 07 are particle state limit stops, not ordinary
 interruptions. Their native logs record the failures listed above. Repeating
 `allcontinue.sh` with unchanged numerical inputs is not a remedy for those
 limits. They need numerical investigation before being described as complete;
-no health threshold was relaxed by this audit. The completed variants remain
+no particle state limit was relaxed by this audit. The completed variants remain
 usable, and early stops in comparison cases can themselves be comparison results.
 
 ## README animation
@@ -71,7 +71,7 @@ local solution has reached 20 s. Current-run rendering still writes to
 ## Installation verification
 
 CPython 3.11 is now the sole supported minor version, with patch updates
-allowed (`Requires-Python: ==3.11.*`). Metadata, installer admission, runtime
+allowed (`Requires-Python: ==3.11.*`). Metadata, installation checks, runtime
 version constant, Conda recipes, CI and installation documentation agree.
 Python 3.11 has wheels for both [Taichi 1.7.4 on Linux and Apple Silicon](https://pypi.org/project/taichi/1.7.4/#files)
 and [Taichi 1.7.1 on Intel macOS](https://pypi.org/project/taichi/1.7.1/#files).
@@ -87,7 +87,7 @@ Verification on this Linux machine used CPython 3.11.15:
   plot, a Numba-balanced Cartesian mesh (1392 cells), native FVM iterative solves,
   CPU VPM stepping and checkpoint restart. Taichi 1.7.4 and Numba 0.67.0 were used.
 - `pip check`: no broken requirements.
-- Copied the delta-wing tutorial using the installed materializer and verified
+- Copied the delta-wing tutorial using the installed tutorial copy command and verified
   the recovered GIF hash and 107-frame count.
 - Pip's interpreter-target check accepted 3.11 and rejected 3.12 and 3.13 for
   the actual wheel. Installer tests also reject other minor versions and PyPy.
@@ -106,11 +106,11 @@ One nearby particle had amplified its strength by about 167 times while its core
 radius grew by only 1.71 times. The setup now uses conservative filament
 refinement at each step. This changes its numerical configuration: do not bypass
 the restart mismatch to apply it to the old cloud, whose disabled refinement
-never recorded lineage references. An isolated clean run is required before the
+never recorded refinement-reference values. An isolated clean run is required before the
 new setup can be called stable. See [the diagnosis](../../studies/quadcopter_stability_audit.md).
 
 The isolated clean CUDA qualification has since passed the original step-296
-failure with the corrected lineage initialization. Its bounded 384-step run is
+failure with the corrected refinement-reference initialization. Its bounded 384-step run is
 still active, and the full 2304-step particle capacity is not qualified. See
 [the growth audit](../../studies/quadcopter_refinement_growth_audit_2026-09-29.json).
 The protected rotor history has not yet passed 7.5 s; its current refinement

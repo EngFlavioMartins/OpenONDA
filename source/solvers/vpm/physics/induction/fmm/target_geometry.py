@@ -4,7 +4,7 @@ Only geometry lives across image convergence blocks. Every logical descriptor
 expires when the enclosing immutable-target scope ends; the capped physical
 allocation survives to avoid Taichi's global JIT invalidation on SNode destroy.
 No interaction lists, sources, physical outputs, or convergence decisions are
-cached here. Ordinary target queries retain their fresh-preparation contract.
+cached here. Ordinary target queries retain their fresh-preparation conditions.
 """
 
 from contextlib import contextmanager
@@ -14,12 +14,21 @@ import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
 
-from ..treecode.lbvh import _OwnedFields
+from ..treecode.lbvh import _DeviceFields
 
 _BYTES_PER_TARGET = 96
 _STORAGE_FIELDS = (
-    "position", "sorted_indices", "leaf_depth", "leaf_nodes", "centre", "half_size",
-    "particle_count", "left", "right", "parent", "bound_radius",
+    "position",
+    "sorted_indices",
+    "leaf_depth",
+    "leaf_nodes",
+    "centre",
+    "half_size",
+    "particle_count",
+    "left",
+    "right",
+    "parent",
+    "bound_radius",
 )
 
 
@@ -63,31 +72,54 @@ def disjoint_fields(read_fields, write_fields):
     return not read.intersection(write)
 
 
-def scratch_fields(*owners):
+def scratch_fields(*workspaces):
     return tuple(
-        value for owner in owners if owner is not None
-        for value in vars(owner).values() if type(value) in (ScalarField, MatrixField)
+        value
+        for workspace in workspaces
+        if workspace is not None
+        for value in vars(workspace).values()
+        if type(value) in (ScalarField, MatrixField)
     )
 
 
 def geometry_layout(target):
     fields = (
-        target.tree.position, target.tree.sorted_indices, target.tree.node_depth,
-        target.tree.node_centre, target.tree.node_half_size, target.tree.node_particle_count,
-        target.tree.node_left, target.tree.node_right, target.tree.node_parent,
-        target.node_bound_radius, target.leaf_nodes, target.leaf_count,
-        target.target_path, target.target_path_length, target.target_path_error,
+        target.tree.position,
+        target.tree.sorted_indices,
+        target.tree.node_depth,
+        target.tree.node_centre,
+        target.tree.node_half_size,
+        target.tree.node_particle_count,
+        target.tree.node_left,
+        target.tree.node_right,
+        target.tree.node_parent,
+        target.node_bound_radius,
+        target.leaf_nodes,
+        target.leaf_count,
+        target.target_path,
+        target.target_path_length,
+        target.target_path_error,
     )
-    for owner in (target._fields, target.tree._field_owner,
-                  target.source._field_owner, target.source.tree._field_owner):
-        if owner.tree is None:
+    for workspace in (
+        target._fields,
+        target.tree._device_fields,
+        target.source._device_fields,
+        target.source.tree._device_fields,
+    ):
+        if workspace.tree is None:
             raise RuntimeError("image geometry refers to a closed workspace")
     return (
-        id(target), id(target._fields.tree), id(target.tree._field_owner.tree),
-        id(target.source), id(target.source._field_owner.tree),
-        id(target.source.tree), id(target.source.tree._field_owner.tree),
-        target.max_targets, target.target_path_capacity,
-        target.tree.max_tree_depth_guard, target.tree.max_leaf_size,
+        id(target),
+        id(target._fields.tree),
+        id(target.tree._device_fields.tree),
+        id(target.source),
+        id(target.source._device_fields.tree),
+        id(target.source.tree),
+        id(target.source.tree._device_fields.tree),
+        target.max_targets,
+        target.target_path_capacity,
+        target.tree.max_tree_depth_guard,
+        target.tree.max_leaf_size,
         tuple((id(f), str(f.dtype), f.shape, getattr(f, "n", 1)) for f in fields),
     )
 
@@ -95,20 +127,20 @@ def geometry_layout(target):
 @ti.data_oriented
 class TargetGeometryStorage:
     def __init__(self, count):
-        self.capacity, self.bytes, self.owner = count, 96 * count, _OwnedFields()
+        self.capacity, self.bytes, self.fields = count, 96 * count, _DeviceFields()
         try:
-            self.position = self.owner.vector(3, dtype=ti.f32, shape=count)
-            self.sorted_indices = self.owner.scalar(dtype=ti.i32, shape=count)
-            self.leaf_depth = self.owner.scalar(dtype=ti.i32, shape=count)
-            self.leaf_nodes = self.owner.scalar(dtype=ti.i32, shape=count)
-            self.centre = self.owner.vector(3, dtype=ti.f32, shape=2 * count)
-            self.half_size = self.owner.scalar(dtype=ti.f32, shape=2 * count)
-            self.particle_count = self.owner.scalar(dtype=ti.i32, shape=2 * count)
-            self.left = self.owner.scalar(dtype=ti.i32, shape=2 * count)
-            self.right = self.owner.scalar(dtype=ti.i32, shape=2 * count)
-            self.parent = self.owner.scalar(dtype=ti.i32, shape=2 * count)
-            self.bound_radius = self.owner.scalar(dtype=ti.f32, shape=2 * count)
-            self.owner.finalize()
+            self.position = self.fields.vector(3, dtype=ti.f32, shape=count)
+            self.sorted_indices = self.fields.scalar(dtype=ti.i32, shape=count)
+            self.leaf_depth = self.fields.scalar(dtype=ti.i32, shape=count)
+            self.leaf_nodes = self.fields.scalar(dtype=ti.i32, shape=count)
+            self.centre = self.fields.vector(3, dtype=ti.f32, shape=2 * count)
+            self.half_size = self.fields.scalar(dtype=ti.f32, shape=2 * count)
+            self.particle_count = self.fields.scalar(dtype=ti.i32, shape=2 * count)
+            self.left = self.fields.scalar(dtype=ti.i32, shape=2 * count)
+            self.right = self.fields.scalar(dtype=ti.i32, shape=2 * count)
+            self.parent = self.fields.scalar(dtype=ti.i32, shape=2 * count)
+            self.bound_radius = self.fields.scalar(dtype=ti.f32, shape=2 * count)
+            self.fields.finalize()
         except BaseException:
             try:
                 self.close()
@@ -168,13 +200,13 @@ class TargetGeometryStorage:
             raise RuntimeError("restored target hierarchy exceeds its ancestry bound")
 
     def close(self):
-        owner, self.owner = self.owner, None
-        if owner is not None:
-            owner.destroy()
+        workspace, self.fields = self.fields, None
+        if workspace is not None:
+            workspace.destroy()
 
 
 class TargetGeometryCache:
-    """One owned allocation per FMM backend, with an explicit short-lived lease."""
+    """One owned allocation per FMM backend, with an explicit short-lived scope."""
 
     def __init__(self, max_bytes, diagnostics):
         self.max_bytes = int(max_bytes)
@@ -206,7 +238,9 @@ class TargetGeometryCache:
                 self.storage.close()
             except BaseException as error:
                 self.poisoned = True
-                raise RuntimeError("image geometry destruction failed; recovery is uncertain") from error
+                raise RuntimeError(
+                    "image geometry destruction failed; recovery is uncertain"
+                ) from error
             self.storage = None
             self.diagnostics.image_geometry_bytes = 0
 
@@ -235,19 +269,19 @@ class TargetGeometryCache:
     @contextmanager
     def scope(self, position, count, tile_capacity):
         if self.closed or self.poisoned:
-            raise RuntimeError("image geometry owner is closed or failed")
+            raise RuntimeError("image geometry workspace is closed or failed")
         if self.scope_open:
             raise RuntimeError("nested immutable-target geometry scopes are unsupported")
         if count < 0 or tile_capacity < 1:
             raise ValueError("invalid immutable-target prefix or tile capacity")
-        admitted = 0 < count <= self.max_bytes // _BYTES_PER_TARGET
-        if admitted:
-            admitted = self._ensure_storage(count)
-        if not admitted:
+        checked = 0 < count <= self.max_bytes // _BYTES_PER_TARGET
+        if checked:
+            checked = self._ensure_storage(count)
+        if not checked:
             self.diagnostics.image_geometry_fallback_scopes += 1
-        # Construction can fail before a lease exists. Publish the open state
+        # Construction can fail before a scope exists. Publish the open state
         # only once its complete session is available for unconditional cleanup.
-        session = TargetGeometrySession(self, position, count, tile_capacity) if admitted else None
+        session = TargetGeometrySession(self, position, count, tile_capacity) if checked else None
         self.active = session
         self.scope_open = True
         try:
@@ -259,7 +293,7 @@ class TargetGeometryCache:
 
     def prepare(self, target, position, count, *, target_start=0):
         if self.closed or self.poisoned:
-            raise RuntimeError("image geometry owner is closed or failed")
+            raise RuntimeError("image geometry workspace is closed or failed")
         if self.active is None:
             target.prepare_targets(position, count, target_start=target_start)
             self.diagnostics.image_target_geometry_builds += 1
@@ -276,8 +310,8 @@ class TargetGeometryCache:
 class TargetGeometrySession:
     """Logical geometry only; never retained after a scope, exception or rebind."""
 
-    def __init__(self, owner, position, count, tile_capacity):
-        self.owner, self.position = owner, position
+    def __init__(self, cache, position, count, tile_capacity):
+        self.cache, self.position = cache, position
         self.count, self.tile_capacity = int(count), int(tile_capacity)
         self.records, self.binding = {}, None
         self.enabled = True
@@ -289,11 +323,14 @@ class TargetGeometrySession:
     def prepare(self, target, position, count, *, target_start=0):
         count, start = int(count), int(target_start)
         try:
-            if self.owner.active is not self or not self.owner.scope_open:
-                raise RuntimeError("immutable-target geometry lease is no longer active")
-            if not (position is self.position and 0 <= start < self.count
-                    and start % self.tile_capacity == 0
-                    and count == min(self.tile_capacity, self.count - start)):
+            if self.cache.active is not self or not self.cache.scope_open:
+                raise RuntimeError("immutable-target geometry scope is no longer active")
+            if not (
+                position is self.position
+                and 0 <= start < self.count
+                and start % self.tile_capacity == 0
+                and count == min(self.tile_capacity, self.count - start)
+            ):
                 self.invalidate()
                 self.enabled = False
             if self.enabled:
@@ -303,16 +340,16 @@ class TargetGeometrySession:
                     self.binding = layout
                 if start in self.records:
                     target._prepared_count = 0
-                    self.owner.storage.restore(target, start, count, self.records[start])
+                    self.cache.storage.restore(target, start, count, self.records[start])
                     target._prepared_count = count
-                    self.owner.diagnostics.image_target_geometry_restores += 1
+                    self.cache.diagnostics.image_target_geometry_restores += 1
                     return
             target.prepare_targets(position, count, target_start=start)
-            self.owner.diagnostics.image_target_geometry_builds += 1
+            self.cache.diagnostics.image_target_geometry_builds += 1
             if self.enabled:
                 if target._prepared_count != count:
                     raise RuntimeError("target geometry preparation did not complete")
-                descriptor = self.owner.storage.capture(target, start, count)
+                descriptor = self.cache.storage.capture(target, start, count)
                 self.records[start] = descriptor
         except BaseException:
             target._prepared_count = 0
@@ -328,15 +365,17 @@ _GEOMETRY_METHODS = {
 }
 
 
-def certified_geometry(cache):
-    """Operational admission for complete-field reuse and immutable scopes."""
-    # Certify delegated methods before the first allocation as well as between
-    # leases. An absent owner must not admit an overridden constructor/copy path.
+def valid_geometry_storage(cache):
+    """Operational validation for complete-field reuse and immutable scopes."""
+    # Validate delegated methods before the first allocation as well as between
+    # scopes. An absent workspace must not accept an overridden constructor/copy path.
     if (TargetGeometryCache, TargetGeometrySession, TargetGeometryStorage) != _GEOMETRY_CLASSES:
         return False
     for cls, methods in _GEOMETRY_METHODS.items():
-        if any(inspect.getattr_static(cls, name, None) is not method
-               for name, method in methods.items()):
+        if any(
+            inspect.getattr_static(cls, name, None) is not method
+            for name, method in methods.items()
+        ):
             return False
     if cache is None:
         return True
@@ -349,16 +388,18 @@ def certified_geometry(cache):
         return True
     valid = (
         standard_methods(storage, TargetGeometryStorage, _GEOMETRY_METHODS[TargetGeometryStorage])
-        and storage.owner is not None and storage.owner.tree is not None
-        and storage.owner.tree.prog is ti.lang.impl.get_runtime().prog
-        and not storage.owner.tree.destroyed
-        and storage.capacity > 0 and storage.bytes == _BYTES_PER_TARGET * storage.capacity
+        and storage.fields is not None
+        and storage.fields.tree is not None
+        and storage.fields.tree.prog is ti.lang.impl.get_runtime().prog
+        and not storage.fields.tree.destroyed
+        and storage.capacity > 0
+        and storage.bytes == _BYTES_PER_TARGET * storage.capacity
         and storage.bytes <= cache.max_bytes
     )
     if not valid:
         return False
     members = set()
-    tree_id = storage.owner.tree.id
+    tree_id = storage.fields.tree.id
     for name in _STORAGE_FIELDS:
         field = getattr(storage, name)
         field_members = storage_members(field)
@@ -366,8 +407,11 @@ def certified_geometry(cache):
         length = storage.capacity if name in _STORAGE_FIELDS[:4] else 2 * storage.capacity
         dtype = ti.f32 if name in ("position", "centre", "half_size", "bound_radius") else ti.i32
         if (
-            not field_members or len(field_members) != width or field.shape != (length,)
-            or field.dtype != dtype or any(owner != tree_id for owner, _ in field_members)
+            not field_members
+            or len(field_members) != width
+            or field.shape != (length,)
+            or field.dtype != dtype
+            or any(workspace != tree_id for workspace, _ in field_members)
             or members.intersection(field_members)
         ):
             return False

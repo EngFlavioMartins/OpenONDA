@@ -37,7 +37,7 @@ def test_naca_force_history_keeps_step_cadence_without_dense_fields(tmp_path) ->
     assert [int(row["step"]) for row in rows] == [1, 2]
 
 
-def test_naca_canonical_transfer_preserves_finite_body_and_les_physics():
+def test_naca_transfer_preserves_finite_body_and_les_physics():
     case = load_tutorial_module("coupled_fvm_vpm/naca4412_flow")
     flow, particles, exchange = case.FVM_SETUP, case.VPM_CASE.numerics, case.COUPLER_SETUP
     assert case.NACA_CODE == "4412" and case.ALPHA_DEG == 10.0

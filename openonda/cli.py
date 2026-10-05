@@ -10,10 +10,10 @@ import sys
 import openonda
 from openonda.tutorials import (
     TUTORIALS,
+    copy_tutorial,
     default_workspace,
     execute_tutorial,
     get_tutorial,
-    materialize_tutorial,
     tutorial_case_path,
 )
 
@@ -41,7 +41,7 @@ def _show_api(name: str) -> int:
 def _create(arguments: argparse.Namespace) -> int:
     tutorial = get_tutorial(arguments.name)
     workspace = _workspace(arguments.workspace, tutorial.name)
-    case_path = materialize_tutorial(tutorial.name, workspace)
+    case_path = copy_tutorial(tutorial.name, workspace)
     print(f"Created {tutorial.name} at {case_path}")
     print(f"Run it with: openonda tutorial run {tutorial.name} --workspace {workspace}")
     return 0

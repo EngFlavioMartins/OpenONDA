@@ -2,7 +2,7 @@
 
 This is iteration history, not physical state or a cached operator result.
 Native restarts deliberately start cold; every proposed trace must pass a
-fresh complete FVM/renewal sweep and the unchanged interface residual gates.
+fresh complete FVM/renewal sweep and the unchanged interface residual checks.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def discard_interface_prediction_on_failure(method):
 
 
 def _discard_history_on_failure(method):
-    """Make direct predictor lifecycle calls exception-safe too."""
+    """Make direct predictor run calls exception-safe too."""
 
     @wraps(method)
     def guarded(history, *args, **kwargs):
@@ -66,13 +66,13 @@ def _clock(coupler):
     return int(fvm.step), float(fvm.time)
 
 
-def _identity(coupler, geometry):
-    """Recompute value identities; object references only detect replacement.
+def _prediction_inputs(coupler, geometry):
+    """Hash current solver settings, interface arrays, and mesh geometry.
 
-    No mutable array is admitted by object identity. Interface order and mesh
-    geometry are hashed by value, and the existing native numerical identities
-    cover solver/operator controls. Opaque external forcing is conservatively
-    excluded: its hidden mutable state has no numerical fingerprint contract.
+    Mutable arrays are compared by their values. Object references only detect
+    replacement of solver components. The hashes include current numerical
+    settings. External forcing is excluded because its hidden mutable state
+    cannot be described by these settings.
     """
     from source.solvers.fvm.io.backup import config_hash, mesh_hash
 
@@ -120,7 +120,7 @@ def _identity(coupler, geometry):
             )
         ):
             return None
-        from source.solvers.vpm.config.fingerprint import _canonical_value
+        from source.solvers.vpm.config.configuration_values import _configuration_value
         from source.solvers.vpm.physics.stage_rhs import ParticleExternalStageContribution
 
         if any(
@@ -133,8 +133,8 @@ def _identity(coupler, geometry):
         digest.update(
             config_mapping_digest(
                 {
-                    "runtime_induction": _canonical_value(vpm.induction),
-                    "rhs_induction": _canonical_value(rhs.induction),
+                    "runtime_induction": _configuration_value(vpm.induction),
+                    "rhs_induction": _configuration_value(rhs.induction),
                     "strength_enabled": rhs.strength_enabled,
                     "runtime_time_step_size": getattr(vpm, "time_step_size", None),
                 }
@@ -147,7 +147,7 @@ def _identity(coupler, geometry):
     return digest.hexdigest(), tuple(operators)
 
 
-def _same_identity(left, right):
+def _same_prediction_inputs(left, right):
     return (
         left is not None
         and right is not None
@@ -161,7 +161,7 @@ class SafeguardedInterfacePredictor:
     """Reuse only the last accepted renewal correction as an initial guess.
 
     Resetting, loading or beginning a solve clears history. A seed failing
-    the residual gates gets one provisional probe and
+    the residual checks gets one provisional probe and
     then the *complete* original Picard allowance. Execution exceptions remain
     fail-fast: arbitrary numerical, allocation or MPI failures are not retried.
     No history is saved in native checkpoints;
@@ -176,22 +176,22 @@ class SafeguardedInterfacePredictor:
         """Discard optimization history without touching any physical state."""
         self._history = None
         self._pending = None
-        self._active_identity = None
+        self._active_inputs = None
 
     @_discard_history_on_failure
     def prepare(self, coupler, geometry, old, raw):
-        """Collectively admit a seed; all ranks receive the same decision."""
+        """Collectively validate a seed; all ranks receive the same decision."""
         previous, self._history = self._history, None
         self._pending = None
-        self._active_identity = None
+        self._active_inputs = None
         comm = getattr(coupler.fvm_solver.parallel, "comm", None)
         parallel = bool(coupler.fvm_solver.parallel.is_parallel)
-        with collective_phase(comm, "interface predictor identity"):
-            identity = _identity(coupler, geometry)
-            self._active_identity = identity
+        with collective_phase(comm, "interface predictor inputs"):
+            inputs = _prediction_inputs(coupler, geometry)
+            self._active_inputs = inputs
             local = bool(
                 previous is not None
-                and _same_identity(identity, previous["identity"])
+                and _same_prediction_inputs(inputs, previous["inputs"])
                 and _clock(coupler) == previous["clock"]
             )
         valid = all(comm.allgather(local)) if parallel else local
@@ -199,9 +199,9 @@ class SafeguardedInterfacePredictor:
         info = None
         with collective_phase(comm, "interface predictor seed construction"):
             if coupler._is_master:
-                reason = "cold_or_changed_identity"
-                if identity is None:
-                    reason = "unsupported_identity"
+                reason = "cold_or_changed_inputs"
+                if inputs is None:
+                    reason = "unsupported_inputs"
                 elif valid and _same_arrays(old, previous["endpoint"]):
                     correction = previous["correction"]
                     velocity = raw[0] + correction[0]
@@ -213,7 +213,7 @@ class SafeguardedInterfacePredictor:
                 info = {"enabled": True, "attempted": seed is not None, "reason": reason}
             elif valid:
                 # Root owns the global trace; advance_fvm scatters it. Copy
-                # the worker's placeholder before collective error admission,
+                # the worker's placeholder before collective error validation,
                 # never between the decision broadcast and the FVM collective.
                 seed = _copy_trace(raw)
         if parallel:
@@ -225,18 +225,18 @@ class SafeguardedInterfacePredictor:
 
     @_discard_history_on_failure
     def stage(self, coupler, geometry, raw, endpoint, *, converged):
-        """Stage history only; the driver commits it after health and output."""
+        """Stage history only; the driver stores it after particle-state checks and output."""
         self._pending = None
-        if not converged or self._active_identity is None:
+        if not converged or self._active_inputs is None:
             self._history = None
             return
         # Recheck after callbacks/trials: changed operators cannot seed the
-        # following interval, even when this endpoint met its residual gates.
-        current = _identity(coupler, geometry)
-        if not _same_identity(current, self._active_identity):
+        # following interval, even when this endpoint met its residual checks.
+        current = _prediction_inputs(coupler, geometry)
+        if not _same_prediction_inputs(current, self._active_inputs):
             self._history = None
             return
-        pending = {"identity": current, "clock": _clock(coupler)}
+        pending = {"inputs": current, "clock": _clock(coupler)}
         if coupler._is_master:
             pending["endpoint"] = _copy_trace(endpoint)
             pending["correction"] = tuple(

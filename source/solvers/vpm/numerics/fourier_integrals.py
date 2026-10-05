@@ -261,10 +261,10 @@ def gaussian_fourier_integrals(
 
     The midpoint of the core-radius variance range minimizes the largest expansion
     argument and, unlike a vortex-strength-weighted effective core radius, is unchanged
-    when a relaxation candidate changes particle vortex_strength.  The resulting
+    when a relaxation candidate changes particle vortex strength.  The resulting
     energy is therefore a genuine quadratic form in vortex strength. Integrals
     from the penultimate order are returned so transfer convergence can be
-    hard-gated without another set of FFTs.
+    checked without another set of FFTs.
 
     ``free_space=True`` replaces periodic energy and viscous power with linear
     correlations against the unbounded transverse Gaussian tensors. This mode

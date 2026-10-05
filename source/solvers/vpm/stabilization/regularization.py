@@ -3,7 +3,7 @@
 This is the most invasive stabilization worker: it rebuilds the cloud on a
 Gaussian redistribution grid, which restores overlap but throws away the
 Lagrangian history of the discretization.  It therefore runs only when the
-discretization-health diagnostics say the current cloud has stopped being a
+discretization-resolution_metrics diagnostics say the current cloud has stopped being a
 faithful vorticity field, and it enforces its own admissibility rules before it
 lets the new field stand:
 
@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..diagnostics.resolution import discretization_health
+from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.logging import Logging
 
 if TYPE_CHECKING:
@@ -89,19 +89,19 @@ class RegularizationOutcome:
 
 
 def _regularization_triggered(
-    health: dict[str, float],
+    resolution_metrics: dict[str, float],
     core_radius: np.ndarray,
     *,
     divergence_trigger: float | None,
     misalignment_trigger: float | None,
     core_radius_trigger: float | None,
 ) -> bool:
-    """Return whether any enabled cloud-health trigger requests redistribution."""
+    """Return whether any enabled cloud-resolution_metrics trigger requests redistribution."""
     divergence_exceeded = divergence_trigger is not None and (
-        health["vorticity_divergence_error"] > divergence_trigger
+        resolution_metrics["vorticity_divergence_error"] > divergence_trigger
     )
     misalignment_exceeded = misalignment_trigger is not None and (
-        health["vortex_strength_misalignment_degrees"] > misalignment_trigger
+        resolution_metrics["vortex_strength_misalignment_degrees"] > misalignment_trigger
     )
     radius_exceeded = core_radius_trigger is not None and (
         float(np.max(core_radius, initial=0.0)) >= core_radius_trigger
@@ -110,9 +110,9 @@ def _regularization_triggered(
 
 
 def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> RegularizationOutcome | None:
-    """Redistribute the cloud if its health has fallen below the triggers.
+    """Redistribute the cloud if its resolution_metrics has fallen below the triggers.
 
-    Returns ``None`` when the health triggers are not met and nothing was done.
+    Returns ``None`` when the resolution_metrics triggers are not met and nothing was done.
     """
 
     from .divergence_relaxation import (
@@ -131,11 +131,11 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     if len(position) == 0:
         return
 
-    before_health = discretization_health(position, vortex_strength, core_radius)
+    before_metrics = particle_resolution_metrics(position, vortex_strength, core_radius)
     particle_capacity = particles.capacity
     spacing = float(cfg.regularization_grid_spacing)
     if not _regularization_triggered(
-        before_health,
+        before_metrics,
         core_radius,
         divergence_trigger=cfg.regularization_divergence_trigger,
         misalignment_trigger=cfg.regularization_misalignment_trigger,
@@ -349,16 +349,13 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 ("core radius, selected", f"{float(new_core_radius.mean()):.3e}", "m"),
             )
 
-        if (
-            cfg.regularization_transfer_only
-            or (
-                -cfg.regularization_total_kinetic_energy_dissipation_limit
-                <= candidate_energy_change
-                <= 1.0e-7
-                and -cfg.regularization_total_enstrophy_dissipation_limit
-                <= candidate_enstrophy_change
-                <= 1.0e-7
-            )
+        if cfg.regularization_transfer_only or (
+            -cfg.regularization_total_kinetic_energy_dissipation_limit
+            <= candidate_energy_change
+            <= 1.0e-7
+            and -cfg.regularization_total_enstrophy_dissipation_limit
+            <= candidate_enstrophy_change
+            <= 1.0e-7
         ):
             uploaded = candidate
             after_integrals = candidate_integrals
@@ -441,14 +438,14 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             )
             uploaded, after_integrals = upload_and_integrate(uploaded)
 
-        preliminary_health = discretization_health(
+        preliminary_metrics = particle_resolution_metrics(
             new_position,
             uploaded.astype(np.float64),
             new_core_radius,
         )
         if (
             not cfg.regularization_transfer_only
-            and preliminary_health["vorticity_divergence_error"]
+            and preliminary_metrics["vorticity_divergence_error"]
             > cfg.regularization_projection_trigger
         ):
             projection_result = constrained_divergence_relaxation(
@@ -553,8 +550,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         particles_after=len(new_position),
         total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
         total_enstrophy_change_relative=total_enstrophy_change_relative,
-        projected=projection_result is not None
-        or cfg.regularization_solenoidal_remesh,
+        projected=projection_result is not None or cfg.regularization_solenoidal_remesh,
         total_kinetic_energy_transfer=energy_transfer,
         total_enstrophy_transfer=float(after_integrals["total_enstrophy"])
         - float(before_integrals["total_enstrophy"]),

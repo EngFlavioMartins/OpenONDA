@@ -1,4 +1,4 @@
-"""Common start selection for native and coupled simulation lifecycles."""
+"""Common start selection for native and coupled simulation runs."""
 
 import csv
 from pathlib import Path
@@ -10,10 +10,10 @@ from source.solution_layout import vpm_backup_files
 
 
 def select_backup(start_from, *, directory, kind, backup_path=None):
-    """Select a committed backup, never a temporary file or visualization.
+    """Select a complete checkpoint, never a temporary file or visualization.
 
     ``None`` keeps the caller's in-memory state. ``initial`` ignores all saved
-    states; ``latest`` starts at zero only when no committed backup exists.
+    states; ``latest`` starts at zero only when no complete checkpoint exists.
     Explicit paths are passed to the strict native reader without fallback.
     """
     if start_from is None:
@@ -45,43 +45,41 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
         target = Path(backup_path)
         if not target.is_absolute():
             target = directory / target
-        latest = target if target.is_file() or (target / "manifest.json").is_file() else None
+        latest = target if target.is_file() or (target / "checkpoint_info.json").is_file() else None
     elif kind == "coupled":
         target = directory / "backups"
-        latest = target if (target / "manifest.json").is_file() else None
+        latest = target if (target / "checkpoint_info.json").is_file() else None
     else:
         raise ValueError(f"Unknown restart kind {kind!r}")
     return latest
 
 
-def reset_run_outputs(
-    directory, *, kind, backup_path=None, samples_dir=None, owned_sample_names=()
-):
+def reset_run_outputs(directory, *, kind, backup_path=None, samples_dir=None, sample_names=()):
     """Retire an old output series before a fresh initial run.
 
-    Move only native artifacts and named sampler streams into the existing
+    Move only native output files and named sampler streams into the existing
     restart archive, without opening checkpoints or requiring their validity.
     This prevents a longer old VPM run from winning subsequent latest-backup
     discovery. Current constructor metadata, open logs and unrelated files
-    remain in place. Call on the writing rank before publishing initial output.
+    remain in place. Call on the writing rank before writing initial output.
     No additional restart marker or backup format is introduced.
     """
     if kind not in {"fvm", "vpm", "coupled"}:
         raise ValueError(f"Unknown restart kind {kind!r}")
     directory = Path(directory).resolve()
-    artifacts = {}
+    output_files = {}
     components = {"fvm": ("fvm",), "vpm": ("vpm", "vlm"), "coupled": ()}[kind]
     for component in components:
         index = directory / f"{component}.pvd"
         if index.exists():
-            artifacts[index] = Path("solution") / index.name
+            output_files[index] = Path("solution") / index.name
         pattern = re.compile(
             rf"{component}_\d+(?:-rank-\d+|_particles)?\.(?:h5|vtu|vtp|pvtu)(?:\.tmp)?$"
         )
         for folder in (directory, directory / component):
             for path in folder.glob(f"{component}_*"):
                 if path.is_file() and pattern.fullmatch(path.name):
-                    artifacts[path] = Path("solution") / path.relative_to(directory)
+                    output_files[path] = Path("solution") / path.relative_to(directory)
     journals = {
         "coupled": ("coupler_diagnostics.jsonl",),
         "fvm": ("diagnostics.jsonl", "performance.jsonl"),
@@ -90,7 +88,7 @@ def reset_run_outputs(
     for name in journals:
         path = directory / name
         if path.exists():
-            artifacts[path] = Path("solution") / name
+            output_files[path] = Path("solution") / name
     target = None
     if kind == "coupled":
         target = directory / "backups"
@@ -100,34 +98,34 @@ def reset_run_outputs(
     if target is not None and target.exists():
         if directory.is_relative_to(target):
             raise ValueError("The backup path must not contain the solution directory")
-        artifacts[target] = Path("backup") / target.name
+        output_files[target] = Path("backup") / target.name
     if samples_dir is not None:
         samples = Path(samples_dir).resolve()
-        for name in owned_sample_names:
+        for name in sample_names:
             for suffix in (".csv", ".pvd"):
                 path = samples / f"{name}{suffix}"
                 if path.is_file():
-                    artifacts[path] = Path("samples") / path.relative_to(samples)
+                    output_files[path] = Path("samples") / path.relative_to(samples)
             frame_pattern = re.compile(rf"{re.escape(str(name))}_\d+\.(?:vts|vtu|vtp|csv)$")
             for path in samples.glob(f"{name}_*"):
                 if path.is_file() and frame_pattern.fullmatch(path.name):
-                    artifacts[path] = Path("samples") / path.relative_to(samples)
+                    output_files[path] = Path("samples") / path.relative_to(samples)
     # Retain prior constructor metadata with the retired output series.
-    for path in (directory / "restart-branches").glob("run-before-*"):
-        artifacts[path] = Path("metadata") / path.name
-    if not artifacts:
+    for path in (directory / "restart_history").glob("run-before-*"):
+        output_files[path] = Path("metadata") / path.name
+    if not output_files:
         return
-    archive = directory / "restart-branches"
+    archive = directory / "restart_history"
     archive.mkdir(parents=True, exist_ok=True)
-    branch = Path(tempfile.mkdtemp(prefix="initial-before-", dir=archive))
-    for path, relative in artifacts.items():
-        destination = branch / relative
+    archived_run = Path(tempfile.mkdtemp(prefix="initial-before-", dir=archive))
+    for path, relative in output_files.items():
+        destination = archived_run / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(path, destination)
 
 
 def rewind_vpm_frames(directory, step, time):
-    """Archive discarded native frames so discovery cannot revive a branch."""
+    """Archive output frames beyond the restored step and flow time."""
     from source.solvers.fvm.io.solver_io import SolverIO
 
     directory = Path(directory)
@@ -141,17 +139,17 @@ def rewind_vpm_frames(directory, step, time):
                 if match and int(match[1]) > step and path.is_file():
                     future.append(path)
     if future:
-        root = directory / "restart-branches"
+        root = directory / "restart_history"
         root.mkdir(exist_ok=True)
-        branch = Path(tempfile.mkdtemp(prefix="frames-before-", dir=root))
+        archived_run = Path(tempfile.mkdtemp(prefix="frames-before-", dir=root))
         for path in future:
-            destination = branch / path.relative_to(directory)
+            destination = archived_run / path.relative_to(directory)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(path, destination)
 
 
 def output_has_time(directory, name, time):
-    """Check a reconciled CSV/PVD stream for an already committed event."""
+    """Check whether a saved CSV/PVD time series contains the sampling time."""
     directory = Path(directory)
     table = directory / f"{name}.csv"
     if table.is_file():
@@ -176,7 +174,7 @@ def archive_run_metadata(path):
     """Keep the previous invocation's status before construction replaces it."""
     path = Path(path)
     if path.is_file():
-        root = path.parent / "restart-branches"
+        root = path.parent / "restart_history"
         root.mkdir(exist_ok=True)
-        branch = Path(tempfile.mkdtemp(prefix="run-before-", dir=root))
-        shutil.copy2(path, branch / path.name)
+        archived_run = Path(tempfile.mkdtemp(prefix="run-before-", dir=root))
+        shutil.copy2(path, archived_run / path.name)

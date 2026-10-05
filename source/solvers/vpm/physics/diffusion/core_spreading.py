@@ -10,14 +10,14 @@ The concrete kernel call runs on the owning physics object, which supplies the
 """
 
 
-def apply_core_spreading(owner, particles, time_step_size: float):
+def apply_core_spreading(physics, particles, time_step_size: float):
     """Apply Core Spreading Method diffusion to ``particles`` over ``time_step_size``."""
     N = len(particles)
     if N == 0 or time_step_size <= 0.0:
         return
 
-    owner._resize_temp_fields(N)
-    owner.update_radius_csm_kernel(
+    physics._resize_temp_fields(N)
+    physics.update_radius_csm_kernel(
         particles.core_radius, particles.effective_viscosity, time_step_size, N
     )
     # The kernel mutates a particle field directly; invalidate host snapshots

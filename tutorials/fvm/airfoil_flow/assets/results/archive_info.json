@@ -1,0 +1,55 @@
+{
+  "archive": "data.tar.gz",
+  "archive_sha256": "e5a9ca6d6e75c5ec13c3f26570e8c5cc79a84f5112b623d7634554b2c468cdd9",
+  "archive_size": 13301914,
+  "archive_url": "https://github.com/EngFlavioMartins/OpenONDA/releases/download/tutorial-results-2026-09-30/fvm-airfoil_flow-data.tar.gz",
+  "excluded_files": [],
+  "files": [
+    {
+      "path": "samples/forces_history.csv",
+      "sha256": "1e7fa4b00cf3bb5c5d28efc2ddde7caa30adb003a38b4c650e0056fd48378241",
+      "size": 9582
+    },
+    {
+      "path": "solution/fvm.pvd",
+      "sha256": "8a61e8f26d59a427d4e558775413f88897f6076d3e6e80db733035ee75a622a3",
+      "size": 281
+    },
+    {
+      "path": "solution/fvm/fvm_000000.vtu",
+      "sha256": "06aacd1d567dcf75f18d69228358496b0b0f207d266c0adbafc37cb0b8d387df",
+      "size": 5620291
+    },
+    {
+      "path": "solution/fvm/fvm_000022.vtu",
+      "sha256": "f076c8d434101dfb4b0c7e643dde7f99a6f54abc70a0e1277c5e2c070afb1864",
+      "size": 8368946
+    },
+    {
+      "path": "solution/fvm_metadata.json",
+      "sha256": "75da101919d5d9c32c46c550a7aac214abec10885879c1c5640a314638beafe3",
+      "size": 7064
+    },
+    {
+      "path": "solution/surface_cp.csv",
+      "sha256": "ea78caf4b1226d6f133a2c6e4a3f9c598d2c86439fffb0eac14ad803367dcf29",
+      "size": 179959
+    }
+  ],
+  "source_information": {
+    "accepted_step": 22,
+    "accepted_time": 0.02,
+    "decimation": "none",
+    "default_end_time": 25.0,
+    "mesh_sha256": "2f06adcb187e1f5c9f1da04c1711e975e5fb846288979dc1c14f01b24aa68d98",
+    "scope": "Default geometry and physics, bounded end_time0.02 for native plot verification; Courant time-grid rounding follows this bounded horizon.",
+    "source_revision": "f1deb186",
+    "wheel_sha256": "0d6988655da90098b6565a461658d63fb30487f7535998e2d5ea2088fcb6c3d8"
+  },
+  "restore_roots": [
+    "samples",
+    "solution"
+  ],
+  "schema_version": 2,
+  "scientific_status": "Partial initial transient through t=0.02 s (22 accepted steps); default horizon25s is incomplete. Not a steady or grid-converged result."
+}

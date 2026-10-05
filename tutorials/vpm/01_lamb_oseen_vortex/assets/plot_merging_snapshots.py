@@ -1,6 +1,6 @@
 """Depth-tested sphere views of the GBD merger, with vector LaTeX labels.
 
-Chart contract: compare the initial and final finite columns, particle vorticity
+Figure contents: compare the initial and final finite columns, particle vorticity
 and instantaneous in-plane streamlines. Analytic ray-sphere intersections use
 an orthographic camera, surface lighting and a depth buffer. Sphere radii
 scale with particle-strength magnitude to power 0.65 within each frame. Colour limits are

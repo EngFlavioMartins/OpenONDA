@@ -34,9 +34,7 @@ def test_diagonal_wall_face_inherits_large_planar_cap(triangulation, rotated):
             ]
         )
     rim_end_x = -0.02 if triangulation == 2 else -0.05
-    side = np.array(
-        [[-0.08, -0.09, z], [rim_end_x, -0.09, z], [-0.08, -0.09, z + 0.05]]
-    )
+    side = np.array([[-0.08, -0.09, z], [rim_end_x, -0.09, z], [-0.08, -0.09, z + 0.05]])
     surface = np.concatenate((cap, side[None]))
     points = np.array(
         [
@@ -63,7 +61,10 @@ def test_diagonal_wall_face_inherits_large_planar_cap(triangulation, rotated):
     constraints = _planar_feature_constraints(points, [np.arange(4)], surface)
     assert set(constraints) == set(range(4))
     projected = np.array(
-        [_project_to_feature_planes(point, constraints[i], scale=1.0) for i, point in enumerate(points)]
+        [
+            _project_to_feature_planes(point, constraints[i], scale=1.0)
+            for i, point in enumerate(points)
+        ]
     )
     np.testing.assert_allclose(projected, expected, atol=1e-14)
 
@@ -140,26 +141,18 @@ def test_inconsistent_feature_planes_are_rejected():
 
 
 def test_projection_stays_on_finite_feature_near_adjacent_facet():
-    facet = SurfaceIndex.build(
-        np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]])
-    )
+    facet = SurfaceIndex.build(np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]))
     # The infinite supporting plane contains (0.8, 0.8, 0), but the actual
     # facet ends at x+y=1. A wall vertex must land on that finite edge.
     point = np.array([0.8, 0.8, 0.2])
-    mapped = _project_to_feature_planes(
-        point, [(np.array([0.0, 0.0, 1.0]), 0.0, facet)], scale=1.0
-    )
+    mapped = _project_to_feature_planes(point, [(np.array([0.0, 0.0, 1.0]), 0.0, facet)], scale=1.0)
     np.testing.assert_allclose(mapped, [0.5, 0.5, 0.0], atol=1e-14)
     assert facet.nearest_point(mapped)[1] <= 1e-14
 
 
 def test_two_feature_projection_clamps_to_shared_finite_edge():
-    horizontal = SurfaceIndex.build(
-        np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]])
-    )
-    vertical = SurfaceIndex.build(
-        np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]])
-    )
+    horizontal = SurfaceIndex.build(np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]))
+    vertical = SurfaceIndex.build(np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]]))
     mapped = _project_to_feature_planes(
         np.array([1.2, 0.2, 0.2]),
         [

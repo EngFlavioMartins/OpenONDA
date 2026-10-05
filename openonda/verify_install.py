@@ -34,7 +34,7 @@ from openonda.fvm import (
     create_fvm_solver,
 )
 import openonda.fvm.mesher as msh
-from openonda.tutorials import TUTORIALS, materialize_tutorial
+from openonda.tutorials import TUTORIALS, copy_tutorial
 import openonda.vpm
 from source.solution_layout import vpm_backup_files
 
@@ -83,23 +83,26 @@ def _verify_taichi() -> tuple[str, str]:
 
 
 def _verify_gaussian_mesh() -> dict[str, object]:
-    """Exercise optional installed FENV, NVRTC and private cuFFT ownership.
+    """Check optional installed FENV, NVRTC and CUDA memory/cuFFT buffers.
 
     Explicit opt-in only: normal installation verification stays CPU-only.
     No global allocator/FFT cache is cleared, and no process-global device or
-    stream is selected. Solver physics/mesh/tail qualification is separate.
+    stream is selected. Discretization accuracy is tested separately.
     """
     from source.solvers.vpm.physics.induction.gaussian_mesh.availability import (
         require_gaussian_mesh_runtime,
     )
-    from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import DeviceOwner, FFTPlanPair
+    from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import (
+        CUDAMemoryPool,
+        FFTPlanPair,
+    )
 
     report = require_gaussian_mesh_runtime()
-    owner = DeviceOwner(8 * 1024**2)
+    memory_pool = CUDAMemoryPool(8 * 1024**2)
     plans = None
     try:
-        cp = owner.cp
-        with owner.allocation_scope():
+        cp = memory_pool.cp
+        with memory_pool.allocation_scope():
             data = cp.empty((4, 4, 4), dtype=cp.float64)
             output = cp.empty_like(data)
             kernel = cp.RawKernel(
@@ -110,7 +113,7 @@ def _verify_gaussian_mesh() -> dict[str, object]:
                 backend="nvrtc",
             )
             kernel((1,), (64,), (data,))
-            plans = FFTPlanPair(owner, (4, 4, 4), "float64", 4 * 1024**2)
+            plans = FFTPlanPair(memory_pool, (4, 4, 4), "float64", 4 * 1024**2)
             transformed = plans.rfft(data)
             plans.irfft(transformed, output)
             actual = cp.asnumpy(output).ravel()
@@ -120,10 +123,10 @@ def _verify_gaussian_mesh() -> dict[str, object]:
         report.update(
             {
                 "nvrtc_kernel": "passed",
-                "owned_fft_roundtrip": "passed",
-                "pool_reserved_bytes": int(owner.pool.total_bytes()),
+                "fft_roundtrip": "passed",
+                "pool_reserved_bytes": int(memory_pool.pool.total_bytes()),
                 "plan_work_bytes": int(plans.work_bytes),
-                "scope": "installation smoke, not a discretization accuracy certificate",
+                "purpose": "installation check",
             }
         )
         return report
@@ -132,7 +135,7 @@ def _verify_gaussian_mesh() -> dict[str, object]:
             if plans is not None:
                 plans.close()
         finally:
-            owner.close()
+            memory_pool.close()
 
 
 def _verify_cartesian_mesher() -> dict[str, str | int]:
@@ -211,7 +214,7 @@ def _verify_native_fvm() -> dict[str, float | int]:
     if not np.all(np.isfinite(velocity)) or not np.all(np.isfinite(pressure)):
         raise RuntimeError("Native FVM installation smoke produced non-finite fields")
     if diagnostics is None or diagnostics.n_nonfinite_values:
-        raise RuntimeError("Native FVM installation smoke did not produce healthy diagnostics")
+        raise RuntimeError("Native FVM installation smoke did not produce finite diagnostics")
     if not diagnostics.linear_solves or not all(
         result.converged for result in diagnostics.linear_solves
     ):
@@ -343,7 +346,7 @@ def _verify_native_coupled() -> dict[str, object]:
 
 
 def _verify_tutorial_source_paths(tutorial_root: Path) -> None:
-    """Inspect only resources eligible for installation/materialization.
+    """Inspect only tutorial files selected for installation and copying.
 
     Editable installations may contain the user's generated results beside
     maintained templates. They are not shipped tutorial code and must neither
@@ -391,7 +394,7 @@ def _verify_distribution_resources() -> dict[str, object]:
         matplotlib.use("Agg")
         from matplotlib import pyplot as plt
 
-        case_path = materialize_tutorial("fvm/taylor_green", workspace)
+        case_path = copy_tutorial("fvm/taylor_green", workspace)
         required = (
             case_path / "setup.py",
             case_path / "allrun.sh",
@@ -456,7 +459,7 @@ def _verify_tutorial_commands() -> int:
         environment.pop("PYTHONPATH", None)
         environment["MPLCONFIGDIR"] = str(Path(directory) / "matplotlib")
         for tutorial, commands in modules.items():
-            case = materialize_tutorial(tutorial, workspace)
+            case = copy_tutorial(tutorial, workspace)
             for module in commands:
                 result = subprocess.run(
                     [
@@ -616,7 +619,7 @@ def main() -> int:
     parser.add_argument(
         "--with-gaussian-mesh",
         action="store_true",
-        help="also verify optional installed FENV, CUDA 12 NVRTC and owned cuFFT execution",
+        help="also verify optional installed FENV, CUDA 12 NVRTC and CUDA memory and cuFFT execution",
     )
     parser.add_argument(
         "--with-environment",

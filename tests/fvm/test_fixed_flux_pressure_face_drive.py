@@ -141,7 +141,7 @@ def test_unsteady_native_pressure_converges_without_ghost_dependent_drive(
 ):
     velocity_error, gradient_error = _solve(tmp_path, "accelerating_uniform", outer=outer)
     # Both velocity AND pressure gradient improve over the former implementation;
-    # a cell-only extrapolation without shared predictor ownership regressed p.
+    # a cell-only extrapolation without shared predictor rank assignment regressed p.
     assert velocity_error < velocity_limit
     assert gradient_error < gradient_limit
 

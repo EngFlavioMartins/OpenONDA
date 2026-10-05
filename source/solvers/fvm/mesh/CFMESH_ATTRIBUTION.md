@@ -7,7 +7,7 @@ implementation inspired by the openly documented **cfMesh** Cartesian
 workflow. The principal cfMesh developer is Dr. Franjo Juretić and the
 original copyright holder is Creative Fields. See
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the source links and the
-Phase 0 provenance boundary.
+Phase 0 source information boundary.
 
 The typed implementation lives in `mesh/cartesian/` and is the production
 path used by the migrated tutorials. The former adaptive monolith and
@@ -19,5 +19,5 @@ The implementation must distinguish architectural inspiration from any
 source translated or adapted directly. No cfMesh source has been copied or
 translated in Phase 0. It must not describe silent partial snapping, Gmsh
 delegation, or cylinder-only layers as a cfMesh robustness behavior. The exact
-upstream study commit and file-level provenance must be added before direct
+upstream study commit and file-level source information must be added before direct
 translation, if any, is introduced.

@@ -19,11 +19,11 @@ from .backup import decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_BACKUP_VERSION = 8
+PARTITIONED_BACKUP_VERSION = 9
 
 
 def _prune_partitioned_generations(target: Path, current: dict, previous: dict | None) -> None:
-    """Keep current and previous committed generations after manifest publication.
+    """Keep current and previous committed generations after checkpoint-information writing.
 
     Only this writer's UUID-named rank archives are eligible; unrelated files,
     temporary writes and symlinks remain untouched.
@@ -31,7 +31,9 @@ def _prune_partitioned_generations(target: Path, current: dict, previous: dict |
     keep = set(current["files"])
     if previous is not None:
         keep.update(previous["files"])
-        atomic_write_text(target / "manifest.previous.json", json.dumps(previous, indent=2) + "\n")
+        atomic_write_text(
+            target / "checkpoint_info.previous.json", json.dumps(previous, indent=2) + "\n"
+        )
     for path in target.iterdir():
         if (
             re.fullmatch(r"rank-[0-9]{5}-[0-9a-f]{32}\.npz", path.name)
@@ -43,7 +45,7 @@ def _prune_partitioned_generations(target: Path, current: dict, previous: dict |
 
 
 def _resolve_backup_file(target: Path, name: str) -> Path:
-    """Resolve one manifest file without allowing path traversal."""
+    """Resolve one checkpoint-information file without allowing path traversal."""
     if not isinstance(name, str) or not name:
         raise ValueError("Partitioned backup file names must be non-empty strings")
     relative = Path(name)
@@ -73,7 +75,7 @@ def _archive_upper_bound(arrays) -> int:
     return sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values()) + (4 << 20)
 
 
-def _error_payload(error: Exception, *, rank: int) -> dict[str, object]:
+def _error_record(error: Exception, *, rank: int) -> dict[str, object]:
     return {
         "rank": int(rank),
         "type": type(error).__name__,
@@ -82,11 +84,11 @@ def _error_payload(error: Exception, *, rank: int) -> dict[str, object]:
     }
 
 
-def _raise_collective_backup_error(payload: dict[str, object]) -> None:
-    code = payload.get("errno")
+def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
+    code = error_record.get("errno")
     message = (
-        f"partitioned backup failed on rank {payload['rank']} "
-        f"({payload['type']}): {payload['message']}"
+        f"partitioned backup failed on rank {error_record['rank']} "
+        f"({error_record['type']}): {error_record['message']}"
     )
     if isinstance(code, int):
         raise OSError(code, message)
@@ -98,19 +100,19 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
     from .backup import _solver_setup, config_hash
 
     target = Path(directory)
-    previous_manifest = None
+    previous_info = None
     preparation_error = None
     if solver.parallel.is_root:
         try:
             target.mkdir(parents=True, exist_ok=True)
-            if (target / "manifest.json").is_file():
-                previous_manifest = json.loads((target / "manifest.json").read_text())
-                # Fail before writing if an existing manifest is not a usable
-                # identity; guessing which old archives to retain is unsafe.
-                for name in previous_manifest["files"]:
+            if (target / "checkpoint_info.json").is_file():
+                previous_info = json.loads((target / "checkpoint_info.json").read_text())
+                # Fail before writing if an existing checkpoint information is not a usable
+                # checkpoint description; guessing which old archives to retain is unsafe.
+                for name in previous_info["files"]:
                     _resolve_backup_file(target, name)
         except (OSError, ValueError, KeyError, TypeError) as error:
-            preparation_error = _error_payload(error, rank=solver.parallel.rank)
+            preparation_error = _error_record(error, rank=solver.parallel.rank)
     preparation_error = solver.parallel.bcast(preparation_error, root=0)
     if preparation_error is not None:
         _raise_collective_backup_error(preparation_error)
@@ -146,13 +148,13 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
 
     # All ranks write their temporary archives concurrently, so reserve space
     # for the aggregate uncompressed upper bound before any old restart can be
-    # affected.  The old manifest remains valid throughout this operation.
-    local_payload_bytes = _archive_upper_bound(arrays)
-    payload_bytes = int(solver.parallel.global_sum(local_payload_bytes))
+    # affected.  The previous checkpoint information remains valid throughout this operation.
+    local_archive_bytes = _archive_upper_bound(arrays)
+    archive_bytes = int(solver.parallel.global_sum(local_archive_bytes))
     capacity_error = None
     if solver.parallel.is_root:
         try:
-            require_free_space(target, payload_bytes)
+            require_free_space(target, archive_bytes)
         except InsufficientStorageError as error:
             capacity_error = {
                 "path": str(error.path),
@@ -176,15 +178,15 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
     try:
         _atomic_npz(target / files[partition.rank], encode_state(arrays))
     except Exception as error:
-        local_error = _error_payload(error, rank=partition.rank)
+        local_error = _error_record(error, rank=partition.rank)
     errors = solver.parallel.comm.allgather(local_error)
     failure = next((error for error in errors if error is not None), None)
     if failure is not None:
         _raise_collective_backup_error(failure)
 
-    manifest_error = None
+    metadata_error = None
     if solver.parallel.is_root:
-        manifest = {
+        checkpoint_info = {
             "format_version": PARTITIONED_BACKUP_VERSION,
             "generation": generation,
             "config_hash": config_hash(_solver_setup(solver)),
@@ -200,26 +202,26 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
             "n_ranks": partition.size,
             "files": files,
         }
-        temporary = target / f".manifest-{generation}.tmp"
+        temporary = target / f".checkpoint-info-{generation}.tmp"
         try:
             with temporary.open("w", encoding="utf-8") as stream:
-                stream.write(json.dumps(manifest, indent=2) + "\n")
+                stream.write(json.dumps(checkpoint_info, indent=2) + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, target / "manifest.json")
+            os.replace(temporary, target / "checkpoint_info.json")
         except Exception as error:
             if temporary.exists():
                 temporary.unlink()
-            manifest_error = _error_payload(error, rank=partition.rank)
-    manifest_error = solver.parallel.bcast(manifest_error, root=0)
-    if manifest_error is not None:
-        _raise_collective_backup_error(manifest_error)
+            metadata_error = _error_record(error, rank=partition.rank)
+    metadata_error = solver.parallel.bcast(metadata_error, root=0)
+    if metadata_error is not None:
+        _raise_collective_backup_error(metadata_error)
     cleanup_error = None
     if solver.parallel.is_root:
         try:
-            _prune_partitioned_generations(target, manifest, previous_manifest)
+            _prune_partitioned_generations(target, checkpoint_info, previous_info)
         except OSError as error:
-            cleanup_error = _error_payload(error, rank=solver.parallel.rank)
+            cleanup_error = _error_record(error, rank=solver.parallel.rank)
     cleanup_error = solver.parallel.bcast(cleanup_error, root=0)
     if cleanup_error is not None:
         _raise_collective_backup_error(cleanup_error)
@@ -231,27 +233,29 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
     from .backup import (
         _solver_setup,
         config_hash,
-        publish_restart_payload,
-        stage_restart_payload,
+        restore_restart_state,
+        validate_restart_state,
     )
 
     target = Path(directory)
-    manifest = None
-    manifest_error = None
+    checkpoint_info = None
+    metadata_error = None
     if solver.parallel.is_root:
         try:
-            manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            checkpoint_info = json.loads(
+                (target / "checkpoint_info.json").read_text(encoding="utf-8")
+            )
         except Exception as error:
-            manifest_error = _error_payload(error, rank=solver.parallel.rank)
-    manifest_error = solver.parallel.bcast(manifest_error, root=0)
-    if manifest_error is not None:
-        _raise_collective_backup_error(manifest_error)
-    manifest = solver.parallel.bcast(manifest, root=0)
+            metadata_error = _error_record(error, rank=solver.parallel.rank)
+    metadata_error = solver.parallel.bcast(metadata_error, root=0)
+    if metadata_error is not None:
+        _raise_collective_backup_error(metadata_error)
+    checkpoint_info = solver.parallel.bcast(checkpoint_info, root=0)
 
     local_error = None
-    payload = None
+    restart_state = None
     try:
-        expected_manifest_keys = {
+        expected_info_keys = {
             "format_version",
             "generation",
             "config_hash",
@@ -261,29 +265,29 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
             "n_ranks",
             "files",
         }
-        if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
-            raise ValueError("Partitioned backup manifest has invalid fields")
-        if manifest.get("format_version") != PARTITIONED_BACKUP_VERSION:
+        if not isinstance(checkpoint_info, dict) or set(checkpoint_info) != expected_info_keys:
+            raise ValueError("Partitioned backup information has invalid fields")
+        if checkpoint_info.get("format_version") != PARTITIONED_BACKUP_VERSION:
             raise ValueError("Unsupported partitioned FVM backup version")
-        if manifest.get("n_ranks") != solver.parallel.size:
+        if checkpoint_info.get("n_ranks") != solver.parallel.size:
             raise ValueError("Partitioned backup communicator size does not match")
-        if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
+        if checkpoint_info.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        if not allow_config_change and manifest.get("config_hash") != config_hash(
+        if not allow_config_change and checkpoint_info.get("config_hash") != config_hash(
             _solver_setup(solver)
         ):
             raise ValueError(
                 "Partitioned backup configuration hash does not match "
                 f"(allow_config_change={allow_config_change})"
             )
-        archived_viscosity = manifest.get("kinematic_viscosity")
+        archived_viscosity = checkpoint_info.get("kinematic_viscosity")
         if (
             isinstance(archived_viscosity, bool)
             or not isinstance(archived_viscosity, int | float)
             or not np.isfinite(float(archived_viscosity))
             or float(archived_viscosity) <= 0.0
         ):
-            raise ValueError("Partitioned backup molecular viscosity identity is invalid")
+            raise ValueError("Partitioned backup molecular viscosity is invalid")
         if not allow_config_change and not np.isclose(
             float(archived_viscosity),
             float(
@@ -300,10 +304,10 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
                 "Partitioned backup molecular viscosity does not match the active case"
             )
 
-        files = manifest.get("files")
+        files = checkpoint_info.get("files")
         if not isinstance(files, list) or len(files) != solver.parallel.size:
-            raise ValueError("Partitioned backup file manifest is incomplete")
-        generation = manifest.get("generation")
+            raise ValueError("Partitioned backup file description is incomplete")
+        generation = checkpoint_info.get("generation")
         expected_files = [
             f"rank-{file_rank:05d}-{generation}.npz" for file_rank in range(solver.parallel.size)
         ]
@@ -349,85 +353,85 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
             raise ValueError("Partitioned backup cell IDs do not match")
         if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
             raise ValueError("Partitioned backup face IDs do not match")
-        payload = stage_restart_payload(
+        restart_state = validate_restart_state(
             solver,
             state,
             allow_config_change=allow_config_change,
-            kinematic_viscosity=float(manifest["kinematic_viscosity"]),
+            kinematic_viscosity=float(checkpoint_info["kinematic_viscosity"]),
         )
     except Exception as error:
-        local_error = _error_payload(error, rank=solver.parallel.rank)
+        local_error = _error_record(error, rank=solver.parallel.rank)
 
     errors = solver.parallel.comm.allgather(local_error)
     failure = next((error for error in errors if error is not None), None)
     if failure is not None:
         _raise_collective_backup_error(failure)
-    if payload is None:
-        raise RuntimeError("Partitioned restart admission produced no payload")
+    if restart_state is None:
+        raise RuntimeError("Partitioned restart validation produced no restart_state")
     signatures = solver.parallel.comm.allgather(
         (
-            payload.time,
-            payload.step,
-            payload.time_step_size,
-            payload.accepted_time_step_size,
-            payload.previous_time_step_size,
+            restart_state.time,
+            restart_state.step,
+            restart_state.time_step_size,
+            restart_state.accepted_time_step_size,
+            restart_state.previous_time_step_size,
         )
     )
     if any(signature != signatures[0] for signature in signatures[1:]):
-        raise RuntimeError("Partitioned restart admission found inconsistent clocks across ranks")
-    publish_restart_payload(solver, payload)
+        raise RuntimeError("Partitioned restart validation found inconsistent clocks across ranks")
+    restore_restart_state(solver, restart_state)
     solver.parallel.barrier()
 
 
 def write_partition_backup(directory, partition, fields: dict[str, np.ndarray], comm) -> None:
-    """Write one owned-cell archive per rank and a root manifest."""
+    """Write one owned-cell archive per rank and a root field description."""
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
     n_owned = len(partition.owned_global_ids)
-    payload = {"global_cell_id": partition.owned_global_ids}
+    field_arrays = {"global_cell_id": partition.owned_global_ids}
     for name, values in fields.items():
         array = np.asarray(values)
         if array.shape[0] != len(partition.local_global_ids):
             raise ValueError(f"Field {name!r} does not match the local partition")
-        payload[name] = array[:n_owned]
-    np.savez_compressed(target / f"rank-{partition.rank:05d}.npz", **payload)
+        field_arrays[name] = array[:n_owned]
+    np.savez_compressed(target / f"rank-{partition.rank:05d}.npz", **field_arrays)
     comm.Barrier()
     if partition.rank == 0:
-        manifest = {
-            "format_version": 3,
+        field_info = {
+            "format_version": 4,
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
             "files": [f"rank-{rank:05d}.npz" for rank in range(partition.size)],
             "fields": sorted(fields),
         }
-        (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        (target / "field_info.json").write_text(json.dumps(field_info, indent=2) + "\n")
     comm.Barrier()
 
 
 def reconstruct_partition_backup(directory) -> dict[str, np.ndarray]:
     """Reconstruct globally ordered fields for visualization or comparison."""
     target = Path(directory)
-    manifest = json.loads((target / "manifest.json").read_text())
-    expected_manifest_keys = {
+    field_info = json.loads((target / "field_info.json").read_text())
+    expected_info_keys = {
         "format_version",
         "n_global_cells",
         "n_ranks",
         "files",
         "fields",
     }
-    if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
-        raise ValueError("Partition reconstruction manifest has invalid fields")
-    if manifest["format_version"] != 3:
+    if not isinstance(field_info, dict) or set(field_info) != expected_info_keys:
+        raise ValueError("Partition reconstruction field_info has invalid fields")
+    if field_info["format_version"] != 4:
         raise ValueError("Unsupported partition reconstruction format")
     fields: dict[str, np.ndarray] = {}
-    for filename in manifest["files"]:
+    for filename in field_info["files"]:
         with np.load(target / filename, allow_pickle=False) as archive:
             global_ids = archive["global_cell_id"]
-            for name in manifest["fields"]:
+            for name in field_info["fields"]:
                 values = archive[name]
                 if name not in fields:
                     fields[name] = np.empty(
-                        (manifest["n_global_cells"], *values.shape[1:]), dtype=values.dtype
+                        (field_info["n_global_cells"], *values.shape[1:]), dtype=values.dtype
                     )
                 fields[name][global_ids] = values
     return fields
@@ -465,12 +469,12 @@ def write_partition_vtu(
     output: OutputConfig | None = None,
     exporter: VTKExporter | None = None,
 ) -> Path:
-    """Atomically publish one rank piece and a root parallel collection.
+    """Atomically write one rank piece and a root parallel collection.
 
     With one visualization ghost layer, each piece contains owned cells
     followed by face-adjacent halo cells marked with ``vtkGhostType``.  This
     lets ParaView's cell-to-point conversion remain smooth across partitions
-    without changing the solver's ownership or numerical halo policy.
+    without changing the solver's rank assignment or numerical halo settings.
     """
     if not stem or Path(stem).name != stem:
         raise ValueError("stem must be a non-empty filename component")
@@ -547,7 +551,7 @@ def write_partition_vtu(
             writer = exporter or VTKExporter(export_mesh, output)
             writer.export_cells(str(target / piece_name), cell_ids, piece_fields)
     except BaseException as error:
-        local_error = _error_payload(error, rank=partition.rank)
+        local_error = _error_record(error, rank=partition.rank)
 
     failures = comm.allgather(local_error)
     failure = next((item for item in failures if item is not None), None)
@@ -555,7 +559,7 @@ def write_partition_vtu(
         _raise_collective_backup_error(failure)
 
     collection = target / f"{stem}.pvtu"
-    publication_error = None
+    output_error = None
     if partition.rank == 0:
         try:
             lines = [
@@ -593,8 +597,8 @@ def write_partition_vtu(
             lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
             atomic_write_text(collection, "\n".join(lines) + "\n")
         except BaseException as error:
-            publication_error = _error_payload(error, rank=partition.rank)
-    publication_error = comm.bcast(publication_error, root=0)
-    if publication_error is not None:
-        _raise_collective_backup_error(publication_error)
+            output_error = _error_record(error, rank=partition.rank)
+    output_error = comm.bcast(output_error, root=0)
+    if output_error is not None:
+        _raise_collective_backup_error(output_error)
     return collection

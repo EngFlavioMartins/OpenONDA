@@ -1,4 +1,4 @@
-"""Particle state: numerical and lifecycle contracts."""
+"""Particle state: numerical and run phases conditions."""
 
 from __future__ import annotations
 

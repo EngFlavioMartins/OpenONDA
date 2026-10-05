@@ -13,7 +13,7 @@ try:
     import taichi as ti
 except ImportError as error:  # pragma: no cover - validated by configuration tests
     raise RuntimeError(
-        "operator_backend='taichi' requires the canonical Taichi dependency"
+        "operator_backend='taichi' requires the standard Taichi dependency"
     ) from error
 
 

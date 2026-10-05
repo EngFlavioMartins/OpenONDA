@@ -43,7 +43,7 @@ def create_coupler(
         only on rank zero; callers need no rank checks. With existing solver
         instances, rank zero passes its VPM instance and other ranks pass None.
     coupler_setup : CouplerSetup
-        Coupling-owned transfer, boundary-trace, diagnostic, and backup policy.
+        Coupling-owned transfer, boundary-trace, diagnostic, and backup settings.
     mesh : MeshSource or None, optional
         Mesh passed to FVM construction. Only valid with an FVM configuration.
     case_dir : path-like or None, optional
@@ -124,7 +124,7 @@ def create_coupler(
 
         with collective_phase(fvm.parallel.comm, "driver construction"):
             driver = FVMVPMCoupler(fvm, vpm, coupler_setup)
-        driver._owned_resources = resources.pop_all()
+        driver._cleanup_stack = resources.pop_all()
         return driver
 
 

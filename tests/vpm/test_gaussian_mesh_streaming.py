@@ -25,7 +25,7 @@ def test_live_device_budget_selects_exact_streaming_without_raising_caps():
     )
     assert effective == 1800 * 1024**2 - correction < cap
     assert constrained != original
-    assert constrained.payload_bytes + plan_cap + correction <= 1800 * 1024**2
+    assert constrained.field_bytes + plan_cap + correction <= 1800 * 1024**2
     assert constrained.inverse_transforms in (12, 24)
     with pytest.raises(MemoryError, match="insufficient free device memory.*fft_shape"):
         device_field_execution_plan(*options, cap, plan_cap, correction, correction + plan_cap)
@@ -35,19 +35,19 @@ def test_device_budget_reserves_entire_correction_and_separate_fft_cap():
     options = ((25, 25, 27), (50, 50, 54), 10, 20, 10, 4)
     cap, plan_cap, correction = 32 * 1024**2, 1024**2, 2 * 1024**2
     full = field_execution_plan(*options, cap, plan_cap)
-    free = full.payload_bytes + plan_cap + correction - 1
+    free = full.field_bytes + plan_cap + correction - 1
     selected, effective = device_field_execution_plan(*options, cap, plan_cap, correction, free)
     assert selected.mode == "streamed"
     assert effective == free - correction
-    assert selected.payload_bytes + plan_cap <= effective <= cap
+    assert selected.field_bytes + plan_cap <= effective <= cap
 
 
-def test_checkpoint_275_query_window_avoids_observed_device_admission_cliff():
+def test_checkpoint_275_query_window_avoids_observed_device_validation_cliff():
     # Checkpoint source count and widened midspan sampler envelope. Only the
     # retained inverse-output shape changes; the logical/FFT grids stay fixed.
     shape, fft, retained = (411, 155, 53), (825, 315, 105), (147, 143, 11)
     options = (shape, fft, 293086, 2665, 10, 4)
-    cap, plan_cap, correction = 2*1024**3, 128*1024**2, 256*1024**2
+    cap, plan_cap, correction = 2 * 1024**3, 128 * 1024**2, 256 * 1024**2
     for free in (1540947968, 1603862528):
         with pytest.raises(MemoryError, match="insufficient free device memory"):
             device_field_execution_plan(*options, cap, plan_cap, correction, free)
@@ -55,12 +55,14 @@ def test_checkpoint_275_query_window_avoids_observed_device_admission_cliff():
             *options, cap, plan_cap, correction, free, retained_shape=retained
         )
         assert plan.mode == "streamed"
-        assert plan.payload_bytes + plan_cap + correction <= free
+        assert plan.field_bytes + plan_cap + correction <= free
         assert effective <= cap
-    full = field_execution_plan(*options, 8*1024**3, plan_cap)
-    cropped = field_execution_plan(*options, 8*1024**3, plan_cap, retained_shape=retained)
+    full = field_execution_plan(*options, 8 * 1024**3, plan_cap)
+    cropped = field_execution_plan(*options, 8 * 1024**3, plan_cap, retained_shape=retained)
     assert full.mode == cropped.mode == "all_channels"
-    assert full.payload_bytes - cropped.payload_bytes == 12*(math.prod(shape)-math.prod(retained))*4
+    assert (
+        full.field_bytes - cropped.field_bytes == 12 * (math.prod(shape) - math.prod(retained)) * 4
+    )
     assert full.metadata_bytes == cropped.metadata_bytes
     assert full.radial_grid_passes == cropped.radial_grid_passes
     assert full.inverse_transforms == cropped.inverse_transforms
@@ -81,11 +83,11 @@ def test_runtime_low_memory_plan_matches_unconstrained_cuda_fields(monkeypatch):
         expected = cp.asnumpy(u), cp.asnumpy(j)
         original_plan = unconstrained.execution_plan
         del u, j
-    # Simulate only the admission value, not CUDA allocation success or field
+    # Simulate only the validation value, not CUDA allocation success or field
     # arithmetic. Actual transforms and gathering still execute on the GPU.
     plan_cap = 8 * 1024**2
     query_reserve = correction_query_reserve(1, np.dtype("float32").itemsize)
-    free = original_plan.payload_bytes + plan_cap + query_reserve - 1
+    free = original_plan.field_bytes + plan_cap + query_reserve - 1
     monkeypatch.setattr(cp.cuda.runtime, "memGetInfo", lambda: (free, 6 * 1024**3))
     with GaussianImageFields(x, gamma, sigma, q, **options, max_plan_bytes=plan_cap) as constrained:
         assert constrained.execution_plan.mode == "streamed"
@@ -119,7 +121,7 @@ def test_actual_native_and_extended_shapes_have_bounded_plans():
         (575, 129, 53), (1152, 264, 105), 1000000, 1000000, 10, 4, cap, plan_cap
     )
     assert wake.mode == "streamed" and wake.source_families == 1
-    assert wake.payload_bytes + plan_cap <= cap
+    assert wake.field_bytes + plan_cap <= cap
     with pytest.raises(MemoryError, match="even with streaming"):
         field_execution_plan(
             (688, 355, 53), (1375, 720, 105), 1000000, 1000000, 10, 4, cap, plan_cap
@@ -134,7 +136,7 @@ def test_caps_choose_execution_only_and_never_raise_the_limit():
             plan = field_execution_plan(shape, fft, 10, 20, 10, 4, mib * 1024**2, 1024**2)
         except MemoryError:
             continue
-        assert plan.payload_bytes <= (mib - 1) * 1024**2
+        assert plan.field_bytes <= (mib - 1) * 1024**2
         plans.append(plan)
     assert plans[0].output_batch <= plans[-1].output_batch
     assert plans[-1].mode == "all_channels"
@@ -194,7 +196,14 @@ def test_streamed_fields_match_fast_and_direct_with_coherent_walls(dtype, famili
     choices = []
     for cap in np.linspace(low, high, 64, dtype=np.int64):
         plan = field_execution_plan(
-            shape, fft, count, queries, 10, size, int(cap) + plan_cap, plan_cap,
+            shape,
+            fft,
+            count,
+            queries,
+            10,
+            size,
+            int(cap) + plan_cap,
+            plan_cap,
             retained_shape=retained,
         )
         if (
@@ -207,13 +216,13 @@ def test_streamed_fields_match_fast_and_direct_with_coherent_walls(dtype, famili
     cap, selected = choices[0]
     with GaussianImageFields(
         x, gamma, sigma, q, **options, max_scratch_bytes=cap + plan_cap, max_plan_bytes=plan_cap
-    ) as owner:
-        assert owner.execution_plan.mode == "streamed"
-        assert owner.execution_plan.source_families == families
-        assert owner.execution_plan == selected
+    ) as field:
+        assert field.execution_plan.mode == "streamed"
+        assert field.execution_plan.source_families == families
+        assert field.execution_plan == selected
         for _ in range(2):
-            report = owner.prepare(images)
-            u, j, _ = owner.evaluate_prepared(q)
+            report = field.prepare(images)
+            u, j, _ = field.evaluate_prepared(q)
             for got, expected, direct in zip(
                 (cp.asnumpy(u), cp.asnumpy(j)), baseline, truth, strict=True
             ):
@@ -233,10 +242,10 @@ def test_streamed_fields_match_fast_and_direct_with_coherent_walls(dtype, famili
             del u, j
         # Caller fields remain intact after a failed plan switch, and a
         # failed direction cannot silently reuse an over-budget plan.
-        owner._plans.close()
+        field._plans.close()
         with pytest.raises(RuntimeError, match="closed"):
-            owner.prepare(images)
-        assert owner._prepared_images is None
+            field.prepare(images)
+        assert field._prepared_images is None
 
 
 def test_late_source_family_reuses_full_radial_scratch(monkeypatch):
@@ -248,21 +257,21 @@ def test_late_source_family_reuses_full_radial_scratch(monkeypatch):
     x, gamma, sigma, q, images = _case()
     with GaussianImageFields(
         x, gamma, sigma, q, zmin=0.0, zmax=0.193, tau=0.12, spacing=0.035, cutoff=0.6
-    ) as owner:
-        owner.prepare([(0, True)])
-        scratch = owner._kernel_scratch
+    ) as field:
+        field.prepare([(0, True)])
+        scratch = field._kernel_scratch
         original = cp.zeros
 
         def no_extra_source_grid(shape, *args, **kwargs):
-            if isinstance(shape, tuple) and shape == (3, *owner.fft_shape):
+            if isinstance(shape, tuple) and shape == (3, *field.fft_shape):
                 raise AssertionError("late family allocated an unbudgeted three-grid scatter")
             return original(shape, *args, **kwargs)
 
         monkeypatch.setattr(cp, "zeros", no_extra_source_grid)
-        report = owner.prepare(images)
-        u, j, _ = owner.evaluate_prepared(q)
+        report = field.prepare(images)
+        u, j, _ = field.evaluate_prepared(q)
         truth = direct_finite_images(x, gamma, sigma, q, report["world_images"])[:2]
-        assert owner._kernel_scratch is scratch
+        assert field._kernel_scratch is scratch
         for got, exact in zip((cp.asnumpy(u), cp.asnumpy(j)), truth, strict=True):
             assert np.linalg.norm(got - exact) / np.linalg.norm(exact) < 1e-4
         del u, j

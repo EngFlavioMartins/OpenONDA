@@ -1,5 +1,5 @@
 """
-Discretization-health diagnostics for the VPM particle field.
+Particle resolution and consistency diagnostics for the VPM particle field.
 =============================================================
 
 Conservation and stability are different properties.  A structure-preserving
@@ -40,7 +40,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 from scipy.spatial import cKDTree
 
-__all__ = ["discretization_health"]
+__all__ = ["particle_resolution_metrics"]
 
 # Gaussian zeta has decayed to ~1e-7 by 4 sigma; beyond that a neighbour adds
 # nothing to div(w) at f32 precision.  Keeps the divergence sum O(N k) rather
@@ -96,7 +96,7 @@ def _vorticity_gradient_metrics(
     return float(ratio @ (magnitude / total)), vorticity
 
 
-def discretization_health(
+def particle_resolution_metrics(
     position: np.ndarray,
     vortex_strength: np.ndarray,
     core_radius: np.ndarray,
@@ -114,7 +114,7 @@ def discretization_health(
             When omitted, the same compact Gaussian-neighbour sum used for the
             divergence diagnostic supplies vorticity at the probe particles.
         sample_all: evaluate every distinct blob location instead of a bounded
-            spatial sample. Use this to confirm a sampled health-limit crossing;
+            spatial sample. Use this to confirm a sampled particle-state limit crossing;
             moving particles can change the sampled subset between steps.
 
     Returns:

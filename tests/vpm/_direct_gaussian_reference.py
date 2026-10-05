@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from tests.vpm._slip_periodic_gaussian_oracle import gaussian_pairs
+from tests.vpm._slip_periodic_gaussian_reference import gaussian_pairs
 
 
 def primary_direct(position, strength, core, indices, *, chunk=8192, max_pairs=10_000_000):

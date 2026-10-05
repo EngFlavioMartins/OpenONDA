@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..solver.vlm_solver import VLMSolver
+    from ..particles.vlm_solver import VLMSolver
 
 
 class VLMKinematics(ABC):
-    """Abstract rigid-motion contract consumed by the VLM solver.
+    """Abstract rigid-motion conditions consumed by the VLM solver.
 
     Subclasses provide translational and angular velocity at physical time and
     mutate an assigned panel range over one accepted interval. Users normally

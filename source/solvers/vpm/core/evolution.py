@@ -1,4 +1,4 @@
-"""Time-evolution orchestration for the VPM solver.
+"""Time-evolution execution for the VPM solver.
 
 :class:`EvolutionStepper` owns the per-step evolution algorithm: velocity and
 gradient preparation, advection, stretching, coupled inviscid integration,
@@ -8,8 +8,7 @@ facade that composes subsystems; it delegates its step to the stepper and
 keeps the diagnostics, backups, and I/O bookkeeping around the step.
 
 The stepper holds a back-reference to the solver (``self.solver``), but exposes
-only the explicit capabilities it consumes.  The solver remains the single
-owner of mutable state, including the accepted step clock.  No physics is
+only the explicit capabilities it consumes.  The solver stores all mutable state, including the accepted step clock.  No physics is
 implemented here: every numerical update is performed on the subsystems the
 stepper calls.  Diffusing and
 advecting kernels live in ``physics``; the stabilization workers live in
@@ -42,7 +41,7 @@ class EvolutionStepper:
     """
 
     def __init__(self, solver: VPMSolver) -> None:
-        """Attach a step orchestrator to its owning solver.
+        """Attach the accepted-step controller to its solver.
 
         Parameters
         ----------
@@ -61,7 +60,7 @@ class EvolutionStepper:
         self._staged_step: int | None = None
         self._staged_time: float | None = None
 
-    # Deliberately explicit: this orchestration boundary must not become a
+    # Deliberately explicit: this execution boundary must not become a
     # second, forwarding view of VPMSolver's entire mutable surface.
     @property
     def step(self):
@@ -231,7 +230,7 @@ class EvolutionStepper:
         self._apply_pending_particle_regeneration()
         self.stabilization.run_phase("pre_evolution")
 
-        # Stage the new clock for kernels and scheduled workers.  The canonical
+        # Stage the new clock for kernels and scheduled workers.  The standard
         # solver clock is committed only after all physical phases succeeded.
         self._staged_step = target_step
         self._staged_time = target_time
@@ -348,7 +347,7 @@ class EvolutionStepper:
             )
 
     def _commit_accepted_step(self) -> None:
-        """Publish a fully accepted numerical step to the canonical clock."""
+        """Publish a fully accepted numerical step to the standard clock."""
         assert self._staged_step is not None and self._staged_time is not None
         self.solver.step = self._staged_step
         self.solver.time = self._staged_time
@@ -356,7 +355,7 @@ class EvolutionStepper:
         self._staged_time = None
 
     def _update_velocity_and_gradients(self, announce: bool = False) -> None:
-        """Refresh derived particle velocity and gradient through the stage contract."""
+        """Refresh derived particle velocity and gradient through the stage conditions."""
         del announce
         count = len(self.particles)
         if count == 0:
@@ -413,10 +412,10 @@ class EvolutionStepper:
             self.solver, "_axisymmetric_orbits_validated", False
         ):
             return
-        # Read the particle owner directly.  The stepper intentionally exposes
+        # Read the particle container directly.  The stepper intentionally exposes
         # no forwarding view of all solver fields; using the old forwarding
-        # properties here made standalone stepper validation inspect a wrong
-        # owner and allowed malformed orbits through.
+        # properties here made standalone stepper validation inspect the wrong
+        # particle container and allowed malformed orbits through.
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
         orbit_id = self.particles.zone_id_cpu(use_cache=False).astype(np.int64)
         group_id = self.particles.group_id_cpu(use_cache=False).astype(np.int64)
@@ -693,8 +692,7 @@ class EvolutionStepper:
             )
             return result
         if self.viscous_scheme == "DVH":
-            # DVH currently has a scalar, source-independent heat-kernel
-            # contract. Pass the actual effective-viscosity field so both
+            # DVH requires a scalar, source-independent heat kernel. Pass the actual effective-viscosity field so both
             # molecular and LES-induced spatial variation is validated rather
             # than silently replaced by its mean.
             N = self.particles.n_particles_total

@@ -22,7 +22,7 @@ def parse_checkmesh_output(output: str, *, exit_code: int | None = None) -> dict
     A zero exit status is not sufficient: the explicit ``Failed N mesh
     checks`` summary takes precedence.  Output without either a success or a
     failure summary is treated as indeterminate and therefore fails the
-    acceptance gate.
+    acceptance check.
     """
     failed_match = _FAILED_CHECKS.search(output)
     passed = bool(_PASSED_CHECKS.search(output))

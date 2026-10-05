@@ -1,4 +1,4 @@
-"""Ordinary planar cylinder CLI identity without a solver or external archive."""
+"""Ordinary planar cylinder CLI configuration without a solver or external archive."""
 
 from pathlib import Path
 
@@ -6,13 +6,13 @@ import pytest
 
 from openonda import vpm
 from openonda.tutorial_runner import load_case_module
-from source.solvers.vpm.config.fingerprint import numerical_configuration
+from source.solvers.vpm.config.configuration_values import numerical_configuration
 
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 observations = load_case_module(CASE)
 
 
-def test_ordinary_builder_selects_exact_native_policy():
+def test_ordinary_builder_selects_native_settings():
     setup = load_case_module(CASE)
     flow, particles, _, mesh = setup.build_case()
     numerics = particles.numerics

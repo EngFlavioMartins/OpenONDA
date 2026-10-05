@@ -37,7 +37,7 @@ def test_highest_order_derivative_avoids_far_image_intermediate_underflow():
 
 
 @ti.kernel
-def _angular_derivative_oracle(
+def _angular_derivative_reference(
     backend: ti.template(), output: ti.template(), direction: ti.template()
 ):
     for index in range(len(_DERIVATIVE_INDICES)):
@@ -54,7 +54,7 @@ def test_cartesian_recurrence_matches_independent_contraction_table():
         np.array([0.1], np.float32),
     )
     direction = ti.Vector.field(3, ti.f32, shape=())
-    oracle = ti.field(ti.f32, shape=len(_DERIVATIVE_INDICES))
+    reference = ti.field(ti.f32, shape=len(_DERIVATIVE_INDICES))
     for vector in ([0.0, 0.0, 1.0], [1, 2, 3], [-2, 0.1, 0.7]):
         unit = np.asarray(vector, dtype=np.float32)
         unit /= np.linalg.norm(unit)
@@ -62,14 +62,14 @@ def test_cartesian_recurrence_matches_independent_contraction_table():
         targets[:, 0] += np.array([-0.001, 0.001], dtype=np.float32)
         backend, _, _ = _query(harness, targets)
         direction[None] = unit
-        _angular_derivative_oracle(backend, oracle, direction)
+        _angular_derivative_reference(backend, reference, direction)
         scale = np.array(
             [
                 math.prod(range(1, 2 * sum(alpha), 2)) / (4 * math.pi)
                 for alpha in _DERIVATIVE_INDICES
             ]
         )
-        error = np.abs(backend.derivatives.to_numpy()[0] - oracle.to_numpy())
+        error = np.abs(backend.derivatives.to_numpy()[0] - reference.to_numpy())
         assert np.max(error / scale) < 3e-5
         backend.destroy()
 
@@ -155,7 +155,9 @@ def test_exact_near_work_refines_target_cells_and_profiles_separate_passes():
         backend.last_diagnostics["passes_seconds"]
     )
     for actual, exact in zip(
-        (velocity, gradient), _oracle("GAUSSIAN", position, strength, core, targets), strict=True
+        (velocity, gradient),
+        _direct_reference("GAUSSIAN", position, strength, core, targets),
+        strict=True,
     ):
         np.testing.assert_allclose(actual, exact, rtol=3e-5, atol=3e-6)
     backend.destroy()
@@ -169,13 +171,13 @@ def test_single_source_single_target_preserves_root_only_tree():
     harness = _DeviceFMMHarness(capacity=1)
     harness.evaluate(position, strength, core)
     backend, velocity, gradient = _query(harness, targets)
-    expected = _oracle("GAUSSIAN", position, strength, core, targets)
+    expected = _direct_reference("GAUSSIAN", position, strength, core, targets)
     for actual, reference in zip((velocity, gradient), expected, strict=True):
         np.testing.assert_allclose(actual, reference, rtol=2e-5, atol=1e-7)
     backend.destroy()
 
 
-def _oracle(kernel_name, position, strength, core, targets):
+def _direct_reference(kernel_name, position, strength, core, targets):
     kernel = make_vortex_kernel(kernel_name)
     difference = targets[:, None, :] - position[None, :, :]
     velocity = kernel.velocity_pair(
@@ -233,7 +235,9 @@ def test_target_fmm_preserves_exact_source_only_core_near_fields(kernel_name):
     harness = _DeviceFMMHarness(capacity=16, kernel_name=kernel_name)
     harness.evaluate(position, strength, core)
     backend, velocity, gradient = _query(harness, targets)
-    expected_velocity, expected_gradient = _oracle(kernel_name, position, strength, core, targets)
+    expected_velocity, expected_gradient = _direct_reference(
+        kernel_name, position, strength, core, targets
+    )
     np.testing.assert_allclose(velocity, expected_velocity, rtol=4e-5, atol=1e-6)
     np.testing.assert_allclose(gradient, expected_gradient, rtol=4e-5, atol=2e-5)
     assert backend.last_diagnostics["m2l_pairs"] == 0
@@ -252,7 +256,9 @@ def test_internal_regularised_monopoles_keep_the_selected_radial_kernel(kernel_n
     backend, velocity, gradient = _query(harness, targets)
     assert backend.last_diagnostics["monopole_target_pairs"] > 0
     for actual, expected in zip(
-        (velocity, gradient), _oracle(kernel_name, position, strength, core, targets), strict=True
+        (velocity, gradient),
+        _direct_reference(kernel_name, position, strength, core, targets),
+        strict=True,
     ):
         np.testing.assert_allclose(actual, expected, rtol=4e-6, atol=2e-7)
     backend.destroy()
@@ -286,7 +292,7 @@ def test_complete_image_block_matches_independent_reflected_source_sum():
             image_position[:, 2] = shift - position[:, 2] if odd else position[:, 2] + shift
             if odd:
                 image_strength[:, :2] *= -1
-            v, j = _oracle("GAUSSIAN", image_position, image_strength, core, targets)
+            v, j = _direct_reference("GAUSSIAN", image_position, image_strength, core, targets)
             _, image_rounding = _exact_fields_and_roundoff(
                 "GAUSSIAN", image_position, image_strength, core, targets
             )
@@ -348,7 +354,7 @@ def test_target_fmm_compares_actual_error_to_existing_target_path(configuration)
     harness = _DeviceFMMHarness(capacity=128)
     harness.evaluate(position, strength, core)
     backend, velocity, gradient = _query(harness, targets)
-    expected = _oracle("GAUSSIAN", position, strength, core, targets)
+    expected = _direct_reference("GAUSSIAN", position, strength, core, targets)
     _, rounding = _exact_fields_and_roundoff("GAUSSIAN", position, strength, core, targets)
     old = _pointwise_query(harness, targets)
     for label, new, reference, previous, roundoff in zip(
@@ -396,7 +402,7 @@ def test_prepared_target_reflections_preserve_full_jacobian_and_geometry():
             odd=odd,
             output_start=64,
         )
-        expected = _oracle("GAUSSIAN", position, strength, core, transformed)
+        expected = _direct_reference("GAUSSIAN", position, strength, core, transformed)
         previous = _pointwise_query(harness, transformed)
         kernel = make_vortex_kernel("GAUSSIAN")
         displacement = transformed[:, None, :] - position[None, :, :]
@@ -439,7 +445,7 @@ class _PointwiseImageInduction:
         return self
 
 
-def _slab_oracle(kernel_name, position, strength, core, target, shell, *, stage):
+def _slab_reference(kernel_name, position, strength, core, target, shell, *, stage):
     kernel = make_vortex_kernel(kernel_name)
     outputs = [np.zeros((len(target), 3)), np.zeros((len(target), 3, 3))]
     conditioning = [np.zeros(len(target)), np.zeros(len(target))]
@@ -541,7 +547,7 @@ def test_full_slab_blocks_preserve_tail_stage_rates_and_target_operator(kernel_n
         old, new = records[0][name], records[1][name]
         assert old[3]["shell"] == new[3]["shell"]
         assert new[3]["relative"] <= 1e-4
-        exact, conditioning = _slab_oracle(
+        exact, conditioning = _slab_reference(
             kernel_name,
             position,
             strength,

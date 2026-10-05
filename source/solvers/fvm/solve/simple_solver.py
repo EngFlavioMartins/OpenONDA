@@ -845,7 +845,7 @@ def _pressure_boundary_values(boundaries, n_interior, n_faces) -> np.ndarray:
 
 
 def _build_boundary_face_arrays(boundaries, n_interior, n_faces, layout=None):
-    """Return the canonical pressure boundary arrays.
+    """Return the standard pressure boundary arrays.
 
     Returns
     -------
@@ -889,7 +889,7 @@ def adjust_boundary_flux_for_continuity(
     faces whose velocity *floats* (``freestream``, ``zeroGradient``,
     ``inletOutlet``) can.  The net imbalance is removed by a single
     multiplicative scaling of the floating **outflow** faces, exactly matching
-    the mass the fixed faces admit.
+    the mass the fixed faces validate.
 
     When the boundary flux already balances (a standalone inlet/pressure-outlet
     case), the scale factor is unity and this is a no-op — so it never
@@ -1206,13 +1206,13 @@ def assemble_pressure_correction_equation_rhie_chow(
     ------
     ValueError
         If density, relaxation, topology, boundary data, or array shapes
-        violate the pressure-assembly contract.
+        violate the pressure-assembly requirements.
 
     Notes
     -----
     This function assembles a candidate equation only; it does not solve the
     matrix, mutate the accepted pressure field, or advance time. The caller
-    applies the pressure correction and commits it through the solver lifecycle.
+    applies the pressure correction and commits it through the solver run.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -2010,7 +2010,7 @@ def _apply_scalar_bc(
         indices:    Ghost-cell indices for this patch.
         owners_b:   Owner cell indices for the boundary faces.
         strategy:   Validated boundary behavior.
-        boundary:   Boundary patch dictionary with canonical field-value keys.
+        boundary:   Boundary patch dictionary with standard field-value keys.
         field_name: Field name for value lookup (e.g. ``"kinematic_pressure"``,
             ``"scalar_field"``).
     """
@@ -2381,7 +2381,7 @@ class SIMPLESolver:
 
         # 5. Residuals
         # The backend result is already expressed in the common deviation-aware
-        # algebraic residual contract.  Recomputing this with ||b|| here made
+        # algebraic residual definition.  Recomputing this with ||b|| here made
         # SIMPLE report a different quantity from PIMPLE/PETSc.
         self.last_kinematic_pressure_residual = kinematic_pressure_result.final_residual
         self.last_velocity_residual = max(

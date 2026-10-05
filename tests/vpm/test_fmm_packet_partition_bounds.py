@@ -11,7 +11,7 @@ import pytest
 import taichi as ti
 
 from source.solvers.vpm.physics.induction.fmm.targets import FMMTargetEvaluator
-from source.solvers.vpm.physics.induction.treecode.lbvh import TaichiTreecode, _OwnedFields
+from source.solvers.vpm.physics.induction.treecode.lbvh import TaichiTreecode, _DeviceFields
 
 
 @ti.kernel
@@ -83,16 +83,16 @@ def classifier():
         hierarchy_only=True,
         max_evaluation_points=1,
     )
-    owner = _OwnedFields()
-    position = owner.vector(3, dtype=ti.f32, shape=2)
-    strength = owner.vector(3, dtype=ti.f32, shape=2)
-    radius = owner.scalar(dtype=ti.f32, shape=2)
-    query = owner.vector(3, dtype=ti.f32, shape=2)
-    packet = owner.vector(3, dtype=ti.i32, shape=())
-    points = owner.scalar(dtype=ti.i32, shape=2)
-    image_velocity = owner.vector(3, dtype=ti.f32, shape=(4, 2))
-    image_gradient = owner.matrix(3, 3, dtype=ti.f32, shape=(4, 2))
-    owner.finalize()
+    workspace = _DeviceFields()
+    position = workspace.vector(3, dtype=ti.f32, shape=2)
+    strength = workspace.vector(3, dtype=ti.f32, shape=2)
+    radius = workspace.scalar(dtype=ti.f32, shape=2)
+    query = workspace.vector(3, dtype=ti.f32, shape=2)
+    packet = workspace.vector(3, dtype=ti.i32, shape=())
+    points = workspace.scalar(dtype=ti.i32, shape=2)
+    image_velocity = workspace.vector(3, dtype=ti.f32, shape=(4, 2))
+    image_gradient = workspace.matrix(3, 3, dtype=ti.f32, shape=(4, 2))
+    workspace.finalize()
     source = SimpleNamespace(
         tree=tree,
         kernel_name="GAUSSIAN",
@@ -125,7 +125,7 @@ def classifier():
     finally:
         evaluator.destroy()
         tree.destroy()
-        owner.destroy()
+        workspace.destroy()
 
 
 @pytest.mark.parametrize("failure_mode", ["false_all", "false_none"])

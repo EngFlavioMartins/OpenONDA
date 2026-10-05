@@ -32,7 +32,7 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
     """Create High-Order Gaussian kernel functions with specified precision.
 
     Returns a dict of Taichi-compiled kernel functions compatible with the
-    VPM physics pipeline (same interface as all other kernel factories).
+    VPM physics sequence (same interface as all other kernel factories).
     """
 
     gaussian = create_gaussian_kernels(dtype)

@@ -1,4 +1,4 @@
-"""Shared radial vortex-blob kernel contract for all induction methods."""
+"""Shared radial vortex-blob kernel conditions for all induction methods."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 @dataclass(frozen=True, slots=True)
 class RadialVortexKernel:
-    """Numerical contract for an isotropic regularized Biot--Savart kernel.
+    """Numerical conditions for an isotropic regularized Biot--Savart kernel.
 
     ``q`` includes the ``1/(4π)`` Biot--Savart constant and ``zeta`` is the
     normalized radial vorticity profile.  Particle-to-particle operators use
@@ -499,7 +499,7 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
     Returns
     -------
     RadialVortexKernel
-        Immutable host-side kernel contract with NumPy functions and the
+        Immutable host-side kernel conditions with NumPy functions and the
         corresponding device factory.
 
     Raises
@@ -518,7 +518,7 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
 
 
 def make_device_vortex_kernels(name: str, dtype):
-    """Build the Taichi radial functions from the authoritative registry."""
+    """Build the Taichi radial functions from the radial-kernel registry."""
     key = name.upper()
     try:
         device_factory = _KERNEL_REGISTRY[key][3]

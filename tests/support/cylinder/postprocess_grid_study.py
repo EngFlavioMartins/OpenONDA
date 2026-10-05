@@ -13,7 +13,9 @@ from scipy.stats import t as student_t
 
 from openonda.reference_grid import plot_force_grids
 
-CASE_DIR = (Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow") / "reference_flow"
+CASE_DIR = (
+    Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
+) / "reference_flow"
 SAMPLES_DIR = CASE_DIR / "samples"
 OUTPUT_DIR = CASE_DIR / "figures"
 STATISTICS_START = 40.0
@@ -82,7 +84,7 @@ def force_statistics(path: Path, start: float, end: float) -> dict[str, float]:
         peak_times.append(uniform_time[peak] + offset * (uniform_time[1] - uniform_time[0]))
     periods = np.diff(peak_times)
     cycles = []
-    for left, right in zip(peak_times[:-1], peak_times[1:]):
+    for left, right in zip(peak_times[:-1], peak_times[1:], strict=True):
         cycle_time = np.concatenate(([left], time[(time > left) & (time < right)], [right]))
         drag = np.interp(cycle_time, time, values["drag_coefficient"])
         cl = np.interp(cycle_time, time, values["lift_coefficient"])
@@ -95,7 +97,7 @@ def force_statistics(path: Path, start: float, end: float) -> dict[str, float]:
             )
         )
     cycle_values = np.asarray(cycles).reshape(-1, 3)
-    uncertainty = {name: None for name in ("mean_drag", "rms_lift", "strouhal")}
+    uncertainty = dict.fromkeys(("mean_drag", "rms_lift", "strouhal"))
     reasons = []
     if len(cycles) < 10:
         reasons.append("fewer than ten complete shedding periods")
@@ -103,7 +105,7 @@ def force_statistics(path: Path, start: float, end: float) -> dict[str, float]:
         # Complete shedding periods are the blocks, not adjacent CSV rows.
         critical = float(student_t.ppf(0.975, len(cycles) - 1))
         half_width = critical * np.std(cycle_values, axis=0, ddof=1) / np.sqrt(len(cycles))
-        uncertainty = dict(zip(uncertainty, map(float, half_width)))
+        uncertainty = dict(zip(uncertainty, map(float, half_width), strict=True))
         split = len(cycles) // 2
         first = cycle_values[:split].mean(axis=0)
         last = cycle_values[split:].mean(axis=0)
@@ -252,7 +254,7 @@ def analyse_forces(
         and changes["strouhal"] <= 0.02
     )
     report["scope"] = (
-        "Force-grid qualification only; temporal, domain, span and velocity-profile convergence remain separate gates."
+        "Force-grid qualification only; temporal, domain, span and velocity-profile convergence remain separate numerical_checks."
     )
 
     fine = grids[-1]

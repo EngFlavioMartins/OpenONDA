@@ -10,10 +10,7 @@ import pytest
 
 @pytest.fixture
 def asset():
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "tests/support/cylinder/capture_induction_reuse.py"
-    )
+    path = Path(__file__).resolve().parents[2] / "tests/support/cylinder/capture_induction_reuse.py"
     spec = importlib.util.spec_from_file_location("reuse_trace_asset", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -32,16 +29,19 @@ class Statistics:
 def fixture(asset):
     calls = []
     cache = SimpleNamespace(
-        _valid=True, _count=8, backend=object(), statistics=Statistics(),
+        _valid=True,
+        _count=8,
+        backend=object(),
+        statistics=Statistics(),
     )
     key = ("operator", ("capacity", 8), ("table", b"a" * 5000))
-    cache._key = id(cache.backend), asset._canonical(key)
+    cache._key = id(cache.backend), asset._comparison_value(key)
 
     def provider():
-        calls.append("contract")
+        calls.append("comparison_settings")
         return SimpleNamespace(operator_key=key)
 
-    cache.contract_provider = provider
+    cache.conditions_provider = provider
 
     class RHS:
         def _induction_evaluator(self):
@@ -49,7 +49,7 @@ def fixture(asset):
 
         def evaluate_induction(self, state, time, rates):
             evaluator = self._induction_evaluator()
-            evaluator.contract_provider()
+            evaluator.conditions_provider()
             evaluator.statistics.requests += 1
             evaluator.statistics.exact_checks += 1
             evaluator.statistics.hits += 1
@@ -61,7 +61,7 @@ def fixture(asset):
     return owner, cache, provider, calls
 
 
-def test_records_actual_single_contract_call_and_restores_existing_profiler(asset):
+def test_records_actual_single_conditions_call_and_restores_existing_profiler(asset):
     owner, cache, provider, calls = fixture(asset)
     rhs, rows = owner.vpm_solver.stage_rhs, []
     original = rhs.evaluate_induction
@@ -74,18 +74,19 @@ def test_records_actual_single_contract_call_and_restores_existing_profiler(asse
     rhs.evaluate_induction = profiler
     with asset.capture_induction_reuse_requests(owner, rows):
         rhs.evaluate_induction(SimpleNamespace(stage_index=0, count=8), 1.0, None)
-    assert calls == ["contract"] and timed == [1]
-    assert rhs.evaluate_induction is profiler and cache.contract_provider is provider
+    assert calls == ["comparison_settings"] and timed == [1]
+    assert rhs.evaluate_induction is profiler and cache.conditions_provider is provider
     assert "_induction_evaluator" not in vars(rhs)
     row = rows[0]
     assert row["operator_key_equal"] and row["previous_valid"]
-    assert row["statistics_delta"]["hits"] == 1 and row["contract_calls"] == 1
+    assert row["statistics_delta"]["hits"] == 1 and row["evaluation_calls"] == 1
 
 
-def test_reports_bounded_named_differences_without_large_payload(asset):
+def test_reports_bounded_named_differences_without_large_saved_data(asset):
     owner, cache, provider, _ = fixture(asset)
-    cache._key = id(cache.backend), asset._canonical(
-        ("operator", ("capacity", 4), ("table", b"b" * 5000))
+    cache._key = (
+        id(cache.backend),
+        asset._comparison_value(("operator", ("capacity", 4), ("table", b"b" * 5000))),
     )
     rows = []
     with asset.capture_induction_reuse_requests(owner, rows):
@@ -95,16 +96,19 @@ def test_reports_bounded_named_differences_without_large_payload(asset):
     differences = rows[0]["operator_key_differences"]
     assert len(differences) == 2 and "capacity" in differences[0]["path"]
     assert differences[1]["before"]["length"] == 5000
-    assert len(repr(rows)) < 2000 and cache.contract_provider is provider
+    assert len(repr(rows)) < 2000 and cache.conditions_provider is provider
 
 
 def test_hook_restoration_and_record_on_failure(asset):
     owner, cache, provider, _ = fixture(asset)
     rows, rhs = [], owner.vpm_solver.stage_rhs
-    with pytest.raises(ValueError, match="expected"), asset.capture_induction_reuse_requests(owner, rows):
+    with (
+        pytest.raises(ValueError, match="expected"),
+        asset.capture_induction_reuse_requests(owner, rows),
+    ):
         rhs.evaluate_induction(SimpleNamespace(stage_index=1, count=8, fail=True), 3.0, None)
     assert rows[0]["error"] == "ValueError: expected"
-    assert cache.contract_provider is provider
+    assert cache.conditions_provider is provider
     assert "evaluate_induction" not in vars(rhs) and "_induction_evaluator" not in vars(rhs)
 
 

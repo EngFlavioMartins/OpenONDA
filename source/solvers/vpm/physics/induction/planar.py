@@ -2,7 +2,7 @@
 
 Each particle is a straight infinite z filament represented over ``span`` metres.
 Its stored strength is Gamma_z = circulation * span (m³/s), preserving the
-ordinary particle storage contract. No finite-span or periodic-image truncation
+ordinary particle storage conditions. No finite-span or periodic-image truncation
 is used. This model cannot represent three-dimensional cylinder wake modes.
 """
 
@@ -117,19 +117,19 @@ class PlanarInduction:
             raise ValueError("Planar source vortex strength must have only a z component")
 
     def bind(self, physics, *, kernel=None):
-        """Bind the physics owner and allocate diagnostic Taichi work fields.
+        """Bind the physics solver and allocate diagnostic Taichi work fields.
 
         Parameters
         ----------
         physics : PhysicsBase
-            Initialized owner supplying accumulator dtype and particle capacity.
+            Initialized solver supplying accumulator dtype and particle capacity.
         kernel : VortexKernel or None
             Optional kernel, which must be Gaussian when supplied.
 
         Returns
         -------
         PlanarInduction
-            This instance, with fresh work fields in the owner's accumulator dtype.
+            This instance, with fresh work fields in the solver's accumulator dtype.
 
         Raises
         ------
@@ -241,7 +241,7 @@ class PlanarInduction:
         are caller-owned and must have sufficient capacity. Inputs are read-only.
 
         The autonomous operator ignores stage_time (s) and strength_rate_enabled.
-        It excludes freestream; the evolution owner adds that velocity separately.
+        It excludes freestream; the evolution solver adds that velocity separately.
         """
         del strength_rate_enabled, stage_time
         self.evaluate_targets(
@@ -296,7 +296,7 @@ class PlanarInduction:
         Raises
         ------
         RuntimeError
-            If no physics owner has been bound.
+            If no physics solver has been bound.
         ValueError
             If counts are invalid, neither output is requested, or the included
             background has a nonzero spanwise component.
@@ -356,7 +356,7 @@ class PlanarInduction:
         Source and target positions are device vectors in m. Read ns source
         strengths in m³/s and core radii in m. Write out[0:nt] in s⁻¹, with
         zero x/y components, using omega_z=Gamma_z*exp(-r²/sigma²)/(pi*L*sigma²).
-        The bound owner's accumulator dtype controls arithmetic and output.
+        The bound solver's accumulator dtype controls arithmetic and output.
         """
         for i in range(nt):
             omega = ti.cast(0.0, self._dtype)
@@ -408,7 +408,7 @@ class PlanarInduction:
         fields. Energy entries have units m⁵/s²; enstrophy and test-filtered
         enstrophy entries have units m³/s², without a one-half factor.
         Energy entries are gauge terms whose sum is physical only for zero
-        net circulation. The diagnostic owner handles divergent total energy.
+        net circulation. The diagnostic solver handles divergent total energy.
         """
         for i in range(count):
             energy = ti.cast(0.0, self._dtype)
@@ -452,7 +452,7 @@ class PlanarInduction:
         -----
         Energy entries are finite gauge terms, not individually physical
         energies. Their sum gives unbounded-domain energy only for zero net
-        circulation. The calling diagnostics owner reports infinity for
+        circulation. The calling diagnostics solver reports infinity for
         nonzero net circulation; this low-level method does not perform that test.
         Evaluation costs O(N²), overwrites device diagnostic buffers and does
         not mutate particle state.

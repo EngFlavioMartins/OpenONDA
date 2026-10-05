@@ -1,4 +1,4 @@
-"""Framework-owned transactions for declared scientific table schemas."""
+"""Framework-owned state updates for declared scientific table schemas."""
 
 import csv
 from types import SimpleNamespace
@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from source.solvers.vpm.config.output import Backup, Samplers
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
 from source.solvers.vpm.io.sampling import EverySteps
 from tests._tutorial_helpers import load_tutorial_module
@@ -37,7 +37,7 @@ def _rows(path):
         return list(csv.reader(stream))
 
 
-def test_custom_table_rewinds_and_appends_using_native_transactions(tmp_path):
+def test_custom_table_rewinds_and_appends_using_native_output_history(tmp_path):
     solver = _solver(tmp_path, TableSampler())
     manager = OutputManager(solver)
     manager.dispatch(OutputEvent.ACCEPTED_STEP)
@@ -53,9 +53,7 @@ def test_custom_table_rewinds_and_appends_using_native_transactions(tmp_path):
     ]
     manager.rewind_histories(0.1)
     assert len(_rows(path)) == 3
-    assert list(
-        (tmp_path / "samples/restart-branches").glob("before-*/measurements.csv.superseded")
-    )
+    assert list((tmp_path / "samples/restart_history").glob("before-*/measurements.csv.superseded"))
     solver._restart_loaded = True
     manager.dispatch(OutputEvent.ACCEPTED_STEP)
     accepted = path.read_bytes()

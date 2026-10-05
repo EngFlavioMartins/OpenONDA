@@ -1,4 +1,4 @@
-"""Restoring, thread-local host arithmetic scopes for numerical certificates.
+"""Restoring, thread-local host arithmetic scopes for numerical error_bounds.
 
 Taichi may enable host flush-to-zero even with CUDA selected. Interval
 arithmetic must not quietly waive its gradual-underflow requirement. This
@@ -25,17 +25,17 @@ def _bridge():
     except ImportError as error:
         raise IEEEEnvironmentUnavailableError(
             "The optional precompiled floating-point guard is unavailable; "
-            "install a build with the _fenv extension before enabling certified "
+            "install a build with the _fenv extension before enabling validated "
             "Gaussian tail arithmetic. No floating-point assumptions were relaxed."
         ) from error
 
 
 def require_round_to_nearest():
-    """Admit the current host rounding mode without changing its environment.
+    """Validate the current host rounding mode without changing its environment.
 
     This checks only the standard-C rounding direction. FTZ/DAZ, exception
     flags and all other caller controls remain untouched; gradual underflow
-    is neither required nor promised here. Certificate arithmetic still
+    is neither required nor promised here. Error bound arithmetic still
     requires its separate restoring ``ieee_arithmetic`` scope and checks.
     """
     bridge = _bridge()
@@ -58,7 +58,7 @@ def ieee_arithmetic():
     stack and performs mode/stack transitions atomically with respect to
     Python exceptions. Capture changes no mode, and entry occurs only after
     establishing finally. Restoration failure prevents successful publication
-    of the caller's certificate.
+    of the caller's tail-bound calculation.
     """
     bridge = _bridge()
     token = bridge.capture()

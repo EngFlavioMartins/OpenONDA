@@ -13,7 +13,7 @@ from source.solvers.fvm.mesh.validation import (
 
 
 def test_batched_surface_queries_without_vtk(monkeypatch):
-    index = SurfaceIndex.build(np.array([[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]]))
+    index = SurfaceIndex.build(np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]))
     monkeypatch.setitem(sys.modules, "pyvista", None)
     nearest, distances, _ids = index.nearest_points([[0.25, 0.25, 1.0], [-1.0, 0.0, 1.0]])
     np.testing.assert_allclose(nearest, [[0.25, 0.25, 0.0], [0.0, 0.0, 0.0]])
@@ -38,12 +38,14 @@ def test_batched_surface_queries_match_scalar_queries_on_curved_surface(scale):
 @pytest.mark.parametrize("distance_factor,accepted", [(0.5, True), (2.0, False)])
 def test_wall_conformance_preserves_tolerance_on_rotated_facet(distance_factor, accepted):
     angle = 0.37
-    rotation = np.array([
-        [np.cos(angle), 0.0, np.sin(angle)],
-        [0.0, 1.0, 0.0],
-        [-np.sin(angle), 0.0, np.cos(angle)],
-    ])
-    vertices = np.array([[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]])
+    rotation = np.array(
+        [
+            [np.cos(angle), 0.0, np.sin(angle)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(angle), 0.0, np.cos(angle)],
+        ]
+    )
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
     vertices = vertices @ rotation.T + np.array([2.0, -1.0, 0.3])
     triangles = vertices[[[0, 1, 2], [0, 2, 3]]]
     tolerance = 1e-8
@@ -56,7 +58,9 @@ def test_wall_conformance_preserves_tolerance_on_rotated_facet(distance_factor, 
     }
     if accepted:
         result = validate_wall_vertex_conformance(mesh, triangles, "wall", tolerance=tolerance)
-        assert result["max_vertex_distance"] == pytest.approx(distance_factor * tolerance, abs=1e-15)
+        assert result["max_vertex_distance"] == pytest.approx(
+            distance_factor * tolerance, abs=1e-15
+        )
     else:
         with pytest.raises(MeshValidationError, match="worst vertex 2"):
             validate_wall_vertex_conformance(mesh, triangles, "wall", tolerance=tolerance)

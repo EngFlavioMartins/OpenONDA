@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.vpm.io.manifest import _sampler_identity
+from source.solvers.vpm.io.metadata import _sampler_metadata
 from source.solvers.vpm.io.sampling.field_samplers import SurfaceSampler
 
 
@@ -26,7 +26,7 @@ def test_exact_domain_and_uniform_spacing(normal_axis, bounds, spacing):
         assert np.max(np.diff(coordinates)) <= spacing + 2e-6
         np.testing.assert_allclose(np.diff(coordinates), np.diff(coordinates).mean(), atol=2e-6)
         np.testing.assert_allclose(coordinates + coordinates[::-1], lower + upper, atol=1e-6)
-    assert _sampler_identity(sampler)["grid_layout"] == "bounded_uniform_v1"
+    assert _sampler_metadata(sampler)["grid_layout"] == "bounded_uniform_v1"
 
 
 @pytest.mark.parametrize(
@@ -41,7 +41,7 @@ def test_invalid_domain_cannot_produce_a_silent_empty_or_nonfinite_grid(bounds, 
 def test_resume_rejects_changed_grid_before_evaluating_or_appending(tmp_path):
     from types import SimpleNamespace
 
-    from source.solvers.vpm.config.artifacts import Samplers
+    from source.solvers.vpm.config.output import Samplers
     from source.solvers.vpm.io.sampler import OutputEvent, OutputManager, SamplingContext
     from tests.vpm.test_surface_sampling_resume import write_frame
 

@@ -1,6 +1,6 @@
-"""Write VTK XML files with appended binary payloads.
+"""Write VTK XML files with appended binary field data.
 
-Raw payloads avoid base64 encoding overhead. Atomic replacement keeps readers
+Raw binary arrays avoid base64 encoding overhead. Atomic replacement keeps readers
 from opening a partially written file.
 """
 

@@ -1,4 +1,4 @@
-"""Two-rank physical field admission and native history continuation."""
+"""Two-rank physical field validation and native history continuation."""
 
 from importlib.util import find_spec
 import json
@@ -101,7 +101,7 @@ except (RuntimeError, ValueError) as error:
     if mode not in ("callback_failure", "shape_failure"):
         raise
     if isinstance(error, RuntimeError):
-        assert "initial velocity field admission" in str(error)
+        assert "initial velocity field validation" in str(error)
     expected = "rank-local physical field failure" if mode == "callback_failure" else "finite with shape"
     assert expected in str(error)
     status = "expected_failure"

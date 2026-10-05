@@ -52,7 +52,7 @@ def main(directory, ranks):
         run=vpm.RunPlan(steps=2, final_backup=False, initial_samples=False),
         backup=vpm.Backup(interval_steps=0),
     )
-    policy = coupler.CouplerSetup(
+    settings = coupler.CouplerSetup(
         freestream_velocity=[1, 0, 0],
         transfer_region_bounds=(-0.375, 0.375, -0.375, 0.375, 0, 1),
         eta_blend_width=0.25,
@@ -117,7 +117,7 @@ def main(directory, ranks):
     with coupler.create_coupler(
         flow,
         particles,
-        policy,
+        settings,
         mesh=lambda: box_mesh_3d(
             np.linspace(-0.5, 0.5, 5),
             np.linspace(-0.5, 0.5, 5),

@@ -81,10 +81,10 @@ def _specification(mesher):
     return data
 
 
-def mesh_identity(mesher) -> str:
+def meshing_input_hash(mesher) -> str:
     """Hash meshing inputs and implementation without machine or output paths."""
     if not can_reuse_mesh(mesher):
-        raise TypeError("Mesh identity requires native meshing implementations and inputs")
+        raise TypeError("Mesh input_hash requires native meshing implementations and inputs")
     digest = hashlib.sha256(
         json.dumps(_specification(mesher), sort_keys=True, allow_nan=False).encode()
     )
@@ -96,17 +96,17 @@ def mesh_identity(mesher) -> str:
     return digest.hexdigest()
 
 
-def materialize_cached_mesh(mesher, path: Path):
-    """Reuse matching native input; let the factory publish generated meshes."""
-    identity = mesh_identity(mesher)
+def build_or_load_cached_mesh(mesher, path: Path):
+    """Reuse matching native input; let the factory save generated meshes."""
+    input_hash = meshing_input_hash(mesher)
     if path.is_file():
         try:
             mesh = load_native_mesh(path)
         except (OSError, ValueError, KeyError, TypeError, EOFError, BadZipFile):
             mesh = None
-        if mesh is not None and mesh.get("mesh_cache_identity") == identity:
+        if mesh is not None and mesh.get("meshing_input_hash") == input_hash:
             mesh_event("mesh cache hit", path=path.resolve(), cells=mesh["n_cells"])
             return mesh
     mesh = mesher.build()
-    mesh["mesh_cache_identity"] = identity
+    mesh["meshing_input_hash"] = input_hash
     return mesh

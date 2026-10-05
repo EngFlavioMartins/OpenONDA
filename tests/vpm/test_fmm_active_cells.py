@@ -250,9 +250,9 @@ def test_active_cell_operator_preserves_partition_and_baseline_direct_error(
         delta, strength[None, :, :], radius[:, None], radius[None, :]
     ).sum(axis=1)
     direct = (velocity, gradient, np.einsum("nji,nj->ni", gradient, strength))
-    for new, old, oracle in zip(actual, baseline, direct, strict=True):
-        scale = np.linalg.norm(oracle)
+    for new, old, reference in zip(actual, baseline, direct, strict=True):
+        scale = np.linalg.norm(reference)
         assert np.linalg.norm(new - old) / scale < 2e-6
         # The allowance is float32 summation roundoff, not the much looser
         # FMM qualification ceiling. Preserve the measured baseline error.
-        assert np.linalg.norm(new - oracle) <= np.linalg.norm(old - oracle) + 2e-6 * scale
+        assert np.linalg.norm(new - reference) <= np.linalg.norm(old - reference) + 2e-6 * scale

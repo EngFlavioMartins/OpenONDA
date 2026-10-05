@@ -944,7 +944,7 @@ def _create_vortex_centroid_kernels(kernel_functions):
 def create_kernels(kernel_functions):
     """Create all Taichi kernels for VPM physics.
 
-    This factory function orchestrates the creation of all physics kernels
+    This factory function creates the creation of all physics kernels
     by delegating to specialized helper functions for each category.
     """
     # Assemble kernels from modular factories

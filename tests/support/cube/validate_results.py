@@ -1,4 +1,4 @@
-"""Numerical-integrity gate for the native cube FVM–VPM workflow."""
+"""Numerical-integrity check for the native cube FVM–VPM workflow."""
 
 from __future__ import annotations
 
@@ -271,7 +271,7 @@ def _check_reference_accuracy(
     acceptance_limit: float,
     acceptance_horizon: float,
 ) -> str:
-    """Gate every sampled Cd and each authority-stitched profile's mean error."""
+    """Check every sampled Cd and each blend_weight-stitched profile's mean error."""
     samples = case_directory / "samples"
     reference_samples = reference_directory / "samples"
     if (reference_samples / "fine").is_dir():
@@ -332,15 +332,15 @@ def _check_reference_accuracy(
             fvm_min = float(finite_fvm_x.min())
             fvm_max = float(finite_fvm_x.max())
             vpm_x = vpm_frame["position_x"]
-            vpm_authority = (vpm_x < fvm_min) | (vpm_x > fvm_max)
+            outside_fvm_mask = (vpm_x < fvm_min) | (vpm_x > fvm_max)
             stitched = {
-                "position_x": np.concatenate((fvm_x, vpm_x[vpm_authority])),
+                "position_x": np.concatenate((fvm_x, vpm_x[outside_fvm_mask])),
                 "velocity_x": np.concatenate(
-                    (fvm_frame["velocity_x"], vpm_frame["velocity_x"][vpm_authority])
+                    (fvm_frame["velocity_x"], vpm_frame["velocity_x"][outside_fvm_mask])
                 ),
             }
             record = profile_record(
-                "authority_stitched",
+                "combined_fvm_vpm",
                 name,
                 float(time),
                 stitched,
@@ -348,7 +348,7 @@ def _check_reference_accuracy(
             )
             measurements.append(
                 (
-                    f"mean-authority-stitched-{name}@{time:g}",
+                    f"mean-blend_weight-stitched-{name}@{time:g}",
                     float(record["mean_abs_over_u_inf"]),
                 )
             )
@@ -367,7 +367,7 @@ def _check_reference_accuracy(
 
 
 def _resolve_acceptance_horizon(stop_time: float, requested: float | None) -> float:
-    """Return the explicit physics-gate horizon for this execution segment."""
+    """Return the explicit physics-check horizon for this execution segment."""
     stop = float(stop_time)
     horizon = min(stop, 2.0) if requested is None else float(requested)
     if not np.isfinite(stop) or stop <= 0.0:

@@ -551,7 +551,7 @@ def replace_particles_from_buffered_m4_renewal(
         replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
         state_change_vortex_strength_net=output_net - input_net,
         eta_blending_enabled=bool(
-            np.any((lattice.fvm_authority > 0.0) & (lattice.fvm_authority < 1.0))
+            np.any((lattice.fvm_blend_weight > 0.0) & (lattice.fvm_blend_weight < 1.0))
         ),
         transfer_method="buffered_m4_renewal",
         mapped_target_nodes=renewed_output_count,
@@ -764,13 +764,13 @@ class VorticityTransfer:
     :class:`FVMVPMCoupler` after both solver discretizations are known. It
     derives vorticity ``omega = curl(u)`` from the accepted FVM gradient,
     represents ``Gamma = omega * V`` on the renewal lattice,
-    and atomically replaces the FVM-authoritative portion of the particle
+    and atomically replaces the FVM-derived portion of the particle
     cloud while preserving the outer wake.
 
     Parameters
     ----------
     coupler : FVMVPMCoupler
-        Initialized driver providing the transfer policy, FVM box, shared
+        Initialized driver providing the transfer settings, FVM box, shared
         viscosity in m²/s, VPM spacing/core ratio, and coupling time step in s.
 
     Attributes
@@ -880,7 +880,7 @@ class VorticityTransfer:
         self._lattice_anchor: np.ndarray | None = None
         self._stable_renewal_lattice: StableRenewalLattice | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-        self._authority_cell_mask: np.ndarray | None = None
+        self._fvm_transfer_cell_mask: np.ndarray | None = None
         self.step = 0
         self.last_interface_flow: dict[str, float] = {}
         self.last_vortex_line_closure: dict[str, float] = {}
@@ -1140,7 +1140,7 @@ class VorticityTransfer:
                 self._box,
                 self.particle_spacing,
                 buffer_length=self.renewal_buffer_length,
-                authority_ramp_width=self.eta_blend_width,
+                blend_ramp_width=self.eta_blend_width,
                 vpm_dead_zone=self.vpm_only_width,
                 lattice_anchor=self._lattice_anchor,
                 mesh_weight_at_node=mesh_weight_at_node,
@@ -1160,8 +1160,8 @@ class VorticityTransfer:
                 (self._cell_centre >= self._box[::2]) & (self._cell_centre <= self._box[1::2]),
                 axis=1,
             )
-            self._authority_cell_mask = inside & ~self._fvm_solid_mask
-            donor_count = int(np.count_nonzero(self._authority_cell_mask))
+            self._fvm_transfer_cell_mask = inside & ~self._fvm_solid_mask
+            donor_count = int(np.count_nonzero(self._fvm_transfer_cell_mask))
             if donor_count == 0:
                 raise ValueError("FVM transfer region contains no fluid cell centres")
             self._build_face_cell_index()
@@ -1180,12 +1180,12 @@ class VorticityTransfer:
                 planes = lattice.origin[streamwise_axis] + self.particle_spacing * np.arange(
                     lattice.shape[streamwise_axis]
                 )
-                authority_grid = lattice.fvm_authority.reshape(lattice.shape)
-                plane_authority = np.max(
-                    np.moveaxis(authority_grid, streamwise_axis, 0).reshape(len(planes), -1),
+                blend_weight_grid = lattice.fvm_blend_weight.reshape(lattice.shape)
+                plane_blend_weight = np.max(
+                    np.moveaxis(blend_weight_grid, streamwise_axis, 0).reshape(len(planes), -1),
                     axis=1,
                 )
-                authoritative_planes = planes[plane_authority > 0.0]
+                fvm_transfer_planes = planes[plane_blend_weight > 0.0]
                 face = self._box[2 * streamwise_axis + int(downstream_is_maximum)]
                 renewal_edge = lattice.renewal_bounds[
                     2 * streamwise_axis + int(downstream_is_maximum)
@@ -1210,7 +1210,7 @@ class VorticityTransfer:
                 def upstream_extreme(values: np.ndarray) -> float:
                     return float(values.min() if downstream_is_maximum else values.max())
 
-                donor_coordinate = self._cell_centre[self._authority_cell_mask, streamwise_axis]
+                donor_coordinate = self._cell_centre[self._fvm_transfer_cell_mask, streamwise_axis]
                 geometry_rows.extend(
                     (
                         (
@@ -1219,13 +1219,13 @@ class VorticityTransfer:
                             "m",
                         ),
                         (
-                            f"fvm authority boundary, {axis_name}",
+                            f"FVM transfer boundary, {axis_name}",
                             f"{face:.6f}",
                             "m",
                         ),
                         (
-                            f"last fvm-authoritative plane, {axis_name}",
-                            f"{downstream_extreme(authoritative_planes):.6f}",
+                            f"last FVM-derived plane, {axis_name}",
+                            f"{downstream_extreme(fvm_transfer_planes):.6f}",
                             "m",
                         ),
                         (
@@ -1261,9 +1261,9 @@ class VorticityTransfer:
                     ("method", "buffered_m4_renewal"),
                     ("fvm fluid cells", f"{donor_count:,}"),
                     *(
-                        (("authority ramp width, eta", "off"),)
+                        (("blend ramp width, eta", "off"),)
                         if self.eta_blend_width == 0.0
-                        else (("authority ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
+                        else (("blend ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
                     ),
                     ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
                     ("renewal lattice nodes", f"{lattice_count:,}"),
@@ -1439,7 +1439,7 @@ class VorticityTransfer:
         Raises
         ------
         RuntimeError
-            If :meth:`setup` has not run, an invariant/quality gate fails, or
+            If :meth:`setup` has not run, an invariant/quality check fails, or
             the selected transfer cannot construct a valid replacement.
         ValueError
             If velocity or gradient donor counts disagree with the FVM cells.
@@ -1449,7 +1449,7 @@ class VorticityTransfer:
         The method increments :attr:`step`, updates interface diagnostics, and
         replaces the accepted VPM particle state. Transfer implementations
         snapshot all mutable particle fields and restore them if a later
-        quality gate fails; no FVM arrays are modified.
+        quality check fails; no FVM arrays are modified.
         """
         self.step += 1
         if self._box is None or self._cell_centre is None or self._cell_volume is None:

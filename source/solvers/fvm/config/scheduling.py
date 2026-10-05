@@ -19,7 +19,7 @@ class RunSchedule:
     step selection so the solver lands exactly on each event time.  This is the
     ``timeStep`` / ``adjustableRunTime`` pattern used by OpenFOAM.
 
-    The object is immutable because output orchestration is fixed when the
+    The object is immutable because output control is fixed when the
     solver is constructed.
 
     Examples

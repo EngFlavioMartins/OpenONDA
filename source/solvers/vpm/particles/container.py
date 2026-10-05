@@ -1376,7 +1376,7 @@ class Particles:
         -----
         The transfer stays on the Taichi device. Eddy viscosity, gradients,
         strain, and zone IDs are initialized to zero; vorticity is initialized
-        to zero because the source contract does not provide a computed field.
+        to zero because the source data does not provide a computed field.
         """
         start_idx = self.n_particles_total
 
@@ -1661,7 +1661,7 @@ class Particles:
         Parameters
         ----------
         particle_file_name : str
-            Input VTP path containing the canonical particle arrays.
+            Input VTP path containing the standard particle arrays.
         remove_current_particles : bool, default=True
             Replace the active cloud when true; append loaded values otherwise.
 
@@ -1855,7 +1855,7 @@ class Particles:
         Parameters
         ----------
         field_name : str
-            Canonical field name such as ``position``, ``vortex_strength``,
+            Standard field name such as ``position``, ``vortex_strength``,
             ``core_radius``, or ``velocity_gradient``.
         values : numpy.ndarray
             Values with leading dimension ``N`` and trailing shape ``()``,

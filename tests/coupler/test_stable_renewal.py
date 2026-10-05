@@ -1,4 +1,4 @@
-"""Stable renewal: numerical and lifecycle contracts."""
+"""Stable renewal: numerical and run_stages requirements."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from source.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
     gaussian_represented_vortex_strength,
-    inward_cosine_authority,
+    inward_cosine_blend_weight,
     redistribute_pruned_vortex_strength_locally,
     renew_stable_overlap,
     scatter_m4_prime_to_lattice,
@@ -131,7 +131,7 @@ def test_fixed_lattice_scatter_is_complete_and_conservative_at_belt_faces():
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.25,
+        blend_ramp_width=0.25,
         vpm_dead_zone=0.05,
         lattice_anchor=np.array([0.03125, -0.046875, 0.015625]),
     )
@@ -199,7 +199,7 @@ def test_velocity_trace_recovers_the_curl_of_a_linear_velocity_exactly():
     )
 
 
-def test_authority_is_inward_and_leaves_the_surface_under_vpm_control():
+def test_blend_weight_is_inward_and_leaves_the_surface_under_vpm_control():
     points = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -210,11 +210,11 @@ def test_authority_is_inward_and_leaves_the_surface_under_vpm_control():
             [0.51, 0.0, 0.0],
         ]
     )
-    authority = inward_cosine_authority(points, BOX, 0.2, 0.05)
+    blend_weight = inward_cosine_blend_weight(points, BOX, 0.2, 0.05)
 
-    np.testing.assert_allclose(authority[:2], 1.0)
-    assert 0.0 < authority[2] < 1.0
-    np.testing.assert_allclose(authority[3:], 0.0)
+    np.testing.assert_allclose(blend_weight[:2], 1.0)
+    assert 0.0 < blend_weight[2] < 1.0
+    np.testing.assert_allclose(blend_weight[3:], 0.0)
 
 
 def test_bounded_local_correction_improves_gaussian_represented_state():
@@ -222,12 +222,12 @@ def test_bounded_local_correction_improves_gaussian_represented_state():
     rng = np.random.default_rng(11)
     vpm_strength = rng.normal(scale=1.0e-4, size=(np.prod(shape), 3))
     fvm_target = rng.normal(scale=1.0e-4, size=(np.prod(shape), 3))
-    authority = np.linspace(0.0, 1.0, np.prod(shape))
+    blend_weight = np.linspace(0.0, 1.0, np.prod(shape))
 
     blend = blend_represented_state(
         vpm_strength,
         fvm_target,
-        authority,
+        blend_weight,
         shape,
         0.1,
         core_radius=0.1,
@@ -294,7 +294,7 @@ def test_resolved_weak_wake_survives_pruning_across_the_release_belt():
         [-0.3, 0.3, -0.3, 0.3, -0.3, 0.3],
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         vpm_dead_zone=0.1,
         lattice_anchor=np.zeros(3),
     )
@@ -365,13 +365,13 @@ def test_whole_belt_remesh_preserves_outer_wake_and_does_not_accumulate():
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         vpm_dead_zone=0.05,
         lattice_anchor=np.zeros(3),
     )
     # Isolate cardinal remeshing: a zero physical FVM target is not a match
     # for the nonzero Gaussian tails of the exterior test particles.
-    lattice = replace(lattice, fvm_authority=np.zeros(len(lattice.positions)))
+    lattice = replace(lattice, fvm_blend_weight=np.zeros(len(lattice.positions)))
     position = np.array([[0.65, 0.13, -0.07], [0.95, 0.22, 0.11]])
     strength = np.array([[0.2, -0.1, 0.3], [-0.05, 0.07, 0.02]])
 
@@ -420,7 +420,7 @@ def test_prune_diagnostics_expose_raw_mismatch_and_applied_closure():
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.zeros(3),
         mesh_weight_at_node=lambda points: np.zeros(len(points)),
     )
@@ -477,7 +477,7 @@ def test_repeated_fvm_renewal_has_a_fixed_population_and_base_radii():
         [-0.3, 0.3, -0.3, 0.3, -0.3, 0.3],
         spacing,
         buffer_length=0.5,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         vpm_dead_zone=0.05,
         lattice_anchor=np.zeros(3),
     )
@@ -519,7 +519,7 @@ def test_population_cap_preserves_total_strength_and_linear_impulse():
         BOX,
         0.1,
         buffer_length=0.0,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.zeros(3),
     )
 
@@ -577,7 +577,7 @@ def test_production_wrapper_replaces_one_complete_gbd_cloud_without_accumulation
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.zeros(3),
     )
 
@@ -620,13 +620,13 @@ def test_production_wrapper_replaces_one_complete_gbd_cloud_without_accumulation
     np.testing.assert_allclose(vpm.particles.vortex_strength[outer[0]], [0.0, 0.0, 2.0e-4])
 
 
-def test_production_wrapper_certifies_the_actual_float32_particle_state():
+def test_production_wrapper_checks_the_actual_float32_particle_state():
     spacing = 0.1
     lattice = build_stable_renewal_lattice(
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.full(3, -0.05),
     )
 
@@ -682,7 +682,7 @@ def test_support_output_coalesces_with_a_persistent_particle_on_the_same_lattice
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.full(3, -0.05),
         mesh_weight_at_node=lambda points: np.zeros(len(points)),
     )
@@ -752,7 +752,7 @@ def test_invalid_coalesced_input_index_is_rejected_before_vpm_mutation(monkeypat
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.full(3, -0.05),
         mesh_weight_at_node=lambda points: np.zeros(len(points)),
     )
@@ -801,7 +801,7 @@ def test_support_seam_coalesces_multiple_particles_but_preserves_a_near_miss_acr
         BOX,
         spacing,
         buffer_length=0.2,
-        authority_ramp_width=0.2,
+        blend_ramp_width=0.2,
         lattice_anchor=np.full(3, -0.05),
         mesh_weight_at_node=lambda points: np.zeros(len(points)),
     )

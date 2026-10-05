@@ -1,4 +1,4 @@
-"""Native result readers preserve accepted clocks and distributed ownership."""
+"""Native result readers preserve accepted times and MPI cell ordering."""
 
 import json
 
@@ -53,7 +53,7 @@ def test_history_window_interpolates_endpoints_without_extrapolation():
         history_window(table, 0, 3, columns=("value",))
 
 
-def test_named_table_publishes_complete_rows_and_preserves_previous_output_on_failure(tmp_path):
+def test_named_table_writes_complete_rows_and_preserves_previous_output_on_failure(tmp_path):
     path = tmp_path / "tables" / "measurements.csv"
     write_csv_table(path, [(1, 2), (3, 4)], columns=("x", "velocity"))
     np.testing.assert_array_equal(read_csv_table(path)["velocity"], [2, 4])
@@ -122,7 +122,7 @@ def test_physical_tables_without_steps_preserve_commented_frame_time(tmp_path):
     np.testing.assert_array_equal(frame["velocity_x"], [1, 2])
 
 
-def test_native_velocity_admits_owned_ids_and_excludes_ghost_geometry(tmp_path):
+def test_native_velocity_validates_mpi_cell_ids_and_excludes_ghost_geometry(tmp_path):
     grid = pv.ImageData(dimensions=(5, 5, 5), spacing=(0.25,) * 3).cast_to_unstructured_grid()
     centres = grid.cell_centers().points
     ids = np.random.default_rng(42).permutation(grid.n_cells - 1)
@@ -200,7 +200,7 @@ def test_deterministic_surface_preserves_actual_plane_and_optional_fields(tmp_pa
     assert "velocity_standard_error" not in frame
 
 
-def test_surface_preserves_masked_points_without_admitting_nonfinite_observations(tmp_path):
+def test_surface_preserves_masked_points_and_rejects_nonfinite_observations(tmp_path):
     grid = _surface_grid()
     grid.point_data["vtkValidPointMask"] = np.array([0, 1, 1, 1, 1, 1], dtype=np.uint8)
     grid.point_data["velocity"][0] = np.nan

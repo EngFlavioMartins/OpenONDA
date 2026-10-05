@@ -72,10 +72,10 @@ def numpy_allocation_inventory(solver: Any) -> dict[str, int]:
     def allocation_bytes(value: Any) -> int:
         if value is None or isinstance(value, str | bytes | int | float | bool):
             return 0
-        identity = id(value)
-        if identity in seen_objects:
+        object_id = id(value)
+        if object_id in seen_objects:
             return 0
-        seen_objects.add(identity)
+        seen_objects.add(object_id)
         if isinstance(value, np.ndarray):
             root = value
             while isinstance(root.base, np.ndarray):
@@ -234,11 +234,11 @@ class PerformanceProfiler:
         self._rss_max_observed = max(self._rss_max_observed, rss)
 
     @staticmethod
-    def _linear_payload(linear_results: Iterable[Any]) -> dict[str, dict[str, float | int]]:
-        payload: dict[str, dict[str, float | int]] = {}
+    def _linear_statistics(linear_results: Iterable[Any]) -> dict[str, dict[str, float | int]]:
+        rank_statistics: dict[str, dict[str, float | int]] = {}
         for result in linear_results:
             equation = str(getattr(result, "equation", None) or "unknown")
-            entry = payload.setdefault(
+            entry = rank_statistics.setdefault(
                 equation,
                 {"calls": 0, "iterations": 0, "setup_seconds": 0.0, "solve_seconds": 0.0},
             )
@@ -246,9 +246,9 @@ class PerformanceProfiler:
             entry["iterations"] = int(entry["iterations"]) + int(result.iterations)
             entry["setup_seconds"] = float(entry["setup_seconds"]) + float(result.setup_seconds)
             entry["solve_seconds"] = float(entry["solve_seconds"]) + float(result.solve_seconds)
-        return payload
+        return rank_statistics
 
-    def _local_payload(
+    def _local_statistics(
         self,
         step_seconds: float,
         linear_results: Iterable[Any],
@@ -278,7 +278,7 @@ class PerformanceProfiler:
             "rank": int(self.parallel.rank),
             "step_seconds": float(step_seconds),
             "phases": phases,
-            "linear": self._linear_payload(linear_results),
+            "linear": self._linear_statistics(linear_results),
             "memory": {
                 "rss_start_bytes": self._rss_start,
                 "rss_end_bytes": rss_end,
@@ -289,15 +289,21 @@ class PerformanceProfiler:
             "allocation_inventory": inventory,
         }
 
-    def _aggregate(self, payloads: list[dict[str, Any]]) -> dict[str, Any]:
-        step_stats = _stats(payload["step_seconds"] for payload in payloads)
+    def _aggregate(self, rank_statistics_list: list[dict[str, Any]]) -> dict[str, Any]:
+        step_stats = _stats(
+            rank_statistics["step_seconds"] for rank_statistics in rank_statistics_list
+        )
         phase_names = sorted(
-            {name for payload in payloads for name in payload["phases"]},
+            {
+                name
+                for rank_statistics in rank_statistics_list
+                for name in rank_statistics["phases"]
+            },
             key=lambda name: (
                 name == "Untimed",
                 -max(
-                    float(payload["phases"].get(name, {}).get("seconds", 0.0))
-                    for payload in payloads
+                    float(rank_statistics["phases"].get(name, {}).get("seconds", 0.0))
+                    for rank_statistics in rank_statistics_list
                 ),
                 name,
             ),
@@ -305,11 +311,16 @@ class PerformanceProfiler:
         phases = []
         for name in phase_names:
             seconds = _stats(
-                payload["phases"].get(name, {}).get("seconds", 0.0) for payload in payloads
+                rank_statistics["phases"].get(name, {}).get("seconds", 0.0)
+                for rank_statistics in rank_statistics_list
             )
-            calls = _stats(payload["phases"].get(name, {}).get("calls", 0) for payload in payloads)
+            calls = _stats(
+                rank_statistics["phases"].get(name, {}).get("calls", 0)
+                for rank_statistics in rank_statistics_list
+            )
             rss_end = _stats(
-                payload["phases"].get(name, {}).get("rss_end_bytes", 0) for payload in payloads
+                rank_statistics["phases"].get(name, {}).get("rss_end_bytes", 0)
+                for rank_statistics in rank_statistics_list
             )
             phases.append(
                 {
@@ -326,26 +337,29 @@ class PerformanceProfiler:
                 }
             )
 
-        equations = sorted({name for payload in payloads for name in payload["linear"]})
+        equations = sorted(
+            {name for rank_statistics in rank_statistics_list for name in rank_statistics["linear"]}
+        )
         linear = []
         for equation in equations:
             linear.append(
                 {
                     "equation": equation,
                     "calls": _stats(
-                        payload["linear"].get(equation, {}).get("calls", 0) for payload in payloads
+                        rank_statistics["linear"].get(equation, {}).get("calls", 0)
+                        for rank_statistics in rank_statistics_list
                     ),
                     "iterations": _stats(
-                        payload["linear"].get(equation, {}).get("iterations", 0)
-                        for payload in payloads
+                        rank_statistics["linear"].get(equation, {}).get("iterations", 0)
+                        for rank_statistics in rank_statistics_list
                     ),
                     "setup_seconds": _stats(
-                        payload["linear"].get(equation, {}).get("setup_seconds", 0.0)
-                        for payload in payloads
+                        rank_statistics["linear"].get(equation, {}).get("setup_seconds", 0.0)
+                        for rank_statistics in rank_statistics_list
                     ),
                     "solve_seconds": _stats(
-                        payload["linear"].get(equation, {}).get("solve_seconds", 0.0)
-                        for payload in payloads
+                        rank_statistics["linear"].get(equation, {}).get("solve_seconds", 0.0)
+                        for rank_statistics in rank_statistics_list
                     ),
                 }
             )
@@ -358,28 +372,47 @@ class PerformanceProfiler:
             "peak_rss_end_bytes",
         )
         memory: dict[str, Any] = {
-            name: _stats(payload["memory"][name] for payload in payloads) for name in memory_keys
+            name: _stats(
+                rank_statistics["memory"][name] for rank_statistics in rank_statistics_list
+            )
+            for name in memory_keys
         }
         memory["aggregate_rss_end_bytes"] = float(
-            sum(payload["memory"]["rss_end_bytes"] for payload in payloads)
+            sum(
+                rank_statistics["memory"]["rss_end_bytes"]
+                for rank_statistics in rank_statistics_list
+            )
         )
         memory["aggregate_rss_max_observed_bytes"] = float(
-            sum(payload["memory"]["rss_max_observed_bytes"] for payload in payloads)
+            sum(
+                rank_statistics["memory"]["rss_max_observed_bytes"]
+                for rank_statistics in rank_statistics_list
+            )
         )
         memory["aggregate_peak_rss_end_bytes"] = float(
-            sum(payload["memory"]["peak_rss_end_bytes"] for payload in payloads)
+            sum(
+                rank_statistics["memory"]["peak_rss_end_bytes"]
+                for rank_statistics in rank_statistics_list
+            )
         )
 
         allocation_inventory = None
-        if all(payload.get("allocation_inventory") is not None for payload in payloads):
-            names = sorted(payloads[0]["allocation_inventory"])
+        if all(
+            rank_statistics.get("allocation_inventory") is not None
+            for rank_statistics in rank_statistics_list
+        ):
+            names = sorted(rank_statistics_list[0]["allocation_inventory"])
             allocation_inventory = {
                 name: {
                     "per_rank_bytes": _stats(
-                        payload["allocation_inventory"][name] for payload in payloads
+                        rank_statistics["allocation_inventory"][name]
+                        for rank_statistics in rank_statistics_list
                     ),
                     "aggregate_bytes": float(
-                        sum(payload["allocation_inventory"][name] for payload in payloads)
+                        sum(
+                            rank_statistics["allocation_inventory"][name]
+                            for rank_statistics in rank_statistics_list
+                        )
                     ),
                 }
                 for name in names
@@ -395,7 +428,7 @@ class PerformanceProfiler:
         return {
             "schema_version": self.schema_version,
             **self._metadata,
-            "n_ranks": len(payloads),
+            "n_ranks": len(rank_statistics_list),
             "step_seconds": step_stats,
             "phases": phases,
             "linear": linear,
@@ -411,16 +444,16 @@ class PerformanceProfiler:
         """Gather local counters, write JSONL, and report through the sink."""
         if not self.enabled or not self._active:
             return None
-        local = self._local_payload(step_seconds, linear_results)
+        local = self._local_statistics(step_seconds, linear_results)
         if self.parallel.is_parallel:
-            payloads = self.parallel.comm.gather(local, root=0)
+            rank_statistics_list = self.parallel.comm.gather(local, root=0)
         else:
-            payloads = [local]
+            rank_statistics_list = [local]
         self._active = False
         self._inventory_reported = True
         if not self.parallel.is_root:
             return None
-        record = self._aggregate(payloads)
+        record = self._aggregate(rank_statistics_list)
         if not self._output_disabled:
             line = json.dumps(record, sort_keys=True, allow_nan=False) + "\n"
             try:

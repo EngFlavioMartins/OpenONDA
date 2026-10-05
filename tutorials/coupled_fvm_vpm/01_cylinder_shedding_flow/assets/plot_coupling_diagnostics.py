@@ -19,7 +19,7 @@ TIMING_PHASES = (
     (("fvm",), "FVM", COLORS["fvm"]),
     (("vpm_boundary_condition", "transfer"), "coupling", COLORS["hybrid"]),
     (
-        ("health_and_samplers", "backup", "reporting", "orchestration_and_wait"),
+        ("state_checks_and_samplers", "backup", "reporting", "coupling_control_and_wait"),
         "sampling and output",
         COLORS["gray"],
     ),

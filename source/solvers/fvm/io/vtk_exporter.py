@@ -137,13 +137,13 @@ def _hex_vertices_from_faces(
 def mesh_cell_fields(
     mesh_data: dict[str, Any], cell_volume: np.ndarray | None = None
 ) -> dict[str, np.ndarray]:
-    """Cell geometry and meshing provenance shared by mesh and time-step output.
+    """Cell geometry and meshing source information shared by mesh and time-step output.
 
     ``cell_size`` is the nominal octree edge before surface projection and
     wrapper insertion. ``cell_volume`` is the solver's physical volume (m³),
     and ``cell_equivalent_size`` is its cube root (m), not a maximum edge.
     Geometry is supplied by the caller so diagnostic export of a rejected
-    mesh does not depend on successful geometric admission.
+    mesh does not depend on successful geometric validation.
     """
     fields = {}
     for source_name, output_name in (
@@ -161,7 +161,7 @@ def mesh_cell_fields(
 
 
 def atomic_write_text(path: str | Path, content: str) -> None:
-    """Atomically publish a UTF-8 metadata file after durable temporary output."""
+    """Atomically write a UTF-8 metadata file after durable temporary output."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
@@ -779,7 +779,7 @@ class PVDManager:
             vtu_file: Path to the ``.vtu`` file.
         """
         rel_path = os.path.relpath(vtu_file, os.path.dirname(self.filename))
-        # A step identity is its artifact filename.  Re-emitting an accepted
+        # Each output step has a corresponding filename.  Re-emitting an accepted
         # state after restart replaces the existing entry instead of creating
         # duplicate or nonmonotonic PVD records.
         self.entries = [

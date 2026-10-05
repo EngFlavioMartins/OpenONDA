@@ -22,7 +22,7 @@ from .coupling.kinematics import (
     VLMKinematics,
 )
 from .geometry.aircraft import Aircraft, Wing, WingSegment
-from .solver.field import BoundSurfaceFieldContract
+from .solver.field import BoundSurfaceFieldSettings
 from .solver.lattice import VLMLattice
 from .solver.vlm_solver import VLMSolver
 
@@ -36,7 +36,7 @@ __all__ = [
     "VLMSurfaceSetup",
     "VLMMeshSetup",
     "VLMLattice",
-    "BoundSurfaceFieldContract",
+    "BoundSurfaceFieldSettings",
     # Kinematics
     "VLMKinematics",
     "StaticVLM",

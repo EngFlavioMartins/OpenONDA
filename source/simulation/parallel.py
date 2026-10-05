@@ -1,4 +1,4 @@
-"""Error propagation around local work in a collective solver lifecycle."""
+"""Error propagation around local work in a collective solver run."""
 
 from contextlib import contextmanager
 import time

@@ -106,9 +106,9 @@ class FVMVPMCoupler:
     """Synchronize an inner FVM solution with an outer VPM wake.
 
     The driver samples the VPM field on an outer FVM patch, subcycles the FVM
-    to the next VPM time, then replaces or blends the FVM-authoritative
+    to the next VPM time, then replaces or blends the FVM-derived
     vorticity into the particle cloud. It owns the exchange sequence and
-    coupled restart state; the injected solvers retain ownership of their
+    coupled restart state; the injected solvers manage their
     respective meshes, fields, particles, and numerical models.
 
     Parameters
@@ -123,12 +123,12 @@ class FVMVPMCoupler:
         viscosity, and time step must be compatible with the FVM case.
     coupler_setup : CouplerSetup
         Immutable coupling-owned transfer, boundary, diagnostic, and backup
-        policy.
+        settings.
 
     Attributes
     ----------
     setup : CouplerSetup
-        Retained coupling policy.
+        Retained coupling settings.
     fvm_solver : FVMSolver or None
         Adopted solver after :meth:`initialize`; ``None`` beforehand.
     vpm_solver : VPMSolver or None
@@ -184,7 +184,7 @@ class FVMVPMCoupler:
             VPM instance required on rank zero and referenced directly. It is
             intentionally absent on other ranks.
         coupler_setup : CouplerSetup
-            Validated coupling policy retained by reference.
+            Validated coupling settings retained by reference.
 
         Raises
         ------
@@ -201,11 +201,11 @@ class FVMVPMCoupler:
         if fvm_solver is None:
             raise ValueError(
                 "FVMVPMCoupler requires an FVM solver. Use create_coupler with "
-                "FVMSetup, VPMCase and CouplerSetup for automatic MPI ownership."
+                "FVMSetup, VPMCase and CouplerSetup for automatic MPI rank assignment."
             )
         self.setup = coupler_setup
         self.interface_predictor = SafeguardedInterfacePredictor()
-        self._owned_resources = ExitStack()
+        self._cleanup_stack = ExitStack()
         self._closed = False
         self.case_dir = Path(fvm_solver.case_dir).expanduser().absolute()
 
@@ -279,7 +279,7 @@ class FVMVPMCoupler:
             return
         cleanup_failures = []
         try:
-            self._owned_resources.__exit__(
+            self._cleanup_stack.__exit__(
                 type(failure) if failure is not None else None,
                 failure,
                 failure.__traceback__ if failure is not None else None,
@@ -497,7 +497,7 @@ class FVMVPMCoupler:
         ValueError
             If the master has no active VPM solver, the solver time steps do
             not form an integer subcycling ratio, freestream/viscosity/domain
-            contracts disagree, adaptive FVM stepping is configured, or a
+            time-step settings disagree, adaptive FVM stepping is configured, or a
             configured transfer region is invalid.
         RuntimeError
             If MPI and FVM execution sizes disagree or a transfer component
@@ -623,7 +623,7 @@ class FVMVPMCoupler:
                     revision=boundary.revision,
                     query_bounds=boundary.bounds,
                     blocks_segments=boundary.blocks_segments,
-                    geometry_cache_contract=boundary.grid_geometry_contract(),
+                    geometry_queries=boundary.grid_geometry_queries(),
                 )
                 guard = SolidParticleGuard(
                     boundary,
@@ -719,8 +719,8 @@ class FVMVPMCoupler:
             exclusive with ``restart_from`` and a non-zero ``start_step``.
         restart_allowed_config_differences : collection[str], default=()
             Exact dotted configuration paths permitted to differ from the
-            backup manifest. This is accepted only with ``restart_from``;
-            artifact hashes and all unlisted settings remain strict.
+            backup metadata. This is accepted only with ``restart_from``;
+            output file hashes and all unlisted settings remain strict.
         restart_expected_config_differences : mapping or None, default=None
             Exact ``path: (stored_value, current_value)`` expectations for the
             explicitly permitted differences. Required for structural or
@@ -971,12 +971,14 @@ class FVMVPMCoupler:
                 refresh_started = time.perf_counter()
                 update_boundary_history_after_replacement(self, *face_geometry)
                 boundary_time += time.perf_counter() - refresh_started
-            health_output_started = time.perf_counter()
-            with collective_phase(self._comm, "VPM health check and output"):
+            state_checks_and_sampling_started = time.perf_counter()
+            with collective_phase(self._comm, "VPM particle-state check and output"):
                 if self._is_master:
                     assert self.vpm_solver is not None
                     self.vpm_solver.execute_scheduled_samplers()
-            health_output_time = time.perf_counter() - health_output_started
+            state_checks_and_sampling_seconds = (
+                time.perf_counter() - state_checks_and_sampling_started
+            )
             self._last_transfer_result = transfer_result
             record_step(
                 self,
@@ -987,7 +989,7 @@ class FVMVPMCoupler:
                 logger=logger,
                 comm=self._comm,
                 exchange_started=exchange_started,
-                health_output_time=health_output_time,
+                state_checks_and_sampling_seconds=state_checks_and_sampling_seconds,
             )
             self.interface_predictor.commit()
         backup_was_scheduled = (
@@ -1094,7 +1096,7 @@ class FVMVPMCoupler:
         _face_normals: np.ndarray,
         _face_area: np.ndarray,
     ):
-        """Replace the FVM-authoritative part of the particle cloud."""
+        """Replace the FVM-derived part of the particle cloud."""
         t_transfer = time.perf_counter()
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()
@@ -1164,8 +1166,8 @@ class FVMVPMCoupler:
         Parameters
         ----------
         directory : str or pathlib.Path
-            Destination directory. It is created if needed. A rolling manifest
-            and referenced FVM, VPM, VTU, and boundary-history artifacts are
+            Destination directory. It is created if needed. A rolling metadata
+            and referenced FVM, VPM, VTU, and boundary-history output files are
             stored below it.
         coupling_step : int or None, default=None
             Step label for the checkpoint. ``None`` derives it from the FVM
@@ -1183,12 +1185,12 @@ class FVMVPMCoupler:
             If the coupler is not initialized on a rank that owns a required
             solver.
         OSError
-            If an artifact cannot be written, synchronized, or committed.
+            If an output file cannot be written, synchronized, or committed.
 
         Notes
         -----
-        The FVM save and visualization write are collective. The manifest is
-        committed before visualization publication; successful return also
+        The FVM save and visualization write are collective. The metadata is
+        committed before visualization output writing; successful return also
         confirms both retained frames are published. An already-written FVM
         frame is reused. This method does not change physical time.
         """
@@ -1208,7 +1210,7 @@ class FVMVPMCoupler:
             fvm.write_vtk()
         with collective_phase(self._comm, "coupled FVM snapshot flush"):
             fvm.flush_output()
-        with collective_phase(self._comm, "coupled VPM snapshot publication"):
+        with collective_phase(self._comm, "coupled VPM snapshot output writing"):
             if self._is_master:
                 publish_vpm_snapshot(backup, self.solution_dir)
         return backup
@@ -1225,15 +1227,15 @@ class FVMVPMCoupler:
         Parameters
         ----------
         directory : str or pathlib.Path
-            Directory containing the committed coupled ``manifest.json`` and
-            all artifacts named by it.
+            Directory containing the committed coupled ``checkpoint_info.json`` and
+            all output files named by it.
         allowed_config_differences : collection[str], default=()
             Exact recursive configuration paths permitted to differ for a
-            controlled restart. All other configuration and artifact hashes
+            controlled restart. All other configuration and output file hashes
             remain strict.
         expected_config_differences : mapping or None, default=None
             Exact ``path: (stored_value, current_value)`` expectations, required
-            for structured or absent-key changes. VPM native admission runs
+            for structured or absent-key changes. VPM native validation runs
             before FVM fields or observation histories can be loaded.
 
         Returns
@@ -1245,7 +1247,7 @@ class FVMVPMCoupler:
         Raises
         ------
         RuntimeError
-            If the coupler is not initialized, the manifest/artifacts are
+            If the coupler is not initialized, the metadata/output files are
             incomplete or inconsistent, or restored solver clocks disagree.
         ValueError
             If configuration differs outside the explicit allow-list.

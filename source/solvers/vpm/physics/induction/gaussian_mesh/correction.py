@@ -1,7 +1,7 @@
 """Bounded source-only Gaussian image-core correction.
 
 Qualified narrow-minus-broad kernels, sorted source cells, finite coincidences
-and strict cutoff are retained unchanged. This component does not certify the
+and strict cutoff are retained unchanged. This component does not validate the
 omitted correction or infinite image tail. It owns no solver/primary fields.
 """
 
@@ -13,47 +13,51 @@ import time
 from numba import njit
 import numpy as np
 
-from .runtime import DeviceOwner
+from .runtime import CUDAMemoryPool
 
 _QUAD_X, _QUAD_W = np.polynomial.legendre.leggauss(8)
-_PI15 = math.pi ** -1.5
+_PI15 = math.pi**-1.5
 
 
 def correction_factors_host(radius, sigma, tau):
-    """f64 translation of the device branches; independent oracle is integral."""
+    """f64 translation of the device branches; independent reference is integral."""
     radius, sigma, tau = map(float, (radius, sigma, tau))
-    if not all(math.isfinite(v) for v in (radius, sigma, tau)) or radius < 0 or not 0 < sigma <= tau:
+    if (
+        not all(math.isfinite(v) for v in (radius, sigma, tau))
+        or radius < 0
+        or not 0 < sigma <= tau
+    ):
         raise ValueError("finite r>=0 and 0<sigma<=tau required")
     return _correction_factors(radius, sigma, tau)
 
 
 @njit(cache=True)
 def _correction_factors(radius, sigma, tau):
-    """Shared scalar arithmetic after source/radius admission; no fast math."""
+    """Shared scalar arithmetic after source/radius validation; no fast math."""
     if sigma == tau:
-        return 0., 0.
+        return 0.0, 0.0
     rho = radius / sigma
-    log_ratio = math.log1p((tau-sigma)/sigma)
-    if rho < .5:
-        term, a, b = 1., 0., 0.
+    log_ratio = math.log1p((tau - sigma) / sigma)
+    if rho < 0.5:
+        term, a, b = 1.0, 0.0, 0.0
         for n in range(18):
-            a += term * -math.expm1(-(2*n+3)*log_ratio)/(2*n+3)
-            b += term * -math.expm1(-(2*n+5)*log_ratio)/(2*n+5)
-            term *= -rho*rho/(n+1)
-        return _PI15*a/sigma**3, 2*_PI15*b/sigma**5
-    if log_ratio < .01:
-        lower = 1/tau
-        half = (tau-sigma)/(2*sigma*tau)
-        nodes = lower + half*(_QUAD_X+1)
-        weight = half*_QUAD_W*np.exp(-(radius*nodes)**2)
-        return _PI15*float(weight @ nodes**2), 2*_PI15*float(weight @ nodes**4)
-    wide = radius/tau
-    e_sigma, e_tau = math.exp(-rho*rho), math.exp(-wide*wide)
-    t_sigma = (math.erfc(rho)+2/math.sqrt(math.pi)*rho*e_sigma)/(4*math.pi)
-    t_tau = (math.erfc(wide)+2/math.sqrt(math.pi)*wide*e_tau)/(4*math.pi)
-    a = (t_tau-t_sigma)/radius**3
-    z = _PI15*(e_sigma/sigma**3-e_tau/tau**3)
-    return a, (3*a-z)/radius**2
+            a += term * -math.expm1(-(2 * n + 3) * log_ratio) / (2 * n + 3)
+            b += term * -math.expm1(-(2 * n + 5) * log_ratio) / (2 * n + 5)
+            term *= -rho * rho / (n + 1)
+        return _PI15 * a / sigma**3, 2 * _PI15 * b / sigma**5
+    if log_ratio < 0.01:
+        lower = 1 / tau
+        half = (tau - sigma) / (2 * sigma * tau)
+        nodes = lower + half * (_QUAD_X + 1)
+        weight = half * _QUAD_W * np.exp(-((radius * nodes) ** 2))
+        return _PI15 * float(weight @ nodes**2), 2 * _PI15 * float(weight @ nodes**4)
+    wide = radius / tau
+    e_sigma, e_tau = math.exp(-rho * rho), math.exp(-wide * wide)
+    t_sigma = (math.erfc(rho) + 2 / math.sqrt(math.pi) * rho * e_sigma) / (4 * math.pi)
+    t_tau = (math.erfc(wide) + 2 / math.sqrt(math.pi) * wide * e_tau) / (4 * math.pi)
+    a = (t_tau - t_sigma) / radius**3
+    z = _PI15 * (e_sigma / sigma**3 - e_tau / tau**3)
+    return a, (3 * a - z) / radius**2
 
 
 def _positive_integer(value, name):
@@ -77,15 +81,15 @@ def _possibly_near(source_min, source_max, target_min, target_max, shift, odd, c
     """Conservative host AABB exclusion only; exact strict cutoff is on device."""
     lo, hi = np.array(source_min, copy=True), np.array(source_max, copy=True)
     if odd:
-        lo[2], hi[2] = shift-hi[2], shift-lo[2]
+        lo[2], hi[2] = shift - hi[2], shift - lo[2]
     else:
         lo[2] += shift
         hi[2] += shift
     if not np.isfinite(lo).all() or not np.isfinite(hi).all():
         raise ValueError("transformed source bounds are not representable")
-    scale = max(1., float(np.max(np.abs(np.concatenate((lo, hi, target_min, target_max))))))
-    margin = 64*np.finfo(float).eps*scale
-    distance = np.maximum(np.maximum(lo-target_max, target_min-hi)-margin, 0.)
+    scale = max(1.0, float(np.max(np.abs(np.concatenate((lo, hi, target_min, target_max))))))
+    margin = 64 * np.finfo(float).eps * scale
+    distance = np.maximum(np.maximum(lo - target_max, target_min - hi) - margin, 0.0)
     # A single safely separated axis suffices; not squaring avoids overflow.
     return bool(np.max(distance) <= cutoff)
 
@@ -95,7 +99,8 @@ def _kernel_source(dtype):
     suffix = "" if dtype == "float64" else "f"
     quad_x = ",".join(format(float(v), ".18e") for v in _QUAD_X)
     quad_w = ",".join(format(float(v), ".18e") for v in _QUAD_W)
-    return r'''
+    return (
+        r"""
     typedef REAL Real;
     __device__ inline Real rr_exp(Real x) { return expSUFFIX(x); }
     __device__ inline Real rr_expm1(Real x) { return expm1SUFFIX(x); }
@@ -234,64 +239,103 @@ def _kernel_source(dtype):
             atomicAdd(work,candidate);atomicAdd(work+1,accepted);
         }
     }
-    '''.replace("REAL", real).replace("SUFFIX", suffix).replace("QUAD_X", quad_x).replace("QUAD_W", quad_w)
+    """.replace("REAL", real)
+        .replace("SUFFIX", suffix)
+        .replace("QUAD_X", quad_x)
+        .replace("QUAD_W", quad_w)
+    )
 
 
 class GaussianCoreCorrectionGPU:
-    """Reusable, private, capped source index; no solver/runtime ownership."""
+    """Reusable, private, capped source index; no solver/runtime allocation lifetime."""
 
-    def __init__(self, source_x, source_gamma, source_sigma, *, tau, cutoff,
-                 max_scratch_bytes=256*1024**2, accumulation_dtype="float64", max_images=513):
+    def __init__(
+        self,
+        source_x,
+        source_gamma,
+        source_sigma,
+        *,
+        tau,
+        cutoff,
+        max_scratch_bytes=256 * 1024**2,
+        accumulation_dtype="float64",
+        max_images=513,
+    ):
         self._cleanup_failure = None
-        self._owner = DeviceOwner(max_scratch_bytes)
-        self.cp = cp = self._owner.cp
-        self.device_id = self._owner.device_id
-        self.stream = self._owner.stream
+        self._memory_pool = CUDAMemoryPool(max_scratch_bytes)
+        self.cp = cp = self._memory_pool.cp
+        self.device_id = self._memory_pool.device_id
+        self.stream = self._memory_pool.stream
         self.stream_pointer = int(self.stream.ptr)
         self.closed = False
         self.max_scratch_bytes = _positive_integer(max_scratch_bytes, "max_scratch_bytes")
         self.max_images = _positive_integer(max_images, "max_images")
         self.tau, self.cutoff = float(tau), float(cutoff)
-        if not all(math.isfinite(v) and v>0 for v in (self.tau, self.cutoff)):
+        if not all(math.isfinite(v) and v > 0 for v in (self.tau, self.cutoff)):
             raise ValueError("finite positive tau and cutoff required")
-        if not math.isfinite(self.cutoff*self.cutoff):
+        if not math.isfinite(self.cutoff * self.cutoff):
             raise ValueError("squared cutoff must be representable")
         if accumulation_dtype not in ("float32", "float64"):
             raise ValueError("accumulation_dtype must be float32 or float64")
         self.dtype = np.dtype(accumulation_dtype)
-        self.pool = self._owner.pool
+        self.pool = self._memory_pool.pool
         self._owned = []
-        self.diagnostics = {"production_qualified": False, "source_only_cores": True,
-                            "dtype": accumulation_dtype, "cutoff_strict": True,
-                            "pair_storage": False, "max_scratch_bytes": self.max_scratch_bytes,
-                            "build_seconds": 0., "pool_high_water_bytes": 0}
+        self.diagnostics = {
+            "production_qualified": False,
+            "source_only_cores": True,
+            "dtype": accumulation_dtype,
+            "cutoff_strict": True,
+            "pair_storage": False,
+            "max_scratch_bytes": self.max_scratch_bytes,
+            "build_seconds": 0.0,
+            "pool_high_water_bytes": 0,
+        }
         try:
             start = time.perf_counter()
             with cp.cuda.using_allocator(self.pool.malloc):
                 x = cp.array(source_x, dtype=cp.float64, order="C", copy=True)
                 gamma = cp.array(source_gamma, dtype=cp.float64, order="C", copy=True)
                 sigma = cp.array(source_sigma, dtype=cp.float64, order="C", copy=True)
-                if x.ndim != 2 or x.shape[1:] != (3,) or gamma.shape != x.shape or sigma.shape != x.shape[:1]:
+                if (
+                    x.ndim != 2
+                    or x.shape[1:] != (3,)
+                    or gamma.shape != x.shape
+                    or sigma.shape != x.shape[:1]
+                ):
                     raise ValueError("require source (N,3), strength (N,3), core (N,)")
                 self.count = len(x)
                 if not 1 <= self.count <= np.iinfo(np.int32).max:
                     raise ValueError("nonempty int32-indexed sources required")
-                if not bool((cp.isfinite(x).all() & cp.isfinite(gamma).all() & cp.isfinite(sigma).all()
-                             & (sigma>0).all() & (sigma<=self.tau).all()).item()):
+                if not bool(
+                    (
+                        cp.isfinite(x).all()
+                        & cp.isfinite(gamma).all()
+                        & cp.isfinite(sigma).all()
+                        & (sigma > 0).all()
+                        & (sigma <= self.tau).all()
+                    ).item()
+                ):
                     raise ValueError("finite arrays and 0<source core<=tau required")
                 lower_sigma = float(sigma.min().item())
                 finfo = np.finfo(self.dtype)
-                if (lower_sigma < finfo.tiny or self.tau > finfo.max or
-                        not math.isfinite(lower_sigma**-5) or lower_sigma**-5 > finfo.max/16):
+                if (
+                    lower_sigma < finfo.tiny
+                    or self.tau > finfo.max
+                    or not math.isfinite(lower_sigma**-5)
+                    or lower_sigma**-5 > finfo.max / 16
+                ):
                     raise ValueError("core-factor scale unsupported by selected arithmetic dtype")
                 self.source_min = cp.asnumpy(x.min(axis=0))
                 self.source_max = cp.asnumpy(x.max(axis=0))
-                extent = (self.source_max-self.source_min)/self.cutoff
-                if not np.isfinite(extent).all() or np.any(extent > np.iinfo(np.int32).max-2):
+                extent = (self.source_max - self.source_min) / self.cutoff
+                if not np.isfinite(extent).all() or np.any(extent > np.iinfo(np.int32).max - 2):
                     raise ValueError("source grid extent exceeds index range")
-                self.shape = tuple((np.floor(extent).astype(np.int64)+1).tolist())
+                self.shape = tuple((np.floor(extent).astype(np.int64) + 1).tolist())
                 cells = math.prod(self.shape)
-                if cells > np.iinfo(np.int32).max or 8*cells+56*self.count > self.max_scratch_bytes:
+                if (
+                    cells > np.iinfo(np.int32).max
+                    or 8 * cells + 56 * self.count > self.max_scratch_bytes
+                ):
                     raise MemoryError("bounded source-cell storage exceeds configured cap")
                 source = _kernel_source(accumulation_dtype)
                 self._keys = cp.RawKernel(source, "build_keys", options=("--std=c++11",))
@@ -299,22 +343,41 @@ class GaussianCoreCorrectionGPU:
                 self._query = cp.RawKernel(source, "correction", options=("--std=c++11",))
                 keys = cp.empty(self.count, dtype=cp.int32)
                 error = cp.zeros(1, dtype=cp.int32)
-                self._keys(((self.count+255)//256,), (256,),
-                           (x, np.int32(self.count), *map(np.float64, self.source_min), np.float64(self.cutoff),
-                            *map(np.int32, self.shape), keys, error))
+                self._keys(
+                    ((self.count + 255) // 256,),
+                    (256,),
+                    (
+                        x,
+                        np.int32(self.count),
+                        *map(np.float64, self.source_min),
+                        np.float64(self.cutoff),
+                        *map(np.int32, self.shape),
+                        keys,
+                        error,
+                    ),
+                )
                 if int(error.item()):
                     raise RuntimeError("source-cell key construction failed")
                 order = cp.argsort(keys)
                 self.x, self.gamma, self.sigma = x[order], gamma[order], sigma[order]
                 sorted_keys = keys[order]
-                self.begin, self.end = cp.zeros(cells, dtype=cp.int32), cp.zeros(cells, dtype=cp.int32)
-                self._ranges(((self.count+255)//256,), (256,),
-                             (sorted_keys, np.int32(self.count), self.begin, self.end))
+                self.begin, self.end = (
+                    cp.zeros(cells, dtype=cp.int32),
+                    cp.zeros(cells, dtype=cp.int32),
+                )
+                self._ranges(
+                    ((self.count + 255) // 256,),
+                    (256,),
+                    (sorted_keys, np.int32(self.count), self.begin, self.end),
+                )
                 self._owned = [self.x, self.gamma, self.sigma, self.begin, self.end]
                 cp.cuda.get_current_stream().synchronize()
-                self.diagnostics.update(source_count=self.count, cell_shape=self.shape,
-                                        build_seconds=time.perf_counter()-start,
-                                        pool_high_water_bytes=self.pool.total_bytes())
+                self.diagnostics.update(
+                    source_count=self.count,
+                    cell_shape=self.shape,
+                    build_seconds=time.perf_counter() - start,
+                    pool_high_water_bytes=self.pool.total_bytes(),
+                )
         except BaseException:
             self.close()
             raise
@@ -322,16 +385,16 @@ class GaussianCoreCorrectionGPU:
     @contextmanager
     def _allocation_scope(self):
         if self.closed:
-            raise RuntimeError("correction owner is closed")
-        self._owner.admit()
+            raise RuntimeError("correction solver is closed")
+        self._memory_pool.check_context()
         with self.cp.cuda.using_allocator(self.pool.malloc):
             yield
 
     def release_build_scratch(self):
         """Drop this index's idle construction blocks after local arrays retire."""
         if self.closed:
-            raise RuntimeError("correction owner is closed")
-        self._owner.admit()
+            raise RuntimeError("correction solver is closed")
+        self._memory_pool.check_context()
         self.stream.synchronize()
         self.pool.free_all_blocks()
 
@@ -355,38 +418,71 @@ class GaussianCoreCorrectionGPU:
             if count:
                 lo, hi = cp.asnumpy(target.min(axis=0)), cp.asnumpy(target.max(axis=0))
                 for shift, odd in images:
-                    if _possibly_near(self.source_min, self.source_max, lo, hi, shift, odd, self.cutoff):
+                    if _possibly_near(
+                        self.source_min, self.source_max, lo, hi, shift, odd, self.cutoff
+                    ):
                         near_images.append((shift, odd))
                     else:
                         skipped_images.append((shift, odd))
                 for shift, odd in near_images:
-                    self._query(((count*32+127)//128,), (128,),
-                                (self.x, self.gamma, self.sigma, target, np.int32(count), self.begin, self.end,
-                                 *map(np.float64, self.source_min), np.float64(self.cutoff), *map(np.int32, self.shape),
-                                 np.float64(shift), np.int32(odd), np.float64(self.tau), np.float64(self.cutoff**2),
-                                 u, j, work, error))
+                    self._query(
+                        ((count * 32 + 127) // 128,),
+                        (128,),
+                        (
+                            self.x,
+                            self.gamma,
+                            self.sigma,
+                            target,
+                            np.int32(count),
+                            self.begin,
+                            self.end,
+                            *map(np.float64, self.source_min),
+                            np.float64(self.cutoff),
+                            *map(np.int32, self.shape),
+                            np.float64(shift),
+                            np.int32(odd),
+                            np.float64(self.tau),
+                            np.float64(self.cutoff**2),
+                            u,
+                            j,
+                            work,
+                            error,
+                        ),
+                    )
                 cp.cuda.get_current_stream().synchronize()
-                if int(error.item()) or not bool((cp.isfinite(u).all() & cp.isfinite(j).all()).item()):
+                if int(error.item()) or not bool(
+                    (cp.isfinite(u).all() & cp.isfinite(j).all()).item()
+                ):
                     raise FloatingPointError("nonfinite Gaussian correction; no fields published")
             candidate, accepted = map(int, cp.asnumpy(work))
             self.diagnostics["pool_high_water_bytes"] = max(
-                self.diagnostics["pool_high_water_bytes"], self.pool.total_bytes())
-            report = {**self.diagnostics, "target_count": count, "images": images,
-                      "evaluated_images": near_images, "aabb_skipped_images": skipped_images,
-                      "candidate_pairs": candidate, "accepted_pairs": accepted,
-                      "query_seconds": time.perf_counter()-start,
-                      "pool_used_bytes": self.pool.used_bytes(), "pool_reserved_bytes": self.pool.total_bytes()}
+                self.diagnostics["pool_high_water_bytes"], self.pool.total_bytes()
+            )
+            report = {
+                **self.diagnostics,
+                "target_count": count,
+                "images": images,
+                "evaluated_images": near_images,
+                "aabb_skipped_images": skipped_images,
+                "candidate_pairs": candidate,
+                "accepted_pairs": accepted,
+                "query_seconds": time.perf_counter() - start,
+                "pool_used_bytes": self.pool.used_bytes(),
+                "pool_reserved_bytes": self.pool.total_bytes(),
+            }
             return u, j, report
 
     def close(self):
         if getattr(self, "_cleanup_failure", None) is not None:
-            raise RuntimeError("Gaussian correction GPU cleanup remains uncertain") from self._cleanup_failure
+            raise RuntimeError(
+                "Gaussian correction GPU cleanup remains uncertain"
+            ) from self._cleanup_failure
         if getattr(self, "closed", True):
             return
-        # No implicit cross-stream ownership protocol: drain the recorded
+        # No implicit cross-stream allocation lifetime protocol: drain the recorded
         # stream before releasing our allocation references on every path.
         try:
-            self._owner.admit()
+            self._memory_pool.check_context()
             self.stream.synchronize()
         except BaseException as error:
             self._cleanup_failure = error
@@ -397,14 +493,14 @@ class GaussianCoreCorrectionGPU:
         for name in ("x", "gamma", "sigma", "begin", "end"):
             setattr(self, name, None)
         try:
-            self._owner.close()
+            self._memory_pool.close()
         except BaseException as error:
             self._cleanup_failure = error
             raise
 
     def __enter__(self):
         if self.closed:
-            raise RuntimeError("correction owner is closed")
+            raise RuntimeError("correction solver is closed")
         return self
 
     def __exit__(self, *_):

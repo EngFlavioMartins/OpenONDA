@@ -18,14 +18,14 @@ import taichi as ti
 
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
 from ....io.logging import Logging
-from ....io.manifest import _manifest_value
+from ....io.metadata import _metadata_value
 from ....kernels import make_vortex_kernel
 from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
 from ..kernels.virtual_wake import make_virtual_wake_kernel
-from .field import BoundSurfaceFieldContract
+from .field import BoundSurfaceFieldSettings
 from .influence import (
     accumulate_bound_transport,
     add_induced_velocity_and_gradient_at_targets,
@@ -102,14 +102,14 @@ class VLMSolver:
         self.wake_core_overlap = setup.wake_core_overlap
         # The present source representation uses one point/trace radius for
         # the bound operator.  It is named separately from particle radii in
-        # the field contract so a future distributed sheet can change it
+        # the field conditions so a future distributed sheet can change it
         # deliberately without changing the transport rule.
         self.bound_source_radius = float(VLM_EPSILON)
         self.boundary_response = setup.boundary_response
-        self.field_contract = BoundSurfaceFieldContract(
+        self.field_settings = BoundSurfaceFieldSettings(
             numerical_epsilon=float(VLM_EPSILON),
             bound_source_radius=self.bound_source_radius,
-            near_wake_policy=(
+            near_wake_treatment=(
                 "affine_row_history_transport_v2"
                 if setup.boundary_response == "responsive"
                 else "partial_newborn_row_stage_responsive"
@@ -246,13 +246,13 @@ class VLMSolver:
         else:
             self.lattice.group_id.from_numpy(group_id)
 
-        from .restart import restart_identity
+        from .restart import restart_configuration_hash
 
-        self._restart_geometry_references = _manifest_value(self.aircraft.refs)
-        self._restart_identity = restart_identity(self)
-        from .restart import restart_physics_identity
+        self._restart_geometry_references = _metadata_value(self.aircraft.refs)
+        self._restart_configuration_hash = restart_configuration_hash(self)
+        from .restart import restart_physics_hash
 
-        self._restart_physics_identity = restart_physics_identity(self)
+        self._restart_physics_hash = restart_physics_hash(self)
         self._mesh_generated = True
         self._aerodynamic_influence_coefficient_computed = False
         self._solved = False
@@ -1108,7 +1108,7 @@ class VLMSolver:
         self._stage_response_active = False
         self._stage_wake_sources = []
         # Production RK stages carry an explicit identity.  Field-only
-        # diagnostic/health refreshes construct a ``StageState`` with
+        # diagnostic/particle state refreshes construct a ``StageState`` with
         # ``stage_index=None``; those queries still solve
         # the temporary boundary system but must not erase the telemetry from
         # the accepted step's last real RK stage.
@@ -1270,7 +1270,7 @@ class VLMSolver:
     def particle_transport_step(self, tableau=None, time_step_size=0.0):
         """Publish strip exchange only after all particle RK stages succeed.
 
-        This ledger is consumed by the next accepted wake emission. It is not
+        This bound-vorticity exchange is consumed by the next accepted wake emission. It is not
         persistent restart state: checkpoints are written after that emission.
         """
         transported_before = self._transported_bound.to_numpy().copy()
@@ -1284,7 +1284,7 @@ class VLMSolver:
             yield
         except BaseException:
             # A rejected trial must not publish a partially accumulated
-            # reaction ledger.  Restore the pre-trial accepted exchange and
+            # reaction increments.  Restore the pre-trial accepted exchange and
             # leave the next accepted step responsible for reinitialisation.
             self._transported_bound.from_numpy(transported_before)
             self._bound_exchange_rate.fill(0.0)
@@ -1344,7 +1344,7 @@ class VLMSolver:
                 [strip_gamma @ source[2] + source[3] for source in sources], dtype=lattice.np_dtype
             )
             radii = np.ascontiguousarray([source[1] for source in sources], dtype=lattice.np_dtype)
-            owners = np.ascontiguousarray([source[4] for source in sources], dtype=np.int32)
+            strip_indices = np.ascontiguousarray([source[4] for source in sources], dtype=np.int32)
             self._virtual_wake_kernel(
                 state.position,
                 state.vortex_strength,
@@ -1355,7 +1355,7 @@ class VLMSolver:
                 positions,
                 strengths,
                 radii,
-                owners,
+                strip_indices,
                 self._bound_exchange_rate,
                 state.count,
                 len(sources),
@@ -2253,7 +2253,7 @@ class VLMSolver:
         """Return affine native-row sources in cumulative strip circulation.
 
         Each source is (position, radius, strip-vector coefficients, constant
-        strength, owner TE panel). The same geometry and strengths are used by
+        strength, solver TE panel). The same geometry and strengths are used by
         boundary assembly and virtual-row transport. Strength units are m³/s;
         circulation coefficients have length units. A strip's old closing
         vector is kept in the inertial frame, including transported reaction.

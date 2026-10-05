@@ -158,7 +158,7 @@ class AutomaticSurface:
     ----------
     points, triangles, coordinates : ndarray
         Deduplicated vertices ``(P, 3)``, triangle connectivity ``(T, 3)``,
-        and materialized triangle coordinates ``(T, 3, 3)``.
+        and explicit triangle coordinates ``(T, 3, 3)``.
     regions : ndarray, shape (T,)
         Integer group id for each triangle.
     feature_ids, corners : ndarray

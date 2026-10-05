@@ -30,10 +30,10 @@ from scipy.signal import find_peaks
 
 def read_forces(path: Path) -> tuple[np.ndarray, str]:
     """Read one consistent CSV snapshot, including when a solver is appending."""
-    payload = path.read_bytes()
-    if not payload.endswith(b"\n"):
-        payload = payload[: payload.rfind(b"\n") + 1]
-    values = np.atleast_1d(np.genfromtxt(io.BytesIO(payload), delimiter=",", names=True))
+    csv_bytes = path.read_bytes()
+    if not csv_bytes.endswith(b"\n"):
+        csv_bytes = csv_bytes[: csv_bytes.rfind(b"\n") + 1]
+    values = np.atleast_1d(np.genfromtxt(io.BytesIO(csv_bytes), delimiter=",", names=True))
     required = ("time", "drag_coefficient", "lift_coefficient")
     if not all(name in (values.dtype.names or ()) for name in required):
         raise ValueError(f"Missing force columns in {path}")
@@ -41,7 +41,7 @@ def read_forces(path: Path) -> tuple[np.ndarray, str]:
         raise ValueError(f"Need at least three finite force samples in {path}")
     if np.any(np.diff(values["time"]) <= 0):
         raise ValueError(f"Force times must be strictly increasing in {path}")
-    return values, hashlib.sha256(payload).hexdigest()
+    return values, hashlib.sha256(csv_bytes).hexdigest()
 
 
 def drag_cycles(time, drag, *, min_period=1.5, max_period=5.0, prominence=1e-4) -> list[dict]:
@@ -122,9 +122,7 @@ def summarize(values, start, end, *, min_period=1.5, max_period=5.0, prominence=
         "mean_drag_peak_to_peak_detrended": float(np.mean(amplitudes)) if amplitudes else None,
         "mean_drag_cycle_period_seconds": float(np.mean(periods)) if periods else None,
         # This benchmark has D/U=1 s and two drag cycles per shedding cycle.
-        "shedding_strouhal_from_drag_period": float(0.5 / np.mean(periods))
-        if periods
-        else None,
+        "shedding_strouhal_from_drag_period": float(0.5 / np.mean(periods)) if periods else None,
         "drag_peak_to_peak_detrended_range": [min(amplitudes), max(amplitudes)]
         if amplitudes
         else None,

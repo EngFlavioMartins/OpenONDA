@@ -409,7 +409,7 @@ def _compute_force_coefficients(
         reference_length: Reference length for pitching moment (optional).
 
     Returns:
-        dict: Dictionary with canonical force and moment coefficient keys.
+        dict: Dictionary with standard force and moment coefficient keys.
     """
     q = 0.5 * density * reference_velocity**2
     force_coefficients = (

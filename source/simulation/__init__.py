@@ -1,4 +1,4 @@
-"""Shared case-root and artifact-path policy."""
+"""Shared case-root and output_file-path settings."""
 
 from .paths import CasePaths, resolve_case_path
 

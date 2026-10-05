@@ -22,7 +22,7 @@ def thin_wall_lattice(*, planar=False):
         (-1.0, 1.0) * 3,
         1.0,
         buffer_length=0.0,
-        authority_ramp_width=0.0,
+        blend_ramp_width=0.0,
         lattice_anchor=np.full(3, 0.5),
         interior_at_node=boundary.contains,
         solid_boundary=boundary,
@@ -124,7 +124,7 @@ def test_wall_scatter_snaps_only_storage_roundoff_to_the_cardinal_node(planar):
     renewed = renew_stable_overlap(
         stored[None],
         [[0.0, 0.0, 1.0]],
-        replace(lattice, fvm_authority=np.zeros_like(lattice.fvm_authority)),
+        replace(lattice, fvm_blend_weight=np.zeros_like(lattice.fvm_blend_weight)),
         fvm_vortex_strength_at_node=np.zeros_like,
         amplification_cap=1.0,
         compute_diagnostics=False,

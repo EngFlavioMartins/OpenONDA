@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import pyvista as pv
 
-from source.solvers.vpm.config.artifacts import Samplers
-from source.solvers.vpm.io.manifest import _sampler_identity
+from source.solvers.vpm.config.output import Samplers
+from source.solvers.vpm.io.metadata import _sampler_metadata
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager, SamplingContext
 from source.solvers.vpm.io.sampling.field_samplers import SAMPLER_CSV_COLUMNS, SurfaceSampler
 
@@ -48,17 +48,17 @@ def test_current_writer_metadata_and_continuation_are_exact(tmp_path, axis):
     written = write_frame(sampler, path, time=0.75)
     np.testing.assert_array_equal(written.field_data["time"], [0.75])
     np.testing.assert_array_equal(written.field_data["TimeValue"], [0.75])
-    contract = json.loads(str(written.field_data["openonda_sampling_grid"][0]))
-    assert contract["grid_layout"] == "bounded_uniform_v1"
-    assert contract["configuration"]["bounds"] == sampler.bounds.tolist()
+    conditions = json.loads(str(written.field_data["openonda_sampling_grid"][0]))
+    assert conditions["grid_layout"] == "bounded_uniform_v1"
+    assert conditions["configuration"]["bounds"] == sampler.bounds.tolist()
     assert (
-        contract["coordinates_sha256"]
+        conditions["coordinates_sha256"]
         == hashlib.sha256(np.ascontiguousarray(written.points, dtype="<f8").tobytes()).hexdigest()
     )
     restarted = make_sampler(axis)
     restarted.validate_existing_vtk(path)
     np.testing.assert_array_equal(restarted.grid_points, sampler.grid_points)
-    assert _sampler_identity(restarted)["grid_layout"] == "bounded_uniform_v1"
+    assert _sampler_metadata(restarted)["grid_layout"] == "bounded_uniform_v1"
 
 
 @pytest.mark.parametrize(
@@ -104,17 +104,17 @@ def test_current_metadata_is_required_and_authenticated(tmp_path, change):
     sampler = make_sampler()
     path = tmp_path / "plane.vts"
     saved = write_frame(sampler, path)
-    contract = json.loads(str(saved.field_data["openonda_sampling_grid"][0]))
+    conditions = json.loads(str(saved.field_data["openonda_sampling_grid"][0]))
     if change == "missing":
         del saved.field_data["openonda_sampling_grid"]
     else:
         if change == "layout":
-            contract["grid_layout"] = "unknown"
+            conditions["grid_layout"] = "unknown"
         elif change == "digest":
-            contract["coordinates_sha256"] = "0" * 64
+            conditions["coordinates_sha256"] = "0" * 64
         elif change == "normal":
-            contract["configuration"]["normal"] = [0, 0, -1]
-        encoded = "{invalid" if change == "json" else json.dumps(contract)
+            conditions["configuration"]["normal"] = [0, 0, -1]
+        encoded = "{invalid" if change == "json" else json.dumps(conditions)
         saved.field_data["openonda_sampling_grid"] = np.array([encoded])
     saved.save(path)
     with pytest.raises(ValueError, match="sampling grid|metadata"):

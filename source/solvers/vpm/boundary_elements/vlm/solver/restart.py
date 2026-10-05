@@ -8,7 +8,7 @@ from types import CodeType
 
 import numpy as np
 
-from ....io.manifest import _manifest_value
+from ....io.metadata import _metadata_value
 
 _FIELDS = (
     "panel_corner_position",
@@ -37,44 +37,44 @@ _FIELDS = (
     "leading_edge_suction_parameter",
 )
 _MOTION_FIELDS = ("current_position", "current_orientation", "rotation_centre")
-_OUTPUT_IDENTITY_FIELDS = ("logging_interval_steps", "sample_surface_forces")
+_OUTPUT_CONTROL_FIELDS = ("logging_interval_steps", "sample_surface_forces")
 
 
 def _portable_code(code):
-    """Retain executable callback identity while ignoring its source location."""
+    """Retain executable callback code while ignoring its source location."""
     constants = tuple(
         _portable_code(value) if isinstance(value, CodeType) else value for value in code.co_consts
     )
     return code.replace(co_filename="<motion>", co_firstlineno=0, co_consts=constants)
 
 
-def _identity_controls(vlm, *, include_output_controls=True):
-    """Return the deterministic VLM controls used by restart identities."""
-    controls = _manifest_value(vlm.setup)
-    # The setup describes user choices; this explicit runtime contract also
-    # fingerprints the geometric source/trace/transport operators so a
+def _restart_controls(vlm, *, include_output_controls=True):
+    """Return the deterministic VLM controls used by restart hashes."""
+    controls = _metadata_value(vlm.setup)
+    # The setup describes user choices; this explicit field settings also
+    # describes the geometric source/trace/transport operators so a
     # checkpoint cannot silently continue under a different field model.
-    field_contract = getattr(vlm, "field_contract", None)
-    if field_contract is not None and hasattr(field_contract, "as_dict"):
-        controls["field_contract"] = field_contract.as_dict()
+    field_settings = getattr(vlm, "field_settings", None)
+    if field_settings is not None and hasattr(field_settings, "as_dict"):
+        controls["field_settings"] = field_settings.as_dict()
     for surface in controls["surfaces"]:
         # Geometry and reference values are hashed below; a moved case retains
-        # the same numerical identity without depending on an absolute filename.
+        # the same numerical configuration without depending on an absolute filename.
         surface.pop("surface")
         if not include_output_controls:
             surface.pop("sample_forces", None)
     if not include_output_controls:
-        for name in _OUTPUT_IDENTITY_FIELDS:
+        for name in _OUTPUT_CONTROL_FIELDS:
             controls.pop(name, None)
     return controls
 
 
-def _identity_digest(vlm, controls):
-    """Hash controls, callbacks and generated geometry for one identity variant."""
+def _configuration_hash(vlm, controls):
+    """Hash controls, callbacks and generated geometry for one configuration hash."""
     controls["geometry_references"] = getattr(
         vlm,
         "_restart_geometry_references",
-        _manifest_value(vlm.aircraft.refs),
+        _metadata_value(vlm.aircraft.refs),
     )
     digest = hashlib.sha256(json.dumps(controls, sort_keys=True, allow_nan=False).encode())
     # Generic motion callbacks can depend on closed-over phase and case globals.
@@ -86,35 +86,35 @@ def _identity_digest(vlm, controls):
             if inspect.isfunction(function):
                 closure = inspect.getclosurevars(function)
                 digest.update(marshal.dumps(_portable_code(function.__code__)))
-                captured = _manifest_value({**closure.globals, **closure.nonlocals})
+                captured = _metadata_value({**closure.globals, **closure.nonlocals})
                 digest.update(json.dumps(captured, sort_keys=True, allow_nan=False).encode())
     for name in ("panel_corner_position", "normal"):
         digest.update(getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels].tobytes())
     return digest.hexdigest()
 
 
-def restart_identity(vlm):
+def restart_configuration_hash(vlm):
     """Hash declared physics and output controls plus generated initial geometry."""
-    return _identity_digest(vlm, _identity_controls(vlm))
+    return _configuration_hash(vlm, _restart_controls(vlm))
 
 
-def restart_physics_identity(vlm):
+def restart_physics_hash(vlm):
     """Hash only VLM controls that can change solved or emitted physics.
 
     Logging cadence and per-surface sampling do not change evolution and are
-    omitted from the physics identity. The full identity separately records them.
+    omitted from the physics hash. The full configuration hash separately records them.
     """
-    return _identity_digest(vlm, _identity_controls(vlm, include_output_controls=False))
+    return _configuration_hash(vlm, _restart_controls(vlm, include_output_controls=False))
 
 
 def write_vlm_restart(vlm, group):
     """Store lattice fields and mutable rigid-motion state without reducing precision."""
-    group.attrs["version"] = 7
-    group.attrs["identity"] = vlm._restart_identity
-    group.attrs["physics_identity"] = getattr(
+    group.attrs["version"] = 8
+    group.attrs["configuration_hash"] = vlm._restart_configuration_hash
+    group.attrs["physics_hash"] = getattr(
         vlm,
-        "_restart_physics_identity",
-        restart_physics_identity(vlm),
+        "_restart_physics_hash",
+        restart_physics_hash(vlm),
     )
     group.attrs["solved"] = vlm._solved
     group.attrs["coupled_mode"] = vlm._coupled_mode
@@ -139,21 +139,21 @@ def write_vlm_restart(vlm, group):
 
 
 def validate_vlm_restart(vlm, group):
-    """Validate the current VLM backup schema and numerical identity before mutation."""
+    """Validate the current VLM backup schema and numerical configuration before mutation."""
     if group is None:
         raise ValueError("VPM backup is missing VLM continuation state")
     version = int(group.attrs.get("version", -1))
-    if version != 7:
+    if version != 8:
         raise ValueError("Incompatible VLM restart version; start a new run with this solver")
     expected_attributes = {
         "version",
-        "identity",
+        "configuration_hash",
         "solved",
         "coupled_mode",
         "time",
         "reference_speed",
         "reference_velocity",
-        "physics_identity",
+        "physics_hash",
     }
     allowed_attributes = (expected_attributes, expected_attributes | {"force_density"})
     if set(group.attrs) not in allowed_attributes:
@@ -163,12 +163,12 @@ def validate_vlm_restart(vlm, group):
             raise ValueError(f"Invalid VLM restart flag {name}")
     if np.shape(group.attrs["reference_velocity"]) != (3,):
         raise ValueError("Invalid VLM restart reference velocity")
-    expected_physics_identity = getattr(vlm, "_restart_physics_identity", None)
-    if expected_physics_identity is None:
-        expected_physics_identity = restart_physics_identity(vlm)
-    if group.attrs.get("physics_identity") != expected_physics_identity:
+    expected_physics_hash = getattr(vlm, "_restart_physics_hash", None)
+    if expected_physics_hash is None:
+        expected_physics_hash = restart_physics_hash(vlm)
+    if group.attrs.get("physics_hash") != expected_physics_hash:
         raise ValueError("VLM restart physics configuration does not match this solver")
-    if group.attrs.get("identity") != vlm._restart_identity:
+    if group.attrs.get("configuration_hash") != vlm._restart_configuration_hash:
         raise ValueError("VLM restart geometry or configuration does not match this solver")
     expected_fields = set(_FIELDS)
     if set(group) != {*expected_fields, "motion"}:

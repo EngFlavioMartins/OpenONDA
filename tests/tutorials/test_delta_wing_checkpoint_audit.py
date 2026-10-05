@@ -42,7 +42,7 @@ def _write_native(directory: Path, step: int, time: float) -> Path:
             time=time,
             time_step_size=0.0025,
             n_particles_total=1,
-            backup_format_version="10.2",
+            backup_format_version="10.3",
             numerical_configuration="{}",
             numerical_configuration_sha256=hashlib.sha256(b"{}").hexdigest(),
         )
@@ -63,7 +63,7 @@ def _write_native(directory: Path, step: int, time: float) -> Path:
             particles.create_dataset(name, data=np.zeros((1, 3)))
         vlm = solver.create_group("vlm")
         vlm.attrs.update(
-            version=7, time=time, identity="fixture", physics_identity="fixture-physics"
+            version=8, time=time, configuration_hash="fixture", physics_hash="fixture-physics"
         )
         vlm.create_group("motion")
         for name in (
@@ -122,7 +122,7 @@ def _write_surfaces(directory: Path, clocks: list[tuple[int, float]]) -> None:
 
 
 @pytest.fixture
-def published_prefix(tmp_path):
+def saved_prefix(tmp_path):
     for step, time in CLOCKS:
         _write_native(tmp_path, step, time)
     _write_surfaces(tmp_path, CLOCKS)
@@ -142,12 +142,12 @@ def test_rejects_160_surface_frames_on_four_native_backups(tmp_path):
         audit_checkpoint(_checkpoint(tmp_path))
 
 
-def test_matching_native_prefix_is_accepted(published_prefix):
-    evidence = audit_checkpoint(_checkpoint(published_prefix))
+def test_matching_native_prefix_is_accepted(saved_prefix):
+    evidence = audit_checkpoint(_checkpoint(saved_prefix))
 
     assert evidence["step"] == 1600
     assert evidence["time"] == 4.0
-    assert evidence["vlm_identity"] == "fixture"
+    assert evidence["vlm_configuration_hash"] == "fixture"
     assert evidence["vtp_series"]["frame_count"] == 4
     assert evidence["vtp_series"]["pvd_entries"] == 4
     assert evidence["vtp_series"]["native_checkpoint_count"] == 4
@@ -155,85 +155,85 @@ def test_matching_native_prefix_is_accepted(published_prefix):
     assert evidence["vtp_series"]["through_step"] == 1600
 
 
-def test_unrelated_vpm_resources_in_prefix_are_ignored(published_prefix):
-    (published_prefix / "vpm/vpm_notes.txt").write_text("not a checkpoint frame")
+def test_unrelated_vpm_resources_in_prefix_are_ignored(saved_prefix):
+    (saved_prefix / "vpm/vpm_notes.txt").write_text("not a checkpoint frame")
 
-    evidence = audit_checkpoint(_checkpoint(published_prefix))
+    evidence = audit_checkpoint(_checkpoint(saved_prefix))
 
     assert evidence["vtp_series"]["native_checkpoint_count"] == 4
     assert evidence["vtp_series"]["frame_count"] == 4
 
 
-def test_rejects_malformed_numeric_native_filename(published_prefix):
-    (published_prefix / "vpm/vpm_000400_extra.vtu").write_bytes(b"invalid frame filename")
+def test_rejects_malformed_numeric_native_filename(saved_prefix):
+    (saved_prefix / "vpm/vpm_000400_extra.vtu").write_bytes(b"invalid frame filename")
 
     with pytest.raises(ValueError, match="invalid vpm series filename"):
-        audit_checkpoint(_checkpoint(published_prefix))
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
 @pytest.mark.parametrize("source", ["h5", "vtu", "pvd"])
 @pytest.mark.parametrize("bad_time", [1.0 + 1.0e-12, float("nan")])
-def test_rejects_wrong_native_or_index_clock(published_prefix, source, bad_time):
+def test_rejects_wrong_native_or_index_clock(saved_prefix, source, bad_time):
     if source == "h5":
-        with h5py.File(published_prefix / "vpm/vpm_000400.h5", "r+") as archive:
+        with h5py.File(saved_prefix / "vpm/vpm_000400.h5", "r+") as archive:
             archive["solver"].attrs["time"] = bad_time
     elif source == "vtu":
-        _write_vtu(published_prefix / "vpm", 400, bad_time)
+        _write_vtu(saved_prefix / "vpm", 400, bad_time)
     else:
-        _write_index(published_prefix, [(400, bad_time), *CLOCKS[1:]])
+        _write_index(saved_prefix, [(400, bad_time), *CLOCKS[1:]])
 
     with pytest.raises(ValueError, match=r"(time.*native VPM clock|native VPM step/time)"):
-        audit_checkpoint(_checkpoint(published_prefix))
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
-def test_rejects_native_step_that_disagrees_with_filename(published_prefix):
-    with h5py.File(published_prefix / "vpm/vpm_000400.h5", "r+") as archive:
+def test_rejects_native_step_that_disagrees_with_filename(saved_prefix):
+    with h5py.File(saved_prefix / "vpm/vpm_000400.h5", "r+") as archive:
         archive["solver"].attrs["step"] = 401
 
     with pytest.raises(ValueError, match="native VPM step/time conflicts with filename"):
-        audit_checkpoint(_checkpoint(published_prefix))
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
 @pytest.mark.parametrize("missing", ["h5", "vtu", "vtp", "pvd_entry", "pvd"])
-def test_rejects_missing_prefix_companions(published_prefix, missing):
+def test_rejects_missing_prefix_companions(saved_prefix, missing):
     if missing == "pvd_entry":
-        _write_index(published_prefix, CLOCKS[1:])
+        _write_index(saved_prefix, CLOCKS[1:])
     elif missing == "pvd":
-        (published_prefix / "vlm.pvd").unlink()
+        (saved_prefix / "vlm.pvd").unlink()
     else:
         prefix = "vlm" if missing == "vtp" else "vpm"
-        (published_prefix / prefix / f"{prefix}_000400.{missing}").unlink()
+        (saved_prefix / prefix / f"{prefix}_000400.{missing}").unlink()
 
     with pytest.raises(ValueError):
-        audit_checkpoint(_checkpoint(published_prefix))
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
-def test_rejects_native_backup_omitted_from_surface_series(published_prefix):
-    (published_prefix / "vlm/vlm_000400.vtp").unlink()
-    _write_index(published_prefix, CLOCKS[1:])
+def test_rejects_native_backup_omitted_from_surface_series(saved_prefix):
+    (saved_prefix / "vlm/vlm_000400.vtp").unlink()
+    _write_index(saved_prefix, CLOCKS[1:])
 
     with pytest.raises(ValueError, match=r"extra=\[\], missing=\[400\]"):
-        audit_checkpoint(_checkpoint(published_prefix))
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
 @pytest.mark.parametrize("suffix", ["h5.tmp", "vtu.tmp"])
-def test_rejects_unfinished_publication_inside_prefix(published_prefix, suffix):
-    (published_prefix / "vpm" / f"vpm_000400.{suffix}").write_bytes(b"unfinished")
+def test_rejects_unfinished_output_inside_prefix(saved_prefix, suffix):
+    (saved_prefix / "vpm" / f"vpm_000400.{suffix}").write_bytes(b"unfinished")
 
-    with pytest.raises(ValueError, match="native HDF5/VTU prefix is not fully published"):
-        audit_checkpoint(_checkpoint(published_prefix))
+    with pytest.raises(ValueError, match="native HDF5/VTU prefix is not fully written"):
+        audit_checkpoint(_checkpoint(saved_prefix))
 
 
-def test_ignores_later_publications_before_reading_their_content(published_prefix):
+def test_ignores_later_outputs_before_reading_their_content(saved_prefix):
     # A later native backup, an unindexed surface, and a not-yet-written indexed
-    # surface can all coexist while the solver is publishing its next outputs.
-    (published_prefix / "vpm/vpm_002000.h5").write_bytes(b"unfinished HDF5")
-    (published_prefix / "vpm/vpm_002000.vtu.tmp").write_bytes(b"unfinished VTU")
-    (published_prefix / "vpm/vpm_002400.vtu").write_bytes(b"unfinished VTU")
-    (published_prefix / "vlm/vlm_002000.vtp").write_bytes(b"unfinished VTP")
-    _write_index(published_prefix, [*CLOCKS, (2400, float("nan"))])
+    # surface can all coexist while the solver is writing its next outputs.
+    (saved_prefix / "vpm/vpm_002000.h5").write_bytes(b"unfinished HDF5")
+    (saved_prefix / "vpm/vpm_002000.vtu.tmp").write_bytes(b"unfinished VTU")
+    (saved_prefix / "vpm/vpm_002400.vtu").write_bytes(b"unfinished VTU")
+    (saved_prefix / "vlm/vlm_002000.vtp").write_bytes(b"unfinished VTP")
+    _write_index(saved_prefix, [*CLOCKS, (2400, float("nan"))])
 
-    evidence = audit_checkpoint(_checkpoint(published_prefix))
+    evidence = audit_checkpoint(_checkpoint(saved_prefix))
 
     assert evidence["vtp_series"]["frame_count"] == 4
     assert evidence["vtp_series"]["pvd_entries"] == 4
@@ -241,8 +241,8 @@ def test_ignores_later_publications_before_reading_their_content(published_prefi
     assert evidence["vtp_series"]["last_frame"] == "vlm_001600.vtp"
 
 
-def test_auditing_earlier_checkpoint_reports_only_its_prefix(published_prefix):
-    evidence = audit_checkpoint(_checkpoint(published_prefix, 800))
+def test_auditing_earlier_checkpoint_reports_only_its_prefix(saved_prefix):
+    evidence = audit_checkpoint(_checkpoint(saved_prefix, 800))
 
     assert evidence["vtp_series"]["frame_count"] == 2
     assert evidence["vtp_series"]["pvd_entries"] == 2

@@ -28,7 +28,7 @@ class FieldState:
     -----
     Inputs are converted to contiguous ``float64`` arrays and validated for
     finite values. Already-compatible inputs may share storage; callers that
-    require independent ownership should use :meth:`copy`. The solver may
+    require independent storage should use :meth:`copy`. The solver may
     update the published arrays in place when exposing a newly solved state.
     """
 

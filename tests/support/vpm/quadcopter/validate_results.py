@@ -89,7 +89,7 @@ def validate_impulse(p, end, forces):
     print(f"Bound-plus-wake impulse / integrated blade thrust: {ratio:.4f}")
     if blade_impulse <= 0 or not np.isfinite(ratio) or abs(ratio - 1) > 0.10:
         return [
-            "coupled impulse / thrust differs from unity by more than10%; inspect wake health and boundary losses"
+            "coupled impulse / thrust differs from unity by more than10%; inspect wake particle state and boundary losses"
         ]
     return []
 
@@ -103,7 +103,7 @@ def main():
     steps = state["initial_step"] + config["run"]["steps"]
     end = state["initial_time"] + config["run"]["steps"] * config["numerics"]["time_step_size"]
     failures = []
-    if p.metadata["lifecycle"]["status"] != "completed" or state["step"] != steps:
+    if p.metadata["run_status"]["status"] != "completed" or state["step"] != steps:
         print(
             f"[FAIL] Run incomplete; last recorded step {state['step']}/{steps}; convergence is unqualified"
         )

@@ -1,7 +1,7 @@
-"""One precision policy for every field OpenONDA writes to disk.
+"""One output precision setting for every field OpenONDA writes to disk.
 
 Write precision is independent of the precision a solver computes in. A run
-may integrate in ``f64`` and still publish ``f32`` output, because a stored
+may integrate in ``f64`` and still write ``f32`` output, because a stored
 field is read by ParaView and by post-processing, not by the time integrator.
 
 Three levels are available. ``f64`` and ``f32`` are stored in containers of
@@ -12,7 +12,7 @@ ParaView cannot open. Rounding still pays, because the discarded mantissa
 bytes become zeros that the deflate and byte-shuffle filters remove almost
 entirely.
 
-Integer fields are identity, whatever the level: particle and cell identifiers
+Integer fields remain unchanged at every precision: particle and cell identifiers
 are exact quantities and are never rounded.
 """
 

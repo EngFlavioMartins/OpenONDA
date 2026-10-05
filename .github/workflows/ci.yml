@@ -99,8 +99,8 @@ jobs:
             qualification-results.xml
             numerical-results.json
 
-  slow-contracts:
-    name: Slow CPU integration and restart contracts
+  slow-solver-checks:
+    name: Slow CPU integration and restart checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -112,12 +112,12 @@ jobs:
       - run: >-
           python -m pytest tests -p no:cacheprovider
           -m "slow and not qualification and not gpu"
-          --junitxml=slow-contracts-results.xml
+          --junitxml=slow-solver-checks-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: slow-contracts-results
-          path: slow-contracts-results.xml
+          name: slow-solver-checks-results
+          path: slow-solver-checks-results.xml
 
   nightly-gpu:
     name: Nightly GPU/backend qualification

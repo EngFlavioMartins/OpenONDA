@@ -306,7 +306,7 @@ class ExtrudedCartesianMesher:
         Returns
         -------
         dict[str, object]
-            Native mesh connectivity and provenance. Vertex coordinates have
+            Native mesh connectivity and source information. Vertex coordinates have
             shape ``(n_vertices, 3)`` in m; owner/neighbour indices use the
             standard owner-to-neighbour face orientation.
 

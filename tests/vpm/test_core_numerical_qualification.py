@@ -120,7 +120,7 @@ def test_gaussian_biot_savart_velocity_and_gradient_match_the_closed_form(
 ):
     """Claim: direct Gaussian fields implement the regularized Biot--Savart law.
 
-    The oracle is the closed-form Gaussian kernel and its analytic spatial
+    The reference is the closed-form Gaussian kernel and its analytic spatial
     derivative, evaluated away from the removable source singularity.  The
     error norm is relative L2 over 12 fixed points.  CPU/f64 and seed 42 remove
     backend and stochastic uncertainty.  The kernel deliberately uses the
@@ -173,7 +173,7 @@ def test_treecode_converges_to_direct_summation_as_the_opening_angle_closes(
 ):
     """Claim: tightening the tree opening angle converges toward direct summation.
 
-    The independent oracle is the solver's pairwise direct backend for the
+    The independent reference is the solver's pairwise direct backend for the
     same deterministic 512-particle cloud.  Relative L2 velocity error is
     measured at 64 off-particle targets for theta=(0.8, 0.4, 0.2), CPU/f32,
     multipole order two, seed 20260831.  The acceptance limits require strict

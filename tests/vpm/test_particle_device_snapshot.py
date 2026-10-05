@@ -1,4 +1,4 @@
-"""Device rollback preserves the existing host replacement contract."""
+"""Device rollback preserves the existing host replacement conditions."""
 
 from types import MethodType, SimpleNamespace
 
@@ -12,13 +12,15 @@ from source.solvers.vpm.stabilization.manager import StabilizationManager
 
 
 @pytest.fixture(params=["f32", "f64"])
-def owner(request):
+def solver(request):
     ti.init(arch=ti.cpu, cpu_max_num_threads=2)
     particles = Particles(max_n_particles=32, float_dtype=request.param)
-    lineage = SimpleNamespace(reference_vortex_strength=None, reference_lengths=None)
-    lineage.on_replacement = MethodType(StabilizationManager.on_replacement, lineage)
+    refinement_reference = SimpleNamespace(reference_vortex_strength=None, reference_lengths=None)
+    refinement_reference.on_replacement = MethodType(
+        StabilizationManager.on_replacement, refinement_reference
+    )
     solver = SimpleNamespace(
-        particles=particles, stabilization=lineage, _axisymmetric_orbits_validated=True
+        particles=particles, stabilization=refinement_reference, _axisymmetric_orbits_validated=True
     )
     solver.capture_particle_snapshot = MethodType(VPMSolver.capture_particle_snapshot, solver)
     solver.restore_particle_snapshot = MethodType(VPMSolver.restore_particle_snapshot, solver)
@@ -28,7 +30,7 @@ def owner(request):
     ti.reset()
 
 
-def _payload(count, seed=49):
+def _particle_fields(count, seed=49):
     rng = np.random.default_rng(seed)
     return {
         "position": rng.normal(size=(count, 3)),
@@ -45,122 +47,122 @@ def _payload(count, seed=49):
     }
 
 
-def _assert_payload(particles, expected):
+def _assert_particle_fields(solver, expected):
     expected = {
         name: np.asarray(
-            values, dtype=(np.int32 if name.endswith("_id") else particles._np_float_dtype)
+            values, dtype=(np.int32 if name.endswith("_id") else solver._np_float_dtype)
         )
         for name, values in expected.items()
     }
     count = len(expected["position"])
-    assert particles.n_particles_total == count
-    assert particles.device_n_particles[None] == count
+    assert solver.n_particles_total == count
+    assert solver.device_n_particles[None] == count
     for name, values in expected.items():
-        np.testing.assert_array_equal(getattr(particles, name).to_numpy()[:count], values)
+        np.testing.assert_array_equal(getattr(solver, name).to_numpy()[:count], values)
     np.testing.assert_allclose(
-        particles.vorticity.to_numpy()[:count],
+        solver.vorticity.to_numpy()[:count],
         expected["vortex_strength"] / expected["particle_volume"][:, None],
-        rtol=4 * np.finfo(particles._np_float_dtype).eps,
+        rtol=4 * np.finfo(solver._np_float_dtype).eps,
     )
     np.testing.assert_array_equal(
-        particles.effective_viscosity.to_numpy()[:count],
+        solver.effective_viscosity.to_numpy()[:count],
         expected["kinematic_viscosity"] + expected["eddy_viscosity"],
     )
 
 
-def test_device_snapshot_restores_all_fields_without_host_particle_reads(owner, monkeypatch):
-    original = _payload(7)
-    owner.particles.replace_from_numpy(**original)
+def test_device_snapshot_restores_all_fields_without_host_particle_reads(solver, monkeypatch):
+    original = _particle_fields(7)
+    solver.particles.replace_from_numpy(**original)
     for name in original:
         monkeypatch.setattr(
-            owner.particles,
+            solver.particles,
             name + "_cpu",
             lambda: pytest.fail("device rollback must not download a particle field"),
         )
-    snapshot = owner.capture_particle_snapshot(slot="predictor")
-    assert snapshot.lineage is None
-    owner.particles.replace_from_numpy(**_payload(11, seed=81))
-    revision = owner.particles.state_revision
-    owner.restore_particle_snapshot(snapshot)
-    assert owner.particles.state_revision == revision + 1
-    assert not owner._axisymmetric_orbits_validated
-    _assert_payload(owner.particles, original)
+    snapshot = solver.capture_particle_snapshot(slot="predictor")
+    assert snapshot.refinement_reference is None
+    solver.particles.replace_from_numpy(**_particle_fields(11, seed=81))
+    revision = solver.particles.state_revision
+    solver.restore_particle_snapshot(snapshot)
+    assert solver.particles.state_revision == revision + 1
+    assert not solver._axisymmetric_orbits_validated
+    _assert_particle_fields(solver.particles, original)
 
 
-def test_nested_slots_are_independent_and_reused_handles_fail_before_mutation(owner):
-    first = _payload(4)
-    second = _payload(6, seed=55)
-    owner.particles.replace_from_numpy(**first)
-    predictor = owner.capture_particle_snapshot(slot="predictor")
-    owner.particles.replace_from_numpy(**second)
-    trial = owner.capture_particle_snapshot(slot="trial")
-    owner.restore_particle_snapshot(predictor)
-    _assert_payload(owner.particles, first)
-    owner.restore_particle_snapshot(trial)
-    _assert_payload(owner.particles, second)
-    reused = owner.capture_particle_snapshot(slot="trial")
+def test_nested_slots_are_independent_and_reused_handles_fail_before_mutation(solver):
+    first = _particle_fields(4)
+    second = _particle_fields(6, seed=55)
+    solver.particles.replace_from_numpy(**first)
+    predictor = solver.capture_particle_snapshot(slot="predictor")
+    solver.particles.replace_from_numpy(**second)
+    trial = solver.capture_particle_snapshot(slot="trial")
+    solver.restore_particle_snapshot(predictor)
+    _assert_particle_fields(solver.particles, first)
+    solver.restore_particle_snapshot(trial)
+    _assert_particle_fields(solver.particles, second)
+    reused = solver.capture_particle_snapshot(slot="trial")
     assert reused.buffer is trial.buffer
-    revision = owner.particles.state_revision
+    revision = solver.particles.state_revision
     with pytest.raises(RuntimeError, match="reused or released"):
-        owner.restore_particle_snapshot(trial)
-    assert owner.particles.state_revision == revision
-    _assert_payload(owner.particles, second)
+        solver.restore_particle_snapshot(trial)
+    assert solver.particles.state_revision == revision
+    _assert_particle_fields(solver.particles, second)
 
 
-def test_grown_slot_releases_old_allocation_and_empty_snapshot_restores_count(owner):
-    empty = owner.capture_particle_snapshot(slot="predictor")
-    owner.particles.replace_from_numpy(**_payload(4))
-    owner.restore_particle_snapshot(empty)
-    assert owner.particles.n_particles_total == 0
-    assert owner.particles.device_n_particles[None] == 0
-    owner.particles.replace_from_numpy(**_payload(4))
-    grown = owner.capture_particle_snapshot(slot="predictor")
+def test_grown_slot_releases_old_allocation_and_empty_snapshot_restores_count(solver):
+    empty = solver.capture_particle_snapshot(slot="predictor")
+    solver.particles.replace_from_numpy(**_particle_fields(4))
+    solver.restore_particle_snapshot(empty)
+    assert solver.particles.n_particles_total == 0
+    assert solver.particles.device_n_particles[None] == 0
+    solver.particles.replace_from_numpy(**_particle_fields(4))
+    grown = solver.capture_particle_snapshot(slot="predictor")
     assert grown.buffer.capacity >= 4
     assert empty.buffer._tree is None
     with pytest.raises(RuntimeError, match="reused or released"):
-        owner.restore_particle_snapshot(empty)
+        solver.restore_particle_snapshot(empty)
 
 
-def test_snapshot_preserves_refinement_lineage(owner):
-    original = _payload(6)
-    owner.particles.replace_from_numpy(**original)
-    owner.stabilization.reference_vortex_strength = np.full(6, 100.0)
-    owner.stabilization.reference_lengths = np.full(6, 20.0)
-    snapshot = owner.capture_particle_snapshot(slot="predictor")
-    assert snapshot.lineage is not None
-    owner.particles.replace_from_numpy(**_payload(9, seed=12))
-    owner.restore_particle_snapshot(snapshot)
+def test_snapshot_preserves_refinement_reference(solver):
+    original = _particle_fields(6)
+    solver.particles.replace_from_numpy(**original)
+    solver.stabilization.reference_vortex_strength = np.full(6, 100.0)
+    solver.stabilization.reference_lengths = np.full(6, 20.0)
+    snapshot = solver.capture_particle_snapshot(slot="predictor")
+    assert snapshot.refinement_reference is not None
+    solver.particles.replace_from_numpy(**_particle_fields(9, seed=12))
+    solver.restore_particle_snapshot(snapshot)
     magnitude = np.linalg.norm(
-        original["vortex_strength"].astype(owner.particles._np_float_dtype).astype(np.float64),
+        original["vortex_strength"].astype(solver.particles._np_float_dtype).astype(np.float64),
         axis=1,
     )
-    np.testing.assert_array_equal(owner.stabilization.reference_vortex_strength, magnitude)
+    np.testing.assert_array_equal(solver.stabilization.reference_vortex_strength, magnitude)
     np.testing.assert_array_equal(
-        owner.stabilization.reference_lengths,
+        solver.stabilization.reference_lengths,
         np.cbrt(
-            original["particle_volume"].astype(owner.particles._np_float_dtype).astype(np.float64)
+            original["particle_volume"].astype(solver.particles._np_float_dtype).astype(np.float64)
         ),
     )
-    _assert_payload(owner.particles, original)
+    _assert_particle_fields(solver.particles, original)
 
 
-def test_snapshot_cannot_restore_into_another_owner(owner):
-    owner.particles.replace_from_numpy(**_payload(4))
-    snapshot = owner.capture_particle_snapshot(slot="predictor")
+def test_snapshot_cannot_restore_into_another_particle_container(solver):
+    solver.particles.replace_from_numpy(**_particle_fields(4))
+    snapshot = solver.capture_particle_snapshot(slot="predictor")
     other = Particles(max_n_particles=32, float_dtype="f64")
-    with pytest.raises(ValueError, match="another solver"):
+    with pytest.raises(ValueError, match="another particle container"):
         snapshot.restore(other)
     assert other.n_particles_total == 0
 
 
-def test_invalid_snapshot_is_rejected_before_restoring_any_fields(owner):
-    original = _payload(4)
-    owner.particles.replace_from_numpy(**original)
-    owner.particles.velocity[2] = [float("nan"), 0.0, 0.0]
-    snapshot = owner.capture_particle_snapshot(slot="predictor")
-    owner.particles.replace_from_numpy(**original)
-    revision = owner.particles.state_revision
+def test_invalid_snapshot_is_rejected_before_restoring_any_fields(solver):
+    original = _particle_fields(4)
+    solver.particles.replace_from_numpy(**original)
+    solver.particles.velocity[2] = [float("nan"), 0.0, 0.0]
+    snapshot = solver.capture_particle_snapshot(slot="predictor")
+    solver.particles.replace_from_numpy(**original)
+    revision = solver.particles.state_revision
     with pytest.raises(ValueError, match="non-finite"):
-        owner.restore_particle_snapshot(snapshot)
-    assert owner.particles.state_revision == revision
-    _assert_payload(owner.particles, original)
+        solver.restore_particle_snapshot(snapshot)
+    assert solver.particles.state_revision == revision
+    _assert_particle_fields(solver.particles, original)

@@ -8,7 +8,7 @@ Owns all logic for:
 
 Nothing in this module should import from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
-orchestrator.
+step controller.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: March 2026
@@ -59,7 +59,7 @@ class VLMDiagnostics:
         case_dir: str,
         sample_directory: str | None = None,
     ) -> None:
-        """Record VLM force and vector-strength scalars and flush one owner sample.
+        """Record VLM force and vector-strength scalars and flush one solver sample.
 
         Parameters
         ----------
@@ -105,7 +105,7 @@ class VLMDiagnostics:
 
         # Coupled VLM is an owned VPM component.  The caller reaches this
         # method only after an accepted VPM step, so every row belongs to the
-        # owner's accepted clock; no VLM-specific cadence may skip it.
+        # solver's accepted clock; no VLM-specific cadence may skip it.
         VLMDiagnostics.export_forces_csv(
             vlm_solver,
             forces,

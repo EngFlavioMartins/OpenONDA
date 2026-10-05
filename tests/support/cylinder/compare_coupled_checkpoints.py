@@ -1,8 +1,8 @@
 """Read-only matched native checkpoint and observation comparison.
 
 No solver import, interpolation, coordinate tolerance, time shift, or inferred
-accuracy pass is used. Coupled artifact digests, numerical configurations and
-committed clocks are admitted before any numerical differences are reported.
+accuracy pass is used. Coupled checkpoint_file digests, numerical configurations and
+committed clocks are validated before any numerical differences are reported.
 """
 
 import argparse
@@ -39,8 +39,8 @@ def mapping_digest(value):
     ).hexdigest()
 
 
-def artifact_digest(path):
-    """The native coupled manifest contract, including names inside directories."""
+def checkpoint_path_hash(path):
+    """The native coupled checkpoint_info comparison_settings, including names inside directories."""
     digest = hashlib.sha256()
     children = (
         sorted(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else [path]
@@ -62,7 +62,7 @@ def contained_path(root, name):
         or ".." in relative.parts
         or not result.is_relative_to(root.resolve())
     ):
-        raise ValueError(f"Artifact path escapes checkpoint: {name}")
+        raise ValueError(f"Checkpoint file path escapes checkpoint: {name}")
     if not result.exists():
         raise FileNotFoundError(result)
     return result
@@ -90,22 +90,26 @@ def _clock_equal(actual, expected):
 
 def load_checkpoint(directory):
     directory = directory.resolve()
-    manifest_path = directory / "manifest.json"
-    manifest_bytes = manifest_path.read_bytes()
-    manifest = json.loads(manifest_bytes)
-    if manifest.get("kind") != "openonda.coupled_backup" or manifest.get("format_version") != 12:
-        raise ValueError("Unsupported coupled checkpoint schema; require native v12")
-    if mapping_digest(manifest["config"]) != manifest["config_sha256"]:
+    metadata_path = directory / "checkpoint_info.json"
+    metadata_bytes = metadata_path.read_bytes()
+    checkpoint_info = json.loads(metadata_bytes)
+    if (
+        checkpoint_info.get("kind") != "openonda.coupled_backup"
+        or checkpoint_info.get("format_version") != 13
+    ):
+        raise ValueError("Unsupported coupled checkpoint schema; require native v13")
+    if mapping_digest(checkpoint_info["config"]) != checkpoint_info["config_sha256"]:
         raise ValueError("Coupled numerical configuration digest mismatch")
-    if set(manifest["artifacts"]) != set(manifest["artifact_sha256"]):
-        raise ValueError("Coupled manifest artifact/digest keys disagree")
-    artifacts = {
-        name: contained_path(directory, value) for name, value in manifest["artifacts"].items()
+    if set(checkpoint_info["checkpoint_files"]) != set(checkpoint_info["file_sha256"]):
+        raise ValueError("Coupled checkpoint file/digest keys disagree")
+    checkpoint_files = {
+        name: contained_path(directory, value)
+        for name, value in checkpoint_info["checkpoint_files"].items()
     }
-    for name, path in artifacts.items():
-        if artifact_digest(path) != manifest["artifact_sha256"][name]:
-            raise ValueError(f"Coupled artifact SHA256 mismatch: {name}")
-    with h5py.File(artifacts["vpm"], "r") as saved:
+    for name, path in checkpoint_files.items():
+        if checkpoint_path_hash(path) != checkpoint_info["file_sha256"][name]:
+            raise ValueError(f"Coupled checkpoint_file SHA256 mismatch: {name}")
+    with h5py.File(checkpoint_files["vpm"], "r") as saved:
         solver = {
             name: value.tolist()
             if isinstance(value, np.ndarray)
@@ -118,12 +122,12 @@ def load_checkpoint(directory):
     vpm_config = json.loads(solver["numerical_configuration"])
     if mapping_digest(vpm_config) != solver["numerical_configuration_sha256"]:
         raise ValueError("VPM numerical configuration digest mismatch")
-    if vpm_config != manifest["config"]["vpm"]:
-        raise ValueError("VPM numerical configuration disagrees with coupled manifest")
-    if int(solver["step"]) != manifest["vpm_step"] or not _clock_equal(
-        solver["time"], manifest["time"]
+    if vpm_config != checkpoint_info["config"]["vpm"]:
+        raise ValueError("VPM numerical configuration disagrees with coupled checkpoint_info")
+    if int(solver["step"]) != checkpoint_info["vpm_step"] or not _clock_equal(
+        solver["time"], checkpoint_info["time"]
     ):
-        raise ValueError("VPM committed clock disagrees with coupled manifest")
+        raise ValueError("VPM committed clock disagrees with coupled checkpoint_info")
     particle_count = int(solver["n_particles_total"])
     if any(
         len(value) != particle_count or not np.isfinite(value).all() for value in particle.values()
@@ -131,56 +135,57 @@ def load_checkpoint(directory):
         raise ValueError("Invalid or nonfinite VPM particle field")
     if particle["position"].shape != (particle_count, 3):
         raise ValueError("Invalid VPM coordinate shape")
-    fvm_root = artifacts["fvm"]
-    fvm_manifest = json.loads((fvm_root / "manifest.json").read_text())
+    fvm_root = checkpoint_files["fvm"]
+    fvm_checkpoint_info = json.loads((fvm_root / "checkpoint_info.json").read_text())
     if (
-        fvm_manifest.get("format_version") != 8
-        or len(fvm_manifest["files"]) != fvm_manifest["n_ranks"]
+        fvm_checkpoint_info.get("format_version") != 9
+        or len(fvm_checkpoint_info["files"]) != fvm_checkpoint_info["n_ranks"]
     ):
         raise ValueError("Unsupported or incomplete partitioned FVM checkpoint")
-    ranks = [decode_npz(contained_path(fvm_root, name)) for name in fvm_manifest["files"]]
+    ranks = [decode_npz(contained_path(fvm_root, name)) for name in fvm_checkpoint_info["files"]]
     for state in ranks:
         if (
-            int(state["step"]) != manifest["fvm_step"]
-            or int(state["n_committed_time_steps"]) != manifest["fvm_step"]
+            int(state["step"]) != checkpoint_info["fvm_step"]
+            or int(state["n_committed_time_steps"]) != checkpoint_info["fvm_step"]
         ):
-            raise ValueError("FVM committed step disagrees with coupled manifest")
-        if not _clock_equal(state["time"], manifest["time"]):
-            raise ValueError("FVM committed time disagrees with coupled manifest")
+            raise ValueError("FVM committed step disagrees with coupled checkpoint_info")
+        if not _clock_equal(state["time"], checkpoint_info["time"]):
+            raise ValueError("FVM committed time disagrees with coupled checkpoint_info")
         if not all(np.isfinite(state[name]).all() for name in _FVM_FIELDS):
             raise ValueError("Nonfinite FVM primary field")
     if (
-        manifest["fvm_step"] != manifest["coupling_step"] * manifest["n_fvm_substeps"]
-        or manifest["vpm_step"] != manifest["coupling_step"]
+        checkpoint_info["fvm_step"]
+        != checkpoint_info["coupling_step"] * checkpoint_info["n_fvm_substeps"]
+        or checkpoint_info["vpm_step"] != checkpoint_info["coupling_step"]
     ):
         raise ValueError("Coupled/FVM/VPM step ratios disagree")
-    boundary = decode_npz(artifacts["vpm_boundary_condition"])
-    for name, path in artifacts.items():
-        if artifact_digest(path) != manifest["artifact_sha256"][name]:
+    boundary = decode_npz(checkpoint_files["vpm_boundary_condition"])
+    for name, path in checkpoint_files.items():
+        if checkpoint_path_hash(path) != checkpoint_info["file_sha256"][name]:
             raise ValueError(f"Checkpoint changed while being read: {name}")
-    if manifest_path.read_bytes() != manifest_bytes:
-        raise ValueError("Checkpoint manifest changed while being read")
+    if metadata_path.read_bytes() != metadata_bytes:
+        raise ValueError("Checkpoint checkpoint_info changed while being read")
     return {
         "directory": directory,
-        "manifest": manifest,
-        "fvm_manifest": fvm_manifest,
+        "checkpoint_info": checkpoint_info,
+        "fvm_checkpoint_info": fvm_checkpoint_info,
         "ranks": ranks,
         "particle": particle,
         "solver": solver,
         "boundary": boundary,
-        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "checkpoint_info_sha256": hashlib.sha256(metadata_bytes).hexdigest(),
     }
 
 
-def _json_identity(value):
-    """Exact JSON identity; in particular True is not interchangeable with 1."""
+def _json_comparison_value(value):
+    """Exact JSON configuration; in particular True is not interchangeable with 1."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def admit_comparison_identity(control, candidate):
-    left, right = control["manifest"], candidate["manifest"]
-    for manifest in (left, right):
-        if mapping_digest(manifest["config"]) != manifest["config_sha256"]:
+def validate_matching_checkpoints(control, candidate):
+    left, right = control["checkpoint_info"], candidate["checkpoint_info"]
+    for checkpoint_info in (left, right):
+        if mapping_digest(checkpoint_info["config"]) != checkpoint_info["config_sha256"]:
             raise ValueError("Comparison configuration digest mismatch")
     for key in ("coupling_step", "fvm_step", "vpm_step", "n_fvm_substeps"):
         if left[key] != right[key]:
@@ -188,7 +193,7 @@ def admit_comparison_identity(control, candidate):
     if not _clock_equal(left["time"], right["time"]):
         raise ValueError("Unmatched coupled checkpoint times")
     for key in ("config", "config_sha256"):
-        if _json_identity(left[key]) != _json_identity(right[key]):
+        if _json_comparison_value(left[key]) != _json_comparison_value(right[key]):
             raise ValueError(f"Unmatched coupled checkpoints: {key}")
 
 
@@ -296,7 +301,7 @@ def compare_particles(left, right):
             for name in sorted(set(left) & set(right))
         }
         result["ordered_storage_note"] = (
-            "Storage-order comparison; duplicate coordinates alone do not establish physical lineage"
+            "Storage-order comparison; duplicate coordinates alone do not establish particle correspondence"
         )
     for role, fields, matched in (("reference", left, a), ("candidate", right, b)):
         unmatched = np.setdiff1d(np.arange(len(fields["position"])), matched, assume_unique=True)
@@ -319,10 +324,13 @@ def compare_particles(left, right):
 
 
 def compare_fvm(control, candidate):
-    left_manifest, right_manifest = control["fvm_manifest"], candidate["fvm_manifest"]
+    left_checkpoint_info, right_checkpoint_info = (
+        control["fvm_checkpoint_info"],
+        candidate["fvm_checkpoint_info"],
+    )
     for name in ("config_hash", "mesh_hash", "n_global_cells", "n_ranks", "kinematic_viscosity"):
-        if left_manifest[name] != right_manifest[name]:
-            raise ValueError(f"FVM identity mismatch: {name}")
+        if left_checkpoint_info[name] != right_checkpoint_info[name]:
+            raise ValueError(f"FVM configuration mismatch: {name}")
     result = []
     for rank, (left, right) in enumerate(zip(control["ranks"], candidate["ranks"], strict=True)):
         for name in ("global_cell_id", "global_face_id"):
@@ -379,35 +387,39 @@ def matching_diagnostic(path, step, clock):
     return {
         "available": True,
         "path": str(path),
-        "sha256": artifact_digest(path),
+        "sha256": checkpoint_path_hash(path),
         "record": matches[0],
     }
 
 
-def gates(checkpoint, diagnostics_path):
-    manifest = checkpoint["manifest"]
-    limits = manifest["config"]["coupler"]
-    diagnostic = matching_diagnostic(diagnostics_path, manifest["coupling_step"], manifest["time"])
+def numerical_checks(checkpoint, diagnostics_path):
+    checkpoint_info = checkpoint["checkpoint_info"]
+    limits = checkpoint_info["config"]["coupler"]
+    diagnostic = matching_diagnostic(
+        diagnostics_path, checkpoint_info["coupling_step"], checkpoint_info["time"]
+    )
     result = {
         "vpm_lagrangian_cfl": checkpoint["solver"].get("lagrangian_cfl"),
-        "vpm_lagrangian_cfl_limit": manifest["config"]["vpm"]["health_limits"]["lagrangian_cfl"][
-            "maximum"
-        ],
+        "vpm_lagrangian_cfl_limit": checkpoint_info["config"]["vpm"]["state_limits"][
+            "lagrangian_cfl"
+        ]["maximum"],
         "fvm_max_courant_per_rank": [
             float(rank["max_courant_number"]) for rank in checkpoint["ranks"]
         ],
-        "fvm_residual_gate_note": "Residual convergence is not stored in native FVM backup; no residual pass inferred from a committed clock",
+        "fvm_residual_check_note": "Residual convergence is not stored in native FVM backup; no residual pass inferred from a committed clock",
         "accepted_diagnostic": diagnostic,
     }
     fvm_diagnostic = matching_diagnostic(
-        diagnostics_path.parent / "diagnostics.jsonl", manifest["fvm_step"], manifest["time"]
+        diagnostics_path.parent / "diagnostics.jsonl",
+        checkpoint_info["fvm_step"],
+        checkpoint_info["time"],
     )
     result["fvm_accepted_diagnostic"] = fvm_diagnostic
     metadata_path = diagnostics_path.parent / "fvm_metadata.json"
     if metadata_path.is_file():
         metadata = json.loads(metadata_path.read_text())
         result["fvm_acceptance_configuration"] = metadata.get("configuration", {}).get("acceptance")
-        result["fvm_metadata_sha256"] = artifact_digest(metadata_path)
+        result["fvm_metadata_sha256"] = checkpoint_path_hash(metadata_path)
     if fvm_diagnostic["available"]:
         fvm_row = fvm_diagnostic["record"]
         solves = fvm_row.get("linear_solves", [])
@@ -416,12 +428,12 @@ def gates(checkpoint, diagnostics_path):
         )
         result["fvm_nonfinite_value_count"] = fvm_row.get("n_nonfinite_values")
         result["fvm_final_residuals"] = fvm_row.get("residuals")
-        result["fvm_residual_gate_note"] = (
+        result["fvm_residual_check_note"] = (
             "Convergence flags and residuals are from the unique accepted FVM diagnostic row; "
             "no new residual threshold or pass criterion introduced"
         )
     value, maximum = result["vpm_lagrangian_cfl"], result["vpm_lagrangian_cfl_limit"]
-    result["vpm_lagrangian_cfl_gate_met"] = (
+    result["vpm_lagrangian_cfl_within_limit"] = (
         bool(value <= maximum) if value is not None and maximum is not None else None
     )
     if diagnostic["available"]:
@@ -439,7 +451,7 @@ def gates(checkpoint, diagnostics_path):
                 "normal_limit": limits["interface_normal_tolerance"],
                 "gradient_limit": limits["interface_gradient_tolerance"],
                 "recorded_converged": iteration.get("converged"),
-                "gates_met": bool(
+                "checks_passed": bool(
                     row["normal_residual_rms"] <= limits["interface_normal_tolerance"]
                     and row["gradient_residual_rms"] <= limits["interface_gradient_tolerance"]
                 ),
@@ -482,7 +494,7 @@ def compare_samples(control, candidate, clock, fvm_step, vpm_step):
             "reference_rows": len(data[0][1]),
             "candidate_rows": len(data[1][1]),
             "hashes": {
-                role: artifact_digest(path) if path.is_file() else None
+                role: checkpoint_path_hash(path) if path.is_file() else None
                 for role, path in zip(("reference", "candidate"), paths, strict=True)
             },
         }
@@ -546,8 +558,8 @@ def compare_checkpoints(
     control_diagnostics,
     candidate_diagnostics,
 ):
-    left, right = control["manifest"], candidate["manifest"]
-    admit_comparison_identity(control, candidate)
+    left, right = control["checkpoint_info"], candidate["checkpoint_info"]
+    validate_matching_checkpoints(control, candidate)
     boundary = {
         key: field_difference(control["boundary"][key], candidate["boundary"][key])
         for key in sorted(set(control["boundary"]) & set(candidate["boundary"]))
@@ -571,25 +583,25 @@ def compare_checkpoints(
         "config_sha256": left["config_sha256"],
         "control": {
             "directory": str(control["directory"]),
-            "manifest_sha256": control["manifest_sha256"],
-            "artifact_sha256": left["artifact_sha256"],
+            "checkpoint_info_sha256": control["checkpoint_info_sha256"],
+            "file_sha256": left["file_sha256"],
             "config_sha256": left["config_sha256"],
         },
         "candidate": {
             "directory": str(candidate["directory"]),
-            "manifest_sha256": candidate["manifest_sha256"],
-            "artifact_sha256": right["artifact_sha256"],
+            "checkpoint_info_sha256": candidate["checkpoint_info_sha256"],
+            "file_sha256": right["file_sha256"],
             "config_sha256": right["config_sha256"],
         },
-        "scope": "One matched accepted checkpoint, not long-time trajectory, periodicity, phase or performance certification",
+        "scope": "One matched accepted checkpoint, not long-time trajectory, periodicity, phase or performance validation",
         "fvm": compare_fvm(control, candidate),
         "vpm": compare_particles(control["particle"], candidate["particle"]),
         "vpm_solver_state": solver_state,
         "boundary_history": boundary,
         "boundary_missing_fields": sorted(set(control["boundary"]) ^ set(candidate["boundary"])),
-        "gates": {
-            "control": gates(control, control_diagnostics),
-            "candidate": gates(candidate, candidate_diagnostics),
+        "numerical_checks": {
+            "control": numerical_checks(control, control_diagnostics),
+            "candidate": numerical_checks(candidate, candidate_diagnostics),
         },
         "samples": compare_samples(
             control_samples, candidate_samples, left["time"], left["fvm_step"], left["vpm_step"]

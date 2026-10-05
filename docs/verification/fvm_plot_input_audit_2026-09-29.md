@@ -7,7 +7,7 @@ from a fresh Git export. Existing coupled
 cube and VPM archives describe different cases and cannot replace them.
 Taylor–Green now has a genuine archived default 24×24, ten-step history through
 t=0.05; its completion and clone plotting evidence are tracked separately.
-Coupled NACA and the full cylinder campaign also remain outstanding.
+Coupled NACA and the full cylinder parameter study also remain outstanding.
 
 Five shared FVM plotting helpers already apply the thesis theme and validate
 canvas geometry. Their CSV readers now reject header-only histories, which
@@ -52,12 +52,12 @@ size or upper bound.
 
 The ignored `build/fvm_plot_completion/run_defaults.py` has been executed with
 the installed Python environment.
-It materializes each unchanged default tutorial into a new isolated workspace,
+It copies each unchanged default tutorial into a new isolated workspace,
 executes `allrun.sh` then `allplot.sh` serially, and records setup hashes,
 commands, return codes, elapsed wall time and resulting bytes in `summary.json`.
 All command output goes to disk. A failed simulation skips that case's plots
 and retains evidence; the script continues to the next case and returns failure
-if any case is incomplete. It changes no physical parameters or health limits.
+if any case is incomplete. It changes no physical parameters or particle state limits.
 
 The first IBM execution exposed inconsistent mixed-boundary branch selection
 during pressure correction. The shared FVM fix passed the unchanged 12,642-cell

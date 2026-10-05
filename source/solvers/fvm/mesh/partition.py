@@ -171,8 +171,8 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
     return visualization
 
 
-def ownership_ranges(n_cells: int, n_ranks: int) -> np.ndarray:
-    """Return balanced contiguous global-cell ownership offsets."""
+def cell_partition_offsets(n_cells: int, n_ranks: int) -> np.ndarray:
+    """Return balanced contiguous global-cell rank assignment offsets."""
     if n_cells < 1 or n_ranks < 1:
         raise ValueError("n_cells and n_ranks must be positive")
     counts = np.full(n_ranks, n_cells // n_ranks, dtype=np.int64)
@@ -278,7 +278,7 @@ class CellPartition:
             Complete native FVM mesh with zero-based global owner/neighbour
             cell IDs.
         rank : int
-            Zero-based MPI rank to materialize.
+            Zero-based MPI rank to construct.
         size : int
             Positive communicator size; ``rank`` must be smaller than it.
 
@@ -287,14 +287,14 @@ class CellPartition:
         CellPartition
             Local metadata with owned cells first and ghost cells after them.
             Face arrays use local indices while the ID arrays preserve global
-            identity for PETSc, diagnostics, and restart.
+            global cell numbers for PETSc, diagnostics, and restart.
 
         Raises
         ------
         ValueError
-            If the rank/size or mesh partition contract is invalid.
+            If the rank/size or mesh partition comparison_settings are invalid.
         OverflowError
-            If global cell or face counts exceed the int32 indexing contract.
+            If global cell or face counts exceed the int32 indexing requirements.
 
         Notes
         -----
@@ -312,7 +312,7 @@ class CellPartition:
                 f"cells={n_cells}, faces={n_faces}, limit={int32_limit}"
             )
         n_interior = int(mesh_data["n_interior_faces"])
-        offsets = ownership_ranges(n_cells, size)
+        offsets = cell_partition_offsets(n_cells, size)
         owned = np.arange(offsets[rank], offsets[rank + 1], dtype=np.int32)
         owners = np.asarray(mesh_data["owners"], dtype=np.int32)
         neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
@@ -405,7 +405,7 @@ class CellPartition:
         """Update ghost values with numeric nonblocking neighbour messages.
 
         The schedule stores local indices, so the steady path neither maps
-        global IDs nor builds an all-rank Python payload list.  ``mpi4py``
+        global IDs nor builds an all-rank Python field data list.  ``mpi4py``
         infers the explicit MPI datatype from the contiguous NumPy buffers;
         object and strided fields are rejected rather than silently pickled.
         """
@@ -428,7 +428,7 @@ class CellPartition:
                 receives.append((receive_indices, incoming))
                 requests.append(comm.Irecv(incoming, source=rank, tag=9107))
         # Keep gathered sends alive until Wait completes.  Advanced indexing
-        # necessarily materializes the packing buffer, but it is numeric and
+        # necessarily creates the packing buffer, but it is numeric and
         # bounded by the interface rather than an all-rank object collective.
         send_buffers = []
         for rank in self.halo.neighbour_ranks:

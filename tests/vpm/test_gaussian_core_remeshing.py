@@ -1,4 +1,4 @@
-"""Field-level qualification of core reset, independently of its moment gates."""
+"""Field-level qualification of core reset, independently of its moment checks."""
 
 from types import SimpleNamespace
 
@@ -22,7 +22,7 @@ def test_grid_projection_removes_gradient_preserves_solenoidal_field_and_mean():
     np.testing.assert_allclose(projected[..., 2], 0, atol=1e-14)
 
 
-def _particles():
+def _solver():
     arrays = {
         "position": np.array([[-0.11, 0.03, 0.02], [0.13, -0.04, 0.01]]),
         "vortex_strength": np.array([[0.3, -0.1, 1.0], [-0.3, 0.1, -0.8]]),
@@ -45,7 +45,7 @@ def _field(points, arrays):
 
 
 def test_variable_core_reset_preserves_resolved_gaussian_field_and_second_moments():
-    source, particles = _particles()
+    source, particles = _solver()
     remapped = gaussian_core_remesh(
         particles, spacing=0.035, core_radius=0.07, tail_budget=1e-6, max_particles=100000
     )
@@ -91,7 +91,7 @@ def test_variable_core_reset_preserves_resolved_gaussian_field_and_second_moment
 
 
 def test_capacity_does_not_silently_override_the_tail_budget():
-    _, particles = _particles()
+    _, particles = _solver()
     with pytest.raises(ValueError, match="capacity is 10"):
         gaussian_core_remesh(
             particles, spacing=0.04, core_radius=0.07, tail_budget=1e-3, max_particles=10
@@ -99,7 +99,7 @@ def test_capacity_does_not_silently_override_the_tail_budget():
 
 
 def test_group_remap_preserves_overlapping_contributions_and_material_properties():
-    source, particles = _particles()
+    source, particles = _solver()
     # Coincident, opposing contributions would cancel if merged before tagging.
     source["position"][:] = 0
     source["core_radius"][:] = 0.14
@@ -141,7 +141,7 @@ def test_group_remap_cannot_enable_unconstrained_projection():
 
 
 def test_core_enlargement_requires_explicit_filtering_instead_of_negative_variance():
-    _, particles = _particles()
+    _, particles = _solver()
     with pytest.raises(ValueError, match="cannot enlarge"):
         gaussian_core_remesh(
             particles, spacing=0.04, core_radius=0.2, tail_budget=1e-3, max_particles=1000
@@ -149,7 +149,7 @@ def test_core_enlargement_requires_explicit_filtering_instead_of_negative_varian
 
 
 def test_reset_to_the_configured_core_accepts_float32_storage_roundoff():
-    _, particles = _particles()
+    _, particles = _solver()
     particles.core_radius_cpu = lambda: np.full(2, 0.08, dtype=np.float32)
     remapped = gaussian_core_remesh(
         particles, spacing=0.04, core_radius=0.08, tail_budget=1e-4, max_particles=1000
@@ -178,7 +178,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     from source.solvers.vpm.config.stabilization import StabilizationConfig
     from source.solvers.vpm.stabilization import regularization
 
-    arrays, _ = _particles()
+    arrays, _ = _solver()
     arrays.update(particle_volume=np.ones(2), velocity=np.zeros((2, 3)))
     original = {
         key: value.astype(np.float32) if value.dtype.kind == "f" else value.copy()
@@ -204,7 +204,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     monkeypatch.setattr(regularization, "_transfer_integrals", integrals)
     monkeypatch.setattr(
         regularization,
-        "discretization_health",
+        "particle_resolution_metrics",
         lambda *args: {
             "vorticity_divergence_error": 1.0,
             "vortex_strength_misalignment_degrees": 90.0,

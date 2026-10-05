@@ -68,7 +68,7 @@ def reference_run():
     )
 
 
-def _fvm_artifacts(solution):
+def _fvm_output_files(solution):
     return solution / "fvm.pvd", solution / "fvm/mesh.npz"
 
 
@@ -120,19 +120,19 @@ def save(fig, name, fmt, dpi=FIGURE_DPI):
     return _THEME.export_figure(fig, FIGURES / name, figure_format=fmt, dpi=dpi, close=False)[0]
 
 
-def comparison_manifest():
-    return read_json(COMPARISON / "manifest.json")
+def comparison_info():
+    return read_json(COMPARISON / "comparison_info.json")
 
 
 def comparison_frame(time):
-    frames = comparison_manifest()["frames"]
+    frames = comparison_info()["frames"]
     match = match_saved_times([time], [row["time"] for row in frames])
     return read_npz_arrays(COMPARISON / frames[match.indices[1][0]]["file"])
 
 
 def line_times(source, name):
     if source != "vpm":
-        return np.array([row["time"] for row in comparison_manifest()["frames"]])
+        return np.array([row["time"] for row in comparison_info()["frames"]])
     return np.unique(read_csv_table(_path(source, name, ".csv"))["time"])
 
 
@@ -161,7 +161,7 @@ def slice_frames(source, name="slice_z0"):
 
 def slice_times(source, name="slice_z0"):
     if source != "vpm":
-        return np.array([row["time"] for row in comparison_manifest()["frames"]])
+        return np.array([row["time"] for row in comparison_info()["frames"]])
     return np.array([time for time, _ in slice_frames(source, name)])
 
 
@@ -198,12 +198,12 @@ def _frame_at_time(frames, time):
 
 def prepare_comparison_fields():
     meshes = {
-        "reference": _fvm_artifacts(reference_run().solution)[1],
-        "fvm": _fvm_artifacts(SOLUTION)[1],
+        "reference": _fvm_output_files(reference_run().solution)[1],
+        "fvm": _fvm_output_files(SOLUTION)[1],
     }
     volumes = {
-        "reference": read_pvd_frames(_fvm_artifacts(reference_run().solution)[0]),
-        "fvm": read_pvd_frames(_fvm_artifacts(SOLUTION)[0]),
+        "reference": read_pvd_frames(_fvm_output_files(reference_run().solution)[0]),
+        "fvm": read_pvd_frames(_fvm_output_files(SOLUTION)[0]),
     }
     slices = slice_frames("fvm")
     times = common_times(
@@ -236,7 +236,7 @@ def prepare_comparison_fields():
         filename = f"fields_t{time:.9f}.npz"
         write_npz_arrays(COMPARISON / filename, **arrays)
         rows.append({"time": float(time), "file": filename})
-    write_json(COMPARISON / "manifest.json", {"method": PREPARATION_METHOD, "frames": rows})
+    write_json(COMPARISON / "comparison_info.json", {"method": PREPARATION_METHOD, "frames": rows})
     return len(rows)
 
 

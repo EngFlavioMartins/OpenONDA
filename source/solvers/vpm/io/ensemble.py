@@ -1,4 +1,4 @@
-"""Admit independent native realizations before computing ensemble statistics."""
+"""Validate independent native realizations before computing ensemble statistics."""
 
 from copy import deepcopy
 import json
@@ -37,8 +37,8 @@ def _physics(record):
     vlm = numerics.get("vlm")
     if vlm is not None:
         # Native VLM records carry the loaded geometry and physical motion
-        # identity independently of source paths and output controls.
-        numerics["vlm"] = {"physics_identity": vlm["physics_identity"]}
+        # case_name independently of source paths and output controls.
+        numerics["vlm"] = {"physics_hash": vlm["physics_hash"]}
     physics = {
         "numerics": numerics,
         "initial_conditions": configuration["initial_conditions"],
@@ -48,25 +48,25 @@ def _physics(record):
 
 
 def realization_metadata(records) -> tuple[dict, ...]:
-    """Read current native identities, common physics and accepted horizons.
+    """Read current native case names, common physics and accepted horizons.
 
-    Seeds and case identities must be distinct. Output locations, schedules
+    Seeds and case names must be distinct. Output locations, schedules
     and execution devices can differ without changing the physical ensemble.
     """
     records = tuple(records)
     if len(records) < 2:
         raise ValueError("Ensemble statistics require at least two independent realizations")
-    identities, seeds, physics, clocks = [], [], [], []
+    case_names, seeds, physics, clocks = [], [], [], []
     for record in records:
-        if record["schema_version"] != 1 or record["solver"] != "VPM":
+        if record["schema_version"] != 2 or record["solver"] != "VPM":
             raise ValueError("Ensembles require current native VPM metadata")
-        identity = record["case_name"]
+        case_name = record["case_name"]
         seed = record["configuration"]["numerics"]["random_seed"]
-        if not isinstance(identity, str) or not identity:
-            raise ValueError("Ensemble realizations require named native identities")
+        if not isinstance(case_name, str) or not case_name:
+            raise ValueError("Ensemble realizations require named native cases")
         if isinstance(seed, bool) or not isinstance(seed, int):
             raise ValueError("Ensemble realizations require recorded integer random seeds")
-        identities.append(identity)
+        case_names.append(case_name)
         seeds.append(seed)
         physics.append(_physics(record))
         state = record["state"]
@@ -79,8 +79,8 @@ def realization_metadata(records) -> tuple[dict, ...]:
         if not same_saved_time(final[1], expected_time):
             raise ValueError("Ensemble metadata step/time disagrees with its native clock")
         clocks.append((initial, final))
-    if len(set(identities)) != len(records) or len(set(seeds)) != len(records):
-        raise ValueError("Ensemble realization identities and random seeds must be independent")
+    if len(set(case_names)) != len(records) or len(set(seeds)) != len(records):
+        raise ValueError("Ensemble realization case names and random seeds must be independent")
     if len(set(physics)) != 1:
         raise ValueError("Ensemble realizations have different physical configurations")
     if any(

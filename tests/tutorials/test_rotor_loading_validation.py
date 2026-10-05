@@ -1,4 +1,4 @@
-"""The blade-loading plotter averages only a reconciled native VLM window."""
+"""The blade-loading plotter averages only an aligned native VLM time window."""
 
 from pathlib import Path
 

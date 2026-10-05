@@ -1,4 +1,4 @@
-"""Regression tests for diagnostic, rather than exit-code, checkMesh gates."""
+"""Regression tests for diagnostic, rather than exit-code, checkMesh numerical_checks."""
 
 from tests.mesh_parity.native_check import parse_checkmesh_output
 

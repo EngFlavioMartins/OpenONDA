@@ -1,9 +1,9 @@
-"""Physical refinement policy for the quadcopter's small rotor wake."""
+"""Physical refinement settings for the quadcopter's small rotor wake."""
 
 from tests._tutorial_helpers import load_tutorial_module
 
 
-def test_quadcopter_refines_stretched_filaments_without_relaxing_health(monkeypatch):
+def test_quadcopter_refines_stretched_filaments_without_relaxing_particle_state_limits(monkeypatch):
     setup = load_tutorial_module("vpm/quadcopter")
     rotor = load_tutorial_module("vpm/rotor_flow")
     cases = []
@@ -29,5 +29,5 @@ def test_quadcopter_refines_stretched_filaments_without_relaxing_health(monkeypa
         )
         == 2.0
     )
-    assert case.numerics.health_limits.lagrangian_cfl.maximum == 1.0
+    assert case.numerics.state_limits.lagrangian_cfl.maximum == 1.0
     assert case.numerics.max_n_particles == 500_000

@@ -32,10 +32,10 @@ def test_rwm_members_discover_solver_component_backups(tmp_path):
         (member / "vpm_metadata.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "solver": "VPM",
                     "case_name": f"vortex_rwm_{index:03d}",
-                    "lifecycle": {"status": "completed"},
+                    "run_status": {"status": "completed"},
                     "configuration": {
                         "numerics": {
                             "random_seed": 42000 + index,
@@ -78,7 +78,7 @@ def test_rwm_members_discover_solver_component_backups(tmp_path):
         )
         for step in (0, 18, 1000000):
             (frames / f"vpm_{step:06d}.h5").touch()
-        # Stale files at the root must not enter the canonical series.
+        # Stale files at the root must not enter the recorded series.
         (member / "vpm_000009.h5").touch()
 
     members = statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm")

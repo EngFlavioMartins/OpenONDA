@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..mesh.partition import ownership_ranges
+from ..mesh.partition import cell_partition_offsets
 
 
 def spanwise_cell_groups(mesh: dict) -> np.ndarray:
@@ -83,25 +83,25 @@ def spanwise_face_groups(mesh: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 def build_spanwise_projection_layout(mesh: dict, n_ranks: int) -> dict[str, np.ndarray | int]:
-    """Build global stack groups and deterministic face-authority metadata.
+    """Build global stack groups and deterministic face-rank metadata.
 
     Parameters
     ----------
     mesh : dict
         Global extruded native mesh.
     n_ranks : int
-        Number of partition ranks used to assign vertical-face authority.
+        Number of partition ranks used to assign vertical-face ranks.
 
     Returns
     -------
     dict[str, numpy.ndarray or int]
-        Cell/face group arrays, horizontal mask, face-authority ranks, and
+        Cell/face group arrays, horizontal mask, face-rank ranks, and
         group counts for broadcast to all ranks.
     """
     cell_groups = spanwise_cell_groups(mesh)
     face_groups, horizontal_faces = spanwise_face_groups(mesh)
-    offsets = ownership_ranges(int(mesh["n_cells"]), int(n_ranks))
-    face_authority = np.searchsorted(
+    offsets = cell_partition_offsets(int(mesh["n_cells"]), int(n_ranks))
+    face_ranks = np.searchsorted(
         offsets[1:],
         np.asarray(mesh["owners"], dtype=np.int64),
         side="right",
@@ -110,7 +110,7 @@ def build_spanwise_projection_layout(mesh: dict, n_ranks: int) -> dict[str, np.n
         "cell_groups": cell_groups,
         "face_groups": face_groups,
         "horizontal_faces": np.asarray(horizontal_faces, dtype=bool),
-        "face_authority": face_authority,
+        "face_ranks": face_ranks,
         "n_cell_groups": int(cell_groups.max()) + 1,
         "n_face_groups": int(face_groups.max()) + 1,
     }
@@ -121,7 +121,7 @@ class SpanwiseInvariantProjector:
 
     The projector averages cell-centred values within each x-y stack, zeros
     spanwise velocity/flux, and averages vertical face fluxes using one
-    deterministic MPI authority per face group. Horizontal fluxes are set to
+    deterministic MPI rank assignment per face group. Horizontal fluxes are set to
     zero. It is intended for quasi-2-D extruded calculations.
 
     Parameters
@@ -186,16 +186,16 @@ class SpanwiseInvariantProjector:
 
         all_face_groups = np.asarray(layout["face_groups"], dtype=np.int32)
         all_horizontal = np.asarray(layout["horizontal_faces"], dtype=bool)
-        all_authority = np.asarray(layout["face_authority"], dtype=np.int32)
+        all_face_ranks = np.asarray(layout["face_ranks"], dtype=np.int32)
         self.face_groups = all_face_groups[face_ids]
         self.horizontal_faces = all_horizontal[face_ids]
         self.vertical_faces = ~self.horizontal_faces
-        self.authoritative_vertical = self.vertical_faces & (
-            all_authority[face_ids] == int(self.parallel.rank)
+        self.local_vertical_faces = self.vertical_faces & (
+            all_face_ranks[face_ids] == int(self.parallel.rank)
         )
         self.n_face_groups = int(layout["n_face_groups"])
         local_face_counts = np.bincount(
-            self.face_groups[self.authoritative_vertical], minlength=self.n_face_groups
+            self.face_groups[self.local_vertical_faces], minlength=self.n_face_groups
         ).astype(np.float64)
         self.face_counts = np.asarray(self.parallel.global_sum(local_face_counts))
         if np.any(self.face_counts < 2.0):
@@ -225,8 +225,8 @@ class SpanwiseInvariantProjector:
 
     def _face_mean(self, values: np.ndarray) -> np.ndarray:
         local = np.bincount(
-            self.face_groups[self.authoritative_vertical],
-            weights=np.asarray(values, dtype=np.float64)[self.authoritative_vertical],
+            self.face_groups[self.local_vertical_faces],
+            weights=np.asarray(values, dtype=np.float64)[self.local_vertical_faces],
             minlength=self.n_face_groups,
         )
         return np.asarray(self.parallel.global_sum(local)) / self.face_counts

@@ -1,7 +1,7 @@
 """Private treecode workspace façade for the induction package.
 
 The LBVH implementation and its Morton/traversal kernels live beside the
-treecode evaluator; this façade provides a small ownership point for callers
+treecode evaluator; this façade provides a small allocation lifetime point for callers
 that need an explicit hierarchy build.
 """
 
@@ -17,7 +17,7 @@ class TreecodeWorkspace:
         Parameters
         ----------
         physics : VPM physics context
-            Owner that provides ``_get_or_create_treecode`` and its device
+            Physics engine providing ``_get_or_create_treecode`` and its device
             allocation. The reference is retained; no particle arrays are
             copied here.
         count : int
@@ -29,7 +29,7 @@ class TreecodeWorkspace:
         Notes
         -----
         This private-runtime façade does not allocate the underlying tree
-        until :meth:`build` asks the physics owner for it.
+        until :meth:`build` asks the physics solver for it.
         """
         self.physics = physics
         self.count = int(count)

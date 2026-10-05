@@ -59,4 +59,4 @@ The same rules apply to diagnostic figures that are not included in the thesis.
 Validate exports with `validate_thesis_figure()` and inspect them at their final
 print size. Scientific renders use saved solver states; do not launch simulations
 or restore result archives solely to change their presentation. The ring renderer
-retains its verified provenance and camera in `figures/vortex_ring_scene.json`.
+retains its verified source information and camera in `figures/vortex_ring_scene.json`.

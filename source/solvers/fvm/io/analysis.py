@@ -45,7 +45,7 @@ def evaluate(solver, callback, *args, **kwargs):
     n_cells = mesh["n_cells"]
     n_interior = mesh["n_interior_faces"]
     n_owned = parallel.n_owned if parallel.is_partitioned else n_cells
-    payload = None
+    local_fields = None
     failure = None
     try:
         boundaries = {}
@@ -65,7 +65,7 @@ def evaluate(solver, callback, *args, **kwargs):
             mesh,
         )[:n_owned] / (solver.geo_data["cell_volume"][:n_owned] + 1e-30)
         ids = parallel.partition.owned_global_ids if parallel.is_partitioned else np.arange(n_cells)
-        payload = (
+        local_fields = (
             ids,
             solver.geo_data["cell_centre"][:n_owned].copy(),
             solver.geo_data["cell_volume"][:n_owned].copy(),
@@ -78,7 +78,7 @@ def evaluate(solver, callback, *args, **kwargs):
     except BaseException as error:
         failure = error
     solver._collective_io_failure(failure, "analysis field preparation")
-    parts = parallel.comm.gather(payload, root=0) if parallel.is_parallel else [payload]
+    parts = parallel.comm.gather(local_fields, root=0) if parallel.is_parallel else [local_fields]
     result = None
     failure = None
     if parallel.is_root:
@@ -96,7 +96,7 @@ def evaluate(solver, callback, *args, **kwargs):
                 face_ids = np.concatenate([patch[0] for patch in patches])
                 face_order = np.argsort(face_ids)
                 if len(np.unique(face_ids)) != len(face_ids):
-                    raise RuntimeError(f"Duplicate ownership in boundary {name!r}")
+                    raise RuntimeError(f"Duplicate rank assignment in boundary {name!r}")
                 boundaries[name] = BoundarySnapshot(
                     *(
                         np.concatenate([patch[i] for patch in patches])[face_order]

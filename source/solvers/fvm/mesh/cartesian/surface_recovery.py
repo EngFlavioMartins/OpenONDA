@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Transactional STL cut-cell recovery for the native Cartesian mesh.
+"""Validated STL cut-cell recovery for the native Cartesian mesh.
 
 The octree extractor deliberately produces Cartesian cells and split faces.
 This stage changes topology only in the narrow band intersected by the input
@@ -21,7 +21,7 @@ from ..surface_classification import SurfaceIndex, triangle_box_overlap
 
 @dataclass(frozen=True, slots=True)
 class RecoveryDiagnostics:
-    """Summary of a surface-recovery transaction."""
+    """Summary of a surface-recovery state update."""
 
     attempted: int
     accepted: int
@@ -223,7 +223,7 @@ def _merge_surface_fragments(fragments: list[np.ndarray], tolerance: float) -> l
         count != 1 for count in incoming.values()
     ):
         # A surface can legitimately create multiple local sheets in a cell;
-        # preserve exact fragments and let the strict topology gate decide.
+        # preserve exact fragments and let the strict topology check decide.
         return fragments
     remaining = set(boundary_edges)
     loops: list[np.ndarray] = []
@@ -664,10 +664,10 @@ def recover_cut_cells(
         "wall_fragments": int(sum(len(value) for value in cut_fragments.values())),
     }
     # The recovery stage already orients Cartesian fragments from their source
-    # face and wall fragments from the authoritative STL winding.  Reorienting
+    # face and wall fragments from the reference STL winding.  Reorienting
     # a curved wall from a cut-cell centroid is unsafe: the centroid can lie on
     # the wrong side of a sharp or concave fragment and silently inverts one
-    # facet, breaking exact area-vector closure.  Keep those transactional
+    # facet, breaking exact area-vector closure.  Keep those validated
     # orientations intact; later validation checks the resulting topology and
     # conservative geometry.
     return mesh_data

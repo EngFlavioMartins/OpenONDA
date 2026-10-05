@@ -33,7 +33,7 @@ def _configure_mpi_exception_reporting() -> None:
 
     Collective solver phases propagate a rank-local failure to every rank.
     Worker processes must still exit unsuccessfully, but repeating the same
-    traceback from every interpreter obscures the primary owner report.
+    traceback from every interpreter obscures the rank-zero report.
     Replacing a worker's exception hook suppresses only its final rendering;
     it does not catch the exception or change the process exit status.
     """
@@ -44,10 +44,10 @@ def _configure_mpi_exception_reporting() -> None:
 
 
 def worker_thread_count() -> int:
-    """CPU budget for owner-only particle work between collective FVM solves.
+    """CPU thread limit for particle calculations between collective FVM solves.
 
-    MPI ranks each use one BLAS/Numba thread. While they wait for the particle
-    owner, that owner can use the case's CPU budget for Taichi/host kernels.
+    MPI ranks each use one BLAS/Numba thread. While other ranks wait for the
+    particle calculation, rank zero can use the case's CPU threads for Taichi.
     Standalone VPM defaults to the available CPUs. An explicit Taichi override
     is still honoured for advanced callers.
     """
@@ -218,7 +218,7 @@ class RunConfig:
         environment[_MPI_CHILD] = "1"
         environment.setdefault(_PMIX_RETAIN_LOOPBACK, "1")
         main = sys.modules["__main__"]
-        # A module runner owns its package context across MPI relaunches.
+        # A module runner preserves relative imports across MPI relaunches.
         if (
             getattr(main, "__spec__", None) is not None
             and Path(main.__file__).resolve() == Path(script).resolve()
@@ -236,7 +236,7 @@ class RunConfig:
         os.execvpe(command[0], command, environment)
 
     def ensure_runtime(self, script: str | Path) -> None:
-        """Apply this execution policy before allocating solver resources.
+        """Apply these execution settings before allocating solver resources.
 
         Parameters
         ----------

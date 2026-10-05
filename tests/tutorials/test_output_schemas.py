@@ -48,8 +48,8 @@ def _write_vpm_metadata(
     turbulence_model: str = "DNS",
 ) -> dict:
     """Write the universal solver record needed by tutorial-reader tests."""
-    payload = {
-        "schema_version": 1,
+    record = {
+        "schema_version": 2,
         "solver": "VPM",
         "case_name": case_name,
         "configuration": {
@@ -70,7 +70,7 @@ def _write_vpm_metadata(
                 "steps": requested_steps,
                 "initial_samples": True,
                 "final_backup": True,
-                "health_limit_action": "STOP",
+                "state_limit_action": "STOP",
                 "wall_time_limit_seconds": None,
             },
             "backup": {
@@ -91,12 +91,12 @@ def _write_vpm_metadata(
             "initial_n_particles_total": 8772,
             "n_particles_total": 8772,
         },
-        "lifecycle": {"status": status},
+        "run_status": {"status": status},
     }
     destination = root / "solution" / case_name / "vpm_metadata.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload) + "\n", encoding="utf-8")
-    return payload
+    destination.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    return record
 
 
 def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path):
@@ -126,7 +126,7 @@ def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path
     np.testing.assert_allclose(field["vorticity_z"], field["x"] - field["y"])
 
 
-def test_lamb_oseen_energy_reader_preserves_backend_provenance(tmp_path: Path):
+def test_lamb_oseen_energy_reader_preserves_recorded_induction_method(tmp_path: Path):
     diagnostics = _load_module(
         TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_energy_schema_test",
@@ -167,12 +167,12 @@ def test_lamb_oseen_energy_reader_keeps_persistent_fourier_rate(tmp_path: Path):
     np.testing.assert_allclose(data["kinetic_energy_rate"], [-1.0, -1.8])
 
 
-def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
+def test_lamb_oseen_reads_native_solver_metadata(tmp_path: Path):
     diagnostics = _load_module(
         TUTORIALS / "vpm/01_lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_solver_metadata_test",
     )
-    payload = _write_vpm_metadata(
+    record = _write_vpm_metadata(
         tmp_path,
         "vortex_cs",
         stretching_scheme="TRANSPOSED",
@@ -180,7 +180,7 @@ def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
         time=0.9,
         requested_steps=9,
     )
-    payload["configuration"]["numerics"].update(
+    record["configuration"]["numerics"].update(
         {
             "time_step_size": 0.1,
             "random_seed": 17,
@@ -190,7 +190,7 @@ def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
             "particle_kernel": "GAUSSIAN",
         }
     )
-    payload["configuration"]["initial_conditions"] = [
+    record["configuration"]["initial_conditions"] = [
         {
             "type": "VortexFilament",
             "centre": [0.0, 0.0, 0.0],
@@ -206,7 +206,7 @@ def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
         }
     ]
     destination = tmp_path / "solution/vortex_cs/vpm_metadata.json"
-    destination.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    destination.write_text(json.dumps(record) + "\n", encoding="utf-8")
     samples = tmp_path / "samples/vortex_cs"
     samples.mkdir(parents=True)
 
@@ -243,7 +243,7 @@ def test_vortex_ring_empty_summary_has_no_ranked_case(tmp_path: Path):
     assert summary["longest_sustained_variants"] == []
 
 
-def test_vortex_ring_flow_integrals_allow_initially_undefined_health_only(tmp_path: Path):
+def test_vortex_ring_flow_integrals_allow_initially_undefined_particle_metrics_only(tmp_path: Path):
     postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
     path = tmp_path / "flow_integrals.csv"
     path.write_text(
@@ -260,7 +260,7 @@ def test_vortex_ring_flow_integrals_allow_initially_undefined_health_only(tmp_pa
     assert not postprocess._readable_finite_csv(path)
 
 
-def test_vortex_ring_available_plot_validation_accepts_partial_campaign(
+def test_vortex_ring_available_plot_validation_accepts_partial_parameter_study(
     tmp_path: Path, monkeypatch
 ):
     postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
@@ -353,7 +353,7 @@ def test_ring_histories_preserve_large_finite_native_samples_and_their_clock(tmp
     assert raw[0][-1]["max_vortex_strength_magnitude"] == 1000.0
 
 
-def test_ring_history_reader_uses_native_clock_admission_without_rewriting_rows(tmp_path):
+def test_ring_history_reader_uses_native_clock_checks_without_rewriting_rows(tmp_path):
     metrics = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.ring_metrics")
     path = tmp_path / "ring_diagnostics.csv"
     original = "time,step,vortex_centroid_x\n0.0,0,0.0\n0.4,40,2500.0\n"
@@ -379,7 +379,7 @@ def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: P
         step=242,
         time=4.84,
     )
-    assert metadata["lifecycle"] == {"status": "resolution_lost"}
+    assert metadata["run_status"] == {"status": "resolution_lost"}
     assert metadata["state"]["step"] == 242
     assert metadata["state"]["time"] == pytest.approx(4.84)
     serialized = json.dumps(metadata).lower()

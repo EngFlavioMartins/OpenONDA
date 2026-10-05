@@ -6,7 +6,7 @@ from .logging import Logging
 
 
 class LoggingPhysicsEventObserver:
-    """Present physics events through the VPM logging policy."""
+    """Present physics events through the VPM logging settings."""
 
     def warning(self, message: str) -> None:
         """Forward a physics warning to the configured VPM logger."""

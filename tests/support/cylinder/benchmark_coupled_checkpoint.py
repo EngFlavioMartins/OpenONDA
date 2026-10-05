@@ -1,7 +1,7 @@
 """Bounded native restart qualification in the ordinary tutorial directory.
 
-This uses the unchanged local case factory, strict backup admission and normal
-output reconciliation. Existing observations must be preserved before replay.
+This uses the unchanged local case factory, strict checkpoint validation and normal
+output history_restoration. Existing observations must be preserved before replay.
 An immutable source root permits a control replay alongside implementation work.
 """
 
@@ -53,22 +53,22 @@ def _install_fenv_extension(path):
         path.name == "_fenv" + suffix for suffix in EXTENSION_SUFFIXES
     ):
         raise ValueError("--fenv-extension must name a compiled _fenv extension")
-    identity = {"module": _FENV_MODULE, "path": str(path), "sha256": _digest(path)}
+    extension_description = {"module": _FENV_MODULE, "path": str(path), "sha256": _digest(path)}
     existing = sys.modules.get(_FENV_MODULE)
     if existing is not None:
         if not getattr(existing, "__file__", None) or Path(existing.__file__).resolve() != path:
             raise RuntimeError("another floating-environment extension is already imported")
-        return identity
+        return extension_description
     spec = importlib.util.spec_from_file_location(_FENV_MODULE, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     for method in ("capture", "enter_default", "restore", "round_to_nearest"):
         if not callable(getattr(module, method, None)):
             raise RuntimeError("the selected _fenv extension lacks required capabilities")
-    if _digest(path) != identity["sha256"]:
+    if _digest(path) != extension_description["sha256"]:
         raise RuntimeError("floating-environment extension changed during import")
     sys.modules[_FENV_MODULE] = module
-    return identity
+    return extension_description
 
 
 def _loaded_source_hashes(root, case, external_fenv=None):
@@ -115,77 +115,82 @@ def _source_hashes(root, case, external_fenv=None):
     return result
 
 
-def _checkpoint_admission(checkpoint, current_numerics):
-    """Authenticate a checkpoint and require identical VPM numerics before replay."""
+def _validate_checkpoint(checkpoint, current_numerics):
+    """Verify checkpoint hashes and require identical VPM numerics before replay."""
     from source.coupler.backup import (
         BACKUP_FORMAT_VERSION,
-        _resolve_artifact,
-        artifact_digest,
+        _resolve_checkpoint_path,
+        checkpoint_path_hash,
         config_mapping_digest,
     )
-    from source.solvers.vpm.config.fingerprint import numerical_configuration
+    from source.solvers.vpm.config.configuration_values import numerical_configuration
     from source.solvers.vpm.config.restart_changes import (
-        admit_configuration_changes,
+        validate_configuration_changes,
     )
 
-    manifest_path = checkpoint / "manifest.json"
-    manifest_bytes = manifest_path.read_bytes()
-    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-    manifest = json.loads(manifest_bytes)
+    metadata_path = checkpoint / "checkpoint_info.json"
+    metadata_bytes = metadata_path.read_bytes()
+    checkpoint_info_sha = hashlib.sha256(metadata_bytes).hexdigest()
+    checkpoint_info = json.loads(metadata_bytes)
     if (
-        not isinstance(manifest, dict)
-        or manifest.get("format_version") != BACKUP_FORMAT_VERSION
-        or manifest.get("kind") != "openonda.coupled_backup"
-        or manifest.get("backend") != "fvm"
+        not isinstance(checkpoint_info, dict)
+        or checkpoint_info.get("format_version") != BACKUP_FORMAT_VERSION
+        or checkpoint_info.get("kind") != "openonda.coupled_backup"
+        or checkpoint_info.get("backend") != "fvm"
     ):
         raise ValueError("unsupported coupled backup format for qualification")
-    config = manifest.get("config")
-    if not isinstance(config, dict) or manifest.get("config_sha256") != config_mapping_digest(
-        config
-    ):
+    config = checkpoint_info.get("config")
+    if not isinstance(config, dict) or checkpoint_info.get(
+        "config_sha256"
+    ) != config_mapping_digest(config):
         raise ValueError("source coupled configuration SHA-256 mismatch")
-    artifacts, hashes = manifest.get("artifacts"), manifest.get("artifact_sha256")
+    checkpoint_files, hashes = (
+        checkpoint_info.get("checkpoint_files"),
+        checkpoint_info.get("file_sha256"),
+    )
     required = {"fvm", "vpm", "vpm_vtu", "vpm_boundary_condition"}
     if (
-        not isinstance(artifacts, dict)
+        not isinstance(checkpoint_files, dict)
         or not isinstance(hashes, dict)
-        or set(artifacts) != set(hashes)
-        or not required <= set(artifacts)
+        or set(checkpoint_files) != set(hashes)
+        or not required <= set(checkpoint_files)
     ):
-        raise ValueError("complete authenticated coupled artifacts required")
-    authenticated = {}
-    for name, relative in artifacts.items():
-        path = _resolve_artifact(checkpoint, relative)
-        if not path.exists() or artifact_digest(path) != _sha256(hashes[name]):
-            raise ValueError("source coupled artifact SHA-256 mismatch: " + str(name))
-        authenticated[name] = {"path": str(path), "sha256": hashes[name]}
+        raise ValueError("complete hash-verified coupled checkpoint files required")
+    verified_files = {}
+    for name, relative in checkpoint_files.items():
+        path = _resolve_checkpoint_path(checkpoint, relative)
+        if not path.exists() or checkpoint_path_hash(path) != _sha256(hashes[name]):
+            raise ValueError("source coupled checkpoint_file SHA-256 mismatch: " + str(name))
+        verified_files[name] = {"path": str(path), "sha256": hashes[name]}
     stored, current = config.get("vpm"), numerical_configuration(current_numerics)
     if not isinstance(stored, dict) or not isinstance(stored.get("induction"), dict):
         raise ValueError("stored VPM induction configuration required")
-    admit_configuration_changes(current, stored)
+    validate_configuration_changes(current, stored)
     evidence = {
-        "manifest_path": str(manifest_path),
-        "manifest_sha256": manifest_sha,
-        "source_configuration_sha256": manifest["config_sha256"],
+        "metadata_path": str(metadata_path),
+        "checkpoint_info_sha256": checkpoint_info_sha,
+        "source_configuration_sha256": checkpoint_info["config_sha256"],
         "source_vpm_configuration_sha256": config_mapping_digest(stored),
         "current_vpm_configuration_sha256": config_mapping_digest(current),
-        "source_artifacts": authenticated,
-        "native_admission": "public run performs unchanged full coupled and VPM preflight before restoration",
+        "source_checkpoint_files": verified_files,
+        "native_restart_validation": "public run performs unchanged full coupled and VPM preflight before restoration",
     }
-    if _digest(manifest_path) != manifest_sha:
-        raise RuntimeError("source manifest changed during read-only admission")
+    if _digest(metadata_path) != checkpoint_info_sha:
+        raise RuntimeError("source checkpoint_info changed during read-only validation")
     return evidence
 
 
 def _assert_checkpoint_evidence(evidence):
-    """Reject changed committed inputs; never rewrite manifests or artifacts."""
-    from source.coupler.backup import artifact_digest
+    """Reject changed committed inputs; never rewrite metadata or checkpoint files."""
+    from source.coupler.backup import checkpoint_path_hash
 
-    if _digest(Path(evidence["manifest_path"])) != evidence["manifest_sha256"]:
-        raise RuntimeError("authenticated source manifest changed")
-    for artifact in evidence["source_artifacts"].values():
-        if artifact_digest(Path(artifact["path"])) != artifact["sha256"]:
-            raise RuntimeError("authenticated source artifact changed: " + artifact["path"])
+    if _digest(Path(evidence["metadata_path"])) != evidence["checkpoint_info_sha256"]:
+        raise RuntimeError("hash-verified source checkpoint_info changed")
+    for checkpoint_file in evidence["source_checkpoint_files"].values():
+        if checkpoint_path_hash(Path(checkpoint_file["path"])) != checkpoint_file["sha256"]:
+            raise RuntimeError(
+                "hash-verified source checkpoint file changed: " + checkpoint_file["path"]
+            )
 
 
 def _collective_read(comm, action):
@@ -198,12 +203,12 @@ def _collective_read(comm, action):
     if comm is not None and comm.Get_size() > 1:
         error, result = comm.bcast((error, result), root=0)
     if error is not None:
-        raise ValueError("Qualification read-only admission failed: " + error)
+        raise ValueError("Qualification read-only validation failed: " + error)
     return result
 
 
 def _induction_reuse_statistics(coupler):
-    """Copy operational counters without touching the certified backend."""
+    """Copy operational counters without touching the existing backend."""
     stage_rhs = coupler.vpm_solver.stage_rhs
     snapshot = getattr(stage_rhs, "induction_reuse_statistics", None)
     if snapshot is not None:
@@ -213,7 +218,7 @@ def _induction_reuse_statistics(coupler):
 
 
 def _induction_geometry_statistics(coupler):
-    """Read host-side scratch counters without wrapping certified operators."""
+    """Read host-side scratch counters without wrapping existing operators."""
     induction = coupler.vpm_solver.induction
     diagnostics = getattr(getattr(induction, "base", induction), "diagnostics", None)
     if diagnostics is None or not hasattr(diagnostics, "image_target_geometry_restores"):
@@ -232,7 +237,7 @@ def _induction_geometry_statistics(coupler):
 
 
 def _collective_output_preflight(comm, case, report_path, trace_prefix, steps):
-    """Check shared output admission once, before a fast master can publish.
+    """Check shared output validation once, before a fast master can publish.
 
     Rechecking existence independently on each rank races the master's first
     report/trace write. Every rank consumes the same root decision instead.
@@ -258,7 +263,7 @@ def _collective_output_preflight(comm, case, report_path, trace_prefix, steps):
     if comm is not None and comm.Get_size() > 1:
         error = comm.bcast(error, root=0)
     if error is not None:
-        raise ValueError("Qualification output admission failed: " + error)
+        raise ValueError("Qualification output validation failed: " + error)
 
 
 def main():
@@ -312,13 +317,13 @@ def main():
     if args.fft_failure_prefix is not None:
         failure_prefix = args.fft_failure_prefix.resolve()
 
-        def admit_failure_evidence():
+        def validate_failed_solve_record():
             if failure_prefix.parent != case / "solution" or any(
                 failure_prefix.with_suffix(suffix).exists() for suffix in (".json", ".npz")
             ):
                 raise ValueError("new ordinary solution/ FFT evidence paths required")
 
-        _collective_read(MPI.COMM_WORLD, admit_failure_evidence)
+        _collective_read(MPI.COMM_WORLD, validate_failed_solve_record)
     sys.path.insert(0, str(root))
     external_fenv = _install_fenv_extension(args.fenv_extension)
     from source.coupler import create_coupler
@@ -329,7 +334,7 @@ def main():
     spec.loader.exec_module(module)
     setup, particles, coupling, _ = module.build_case()
     restart_evidence = _collective_read(
-        MPI.COMM_WORLD, lambda: _checkpoint_admission(checkpoint, particles.numerics)
+        MPI.COMM_WORLD, lambda: _validate_checkpoint(checkpoint, particles.numerics)
     )
     mesh = case / "solution/fvm/mesh.npz"
     if not mesh.is_file():
@@ -347,7 +352,7 @@ def main():
             "gbd_detail_disabled": args.no_gbd_detail,
             "ordinary_initialization": args.ordinary_initialization,
         },
-        "restart_admission": restart_evidence,
+        "restart_validation": restart_evidence,
         "external_fenv": external_fenv,
     }
     started = time.perf_counter()
@@ -428,7 +433,7 @@ def main():
             if args.profile_components:
                 from profile_solver_components import profile_components
 
-                # The coupled factory is lazy: ownership and vpm_solver are
+                # The coupled factory is lazy: rank assignment and vpm_solver are
                 # bound collectively by initialize(), not __enter__(). The
                 # normal run() performs the same idempotent initialization.
                 component_context = profile_components(

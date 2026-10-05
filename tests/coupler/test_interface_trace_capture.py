@@ -13,10 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-ASSET = (
-    Path(__file__).resolve().parents[2]
-    / "tests/support/cylinder/capture_interface_traces.py"
-)
+ASSET = Path(__file__).resolve().parents[2] / "tests/support/cylinder/capture_interface_traces.py"
 SPEC = importlib.util.spec_from_file_location("interface_trace_capture_asset", ASSET)
 CAPTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CAPTURE)

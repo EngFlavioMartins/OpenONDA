@@ -24,7 +24,7 @@ def parameters(case_dir: Path, name: str | None = None) -> dict:
     refs = read_vlm_surface(surface)["refs"]
     motion = surface["kinematics"]
     return {
-        "status": metadata["lifecycle"]["status"],
+        "status": metadata["run_status"]["status"],
         "chord": float(refs["chord"]),
         "span": float(refs["span"]),
         "density": float(vlm["density"]),

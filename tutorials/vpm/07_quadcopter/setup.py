@@ -150,7 +150,7 @@ def run() -> None:
         ),
         run=vpm.RunPlan(
             steps=N_STEPS,
-            health_limit_action="STOP",
+            state_limit_action="STOP",
         ),
         directory=TUTORIAL_DIR,
     )

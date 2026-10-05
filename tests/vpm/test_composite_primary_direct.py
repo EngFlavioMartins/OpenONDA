@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from tests.vpm._direct_gaussian_reference import primary_direct, transposed_rate_f32
-from tests.vpm._slip_periodic_gaussian_oracle import gaussian_pairs
+from tests.vpm._slip_periodic_gaussian_reference import gaussian_pairs
 
 
 def _skew(vector):

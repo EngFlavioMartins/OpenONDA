@@ -97,19 +97,19 @@ def test_velocity_history_serializes_without_callables_or_external_records(tmp_p
     assert restored.velocity_boundaries == original.velocity_boundaries
 
 
-def test_coupled_runtime_background_preserves_authored_restart_identity():
+def test_coupled_runtime_background_preserves_authored_restart_configuration():
     ramp = coupler.VelocityRamp((1.0, 0.2, 0.0), (1.0, 0.0, 0.0), 0.0, 2.0)
-    policy = coupler.CouplerSetup(freestream_velocity=list(ramp.initial), freestream=ramp)
-    identity = config_digest(policy)
+    settings = coupler.CouplerSetup(freestream_velocity=list(ramp.initial), freestream=ramp)
+    configuration = config_digest(settings)
     values = []
     flow = coupler.FVMVPMCoupler.__new__(coupler.FVMVPMCoupler)
-    flow.setup = policy
+    flow.setup = settings
     flow._is_master = True
-    flow.vorticity_transfer = SimpleNamespace(config=policy)
+    flow.vorticity_transfer = SimpleNamespace(config=settings)
     flow.vpm_solver = SimpleNamespace(_set_freestream_velocity=lambda value: values.append(value))
     for time in (0.0, 1.0, 2.0):
         flow._update_freestream(time)
-        assert config_digest(flow.setup) == identity
+        assert config_digest(flow.setup) == configuration
         np.testing.assert_array_equal(
             flow.vorticity_transfer.config.freestream_velocity, ramp.at(time)
         )

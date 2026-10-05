@@ -189,7 +189,7 @@ def test_wall_retry_preserves_macro_time_strength_and_accepted_diagnostics(monke
     assert max(dt for _, dt in calls[1:]) <= 0.025
     np.testing.assert_allclose(particles.position, [[0, 0, 0]])
     np.testing.assert_allclose(particles.vortex_strength, [[1.05, 0, 0]])
-    assert solver.time == 2.0  # The owner commits one macro clock after every phase.
+    assert solver.time == 2.0  # The solver commits one macro clock after every phase.
     assert guard._reference is None
     assert 0 < physics.last_solid_projection["accepted_count"] < len(calls)
 

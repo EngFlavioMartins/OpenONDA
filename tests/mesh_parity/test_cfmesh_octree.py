@@ -1,4 +1,4 @@
-"""Sparse addressing and distinct native box/surface refinement contracts."""
+"""Sparse addressing and distinct native box/surface refinement requirements."""
 
 from importlib.resources import files
 
@@ -83,7 +83,7 @@ def _unbalanced_leaves(seed):
 
 
 def _dense_balance_selection(leaves):
-    """Independent small-grid oracle, including root-boundary clipping."""
+    """Independent small-grid reference, including root-boundary clipping."""
     dense = np.full((16, 16, 16), -1, dtype=int)
     for i, (x, y, z, width, _level, _kind) in enumerate(leaves):
         dense[x : x + width, y : y + width, z : z + width] = i
@@ -101,7 +101,7 @@ def _dense_balance_selection(leaves):
 
 
 @pytest.mark.parametrize("seed", range(6))
-def test_compiled_balancing_matches_dense_oracle_and_preserves_leaf_order(seed):
+def test_compiled_balancing_matches_dense_reference_and_preserves_leaf_order(seed):
     original = _unbalanced_leaves(seed)
     expected = original
     passes = 0

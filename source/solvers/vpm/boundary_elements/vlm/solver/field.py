@@ -1,4 +1,4 @@
-"""The numerical contract for the coupled VLM bound-surface field.
+"""The numerical conditions for the coupled VLM bound-surface field.
 
 The VLM and VPM operators intentionally use different target filters.  A
 bound filament is a singular geometric source and therefore needs a small
@@ -17,8 +17,8 @@ import numpy as np
 
 
 @dataclass(frozen=True, slots=True)
-class BoundSurfaceFieldContract:
-    """Describe the representation and evaluation policy of the bound field.
+class BoundSurfaceFieldSettings:
+    """Describe the representation and evaluation settings of the bound field.
 
     Parameters
     ----------
@@ -30,32 +30,32 @@ class BoundSurfaceFieldContract:
         bound source. It may equal ``numerical_epsilon`` for the
         point-trace model, but is named separately so a resolved study can
         change it deliberately.
-    particle_target_policy : str
+    particle_core_rule : str
         Human-readable description of the finite-target rule. The current
         coupled model uses ``max(particle_core_radius,
         numerical_epsilon)`` for particle-centre transport and stretching.
     free_wake_operator : str
         The configured VPM source/target backend. It is part of the complete
-        transport contract even though this object owns only the bound field.
+        transport conditions even though this object owns only the bound field.
     bound_representation, bound_trace_operator, jacobian_operator : str
         Explicit names for the geometric source and its point/Jacobian
-        evaluation.  They are persisted as part of the coupling contract so
+        evaluation.  They are persisted as part of the coupling conditions so
         a restart cannot silently mix a different source representation.
     transport_target_operator : str
         Name of the finite-target transport rule used for the free wake.
-    near_wake_policy : str
+    near_wake_treatment : str
         Accepted/newborn wake rule used by the stage-responsive solve.
     """
 
     numerical_epsilon: float
     bound_source_radius: float
-    particle_target_policy: str = "max(particle_core_radius, numerical_epsilon)"
+    particle_core_rule: str = "max(particle_core_radius, numerical_epsilon)"
     free_wake_operator: str = "configured VPM induction backend"
     bound_representation: str = "finite_segment_global_horseshoe"
     bound_trace_operator: str = "finite_segment_rosenhead_point_trace"
     jacobian_operator: str = "finite_segment_rosenhead_same_source_kernel"
     transport_target_operator: str = "symmetric_pair_radius"
-    near_wake_policy: str = "partial_newborn_row_stage_responsive"
+    near_wake_treatment: str = "partial_newborn_row_stage_responsive"
 
     def __post_init__(self) -> None:
         """Require finite positive numerical and bound-source radii."""
@@ -69,18 +69,18 @@ class BoundSurfaceFieldContract:
         return max(float(particle_core_radius), self.numerical_epsilon)
 
     def as_dict(self) -> dict[str, object]:
-        """Return the complete explicit contract for manifests and restarts."""
+        """Return the complete explicit field settings for metadata and restarts."""
         return {
             "numerical_epsilon": float(self.numerical_epsilon),
             "bound_source_radius": float(self.bound_source_radius),
-            "particle_target_policy": self.particle_target_policy,
+            "particle_core_rule": self.particle_core_rule,
             "free_wake_operator": self.free_wake_operator,
             "bound_representation": self.bound_representation,
             "bound_trace_operator": self.bound_trace_operator,
             "jacobian_operator": self.jacobian_operator,
             "transport_target_operator": self.transport_target_operator,
-            "near_wake_policy": self.near_wake_policy,
+            "near_wake_treatment": self.near_wake_treatment,
         }
 
 
-__all__ = ["BoundSurfaceFieldContract"]
+__all__ = ["BoundSurfaceFieldSettings"]

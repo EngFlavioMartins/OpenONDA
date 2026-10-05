@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from source.solvers.vpm.physics.induction.gaussian_mesh.planning import field_execution_plan
-from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import DeviceOwner, FFTPlanPair
+from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import CUDAMemoryPool, FFTPlanPair
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
@@ -16,25 +16,25 @@ def test_real_channel_fft_uses_only_explicit_existing_aligned_scratch(
     dtype, shape, single_workspace
 ):
     cp = pytest.importorskip("cupy")
-    owner = DeviceOwner(32 * 1024**2)
+    field = CUDAMemoryPool(32 * 1024**2)
     plan = None
     try:
-        with owner.allocation_scope():
+        with field.allocation_scope():
             channels = cp.arange(3 * math.prod(shape), dtype=dtype).reshape((3, *shape))
             scratch = cp.empty(shape, dtype=dtype)
             inverse = cp.empty(shape, dtype=dtype)
         saved = cp.asnumpy(channels)
-        plan = FFTPlanPair(owner, shape, dtype, 8 * 1024**2, single_workspace=single_workspace)
+        plan = FFTPlanPair(field, shape, dtype, 8 * 1024**2, single_workspace=single_workspace)
         expected_copies = 0
         for _repeat in range(2):
             for slot in range(3):
                 channel = channels[slot]
                 unaligned = bool(channel.data.ptr % (2 * np.dtype(dtype).itemsize))
                 if unaligned:
-                    before = owner.pool.total_bytes()
+                    before = field.pool.total_bytes()
                     with pytest.raises(ValueError, match="explicit aligned scratch"):
                         plan.rfft(channel)
-                    assert owner.pool.total_bytes() == before
+                    assert field.pool.total_bytes() == before
                     expected_copies += 1
                 result = plan.rfft(channel, aligned_scratch=scratch)
                 truth = np.fft.rfftn(saved[slot])
@@ -58,28 +58,28 @@ def test_real_channel_fft_uses_only_explicit_existing_aligned_scratch(
             )
         np.testing.assert_array_equal(cp.asnumpy(channels), saved)
         assert plan.peak_work_bytes <= plan.max_plan_bytes
-        assert owner.pool.total_bytes() <= owner.max_bytes
+        assert field.pool.total_bytes() <= field.max_bytes
     finally:
         if plan is not None:
             plan.close()
-        owner.close()
+        field.close()
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
-def test_alignment_scratch_admission_is_exact_and_not_an_implicit_allocation(dtype, monkeypatch):
+def test_alignment_scratch_validation_is_exact_and_not_an_implicit_allocation(dtype, monkeypatch):
     cp = pytest.importorskip("cupy")
     shape = (5, 7, 9)
-    owner = DeviceOwner(32 * 1024**2)
+    field = CUDAMemoryPool(32 * 1024**2)
     plan = None
     try:
-        with owner.allocation_scope():
+        with field.allocation_scope():
             channels = cp.ones((3, *shape), dtype=dtype)
             scratch = cp.empty(shape, dtype=dtype)
             partial = cp.ones(math.prod(shape) + 2, dtype=dtype)
-        plan = FFTPlanPair(owner, shape, dtype, 8 * 1024**2)
+        plan = FFTPlanPair(field, shape, dtype, 8 * 1024**2)
 
         def forbidden_alias_enumeration(*args, **kwargs):
-            raise AssertionError("dense FFT admission must not allocate address arrays")
+            raise AssertionError("dense FFT validation must not allocate address arrays")
 
         monkeypatch.setattr(cp, "shares_memory", forbidden_alias_enumeration)
         with pytest.raises(ValueError, match="complex-element alignment"):
@@ -90,7 +90,7 @@ def test_alignment_scratch_admission_is_exact_and_not_an_implicit_allocation(dty
             plan.rfft(partial[:-2].reshape(shape), aligned_scratch=partial[2:].reshape(shape))
         with pytest.raises(ValueError, match="shape/dtype"):
             plan.rfft(channels[1], aligned_scratch=scratch.reshape(-1))
-        # Disjoint contiguous views may share an allocation; ownership alone
+        # Disjoint contiguous views may share an allocation; allocation lifetime alone
         # is not an alias. The even-offset third channel is complex-aligned.
         disjoint = plan.rfft(channels[1], aligned_scratch=channels[2])
         assert cp.isfinite(disjoint).all()
@@ -112,7 +112,7 @@ def test_alignment_scratch_admission_is_exact_and_not_an_implicit_allocation(dty
     finally:
         if plan is not None:
             plan.close()
-        owner.close()
+        field.close()
 
 
 def test_fft_execution_failure_revokes_plans_and_records_exact_metadata():
@@ -126,8 +126,8 @@ def test_fft_execution_failure_revokes_plans_and_records_exact_metadata():
     plan.forward, plan.inverse = object(), None
     plan.closed = False
     drains = []
-    plan.owner = SimpleNamespace(
-        admit=lambda: None, stream=SimpleNamespace(synchronize=lambda: drains.append(1))
+    plan.field = SimpleNamespace(
+        check_context=lambda: None, stream=SimpleNamespace(synchronize=lambda: drains.append(1))
     )
     source, output = [
         SimpleNamespace(data=SimpleNamespace(ptr=pointer)) for pointer in (1028, 2048)
@@ -172,12 +172,19 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
     if families:
         size = np.dtype(dtype).itemsize
         full = field_execution_plan(
-            shape, fft, len(x), len(query), 10, size, 2 * 1024**3, 8 * 1024**2,
+            shape,
+            fft,
+            len(x),
+            len(query),
+            10,
+            size,
+            2 * 1024**3,
+            8 * 1024**2,
             retained_shape=retained,
         )
         candidates = []
         for available in np.linspace(
-            full.payload_bytes // 3, full.payload_bytes - 1, 160, dtype=np.int64
+            full.field_bytes // 3, full.field_bytes - 1, 160, dtype=np.int64
         ):
             try:
                 candidate = field_execution_plan(
@@ -202,21 +209,21 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
         assert candidates
         available, _ = candidates[-1]
         kwargs = {"max_scratch_bytes": available + 8 * 1024**2, "max_plan_bytes": 8 * 1024**2}
-    with fields.GaussianImageFields(x, gamma, sigma, query, **options, **kwargs) as owner:
-        assert owner.execution_plan.mode == ("streamed" if families else "all_channels")
+    with fields.GaussianImageFields(x, gamma, sigma, query, **options, **kwargs) as field:
+        assert field.execution_plan.mode == ("streamed" if families else "all_channels")
         inverse_id = None
         originals = None
         for _repeat in range(3):
-            record = owner.prepare(images)
+            record = field.prepare(images)
             assert record["fft_alignment_copies"] > 0
             assert (
                 record["fft_alignment_copy_bytes"]
-                == record["fft_alignment_copies"] * owner.volume * owner.dtype.itemsize
+                == record["fft_alignment_copies"] * field.volume * field.dtype.itemsize
             )
             if inverse_id is None:
-                inverse_id = owner._inverse.data.ptr
-            assert owner._inverse.data.ptr == inverse_id
-            u, j, _ = owner.evaluate_prepared(query)
+                inverse_id = field._inverse.data.ptr
+            assert field._inverse.data.ptr == inverse_id
+            u, j, _ = field.evaluate_prepared(query)
             current = cp.asnumpy(u), cp.asnumpy(j)
             truth = direct_finite_images(x, gamma, sigma, query, record["world_images"])[:2]
             for actual, exact in zip(current, truth, strict=True):
@@ -230,6 +237,6 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
                         atol=32 * np.finfo(dtype).eps * np.max(np.abs(first)),
                     )
             originals = current
-            assert record["pool_reserved_bytes"] <= owner.max_scratch_bytes
-            assert record["plan_peak_work_bytes"] <= owner.max_plan_bytes
+            assert record["pool_reserved_bytes"] <= field.max_scratch_bytes
+            assert record["plan_peak_work_bytes"] <= field.max_plan_bytes
             del u, j

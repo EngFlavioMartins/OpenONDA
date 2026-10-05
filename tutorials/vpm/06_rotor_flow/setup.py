@@ -110,7 +110,7 @@ def build_case(
     if run_plan is None:
         run_plan = vpm.RunPlan(
             steps=steps,
-            health_limit_action="STOP",
+            state_limit_action="STOP",
         )
     return vpm.VPMCase(
         name=CASE_NAME,

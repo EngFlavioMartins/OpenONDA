@@ -91,14 +91,14 @@ def test_cube_transfer_blends_pruning_to_the_vpm_release_floor():
     )
 
 
-def test_cube_uses_only_bounded_domain_stabilization_and_retains_health_limits():
+def test_cube_uses_only_bounded_domain_stabilization_and_retains_state_limits():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_stabilization")
     numerics = setup.VPM_CASE.numerics
-    policy = numerics.stabilization
-    assert not policy.pedrizzetti_relaxation_enabled
-    assert tuple(policy.remove_particles_by_bounds) == setup.VPM_DOMAIN
-    assert numerics.health_limits.finite_state.enabled
-    assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
+    settings = numerics.stabilization
+    assert not settings.pedrizzetti_relaxation_enabled
+    assert tuple(settings.remove_particles_by_bounds) == setup.VPM_DOMAIN
+    assert numerics.state_limits.finite_state.enabled
+    assert numerics.state_limits.lagrangian_cfl.maximum == 1.0
 
 
 def test_cube_run_delegates_construction_and_cleanup(monkeypatch):
@@ -275,7 +275,7 @@ def test_cube_acceptance_horizon_supports_short_runs_and_defaults_to_two_seconds
         check._resolve_acceptance_horizon(0.05, 0.10)
 
 
-def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
+def test_cube_reference_check_requires_every_profile_at_the_acceptance_horizon(
     tmp_path,
     monkeypatch,
 ):
@@ -320,7 +320,7 @@ def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
         )
 
 
-def test_cube_reference_gate_uses_spatial_mean_profile_error(tmp_path, monkeypatch):
+def test_cube_reference_check_uses_spatial_mean_profile_error(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
         Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",

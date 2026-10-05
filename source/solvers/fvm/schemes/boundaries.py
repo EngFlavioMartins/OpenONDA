@@ -7,7 +7,7 @@ from enum import Enum, auto
 
 
 class BoundaryStrategy(Enum):
-    """Enumeration of canonical boundary-condition behaviours.
+    """Enumeration of standard boundary-condition behaviours.
 
     Each member corresponds to one of the supported finite-volume boundary types
     and determines how the discrete operators (gradient, convection,
@@ -46,7 +46,7 @@ class BoundaryOperator:
     operators : frozenset[str]
         Operators implemented (e.g. ``{"gradient", "convection"}``).
     strategy : BoundaryStrategy
-        Canonical behaviour enum value.
+        Standard behaviour enum value.
     coupling_only : bool
         Whether this BC is only available through the FVM–VPM coupler.
     """

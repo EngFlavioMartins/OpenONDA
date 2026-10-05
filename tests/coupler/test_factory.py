@@ -95,7 +95,7 @@ def test_factory_does_not_close_supplied_solvers(tmp_path):
 
 
 def test_driver_uses_the_supplied_fvm_communicator(tmp_path, monkeypatch):
-    # Communicator-local ownership must not be replaced by a global MPI rank.
+    # Communicator-local rank assignment must not be replaced by a global MPI rank.
     monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
     comm = SimpleNamespace(Get_rank=lambda: 1, Get_size=lambda: 2)
     fvm = SimpleNamespace(case_dir=tmp_path, parallel=SimpleNamespace(rank=1, comm=comm))
@@ -111,7 +111,7 @@ def test_worker_receives_local_phase_failure():
     comm = SimpleNamespace(
         Get_size=lambda: 2,
         Ibarrier=lambda: SimpleNamespace(Test=lambda: True),
-        allgather=lambda value: ["HealthError: strain limit exceeded", value],
+        allgather=lambda value: ["ParticleStateError: strain limit exceeded", value],
     )
     with (
         pytest.raises(RuntimeError, match="rank 0.*strain limit exceeded"),

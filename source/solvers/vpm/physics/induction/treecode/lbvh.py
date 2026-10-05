@@ -56,7 +56,7 @@ _TRAVERSAL_BATCH_SIZE = 4096
 _TOPOLOGY_BATCH_SIZE = 4096
 
 
-class _OwnedFields:
+class _DeviceFields:
     """Place scratch fields in one disposable Taichi SNode tree."""
 
     def __init__(self):
@@ -201,7 +201,7 @@ class TaichiTreecode:
             raise ValueError("max_evaluation_points must be positive")
         self.max_evaluation_points = evaluation_capacity
 
-        fields = _OwnedFields()
+        fields = _DeviceFields()
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
         self.position = fields.vector(3, dtype=ti.f32, shape=max_n_particles)
         self.vortex_strength = fields.vector(3, dtype=ti.f32, shape=max_n_particles)
@@ -348,7 +348,7 @@ class TaichiTreecode:
         self._combine_levels = 0
 
         fields.finalize()
-        self._field_owner = fields
+        self._device_fields = fields
 
         self.set_kernel_type(self.kernel_type)
         self.set_multipole_order(multipole_order)
@@ -356,7 +356,7 @@ class TaichiTreecode:
 
     def destroy(self) -> None:
         """Release this treecode's scratch allocation."""
-        self._field_owner.destroy()
+        self._device_fields.destroy()
 
     def set_kernel_type(self, kernel_type: str) -> None:
         """Select the regularization kernel evaluated during traversal.
@@ -823,7 +823,7 @@ class TaichiTreecode:
 
     @ti.kernel
     def _init_sort_pairs_kernel(self, N: ti.i32, prefix: ti.i32):
-        """Seed (key, payload) pairs for the on-device Morton sort.
+        """Seed (key, data) pairs for the on-device Morton sort.
 
         Real particles get their Morton key + their own index; the unused tail is
         keyed 0xFFFFFFFF so it sorts after all 30-bit real keys, leaving the first
@@ -885,7 +885,7 @@ class TaichiTreecode:
                 self._gpu_sort = False
             else:
                 if not self._sort_validated:
-                    # One-time correctness gate: catch a backend whose
+                    # One-time correctness check: catch a backend whose
                     # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
                     # back permanently to CPU argsort.
                     keys = self._download_u32_field(self._sort_keys, N)
@@ -896,7 +896,7 @@ class TaichiTreecode:
             self._cpu_argsort(N)
 
     def _build_lbvh(self, N):
-        """Internal LBVH build pipeline (all steps after data upload)."""
+        """Internal LBVH build sequence (all steps after data upload)."""
         if N <= 1:
             # Trivial: single particle, root = that particle
             self.n_nodes[None] = N

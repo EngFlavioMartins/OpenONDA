@@ -2,7 +2,7 @@
 
 StageRHS installs this only with an explicit standard-backend capability.
 The caller executes its position guard before this evaluator and every
-external provider afterward, including on hits. No health, sampler, or
+external provider afterward, including on hits. No particle state, sampler, or
 callback is cached.
 """
 
@@ -14,11 +14,11 @@ from typing import Any
 
 import taichi as ti
 
-from .treecode.lbvh import _OwnedFields
+from .treecode.lbvh import _DeviceFields
 
 
 @dataclass(frozen=True)
-class InductionReuseContract:
+class InductionReuseConditions:
     """Explicit backend proof obligations; no capability is inferred.
 
     ``operator_key`` is an exact, immutable tuple of primitive dependencies,
@@ -27,13 +27,13 @@ class InductionReuseContract:
     contained in ordered x/Gamma/core arrays. A backend that depends on stage
     time or hidden mutable data must decline the capability.
 
-    ``complete_outputs_are_equivalent`` certifies that requesting private
+    ``complete_outputs_are_equivalent`` validates that requesting private
     velocity, Jacobian and enabled strength rate together leaves the requested
     numerical outputs identical to the original output-subset query. External
-    provider/ledger work must not occur inside this pure operation.
+    external-field and exchange work must not occur inside this pure operation.
 
     Diagnostic callbacks cover ONLY state-local observations (e.g. image-tail
-    admission and last rate defect). They must NEVER capture/restore cumulative
+    validation and last rate defect). They must NEVER capture/restore cumulative
     evaluation/work counters. Counters continue to count actual backend work;
     this evaluator separately counts requests, exact checks, hits and misses.
     Set ``diagnostics_are_complete`` only after covering all such observations,
@@ -51,8 +51,8 @@ class InductionReuseContract:
     # exact comparison, including would-be hits, with the original call args.
     # It must not mutate particle/output data; exceptions revoke validity.
     # False declines this particular request and preserves the original
-    # public call unchanged; None (the default) or True admits it.
-    request_admission: Callable[..., bool | None] | None = None
+    # public call unchanged; None (the default) or True accepts it.
+    request_check: Callable[..., bool | None] | None = None
 
 
 def _primitive_key(value):
@@ -64,10 +64,10 @@ def _primitive_key(value):
     return type(value) is tuple and all(_primitive_key(item) for item in value)
 
 
-def _canonical_key(value):
+def _typed_value_key(value):
     """Preserve primitive type and all float bits, unlike Python == alone."""
     if type(value) is tuple:
-        return ("tuple", tuple(_canonical_key(item) for item in value))
+        return ("tuple", tuple(_typed_value_key(item) for item in value))
     if type(value) is float:
         return ("float64", struct.pack("!d", value))
     return (type(value).__name__, value)
@@ -106,12 +106,12 @@ class InductionReuseStatistics:
 
 
 class _ReuseStorage:
-    """Immutable field bindings: growth creates a new kernel template owner."""
+    """Immutable field bindings: growth creates a new kernel template solver."""
 
     def __init__(self, capacity, source_dtype, result_dtype):
         self._fields = None
         try:
-            fields = self._fields = _OwnedFields()
+            fields = self._fields = _DeviceFields()
             self._position = fields.vector(3, dtype=source_dtype, shape=capacity)
             self._strength = fields.vector(3, dtype=source_dtype, shape=capacity)
             self._radius = fields.scalar(dtype=source_dtype, shape=capacity)
@@ -136,15 +136,15 @@ class _ReuseStorage:
 
 @ti.data_oriented
 class ExactContentInductionReuse:
-    """One-owner, one-entry device cache with exact source comparisons.
+    """One-solver, one-entry device cache with exact source comparisons.
 
     Unsupported operations bypass unchanged. Finite source contents are
     compared bit-for-bit, including order and signed zeros; no identity,
-    timestep, owner-generation shortcut, or probabilistic digest grants a hit.
+    timestep, solver-generation shortcut, or probabilistic digest grants a hit.
     Private outputs cannot be modified by later provider accumulation or by
     disposal/reuse of a backend's temporary workspace.
 
-    ``contract_provider`` is explicitly opt-in and called for every request.
+    ``conditions_provider`` is explicitly opt-in and called for every request.
     Returning None declines reuse for that request. Without a provider, every
     operation bypasses; arbitrary/custom induction is never assumed pure.
     The caller must not mutate source arrays concurrently with evaluation.
@@ -157,7 +157,7 @@ class ExactContentInductionReuse:
         max_particles,
         source_dtype=ti.f32,
         result_dtype=ti.f32,
-        contract_provider: Callable[[], InductionReuseContract | None] | None = None,
+        conditions_provider: Callable[[], InductionReuseConditions | None] | None = None,
     ):
         if (
             isinstance(max_particles, bool)
@@ -172,7 +172,7 @@ class ExactContentInductionReuse:
         self.source_dtype = source_dtype
         self.result_dtype = result_dtype
         self._bit_dtype = ti.u32 if source_dtype == ti.f32 else ti.u64
-        self.contract_provider = contract_provider
+        self.conditions_provider = conditions_provider
         self.statistics = InductionReuseStatistics()
         self._storage = None
         self._capacity = 0
@@ -303,25 +303,27 @@ class ExactContentInductionReuse:
             else:
                 rate[i] = ti.Vector.zero(self.result_dtype, 3)
 
-    def _contract(self, sources):
-        if self.contract_provider is None:
+    def _conditions(self, sources):
+        if self.conditions_provider is None:
             return None
-        contract = self.contract_provider()
-        if not isinstance(contract, InductionReuseContract):
+        conditions = self.conditions_provider()
+        if not isinstance(conditions, InductionReuseConditions):
             return None
         if not (
-            contract.autonomous
-            and contract.sources_are_read_only
-            and contract.complete_outputs_are_equivalent
-            and contract.diagnostics_are_complete
-            and type(contract.operator_key) is tuple
-            and _primitive_key(contract.operator_key)
-            and ((contract.capture_diagnostics is None) == (contract.restore_diagnostics is None))
-            and (contract.request_admission is None or callable(contract.request_admission))
+            conditions.autonomous
+            and conditions.sources_are_read_only
+            and conditions.complete_outputs_are_equivalent
+            and conditions.diagnostics_are_complete
+            and type(conditions.operator_key) is tuple
+            and _primitive_key(conditions.operator_key)
+            and (
+                (conditions.capture_diagnostics is None) == (conditions.restore_diagnostics is None)
+            )
+            and (conditions.request_check is None or callable(conditions.request_check))
             and all(getattr(field, "dtype", None) == self.source_dtype for field in sources)
         ):
             return None
-        return contract
+        return conditions
 
     def evaluate_stage(
         self,
@@ -340,9 +342,9 @@ class ExactContentInductionReuse:
         self.statistics.requests += 1
         sources = (position, vortex_strength, core_radius)
         try:
-            contract = self._contract(sources)
-            if contract is not None and contract.request_admission is not None:
-                admitted = contract.request_admission(
+            conditions = self._conditions(sources)
+            if conditions is not None and conditions.request_check is not None:
+                checked = conditions.request_check(
                     position=position,
                     vortex_strength=vortex_strength,
                     core_radius=core_radius,
@@ -353,8 +355,8 @@ class ExactContentInductionReuse:
                     strength_rate_enabled=strength_rate_enabled,
                     stage_time=stage_time,
                 )
-                if admitted is False:
-                    contract = None
+                if checked is False:
+                    conditions = None
         except BaseException:
             self.invalidate()
             raise
@@ -364,7 +366,7 @@ class ExactContentInductionReuse:
         outputs_compatible = all(
             getattr(field, "dtype", None) == self.result_dtype for field in outputs
         ) and _separate_output_fields(sources, outputs)
-        if contract is None or not outputs_compatible or count <= 0 or count > self.max_particles:
+        if conditions is None or not outputs_compatible or count <= 0 or count > self.max_particles:
             self.statistics.bypasses += 1
             # A declined/unknown call can mutate operator state. Never retain
             # an earlier valid entry across that unproven operation.
@@ -381,7 +383,7 @@ class ExactContentInductionReuse:
                 stage_time=stage_time,
             )
         count = int(count)
-        key = (id(self.backend), _canonical_key(contract.operator_key))
+        key = (id(self.backend), _typed_value_key(conditions.operator_key))
         hit = False
         if self._valid and self._count == count and self._key == key:
             self.statistics.exact_checks += 1
@@ -389,8 +391,8 @@ class ExactContentInductionReuse:
             hit = not bool(self._storage._different[None])
         try:
             if hit:
-                if contract.restore_diagnostics is not None:
-                    contract.restore_diagnostics(deepcopy(self._diagnostics))
+                if conditions.restore_diagnostics is not None:
+                    conditions.restore_diagnostics(deepcopy(self._diagnostics))
             else:
                 self.statistics.misses += 1
                 self.invalidate()
@@ -409,12 +411,12 @@ class ExactContentInductionReuse:
                     stage_time=stage_time,
                 )
                 # Complete the asynchronous operation before granting validity.
-                # Tail/admission exceptions leave caller fields unpublished.
+                # Tail/validation exceptions leave caller fields unpublished.
                 self._check_outputs(storage, count)
                 ti.sync()
                 self._diagnostics = (
-                    deepcopy(contract.capture_diagnostics())
-                    if contract.capture_diagnostics is not None
+                    deepcopy(conditions.capture_diagnostics())
+                    if conditions.capture_diagnostics is not None
                     else None
                 )
                 self._key = key
@@ -439,4 +441,4 @@ class ExactContentInductionReuse:
         self.statistics.successful_publications += 1
 
 
-__all__ = ["ExactContentInductionReuse", "InductionReuseContract", "InductionReuseStatistics"]
+__all__ = ["ExactContentInductionReuse", "InductionReuseConditions", "InductionReuseStatistics"]

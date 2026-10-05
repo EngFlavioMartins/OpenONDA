@@ -59,7 +59,7 @@ static PyObject *enter_default(PyObject *self, PyObject *capsule) {
         saved->previous = NULL;
         return PyErr_Format(PyExc_RuntimeError, "Cannot retain floating-point scope");
     }
-    Py_INCREF(capsule); /* TLS owns current; previous TLS ownership moves to saved. */
+    Py_INCREF(capsule); /* TLS references current; the previous TLS reference moves to saved. */
     saved->state = 1;
     if (fesetenv(FE_DFL_ENV)) {
         /* The caller's already-established finally will restore this active
@@ -82,7 +82,7 @@ static PyObject *restore(PyObject *self, PyObject *capsule) {
         return PyErr_Format(PyExc_RuntimeError, "Cannot release floating-point scope");
     if (fesetenv(&saved->environment)) {
         if (PyThread_tss_set(&active_scope, capsule))
-            return PyErr_Format(PyExc_RuntimeError, "Cannot restore environment or scope ownership");
+            return PyErr_Format(PyExc_RuntimeError, "Cannot restore floating-point environment or thread context");
         return PyErr_Format(PyExc_RuntimeError, "Cannot restore floating-point environment");
     }
     saved->previous = NULL; /* Previous owned reference moves back to TLS. */

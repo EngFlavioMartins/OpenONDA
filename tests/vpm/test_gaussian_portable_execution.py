@@ -1,4 +1,4 @@
-"""Allocation recovery preserves the finite operator and uncertain-owner guard."""
+"""Allocation recovery preserves the finite operator and uncertain-field guard."""
 
 from copy import deepcopy
 
@@ -6,7 +6,7 @@ import pytest
 
 from source.solvers.vpm.config.restart import (
     _configuration_mismatches,
-    canonical_restart_configuration,
+    restart_configuration_values,
 )
 from source.solvers.vpm.physics.induction.gaussian_mesh.execution import PortableGaussianImageFields
 
@@ -62,12 +62,19 @@ def test_clean_cuda_memory_failure_rebuilds_identical_host_request(monkeypatch, 
     monkeypatch.setattr(fields, "GaussianImageFields", CUDA)
     monkeypatch.setattr(blocked_fields, "GaussianBlockedCUDAFields", BlockedCUDA)
     monkeypatch.setattr(host_fields, "GaussianHostImageFields", Host)
-    controls = {"spacing": .03, "tau": .12, "cutoff": .6, "dtype": "float32", "max_scratch_bytes": 123}
-    owner = PortableGaussianImageFields("x", "gamma", "sigma", "targets",
-                                        execution_backend="cupy_cuda", **controls)
+    controls = {
+        "spacing": 0.03,
+        "tau": 0.12,
+        "cutoff": 0.6,
+        "dtype": "float32",
+        "max_scratch_bytes": 123,
+    }
+    field = PortableGaussianImageFields(
+        "x", "gamma", "sigma", "targets", execution_backend="cupy_cuda", **controls
+    )
     images = ((-1, True), (1, False))
-    owner.prepare(images)
-    u, j, diagnostic = owner.evaluate_prepared("query")
+    field.prepare(images)
+    u, j, diagnostic = field.evaluate_prepared("query")
     assert (u, j) == ("query", "gradient")
     assert diagnostic["execution_backend"] == "cpu"
     assert diagnostic["memory_fallback"] == str(failure)
@@ -81,7 +88,7 @@ def test_clean_cuda_memory_failure_rebuilds_identical_host_request(monkeypatch, 
     assert events.index(("cuda_close",)) < events.index(blocked)
     assert events.index(("blocked_close",)) < events.index(rebuilt)
     assert ("host_prepare", images) in events
-    owner.close()
+    field.close()
 
 
 @pytest.mark.parametrize("phase", ["construct", "prepare", "query"])
@@ -127,18 +134,21 @@ def test_cuda_memory_failure_subdivides_before_using_cpu(monkeypatch, caplog, ph
 
     monkeypatch.setattr(fields, "GaussianImageFields", CUDA)
     monkeypatch.setattr(blocked_fields, "GaussianBlockedCUDAFields", BlockedCUDA)
-    monkeypatch.setattr(host_fields, "GaussianHostImageFields",
-                        lambda *a, **kw: pytest.fail("an admitted CUDA block must stay on CUDA"))
-    owner = PortableGaussianImageFields(execution_backend="cupy_cuda")
-    owner.prepare(((0, True),))
-    u, j, report = owner.evaluate_prepared("query")
+    monkeypatch.setattr(
+        host_fields,
+        "GaussianHostImageFields",
+        lambda *a, **kw: pytest.fail("an checked CUDA block must stay on CUDA"),
+    )
+    field = PortableGaussianImageFields(execution_backend="cupy_cuda")
+    field.prepare(((0, True),))
+    u, j, report = field.evaluate_prepared("query")
     assert (u, j) == ("query", "gradient")
     assert report["execution_backend"] == "cupy_cuda"
     assert report["fft_blocks"] == 2
     assert report["memory_fallback"] is None
     assert report["memory_subdivision"] == "full FFT does not fit"
     assert not [record for record in caplog.records if record.name == "vpm"]
-    owner.close()
+    field.close()
     assert events == ["closed_full", "built_blocks", "closed_blocks"]
 
 
@@ -151,6 +161,7 @@ def test_uncertain_cuda_cleanup_cannot_allocate_a_host_replacement(monkeypatch, 
     )
 
     failure = MemoryError("original allocation failure")
+
     class CUDA:
         def __init__(self, *args, **kwargs):
             raise failure
@@ -165,8 +176,11 @@ def test_uncertain_cuda_cleanup_cannot_allocate_a_host_replacement(monkeypatch, 
 
     monkeypatch.setattr(fields, "GaussianImageFields", CUDA)
     monkeypatch.setattr(blocked_fields, "GaussianBlockedCUDAFields", BlockedCUDA)
-    monkeypatch.setattr(host_fields, "GaussianHostImageFields",
-                        lambda *a, **kw: pytest.fail("uncertain CUDA owner cannot be replaced"))
+    monkeypatch.setattr(
+        host_fields,
+        "GaussianHostImageFields",
+        lambda *a, **kw: pytest.fail("uncertain CUDA field cannot be replaced"),
+    )
     with pytest.raises(MemoryError) as captured:
         PortableGaussianImageFields(execution_backend="cupy_cuda")
     assert captured.value is failure
@@ -174,16 +188,25 @@ def test_uncertain_cuda_cleanup_cannot_allocate_a_host_replacement(monkeypatch, 
 
 
 def test_restart_execution_placement_is_portable_but_math_remains_strict():
-    stored = {"induction": {"gaussian_mesh_policy": {
-        "backend": "cupy_cuda", "tail_contract": "gaussian_interval_remainder_v1",
-        "mesh": {"order": 10, "spacing_over_tau": .25}, "max_scratch_bytes": 100,
-    }}}
+    stored = {
+        "induction": {
+            "gaussian_mesh_settings": {
+                "backend": "cupy_cuda",
+                "tail_error_method": "gaussian_interval_remainder_v1",
+                "mesh": {"order": 10, "spacing_over_tau": 0.25},
+                "max_scratch_bytes": 100,
+            }
+        }
+    }
     current = deepcopy(stored)
-    current["induction"]["gaussian_mesh_policy"]["backend"] = "cpu"
+    current["induction"]["gaussian_mesh_settings"]["backend"] = "cpu"
+
     def differences():
-        return _configuration_mismatches(canonical_restart_configuration(current),
-                                         canonical_restart_configuration(stored))
+        return _configuration_mismatches(
+            restart_configuration_values(current), restart_configuration_values(stored)
+        )
+
     assert differences() == []
-    current["induction"]["gaussian_mesh_policy"]["mesh"]["order"] = 8
-    assert differences() == ["induction.gaussian_mesh_policy.mesh.order"]
-    assert stored["induction"]["gaussian_mesh_policy"]["backend"] == "cupy_cuda"
+    current["induction"]["gaussian_mesh_settings"]["mesh"]["order"] = 8
+    assert differences() == ["induction.gaussian_mesh_settings.mesh.order"]
+    assert stored["induction"]["gaussian_mesh_settings"]["backend"] == "cupy_cuda"

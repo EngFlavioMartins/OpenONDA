@@ -14,7 +14,7 @@ import taichi as ti
 
 from .base import _STRETCHING_MODES
 from .fmm.target_geometry import disjoint_fields, method_bindings, scratch_fields, standard_methods
-from .gaussian_mesh.session import GaussianSlabPolicy
+from .gaussian_mesh.session import GaussianSlabSettings
 from .stretching import stretching_rate
 
 
@@ -30,13 +30,13 @@ def _new_mesh_session(**kwargs):
     return GaussianSlabFieldSession(**kwargs)
 
 
-def _admit_mesh_installation():
+def _check_cuda_mesh_installation():
     from .gaussian_mesh.availability import require_gaussian_mesh_runtime
 
     return require_gaussian_mesh_runtime()
 
 
-def _admit_host_mesh_installation():
+def _check_cpu_mesh_installation():
     from .gaussian_mesh.availability import require_gaussian_host_runtime
 
     return require_gaussian_host_runtime()
@@ -76,7 +76,7 @@ def _publish_mesh_chunk(
     has_gradient: ti.template(),
     include_freestream: ti.template(),
 ):
-    """Publish one admitted field chunk at its original active indices."""
+    """Publish one checked field chunk at its original active indices."""
     for i in range(count):
         target = start + i
         v = ti.Vector.zero(velocity.dtype, 3)
@@ -121,7 +121,7 @@ def _publish_mesh_results(
     has_gradient,
     include_freestream,
 ):
-    """Transfer admitted fields through the shared fixed-size staging buffers."""
+    """Transfer checked fields through the shared fixed-size staging buffers."""
     vector = physics._host_transfer_buffer("vector", velocity, "upload")
     matrix = physics._host_transfer_buffer("matrix", gradient, "upload")
     capacity = len(vector)
@@ -295,9 +295,9 @@ class SlipSlabInduction:
 
     The planes are ``z_min`` and ``z_max``. For an odd reflection the
     circulation vector, an axial vector, transforms as ``(-Gx,-Gy,Gz)``.
-    Gaussian images use a field mesh with enclosed tail/correction admission.
+    Gaussian images use a field mesh with enclosed tail/correction validation.
     Particle primary induction retains pair-mean cores; arbitrary queries use
-    one source-only primary-plus-image field. ``gaussian_mesh_policy`` controls
+    one source-only primary-plus-image field. ``gaussian_mesh_settings`` controls
     resolution and resources, and cannot disable that operator. Other radial
     kernels use reflected sources with an empirical image-block tail test.
     """
@@ -317,7 +317,7 @@ class SlipSlabInduction:
         max_shells: int = 129,
         velocity_scale: float = 1.0,
         gradient_scale: float = 1.0,
-        gaussian_mesh_policy: GaussianSlabPolicy = GaussianSlabPolicy(),
+        gaussian_mesh_settings: GaussianSlabSettings = GaussianSlabSettings(),
     ):
         if not all(
             math.isfinite(v) for v in (z_min, z_max, tail_tolerance, velocity_scale, gradient_scale)
@@ -352,12 +352,12 @@ class SlipSlabInduction:
         self.kernel = base.kernel
         self.last_tail = None
         self.physics = None
-        if type(gaussian_mesh_policy) is not GaussianSlabPolicy:
+        if type(gaussian_mesh_settings) is not GaussianSlabSettings:
             raise TypeError(
-                "gaussian_mesh_policy requires GaussianSlabPolicy; it cannot disable Gaussian induction"
+                "gaussian_mesh_settings requires GaussianSlabSettings; it cannot disable Gaussian induction"
             )
         self.device_resident = False  # Gaussian images require host snapshots.
-        self.gaussian_mesh_policy = gaussian_mesh_policy
+        self.gaussian_mesh_settings = gaussian_mesh_settings
         self._mesh_binding = None
         self._mesh_session = None
         self._mesh_cleanup_error = None
@@ -372,7 +372,7 @@ class SlipSlabInduction:
             max_shells=self.max_shells,
             velocity_scale=self.velocity_scale,
             gradient_scale=self.gradient_scale,
-            gaussian_mesh_policy=self.gaussian_mesh_policy,
+            gaussian_mesh_settings=self.gaussian_mesh_settings,
         )
 
     def bind(self, physics, *, kernel=None):
@@ -382,19 +382,19 @@ class SlipSlabInduction:
             self._validate_mesh_runtime(physics, selected_kernel)
             # Dependency failure must precede base rebinding or any new
             # Taichi/mesh field allocation. Other kernels stay CuPy-lazy.
-            backend = self.gaussian_mesh_policy.backend
+            backend = self.gaussian_mesh_settings.backend
             if backend == "cpu" or not _mesh_runtime_is_cuda():
-                _admit_host_mesh_installation()
+                _check_cpu_mesh_installation()
                 execution_backend = "cpu"
             else:
                 from .gaussian_mesh.availability import GaussianMeshUnavailableError
 
                 try:
-                    _admit_mesh_installation()
+                    _check_cuda_mesh_installation()
                 except GaussianMeshUnavailableError:
                     if backend != "auto":
                         raise
-                    _admit_host_mesh_installation()
+                    _check_cpu_mesh_installation()
                     execution_backend = "cpu"
                 else:
                     execution_backend = "cupy_cuda"
@@ -434,22 +434,22 @@ class SlipSlabInduction:
     def _validate_mesh_runtime(self, physics, kernel):
         from ...kernels.base import make_vortex_kernel
 
-        if type(self.gaussian_mesh_policy) is not GaussianSlabPolicy:
-            raise TypeError("gaussian_mesh_policy requires GaussianSlabPolicy")
+        if type(self.gaussian_mesh_settings) is not GaussianSlabSettings:
+            raise TypeError("gaussian_mesh_settings requires GaussianSlabSettings")
         if self.max_shells > 1024:
             raise ValueError("Gaussian mesh max_shells exceeds the explicit 1024-shell capacity")
         if kernel != make_vortex_kernel("GAUSSIAN") or physics.particle_kernel != "GAUSSIAN":
             raise ValueError("Gaussian mesh induction requires the standard GAUSSIAN kernel")
         if physics.accumulator_dtype not in (ti.f32, ti.f64):
             raise ValueError("Gaussian mesh induction requires binary32 or binary64 fields")
-        if self.gaussian_mesh_policy.backend == "cupy_cuda" and not _mesh_runtime_is_cuda():
+        if self.gaussian_mesh_settings.backend == "cupy_cuda" and not _mesh_runtime_is_cuda():
             raise RuntimeError("Gaussian mesh induction requires an initialized CUDA runtime")
 
     def _mesh_configuration(self):
         return (
             id(self.physics),
             id(ti.lang.impl.get_runtime().prog),
-            self.gaussian_mesh_policy,
+            self.gaussian_mesh_settings,
             self.z_min,
             self.z_max,
             self.tail_tolerance,
@@ -517,7 +517,7 @@ class SlipSlabInduction:
         background=None,
     ):
         source_count = self._mesh_count(source_count, self.physics.max_n_particles)
-        target_count = self._mesh_count(target_count, self.gaussian_mesh_policy.max_query_points)
+        target_count = self._mesh_count(target_count, self.gaussian_mesh_settings.max_query_points)
         for value, components in (
             (source_position, (3,)),
             (source_strength, (3,)),
@@ -549,7 +549,7 @@ class SlipSlabInduction:
                 max_shells=self.max_shells,
                 velocity_scale=self.velocity_scale,
                 gradient_scale=self.gradient_scale,
-                policy=self.gaussian_mesh_policy,
+                settings=self.gaussian_mesh_settings,
                 execution_backend=self._mesh_execution_backend,
                 dtype="float32" if self.physics.accumulator_dtype == ti.f32 else "float64",
             )
@@ -561,7 +561,7 @@ class SlipSlabInduction:
                     (strength, source_count),
                     (radius, source_count),
                     (targets, target_count),
-                )
+                ),
             ),
             source_only=source_only,
         )
@@ -580,7 +580,7 @@ class SlipSlabInduction:
         return np.ascontiguousarray(u), np.ascontiguousarray(j), diagnostics
 
     def _record_mesh_tail(self, diagnostics):
-        # Display only; actual admission used outward interval sums and limits
+        # Display only; actual validation used outward interval sums and limits
         # inside the session before any field was published.
         u = diagnostics.get("velocity_tail_bound", 0.0) + diagnostics.get(
             "velocity_correction_bound", 0.0
@@ -594,12 +594,12 @@ class SlipSlabInduction:
             "gradient": j,
             "relative": max(u / self.velocity_scale, j / self.gradient_scale),
             "seconds": diagnostics.get("seconds", 0.0),
-            "contract": self.gaussian_mesh_policy.tail_contract,
+            "tail_error_method": self.gaussian_mesh_settings.tail_error_method,
             "mesh": diagnostics,
         }
 
     def close_mesh_session(self):
-        """Close this wrapper's private Gaussian field owner, never its base."""
+        """Close this wrapper's private Gaussian field solver, never its base."""
         if self._mesh_cleanup_error is not None:
             raise RuntimeError(
                 "Gaussian mesh cleanup remains uncertain"
@@ -608,7 +608,7 @@ class SlipSlabInduction:
             try:
                 self._mesh_session.close()
                 if self._mesh_session.cleanup_uncertain:
-                    raise RuntimeError("Gaussian mesh owner cleanup remains uncertain")
+                    raise RuntimeError("Gaussian mesh solver cleanup remains uncertain")
             except BaseException as error:
                 self._mesh_cleanup_error = error
                 raise
@@ -715,7 +715,7 @@ class SlipSlabInduction:
             if block_evaluator is not None
             else nullcontext()
         )
-        # The geometry lease precedes source-scope entry: admission must not
+        # The geometry scope precedes source-scope entry: validation must not
         # mistake an active immutable-source context for a complete-field hit.
         with geometry_context, context:
             shell = 0
@@ -840,7 +840,7 @@ class SlipSlabInduction:
                     shell = 1
                     continue
                 if block_end != expected_end:
-                    break  # An incomplete doubling block cannot certify the tail.
+                    break  # An incomplete doubling block cannot validate the tail.
                 shell = block_end
                 self._max_shell_velocity[None] = 0.0
                 self._max_shell_gradient[None] = 0.0
@@ -918,7 +918,7 @@ class SlipSlabInduction:
             else nullcontext()
         ):
             if mesh:
-                # Admit images before primary publication. Completed host
+                # Validate images before primary publication. Completed host
                 # results survive cache reclamation if FMM lists must grow.
                 host_u, host_j, diagnostics = self._mesh_evaluate(
                     position,

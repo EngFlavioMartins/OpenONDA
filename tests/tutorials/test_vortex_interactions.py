@@ -67,16 +67,16 @@ def test_all_cases_share_the_transposed_dns_rk3_baseline():
         assert numerics.domain_bounds is None
         assert numerics.viscous.scheme == "CS"
         assert numerics.particle_kernel == "GAUSSIAN"
-        assert case.run.health_limit_action == "STOP"
+        assert case.run.state_limit_action == "STOP"
         assert case.run.final_backup
         assert case.run.wall_time_limit_seconds is None
         assert numerics.time_step_size == 0.00375
         assert numerics.viscous.kinematic_viscosity == pytest.approx(np.pi / 3000)
         assert numerics.max_n_particles == setup.MAX_N_PARTICLES
         assert any(isinstance(s, setup.vpm.RingDiagnosticsSampler) for s in case.samplers.samples)
-        assert numerics.health_limits.lagrangian_cfl.maximum == 1.0
-        assert numerics.health_limits.divergence.maximum == 0.12
-        assert numerics.health_limits.misalignment.maximum_degrees == 25.0
+        assert numerics.state_limits.lagrangian_cfl.maximum == 1.0
+        assert numerics.state_limits.divergence.maximum == 0.12
+        assert numerics.state_limits.misalignment.maximum_degrees == 25.0
 
 
 def test_each_case_enables_only_its_named_stabilization_method():

@@ -63,20 +63,20 @@ def rig(monkeypatch):
             np.tile([0.0, value, 0.0], (2, 1)),
         )
 
-    def identity(owner, geo):
+    def prediction_inputs(owner, geo):
         digest = hashlib.sha256()
         for array in geo:
             digest.update(array.tobytes())
         digest.update(repr((owner.dt, owner.substeps, vars(owner.setup))).encode())
         return digest.hexdigest(), (owner.operator,)
 
-    monkeypatch.setattr(prediction, "_identity", identity)
-    monkeypatch.setattr(iteration, "capture_restart_payload", lambda f: (f.step, f.time, f.field))
+    monkeypatch.setattr(prediction, "_prediction_inputs", prediction_inputs)
+    monkeypatch.setattr(iteration, "capture_restart_state", lambda f: (f.step, f.time, f.field))
 
     def restore(f, snapshot):
         f.step, f.time, f.field = snapshot
 
-    monkeypatch.setattr(iteration, "publish_restart_payload", restore)
+    monkeypatch.setattr(iteration, "restore_restart_state", restore)
     monkeypatch.setattr(iteration, "_particle_state_snapshot", lambda v, **kwargs: v.strength)
     monkeypatch.setattr(
         iteration, "_restore_particle_state", lambda v, p: setattr(v, "strength", p)
@@ -133,7 +133,7 @@ def rig(monkeypatch):
 
     def seed_history(correction):
         c.interface_predictor._history = {
-            "identity": identity(c, geometry),
+            "inputs": prediction_inputs(c, geometry),
             "clock": (fvm.step, fvm.time),
             "endpoint": prediction._copy_trace(old),
             "correction": trace(correction),
@@ -173,7 +173,7 @@ def test_seed_installs_first_full_trace_and_preserves_physical_old_endpoint(rig)
         "fallback": False,
     }
     assert rig.c._last_interface_iteration_diagnostics["picard_sweeps"] == 0
-    # Staging is not publication: health/output must complete first.
+    # Staging is not output: state checks/output must complete first.
     assert rig.c.interface_predictor._history is None
     rig.c.interface_predictor.commit()
     history = rig.c.interface_predictor._history
@@ -181,7 +181,8 @@ def test_seed_installs_first_full_trace_and_preserves_physical_old_endpoint(rig)
     # Correction must be against RAW, never against the seeded zero input.
     assert np.array_equal(history["correction"][0], rig.trace(-1.0)[0])
     assert all(
-        info[key] >= 0 for key in ("identity_seconds", "snapshot_seconds", "history_stage_seconds")
+        info[key] >= 0
+        for key in ("input_check_seconds", "snapshot_seconds", "history_stage_seconds")
     )
 
 
@@ -256,7 +257,7 @@ def test_nonconverged_full_baseline_is_not_cached(rig):
 @pytest.mark.parametrize(
     "change", ["geometry", "order", "dt", "substeps", "operator", "endpoint", "clock", "tolerance"]
 )
-def test_changed_identity_or_endpoint_cold_starts(rig, change):
+def test_changed_configuration_or_endpoint_cold_starts(rig, change):
     rig.seed_history(-1.0)
     if change == "geometry":
         rig.geometry[0][0, 0] += 0.1
@@ -302,7 +303,7 @@ def test_nonfinite_seed_is_not_probed(rig):
     assert not rig.c._last_interface_iteration_diagnostics["prediction"]["attempted"]
 
 
-def test_mutation_during_trial_prevents_history_publication(rig):
+def test_mutation_during_trial_prevents_history_output(rig):
     rig.seed_history(-1.0)
 
     def changed(value):
@@ -335,7 +336,7 @@ def test_errors_discard_all_history_without_retry_or_error_masking(rig, monkeypa
         raise failure
 
     if failure_at == "initial_capture":
-        monkeypatch.setattr(iteration, "capture_restart_payload", fail)
+        monkeypatch.setattr(iteration, "capture_restart_state", fail)
     elif failure_at == "seed_algebra":
         monkeypatch.setattr(prediction, "_same_arrays", fail)
     elif failure_at == "seed_capture":
@@ -352,18 +353,19 @@ def test_errors_discard_all_history_without_retry_or_error_masking(rig, monkeypa
         run(rig)
     assert raised.value is failure
     history = rig.c.interface_predictor
-    assert history._history is history._pending is history._active_identity is None
+    assert history._history is history._pending is history._active_inputs is None
     assert len(rig.inputs) == (1 if failure_at in ("seed_restore", "trial", "stage") else 0)
     history.commit()
     assert history._history is None
 
 
-@pytest.mark.parametrize("failure_at", ["health", "reporting"])
-def test_driver_health_or_output_failure_clears_staged_history(rig, monkeypatch, failure_at):
+@pytest.mark.parametrize("failure_at", ["state_checks", "reporting"])
+def test_driver_state_check_or_output_failure_clears_staged_history(rig, monkeypatch, failure_at):
     from source.coupler import solver as driver
 
     owner = rig.c
     owner._comm = None
+    owner._update_freestream = lambda time: None
     owner._prepare_run = lambda: (rig.geometry, 11)
     owner._validate_start_step = lambda step, count: step
     owner._validate_step_limit = lambda limit: limit
@@ -379,7 +381,9 @@ def test_driver_health_or_output_failure_clears_staged_history(rig, monkeypatch,
         assert owner.interface_predictor._pending is not None
         raise failure
 
-    owner.vpm_solver.execute_scheduled_samplers = fail if failure_at == "health" else lambda: None
+    owner.vpm_solver.execute_scheduled_samplers = (
+        fail if failure_at == "state_checks" else lambda: None
+    )
     monkeypatch.setattr(driver, "write_run_metadata", lambda *args, **kwargs: None)
     monkeypatch.setattr(driver, "initialize_vpm_boundary_history", lambda *args: None)
     monkeypatch.setattr(
@@ -392,7 +396,7 @@ def test_driver_health_or_output_failure_clears_staged_history(rig, monkeypatch,
         driver.FVMVPMCoupler.solve(owner, start_step=10)
     assert raised.value is failure
     history = owner.interface_predictor
-    assert history._history is history._pending is history._active_identity is None
+    assert history._history is history._pending is history._active_inputs is None
     history.commit()
     assert history._history is None
 
@@ -423,7 +427,7 @@ def test_new_solve_and_native_load_clear_history_before_any_state_change(rig, mo
     assert owner._restart_loaded
 
 
-def test_native_identity_hashes_live_values_not_mutable_operator_identity():
+def test_native_configuration_hashes_live_values_not_mutable_operator_configuration():
     from source.coupler import CouplerSetup
     from source.solvers.fvm.config import FVMSetup
     from source.solvers.vpm.config.case import Numerics
@@ -448,7 +452,7 @@ def test_native_identity_hashes_live_values_not_mutable_operator_identity():
         "n_faces": 0,
         "n_interior_faces": 0,
     }
-    fvm = SimpleNamespace(setup=FVMSetup(case_name="identity"), mesh_data=mesh, time_step_size=0.01)
+    fvm = SimpleNamespace(setup=FVMSetup(case_name="inputs"), mesh_data=mesh, time_step_size=0.01)
     owner = SimpleNamespace(
         setup=CouplerSetup(),
         fvm_solver=fvm,
@@ -464,24 +468,34 @@ def test_native_identity_hashes_live_values_not_mutable_operator_identity():
         freestream_velocity=np.ones(3),
     )
     geometry = np.zeros((1, 3)), np.array([[1.0, 0.0, 0.0]]), np.ones(1)
-    original = prediction._identity(owner, geometry)
+    original = prediction._prediction_inputs(owner, geometry)
     assert original is not None
-    assert prediction._same_identity(original, prediction._identity(owner, geometry))
+    assert prediction._same_prediction_inputs(
+        original, prediction._prediction_inputs(owner, geometry)
+    )
     runtime.stretching_scheme = "DIRECT"
-    assert not prediction._same_identity(original, prediction._identity(owner, geometry))
+    assert not prediction._same_prediction_inputs(
+        original, prediction._prediction_inputs(owner, geometry)
+    )
     runtime.stretching_scheme = "TRANSPOSED"
-    assert prediction._same_identity(original, prediction._identity(owner, geometry))
+    assert prediction._same_prediction_inputs(
+        original, prediction._prediction_inputs(owner, geometry)
+    )
     mesh["vertex_position"][0, 0] = 1.0
-    assert not prediction._same_identity(original, prediction._identity(owner, geometry))
+    assert not prediction._same_prediction_inputs(
+        original, prediction._prediction_inputs(owner, geometry)
+    )
     mesh["vertex_position"][0, 0] = 0.0
     fvm.time_step_size = 0.005
-    assert not prediction._same_identity(original, prediction._identity(owner, geometry))
+    assert not prediction._same_prediction_inputs(
+        original, prediction._prediction_inputs(owner, geometry)
+    )
     fvm.time_step_size = 0.01
     vpm.physics.velocity_override = lambda *_args: None
-    assert prediction._identity(owner, geometry) is None
+    assert prediction._prediction_inputs(owner, geometry) is None
     vpm.physics.velocity_override = None
     vpm.stage_rhs.providers = (object(),)
-    assert prediction._identity(owner, geometry) is None
+    assert prediction._prediction_inputs(owner, geometry) is None
 
 
 @pytest.mark.integration

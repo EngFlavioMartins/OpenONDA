@@ -48,7 +48,8 @@ def match_saved_times(*series) -> SavedTimeMatch:
         for other in clocks[1:]:
             insertion = bisect_left(other, time)
             candidates = [
-                index for index in (insertion - 1, insertion)
+                index
+                for index in (insertion - 1, insertion)
                 if 0 <= index < len(other) and same_saved_time(time, other[index])
             ]
             if len(candidates) > 1:
@@ -78,7 +79,7 @@ def read_pvd_times(path: str | Path) -> tuple[float, ...]:
 
 
 def _require_frame(path: Path, collection: Path, checked: set, active: set) -> None:
-    """Check small parallel/multiblock indexes, without reading volume payloads."""
+    """Check parallel/multiblock indexes without reading volume field arrays."""
     path = path.resolve()
     if path in active:
         raise ValueError(f"Cyclic saved-frame index in {collection}: {path}")

@@ -1,4 +1,4 @@
-"""Public optional policy/installer wiring; no optional GPU execution."""
+"""Public optional settings and installer commands; no optional GPU execution."""
 
 import os
 from pathlib import Path
@@ -37,7 +37,7 @@ def test_installer_optional_extra_and_explicit_gpu_verification(monkeypatch):
     assert "--require-site-packages" not in calls[-1]
 
 
-def test_public_policy_imports_leave_cupy_and_compiled_guard_optional(tmp_path):
+def test_public_settings_imports_leave_cupy_and_compiled_guard_optional(tmp_path):
     script = """
 import sys
 class RejectOptional:
@@ -46,12 +46,12 @@ class RejectOptional:
             raise AssertionError('optional runtime imported: '+fullname)
 sys.meta_path.insert(0, RejectOptional())
 from openonda import vpm
-from source.solvers.vpm.physics.induction import GaussianSlabPolicy, GaussianMeshParameters
-assert vpm.GaussianSlabPolicy is GaussianSlabPolicy
+from source.solvers.vpm.physics.induction import GaussianSlabSettings, GaussianMeshParameters
+assert vpm.GaussianSlabSettings is GaussianSlabSettings
 assert vpm.GaussianMeshParameters is GaussianMeshParameters
 backend = vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-.5, z_max=.5,
-                              gaussian_mesh_policy=vpm.GaussianSlabPolicy())
-assert backend.gaussian_mesh_policy.mesh == vpm.GaussianMeshParameters()
+                              gaussian_mesh_settings=vpm.GaussianSlabSettings())
+assert backend.gaussian_mesh_settings.mesh == vpm.GaussianMeshParameters()
 assert vpm.FMMInduction().kernel.name == 'GAUSSIAN'
 """
     env = os.environ.copy()

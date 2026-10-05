@@ -12,7 +12,7 @@ from source.coupler import reporting
 
 
 @pytest.mark.parametrize("backup_due", [False, True])
-def test_exchange_total_includes_health_reporting_and_backup_once(
+def test_exchange_total_includes_state_checks_reporting_and_backup_once(
     tmp_path, monkeypatch, backup_due
 ):
     clock = SimpleNamespace(value=20.0)
@@ -53,16 +53,16 @@ def test_exchange_total_includes_health_reporting_and_backup_once(
         None,
         logger=logging.getLogger("test.exchange_timing"),
         exchange_started=0.0,
-        health_output_time=5.0,
+        state_checks_and_sampling_seconds=5.0,
     )
     row = json.loads((tmp_path / "coupler_diagnostics.jsonl").read_text())
     times = row["timing_seconds"]
     assert times["total"] == 22.0 + (7.0 if backup_due else 0.0)
     assert times["evolution_total"] == 12.0
-    assert times["health_and_samplers"] == 5.0
+    assert times["state_checks_and_samplers"] == 5.0
     assert times["reporting"] == 2.0
     assert times["backup"] == (7.0 if backup_due else 0.0)
-    assert times["orchestration_and_wait"] == 3.0
+    assert times["coupling_control_and_wait"] == 3.0
     assert times["last_sweep_donor_gather"] == 0.5  # not added a second time
     assert times["total"] == sum(
         times[name]
@@ -71,14 +71,14 @@ def test_exchange_total_includes_health_reporting_and_backup_once(
             "vpm_boundary_condition",
             "fvm",
             "transfer",
-            "health_and_samplers",
+            "state_checks_and_samplers",
             "reporting",
             "backup",
-            "orchestration_and_wait",
+            "coupling_control_and_wait",
         )
     )
     assert backups == ([1] if backup_due else [])
-    assert "before timing publication" in row["timing_scope"]
+    assert "before timing output" in row["timing_scope"]
 
 
 def _failure_coupler(directory, backup, *, master=True):
@@ -117,8 +117,8 @@ def _patch_reporting(monkeypatch):
 def test_failed_backup_preserves_one_accepted_row_and_original_error(tmp_path, monkeypatch):
     _patch_reporting(monkeypatch)
     failure = OSError("checkpoint device is full")
-    manifest = tmp_path / "last-committed-manifest.json"
-    manifest.write_text('{"step":0}\n')
+    checkpoint_info = tmp_path / "last-committed-checkpoint_info.json"
+    checkpoint_info.write_text('{"step":0}\n')
 
     def fail_backup(*args, **kwargs):
         raise failure
@@ -137,7 +137,7 @@ def test_failed_backup_preserves_one_accepted_row_and_original_error(tmp_path, m
         "error": "OSError: checkpoint device is full",
     }
     assert row["timing_seconds"]["backup"] >= 0
-    assert manifest.read_text() == '{"step":0}\n'
+    assert checkpoint_info.read_text() == '{"step":0}\n'
 
 
 def test_diagnostic_write_failure_does_not_mask_original_backup_failure(tmp_path, monkeypatch):
@@ -163,7 +163,7 @@ def test_diagnostic_write_failure_does_not_mask_original_backup_failure(tmp_path
     assert any("PermissionError" in note for note in failure.__notes__)
 
 
-def test_backup_failure_keeps_all_ranks_on_the_same_publication_collectives(tmp_path, monkeypatch):
+def test_backup_failure_keeps_all_ranks_on_the_same_output_collectives(tmp_path, monkeypatch):
     """Bounded threaded communicators catch a skipped collective as a timeout."""
     _patch_reporting(monkeypatch)
     barrier = threading.Barrier(2, timeout=3)

@@ -94,7 +94,7 @@ def test_native_tree_growth_preserves_fields_and_direct_velocity():
 
     grown = physics._get_or_create_treecode(8193, 0.1)
     assert grown.max_n_particles == 16_384
-    assert first._field_owner.tree is None
+    assert first._device_fields.tree is None
     grown.build(position, strength, radius)
     actual, _, _ = grown.compute_velocity_and_gradient()
     kernel = make_vortex_kernel("GAUSSIAN")

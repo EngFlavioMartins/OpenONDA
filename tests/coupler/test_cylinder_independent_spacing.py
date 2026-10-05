@@ -35,13 +35,13 @@ def test_native_builder_preserves_independent_physical_lengths(requested):
     baseline, _ = study._study_overrides({})
     base_fvm, base_vpm, _, base_mesh = module.build_case(end_time=100.0, overrides=baseline)
     values, resolved = study._study_overrides(requested)
-    flow, particles, policy, mesh = module.build_case(end_time=100.0, overrides=values)
+    flow, particles, settings, mesh = module.build_case(end_time=100.0, overrides=values)
     viscous = particles.numerics.viscous
     hp = viscous.particle_spacing
     assert hp == pytest.approx(resolved["particle_spacing"])
     assert viscous.core_radius_ratio * hp == pytest.approx(resolved["core_radius"])
-    assert policy.eta_blend_width == pytest.approx(resolved["blend_width"])
-    assert policy.vpm_only_width == pytest.approx(resolved["release_width"])
+    assert settings.eta_blend_width == pytest.approx(resolved["blend_width"])
+    assert settings.vpm_only_width == pytest.approx(resolved["release_width"])
     assert viscous.core_radius_ratio == pytest.approx(resolved["sigma_over_hp"])
     assert resolved["particle_span_layers"] == 1
     assert hp == pytest.approx(0.08 * requested.get("particle_spacing_ratio", 1.0))
@@ -86,12 +86,12 @@ def test_every_single_factor_and_interaction_resolves_native_geometry():
     )
     for requested in requests:
         values, resolved = study._study_overrides(requested)
-        _, particles, policy, _ = module.build_case(end_time=100.0, overrides=values)
+        _, particles, settings, _ = module.build_case(end_time=100.0, overrides=values)
         hp = particles.numerics.viscous.particle_spacing
         assert hp == pytest.approx(resolved["particle_spacing"])
         assert particles.numerics.viscous.core_radius_ratio * hp == pytest.approx(
             resolved["core_radius"]
         )
-        assert policy.eta_blend_width == pytest.approx(resolved["blend_width"])
-        assert policy.vpm_only_width == pytest.approx(resolved["release_width"])
+        assert settings.eta_blend_width == pytest.approx(resolved["blend_width"])
+        assert settings.vpm_only_width == pytest.approx(resolved["release_width"])
         assert resolved["particle_span_layers"] == 1

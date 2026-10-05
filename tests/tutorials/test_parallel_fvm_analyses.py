@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 
-from openonda.tutorials import materialize_tutorial
+from openonda.tutorials import copy_tutorial
 
 
 @pytest.mark.integration
@@ -42,7 +42,7 @@ case.main()
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     for cores in (1, 2):
-        case = materialize_tutorial(f"fvm/{name}", tmp_path / f"{cores} cores")
+        case = copy_tutorial(f"fvm/{name}", tmp_path / f"{cores} cores")
         result = subprocess.run(
             [sys.executable, str(wrapper), str(case), str(cores)],
             cwd=tmp_path,

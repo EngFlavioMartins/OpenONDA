@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import openonda.vpm as vpm
-from source.solvers.vpm.io.manifest import _manifest_value
+from source.solvers.vpm.io.metadata import _metadata_value
 from tests._tutorial_helpers import load_tutorial_module
 
 load_forces = load_tutorial_module("vpm/flat_plate", "assets.results").load_forces
@@ -31,7 +31,7 @@ def test_travel_uses_recorded_motion_and_geometry_without_rewriting_samples(tmp_
         else vpm.StaticVLM()
     )
     metadata = {
-        "lifecycle": {"status": "completed"},
+        "run_status": {"status": "completed"},
         "configuration": {
             "numerics": {
                 "vlm": {
@@ -41,7 +41,7 @@ def test_travel_uses_recorded_motion_and_geometry_without_rewriting_samples(tmp_
                         {
                             "surface": str(geometry / f"{name}.json"),
                             "geometry": {"refs": {"chord": 2, "span": 8}},
-                            "kinematics": _manifest_value(motion),
+                            "kinematics": _metadata_value(motion),
                         }
                     ],
                 }

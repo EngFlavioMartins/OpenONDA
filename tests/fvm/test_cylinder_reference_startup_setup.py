@@ -57,7 +57,7 @@ def test_reference_runner_passes_the_same_schedule(monkeypatch):
     )
 
 
-def test_reference_campaign_factory_accepts_independent_grid_paths(tmp_path, monkeypatch):
+def test_reference_parameter_study_factory_accepts_independent_grid_paths(tmp_path, monkeypatch):
     reference = load_case_module(CASE / "reference_flow")
     captured = {}
     monkeypatch.setattr(

@@ -81,7 +81,7 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
         sources.append(
             {
                 "run": run,
-                "status": metadata["lifecycle"]["status"],
+                "status": metadata["run_status"]["status"],
                 "tracking_termination": termination,
                 "tracked_until": float(tracks.time.max()),
                 "fields": fields,
@@ -115,7 +115,7 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
     figure_path = output / FIGURE_NAME
     save_figure(fig, figure_path, ax, formats)
     plt.close(fig)
-    manifest = {
+    plot_information = {
         "figure": FIGURE_NAME,
         "generator": Path(__file__).name,
         "reference": str(reference_path.relative_to(setup.TUTORIAL_DIR)),
@@ -125,7 +125,7 @@ def plot(runs, output, auxiliary_output, formats, merge_bridge, bridge_limit):
     }
     write_text(
         auxiliary_output / f"{FIGURE_NAME}.json",
-        json.dumps(manifest, indent=2) + "\n",
+        json.dumps(plot_information, indent=2) + "\n",
         encoding="utf-8",
     )
 

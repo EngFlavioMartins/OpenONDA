@@ -90,7 +90,7 @@ class LinearSolveError(RuntimeError):
 
     Both the SciPy and PETSc backends raise this exception when the Krylov
     method fails to reach the requested tolerance, unless the
-    ``direct_fallback`` failure policy has been set.
+    ``direct_fallback`` failure option has been set.
     """
 
 
@@ -99,7 +99,7 @@ class LinearSolveResult:
     """Backend-neutral convergence record for a single sparse solve.
 
     Produced by :func:`solve_linear_system` and consumed by the solver's
-    diagnostic pipeline and log output.  The frozen tuple fields make
+    diagnostic sequence and log output.  The frozen tuple fields make
     instances safe to store across time steps without accidental mutation.
 
     Attributes

@@ -71,7 +71,7 @@ def pack_face_nodes(faces):
 
 @dataclass(frozen=True)
 class BoundaryPatch:
-    """Stable identity of one mesh patch, independent of operator state.
+    """Fixed description of one mesh patch, independent of operator state.
 
     Attributes
     ----------

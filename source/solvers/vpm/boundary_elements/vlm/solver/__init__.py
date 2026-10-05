@@ -10,7 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from ..config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .diagnostics import VLMDiagnostics
-from .field import BoundSurfaceFieldContract
+from .field import BoundSurfaceFieldSettings
 from .forces import VLMForceEvaluator
 from .lattice import VLMLattice
 from .loading_distribution import VLMLoadingDistribution
@@ -18,7 +18,7 @@ from .vlm_solver import VLMSolver
 
 __all__ = [
     "VLMDiagnostics",
-    "BoundSurfaceFieldContract",
+    "BoundSurfaceFieldSettings",
     "VLMForceEvaluator",
     "VLMLattice",
     "VLMLoadingDistribution",

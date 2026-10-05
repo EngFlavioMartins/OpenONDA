@@ -1,7 +1,7 @@
 """Read-only, selected-target f64 direct-image audit of native induction profiles.
 
 This is an independent all-pairs sum, not an FMM, a simulation continuation, or
-an infinite-image oracle. It evaluates exactly the finite shell family recorded
+an infinite-image reference. It evaluates exactly the finite shell family recorded
 by the supplied profiles. Pair each total profile with its self-only profile to
 isolate images without attributing a self-FMM change to the image operator.
 """
@@ -54,7 +54,7 @@ def image_family(z_min, z_max, last_shell):
 
 
 def direct_numpy(kernel, position, strength, radius, target_position, images):
-    """Small independent host oracle, using physical reflected axial vectors."""
+    """Small independent host reference, using physical reflected axial vectors."""
     total = np.zeros((len(target_position), 12))
     absolute = np.zeros_like(total)
     for shift, odd in images:
@@ -165,22 +165,22 @@ def make_direct_evaluator(radial_factors, tile_size=256):
     return DirectImages
 
 
-def load_profile_pair(total_prefix, self_prefix, identity):
-    """Refuse mismatched clocks/configurations/checkpoints or incomplete evidence."""
+def load_profile_pair(total_prefix, self_prefix, sample_configuration):
+    """Refuse mismatched times/configurations/checkpoints or incomplete evidence."""
     reports = []
     for prefix in (total_prefix, self_prefix):
         report = json.loads(prefix.with_suffix(".json").read_text())
         if report.get("status") != "complete":
             raise ValueError(f"Incomplete profile: {prefix}")
         for key in ("checkpoint_sha256", "particles", "time", "configuration"):
-            if report.get(key) != identity[key]:
+            if report.get(key) != sample_configuration[key]:
                 raise ValueError(f"Profile {prefix} has a different {key}")
         reports.append(report)
     tail = reports[0]["measurements"][-1]["tail"]
     if tail is None or reports[1]["measurements"][-1]["tail"] is not None:
         raise ValueError("Each --profile-prefixes pair must be TOTAL followed by SELF_ONLY")
     shell = int(tail["shell"])
-    expected_evaluations = identity["particles"] * (1 + 4 * shell)
+    expected_evaluations = sample_configuration["particles"] * (1 + 4 * shell)
     if tail["target_evaluations"] != expected_evaluations:
         raise ValueError("Profile image count differs from the complete finite shell family")
     if reports[0]["source_root"] != reports[1]["source_root"]:
@@ -191,9 +191,14 @@ def load_profile_pair(total_prefix, self_prefix, identity):
             fields = []
             for key, shape in (("velocity", (3,)), ("gradient", (3, 3)), ("rate", (3,))):
                 value = saved[key]
-                if value.shape != (identity["particles"], *shape) or not np.isfinite(value).all():
+                if (
+                    value.shape != (sample_configuration["particles"], *shape)
+                    or not np.isfinite(value).all()
+                ):
                     raise ValueError(f"Invalid {key} array in {prefix}")
-                fields.append(value.astype(np.float64).reshape(identity["particles"], -1))
+                fields.append(
+                    value.astype(np.float64).reshape(sample_configuration["particles"], -1)
+                )
             arrays.append(np.concatenate(fields, axis=1))
     return reports, arrays, shell
 
@@ -236,26 +241,26 @@ def error_summary(actual, exact, sum_absolute, extraction_allowance):
     }
 
 
-def load_saved_oracle(prefix, identity, position, strength, images):
-    """Admit authenticated immutable direct evidence without device work."""
+def load_saved_reference(prefix, sample_configuration, position, strength, images):
+    """Validate hash-verified immutable direct evidence without device work."""
     report_path = prefix.with_suffix(".json")
     archive_path = prefix.with_suffix(".npz")
     report = json.loads(report_path.read_text())
     for key in ("checkpoint_sha256", "particles", "time", "configuration"):
-        if report.get(key) != identity[key]:
-            raise ValueError(f"Saved oracle has a different {key}")
+        if report.get(key) != sample_configuration[key]:
+            raise ValueError(f"Saved reference has a different {key}")
     if report.get("status") != "complete" or report.get("precision") != "f64":
-        raise ValueError("Saved oracle must be a completed f64 direct audit")
+        raise ValueError("Saved reference must be a completed f64 direct audit")
     recorded_hash = report.get("archive_sha256")
     if not isinstance(recorded_hash, str) or len(recorded_hash) != 64:
-        raise ValueError("Saved oracle report must embed its archive SHA256")
+        raise ValueError("Saved reference report must embed its archive SHA256")
     archive_hash = hashlib.sha256(archive_path.read_bytes()).hexdigest()
     if archive_hash != recorded_hash:
-        raise ValueError("Saved oracle archive SHA256 mismatch")
+        raise ValueError("Saved reference archive SHA256 mismatch")
     if report.get("images") != len(images) or 1 + 4 * int(report.get("last_shell", -1)) != len(
         images
     ):
-        raise ValueError("Saved oracle uses a different finite image family")
+        raise ValueError("Saved reference uses a different finite image family")
     with np.load(archive_path, allow_pickle=False) as saved:
         archive = {
             key: saved[key].copy()
@@ -264,9 +269,9 @@ def load_saved_oracle(prefix, identity, position, strength, images):
     indices = archive["indices"]
     target_count = report.get("targets")
     if not isinstance(target_count, int) or not 1 <= target_count <= len(position):
-        raise ValueError("Invalid saved oracle target count")
+        raise ValueError("Invalid saved reference target count")
     if report.get("pair_evaluations") != len(position) * target_count * len(images):
-        raise ValueError("Saved oracle pair count disagrees with native input")
+        raise ValueError("Saved reference pair count disagrees with native input")
     if (
         indices.shape != (target_count,)
         or not np.issubdtype(indices.dtype, np.integer)
@@ -274,19 +279,19 @@ def load_saved_oracle(prefix, identity, position, strength, images):
         or np.any(indices >= len(position))
         or len(np.unique(indices)) != target_count
     ):
-        raise ValueError("Invalid saved oracle target indices")
+        raise ValueError("Invalid saved reference target indices")
     if indices.tolist() != report.get("target_indices"):
-        raise ValueError("Saved oracle indices disagree with its report")
+        raise ValueError("Saved reference indices disagree with its report")
     expected_indices = select_targets(position, strength, target_count, report["seed"])
     if not np.array_equal(indices, expected_indices):
-        raise ValueError("Saved oracle target selection does not match the native checkpoint")
+        raise ValueError("Saved reference target selection does not match the native checkpoint")
     for key, expected in (
         ("position", position[indices]),
         ("strength", strength[indices]),
         ("images", images),
     ):
         if not np.array_equal(archive[key], expected):
-            raise ValueError(f"Saved oracle {key} disagrees with native input")
+            raise ValueError(f"Saved reference {key} disagrees with native input")
     for key in ("direct", "sum_absolute"):
         value = archive[key]
         if (
@@ -294,22 +299,22 @@ def load_saved_oracle(prefix, identity, position, strength, images):
             or value.dtype != np.float64
             or not np.isfinite(value).all()
         ):
-            raise ValueError(f"Invalid saved oracle {key} array")
+            raise ValueError(f"Invalid saved reference {key} array")
     if np.any(archive["sum_absolute"] < 0):
-        raise ValueError("Saved oracle absolute sums must be nonnegative")
-    scheme = identity["configuration"]["induction"]["stretching_scheme"]
+        raise ValueError("Saved reference absolute sums must be nonnegative")
+    scheme = sample_configuration["configuration"]["induction"]["stretching_scheme"]
     for key in ("direct", "sum_absolute"):
         vector = strength[indices] if key == "direct" else np.abs(strength[indices])
         rate = rate_from_gradient(archive[key][:, 3:12].reshape(-1, 3, 3), vector, scheme)
         if not np.array_equal(rate, archive[key][:, 12:]):
-            raise ValueError(f"Saved oracle {key} rate is inconsistent with its gradient")
-    provenance = {
+            raise ValueError(f"Saved reference {key} rate is inconsistent with its gradient")
+    source_information = {
         "prefix": str(prefix.resolve()),
         "archive_sha256": archive_hash,
         "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
-        "digest_admission": "embedded report",
+        "hash_verification": "embedded report",
     }
-    return report, archive, provenance
+    return report, archive, source_information
 
 
 def global_profile_differences(loaded, prefixes):
@@ -354,10 +359,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
-        "--source-root", type=Path, help="Run the direct CUDA oracle using these radial kernels"
+        "--source-root", type=Path, help="Run the direct CUDA reference using these radial kernels"
     )
     mode.add_argument(
-        "--saved-oracle",
+        "--saved-reference",
         type=Path,
         help="Reuse an existing direct JSON/NPZ prefix without GPU work",
     )
@@ -400,13 +405,15 @@ def main():
         raise ValueError("Nonfinite checkpoint particle data")
     if np.any(radius <= 0):
         raise ValueError("Nonpositive source core radius")
-    identity = {
+    sample_configuration = {
         "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
         "particles": len(position),
         "time": clock,
         "configuration": config,
     }
-    loaded = [load_profile_pair(*prefixes, identity) for prefixes in args.profile_prefixes]
+    loaded = [
+        load_profile_pair(*prefixes, sample_configuration) for prefixes in args.profile_prefixes
+    ]
     shells = {item[2] for item in loaded}
     if len(shells) != 1:
         raise ValueError(
@@ -415,20 +422,20 @@ def main():
     last_shell = shells.pop()
     induction = config["induction"]
     images = image_family(induction["z_min"], induction["z_max"], last_shell)
-    if args.saved_oracle is not None:
-        original, archive, saved_provenance = load_saved_oracle(
-            args.saved_oracle,
-            identity,
+    if args.saved_reference is not None:
+        original, archive, saved_source_information = load_saved_reference(
+            args.saved_reference,
+            sample_configuration,
             position,
             strength,
             images,
         )
         indices = archive["indices"]
         exact, absolute = archive["direct"], archive["sum_absolute"]
-        oracle_metadata = {
+        reference_metadata = {
             key: original[key]
             for key in (
-                "oracle_source_root",
+                "reference_source_root",
                 "arch",
                 "precision",
                 "seed",
@@ -452,7 +459,7 @@ def main():
                 and getattr(module, "__file__", None)
                 and not Path(module.__file__).resolve().is_relative_to(root)
             ):
-                raise RuntimeError(f"Wrong oracle source root: {module.__file__}")
+                raise RuntimeError(f"Wrong reference source root: {module.__file__}")
         indices = select_targets(position, strength, args.target_count, args.seed)
         ti.init(arch=ti.cuda, default_fp=ti.f64, offline_cache=False, cpu_max_num_threads=2)
         if ti.lang.impl.current_cfg().arch != ti.cuda:
@@ -492,8 +499,8 @@ def main():
         unit_roundoff = np.finfo(np.float64).eps / 2
         reduction_terms = args.source_tile + evaluator.source_tiles * len(images)
         gamma = reduction_terms * unit_roundoff / (1 - reduction_terms * unit_roundoff)
-        oracle_metadata = {
-            "oracle_source_root": str(root),
+        reference_metadata = {
+            "reference_source_root": str(root),
             "arch": "cuda",
             "precision": "f64",
             "seed": args.seed,
@@ -507,7 +514,7 @@ def main():
                 "excludes": "pair arithmetic, radial-function evaluation, and final rate contraction",
             },
         }
-        saved_provenance = None
+        saved_source_information = None
     comparisons = []
     for index, ((reports, fields, _), prefixes) in enumerate(
         zip(loaded, args.profile_prefixes, strict=True)
@@ -548,25 +555,25 @@ def main():
             }
         )
     report = {
-        **identity,
-        **oracle_metadata,
+        **sample_configuration,
+        **reference_metadata,
         "checkpoint": str(args.checkpoint.resolve()),
         "status": "complete",
-        "mode": "saved-direct-oracle" if saved_provenance else "fresh-direct-oracle",
-        "saved_oracle": saved_provenance,
+        "mode": "saved-direct-reference" if saved_source_information else "fresh-direct-reference",
+        "saved_reference": saved_source_information,
         "direct_pair_evaluations_this_run": 0
-        if saved_provenance
-        else oracle_metadata["pair_evaluations"],
+        if saved_source_information
+        else reference_metadata["pair_evaluations"],
         "last_shell": last_shell,
         "images": len(images),
         "targets": len(indices),
         "target_indices": indices.tolist(),
         "selection": "strongest four, six axis extrema, seeded random without replacement",
-        "scope": "finite image contribution only; no FMM, no infinite-tail or all-target certification",
+        "scope": "finite image contribution only; no FMM, no infinite-tail or all-target validation",
         "gradient_layout": "row-major du_i/dx_j; arrays columns velocity(3), gradient(9), rate(3)",
         "sum_absolute_note": "per-pair component absolute sum; rate uses triangle bound from gradient",
         "conditioning_note": "eps32*sum_absolute is a scale, not an acceptance tolerance or FMM error bound",
-        "self_subtraction_exclusion": "Images are total minus a separately profiled self field. Publication rounding is quantified; repeat-to-repeat self-FMM accumulation variation is not independently bounded or removed.",
+        "self_subtraction_exclusion": "Images are total minus a separately profiled self field. Output writing rounding is quantified; repeat-to-repeat self-FMM accumulation variation is not independently bounded or removed.",
         "comparisons": comparisons,
         "global_profile_differences": global_profile_differences(loaded, args.profile_prefixes),
     }

@@ -8,7 +8,7 @@ every native backup up to and including the audited step is present, paired
 with its VTU/VTP companions, and that all clocks agree. Later publications are
 ignored so the audit can run while the solver is writing its next outputs.
 
-This helper is deliberately a shared owner: the Delta-wing lineage finalizer,
+This helper is deliberately a shared solver instance: the Delta-wing refinement state restoration,
 the flat-plate and delta-wing studies, and the checkpoint-audit qualification
 tests all consume the same verification entry point.
 """
@@ -125,7 +125,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         solver = archive["solver"]
         native_step = int(solver.attrs["step"])
         time = float(solver.attrs["time"])
-        identity = str(archive["solver/vlm"].attrs["identity"])
+        configuration_hash = str(archive["solver/vlm"].attrs["configuration_hash"])
     if native_step != step:
         raise ValueError(
             f"native VPM step/time conflicts with filename {checkpoint_path.name}: "
@@ -142,7 +142,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         if candidate_step > step:
             continue
         if kind == "unfinished":
-            raise ValueError(f"native HDF5/VTU prefix is not fully published: {path.name}")
+            raise ValueError(f"native HDF5/VTU prefix is not fully written: {path.name}")
         if path.suffix == ".h5":
             h5_files[candidate_step] = path
         else:
@@ -155,7 +155,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
         if not has_h5 or not has_vtu:
             missing = "h5" if has_vtu else "vtu"
             raise ValueError(
-                f"native HDF5/VTU prefix is not fully published: "
+                f"native HDF5/VTU prefix is not fully written: "
                 f"missing vpm_{candidate_step:06d}.{missing}"
             )
         path = h5_files[candidate_step]
@@ -212,7 +212,7 @@ def audit_checkpoint(checkpoint_path: Path) -> dict[str, object]:
     return {
         "step": step,
         "time": time,
-        "vlm_identity": identity,
+        "vlm_configuration_hash": configuration_hash,
         "vtp_series": {
             "frames": sorted(frame_steps),
             "frame_count": len(frame_steps),
@@ -244,7 +244,7 @@ def main(arguments: list[str] | None = None) -> int:
             ("physical time", evidence["time"], "s"),
             ("frames", series["frame_count"]),
             ("last frame", series["last_frame"]),
-            ("VLM identity", evidence["vlm_identity"]),
+            ("VLM configuration hash", evidence["vlm_configuration_hash"]),
             flush=True,
         )
     return 0

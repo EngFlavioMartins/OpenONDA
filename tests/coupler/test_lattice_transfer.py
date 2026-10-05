@@ -1,4 +1,4 @@
-"""M4-prime kernel identities used by canonical renewal and GBD."""
+"""M4-prime kernel identities used by particle renewal and GBD."""
 
 import numpy as np
 

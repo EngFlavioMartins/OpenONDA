@@ -1,4 +1,4 @@
-"""Structured convergence and run-health records for the FVM solver."""
+"""Structured convergence and run-field and convergence records for the FVM solver."""
 
 from __future__ import annotations
 
@@ -40,11 +40,11 @@ class OuterCorrectorDiagnostics:
 
 @dataclass(frozen=True)
 class StepDiagnostics:
-    """Immutable health record for one solver time step.
+    """Immutable field and convergence record for one solver time step.
 
     Aggregates convergence metrics, field extrema, CFL number, and
     turbulence diagnostics for a single accepted (or rejected) step.
-    The solver's diagnostic pipeline writes these records to the JSONL
+    The solver's diagnostic sequence writes these records to the JSONL
     output and the acceptance limits evaluate them for abort conditions.
 
     Attributes
@@ -78,7 +78,7 @@ class StepDiagnostics:
     min_kinematic_pressure / max_kinematic_pressure : float
         Kinematic-pressure extrema.
     n_nonfinite_values : int
-        Number of non-finite entries detected (zero for a healthy step).
+        Number of non-finite entries detected (zero for a finite step).
     total_kinetic_energy : float
         Volume-integrated kinetic energy.
     total_enstrophy : float

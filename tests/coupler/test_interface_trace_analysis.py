@@ -20,12 +20,12 @@ def rig(tmp_path):
         "coupler": {"interface_normal_tolerance": 1.0, "interface_gradient_tolerance": 2.0},
         "vpm": {"time_step_size": 0.04},
     }
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text(
+    checkpoint_info = tmp_path / "checkpoint_info.json"
+    checkpoint_info.write_text(
         json.dumps(
             {
                 "kind": "openonda.coupled_backup",
-                "format_version": 12,
+                "format_version": 13,
                 "config": config,
                 "config_sha256": asset.mapping_digest(config),
                 "n_fvm_substeps": 5,
@@ -82,7 +82,7 @@ def rig(tmp_path):
                 event["arrays"][field] = key
                 arrays[key] = value.copy()
             events.append(event)
-        normal, gradient = asset._gate_values(raw, accepted, geometry["face_area"])
+        normal, gradient = asset._residual_values(raw, accepted, geometry["face_area"])
         row = {
             "sweep": 1,
             "normal_residual_rms": normal,
@@ -135,7 +135,7 @@ def rig(tmp_path):
             }
         )
     )
-    return asset, paths, manifest, run_report
+    return asset, paths, checkpoint_info, run_report
 
 
 def _mutate_trace(path, transform):
@@ -185,7 +185,7 @@ def _seed_record(asset, path, seed, *, reject=False):
             events.append(event)
         rows = []
         for index in range(1 + int(reject)):
-            normal, gradient = asset._gate_values(
+            normal, gradient = asset._residual_values(
                 seed if index == 0 else raw, accepted, geometry["face_area"]
             )
             rows.append(
@@ -220,8 +220,8 @@ def _seed_record(asset, path, seed, *, reject=False):
 
 
 def test_seeded_initial_trace_is_verified_against_previous_raw_correction(rig):
-    asset, paths, manifest, run_report = rig
-    settings, _ = asset.load_manifest(manifest)
+    asset, paths, checkpoint_info, run_report = rig
+    settings, _ = asset.load_metadata(checkpoint_info)
     previous = asset.load_trace(paths[0], settings)
     current = asset.load_trace(paths[1], settings)
     # Preserve the exact production operation order (raw + (accepted - raw)).
@@ -233,19 +233,19 @@ def test_seeded_initial_trace_is_verified_against_previous_raw_correction(rig):
         "ij,ij->i", seed["velocity"], current["geometry"]["face_normal"]
     )
     _seed_record(asset, paths[1], seed)
-    report, _ = asset.analyze(paths, manifest, [run_report])
+    report, _ = asset.analyze(paths, checkpoint_info, [run_report])
     assert (
         report["exchanges"][1]["seed_history_reconstruction"] == "verified_against_previous_trace"
     )
     seed["velocity"][0, 2] += 1e-4
     _seed_record(asset, paths[1], seed)
     with pytest.raises(ValueError, match="previous accepted-minus-raw"):
-        asset.analyze(paths, manifest, [run_report])
+        asset.analyze(paths, checkpoint_info, [run_report])
 
 
 def test_rejected_seed_requires_a_fresh_raw_baseline_trace(rig):
-    asset, paths, manifest, _ = rig
-    settings, _ = asset.load_manifest(manifest)
+    asset, paths, checkpoint_info, _ = rig
+    settings, _ = asset.load_metadata(checkpoint_info)
     current = asset.load_trace(paths[0], settings)
     seed = {field: value + 10 for field, value in current["raw"].items()}
     seed["normal_velocity"] = np.einsum(
@@ -264,8 +264,8 @@ def test_rejected_seed_requires_a_fresh_raw_baseline_trace(rig):
 
 
 def test_linear_correction_reconstruction_and_area_weighted_errors(rig):
-    asset, paths, manifest, run_report = rig
-    report, vectors = asset.analyze(paths, manifest, [run_report])
+    asset, paths, checkpoint_info, run_report = rig
+    report, vectors = asset.analyze(paths, checkpoint_info, [run_report])
     assert len(report["exchanges"]) == 3
     first, second, third = report["exchanges"]
     assert set(first["offline_candidate_endpoint_errors"]) == {"raw_predictor"}
@@ -301,7 +301,7 @@ def test_linear_correction_reconstruction_and_area_weighted_errors(rig):
     ],
 )
 def test_incomplete_or_discontinuous_evidence_is_rejected(rig, mutation):
-    asset, paths, manifest, run_report = rig
+    asset, paths, checkpoint_info, run_report = rig
 
     def corrupt(metadata, arrays):
         if mutation == "failed":
@@ -325,38 +325,38 @@ def test_incomplete_or_discontinuous_evidence_is_rejected(rig, mutation):
 
     _mutate_trace(paths[1], corrupt)
     with pytest.raises(ValueError):
-        asset.analyze(paths, manifest, [run_report])
+        asset.analyze(paths, checkpoint_info, [run_report])
 
 
 @pytest.mark.parametrize("order", [[1, 0, 2], [0, 2], [0, 0, 1]])
 def test_reordered_skipped_or_duplicate_exchanges_are_rejected(rig, order):
-    asset, paths, manifest, run_report = rig
+    asset, paths, checkpoint_info, run_report = rig
     with pytest.raises(ValueError):
-        asset.analyze([paths[index] for index in order], manifest, [run_report])
+        asset.analyze([paths[index] for index in order], checkpoint_info, [run_report])
 
 
 def test_changed_benchmark_source_is_rejected(rig):
-    asset, paths, manifest, run_report = rig
+    asset, paths, checkpoint_info, run_report = rig
     report = json.loads(run_report.read_text())
     report["source_hashes_at_completion"]["/qualified/source/operator.py"] = "1" * 64
     run_report.write_text(json.dumps(report))
-    with pytest.raises(ValueError, match="source provenance"):
-        asset.analyze(paths, manifest, [run_report])
+    with pytest.raises(ValueError, match="source source information"):
+        asset.analyze(paths, checkpoint_info, [run_report])
 
 
-def test_manifest_configuration_tampering_is_rejected(rig):
-    asset, paths, manifest, run_report = rig
-    record = json.loads(manifest.read_text())
+def test_checkpoint_info_configuration_tampering_is_rejected(rig):
+    asset, paths, checkpoint_info, run_report = rig
+    record = json.loads(checkpoint_info.read_text())
     record["config"]["coupler"]["interface_normal_tolerance"] *= 2
-    manifest.write_text(json.dumps(record))
+    checkpoint_info.write_text(json.dumps(record))
     with pytest.raises(ValueError, match="digest mismatch"):
-        asset.analyze(paths, manifest, [run_report])
+        asset.analyze(paths, checkpoint_info, [run_report])
 
 
 def test_missing_benchmark_trace_association_is_rejected(rig):
-    asset, paths, manifest, run_report = rig
+    asset, paths, checkpoint_info, run_report = rig
     report = json.loads(run_report.read_text())
     report["interface_traces"].pop()
     run_report.write_text(json.dumps(report))
     with pytest.raises(ValueError, match="not associated"):
-        asset.analyze(paths, manifest, [run_report])
+        asset.analyze(paths, checkpoint_info, [run_report])

@@ -1,4 +1,4 @@
-"""Tutorial-owned configuration preserves its physical factory and lifecycle."""
+"""Tutorial-owned configuration preserves its physical factory and run_stages."""
 
 from contextlib import nullcontext
 from dataclasses import asdict
@@ -16,24 +16,24 @@ def test_native_configuration_matches_selected_reference_physics_and_schedules()
     """The selected ordinary run and reference share declared physical inputs."""
     setup = load_case_module(CASE)
     reference = load_case_module(CASE / "reference_flow")
-    flow, particles, policy, mesh = setup.build_case()
+    flow, particles, settings, mesh = setup.build_case()
     control, control_mesh = reference.build_case("phase_h004", 0.04)
     for field in ("schemes", "pimple", "linear", "transport", "turbulence", "time"):
         assert asdict(getattr(flow, field)) == asdict(getattr(control, field))
     assert mesh.levels == control_mesh.levels == (-0.5, 0.5)
     assert particles.numerics.induction.planar_span == 1.0
     assert particles.numerics.induction.plane_z == 0.0
-    assert policy.interface_iterations == 6
+    assert settings.interface_iterations == 6
     assert flow.time.time_step_size == 0.008
     assert particles.numerics.time_step_size == 0.04
     assert particles.numerics.viscous.particle_spacing == 0.04
     assert particles.numerics.compute_device == "AUTO"
-    assert policy.backup_interval_steps == 25
+    assert settings.backup_interval_steps == 25
     assert flow.samplers[0].schedule.every_n_steps == 5
     assert particles.samplers.samples[0].schedule.interval == 1
 
 
-def test_public_execution_uses_native_lifecycle_with_physical_initial_field(tmp_path, monkeypatch):
+def test_public_execution_uses_native_run_stages_with_physical_initial_field(tmp_path, monkeypatch):
     setup = load_case_module(CASE)
     captured = {}
 
@@ -41,8 +41,8 @@ def test_public_execution_uses_native_lifecycle_with_physical_initial_field(tmp_
         captured.update(kwargs)
         return 3
 
-    def factory(flow, particles, policy, **kwargs):
-        captured.update(flow=flow, particles=particles, policy=policy, **kwargs)
+    def factory(flow, particles, settings, **kwargs):
+        captured.update(flow=flow, particles=particles, settings=settings, **kwargs)
         return nullcontext(SimpleNamespace(run=execute))
 
     monkeypatch.setattr(setup.coupling, "create_coupler", factory)
@@ -63,7 +63,7 @@ def test_public_execution_uses_native_lifecycle_with_physical_initial_field(tmp_
     assert captured["max_coupling_steps"] == 3
     assert captured["backup_at_stop"]
     assert captured["flow"].time.end_time == 0.8
-    assert captured["policy"].freestream.end_time == setup.STARTUP_DURATION
+    assert captured["settings"].freestream.end_time == setup.STARTUP_DURATION
     np.testing.assert_allclose(
         captured["initial_velocity"](np.array([[3.0, 0.0, 0.0]])),
         [setup.STARTUP_FREESTREAM_VELOCITY],

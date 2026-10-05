@@ -123,7 +123,7 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             max_n_particles=MAX_N_PARTICLES,
             random_seed=42,
             verbose=False,
-            health_limits=vpm.HealthLimits(
+            state_limits=vpm.ParticleStateLimits(
                 lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=1.0),
                 divergence=vpm.DivergenceLimit(maximum=0.12),
                 misalignment=vpm.MisalignmentLimit(maximum_degrees=25.0),
@@ -144,7 +144,7 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
         run=vpm.RunPlan(
             steps=n_steps,
             final_backup=True,
-            health_limit_action="STOP",
+            state_limit_action="STOP",
         ),
     )
 

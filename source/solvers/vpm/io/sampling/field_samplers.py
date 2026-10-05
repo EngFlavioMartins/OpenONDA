@@ -29,7 +29,7 @@ from .schedule import OutputSchedule
 if TYPE_CHECKING:
     from ...core.solver import VPMSolver
 
-# Canonical CSV column order for SurfaceSampler / LineSampler output.  Single
+# Standard CSV column order for SurfaceSampler / LineSampler output.  Single
 # source of truth: the header row and every data row are built from this list,
 # so the written header always matches the data (no magic column indices on the
 # reader side — see ``_read_sampler_csv`` in the tutorials' post-processing).
@@ -74,11 +74,11 @@ def sampler_csv_columns(sampler) -> list[str]:
 
 
 def _validated_sample_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    """Require samplers to construct the canonical output schema directly."""
+    """Require samplers to construct the standard output schema directly."""
     allowed = {*SAMPLER_CSV_COLUMNS, "line_parameter"}
     unexpected = sorted(set(data) - allowed)
     if unexpected:
-        raise ValueError("Sampler produced non-canonical fields: " + ", ".join(unexpected))
+        raise ValueError("Sampler produced non-standard fields: " + ", ".join(unexpected))
     return data
 
 
@@ -114,7 +114,7 @@ class SurfaceSampler:
     The sampler creates a flattened ``(n_points, 3)`` point list on the plane
     through ``point``. For a z-normal the two bounds axes are x/y; for a
     y-normal they are x/z; for an x-normal they are y/z. ``sample`` returns
-    canonical scalar CSV columns, while ``save_vtp`` preserves the structured
+    standard scalar CSV columns, while ``save_vtp`` preserves the structured
     grid topology in a VTS file.
 
     Grids use ``bounded_uniform_v1``. Continuation requires the current
@@ -176,7 +176,7 @@ class SurfaceSampler:
         schedule : OutputSchedule or None, default=None
             Accepted-step/time schedule used by :class:`OutputManager`.
         initial : bool or None, default=None
-            Include the initial state. ``None`` retains a subclass's policy.
+            Include the initial state. ``None`` retains a subclass's settings.
 
         Raises
         ------
@@ -192,7 +192,7 @@ class SurfaceSampler:
         self.normal = normal / normal_length
         self.bounds = np.asarray(bounds, dtype=np.float32)
         self.spacing = float(spacing)
-        # Record the grid construction policy in native run metadata.
+        # Record the grid construction settings in native run metadata.
         self.grid_layout = "bounded_uniform_v1"
         self.file_name = file_name
         self.include_derivatives = bool(include_derivatives)
@@ -410,7 +410,7 @@ class SurfaceSampler:
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
-        """Evaluate one snapshot and write canonical columns to CSV.
+        """Evaluate one snapshot and write standard columns to CSV.
 
         Parameters
         ----------
@@ -522,7 +522,7 @@ class SurfaceSampler:
         grid = pv.StructuredGrid(x_3d, y_3d, z_3d)
         live_grid = (self.grid_points, self._grid_shape, (self._axis1_name, self._axis2_name))
         if not self._matches_grid(grid, live_grid):
-            raise ValueError("Surface sample coordinates differ from the admitted grid")
+            raise ValueError("Surface sample coordinates differ from the checked grid")
         grid.field_data["openonda_sampling_grid"] = np.array(
             [
                 json.dumps(
@@ -763,7 +763,7 @@ class LineSampler:
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
-        """Evaluate one line snapshot and write canonical columns to CSV.
+        """Evaluate one line snapshot and write standard columns to CSV.
 
         Parameters
         ----------

@@ -14,7 +14,7 @@ from ._shared import DistributionSource, resolve_distribution
 
 @dataclass(frozen=True, slots=True)
 class VortexDoublet:
-    """Configure a canonical three-dimensional vortex-doublet field.
+    """Configure a standard three-dimensional vortex-doublet field.
 
     Parameters
     ----------

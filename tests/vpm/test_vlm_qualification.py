@@ -33,7 +33,7 @@ from source.solvers.vpm.boundary_elements.vlm.solver.restart import (
     write_vlm_restart,
 )
 from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from source.solvers.vpm.config.output import Backup, Samplers
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
 from source.solvers.vpm.io.sampling import EverySteps, VLMSampler
 
@@ -501,7 +501,7 @@ def test_bicgstab_checks_relative_residual_even_for_small_rhs(scale):
         solver.solve(matrix, rhs, x, 3, max_iterations=0, tolerance=1e-10)
 
 
-def test_vlm_sampler_uses_owner_samples_path_and_resumable_polydata_index(tmp_path):
+def test_vlm_sampler_uses_field_samples_path_and_resumable_polydata_index(tmp_path):
     solver = _plate(nc=2, ns=3)
     _solve_steady(solver, [10.0, 0.0, 0.0])
     samples = Samplers((VLMSampler(schedule=EverySteps(1)),), "case_a")
@@ -532,7 +532,7 @@ def test_vlm_sampler_uses_owner_samples_path_and_resumable_polydata_index(tmp_pa
     assert vtk.field_data["time"][0] == 0.2
 
 
-def test_vlm_sampler_and_backup_use_distinct_owner_series(tmp_path, monkeypatch):
+def test_vlm_sampler_and_backup_use_distinct_field_series(tmp_path, monkeypatch):
     solver = _plate(nc=2, ns=3)
     _solve_steady(solver, [10.0, 0.0, 0.0])
 

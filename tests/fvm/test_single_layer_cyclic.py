@@ -74,7 +74,7 @@ def test_periodic_pairing_matches_permuted_face_storage():
 
 
 @pytest.mark.parametrize("defect", ["duplicate", "translation", "area", "normal", "reciprocal"])
-def test_periodic_pairing_keeps_geometric_admission_checks(defect):
+def test_periodic_pairing_keeps_geometric_validation_checks(defect):
     mesh, geo = periodic_mesh()
     patch = next(p for p in mesh["boundary"] if p["name"] == "zmax")
     face = patch["start_face"]

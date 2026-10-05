@@ -22,7 +22,6 @@ RAW_OUTPUT = FIGURE_DIR / "flat_plate_wake_raw.png"
 TEX_OUTPUT = FIGURE_DIR / "flat_plate_wake.tex"
 PDF_OUTPUT = FIGURE_DIR / "flat_plate_wake.pdf"
 PNG_OUTPUT = FIGURE_DIR / "flat_plate_wake.png"
-MANIFEST_OUTPUT = FIGURE_DIR / "flat_plate_wake_scene.json"
 FIGURE_WIDTH_MM = 125.0
 FIGURE_HEIGHT_MM = 45.0
 

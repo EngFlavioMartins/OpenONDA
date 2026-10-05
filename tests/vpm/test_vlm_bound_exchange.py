@@ -180,7 +180,7 @@ def test_rk_exchange_balances_actual_particle_increment_and_ignores_probes(
     )
     if not strength_enabled:
         np.testing.assert_array_equal(strength.to_numpy(), old_strength)
-    # Health/diagnostic evaluations after integration must not count as RK work.
+    # Particle-state/diagnostic evaluations after integration must not count as RK work.
     rhs.evaluate(
         StageState(position, strength, radius, 2, 0.03),
         0.03,

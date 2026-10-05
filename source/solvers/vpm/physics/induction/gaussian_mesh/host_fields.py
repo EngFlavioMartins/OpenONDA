@@ -4,8 +4,8 @@ Each source/target block has its own integer lattice origin. The convolution
 kernel carries their origin difference, so a remote query never allocates the
 empty space between source and query. Splitting blocks changes accumulation
 order only: cardinal weights, spacing, image descriptors and radial kernels
-are unchanged. This owner does not admit either the infinite image tail or
-the omitted local correction; the enclosing session performs those gates.
+are unchanged. This solver does not check_context either the infinite image tail or
+the omitted local correction; the enclosing session performs those checks.
 """
 
 import math
@@ -73,7 +73,7 @@ def _geometry(points, order):
     return origin, shape
 
 
-def _payload(shape, source_count, target_count, order, itemsize):
+def _field_bytes(shape, source_count, target_count, order, itemsize):
     fft_shape = tuple(next_fast_len(2 * n - 1) for n in shape)
     volume = math.prod(fft_shape)
     spectrum = math.prod((*fft_shape[:2], fft_shape[2] // 2 + 1))
@@ -250,7 +250,7 @@ def _accumulate_correction(
 
 
 class GaussianHostImageFields:
-    """Immutable finite image owner using source/target blocked convolution.
+    """Immutable finite image solver using source/target blocked convolution.
 
     The scratch cap bounds one FFT job including conservative FFT workspace
     and plane arithmetic. Returned query storage and immutable source identity
@@ -335,8 +335,8 @@ class GaussianHostImageFields:
         if np.any(self.host_x[:, 2] < zmin) or np.any(self.host_x[:, 2] > zmax):
             raise ValueError("physical sources must lie within the slip slab")
         self._lattice_x, self.steps, self.cells = slab_coordinates(self.host_x, zmin, zmax, spacing)
-        _, minimum = _payload((order,) * 3, 1, 1, order, self.dtype.itemsize)
-        self._minimum_payload = minimum
+        _, minimum = _field_bytes((order,) * 3, 1, 1, order, self.dtype.itemsize)
+        self._minimum_field_bytes = minimum
         self._effective_scratch_bytes = self.max_scratch_bytes - self.max_plan_bytes
         self._effective_correction_bytes = self.max_correction_bytes
         if minimum > self.max_scratch_bytes - self.max_plan_bytes:
@@ -357,14 +357,14 @@ class GaussianHostImageFields:
             "backend": "scipy_cpu",
             "snapshot_bytes": self.snapshot_bytes,
             "runtime_admissible": False,
-            "tail_certified": False,
+            "tail_bound_checked": False,
         }
 
-    def _admit(self):
+    def _check_context(self):
         if self.closed:
-            raise RuntimeError("finite Gaussian host owner is closed")
+            raise RuntimeError("finite Gaussian host solver is closed")
         if threading.get_ident() != self._thread:
-            raise RuntimeError("Gaussian host owner belongs to another thread")
+            raise RuntimeError("Gaussian host solver belongs to another thread")
 
     def _query(self, targets):
         query = _snapshot(targets, "target")
@@ -373,7 +373,7 @@ class GaussianHostImageFields:
         return query
 
     def can_evaluate_targets(self, targets):
-        self._admit()
+        self._check_context()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         query = self._query(targets)
@@ -381,7 +381,7 @@ class GaussianHostImageFields:
         return bool(not len(lattice) or np.all(np.abs(lattice) <= 2**52 - self.order))
 
     def prepare(self, images):
-        self._admit()
+        self._check_context()
         self._prepared_images, self._prepared_world_images, self._integer_images = finite_images(
             images,
             self.zmin,
@@ -394,7 +394,7 @@ class GaussianHostImageFields:
             "backend": "scipy_cpu",
             "execution_plan": "blocked_linear_convolution",
             "finite_image_count": len(self._prepared_images),
-            "tail_certified": False,
+            "tail_bound_checked": False,
         }
 
     def _blocks(self, source_points, query_points, source_ids, target_ids):
@@ -407,11 +407,11 @@ class GaussianHostImageFields:
             so, ss = _geometry(sx, self.order)
             qo, qs = _geometry(tq, self.order)
             shape = tuple(max(a, b) for a, b in zip(ss, qs, strict=True))
-            fft_shape, payload = _payload(
+            fft_shape, field_bytes = _field_bytes(
                 shape, len(source), len(target), self.order, self.dtype.itemsize
             )
-            if payload <= cap:
-                yield source, target, so, qo, shape, fft_shape, payload
+            if field_bytes <= cap:
+                yield source, target, so, qo, shape, fft_shape, field_bytes
                 continue
             source_spread = np.ptp(sx, axis=0) if len(source) > 1 else np.full(3, -1.0)
             target_spread = np.ptp(tq, axis=0) if len(target) > 1 else np.full(3, -1.0)
@@ -443,7 +443,7 @@ class GaussianHostImageFields:
             points = self._lattice_x.copy() if odd else self._lattice_x
             if odd:
                 points[:, 2] *= -1
-            for ids, targets, so, qo, shape, fft_shape, payload in self._blocks(
+            for ids, targets, so, qo, shape, fft_shape, field_bytes in self._blocks(
                 points, lattice_q, source_ids, target_ids
             ):
                 sf, sw = _stencil(points[ids], self.order, self.dtype)
@@ -484,7 +484,7 @@ class GaussianHostImageFields:
                     del field, result_hat, values
                 report["fft_blocks"] += 1
                 report["peak_estimated_scratch_bytes"] = max(
-                    report["peak_estimated_scratch_bytes"], payload
+                    report["peak_estimated_scratch_bytes"], field_bytes
                 )
                 report["inverse_transforms"] += 12
                 report["kernel_forward_transforms"] += 9
@@ -527,7 +527,7 @@ class GaussianHostImageFields:
                     )
                     counts = tree.query_ball_point(transformed, search_radius, return_length=True)
                     # Bound the aggregate Python neighbor-list storage before
-                    # materializing it, even for a dense coincident cloud.
+                    # allocating it, even for a dense coincident cloud.
                     first = 0
                     while first < len(transformed):
                         last, total = first, 0
@@ -560,7 +560,7 @@ class GaussianHostImageFields:
         return output
 
     def evaluate_prepared(self, targets):
-        self._admit()
+        self._check_context()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         query = self._query(targets)
@@ -577,7 +577,7 @@ class GaussianHostImageFields:
         )
         self._effective_correction_bytes = min(self.max_correction_bytes, live_budget // 2)
         if (
-            self._effective_scratch_bytes < self._minimum_payload
+            self._effective_scratch_bytes < self._minimum_field_bytes
             or self._effective_correction_bytes < 1024
         ):
             raise MemoryError(
@@ -593,7 +593,7 @@ class GaussianHostImageFields:
             "correction_candidates": 0,
             "correction_pairs": 0,
             "core_correction_included": True,
-            "tail_certified": False,
+            "tail_bound_checked": False,
             "runtime_admissible": False,
             "snapshot_bytes": self.snapshot_bytes,
             "query_output_bytes": len(query) * 12 * self.dtype.itemsize,
@@ -612,9 +612,9 @@ class GaussianHostImageFields:
                     output = self._smooth(query, report)
                     break
                 except MemoryError:
-                    if self._effective_scratch_bytes <= self._minimum_payload:
+                    if self._effective_scratch_bytes <= self._minimum_field_bytes:
                         raise
-                    next_cap = max(self._minimum_payload, self._effective_scratch_bytes // 2)
+                    next_cap = max(self._minimum_field_bytes, self._effective_scratch_bytes // 2)
                 # Leave the exception scope before retrying so its traceback
                 # releases every FFT buffer and the discarded partial output.
                 # A fresh attempt accumulates each source contribution once.
@@ -637,12 +637,12 @@ class GaussianHostImageFields:
     def close(self):
         if self.closed:
             return
-        self._admit()
+        self._check_context()
         self._prepared_images = self._prepared_world_images = self._integer_images = None
         self.closed = True
 
     def __enter__(self):
-        self._admit()
+        self._check_context()
         return self
 
     def __exit__(self, *_):

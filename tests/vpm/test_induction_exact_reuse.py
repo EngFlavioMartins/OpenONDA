@@ -9,7 +9,7 @@ import taichi as ti
 from source.solvers.vpm.physics.induction import reuse as reuse_module
 from source.solvers.vpm.physics.induction.reuse import (
     ExactContentInductionReuse,
-    InductionReuseContract,
+    InductionReuseConditions,
 )
 
 
@@ -36,8 +36,8 @@ class PureBackend:
         self.last_tail = {"shell": -1}
         self.seen_flags = []
 
-    def contract(self):
-        return InductionReuseContract(
+    def conditions(self):
+        return InductionReuseConditions(
             operator_key=self.key,
             autonomous=not self.time_dependent,
             sources_are_read_only=True,
@@ -72,7 +72,7 @@ class PureBackend:
 
 
 class Harness:
-    def __init__(self, dtype=ti.f32, *, contract=True):
+    def __init__(self, dtype=ti.f32, *, conditions=True):
         self.backend = PureBackend()
         self.count = 4
         self.position = ti.Vector.field(3, dtype=dtype, shape=8)
@@ -89,7 +89,7 @@ class Harness:
             max_particles=8,
             source_dtype=dtype,
             result_dtype=dtype,
-            contract_provider=self.backend.contract if contract else None,
+            conditions_provider=self.backend.conditions if conditions else None,
         )
 
     def run(self, *, gradient=True, rate=True, time=0.0, position=None):
@@ -191,7 +191,7 @@ def test_identical_stage_zero_copy_hits_but_equal_time_changed_stage_misses(harn
     assert h.backend.calls == 2
 
 
-def test_health_rate_disabled_then_full_stage_uses_complete_private_result(harness):
+def test_state_check_rate_disabled_then_full_stage_uses_complete_private_result(harness):
     h = harness
     h.gradient.fill(17)
     first = h.run(gradient=False, rate=False)
@@ -241,21 +241,21 @@ def test_operator_dependency_change_and_explicit_invalidation(harness):
 
 
 @pytest.mark.parametrize("unsupported", ["unknown", "time", "subset", "diagnostics", "mutable_key"])
-def test_unsupported_contracts_bypass_original_query_unchanged(harness, unsupported):
+def test_unsupported_conditions_bypass_original_query_unchanged(harness, unsupported):
     h = harness
-    provider = h.backend.contract
+    provider = h.backend.conditions
     if unsupported == "unknown":
-        h.reuse.contract_provider = None
+        h.reuse.conditions_provider = None
     elif unsupported == "time":
         h.backend.time_dependent = True
     elif unsupported == "subset":
-        h.reuse.contract_provider = lambda: replace(
+        h.reuse.conditions_provider = lambda: replace(
             provider(), complete_outputs_are_equivalent=False
         )
     elif unsupported == "diagnostics":
-        h.reuse.contract_provider = lambda: replace(provider(), diagnostics_are_complete=False)
+        h.reuse.conditions_provider = lambda: replace(provider(), diagnostics_are_complete=False)
     else:
-        h.reuse.contract_provider = lambda: replace(provider(), operator_key=([],))
+        h.reuse.conditions_provider = lambda: replace(provider(), operator_key=([],))
     a = h.run(gradient=False, rate=False, time=1)[0]
     b = h.run(gradient=False, rate=False, time=2)[0]
     assert h.backend.calls == 2
@@ -283,7 +283,7 @@ def test_external_provider_is_never_part_of_pure_cache(harness):
     totals = []
     for external_state in (1.0, 9.0):
         # This represents the required caller order: guard -> pure reuse ->
-        # providers. The module has no authority to skip either outside call.
+        # providers. The module has no blend_weight to skip either outside call.
         pure = h.run()[0]
         provider_calls.append(external_state)
         totals.append(pure + external_state)
@@ -328,12 +328,12 @@ def test_growth_rebinds_storage_and_matches_original_backend(harness):
     h = harness
     h.count = 1
     h.run()
-    owners = [h.reuse._storage]
+    field_groups = [h.reuse._storage]
     for count in (3, 8):
         h.count = count
         result = h.run()
-        assert h.reuse._storage not in owners
-        owners.append(h.reuse._storage)
+        assert h.reuse._storage not in field_groups
+        field_groups.append(h.reuse._storage)
         direct = Harness()
         try:
             direct.count = count
@@ -341,21 +341,21 @@ def test_growth_rebinds_storage_and_matches_original_backend(harness):
             assert all(np.array_equal(a, b) for a, b in zip(result, expected, strict=True))
         finally:
             direct.reuse.close()
-        assert h.backend.calls == len(owners)
+        assert h.backend.calls == len(field_groups)
     assert h.reuse.statistics.storage_bytes == 8 * 22 * 4 + 8
 
 
 @pytest.mark.parametrize("failure", ["allocate", "place", "finalize"])
-def test_partial_allocation_releases_acquired_owner(monkeypatch, failure):
-    owners = []
+def test_partial_allocation_releases_acquired_field(monkeypatch, failure):
+    field_groups = []
     error = MemoryError("injected cache allocation failure")
 
-    class Owner:
+    class DeviceFields:
         def __init__(self):
             if failure == "allocate":
                 raise error
             self.destroys = 0
-            owners.append(self)
+            field_groups.append(self)
 
         def field(self, *args, **kwargs):
             if failure == "place":
@@ -370,15 +370,15 @@ def test_partial_allocation_releases_acquired_owner(monkeypatch, failure):
         def destroy(self):
             self.destroys += 1
 
-    monkeypatch.setattr(reuse_module, "_OwnedFields", Owner)
+    monkeypatch.setattr(reuse_module, "_DeviceFields", DeviceFields)
     storage = reuse_module._ReuseStorage.__new__(reuse_module._ReuseStorage)
     with pytest.raises(MemoryError) as caught:
         storage.__init__(3, ti.f32, ti.f32)
     assert caught.value is error
     assert storage._fields is None
-    assert all(owner.destroys == 1 for owner in owners)
+    assert all(solver.destroys == 1 for solver in field_groups)
     storage.destroy()
-    assert all(owner.destroys == 1 for owner in owners)
+    assert all(solver.destroys == 1 for solver in field_groups)
 
 
 def test_cache_growth_failure_invalidates_and_keeps_caller_fields(monkeypatch, harness):

@@ -63,7 +63,7 @@ def _register_face_nodes(
 ) -> None:
     """Register a single face into the face map and face_nodes_map.
 
-    Uses sorted node indices as a canonical key so that shared faces
+    Uses sorted node indices as a standard key so that shared faces
     are recognised across adjacent cells.
 
     Args:
@@ -412,7 +412,7 @@ class GmshImporter:
             "cell_order": np.asarray(cell_order, dtype=np.int8),
             "global_cell_id": np.asarray(all_cell_tags, dtype=np.int64),
             "global_face_id": np.arange(len(final_faces), dtype=np.int64),
-            "provenance": {
+            "mesh_generation": {
                 "format": "gmsh",
                 "api_version": getattr(self._gmsh, "__version__", "unknown"),
                 "mesh_file_version": float(self._gmsh.option.getNumber("Mesh.MshFileVersion")),

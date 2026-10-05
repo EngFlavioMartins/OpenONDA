@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Public orchestration object for the native Cartesian mesher."""
+"""Public control object for the native Cartesian mesher."""
 
 from __future__ import annotations
 
@@ -131,7 +131,9 @@ def _box_patch_point_constraints(points, faces, bounds, feature_constraints=None
                         any(
                             np.allclose(other_normal, normal, rtol=0.0, atol=1.0e-8)
                             and abs(other_offset - offset) <= 1.0e-8
-                            for other_normal, other_offset, _other_index in feature_constraints.get(int(pid), ())
+                            for other_normal, other_offset, _other_index in feature_constraints.get(
+                                int(pid), ()
+                            )
                         )
                         for pid in face[1:]
                     ):
@@ -180,16 +182,13 @@ def _planar_feature_constraints(points, faces, triangles):
         groups.setdefault(key, []).append(triangle_id)
     from scipy.spatial import ConvexHull, QhullError
 
-    _vertices, vertex_ids = np.unique(
-        triangles.reshape(-1, 3), axis=0, return_inverse=True
-    )
+    _vertices, vertex_ids = np.unique(triangles.reshape(-1, 3), axis=0, return_inverse=True)
     triangle_vertices = vertex_ids.reshape(-1, 3)
     triangle_edges: list[tuple[tuple[int, int], ...]] = []
     edge_triangles: dict[tuple[int, int], list[int]] = {}
     for triangle_id, vertex_row in enumerate(triangle_vertices):
         edges = tuple(
-            tuple(sorted((int(vertex_row[i]), int(vertex_row[(i + 1) % 3]))))
-            for i in range(3)
+            tuple(sorted((int(vertex_row[i]), int(vertex_row[(i + 1) % 3])))) for i in range(3)
         )
         triangle_edges.append(edges)
         for edge in edges:
@@ -256,9 +255,7 @@ def _planar_feature_constraints(points, faces, triangles):
         area_norm = float(np.linalg.norm(area))
         if area_norm <= 0.0:
             continue
-        face_size = float(
-            np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2).max()
-        )
+        face_size = float(np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2).max())
         candidates = []
         for normal, offset, width, plane_index in planes:
             if width < face_size:
@@ -298,7 +295,9 @@ def _triangle_plane_intervals(triangles, normal, offset, anchor, direction, tole
             if abs(first) <= tolerance:
                 crossings.append(triangle[i])
             if first * second < 0.0:
-                crossings.append(triangle[i] + (triangle[j] - triangle[i]) * first / (first - second))
+                crossings.append(
+                    triangle[i] + (triangle[j] - triangle[i]) * first / (first - second)
+                )
         if crossings:
             positions = (np.asarray(crossings) - anchor) @ direction
             intervals.append((float(positions.min()), float(positions.max())))
@@ -351,13 +350,15 @@ def _project_to_feature_planes(point, planes, *, scale):
         return _nearest_finite_feature_intersection(point, planes[0], planes[1], scale=scale)
     normals = np.asarray([normal for normal, _offset, _index in planes], dtype=np.float64)
     offsets = np.asarray([offset for _normal, offset, _index in planes], dtype=np.float64)
-    correction = normals.T @ np.linalg.lstsq(
-        normals @ normals.T, normals @ point - offsets, rcond=None
-    )[0]
+    correction = (
+        normals.T @ np.linalg.lstsq(normals @ normals.T, normals @ point - offsets, rcond=None)[0]
+    )
     projected = point - correction
     if np.max(np.abs(normals @ projected - offsets)) > 1.0e-8 * scale:
         raise ValueError("STL feature planes give inconsistent wall-vertex constraints")
-    if any(index.nearest_point(projected)[1] > 1.0e-8 * scale for _normal, _offset, index in planes):
+    if any(
+        index.nearest_point(projected)[1] > 1.0e-8 * scale for _normal, _offset, index in planes
+    ):
         raise ValueError("STL feature intersection lies outside its finite facets")
     return projected
 
@@ -366,11 +367,11 @@ def _combined_surface(
     surfaces: tuple[STLSurface, ...],
     triangle_sets: tuple[np.ndarray, ...] | None = None,
 ) -> TriangulatedSurface:
-    """Create one immutable geometric authority for multi-surface extraction."""
+    """Create one immutable reference surface triangles for multi-surface extraction."""
     if triangle_sets is None and len(surfaces) == 1:
         return surfaces[0].surface_data
-    authority = triangle_sets or tuple(surface.triangles for surface in surfaces)
-    triangles = np.ascontiguousarray(np.concatenate(authority))
+    reference_triangles = triangle_sets or tuple(surface.triangles for surface in surfaces)
+    triangles = np.ascontiguousarray(np.concatenate(reference_triangles))
     triangles.setflags(write=False)
     lower = triangles.min(axis=(0, 1))
     upper = triangles.max(axis=(0, 1))
@@ -462,8 +463,8 @@ def _rename_boundary_patches(
     source_wall_owners = source_owners[first : first + count]
     wall_faces: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
     wall_owners: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
-    authority = surface_triangles or tuple(surface.triangles for surface in surfaces)
-    indices = [SurfaceIndex.build(triangles) for triangles in authority]
+    reference_triangles = surface_triangles or tuple(surface.triangles for surface in surfaces)
+    indices = [SurfaceIndex.build(triangles) for triangles in reference_triangles]
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     for face, owner in zip(source_wall_faces, source_wall_owners, strict=True):
         centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
@@ -513,7 +514,7 @@ def _rename_boundary_patches(
 
 
 def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Compute the authoritative native geometry/quality evidence."""
+    """Compute the native geometry and mesh-quality measurements."""
     topology = validate_topology(mesh_data)
     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
     quality: dict[str, Any] = dict(validate_geometry(mesh_data, geometry))
@@ -619,7 +620,7 @@ def _verify_cfmesh_surface_topology(mesh_data: dict[str, Any]) -> dict[str, Any]
 def _surface_distance_snapshot(
     mesh_data: dict[str, Any], surfaces: tuple[STLSurface, ...]
 ) -> dict[str, dict[str, float]]:
-    """Measure configured wall vertices against their authoritative surfaces."""
+    """Measure configured wall vertices against their reference surfaces."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     result: dict[str, dict[str, float]] = {}
     for surface in surfaces:
@@ -1012,9 +1013,10 @@ class CartesianMesher:
                 surface_size,
                 self._automatic_cell_size(self.features.cell_size),
             )
-        authority = surface_triangles or tuple(item.triangles for item in self.surfaces)
+        reference_triangles = surface_triangles or tuple(item.triangles for item in self.surfaces)
         surface_by_patch = {
-            item.patch: triangles for item, triangles in zip(self.surfaces, authority, strict=True)
+            item.patch: triangles
+            for item, triangles in zip(self.surfaces, reference_triangles, strict=True)
         }
         patch_controls: list[SurfacePatchRefinement] = []
         domain_patch_names = self.domain.patches.as_tuple()
@@ -1043,7 +1045,7 @@ class CartesianMesher:
             surface_data=surface,
             exact_surface_components=exact_surface_components,
             surface_exclusion_distance=0.0,
-            # General STL recovery is the separate transactional cut-cell
+            # General STL recovery is the separate validated cut-cell
             # stage below; the octree constructs only the background topology.
             surface_may_cross_domain_boundary=self.surface_may_cross_domain_boundary,
             wall_patch_name="__cartesian_surface__",
@@ -1254,7 +1256,7 @@ class CartesianMesher:
         mesh_data.pop("_cfmesh_octree_leaves", None)
         mesh_data.pop("_cfmesh_cell_face_order", None)
         mesh_data.pop("_cfmesh_boundary_column_inner", None)
-        mesh_data["mesh_generation"]["method"] = "cartesian_cfmesh_pipeline"
+        mesh_data["mesh_generation"]["method"] = "cartesian_cfmesh"
         quality, geometry = _quality_snapshot(mesh_data)
         surface_conformance: dict[str, dict[str, float | int]] = {}
         for surface in self.surfaces:
@@ -1289,7 +1291,7 @@ class CartesianMesher:
             "cell_types": _cell_type_counts(mesh_data),
         }
         self._report = GenerationReport(
-            method="cartesian_cfmesh_pipeline",
+            method="cartesian_cfmesh",
             sizes=sizes,
             boundary_patches=tuple(patch["name"] for patch in mesh_data["boundary"]),
             surface_hashes=tuple(surface.sha256 for surface in self.surfaces),
@@ -1321,11 +1323,11 @@ class CartesianMesher:
         return mesh_data
 
     def _constrain_cfmesh_wall_points(self, mesh_data: dict[str, Any]) -> None:
-        """Commit a surface-constrained wall projection transaction.
+        """Commit a surface-constrained wall projection state update.
 
         The cfMesh finite-volume optimizer is allowed to move partition points
-        slightly while untangling the wrapper.  The public OpenONDA contract
-        requires the named wall patches to remain on their authoritative STL,
+        slightly while untangling the wrapper.  The public OpenONDA comparison_settings
+        requires the named wall patches to remain on their reference STL,
         so project those boundary vertices back to the same surface while
         translating each first inner wrapper point by the identical correction.
         Topology and all-face geometry validation are then repeated immediately.
@@ -1542,14 +1544,14 @@ class CartesianMesher:
             # cfMesh creates each outer/inner pair normal to the pre-optimized
             # patch, but its later independent surface and volume smoothers can
             # skew those two rings.  Re-align the first inner ring to the final
-            # constrained wall normals, accepting the largest transactional
+            # constrained wall normals, accepting the largest validated
             # relaxation that preserves all positive-volume/face checks.
             target_requests: dict[int, list[np.ndarray]] = {}
             target_patches: dict[int, set[int]] = {}
             # Edge extraction inserts small non-hex transition cells. Moving
             # their shared vertices to suit a neighbouring wrapper column can
             # flatten those cells while retaining positive total volumes.
-            # Their native optimization is authoritative; only the mandatory
+            # Their native optimization is specified; only the mandatory
             # surface-conformance displacement above applies to those points.
             offsets = mesh_data["cell_face_offset"]
             face_indices = mesh_data["cell_face_indices"]
@@ -1679,7 +1681,7 @@ class CartesianMesher:
             mesh_data.pop("cell_face_indices", None)
             mesh_data.pop("cell_face_offset", None)
             raise ValueError(
-                f"Surface-constrained cfMesh wall projection failed transactional validation: {exc}"
+                f"Surface-constrained cfMesh wall projection failed validated validation: {exc}"
             ) from exc
         if validation_mesh is None:
             vtk_validation_scope = "none"
@@ -1688,7 +1690,7 @@ class CartesianMesher:
         else:
             vtk_validation_scope = "moved_point_incident_cells"
         mesh_data["mesh_generation"]["surface_constraint"] = {
-            "method": "transactional_column_preserving_surface_projection",
+            "method": "validated_column_preserving_surface_projection",
             "max_distance_before": max_before,
             "max_distance_after": max_after,
             "moved_inner_points": len(inner_displacements),
@@ -1742,7 +1744,7 @@ class CartesianMesher:
         Notes
         -----
         ``on_generated`` receives the completed native workflow mesh before
-        OpenONDA's stricter final wall-conformance transaction.  It is intended
+        OpenONDA's stricter final wall-conformance state update.  It is intended
         for durable diagnostics: a rejected projection must not make the
         generated grid disappear.
         """
@@ -1771,7 +1773,7 @@ class CartesianMesher:
         return finalized
         layer_surfaces: list[LayerSurface] = []  # noqa: V201
         layer_specs: list[BoundaryLayers] = []
-        authority = [surface.triangles for surface in self.surfaces]
+        reference_triangles = [surface.triangles for surface in self.surfaces]
         if self.boundary_layers:
             feature_angle = self.features.angle if self.features is not None else 45.0
             for layer in self.boundary_layers:
@@ -1787,11 +1789,11 @@ class CartesianMesher:
                         layer,
                         feature_angle_degrees=feature_angle,
                     )
-                    authority[surface_id] = geometry.outer_triangles
+                    reference_triangles[surface_id] = geometry.outer_triangles
                     layer_surfaces.append(geometry)
                     layer_specs.append(layer)
-        authority_tuple = tuple(authority)
-        mesher = self._background_mesher(authority_tuple if self.boundary_layers else None)
+        reference_triangle_sets = tuple(reference_triangles)
+        mesher = self._background_mesher(reference_triangle_sets if self.boundary_layers else None)
         mesh_data = require_native_mesh(mesher.build())
         feature_angle = self.features.angle if self.features is not None else 45.0
 
@@ -1834,11 +1836,11 @@ class CartesianMesher:
             if used_cut_recovery:
                 mesh_data = recover_cut_cells(
                     mesh_data,
-                    tuple(SurfaceIndex.build(triangles) for triangles in authority_tuple),
+                    tuple(SurfaceIndex.build(triangles) for triangles in reference_triangle_sets),
                     "__cartesian_surface__",
                 )
             else:
-                combined_triangles = np.concatenate(authority_tuple, axis=0)
+                combined_triangles = np.concatenate(reference_triangle_sets, axis=0)
                 surface_index = SurfaceIndex.build(combined_triangles)
                 from ...io.vtk_exporter import VTKExporter
 
@@ -1997,14 +1999,14 @@ class CartesianMesher:
             self.domain,
             self.surfaces,
             "__cartesian_surface__",
-            surface_triangles=authority_tuple,
+            surface_triangles=reference_triangle_sets,
         )
         if used_cut_recovery:
             mesh_data = agglomerate_small_cut_cells(
                 mesh_data,
                 tuple(surface.patch for surface in self.surfaces),
                 surface_indices=tuple(
-                    SurfaceIndex.build(triangles) for triangles in authority_tuple
+                    SurfaceIndex.build(triangles) for triangles in reference_triangle_sets
                 ),
             )
         if self.boundary_layers:
@@ -2038,7 +2040,7 @@ class CartesianMesher:
                     smooth_curved_patches,
                     self.domain.bounds,
                     self.domain.patches.as_tuple(),
-                    SurfaceIndex.build(np.concatenate(authority_tuple, axis=0)),
+                    SurfaceIndex.build(np.concatenate(reference_triangle_sets, axis=0)),
                 )
             if sharp_curved_patches:
                 mesh_data.setdefault("mesh_generation", {})["sharp_surface_wrapper"] = {
@@ -2146,7 +2148,7 @@ class CartesianMesher:
         """Build and write a ParaView-readable VTK unstructured-grid file.
 
         ``fields`` maps names to arrays aligned with the native cells. The
-        export is a derived interchange artifact, not the restart authority.
+        export is a derived interchange output file, not the restart mesh.
         """
         from ...io.vtk_exporter import VTKExporter
 
@@ -2158,7 +2160,7 @@ class CartesianMesher:
         """Build and export an ASCII OpenFOAM ``constant/polyMesh`` directory.
 
         Owner/neighbour and patch ordering are preserved, but the export is a
-        derived interchange artifact; keep the native mesh for lossless reload.
+        derived interchange output file; keep the native mesh for lossless reload.
         """
         from ...io.openfoam_poly_mesh import write_poly_mesh
 

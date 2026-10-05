@@ -166,7 +166,7 @@ class SnapshotContext:
         return vorticity
 
 
-def _materialize_mesh(mesh) -> dict:
+def _build_or_load_mesh(mesh) -> dict:
     """Turn a mesher callable / dict / path into FVM ``mesh_data``."""
     if mesh is None:
         raise TypeError("PostProcess requires the mesh that produced the archive")
@@ -190,7 +190,7 @@ class PostProcess:
     """Replay archived FVM snapshots through the configured samplers.
 
     Offline replay rebuilds ghost fields and gradients with the same mesh and
-    boundary contracts used online, then invokes :class:`FVMSamplerExecutor`.
+    boundary settings used online, then invokes :class:`FVMSamplerExecutor`.
     It never advances the numerical solver or overwrites archives.
     """
 
@@ -232,7 +232,7 @@ class PostProcess:
         self.case_dir = str(Path(case_dir).resolve())
         samplers = tuple(samplers) if samplers is not None else tuple(config.samplers or ())
         self.setup = replace(config, samplers=samplers)
-        self.mesh_data = _materialize_mesh(mesh)
+        self.mesh_data = _build_or_load_mesh(mesh)
         self.boundaries = self._setup_boundaries(self.mesh_data)
         self.geo_data = self._build_geometry(self.mesh_data)
         self.overwrite = bool(overwrite)
@@ -349,20 +349,18 @@ class PostProcess:
         grid = pv.read(str(path))
         cell_data = grid.cell_data
 
-        def field_array(canonical_name: str, *, required: bool = True):
-            if canonical_name in cell_data:
-                return np.asarray(cell_data[canonical_name], dtype=np.float64)
+        def field_array(field_name: str, *, required: bool = True):
+            if field_name in cell_data:
+                return np.asarray(cell_data[field_name], dtype=np.float64)
             if required:
-                raise ValueError(
-                    f"Archived snapshot {path} lacks canonical field {canonical_name!r}"
-                )
+                raise ValueError(f"Archived snapshot {path} lacks standard field {field_name!r}")
             return None
 
         velocity_values = field_array("velocity")
         pressure_values = field_array("kinematic_pressure")
         eddy_values = field_array("eddy_viscosity", required=False)
         if velocity_values is None or pressure_values is None:
-            raise RuntimeError("required canonical snapshot fields were not loaded")
+            raise RuntimeError("required standard snapshot fields were not loaded")
 
         def read_array(name: str):
             if name not in cell_data:

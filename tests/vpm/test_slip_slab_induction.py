@@ -6,11 +6,11 @@ import taichi as ti
 
 from source.coupler.stable_renewal import (
     build_stable_renewal_lattice,
-    inward_cosine_authority,
+    inward_cosine_blend_weight,
     scatter_m4_prime_to_lattice,
 )
 from source.solvers.vpm.config.case import Numerics
-from source.solvers.vpm.config.fingerprint import _canonical_value
+from source.solvers.vpm.config.configuration_values import _configuration_value
 from source.solvers.vpm.config.viscous import ViscousConfig
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.base import PhysicsBase
@@ -153,13 +153,13 @@ def test_nonbinary_f64_slip_planes_preserve_velocity_and_gradient_parity():
     assert np.max(np.abs(jacobian[:, 2, :2])) < 2e-4
 
 
-def test_slab_authority_preserves_thin_span_interior():
+def test_slab_blend_weight_preserves_thin_span_interior():
     box = (-1.0, 1.0, -1.0, 1.0, -0.24, 0.24)
     points = np.array([[0, 0, 0], [0, 0, -0.24], [0, 0, 0.25], [0.9, 0, 0]])
-    authority = inward_cosine_authority(points, box, 0.4, slip_slab=True)
-    np.testing.assert_allclose(authority[:2], 1.0)
-    assert authority[2] == 0.0
-    assert 0.0 < authority[3] < 1.0
+    blend_weight = inward_cosine_blend_weight(points, box, 0.4, slip_slab=True)
+    np.testing.assert_allclose(blend_weight[:2], 1.0)
+    assert blend_weight[2] == 0.0
+    assert 0.0 < blend_weight[3] < 1.0
 
 
 def test_unconverged_image_tail_fails_closed():
@@ -199,15 +199,15 @@ def test_slab_rejects_diffusion_without_reflected_boundary_support(scheme):
         Numerics(induction=slab, viscous=ViscousConfig(scheme=scheme))
 
 
-def test_slab_restart_fingerprint_includes_planes_tail_and_base():
+def test_slab_restart_configuration_includes_planes_tail_and_base():
     first = SlipSlabInduction(DirectInduction(), z_min=-0.24, z_max=0.24, tail_tolerance=1e-4)
     second = SlipSlabInduction(DirectInduction(), z_min=-0.48, z_max=0.48, tail_tolerance=1e-4)
-    fingerprint = _canonical_value(first)
-    assert fingerprint["z_min"] == -0.24
-    assert fingerprint["z_max"] == 0.24
-    assert fingerprint["tail_tolerance"] == 1e-4
-    assert fingerprint["base"]["method"] == "DIRECT"
-    assert fingerprint != _canonical_value(second)
+    configuration = _configuration_value(first)
+    assert configuration["z_min"] == -0.24
+    assert configuration["z_max"] == 0.24
+    assert configuration["tail_tolerance"] == 1e-4
+    assert configuration["base"]["method"] == "DIRECT"
+    assert configuration != _configuration_value(second)
 
 
 def test_gbd_mirror_scatter_has_axial_parity_at_slip_plane():
@@ -353,13 +353,13 @@ def test_slab_renewal_ghost_nodes_have_zero_physical_weight():
         (-0.4, 0.4, -0.4, 0.4, -0.2, 0.2),
         0.1,
         buffer_length=0.2,
-        authority_ramp_width=0.3,
+        blend_ramp_width=0.3,
         slip_slab=True,
     )
     ghost = (lattice.positions[:, 2] < -0.2 - 1e-10) | (lattice.positions[:, 2] > 0.2 + 1e-10)
     assert np.any(ghost)
     np.testing.assert_array_equal(lattice.fluid_weight[ghost], 0.0)
-    np.testing.assert_array_equal(lattice.fvm_authority[ghost], 0.0)
+    np.testing.assert_array_equal(lattice.fvm_blend_weight[ghost], 0.0)
     assert lattice.renewal_bounds[4] == -0.2
     assert lattice.renewal_bounds[5] == 0.2
     image = np.array([[0.0, 0.0, -0.25]])

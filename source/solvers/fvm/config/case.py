@@ -1,7 +1,7 @@
 """Public, physics-oriented construction objects for the FVM solver.
 
 ``FVMCase`` is the FVM counterpart of :class:`source.solvers.vpm.VPMCase`.
-It keeps mesh provenance, numerical intent, run policy, and output ownership
+It keeps mesh source information, numerical intent, run settings, and output directories
 at one construction boundary while the existing ``FVMSetup`` remains
 available as the low-level configuration used by the numerical kernels.
 """
@@ -70,7 +70,7 @@ class InitialFields:
     velocity : tuple[float, float, float] or numpy.ndarray
         Uniform velocity in m/s with shape ``(3,)`` or one vector per fluid
         cell with shape ``(n_cells, 3)``. The cell count is checked after the
-        mesh is materialized. Inputs are copied when stored.
+        mesh is constructed. Inputs are copied when stored.
     kinematic_pressure : float
         Uniform initial ``p/rho`` in m²/s². The solver reconstructs pressure
         boundary values from :class:`BoundaryConfig` after accepting the
@@ -140,7 +140,7 @@ class Numerics:
     schemes : DiscretizationConfig
         Convection, gradient, and time-discretization choices.
     linear : LinearSolverConfig
-        Momentum/pressure solver names, tolerances, and failure policy.
+        Momentum/pressure solver names, tolerances, and failure settings.
     coupling : PimpleControl
         SIMPLE/PISO/PIMPLE correction counts, relaxation, and acceptance
         tolerances.
@@ -151,7 +151,7 @@ class Numerics:
     acceptance : RunAcceptanceLimits
         Warning/abort thresholds evaluated on candidate states.
     logging : LoggingConfig
-        Console, file, and logging cadence policy.
+        Console, file, and logging cadence settings.
     """
 
     transport: TransportConfig = field(default_factory=TransportConfig)
@@ -190,7 +190,7 @@ class RunPlan:
         Physical bounds in seconds. `end_time` must exceed `start_time`.
     time_step_size : float
         Initial/fixed step size in seconds. The solver owns the evolving value
-        when an adaptive maximum-Courant policy is configured.
+        when an adaptive maximum-Courant settings are configured.
     output_schedule : RunSchedule
         Accepted-step/time cadence for visualization output.
     adjustment : MaximumCourantTimeStep or None
@@ -238,12 +238,12 @@ class FVMCase:
     mesh : MeshSource
         Native mesh dictionary, path to a supported saved mesh, or callable
         mesher returning one. Mesh coordinates use metres; the native topology
-        contract is described in :mod:`source.solvers.fvm.mesh.geometry`.
+        comparison_settings are described in :mod:`source.solvers.fvm.mesh.geometry`.
     directory : str or pathlib.Path, default='.'
         Case root for solutions, samples, logs, and solver metadata.
     mesh_quality, numerics, boundaries, initial_conditions, run, output,
     samplers, backup : corresponding configuration objects
-        Immutable case-owned policies. Boundary values are m/s, m²/s², m³/s,
+        Immutable case-owned settings. Boundary values are m/s, m²/s², m³/s,
         or m²/s according to their field; see their class docstrings.
     cores : int, default=1
         Requested execution size for solver construction, including coupled runs.
@@ -251,7 +251,7 @@ class FVMCase:
     Notes
     -----
     Construction validates types and scalar ranges but does not allocate the
-    solver mesh or device fields. :class:`FVMSolver` materializes the mesh and
+    solver mesh or device fields. :class:`FVMSolver` constructs the mesh and
     converts this case to the low-level :class:`FVMSetup` exactly once.
     """
 
@@ -297,12 +297,12 @@ class FVMCase:
             raise TypeError("FVMCase.velocity_boundaries must contain VelocityBoundary objects")
 
     def to_setup(self) -> FVMSetup:
-        """Materialize a mutable low-level setup for the numerical core.
+        """Create a mutable low-level setup for the numerical core.
 
         Returns
         -------
         FVMSetup
-            A new configuration object containing copied case policy values
+            A new configuration object containing copied case settings values
             and the time/output controls consumed by the
             solver factory. It performs no mesh I/O and does not mutate this
             immutable case.
@@ -338,7 +338,7 @@ class FVMCase:
 
 
 # Short names intentionally mirror the VPM public namespace.  They are
-# aliases for output/restart policy objects, not alternate solver paths.
+# aliases for output/restart settings objects, not alternate solver paths.
 Output = OutputConfig
 Backup = BackupConfig
 

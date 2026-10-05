@@ -27,7 +27,7 @@ class DivergenceRelaxationConfig:
         Required post/pre divergence-residual ratio, strictly between 0 and 1.
     total_kinetic_energy_tolerance, total_enstrophy_tolerance,
     total_helicity_tolerance, variation_tolerance : float
-        Non-negative relative conservation/change gates for a proposal.
+        Non-negative relative conservation/change checks for a proposal.
     vortex_strength_reference_scale : float or None
         Positive ``Gamma`` scale in m³/s for reference-normalized invariants.
     linear_impulse_reference_scale : float or None

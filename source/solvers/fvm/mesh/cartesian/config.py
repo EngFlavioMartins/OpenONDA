@@ -19,7 +19,7 @@ Point: TypeAlias = tuple[float, float, float]
 
 
 def _refinement_attribute(refinement: Refinement, attribute: str) -> Any:
-    """Read a common declarative field without widening the base class contract."""
+    """Read a common declarative field without widening the base class comparison_settings."""
     return getattr(refinement, attribute)
 
 
@@ -131,7 +131,7 @@ class STLSurface:
     -----
     Triangle coordinates are retained as a validated immutable ``(n, 3, 3)``
     array in metres. Construction performs file I/O and records a SHA-256
-    provenance hash; it raises before meshing if the surface is invalid.
+    source information hash; it raises before meshing if the surface is invalid.
     """
 
     path: Path | str

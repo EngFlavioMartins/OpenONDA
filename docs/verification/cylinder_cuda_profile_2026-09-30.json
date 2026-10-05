@@ -25,7 +25,7 @@
     "bounded_stop_time": 0.36,
     "max_particles": 1000000
   },
-  "artifacts": "/home/flavio-martins/Projects/OpenONDA/tmp/cylinder_cuda_profile_20260930",
+  "result_directory": "/home/flavio-martins/Projects/OpenONDA/tmp/cylinder_cuda_profile_20260930",
   "source_before": {
     "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
     "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
@@ -687,7 +687,7 @@
     "focused_tests_passed": 60,
     "ruff_passed": true,
     "diff_check_passed": true,
-    "final_artifact_validation": {
+    "final_checkpoint_validation": {
       "fvm": true,
       "vpm": true,
       "vpm_vtu": true,
@@ -709,7 +709,7 @@
     "numpy": "2.4.6",
     "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
     "timer": "time.perf_counter",
-    "cache_policy": "cleared before every measured invocation",
+    "cache_settings": "cleared before every measured invocation",
     "excluded_warmup_calls_per_method_per_fixture": 1,
     "timed_calls_instrumented": false,
     "scope": "host wall first_intersections only; no GPU solver speed claim",

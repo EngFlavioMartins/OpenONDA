@@ -22,27 +22,27 @@ from source.simulation.parallel import collective_phase
 from source.solution_layout import component_directory
 from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.vpm.config.case import Numerics
-from source.solvers.vpm.config.fingerprint import numerical_configuration
+from source.solvers.vpm.config.configuration_values import numerical_configuration
 from source.solvers.vpm.config.restart import (
     _configuration_mismatches,
-    canonical_restart_configuration,
+    restart_configuration_values,
 )
 from source.solvers.vpm.config.restart_changes import (
     MISSING_CONFIGURATION_VALUE,
-    admit_configuration_changes,
-    admit_exact_configuration_changes,
+    validate_configuration_changes,
+    validate_exact_configuration_changes,
 )
 from source.solvers.vpm.io.backup import _BackupIO
 from source.solvers.vpm.io.vlm_backup import export_vlm_backup
 
 BACKUP_DIRECTORY = "backups"
-BACKUP_FORMAT_VERSION = 12
+BACKUP_FORMAT_VERSION = 13
 
 
 def config_mapping_digest(config: dict) -> str:
     """Hash an already-serialized configuration mapping."""
-    payload = json.dumps(config, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode()).hexdigest()
+    configuration_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(configuration_json.encode()).hexdigest()
 
 
 class _MappingConfig(Protocol):
@@ -51,7 +51,7 @@ class _MappingConfig(Protocol):
 
 
 def config_digest(config: _MappingConfig) -> str:
-    """Hash an internal configuration object that provides a mapping contract."""
+    """Hash an internal configuration object that provides a mapping interface."""
     return config_mapping_digest(config.to_dict())
 
 
@@ -61,7 +61,7 @@ def _vpm_numerical_config(vpm_setup: Numerics) -> dict:
 
 
 def _backup_config(coupler) -> dict:
-    """Build the strict restart identity for all coupled numerical components."""
+    """Build the strict restart configuration for all coupled numerical components."""
     if coupler.vpm_solver is None:
         raise RuntimeError("Initialize the coupler before backuping configuration")
     config = dict(coupler.setup.to_dict())
@@ -82,8 +82,8 @@ def _backup_config(coupler) -> dict:
     return config
 
 
-def artifact_digest(path: Path) -> str:
-    """Hash one backup artifact, including relative names for directories."""
+def checkpoint_path_hash(path: Path) -> str:
+    """Hash one backup checkpoint_file, including relative names for directories."""
     digest = hashlib.sha256()
     if path.is_dir():
         for child in sorted(item for item in path.rglob("*") if item.is_file()):
@@ -98,17 +98,19 @@ def artifact_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _resolve_artifact(target: Path, artifact: str) -> Path:
-    """Resolve a manifest artifact without allowing backup path escape."""
-    if not isinstance(artifact, str) or not artifact:
-        raise ValueError("Coupled backup artifact names must be non-empty strings")
-    relative = Path(artifact)
+def _resolve_checkpoint_path(target: Path, checkpoint_file: str) -> Path:
+    """Resolve a checkpoint file without allowing backup path escape."""
+    if not isinstance(checkpoint_file, str) or not checkpoint_file:
+        raise ValueError("Coupled backup checkpoint_file names must be non-empty strings")
+    relative = Path(checkpoint_file)
     if relative.is_absolute() or ".." in relative.parts:
-        raise ValueError(f"Unsafe coupled backup artifact path: {artifact!r}")
+        raise ValueError(f"Unsafe coupled backup checkpoint_file path: {checkpoint_file!r}")
     target_resolved = target.resolve()
     resolved = (target / relative).resolve()
     if resolved != target_resolved and target_resolved not in resolved.parents:
-        raise ValueError(f"Coupled backup artifact escapes its directory: {artifact!r}")
+        raise ValueError(
+            f"Coupled backup checkpoint_file escapes its directory: {checkpoint_file!r}"
+        )
     return resolved
 
 
@@ -122,8 +124,8 @@ def _config_differences(
     if isinstance(stored, dict) and isinstance(current, dict):
         incompatible_paths = None
         if prefix == "vpm":
-            stored = canonical_restart_configuration(stored)
-            current = canonical_restart_configuration(current)
+            stored = restart_configuration_values(stored)
+            current = restart_configuration_values(current)
             incompatible_paths = set(_configuration_mismatches(current, stored))
         differences: list[tuple[str, object, object]] = []
         for key in sorted(set(stored) | set(current)):
@@ -166,7 +168,7 @@ def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
     return {path for path, _old, _new in _config_differences(stored, current)}
 
 
-def _admit_coupled_configuration(stored, current, allowed, expectations):
+def _validate_coupled_configuration(stored, current, allowed, expectations):
     """Apply VPM compatibility only inside VPM; all other namespaces are exact."""
     if isinstance(allowed, str | bytes) or not isinstance(allowed, Collection):
         raise TypeError("allowed_config_differences must be a collection of exact paths")
@@ -180,12 +182,12 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
     else:
         expectations = dict(expectations)
     if any(type(path) is not str for path in expectations) or set(expectations) - set(paths):
-        raise ValueError("configuration expectations require their exact allowlisted paths")
+        raise ValueError("configuration expectations require their exact allowed paths")
     old_vpm, new_vpm = stored.get("vpm"), current.get("vpm")
     if not isinstance(old_vpm, dict) or not isinstance(new_vpm, dict):
         raise ValueError("coupled restart requires stored and current VPM configuration mappings")
     try:
-        vpm_changes = admit_configuration_changes(
+        vpm_changes = validate_configuration_changes(
             new_vpm,
             old_vpm,
             allowed_config_differences=tuple(path[4:] for path in paths if path.startswith("vpm.")),
@@ -195,13 +197,13 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
         )
     except (TypeError, ValueError) as exc:
         changed = _configuration_mismatches(
-            canonical_restart_configuration(new_vpm), canonical_restart_configuration(old_vpm)
+            restart_configuration_values(new_vpm), restart_configuration_values(old_vpm)
         )
         detail = ", ".join("vpm." + path for path in changed)
         raise type(exc)(f"{exc}; coupled VPM difference paths: {detail}") from exc
     new_other = {key: value for key, value in current.items() if key != "vpm"}
     old_other = {key: value for key, value in stored.items() if key != "vpm"}
-    other_changes = admit_exact_configuration_changes(
+    other_changes = validate_exact_configuration_changes(
         new_other,
         old_other,
         allowed_config_differences=tuple(path for path in paths if not path.startswith("vpm.")),
@@ -209,7 +211,7 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
             path: value for path, value in expectations.items() if not path.startswith("vpm.")
         },
     )
-    # The detached admitted values, rather than the caller's mutable map,
+    # The detached validated values, rather than the caller's mutable map,
     # become the exact permission snapshot forwarded to the real VPM reader.
     vpm_paths = tuple(change["path"] for change in vpm_changes)
     vpm_expectations = {
@@ -226,8 +228,8 @@ def _admit_coupled_configuration(stored, current, allowed, expectations):
     return changes, vpm_paths, vpm_expectations
 
 
-def _inspect_coupled_vpm_checkpoint(coupler, path, manifest, allowed, expectations):
-    """Read real native VPM admission before any coupled state/history load."""
+def _inspect_coupled_vpm_checkpoint(coupler, path, checkpoint_info, allowed, expectations):
+    """Read real native VPM validation before any coupled state/history load."""
     solver = coupler.vpm_solver
     step, time, dt, _count = _BackupIO.inspect(
         solver,
@@ -237,23 +239,23 @@ def _inspect_coupled_vpm_checkpoint(coupler, path, manifest, allowed, expectatio
     )
     with h5py.File(path, "r") as archive:
         stored_config = json.loads(archive["solver"].attrs["numerical_configuration"])
-    manifest_vpm = manifest["config"]["vpm"]
-    if config_mapping_digest(stored_config) != config_mapping_digest(manifest_vpm):
+    checkpoint_vpm_config = checkpoint_info["config"]["vpm"]
+    if config_mapping_digest(stored_config) != config_mapping_digest(checkpoint_vpm_config):
         raise ValueError(
-            "authenticated VPM HDF5 configuration differs from coupled manifest VPM configuration"
+            "hash_verified VPM HDF5 configuration differs from coupled checkpoint VPM configuration"
         )
     for name in ("coupling_step", "vpm_step", "fvm_step", "n_fvm_substeps"):
-        value = manifest[name]
+        value = checkpoint_info[name]
         if type(value) is not int or value < (1 if name == "n_fvm_substeps" else 0):
             raise ValueError(f"invalid coupled backup clock {name}")
     if (
-        manifest["vpm_step"] != step
-        or manifest["coupling_step"] != step
-        or manifest["n_fvm_substeps"] != coupler.n_fvm_substeps
-        or manifest["fvm_step"] != step * manifest["n_fvm_substeps"]
+        checkpoint_info["vpm_step"] != step
+        or checkpoint_info["coupling_step"] != step
+        or checkpoint_info["n_fvm_substeps"] != coupler.n_fvm_substeps
+        or checkpoint_info["fvm_step"] != step * checkpoint_info["n_fvm_substeps"]
     ):
         raise ValueError("coupled backup step/subcycle clocks do not match native VPM checkpoint")
-    clock = manifest["time"]
+    clock = checkpoint_info["time"]
     if (
         isinstance(clock, bool)
         or not isinstance(clock, int | float)
@@ -262,9 +264,9 @@ def _inspect_coupled_vpm_checkpoint(coupler, path, manifest, allowed, expectatio
         or not np.isclose(clock, time, rtol=0.0, atol=1.0e-12)
     ):
         raise ValueError("coupled backup time does not match native VPM checkpoint")
-    if dt != manifest_vpm.get("time_step_size"):
+    if dt != checkpoint_vpm_config.get("time_step_size"):
         raise ValueError(
-            "native VPM checkpoint time-step attribute differs from authenticated configuration"
+            "native VPM checkpoint time-step attribute differs from hash-verified configuration"
         )
 
 
@@ -272,7 +274,7 @@ def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = 
     """Rewind coupled diagnostics and retain the superseded branch.
 
     Coupled diagnostics are written by the coupler rather than either solver,
-    so the solver-owned restart I/O cannot reconcile this stream.  The archive
+    so the solver-owned restart I/O cannot restore this stream.  The archive
     suffix deliberately does not match ``coupler_diagnostics.jsonl``: recursive
     cost/report discovery must see only the active history.
     """
@@ -311,7 +313,7 @@ def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = 
         else:
             needs_rewrite = True
     if needs_rewrite:
-        branch_root = path.parent / "restart-branches"
+        branch_root = path.parent / "restart_history"
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(path, branch / f"{path.name}.superseded")
@@ -385,18 +387,18 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
     staging = target / generation
     suffix = f"{step:06d}"
     partitioned = coupler.fvm_solver.parallel.is_partitioned
-    fvm_artifact = f"fvm_{suffix}" if partitioned else f"fvm_{suffix}.npz"
+    fvm_file = f"fvm_{suffix}" if partitioned else f"fvm_{suffix}.npz"
 
     # Partitioned FVM backups are collective; every rank must enter first.
-    coupler.fvm_solver.save_state(staging / fvm_artifact)
+    coupler.fvm_solver.save_state(staging / fvm_file)
     if not coupler._is_master:
         return target
     if coupler.vpm_solver is None:
         raise RuntimeError("Initialize the coupler before saving a backup")
 
     coupler.vpm_solver._save_backup_to(str(staging / f"vpm_{suffix}"))
-    boundary_artifact = f"vpm_boundary_condition_{suffix}.npz"
-    boundary_temporary = staging / f".{boundary_artifact}.tmp"
+    boundary_file = f"vpm_boundary_condition_{suffix}.npz"
+    boundary_temporary = staging / f".{boundary_file}.tmp"
     boundary_state = {
         "boundary_schema_version": np.asarray(4, dtype=np.int64),
         "has_velocity": np.asarray(coupler._velocity_boundary_condition_old is not None),
@@ -427,12 +429,12 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
             np.savez_compressed(stream, **encode_state(boundary_state))
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(boundary_temporary, staging / boundary_artifact)
+        os.replace(boundary_temporary, staging / boundary_file)
     finally:
         boundary_temporary.unlink(missing_ok=True)
 
     backup_config = _backup_config(coupler)
-    manifest = {
+    checkpoint_info = {
         "format_version": BACKUP_FORMAT_VERSION,
         "kind": "openonda.coupled_backup",
         "created_utc": datetime.now(UTC).isoformat(),
@@ -444,44 +446,45 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
         "fvm_step": int(coupler.fvm_solver.step),
         "vpm_step": int(coupler.vpm_solver.step),
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
-        "artifacts": {
-            "fvm": f"{generation}/{fvm_artifact}",
+        "checkpoint_files": {
+            "fvm": f"{generation}/{fvm_file}",
             "vpm": f"{generation}/vpm_{suffix}.h5",
             "vpm_vtu": f"{generation}/vpm_{suffix}.vtu",
-            "vpm_boundary_condition": f"{generation}/{boundary_artifact}",
+            "vpm_boundary_condition": f"{generation}/{boundary_file}",
         },
     }
-    manifest["artifact_sha256"] = {
-        name: artifact_digest(target / artifact) for name, artifact in manifest["artifacts"].items()
+    checkpoint_info["file_sha256"] = {
+        name: checkpoint_path_hash(target / checkpoint_file)
+        for name, checkpoint_file in checkpoint_info["checkpoint_files"].items()
     }
-    manifest_temporary = target / "manifest.json.tmp"
-    with manifest_temporary.open("w", encoding="utf-8") as stream:
-        stream.write(json.dumps(manifest, indent=2) + "\n")
+    checkpoint_info_temporary = target / "checkpoint_info.json.tmp"
+    with checkpoint_info_temporary.open("w", encoding="utf-8") as stream:
+        stream.write(json.dumps(checkpoint_info, indent=2) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(manifest_temporary, target / "manifest.json")
+    os.replace(checkpoint_info_temporary, target / "checkpoint_info.json")
 
-    keep = {"manifest.json", generation}
+    keep = {"checkpoint_info.json", generation}
     stale = {
         *target.glob("checkpoint-*"),
         *target.glob("fvm_*"),
         *target.glob("vpm_*"),
         *target.glob("vpm_boundary_condition_*"),
     }
-    for artifact in stale:
-        if artifact.name in keep or not artifact.exists():
+    for checkpoint_file in stale:
+        if checkpoint_file.name in keep or not checkpoint_file.exists():
             continue
-        if artifact.is_dir():
-            shutil.rmtree(artifact)
+        if checkpoint_file.is_dir():
+            shutil.rmtree(checkpoint_file)
         else:
-            artifact.unlink()
+            checkpoint_file.unlink()
 
     logging.getLogger("coupler").info(
         log_style.Event(
             "coupled backup",
             (
-                ("manifest", str(target / "manifest.json")),
-                ("VPM checkpoint", str(target / manifest["artifacts"]["vpm"])),
+                ("checkpoint_info", str(target / "checkpoint_info.json")),
+                ("VPM checkpoint", str(target / checkpoint_info["checkpoint_files"]["vpm"])),
             ),
         ),
     )
@@ -491,7 +494,7 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
 def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path]:
     """Publish the post-renewal VPM state as a user-facing time-series frame.
 
-    The atomic coupled backup remains a rolling restart artifact. This
+    The atomic coupled backup remains a rolling restart checkpoint_file. This
     function copies its already-written VPM HDF5/VTK pair into
     ``solution/vpm/`` and updates the root-level ``vpm.pvd`` collection. If
     the saved state contains a VLM surface, it also publishes the corresponding
@@ -499,10 +502,10 @@ def publish_vpm_snapshot(backup_directory, output_directory) -> tuple[Path, Path
     """
     backup = Path(backup_directory)
     output = Path(output_directory)
-    manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
-    artifacts = manifest.get("artifacts", {})
-    source_h5 = _resolve_artifact(backup, artifacts.get("vpm", ""))
-    source_vtu = _resolve_artifact(backup, artifacts.get("vpm_vtu", ""))
+    checkpoint_info = json.loads((backup / "checkpoint_info.json").read_text(encoding="utf-8"))
+    checkpoint_files = checkpoint_info.get("checkpoint_files", {})
+    source_h5 = _resolve_checkpoint_path(backup, checkpoint_files.get("vpm", ""))
+    source_vtu = _resolve_checkpoint_path(backup, checkpoint_files.get("vpm_vtu", ""))
     if not source_h5.is_file() or not source_vtu.is_file():
         raise FileNotFoundError("Coupled backup does not contain a complete VPM snapshot")
 
@@ -540,33 +543,35 @@ def load_coupled_backup(
 
     Configuration matching remains strict unless a caller explicitly names
     the exact paths allowed to differ for a controlled restart experiment.
-    Artifact integrity and every unlisted configuration field remain strict.
+    Checkpoint file integrity and every unlisted configuration field remain strict.
     Structural changes additionally require exact stored/current expectations.
-    Native VPM admission completes collectively before FVM state/history load;
-    this is not a transaction rollback for later FVM/output publication errors.
+    Native VPM validation completes collectively before FVM state/history load;
+    this is not a state update rollback for later FVM or output writing errors.
     """
     if coupler.fvm_solver is None or (coupler._is_master and coupler.vpm_solver is None):
         raise RuntimeError("Initialize the coupler before loading a backup")
 
     target = Path(directory)
     error: str | None = None
-    manifest: dict | None = None
-    artifacts: dict[str, str] = {}
-    artifact_paths: dict[str, Path] = {}
+    checkpoint_info: dict | None = None
+    checkpoint_files: dict[str, str] = {}
+    checkpoint_paths: dict[str, Path] = {}
     vpm_allowed: tuple[str, ...] = ()
     vpm_expectations: dict[str, tuple[object, object]] = {}
     if coupler._is_master:
         try:
-            manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            checkpoint_info = json.loads(
+                (target / "checkpoint_info.json").read_text(encoding="utf-8")
+            )
         except OSError as exc:
-            error = f"Cannot read coupled backup manifest at {target}: {exc}"
+            error = f"Cannot read coupled backup information at {target}: {exc}"
         except json.JSONDecodeError as exc:
-            error = f"Invalid coupled backup manifest at {target}: {exc}"
-        if error is None and not isinstance(manifest, dict):
-            error = "Coupled backup manifest must be a JSON object"
+            error = f"Invalid coupled backup information at {target}: {exc}"
+        if error is None and not isinstance(checkpoint_info, dict):
+            error = "Coupled backup information must be a JSON object"
         if error is None:
-            assert isinstance(manifest, dict)
-            expected_manifest_keys = {
+            assert isinstance(checkpoint_info, dict)
+            expected_info_keys = {
                 "format_version",
                 "kind",
                 "created_utc",
@@ -578,60 +583,62 @@ def load_coupled_backup(
                 "fvm_step",
                 "vpm_step",
                 "n_fvm_substeps",
-                "artifacts",
-                "artifact_sha256",
+                "checkpoint_files",
+                "file_sha256",
             }
-            version = manifest.get("format_version")
+            version = checkpoint_info.get("format_version")
             if (
-                set(manifest) != expected_manifest_keys
+                set(checkpoint_info) != expected_info_keys
                 or version != BACKUP_FORMAT_VERSION
-                or manifest.get("kind") != "openonda.coupled_backup"
-                or manifest.get("backend") != "fvm"
+                or checkpoint_info.get("kind") != "openonda.coupled_backup"
+                or checkpoint_info.get("backend") != "fvm"
             ):
                 error = "Unsupported coupled backup format or backend"
             else:
-                stored_artifacts = manifest.get("artifacts", {})
-                if not isinstance(stored_artifacts, dict):
-                    error = "Coupled backup artifacts must be a mapping"
+                stored_checkpoint_files = checkpoint_info.get("checkpoint_files", {})
+                if not isinstance(stored_checkpoint_files, dict):
+                    error = "Coupled backup checkpoint_files must be a mapping"
                 else:
-                    artifacts = dict(stored_artifacts)
+                    checkpoint_files = dict(stored_checkpoint_files)
             if error is None:
-                manifest["artifacts"] = artifacts
+                checkpoint_info["checkpoint_files"] = checkpoint_files
                 try:
-                    artifact_paths = {
-                        name: _resolve_artifact(target, artifact)
-                        for name, artifact in artifacts.items()
+                    checkpoint_paths = {
+                        name: _resolve_checkpoint_path(target, checkpoint_file)
+                        for name, checkpoint_file in checkpoint_files.items()
                     }
                 except ValueError as exc:
                     error = str(exc)
-                    artifact_paths = {}
-                artifact_hashes = manifest.get("artifact_sha256", {})
-                if artifact_hashes and not isinstance(artifact_hashes, dict):
-                    error = "Coupled backup artifact_sha256 must be a mapping"
+                    checkpoint_paths = {}
+                file_hashes = checkpoint_info.get("file_sha256", {})
+                if file_hashes and not isinstance(file_hashes, dict):
+                    error = "Coupled backup file_sha256 must be a mapping"
                 if error is None and (
-                    not isinstance(artifact_hashes, dict) or set(artifact_hashes) != set(artifacts)
+                    not isinstance(file_hashes, dict) or set(file_hashes) != set(checkpoint_files)
                 ):
                     error = (
                         f"Coupled backup format {BACKUP_FORMAT_VERSION} requires one "
                         "SHA-256 digest "
-                        "for every declared artifact"
+                        "for every declared checkpoint_file"
                     )
-                if error is None and artifact_hashes:
-                    for name, expected_hash in artifact_hashes.items():
-                        artifact = artifacts.get(name)
-                        if not artifact or name not in artifact_paths:
-                            error = f"Coupled backup manifest hashes unknown artifact {name!r}"
+                if error is None and file_hashes:
+                    for name, expected_hash in file_hashes.items():
+                        checkpoint_file = checkpoint_files.get(name)
+                        if not checkpoint_file or name not in checkpoint_paths:
+                            error = f"Coupled backup information hashes unknown checkpoint_file {name!r}"
                             break
-                        artifact_path = artifact_paths[name]
+                        checkpoint_path = checkpoint_paths[name]
                         if (
                             not isinstance(expected_hash, str)
                             or len(expected_hash) != 64
-                            or not artifact_path.exists()
-                            or artifact_digest(artifact_path) != expected_hash
+                            or not checkpoint_path.exists()
+                            or checkpoint_path_hash(checkpoint_path) != expected_hash
                         ):
-                            error = f"Coupled backup artifact hash mismatch: {artifact}"
+                            error = (
+                                f"Coupled backup checkpoint_file hash mismatch: {checkpoint_file}"
+                            )
                             break
-            required_artifacts = [
+            required_checkpoint_files = [
                 "fvm",
                 "vpm",
                 "vpm_vtu",
@@ -639,23 +646,23 @@ def load_coupled_backup(
             ]
             missing = [
                 name
-                for name in required_artifacts
-                if not artifacts.get(name)
-                or name not in artifact_paths
-                or not artifact_paths[name].exists()
+                for name in required_checkpoint_files
+                if not checkpoint_files.get(name)
+                or name not in checkpoint_paths
+                or not checkpoint_paths[name].exists()
             ]
             if error is None and missing:
                 error = f"Incomplete coupled backup; missing: {', '.join(missing)}"
             elif error is None:
-                stored_config = manifest.get("config")
+                stored_config = checkpoint_info.get("config")
                 if not isinstance(stored_config, dict):
                     error = "Coupled backup configuration must be a mapping"
-                elif manifest.get("config_sha256") != config_mapping_digest(stored_config):
+                elif checkpoint_info.get("config_sha256") != config_mapping_digest(stored_config):
                     error = "Coupled backup stored configuration hash mismatch"
                 else:
                     try:
                         current_config = _backup_config(coupler)
-                        changes, vpm_allowed, vpm_expectations = _admit_coupled_configuration(
+                        changes, vpm_allowed, vpm_expectations = _validate_coupled_configuration(
                             stored_config,
                             current_config,
                             allowed_config_differences,
@@ -663,8 +670,8 @@ def load_coupled_backup(
                         )
                         _inspect_coupled_vpm_checkpoint(
                             coupler,
-                            artifact_paths["vpm"],
-                            manifest,
+                            checkpoint_paths["vpm"],
+                            checkpoint_info,
                             vpm_allowed,
                             vpm_expectations,
                         )
@@ -675,35 +682,35 @@ def load_coupled_backup(
                                 + ", ".join(sorted(change["path"] for change in changes))
                             )
                     except BaseException as exc:
-                        error = f"Coupled restart admission failed: {type(exc).__name__}: {exc}"
+                        error = f"Coupled restart validation failed: {type(exc).__name__}: {exc}"
     if comm is not None and comm.Get_size() > 1:
-        error, manifest = comm.bcast(
-            (error, manifest) if coupler._is_master else None,
+        error, checkpoint_info = comm.bcast(
+            (error, checkpoint_info) if coupler._is_master else None,
             root=0,
         )
     if error is not None:
         raise ValueError(error)
-    assert manifest is not None
-    artifacts = manifest["artifacts"]
+    assert checkpoint_info is not None
+    checkpoint_files = checkpoint_info["checkpoint_files"]
 
-    coupler.fvm_solver.load_state(target / artifacts["fvm"])
-    expected_fvm_step = int(manifest["vpm_step"]) * coupler.n_fvm_substeps
+    coupler.fvm_solver.load_state(target / checkpoint_files["fvm"])
+    expected_fvm_step = int(checkpoint_info["vpm_step"]) * coupler.n_fvm_substeps
     if coupler.fvm_solver.step != expected_fvm_step:
         raise ValueError(
             f"Coupled backup time-step mismatch: FVM={coupler.fvm_solver.step}, "
-            f"expected {expected_fvm_step} from VPM={manifest['vpm_step']}"
+            f"expected {expected_fvm_step} from VPM={checkpoint_info['vpm_step']}"
         )
 
     if coupler._is_master:
         try:
             assert coupler.vpm_solver is not None
             coupler.vpm_solver._load_backup_from(
-                str(target / artifacts["vpm"]),
+                str(target / checkpoint_files["vpm"]),
                 allowed_config_differences=vpm_allowed,
                 expected_config_differences=vpm_expectations,
             )
             with np.load(
-                target / artifacts["vpm_boundary_condition"], allow_pickle=False
+                target / checkpoint_files["vpm_boundary_condition"], allow_pickle=False
             ) as boundary:
                 expected_boundary_keys = {
                     "boundary_schema_version",
@@ -750,18 +757,18 @@ def load_coupled_backup(
                 try:
                     _rewind_coupler_diagnostics(
                         Path(coupler.solution_dir) / "coupler_diagnostics.jsonl",
-                        float(manifest["time"]),
+                        float(checkpoint_info["time"]),
                         getattr(coupler, "coupling_diagnostics", None),
                     )
                 except BaseException as exc:
-                    error = f"Coupled diagnostics restart reconciliation failed: {type(exc).__name__}: {exc}"
+                    error = f"Coupled diagnostics restart time alignment failed: {type(exc).__name__}: {exc}"
         except Exception as exc:
             error = f"Coupled VPM restart failed: {type(exc).__name__}: {exc}"
     if comm is not None and comm.Get_size() > 1:
         error = comm.bcast(error if coupler._is_master else None, root=0)
     if error is not None:
         raise ValueError(error)
-    coupling_step = int(manifest["coupling_step"])
+    coupling_step = int(checkpoint_info["coupling_step"])
     if coupler.vorticity_transfer is None:
         raise RuntimeError("Coupled backup load requires an initialized vorticity transfer")
     # A fresh run performs one initial synchronization plus one transfer after

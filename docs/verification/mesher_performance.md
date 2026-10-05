@@ -60,7 +60,7 @@ when its identity matches the configured geometry and meshing controls.
 
 ## Verification
 
-83 tests passed across native cfMesh numerical fixtures, octree contracts,
+83 tests passed across native cfMesh numerical fixtures, octree refinement checks,
 geometry and topology checks, VTK coordinate updates, startup logging, and mesh
 caching. The acceptance cases for a rotated box, ellipsoid, torus, and finite
 wing pass. The two-disjoint-body acceptance case fails with

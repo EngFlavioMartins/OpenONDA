@@ -111,7 +111,7 @@ def loading_station_keys(
 
     Spanwise histories have one row per ``(step, station_id)``.  Chordwise
     histories intentionally have several rows for that same station, so their
-    uniqueness contract is ``(step, station_id, chord_index)``.  The grouped
+    unique row key is ``(step, station_id, chord_index)``.  The grouped
     station keys returned for the span/chord merge are only produced after
     every station has the complete panel set.
     """
@@ -149,7 +149,7 @@ def loading_station_keys(
 
 
 def chord_panel_indices(surface):
-    """Read a uniform chord-panel contract from the native VLM surface mesh."""
+    """Read a uniform chord-panel conditions from the native VLM surface mesh."""
     segments = [segment for wing in surface["geometry"]["wings"] for segment in wing["segments"]]
     counts = {int(segment["n_chordwise_panels"]) for segment in segments}
     if len(counts) != 1:
@@ -171,7 +171,7 @@ def loading_window(
     expected_chord_panels=None,
     cadence_start_time=None,
 ):
-    """Select one shared final window after reconciling span/chord clocks."""
+    """Select one shared final window after matching span/chord clocks."""
     if duration <= 0:
         raise ValueError("window duration must be positive")
     span_steps, span_times = loading_clock(span, "spanwise")

@@ -1,4 +1,4 @@
-"""Production exact body-grid reuse, ownership and failure qualification."""
+"""Production exact body-grid reuse, allocation lifetime and failure qualification."""
 
 import numpy as np
 import pytest
@@ -27,38 +27,52 @@ def runtime():
 
 
 def boundary(shift=0.0):
-    return SolidBoundary((TriangulatedWall.from_box(
-        (-0.35 + shift, 0.35 + shift, -0.35, 0.35, -0.35, 0.35), (-3, 3, -3, 3, -3, 3)),))
+    return SolidBoundary(
+        (
+            TriangulatedWall.from_box(
+                (-0.35 + shift, 0.35 + shift, -0.35, 0.35, -0.35, 0.35), (-3, 3, -3, 3, -3, 3)
+            ),
+        )
+    )
 
 
-def configure(h, body, *, certified=True):
-    h.configure_body_classifier(body.contains, revision=body.revision,
-                                query_bounds=body.bounds, blocks_segments=body.blocks_segments,
-                                geometry_cache_contract=body.grid_geometry_contract() if certified else None)
+def configure(h, body, *, validated=True):
+    h.configure_body_classifier(
+        body.contains,
+        revision=body.revision,
+        query_bounds=body.bounds,
+        blocks_segments=body.blocks_segments,
+        geometry_queries=body.grid_geometry_queries() if validated else None,
+    )
 
 
 def snapshot(h, origin=(-0.7, -0.7, -0.7), shape=(9, 9, 9), spacing=0.15):
     h._prepare_body_mask_current_grid(np.asarray(origin), spacing, *shape)
     slices = tuple(slice(0, n) for n in shape)
-    return (h._body_mask_grid.to_numpy()[slices], h._body_link_grid.to_numpy()[slices],
-            h.body_geometry_cache_diagnostics)
+    return (
+        h._body_mask_grid.to_numpy()[slices],
+        h._body_link_grid.to_numpy()[slices],
+        h.body_geometry_cache_diagnostics,
+    )
 
 
-def test_bound_default_matches_explicit_strict_interior_and_certifies():
+def test_bound_default_matches_explicit_strict_interior_and_validates():
     body = boundary()
     points = np.array([[0, 0, 0], [0.35, 0, 0], [0.36, 0, 0]])
-    np.testing.assert_array_equal(body.contains(points), body.contains(points, include_boundary=False))
+    np.testing.assert_array_equal(
+        body.contains(points), body.contains(points, include_boundary=False)
+    )
     np.testing.assert_array_equal(body.contains(points), [True, False, False])
-    contract = body.grid_geometry_contract()
-    assert contract is not None
-    assert contract.key(body.contains, body.blocks_segments, body.revision) is not None
+    conditions = body.grid_geometry_queries()
+    assert conditions is not None
+    assert conditions.key(body.contains, body.blocks_segments, body.revision) is not None
 
 
 def test_growing_grid_matches_original_fresh_device_fields_bitwise():
     body = boundary()
     candidate, original = Harness(), Harness()
     configure(candidate, body)
-    configure(original, body, certified=False)
+    configure(original, body, validated=False)
     for shape in ((9, 9, 9), (11, 10, 9), (10, 8, 9)):
         a, b, stats = snapshot(candidate, shape=shape)
         x, y, _ = snapshot(original, shape=shape)
@@ -115,7 +129,7 @@ def test_failed_partial_upload_never_publishes_residency_or_host_state():
     del h._upload_scalar_chunk_kernel
     a, b, stats = snapshot(h)
     fresh = Harness()
-    configure(fresh, boundary(), certified=False)
+    configure(fresh, boundary(), validated=False)
     expected = snapshot(fresh)
     np.testing.assert_array_equal(a, expected[0])
     np.testing.assert_array_equal(b, expected[1])
@@ -184,7 +198,7 @@ def test_custom_body_and_callback_do_not_acquire_implicit_capability():
         revision = "arbitrary"
         surface_bounds = np.array([-1, 1, -1, 1, -1, 1])
 
-    assert SolidBoundary((CustomWall(),)).grid_geometry_contract() is None
+    assert SolidBoundary((CustomWall(),)).grid_geometry_queries() is None
     h = Harness()
     h.configure_body_classifier(lambda p: np.zeros(len(p), dtype=bool), revision="custom")
     assert snapshot(h)[2]["status"] == "fresh_fallback"
@@ -208,7 +222,7 @@ def test_slab_full_spacing_and_origin_bits_invalidate_residency(change):
         assert result[2]["membership_reused"] == 0
 
 
-def test_payload_cap_and_mutated_returned_host_arrays_are_safe():
+def test_data_cap_and_mutated_returned_host_arrays_are_safe():
     h = Harness()
     configure(h, boundary())
     snapshot(h)
@@ -218,7 +232,7 @@ def test_payload_cap_and_mutated_returned_host_arrays_are_safe():
     h._body_links_host[:] = 7
     result = snapshot(h, shape=(10, 9, 9))
     fresh = Harness()
-    configure(fresh, boundary(), certified=False)
+    configure(fresh, boundary(), validated=False)
     expected = snapshot(fresh, shape=(10, 9, 9))
     np.testing.assert_array_equal(result[0], expected[0])
     np.testing.assert_array_equal(result[1], expected[1])

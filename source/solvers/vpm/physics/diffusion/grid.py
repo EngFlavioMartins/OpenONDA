@@ -54,7 +54,7 @@ _GBD_MOMENT_REPLACEMENT_POOL_SIZE = 32
 # instead of accepting a numerically closed but physically amplified cloud.
 _GBD_MOMENT_CORRECTION_FRACTION_LIMIT = 0.5
 
-# Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
+# Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacingg
 _REGEN_RADIUS_RATIO = 2.5
 
 
@@ -475,7 +475,7 @@ class _GridDiffusionMixin:
             "fluid_correction_l1": 0.0,
         }
 
-        # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).
+        # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).).
         self.core_radius_ratio: float = _REGEN_RADIUS_RATIO
 
         # Maximum grid dimensions from VPM domain (set by configure_max_grid_extent).
@@ -506,7 +506,7 @@ class _GridDiffusionMixin:
         self._body_mask_host: np.ndarray | None = None
         self._body_links_host: np.ndarray | None = None
         self._body_query_bounds: np.ndarray | None = None
-        self._body_geometry_contract = None
+        self._body_geometry_queries = None
         self._body_grid_geometry_cache = None
         self._body_geometry_cache_diagnostics = {"status": "not_prepared"}
 
@@ -818,7 +818,7 @@ class _GridDiffusionMixin:
         revision: object,
         query_bounds: np.ndarray | None = None,
         blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
-        geometry_cache_contract: ImmutableBodyGeometryQueries | None = None,
+        geometry_queries: ImmutableBodyGeometryQueries | None = None,
     ) -> None:
         """Use the transfer body's strict-interior classifier on the GBD lattice.
 
@@ -832,7 +832,7 @@ class _GridDiffusionMixin:
             raise ValueError("body geometry revision must be supplied")
         self._body_classifier = contains_interior
         self._body_segment_classifier = blocks_segments
-        self._body_geometry_contract = geometry_cache_contract
+        self._body_geometry_queries = geometry_queries
         self._body_grid_geometry_cache = None
         self._body_geometry_revision = revision
         if query_bounds is not None:
@@ -852,14 +852,17 @@ class _GridDiffusionMixin:
         return dict(self._body_geometry_cache_diagnostics)
 
     def _body_grid_geometry_key(self):
-        contract = self._body_geometry_contract
-        if type(contract) is not ImmutableBodyGeometryQueries:
+        queries = self._body_geometry_queries
+        if type(queries) is not ImmutableBodyGeometryQueries:
             return None
-        if any(name in vars(self) or inspect.getattr_static(type(self), name, None) is not method
-               for name, method in _BODY_GRID_GEOMETRY_METHODS.items()):
+        if any(
+            name in vars(self) or inspect.getattr_static(type(self), name, None) is not method
+            for name, method in _BODY_GRID_GEOMETRY_METHODS.items()
+        ):
             return None
-        key = contract.key(self._body_classifier, self._body_segment_classifier,
-                           self._body_geometry_revision)
+        key = queries.key(
+            self._body_classifier, self._body_segment_classifier, self._body_geometry_revision
+        )
         if key is None:
             return None
         slab = getattr(self, "_slip_slab_bounds", None)
@@ -869,7 +872,7 @@ class _GridDiffusionMixin:
     def _prepare_body_mask_current_grid(
         self, grid_min: np.ndarray, particle_spacing: float, nx: int, ny: int, nz: int
     ) -> None:
-        """Populate masks/links, reusing only exactly certified host geometry."""
+        """Populate masks/links, reusing only exactly validated host geometry."""
         if not self._body_mask_active or self._body_mask_grid is None:
             return
         started = time.perf_counter()
@@ -879,7 +882,8 @@ class _GridDiffusionMixin:
             self._body_mask_cache_key = None
             self._body_mask_host = self._body_links_host = None
             self._body_geometry_cache_diagnostics = {
-                "status": "failed", "qualified": False,
+                "status": "failed",
+                "qualified": False,
                 "preparation_seconds": time.perf_counter() - started,
             }
             raise
@@ -900,14 +904,15 @@ class _GridDiffusionMixin:
             id(self._body_link_grid),
             g.tobytes(),
         )
-        invalid_contract = self._body_geometry_contract is not None and geometry_key is None
-        if not invalid_contract and key == self._body_mask_cache_key:
+        invalid_queries = self._body_geometry_queries is not None and geometry_key is None
+        if not invalid_queries and key == self._body_mask_cache_key:
             self._body_geometry_cache_diagnostics = {
-                "status": "resident_hit", "qualified": geometry_key is not None,
+                "status": "resident_hit",
+                "qualified": geometry_key is not None,
                 "preparation_seconds": time.perf_counter() - started,
             }
             return
-        # Never leave stale residency admitted after a partially written mask
+        # Never leave stale residency checked after a partially written mask
         # or link grid. Host evidence is independent of device allocation.
         self._body_mask_cache_key = None
         self._body_mask_host = self._body_links_host = None
@@ -919,37 +924,48 @@ class _GridDiffusionMixin:
                 required_bytes = 5 * int(nx) * int(ny) * int(nz) + 12 * (nx + ny + nz)
                 if required_bytes <= cache.max_bytes:
                     mask, links, diagnostics = cache.prepare(
-                        g, particle_spacing, (nx, ny, nz),
+                        g,
+                        particle_spacing,
+                        (nx, ny, nz),
                         contains=self._body_interior_at_particles,
-                        blocks=self._body_blocked_segments if self._body_segment_classifier is not None else None,
+                        blocks=self._body_blocked_segments
+                        if self._body_segment_classifier is not None
+                        else None,
                         geometry_key=geometry_key,
                     )
                     if self._body_segment_classifier is not None and self._body_link_grid is None:
-                        self._body_link_grid = ti.field(dtype=ti.i32, shape=self._body_mask_grid.shape)
-                    for field, values in ((self._body_mask_grid, mask), (self._body_link_grid, links)):
+                        self._body_link_grid = ti.field(
+                            dtype=ti.i32, shape=self._body_mask_grid.shape
+                        )
+                    for field, values in (
+                        (self._body_mask_grid, mask),
+                        (self._body_link_grid, links),
+                    ):
                         if field is None:
                             continue
                         buffer = self._grid_transfer_buffer("scalar", field, "upload")
                         flat = values.reshape(-1)
                         for start in range(0, len(flat), _GRID_TRANSFER_CHUNK):
                             count = min(_GRID_TRANSFER_CHUNK, len(flat) - start)
-                            buffer[:count] = flat[start:start + count]
+                            buffer[:count] = flat[start : start + count]
                             self._upload_scalar_chunk_kernel(field, buffer, start, count, ny, nz)
                     ti.sync()
                     self._body_mask_host, self._body_links_host = mask, links
                     self._body_mask_cache_key = (*key[:-2], id(self._body_link_grid), key[-1])
                     self._body_geometry_cache_diagnostics = {
-                        **diagnostics, "status": "complete",
+                        **diagnostics,
+                        "status": "complete",
                         "preparation_seconds": time.perf_counter() - started,
                     }
                     return
             self._prepare_body_mask_fresh(g, particle_spacing, nx, ny, nz)
             ti.sync()
             self._body_mask_cache_key = (
-                None if invalid_contract else (*key[:-2], id(self._body_link_grid), key[-1])
+                None if invalid_queries else (*key[:-2], id(self._body_link_grid), key[-1])
             )
             self._body_geometry_cache_diagnostics = {
-                "status": "fresh_fallback", "qualified": False,
+                "status": "fresh_fallback",
+                "qualified": False,
                 "nodes": int(nx) * int(ny) * int(nz),
                 "preparation_seconds": time.perf_counter() - started,
             }
@@ -957,7 +973,8 @@ class _GridDiffusionMixin:
             self._body_mask_cache_key = None
             self._body_mask_host = self._body_links_host = None
             self._body_geometry_cache_diagnostics = {
-                "status": "failed", "qualified": geometry_key is not None,
+                "status": "failed",
+                "qualified": geometry_key is not None,
                 "preparation_seconds": time.perf_counter() - started,
             }
             raise
@@ -1328,7 +1345,7 @@ class _GridDiffusionMixin:
             if abs(index_float - index) < 1.0e-5 and 0 <= index < grid.shape[2]:
                 grid[:, :, index, :] *= 0.5
 
-    # Grid-diffusion orchestration
+    # Grid-diffusion execution
 
     def _apply_body_mask_current_grid(self, nx: int, ny: int, nz: int) -> None:
         """Zero vorticity inside masked (solid) cells on the active grid."""
@@ -2635,7 +2652,7 @@ class _GridDiffusionMixin:
             )
 
         # -- LES: per-particle ν_t to carry through regen  -------------
-        # The scattered ν_t is inherited by regenerated particles so that ν_t
+        # The scattered ν_t is inherited by regenerated particles so that ν_t_t
         # survives the rebuild and reaches the backup (LES recomputes it
         # next step anyway, but carrying it keeps the backuped field
         # faithful).
@@ -2844,7 +2861,7 @@ class _GridDiffusionMixin:
             nz,
             mapping=node_mapping,
         )
-        # The |Γ|-weighted ν_t average is inherited by regenerated particles.
+        # The |Γ|-weighted ν_t average is inherited by regenerated particles.r.
         # particles inherit the pre-regen turbulent viscosity.
         eddy_viscosity_grid = self._scatter_scalar_weighted(
             pos_np,
@@ -3139,7 +3156,7 @@ class _GridDiffusionMixin:
         rd_ratio : float              R_d / particle_spacing compact-support radius ratio.
                                       Default 4.0 (optimal, Durante 2024 Sec. 4.2).
         effective_viscosity_np : (N,) float array or None
-                                      Effective viscosity values used for contract
+                                      Effective viscosity values used for queries
                                       validation. DVH currently accepts only a
                                       spatially uniform field (e.g. molecular
                                       viscosity without a varying LES contribution).
@@ -3208,7 +3225,7 @@ class _GridDiffusionMixin:
         # Numba-compiled heat-kernel scatter.  This is the exact f64 algorithm
         # of the former ``for j in range(N)`` Python loop (same formulas, same
         # accumulation order → bit-identical conservation), but JIT-compiled.
-        # That serial Python loop dominated DVH cost (≈5 min at 49k particles);
+        # That serial Python loop dominated DVH cost (≈5 min at 49k particles););
         # the compiled loop runs in a fraction of a second.
         grid_out = np.zeros((nx, ny, nz, 3), dtype=np.float64)
         _dvh_scatter_numba(
@@ -3226,7 +3243,7 @@ class _GridDiffusionMixin:
         )
 
         # Upload result to the Taichi grid field (f32, like the rest of the
-        # grid-diffusion pipeline).
+        # grid-diffusion sequence).
         self._upload_active_vec_grid(self._current_grid, grid_out, nx, ny, nz)
 
     def _grid_based_diffusion_impl(
@@ -3254,7 +3271,7 @@ class _GridDiffusionMixin:
         No finite-difference solve is involved — diffusion is encoded directly
         in the Gaussian scatter weights. The finite-lattice scatter, support
         truncation, and optional pruning are a remap approximation, not an
-        exact continuum heat solve. The supported remap contract requires a
+        exact continuum heat solve. The supported remap queries requires a
         uniform effective viscosity and an accepted interval resolved by the
         configured lattice; callers must accumulate smaller intervals first.
         """
@@ -3332,7 +3349,7 @@ class _GridDiffusionMixin:
             pos_np, vortex_strength, grid_min_np, particle_spacing, nx, ny, nz
         )
 
-        # The supported heat-transfer contract assumes a uniform incoming blob
+        # The supported heat-transfer queries assumes a uniform incoming blob
         # basis. Preserve that basis through the finite-lattice remap instead
         # of replacing every source with the unrelated default 2.5h core.
         core_radius_np = particles.core_radius_cpu(use_cache=False)[:N].astype(np.float64)
@@ -3483,7 +3500,7 @@ class _GridDiffusionMixin:
         Gaussian heat-kernel Green's function, then replaces all particles with
         surviving grid nodes. No finite-difference solve is used.
 
-        The supported contract is intentionally narrower than a general
+        The supported queries is intentionally narrower than a general
         variable-coefficient diffusion operator: the effective viscosity must
         be spatially uniform, the accepted interval must be resolved by the
         configured lattice, and the incoming core radius must be finite,
@@ -3957,8 +3974,12 @@ class _GridDiffusionMixin:
 _BODY_GRID_GEOMETRY_METHODS = {
     name: inspect.getattr_static(_GridDiffusionMixin, name)
     for name in (
-        "_body_grid_geometry_key", "_prepare_body_mask_current_grid", "_prepare_body_mask_fresh",
-        "_prepare_body_links", "_body_interior_at_particles", "_body_blocked_segments",
+        "_body_grid_geometry_key",
+        "_prepare_body_mask_current_grid",
+        "_prepare_body_mask_fresh",
+        "_prepare_body_links",
+        "_body_interior_at_particles",
+        "_body_blocked_segments",
         "_fold_slab_exterior_z",
     )
 }

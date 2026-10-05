@@ -97,9 +97,7 @@ def test_independent_list_growth_preserves_fields_and_pair_partition(monkeypatch
         device._ListCapacities._fields, initial, workspace.list_capacities, strict=True
     ):
         assert after > before if component == shortage else after == before
-    assert workspace.m2l_source.shape == (
-        max(workspace.max_m2l_pairs, workspace.max_near_pairs),
-    )
+    assert workspace.m2l_source.shape == (max(workspace.max_m2l_pairs, workspace.max_near_pairs),)
     if shortage == "near":
         assert workspace.max_near_pairs > workspace.max_m2l_pairs
     actual_pairs, actual_demand = _interaction_partition(workspace, count)

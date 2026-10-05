@@ -17,7 +17,7 @@ FORMAT_VERSION = 10
 
 
 @dataclass(frozen=True)
-class RestartPayload:
+class RestartState:
     """Fully validated restart data, detached from a live solver."""
 
     fields: dict[str, np.ndarray]
@@ -66,7 +66,7 @@ def _contiguous(values) -> np.ndarray:
 
 
 def encode_state(arrays: dict) -> dict:
-    """Return the stored form of one backup payload."""
+    """Return the stored form of one backup restart_state."""
     encoded: dict = {}
     layout: dict[str, list] = {}
     for name, value in arrays.items():
@@ -131,8 +131,8 @@ def _setup_dict(setup, *, numerical_only: bool = True) -> dict:
 
     data = asdict(setup)
     if numerical_only:
-        # Output cadence, log policy, restart location and the requested
-        # horizon are lifecycle controls.  They may change when extending or
+        # Output cadence, log settings, restart location and the requested
+        # horizon are run controls.  They may change when extending or
         # relocating a run without changing the equations represented by a
         # numerical restart.
         data.pop("output", None)
@@ -149,7 +149,7 @@ def _setup_dict(setup, *, numerical_only: bool = True) -> dict:
 
 
 def _solver_setup(solver):
-    """Return the detached setup snapshot admitted by the solver."""
+    """Return the detached setup snapshot validated by the solver."""
     return getattr(solver, "_resolved_setup", solver.setup)
 
 
@@ -159,12 +159,12 @@ def config_hash(setup) -> str:
 
 
 def full_config_hash(setup) -> str:
-    """Return a hash including lifecycle/output policy for provenance."""
+    """Return a hash including run/output settings for source information."""
     return _hash(_setup_dict(setup, numerical_only=False))
 
 
 def mesh_hash(mesh_data) -> str:
-    """Hash canonical mesh topology, coordinates, and stable patch identity."""
+    """Hash standard mesh topology, coordinates, and stable patch mesh_description."""
     patches = [
         {
             "name": patch["name"],
@@ -174,7 +174,7 @@ def mesh_hash(mesh_data) -> str:
         }
         for patch in mesh_data["boundary"]
     ]
-    identity = {
+    mesh_description = {
         "vertex_position": mesh_data["vertex_position"],
         "faces": mesh_data["faces"],
         "owners": mesh_data["owners"],
@@ -184,7 +184,7 @@ def mesh_hash(mesh_data) -> str:
         "n_faces": mesh_data["n_faces"],
         "n_interior_faces": mesh_data["n_interior_faces"],
     }
-    return _hash(identity)
+    return _hash(mesh_description)
 
 
 def save_backup(solver, path) -> Path:
@@ -230,10 +230,10 @@ def save_backup(solver, path) -> Path:
         ),
     }
 
-    payload_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
+    state_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
     require_free_space(
         destination,
-        payload_bytes + (4 << 20),
+        state_bytes + (4 << 20),
     )
 
     stored = encode_state(arrays)
@@ -275,18 +275,18 @@ def _read_scalar(state: dict, name: str, *, kind: str):
     raise AssertionError(f"unknown scalar kind {kind!r}")
 
 
-def stage_restart_payload(
+def validate_restart_state(
     solver,
     state: dict,
     *,
     allow_config_change: bool = False,
     kinematic_viscosity: float | None = None,
-) -> RestartPayload:
+) -> RestartState:
     """Validate a decoded backup without mutating *solver*.
 
-    This is intentionally shared by serial and partitioned admission.  A
+    This is intentionally shared by serial and partitioned validation.  A
     caller can collect validation errors from every rank before publishing any
-    fields, which makes restart rejection transactional at the solver boundary.
+    fields, which makes restart rejection validated at the solver boundary.
     """
     field_names = (
         "velocity",
@@ -378,7 +378,7 @@ def stage_restart_payload(
     if any(value < 0 for value in counters.values()):
         raise ValueError("Backup acceptance counters must be non-negative")
 
-    return RestartPayload(
+    return RestartState(
         fields=fields,
         eddy_viscosity=np.ascontiguousarray(eddy_viscosity),
         time=time,
@@ -393,9 +393,9 @@ def stage_restart_payload(
     )
 
 
-def publish_restart_payload(solver, payload: RestartPayload) -> None:
-    """Publish a staged payload after all admission checks have succeeded."""
-    for name, values in payload.fields.items():
+def restore_restart_state(solver, restart_state: RestartState) -> None:
+    """Publish a staged restart_state after all validation checks have succeeded."""
+    for name, values in restart_state.fields.items():
         getattr(solver, name)[:] = values
     # The pressure-free flux update stores its boundary increment separately
     # from the pressure field. Reconstruct it from the saved accepted ghosts
@@ -413,17 +413,17 @@ def publish_restart_payload(solver, payload: RestartPayload) -> None:
             - solver.kinematic_pressure[owners]
         ).copy()
     solver.eddy_viscosity = (
-        None if not payload.eddy_viscosity.size else payload.eddy_viscosity.copy()
+        None if not restart_state.eddy_viscosity.size else restart_state.eddy_viscosity.copy()
     )
-    solver.time = payload.time
-    solver.step = payload.step
-    solver._n_committed_time_steps = payload.n_committed_time_steps
-    solver.time_step_size = payload.time_step_size
-    solver._accepted_time_step_size = payload.accepted_time_step_size
-    solver._previous_time_step_size = payload.previous_time_step_size
-    solver._kinematic_viscosity = payload.kinematic_viscosity
-    solver.max_courant_number = payload.max_courant_number
-    solver._n_consecutive_accepted_steps.update(payload.n_consecutive_accepted_steps)
+    solver.time = restart_state.time
+    solver.step = restart_state.step
+    solver._n_committed_time_steps = restart_state.n_committed_time_steps
+    solver.time_step_size = restart_state.time_step_size
+    solver._accepted_time_step_size = restart_state.accepted_time_step_size
+    solver._previous_time_step_size = restart_state.previous_time_step_size
+    solver._kinematic_viscosity = restart_state.kinematic_viscosity
+    solver.max_courant_number = restart_state.max_courant_number
+    solver._n_consecutive_accepted_steps.update(restart_state.n_consecutive_accepted_steps)
     solver._last_residuals = None
     solver.last_diagnostics = None
     solver._invalidate_derived_fields()
@@ -436,8 +436,8 @@ def publish_restart_payload(solver, payload: RestartPayload) -> None:
         solver._evolution_failure = None
 
 
-def capture_restart_payload(solver) -> RestartPayload:
-    """Copy the canonical accepted state into memory for coupling sweeps.
+def capture_restart_state(solver) -> RestartState:
+    """Copy the standard accepted state into memory for coupling sweeps.
 
     This has the same numerical content as a disk restart, without compression,
     mesh hashing or filesystem traffic. Each MPI rank captures its local state.
@@ -453,7 +453,7 @@ def capture_restart_payload(solver) -> RestartPayload:
         "velocity_old",
         "velocity_older",
     )
-    return RestartPayload(
+    return RestartState(
         fields={name: getattr(solver, name).copy() for name in names},
         eddy_viscosity=(
             np.empty(0) if solver.eddy_viscosity is None else solver.eddy_viscosity.copy()
@@ -470,8 +470,8 @@ def capture_restart_payload(solver) -> RestartPayload:
     )
 
 
-def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> RestartPayload:
-    """Validate and restore one canonical FVM backup."""
+def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> RestartState:
+    """Validate and restore one standard FVM backup."""
     source = Path(path)
     required = {
         "metadata",
@@ -534,7 +534,7 @@ def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> Re
             or not np.isfinite(float(archived_viscosity))
             or float(archived_viscosity) <= 0.0
         ):
-            raise ValueError("FVM backup molecular viscosity identity is invalid")
+            raise ValueError("FVM backup molecular viscosity mesh_description is invalid")
         if not allow_config_change and not np.isclose(
             float(archived_viscosity),
             float(
@@ -554,28 +554,28 @@ def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> Re
     missing = sorted((required - {"metadata", "storage_layout"}) - set(state))
     if missing:
         raise ValueError("Incomplete FVM backup; missing: " + ", ".join(missing))
-    payload = stage_restart_payload(
+    restart_state = validate_restart_state(
         solver,
         state,
         allow_config_change=allow_config_change,
         kinematic_viscosity=float(metadata["kinematic_viscosity"]),
     )
 
-    return payload
+    return restart_state
 
 
 def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
-    """Collectively admit and publish one canonical FVM backup.
+    """Collectively validate and publish one standard FVM backup.
 
     Replicated ranks stage independently, exchange only validation status, and
-    publish the payload only after every rank has accepted it.  This keeps a
+    publish the restart_state only after every rank has accepted it.  This keeps a
     corrupt or malformed archive from leaving peers at different clocks.
     """
     parallel = getattr(solver, "parallel", None)
-    payload: RestartPayload | None = None
+    restart_state: RestartState | None = None
     local_error = None
     try:
-        payload = _load_backup_local(
+        restart_state = _load_backup_local(
             solver,
             path,
             allow_config_change=allow_config_change,
@@ -592,26 +592,26 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
         failure = next((item for item in errors if item is not None), None)
         if failure is not None:
             raise RuntimeError(
-                "FVM restart admission failed on rank "
+                "FVM restart validation failed on rank "
                 f"{failure['rank']} ({failure['type']}): {failure['message']}"
             )
-        assert payload is not None
+        assert restart_state is not None
         signatures = parallel.comm.allgather(
             (
-                payload.time,
-                payload.step,
-                payload.time_step_size,
-                payload.accepted_time_step_size,
-                payload.previous_time_step_size,
+                restart_state.time,
+                restart_state.step,
+                restart_state.time_step_size,
+                restart_state.accepted_time_step_size,
+                restart_state.previous_time_step_size,
             )
         )
         if any(signature != signatures[0] for signature in signatures[1:]):
-            raise RuntimeError("FVM restart admission found inconsistent clocks across ranks")
+            raise RuntimeError("FVM restart validation found inconsistent clocks across ranks")
     elif local_error is not None:
         raise RuntimeError(
-            f"FVM restart admission failed ({local_error['type']}): {local_error['message']}"
+            f"FVM restart validation failed ({local_error['type']}): {local_error['message']}"
         )
 
-    if payload is None:
-        raise RuntimeError("FVM restart admission produced no payload")
-    publish_restart_payload(solver, payload)
+    if restart_state is None:
+        raise RuntimeError("FVM restart validation produced no restart_state")
+    restore_restart_state(solver, restart_state)

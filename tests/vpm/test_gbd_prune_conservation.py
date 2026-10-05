@@ -522,34 +522,64 @@ def test_rank_complete_but_unsafe_component_retains_only_its_own_donors():
     iz = np.concatenate((tail_iz, core_iz))
     capacity = int(np.count_nonzero(magnitude > 0))
     ax, ay, az, added, preserve_groups = _GridDiffusionMixin._augment_moment_recovery_support(
-        grid, magnitude, ix, iy, iz, grid_min, spacing, capacity,
-        labels=labels, strict_labels=True,
+        grid,
+        magnitude,
+        ix,
+        iy,
+        iz,
+        grid_min,
+        spacing,
+        capacity,
+        labels=labels,
+        strict_labels=True,
     )
     assert preserve_groups and added == 0  # Rank alone does not establish safety.
     original = grid.copy()
     with pytest.raises(grid_module._GBDMomentCorrectionError) as caught:
         _GridDiffusionMixin._redistribute_pruned_moments(
-            grid, magnitude, ax, ay, az, grid_min, spacing,
-            labels=labels, strict_labels=True,
+            grid,
+            magnitude,
+            ax,
+            ay,
+            az,
+            grid_min,
+            spacing,
+            labels=labels,
+            strict_labels=True,
         )
     assert caught.value.recovery_label == 1
     np.testing.assert_array_equal(grid, original)
     rx, ry, rz, added = _GridDiffusionMixin._retain_unsafe_moment_scope(
-        magnitude, ax, ay, az, capacity, labels, caught.value.recovery_label,
+        magnitude,
+        ax,
+        ay,
+        az,
+        capacity,
+        labels,
+        caught.value.recovery_label,
     )
     assert added == int(np.count_nonzero(magnitude[:24] > 0)) - 30
-    np.testing.assert_array_equal(rx[:len(ax)], ax)
-    assert np.all(labels[rx[len(ax):], ry[len(ax):], rz[len(ax):]] == 1)
+    np.testing.assert_array_equal(rx[: len(ax)], ax)
+    assert np.all(labels[rx[len(ax) :], ry[len(ax) :], rz[len(ax) :]] == 1)
     corrected = _GridDiffusionMixin._redistribute_pruned_moments(
-        grid, magnitude, rx, ry, rz, grid_min, spacing,
-        labels=labels, strict_labels=True,
+        grid,
+        magnitude,
+        rx,
+        ry,
+        rz,
+        grid_min,
+        spacing,
+        labels=labels,
+        strict_labels=True,
     )
     np.testing.assert_array_equal(corrected, grid[rx, ry, rz])
     for label in (0, 1):
         selected = labels[rx, ry, rz] == label
         _assert_moments_close(
             _moments(grid, grid_min, spacing, mask=labels == label),
-            _retained_moments(corrected[selected], rx[selected], ry[selected], rz[selected], grid_min, spacing),
+            _retained_moments(
+                corrected[selected], rx[selected], ry[selected], rz[selected], grid_min, spacing
+            ),
         )
     np.testing.assert_array_equal(grid, original)
 
@@ -564,7 +594,7 @@ def test_unsafe_component_retention_does_not_exceed_capacity():
     np.testing.assert_array_equal(ix, [0])
 
 
-def test_post_cast_residual_gate_rejects_a_failed_storage_precision_closure(monkeypatch):
+def test_post_cast_residual_check_rejects_a_failed_storage_precision_closure(monkeypatch):
     monkeypatch.setattr(grid_module, "_GBD_MOMENT_RESIDUAL_LIMIT", 1.0e-12)
     grid, grid_min, particle_spacing = _make_grid(seed=0)
     magnitude = np.linalg.norm(grid, axis=-1)

@@ -1,4 +1,4 @@
-"""Collective checkpoint clock admission without advancing a physical solver."""
+"""Collective checkpoint clock validation without advancing a physical solver."""
 
 from importlib.util import find_spec
 import json
@@ -13,7 +13,7 @@ import pytest
 
 @pytest.mark.integration
 @pytest.mark.parametrize("ranks", [2, 4])
-def test_backup_clock_admission_and_publication_are_collective(tmp_path, ranks):
+def test_backup_clock_validation_and_output_are_collective(tmp_path, ranks):
     if find_spec("mpi4py") is None:
         pytest.skip("mpi4py is required")
     launcher = Path(sys.executable).with_name("mpiexec")
@@ -55,7 +55,7 @@ def test_backup_clock_admission_and_publication_are_collective(tmp_path, ranks):
         "ranks": ranks,
         "rejected_before_writes": ["nonroot_fvm_time", "nonroot_fvm_step", "root_vpm_time"],
         "rejected_before_flush": ["nonroot_fvm_candidate", "nonroot_fvm_failed"],
-        "complete_publication": True,
+        "complete_output_write": True,
     }
 
 
@@ -66,7 +66,7 @@ def _mpi_worker(root):
     from mpi4py import MPI
     import numpy as np
 
-    from source.coupler.backup import artifact_digest, save_coupled_backup
+    from source.coupler.backup import checkpoint_path_hash, save_coupled_backup
     from source.coupler.config.types import CouplerSetup
     from source.solvers.fvm.config.types import FVMSetup, TimeConfig
     from source.solvers.fvm.core.solver import FVMSolver
@@ -117,7 +117,7 @@ def _mpi_worker(root):
                 np.savez(stream, time=np.asarray(self.time), step=np.asarray(self.step))
             comm.Barrier()
             if rank == 0:
-                (directory / "manifest.json").write_text(
+                (directory / "checkpoint_info.json").write_text(
                     json.dumps(
                         {
                             "format_version": 8,
@@ -142,7 +142,7 @@ def _mpi_worker(root):
                 solver = archive.create_group("solver")
                 solver.attrs["step"] = self.step
                 solver.attrs["time"] = self.time
-            Path(filename + ".vtu").write_text("fake complete visualization artifact\n")
+            Path(filename + ".vtu").write_text("fake complete visualization checkpoint_file\n")
 
     def make_coupler():
         return SimpleNamespace(
@@ -216,9 +216,9 @@ def _mpi_worker(root):
     returned = save_coupled_backup(coupler, target, coupling_step=5)
     assert Path(returned) == target
     comm.Barrier()
-    manifest = json.loads((target / "manifest.json").read_text())
+    checkpoint_info = json.loads((target / "checkpoint_info.json").read_text())
     assert {
-        key: manifest[key]
+        key: checkpoint_info[key]
         for key in ("coupling_step", "fvm_step", "vpm_step", "n_fvm_substeps", "time")
     } == {
         "coupling_step": 5,
@@ -227,22 +227,27 @@ def _mpi_worker(root):
         "n_fvm_substeps": 2,
         "time": 0.2,
     }
-    assert set(manifest["artifacts"]) == {"fvm", "vpm", "vpm_vtu", "vpm_boundary_condition"}
-    assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
-    for name, relative in manifest["artifacts"].items():
-        artifact = target / relative
-        assert artifact.exists()
-        assert artifact_digest(artifact) == manifest["artifact_sha256"][name]
-    fvm_directory = target / manifest["artifacts"]["fvm"]
-    inner = json.loads((fvm_directory / "manifest.json").read_text())
+    assert set(checkpoint_info["checkpoint_files"]) == {
+        "fvm",
+        "vpm",
+        "vpm_vtu",
+        "vpm_boundary_condition",
+    }
+    assert set(checkpoint_info["file_sha256"]) == set(checkpoint_info["checkpoint_files"])
+    for name, relative in checkpoint_info["checkpoint_files"].items():
+        checkpoint_file = target / relative
+        assert checkpoint_file.exists()
+        assert checkpoint_path_hash(checkpoint_file) == checkpoint_info["file_sha256"][name]
+    fvm_directory = target / checkpoint_info["checkpoint_files"]["fvm"]
+    inner = json.loads((fvm_directory / "checkpoint_info.json").read_text())
     assert inner["n_ranks"] == size and len(inner["files"]) == size
     for filename in inner["files"]:
         with np.load(fvm_directory / filename, allow_pickle=False) as state:
-            assert float(state["time"]) == manifest["time"]
-            assert int(state["step"]) == manifest["fvm_step"]
-    with h5py.File(target / manifest["artifacts"]["vpm"], "r") as archive:
-        assert archive["solver"].attrs["time"] == manifest["time"]
-        assert archive["solver"].attrs["step"] == manifest["vpm_step"]
+            assert float(state["time"]) == checkpoint_info["time"]
+            assert int(state["step"]) == checkpoint_info["fvm_step"]
+    with h5py.File(target / checkpoint_info["checkpoint_files"]["vpm"], "r") as archive:
+        assert archive["solver"].attrs["time"] == checkpoint_info["time"]
+        assert archive["solver"].attrs["step"] == checkpoint_info["vpm_step"]
     writes = comm.allgather(
         (coupler.fvm_solver.writes, 0 if coupler.vpm_solver is None else coupler.vpm_solver.writes)
     )
@@ -255,7 +260,7 @@ def _mpi_worker(root):
                     "ranks": size,
                     "rejected_before_writes": rejected,
                     "rejected_before_flush": rejected_before_flush,
-                    "complete_publication": True,
+                    "complete_output_write": True,
                 }
             ),
             flush=True,

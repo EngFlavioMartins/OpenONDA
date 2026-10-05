@@ -83,7 +83,7 @@ aspect ratio, coefficient and reference value. This study does not refine VPM.
 
 ## Rotor: completion, reference error and sampling error
 
-Native metadata records step **1259/1667**, time **7.554/10.002 s**, lifecycle
+Native metadata records step **1259/1667**, time **7.554/10.002 s**, run status
 `failed`. The associated log ends with **KeyboardInterrupt**, after about
 29 h 47 min. This interruption is not evidence of numerical instability, and
 must not be confused with the earlier historical failure described in the README.
@@ -138,7 +138,7 @@ downstream windows, matched time-step/panel/particle/core refinement, and an
 independent finite-chord load comparison. An unchanged native numerical checkpoint
 can supply a continuation, but corrected plane sampling must use a fresh output
 namespace; old and new grids must not be spliced. Extending a run alone does not
-establish accuracy. No long rotor continuation or full coupled refinement campaign
+establish accuracy. No long rotor continuation or full coupled refinement study
 was performed in this audit, so the remaining physical discrepancies are explicitly
 unresolved.
 
@@ -152,7 +152,7 @@ the flat wake rendering outside the socket-restricted sandbox.
 The focused regression checks passed 177 tests covering sampling bounds/restart
 compatibility, averaging/error definitions, reference-cylinder assembly, native
 loading/field clocks, impulse, flat-plate consistency, native scene selection and
-plot-layout contracts. The adjacent [source manifest](vlm_vpm_audit_sources_2026-10-01.json)
+plot layout checks. The adjacent [source checksum list](vlm_vpm_audit_sources_2026-10-01.json)
 records hashes for the audited clocks/load histories and VLM implementation.
 The saved validator outputs are
 [flat plate](vlm_vpm_flat_validation_2026-10-01.txt) and

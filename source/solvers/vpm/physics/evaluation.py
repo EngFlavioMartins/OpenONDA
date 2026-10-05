@@ -954,7 +954,7 @@ class ParticleFieldEvaluation:
         Returns
         -------
         dict[str, object]
-            Detached scalar/vector diagnostics with these contracts:
+            Detached scalar/vector diagnostics with these conditions:
 
             * ``total_kinetic_energy``: ``0.5 * integral(|u|²) dV`` in m⁵/s²
               (energy per unit density);
@@ -1229,7 +1229,7 @@ class ParticleFieldEvaluation:
         if np.all(core_radius == core_radius[0]) and np.all(
             effective_viscosity == effective_viscosity[0]
         ):
-            # Uniform-core regeneration (DVH/GBD) admits an unbounded linear
+            # Uniform-core regeneration (DVH/GBD) accepts an unbounded linear
             # convolution. A periodic inverse Laplacian loses far-field energy
             # for open vortex columns, even after zero padding. Its box-size
             # error must not enter a physical energy history.

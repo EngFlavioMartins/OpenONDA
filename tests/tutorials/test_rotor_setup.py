@@ -1,4 +1,4 @@
-"""Contracts for the ordinary rotor launcher and matched physical variants."""
+"""Checks for the ordinary rotor launcher and matched physical variants."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def test_ordinary_rotor_case_keeps_native_controls() -> None:
     assert case.run.steps == setup.N_STEPS
     assert case.run.initial_samples is True
     assert case.run.final_backup is True
-    assert case.run.health_limit_action == "STOP"
+    assert case.run.state_limit_action == "STOP"
     assert case.run.wall_time_limit_seconds is None
     assert case.run.runtime_compute_device is None
     assert case.numerics.compute_device == "AUTO"
@@ -137,7 +137,7 @@ def test_matched_continuation_uses_native_clock_and_absolute_target(tmp_path, mo
     assert "target_time=9; steps=250" in report
 
 
-def test_matched_continuation_propagates_native_admission_failure(tmp_path, monkeypatch):
+def test_matched_continuation_propagates_restart_validation_failure(tmp_path, monkeypatch):
     calls = []
 
     class Solver:

@@ -1,4 +1,4 @@
-"""Offline cylinder profiles retain native clocks, cell ownership and domains."""
+"""Offline cylinder profiles retain native clocks, cell rank assignment and domains."""
 
 import importlib
 

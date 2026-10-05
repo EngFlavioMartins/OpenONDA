@@ -11,7 +11,7 @@ from source.coupler.stable_renewal import (
 )
 
 
-def _oracle(
+def _reference(
     shape: tuple[int, int, int],
     origin_z: float,
     planes: tuple[float, float],
@@ -61,7 +61,7 @@ def test_slip_slab_gaussian_matches_full_image_sum(origin_z, source_z, planes):
         slip_slab_bounds=planes,
         lattice_origin_z=origin_z,
     )
-    reference = _oracle(shape, origin_z, planes, source_z, gamma, sigma)
+    reference = _reference(shape, origin_z, planes, source_z, gamma, sigma)
     np.testing.assert_allclose(represented, reference, rtol=2e-15, atol=2e-16)
 
 
@@ -88,13 +88,13 @@ def test_blend_corrects_only_physical_slab_and_uses_image_residual():
     vpm = np.zeros((np.prod(shape), 3))
     target = np.zeros_like(vpm)
     target.reshape(*shape, 3)[1, 1, 4] = [1.0, 0.0, 1.0]
-    authority = np.ones(len(vpm))
+    blend_weight = np.ones(len(vpm))
     weight = np.zeros(len(vpm))
     weight.reshape(shape)[:, :, 4:10] = 1.0
     slab = blend_represented_state(
         vpm,
         target,
-        authority,
+        blend_weight,
         shape,
         1.0,
         core_radius=1.2,
@@ -105,7 +105,7 @@ def test_blend_corrects_only_physical_slab_and_uses_image_residual():
     free = blend_represented_state(
         vpm,
         target,
-        authority,
+        blend_weight,
         shape,
         1.0,
         core_radius=1.2,

@@ -103,7 +103,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
                 {
                     "recorded_time": record["time"],
                     "recorded_run": run,
-                    "run_status": load_metadata(run)["lifecycle"]["status"],
+                    "run_status": load_metadata(run)["run_status"]["status"],
                     "axial_centre_over_radius": centre,
                     "source": source_name,
                 }
@@ -138,7 +138,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         exports.append({"file": exported.name})
     plt.close(fig)
     print(f"Saved {output / stem}", flush=True)
-    manifest = {
+    plot_information = {
         "style": plot_style_metadata(),
         "generator": "assets/plot_core_sections.py",
         "layout": {
@@ -154,7 +154,9 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
         "panels": panels,
         "exports": exports,
     }
-    write_text(auxiliary_output / "core_sections.json", json.dumps(manifest, indent=2) + "\n")
+    write_text(
+        auxiliary_output / "core_sections.json", json.dumps(plot_information, indent=2) + "\n"
+    )
 
 
 def main():

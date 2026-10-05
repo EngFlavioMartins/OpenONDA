@@ -49,12 +49,12 @@ particles = vpm.VPMCase(
     ),
     backup=vpm.Backup(interval_steps=0),
 )
-policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0)
+settings = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0)
 mesh = lambda: coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5),.25)
-with coupler.create_coupler(flow, particles, policy, mesh=mesh,
+with coupler.create_coupler(flow, particles, settings, mesh=mesh,
         case_dir=directory / "first") as first:
     assert first.run(start_from="latest", max_coupling_steps=1, backup_at_stop=True) == 1
-with coupler.create_coupler(flow, particles, policy, mesh=mesh,
+with coupler.create_coupler(flow, particles, settings, mesh=mesh,
         case_dir=directory / ("first" if selection == "latest" else "resumed")) as resumed:
     if selection == "latest":
         assert resumed.run(start_from="latest") == 2
@@ -87,7 +87,7 @@ with coupler.create_coupler(flow, particles, policy, mesh=mesh,
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "mode", ["run", "construction_failure", "health_failure", "application_failure"]
+    "mode", ["run", "construction_failure", "state_check_failure", "application_failure"]
 )
 def test_coupled_factory_launches_and_closes_two_ranks(tmp_path, mode):
     if find_spec("mpi4py") is None or find_spec("petsc4py") is None:
@@ -126,14 +126,14 @@ particle_case = vpm.VPMCase(
     ),
     backup=vpm.Backup(interval_steps=0),
 )
-policy = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0)
+settings = coupler.CouplerSetup(eta_blend_width=0., backup_interval_steps=0)
 if mode == "construction_failure":
     def fail(case):
         raise ValueError("injected construction failure")
     vpm_api.VPMSolver = fail
 driver = None
 try:
-    with coupler.create_coupler(fvm_setup, particle_case, policy,
+    with coupler.create_coupler(fvm_setup, particle_case, settings,
         mesh=lambda: coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5),.25)) as driver:
         native = driver._injected_fvm
         assert native.parallel.size == 2
@@ -145,9 +145,9 @@ try:
                 raise ValueError("injected application failure")
             return particle_solver is driver._injected_vpm
         assert driver.apply_vpm(instrument)
-        if mode == "health_failure" and driver._injected_vpm is not None:
+        if mode == "state_check_failure" and driver._injected_vpm is not None:
             def fail():
-                raise vpm_api.HealthError("injected accepted-state health failure")
+                raise vpm_api.ParticleStateError("injected accepted-state limit failure")
             driver._injected_vpm.execute_scheduled_samplers = fail
         assert driver.run() == 1
         assert np.allclose(native.get_velocity_field(), [1.,0.,0.], atol=1e-8)
@@ -155,7 +155,7 @@ try:
     status = "completed"
 except (RuntimeError, ValueError) as error:
     expected = {"construction_failure": "injected construction failure",
-                "health_failure": "injected accepted-state health failure",
+                "state_check_failure": "injected accepted-state limit failure",
                 "application_failure": "injected application failure"}.get(mode, "")
     if mode == "run" or expected not in str(error):
         raise
@@ -176,7 +176,6 @@ if driver is not None:
         "VECLIB_MAXIMUM_THREADS",
         "NUMEXPR_NUM_THREADS",
         "TI_CPU_MAX_NUM_THREADS",
-        "FVM_PETSC_WORKSPACE_POLICY",
         "_OPENONDA_MPI_CHILD",
     ):
         environment.pop(key, None)

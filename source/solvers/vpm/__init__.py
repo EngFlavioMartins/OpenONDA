@@ -2,7 +2,7 @@
 
 import os
 
-# OpenONDA reports its backend after solver ownership is established. Taichi's
+# OpenONDA reports its backend after solver construction is established. Taichi's
 # import-time banner would otherwise repeat in the launcher and every MPI rank.
 os.environ.setdefault("ENABLE_TAICHI_HEADER_PRINT", "False")
 
@@ -21,11 +21,11 @@ from .config import (
     FilamentRefinementConfig,
     FiniteStateCheck,
     GrowthLimit,
-    HealthError,
-    HealthLimits,
     LagrangianCFLLimit,
     MisalignmentLimit,
     Numerics,
+    ParticleStateError,
+    ParticleStateLimits,
     ParticleStrengthLimit,
     RestartState,
     RunPlan,
@@ -60,8 +60,8 @@ from .io.sampling import EverySteps, EveryTime, FinalOnly, VLMSampler
 from .numerics.rk_tableaux import RK2, RK4, SSPRK3
 from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
-from .physics.induction.gaussian_mesh.policy import GaussianMeshParameters
-from .physics.induction.gaussian_mesh.session import GaussianSlabPolicy
+from .physics.induction.gaussian_mesh.parameters import GaussianMeshParameters
+from .physics.induction.gaussian_mesh.session import GaussianSlabSettings
 from .physics.induction.planar import PlanarInduction
 from .physics.induction.slip_slab import SlipSlabInduction
 from .physics.induction.treecode import TreecodeInduction
@@ -78,7 +78,7 @@ __all__ = [
     "SlipSlabInduction",
     "FMMInduction",
     "GaussianMeshParameters",
-    "GaussianSlabPolicy",
+    "GaussianSlabSettings",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
     "Backup",
@@ -97,8 +97,8 @@ __all__ = [
     "EverySteps",
     "EveryTime",
     "GrowthLimit",
-    "HealthError",
-    "HealthLimits",
+    "ParticleStateError",
+    "ParticleStateLimits",
     "LagrangianCFLLimit",
     "ParticleStrengthLimit",
     "MisalignmentLimit",

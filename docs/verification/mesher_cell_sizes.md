@@ -88,7 +88,7 @@ The mesh backup and solver visualization now share these cell fields:
 | `cell_equivalent_size` | Cube root of physical volume; not a maximum edge | m |
 | `cell_size` | Nominal octree edge, when present in the mesh | m |
 | `refinement_level` | Absolute level counted from the root cube | dimensionless |
-| `boundary_layer_index` | Layer provenance, when available | dimensionless |
+| `boundary_layer_index` | Boundary-layer generation information, when available | dimensionless |
 
 The fields survive synchronous and asynchronous output, partition
 localization, owned-only pieces, ghost-cell pieces, and the PVTU collection.
@@ -129,7 +129,7 @@ or claim convergence of those differently configured saved simulations.
 
 The focused regression run passed 39 tests, including five fresh reference
 templates, a complete reference mesher build, native cfMesh octree tests,
-serial and asynchronous solver output, both partition ghost policies,
+serial and asynchronous solver output, both partition ghost-layer settings,
 ParaView/PyVista PVTU readback, and independent VTK volume comparisons.
 
 ```bash
@@ -141,13 +141,13 @@ python -m pytest tests/fvm/test_mesh_size_output.py \
 Ruff checks and formatting checks passed for the changed implementation and
 new test files. `git diff --check` passed.
 
-A further 34 existing factory, restart, configuration, and mesh-contract tests
+A further 34 existing factory, restart, configuration, and mesh consistency tests
 passed (73 distinct passing tests in total). The output/template subset also
 passed again after the final optional-metadata handling adjustment.
 
 ```bash
 python -m pytest tests/fvm/test_restart_and_diagnostics.py \
-    tests/fvm/test_cartesian_config.py tests/fvm/test_mesh_contracts.py \
+    tests/fvm/test_cartesian_config.py tests/fvm/test_mesh_consistency.py \
     -k 'not geometry_independence and not repeated_cartesian and not section_extrusion'
 ```
 
@@ -173,7 +173,7 @@ Validation for this follow-up:
   subnormal, ordinary, and maximum finite binary64 squared distances.
 - Complete reference meshes at `dx=0.17` and `dx=0.25` pass with runtime
   warnings and NumPy overflow/invalid/divide errors treated as failures.
-- Additional full meshes at `dx=0.16` and `dx=0.18` pass under the same policy.
+- Additional full meshes at `dx=0.16` and `dx=0.18` pass under the same mesh settings.
 - The focused run passes 26 tests; the non-slow mesh-parity run passes 56.
   The union is 58 distinct tests, including the two complete-mesh regressions.
 - The active Conda installation was patched with the same one-file change,

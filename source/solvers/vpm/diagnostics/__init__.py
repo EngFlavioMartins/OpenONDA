@@ -12,7 +12,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 from .conservation import ConservationTracker
 from .flow_integrals import FlowIntegralsSampler
 from .offline import OfflineFlowDiagnostics, compute_offline_diagnostics
-from .resolution import discretization_health
+from .resolution import particle_resolution_metrics
 from .ring import RING_DIAGNOSTIC_COLUMNS, RingDiagnosticsSampler
 
 __all__ = [
@@ -22,5 +22,5 @@ __all__ = [
     "OfflineFlowDiagnostics",
     "RING_DIAGNOSTIC_COLUMNS",
     "RingDiagnosticsSampler",
-    "discretization_health",
+    "particle_resolution_metrics",
 ]

@@ -1,4 +1,4 @@
-"""Lazy installation admission for the explicitly selected CUDA mesh backend.
+"""Lazy installation validation for the explicitly selected CUDA mesh backend.
 
 No solver fields, allocation pools, FFT plans, device selection or stream
 selection are changed here. The restoring FENV scope leaves all caller math
@@ -26,7 +26,7 @@ def _cupy_version(version):
 
 
 def require_gaussian_host_runtime():
-    """Admit portable IEEE certificates without importing a CUDA dependency."""
+    """Validate portable IEEE error_bounds without importing a CUDA dependency."""
     from ....numerics.ieee import _bridge, ieee_arithmetic, require_round_to_nearest
     from ..gaussian_tail._interval import _platform
 
@@ -69,8 +69,11 @@ def require_gaussian_mesh_runtime():
         # is insufficient even when the driver, runtime and FFT are present.
         pathfinder = import_module("cuda.pathfinder")
         header_directory = pathfinder.find_nvidia_header_directory("cudart")
-        if (not isinstance(header_directory, str) or not header_directory
-                or not (Path(header_directory) / "cuda_runtime.h").is_file()):
+        if (
+            not isinstance(header_directory, str)
+            or not header_directory
+            or not (Path(header_directory) / "cuda_runtime.h").is_file()
+        ):
             raise RuntimeError("CUDA runtime headers were not found")
     except Exception as error:
         raise GaussianMeshUnavailableError(
@@ -97,12 +100,17 @@ def require_gaussian_mesh_runtime():
             raise RuntimeError("this optional backend requires the qualified CUDA 12 runtime/NVRTC")
     except Exception as error:
         raise GaussianMeshUnavailableError(
-            "Gaussian mesh CUDA 12 runtime/NVRTC/cuFFT admission failed. Check the "
+            "Gaussian mesh CUDA 12 runtime/NVRTC/cuFFT validation failed. Check the "
             "NVIDIA driver and compatible CUDA toolkit libraries; run python -m "
             "openonda.verify_install --with-gaussian-mesh for the explicit kernel/FFT "
             "check. No fallback backend was selected."
         ) from error
-    return {"cupy_version": version, "cuda_runtime_version": cuda_version,
-            "cuda_driver_version": driver_version, "nvrtc_version": nvrtc_version,
-            "cuda_devices": devices, "cuda_header_directory": header_directory,
-            "fenv_extension": host["fenv_extension"]}
+    return {
+        "cupy_version": version,
+        "cuda_runtime_version": cuda_version,
+        "cuda_driver_version": driver_version,
+        "nvrtc_version": nvrtc_version,
+        "cuda_devices": devices,
+        "cuda_header_directory": header_directory,
+        "fenv_extension": host["fenv_extension"],
+    }

@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from functools import wraps
 from time import perf_counter
 
-
 # Keep these at phase/batch granularity. Per-particle wall-correction and segment
 # classifier calls would add thousands of synchronizations and distort the work
 # being measured. Methods absent from a particular physics backend are skipped.
@@ -139,9 +138,9 @@ def profile_components(coupler, measurements, *, gbd_detail=True):
             )
         wrap(vpm.stage_rhs, "evaluate", "vpm.complete_stage_rhs")
         if callable(getattr(vpm.stage_rhs, "evaluate_induction", None)):
-            # Preserve the certified backend's method identities. Wrapping
+            # Preserve the existing backend's method references. Wrapping
             # evaluate_stage or _images would (correctly) make the reuse
-            # contract decline an unknown modified numerical operator.
+            # comparison_settings decline an unknown modified numerical operator.
             wrap(vpm.stage_rhs, "evaluate_induction", "vpm.complete_induction")
         else:
             # Immutable pre-reuse implementations remain valid controls.

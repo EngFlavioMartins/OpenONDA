@@ -4,7 +4,7 @@
 Curved/non-planar boundary layers are deliberately rejected by
 ``CartesianMesher`` until a surface-first layer and transition-shell
 algorithm is available.  This module therefore only serves exact planar
-patches where the Cartesian interface topology is already authoritative.
+patches where the Cartesian interface topology is already specified.
 """
 
 from __future__ import annotations

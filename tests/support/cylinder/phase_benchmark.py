@@ -49,7 +49,7 @@ def coupled_case(end=END, cores=4, device="CUDA"):
     )
 
 
-def contract():
+def comparison_settings():
     reference = load_case_module(CASE / "reference_flow")
     a, am = reference_case()
     b, particles, coupling, bm = coupled_case()

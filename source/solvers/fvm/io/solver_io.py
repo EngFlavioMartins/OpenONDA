@@ -17,7 +17,7 @@ from .storage import append_line_recoverably
 
 
 class SolverIO:
-    """Own FVM diagnostics, restart-history, and output reconciliation.
+    """Own FVM diagnostics, restart-history, and output time alignment.
 
     The numerical solver owns field writers; this adapter owns append-only
     diagnostics and safe history rewinds. It writes only on the root rank in a
@@ -47,7 +47,7 @@ class SolverIO:
         self._diagnostics_write_disabled = False
 
     def write_step_diagnostics(self) -> None:
-        """Append the accepted-step health record as one JSON object.
+        """Append the accepted-step field and convergence record as one JSON object.
 
         The operation is root-only and recoverable on disk-full: an ENOSPC
         disables later diagnostics writes and emits a warning, while other I/O
@@ -79,7 +79,7 @@ class SolverIO:
         time : float
             Inclusive accepted physical time in seconds. CSV/PVD/JSONL entries
             after this time are removed; superseded PVD files are copied to a
-            ``restart-branches`` directory before replacement.
+            ``restart_history`` directory before replacement.
 
         Notes
         -----
@@ -125,7 +125,7 @@ class SolverIO:
         self._rewind_jsonl(solution / "performance.jsonl", time)
         self._rewind_pvd(collection_path(solution, "fvm"), time)
 
-        # Reconcile in-memory indexes held by already-created writers.  The
+        # Restore in-memory indexes held by already-created writers.  The
         # on-disk branch remains available for inspection; only the active
         # collection is rewound.
         manager = getattr(self.solver, "pvd_manager", None)
@@ -166,7 +166,7 @@ class SolverIO:
     @staticmethod
     def _archive_superseded(path: Path) -> None:
         """Retain the pre-rewind stream without matching active-output names."""
-        branch_root = path.parent / "restart-branches"
+        branch_root = path.parent / "restart_history"
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(path, branch / f"{path.name}.superseded")
@@ -245,9 +245,9 @@ class SolverIO:
         if not future and len(kept) == len(datasets):
             return
 
-        # Preserve the superseded index and its future frame payloads before
+        # Preserve the superseded index and its future frame field arrays before
         # replay can overwrite the same step-named files.
-        branch_root = path.parent / "restart-branches"
+        branch_root = path.parent / "restart_history"
         branch_root.mkdir(parents=True, exist_ok=True)
         branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
         shutil.copy2(path, branch / path.name)
@@ -266,7 +266,7 @@ class SolverIO:
 
     @staticmethod
     def _archive_pvd_frames(path: Path, future: list, branch: Path) -> None:
-        """Move superseded VTK payloads with their original relative layout."""
+        """Move superseded VTK field arrays with their original relative layout."""
         from defusedxml import ElementTree as SafeElementTree
 
         seen: set[Path] = set()

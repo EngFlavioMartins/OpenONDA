@@ -69,7 +69,7 @@ class ParticleContainerWrapper:
 
         Notes
         -----
-        This is an adapter for offline kernels, not a particle owner. The
+        This is an adapter for offline kernels, not a particle solver. The
         arrays are treated as read-only by this class.
         """
         self.position = position
@@ -86,13 +86,13 @@ class OfflineFlowDiagnostics:
     """
     Offline flow diagnostics processor for native VPM backup frames.
 
-    Reads particle data directly from the canonical ``vpm_<step>.h5`` backup
+    Reads particle data directly from the standard ``vpm_<step>.h5`` backup
     series in one solution directory and computes all integral flow quantities
     using GPU-accelerated Taichi kernels. No visualization intermediate is
     involved.
 
     Attributes:
-        h5_directory: Directory containing the canonical ``vpm_*.h5`` frames.
+        h5_directory: Directory containing the standard ``vpm_*.h5`` frames.
         h5_files: List of HDF5 frame files, sorted by timestep.
         results: List of FlowIntegrals for each timestep.
 
@@ -108,7 +108,7 @@ class OfflineFlowDiagnostics:
         Initialize the offline diagnostics processor.
 
         Args:
-            h5_directory: Directory containing the canonical HDF5 backup
+            h5_directory: Directory containing the standard HDF5 backup
                 frames (``vpm_<step>.h5`` by default).
             h5_glob: Filename pattern used to select the frames below
                 ``h5_directory``.
@@ -365,7 +365,7 @@ def compute_offline_diagnostics(
     Compute and save offline flow diagnostics from native VPM backup frames.
 
     Args:
-        h5_directory: Directory containing the canonical HDF5 backup frames
+        h5_directory: Directory containing the standard HDF5 backup frames
             (``vpm_<step>.h5`` by default).
         h5_glob: Filename pattern used to select the frames below
             ``h5_directory``.

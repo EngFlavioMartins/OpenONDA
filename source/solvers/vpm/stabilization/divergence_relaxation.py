@@ -19,10 +19,10 @@ vortex_strength, linear impulse, and Gaussian-corrected angular impulse.  The
 divergence solve is restricted to the exact null space of those nine moments,
 and two independent null-space directions restore the quadratic kinetic energy
 and enstrophy exactly in the Fourier audit.  Helicity, total variation,
-correction size, and residual reduction are then hard acceptance gates.  If
+correction size, and residual reduction are then hard acceptance checks.  If
 one admissible sweep does not reach the global residual target, later sweeps
 are searched by amplitude and audited together as one atomic original-to-final
-transaction.
+state update.
 """
 
 from __future__ import annotations
@@ -41,17 +41,17 @@ from .filament_refinement import gaussian_particle_moments, particle_moments
 
 
 class DivergenceRelaxationError(RuntimeError):
-    """A divergence-relaxation proposal failed a declared physics gate."""
+    """A divergence-relaxation proposal failed a declared physics check."""
 
-    def __init__(self, message: str, *, gate: str | None = None) -> None:
+    def __init__(self, message: str, *, check: str | None = None) -> None:
         """Create a rejected divergence-relaxation proposal error.
 
         Parameters
         ----------
         message : str
             Human-readable explanation passed to :class:`RuntimeError`.
-        gate : str or None, optional
-            Stable name of the violated acceptance gate, such as
+        check : str or None, optional
+            Stable name of the violated acceptance check, such as
             ``"heterogeneous core width"`` or ``"moment restoration"``.
 
         Notes
@@ -60,7 +60,7 @@ class DivergenceRelaxationError(RuntimeError):
         the particle-strength field or perform rollback itself.
         """
         super().__init__(message)
-        self.gate = gate
+        self.check = check
 
 
 @dataclass(frozen=True)
@@ -187,7 +187,7 @@ class GaussianParticleGridOperator:
                 "divergence relaxation uses one Gaussian reconstruction width, but the "
                 f"active core-radius spread is {self.core_radius_spread:.3g} > "
                 f"the admissible {max_core_radius_spread:.3g}",
-                gate="heterogeneous core width",
+                check="heterogeneous core width",
             )
 
         weight_sum = float(vortex_strength_weight.sum(dtype=np.float64))
@@ -597,7 +597,7 @@ def _constrained_divergence_relaxation_once(
             "reference-moment restoration alone requires a correction norm of "
             f"{moment_correction_norm / vortex_strength_norm:.3e}, beyond the admissible "
             f"{0.9 * max_correction_norm:.3e}",
-            gate="correction norm",
+            check="correction norm",
         )
 
     repaired = vortex_strength + moment_correction
@@ -811,7 +811,7 @@ def _constrained_divergence_relaxation_once(
     if not real_energy_roots:
         raise DivergenceRelaxationError(
             "kinetic energy could not be restored in the moment null space",
-            gate="quadratic restoration",
+            check="quadratic restoration",
         )
     energy_multiplier = min(real_energy_roots, key=abs)
     scalar_restored_enstrophy = (
@@ -872,7 +872,7 @@ def _constrained_divergence_relaxation_once(
     if not restoration.success or not np.isfinite(restoration.x).all():
         raise DivergenceRelaxationError(
             "kinetic energy and enstrophy could not be restored in the moment null space",
-            gate="quadratic restoration",
+            check="quadratic restoration",
         )
     invariant_correction = (
         restoration.x[0] * energy_direction + restoration.x[1] * enstrophy_direction
@@ -972,7 +972,7 @@ def _constrained_divergence_relaxation_once(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
-    reference_gates = (
+    reference_checks = (
         (
             (
                 "vortex_strength reference error",
@@ -1005,7 +1005,7 @@ def _constrained_divergence_relaxation_once(
                 f"divergence relaxation changed {name} by {error:.3e}, beyond "
                 f"its roundoff allowance {moment_tolerance * scale:.3e}"
             )
-    gates = reference_gates + (
+    checks = reference_checks + (
         ("correction norm", correction_norm_relative, max_correction_norm),
         ("residual ratio", final_residual_ratio, max_residual_ratio),
         (
@@ -1032,11 +1032,11 @@ def _constrained_divergence_relaxation_once(
             spectral_convergence_fraction * total_helicity_tolerance,
         ),
     )
-    for name, value, limit in gates:
+    for name, value, limit in checks:
         if not np.isfinite(value) or value > limit:
             raise DivergenceRelaxationError(
                 f"divergence-relaxation {name} {value:.3e} exceeds the admissible {limit:.3e}",
-                gate=name,
+                check=name,
             )
     return DivergenceRelaxationResult(
         vortex_strength=relaxed,
@@ -1100,7 +1100,7 @@ def _constrained_divergence_relaxation_sweep(
         raise ValueError("max_line_search_steps must be at least one")
     if not 0.0 < initial_correction_scale <= 1.0:
         raise ValueError("initial_correction_scale must lie in (0, 1]")
-    scalable_gates = {
+    scalable_checks = {
         "correction norm",
         "kinetic-energy transfer",
         "enstrophy transfer",
@@ -1138,10 +1138,10 @@ def _constrained_divergence_relaxation_sweep(
                     target_moments=target_moments,
                 )
             except DivergenceRelaxationError as error:
-                if error.gate == "residual ratio":
+                if error.check == "residual ratio":
                     last_error = error
                     break
-                if error.gate not in scalable_gates:
+                if error.check not in scalable_checks:
                     raise
                 last_error = error
                 if str(error).startswith("reference-moment restoration alone"):
@@ -1150,7 +1150,7 @@ def _constrained_divergence_relaxation_sweep(
     raise DivergenceRelaxationError(
         "divergence-relaxation line search exhausted its physics-admissible "
         f"amplitudes; last rejection: {last_error}",
-        gate=last_error.gate,
+        check=last_error.check,
     )
 
 
@@ -1174,7 +1174,7 @@ def _combine_projection_sweeps(
     reference_tolerances: tuple[float, float, float],
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
 ) -> DivergenceRelaxationResult:
-    """Audit several monotone sweeps as one original-to-final transaction."""
+    """Audit several monotone sweeps as one original-to-final state update."""
 
     relaxed = sweeps[-1].vortex_strength
     correction = relaxed - vortex_strength
@@ -1311,7 +1311,7 @@ def _combine_projection_sweeps(
                 f"its roundoff allowance {moment_tolerance * scale:.3e}"
             )
 
-    reference_gates = (
+    reference_checks = (
         (
             (
                 "vortex_strength reference error",
@@ -1332,7 +1332,7 @@ def _combine_projection_sweeps(
         if reference_scales is not None
         else ()
     )
-    gates = reference_gates + (
+    checks = reference_checks + (
         ("correction norm", correction_norm_relative, max_correction_norm),
         ("residual ratio", final_residual_ratio, max_residual_ratio),
         (
@@ -1359,12 +1359,12 @@ def _combine_projection_sweeps(
             spectral_convergence_fraction * total_helicity_tolerance,
         ),
     )
-    for name, value, limit in gates:
+    for name, value, limit in checks:
         if not np.isfinite(value) or value > limit:
             raise DivergenceRelaxationError(
                 f"iterated divergence-relaxation {name} {value:.3e} "
                 f"exceeds the admissible {limit:.3e}",
-                gate=name,
+                check=name,
             )
 
     return DivergenceRelaxationResult(
@@ -1425,13 +1425,13 @@ def constrained_divergence_relaxation(
     max_projection_sweeps: int = 3,
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> DivergenceRelaxationResult:
-    """Return an atomic, iterated, physics-gated Helmholtz projection."""
+    """Return an iterated Helmholtz projection with physical error checks."""
 
     if max_projection_sweeps < 1:
         raise ValueError("max_projection_sweeps must be at least one")
     sweep_residual_limit = max_residual_ratio ** (1.0 / max_projection_sweeps)
     monotone_residual_limit = np.nextafter(1.0, 0.0)
-    amplitude_retryable_gates = {
+    amplitude_retryable_checks = {
         "correction norm",
         "kinetic-energy transfer",
         "enstrophy transfer",
@@ -1474,7 +1474,7 @@ def constrained_divergence_relaxation(
                 )
             except DivergenceRelaxationError as error:
                 last_error = error
-                if error.gate == "residual ratio":
+                if error.check == "residual ratio":
                     break
                 raise
             if full_sweep is None:
@@ -1506,9 +1506,9 @@ def constrained_divergence_relaxation(
                 )
             except DivergenceRelaxationError as error:
                 last_error = error
-                if error.gate == "residual ratio":
+                if error.check == "residual ratio":
                     break
-                if error.gate not in amplitude_retryable_gates:
+                if error.check not in amplitude_retryable_checks:
                     raise
         if full_sweep is None:
             if last_error is not None:

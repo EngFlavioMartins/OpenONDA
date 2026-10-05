@@ -11,7 +11,7 @@ from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction.base import StageRates, StageState
 from source.solvers.vpm.physics.induction.fmm.device import FMMInduction
 from source.solvers.vpm.physics.induction.reuse import ExactContentInductionReuse
-from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
+from source.solvers.vpm.physics.induction.reuse_backends import FMMReuseConditions
 from source.solvers.vpm.physics.induction.slip_slab import SlipSlabInduction
 from source.solvers.vpm.physics.stage_rhs import StageRHS
 
@@ -55,10 +55,10 @@ class Harness:
         self.strength.from_numpy(self.gamma)
         self.radius.from_numpy(np.array([0.08, 0.15, 0.11], np.float32))
         self.run(self.backend)  # Finish normal lazy source/target allocation.
-        self.provider = StandardFMMReuseContract(self.backend)
+        self.provider = FMMReuseConditions(self.backend)
         assert self.provider() is not None
         self.cache = ExactContentInductionReuse(
-            self.backend, max_particles=3, contract_provider=self.provider
+            self.backend, max_particles=3, conditions_provider=self.provider
         )
 
     def run(self, evaluator=None, *, gradient=True, rate=True, time=0.0):
@@ -158,7 +158,7 @@ def test_exact_operator_dependencies_and_unknown_bindings_decline(monkeypatch):
     h = Harness()
     try:
         original = h.provider().operator_key
-        owners = [
+        field_settings = [
             (h.base, "_stretching_mode", 0),
             (h.base, "stretching_scheme", "MIXED"),
             (h.base.workspace, "gradient_tail_cutoff", 123.0),
@@ -168,9 +168,9 @@ def test_exact_operator_dependencies_and_unknown_bindings_decline(monkeypatch):
             (h.base.workspace.tree, "theta_sq", 0.005),
             (h.physics, "max_evaluation_points", 7),
         ]
-        for owner, name, value in owners:
+        for solver, name, value in field_settings:
             with monkeypatch.context() as patch:
-                patch.setattr(owner, name, value)
+                patch.setattr(solver, name, value)
                 assert h.provider().operator_key != original
         field = h.base.workspace.tree.regularization_tail_cutoff
         old = field[None]
@@ -222,7 +222,7 @@ def test_exact_operator_dependencies_and_unknown_bindings_decline(monkeypatch):
         h.close()
 
 
-def test_slab_target_ancestry_capacity_and_layout_are_part_of_contract(monkeypatch):
+def test_slab_target_ancestry_capacity_and_layout_are_part_of_conditions(monkeypatch):
     h = Harness("WINCKELMANS", slab=True)
     try:
         target = h.base._target_workspace
@@ -231,8 +231,8 @@ def test_slab_target_ancestry_capacity_and_layout_are_part_of_contract(monkeypat
         with monkeypatch.context() as patch:
             patch.setattr(target, "target_path_capacity", target.target_path_capacity + 1)
             assert h.provider().operator_key != original
-        # Contract checks only; never evaluate a deliberately invalid field
-        # binding.  A same-owner alias still must not preserve the cache key.
+        # interface checks only; never evaluate a deliberately invalid field
+        # binding.  A same-solver alias still must not preserve the cache key.
         for name, substitute in (
             ("target_path", target.target_path_length),
             ("target_path_length", target.leaf_nodes),
@@ -250,9 +250,9 @@ def test_unsupported_classes_and_rebind_identity():
     class CustomFMM(FMMInduction):
         pass
 
-    assert StandardFMMReuseContract(object())() is None
-    assert StandardFMMReuseContract(CustomFMM())() is None
-    assert StandardFMMReuseContract(FMMInduction())() is None
+    assert FMMReuseConditions(object())() is None
+    assert FMMReuseConditions(CustomFMM())() is None
+    assert FMMReuseConditions(FMMInduction())() is None
     h = Harness()
     try:
         key = h.provider().operator_key
@@ -263,11 +263,11 @@ def test_unsupported_classes_and_rebind_identity():
 
 
 @pytest.mark.parametrize("kernel", ["HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"])
-def test_uncertified_slab_direct_target_bindings_decline(kernel):
+def test_custom_slab_direct_target_bindings_decline(kernel):
     physics = PhysicsBase(particle_kernel=kernel, max_n_particles=1, max_evaluation_points=1)
     slab = SlipSlabInduction(FMMInduction(), z_min=-1, z_max=1).bind(physics)
     try:
-        assert StandardFMMReuseContract(slab)() is None
+        assert FMMReuseConditions(slab)() is None
     finally:
         slab.base.workspace.destroy()
 

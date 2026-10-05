@@ -25,13 +25,11 @@ from tests.support.fvm_mesh import structured_box
     ids=["shear", "rotation", "strain", "three_dimensional"],
 )
 @pytest.mark.parametrize("include_total_flux", [False, True])
-def test_skew_mixed_faces_and_momentum_fluxes_preserve_affine_flow(
-    jacobian, include_total_flux
-):
+def test_skew_mixed_faces_and_momentum_fluxes_preserve_affine_flow(jacobian, include_total_flux):
     mesh = structured_box(4, 3, 3)
-    mesh["vertex_position"] = mesh["vertex_position"] @ np.array(
-        [[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]
-    ).T
+    mesh["vertex_position"] = (
+        mesh["vertex_position"] @ np.array([[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]).T
+    )
     geometry = compute_mesh_geometry(mesh)
     n_cells, n_interior = mesh["n_cells"], mesh["n_interior_faces"]
     faces = np.arange(n_interior, mesh["n_faces"])
@@ -68,8 +66,8 @@ def test_skew_mixed_faces_and_momentum_fluxes_preserve_affine_flow(
         np.einsum("ij,ij->i", velocity[ghosts], normal[faces]), un[faces], rtol=0, atol=3e-14
     )
     viscosity = 0.037
-    expected_diffusion = -viscosity * geometry["face_area"][faces, None] * (
-        normal[faces] @ jacobian.T
+    expected_diffusion = (
+        -viscosity * geometry["face_area"][faces, None] * (normal[faces] @ jacobian.T)
     )
     for component in range(3):
         gradient = np.broadcast_to(jacobian[component], (len(velocity), 3))
@@ -113,7 +111,11 @@ def test_skew_increment_is_tangential_and_does_not_modify_input_trace():
     increment = np.array([[1.1, -0.4, 0.8]])
     original_gt, original_increment = gt.copy(), increment.copy()
     actual = reconstruct_normal_velocity_tangential_gradient(
-        owner, normal, np.array([0.03]), np.array([-0.25]), gt,
+        owner,
+        normal,
+        np.array([0.03]),
+        np.array([-0.25]),
+        gt,
         skew_velocity_increment=increment,
     )
     assert np.dot(actual[0], normal[0]) == pytest.approx(-0.25, abs=3e-16)
@@ -144,8 +146,14 @@ def test_orthogonal_mixed_boundary_skips_gradient_reconstruction(monkeypatch):
     update_normal_velocity_tangential_gradient_boundary(velocity, patch, mesh, geometry)
     for component in range(3):
         assemble_diffusion_term(
-            velocity[:, component], np.zeros_like(velocity), 0.03, mesh, geometry,
-            [patch], vector_field=velocity, component=component,
+            velocity[:, component],
+            np.zeros_like(velocity),
+            0.03,
+            mesh,
+            geometry,
+            [patch],
+            vector_field=velocity,
+            component=component,
         )
 
 
@@ -153,6 +161,10 @@ def test_orthogonal_mixed_boundary_skips_gradient_reconstruction(monkeypatch):
 def test_skew_increment_rejects_invalid_data(increment):
     with pytest.raises(ValueError, match="skew_velocity_increment"):
         reconstruct_normal_velocity_tangential_gradient(
-            np.zeros((1, 3)), np.array([[1.0, 0.0, 0.0]]), np.array([0.1]),
-            np.array([0.0]), np.zeros((1, 3)), skew_velocity_increment=increment,
+            np.zeros((1, 3)),
+            np.array([[1.0, 0.0, 0.0]]),
+            np.array([0.1]),
+            np.array([0.0]),
+            np.zeros((1, 3)),
+            skew_velocity_increment=increment,
         )

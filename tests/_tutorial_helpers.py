@@ -1,10 +1,10 @@
-"""Resolve tutorial modules through the installed loader contract.
+"""Resolve tutorial modules through the installed module loader.
 
 The numbered tutorial folders (``04_flat_plate``, ``06_rotor_flow``, ...)
 are organizational names that cannot appear in ordinary Python imports.  Test
 modules resolve the stable catalog identifier with
 :func:`openonda.tutorials.get_tutorial` and import the tutorial's own modules
-with :func:`openonda.tutorial_runner.load_case_module`, the same contract the
+with :func:`openonda.tutorial_runner.load_case_module`, the same loader the
 installed CLI and case launchers use.  No test ever imports a numeric folder.
 """
 
@@ -26,7 +26,7 @@ def tutorial_directory(name: str) -> Path:
 
 
 def load_tutorial_module(name: str, module: str = "setup"):
-    """Import a tutorial module through the loader contract.
+    """Import a tutorial module through the module loader.
 
     ``name`` is a catalog identifier such as ``vpm/flat_plate`` or
     ``coupled_fvm_vpm/cylinder_shedding_flow/reference_flow``; ``module`` is the
@@ -39,7 +39,7 @@ def write_vtu_time_frame(path: Path, time: float) -> Path:
     """Write a minimal raw-appended VTU particle frame carrying the clock.
 
     The fixture mirrors the solver visualization companion that ParaView peers
-    read through ``vpm.pvd``: points are empty and the only meaningful payload
+    read through ``vpm.pvd``: points are empty and the only meaningful data
     is the exact ``time``/``TimeValue`` field-data pair used by the audit clock.
     """
     from vtk import vtkPoints, vtkUnstructuredGrid, vtkXMLUnstructuredGridWriter

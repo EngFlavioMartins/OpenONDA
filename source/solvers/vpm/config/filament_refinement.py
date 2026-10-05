@@ -14,7 +14,7 @@ class FilamentRefinementConfig:
     interval_steps : int, default=0
         Accepted-step cadence; zero disables refinement.
     max_vortex_strength_factor : float, default=2.0
-        Split when ``|Gamma|`` reaches this factor times its stored lineage
+        Split when ``|Gamma|`` reaches this factor times its stored refinement reference
         reference; must exceed one.
     offset_fraction : float, default=0.25
         Symmetric child offset divided by estimated material-line length, in
@@ -36,7 +36,7 @@ class FilamentRefinementConfig:
     """Steps between refinement events; zero disables refinement."""
 
     max_vortex_strength_factor: float = 2.0
-    """Refine once ``|Gamma_p|`` exceeds this multiple of its lineage reference."""
+    """Refine once ``|Gamma_p|`` exceeds this multiple of its refinement reference."""
 
     offset_fraction: float = 0.25
     """Child offset as a fraction of the estimated material-line length."""

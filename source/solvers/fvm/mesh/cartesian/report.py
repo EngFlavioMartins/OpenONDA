@@ -62,7 +62,7 @@ class SizeReport:
 
 @dataclass(frozen=True, slots=True)
 class GenerationReport:
-    """Immutable provenance and diagnostics for one successful mesh build.
+    """Immutable source information and diagnostics for one successful mesh build.
 
     Parameters
     ----------
@@ -81,7 +81,7 @@ class GenerationReport:
     Notes
     -----
     :meth:`as_dict` returns a detached JSON-compatible copy suitable for run
-    manifests; changing that copy does not affect this report.
+    metadata_files; changing that copy does not affect this report.
     """
 
     method: str

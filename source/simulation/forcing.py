@@ -9,8 +9,8 @@ from source.simulation.parallel import collective_phase
 
 
 def apply_initial_velocity(solver, field) -> None:
-    """Admit every local physical field before entering native halo exchange."""
-    with collective_phase(solver.parallel.comm, "initial velocity field admission"):
+    """Validate every local physical field before entering native halo exchange."""
+    with collective_phase(solver.parallel.comm, "initial velocity field validation"):
         count = solver.mesh_data["n_cells"]
         values = np.asarray(field(solver.geo_data["cell_centre"][:count]), dtype=float)
         if values.shape != (count, 3) or not np.isfinite(values).all():

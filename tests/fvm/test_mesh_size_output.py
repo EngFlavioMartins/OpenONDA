@@ -79,8 +79,8 @@ def test_smoothing_keeps_geometry_as_cell_data(tmp_path, sized_mesh, interpolate
     assert "velocity" in grid.point_data
 
 
-class _SerialPublication:
-    """Exercise rank-piece publication after fields already contain halo values."""
+class _SerialOutputWrite:
+    """Exercise rank-piece output after fields already contain halo values."""
 
     def allgather(self, value):
         return [value]
@@ -104,7 +104,7 @@ def test_partition_collections_expose_geometry_in_local_cell_order(
             size=2,
             include_visualization_ghosts=bool(ghost_layers),
         )
-        # Localization already selected authoritative global geometry for
+        # Localization already selected specified global geometry for
         # every local/halo row; no MPI exchange is required for these fields.
         monkeypatch.setattr(type(partition), "exchange_halo", lambda *args: None)
         fields = mesh_cell_fields(local, geo["cell_volume"])
@@ -114,7 +114,7 @@ def test_partition_collections_expose_geometry_in_local_cell_order(
             local,
             partition,
             fields,
-            _SerialPublication(),
+            _SerialOutputWrite(),
             output=OutputConfig(ghost_layers=ghost_layers),
         )
         grid = pv.read(tmp_path / f"sizes-rank-{rank:05d}.vtu")

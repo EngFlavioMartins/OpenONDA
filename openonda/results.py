@@ -30,10 +30,10 @@ _ARCHIVE_PART_BYTES = 1024**3
 _VTK_COLLECTION_SUFFIXES = {".pvd", ".pvtu", ".pvtp", ".pvts", ".pvtr", ".pvti", ".vtm"}
 
 
-def _validate_vtk_references(relative: str, payload: bytes, files: set[str]) -> None:
+def _validate_vtk_references(relative: str, contents: bytes, files: set[str]) -> None:
     """Require every VTK collection dependency to travel in the same bundle."""
     try:
-        collection = ElementTree.fromstring(payload)
+        collection = ElementTree.fromstring(contents)
     except (ElementTree.ParseError, DefusedXmlException) as error:
         raise ResultsError(f"Invalid VTK collection: {relative}: {error}") from error
     for element in collection.iter():
@@ -130,21 +130,21 @@ def pack_results(
     files: Iterable[str],
     *,
     scientific_status: str,
-    provenance: dict,
-    superseded: Iterable[str] = (),
+    source_information: dict,
+    excluded_files: Iterable[str] = (),
     restore_roots: Iterable[str] | None = None,
 ) -> dict:
     """Pack an explicit set of case-relative regular files deterministically.
 
-    ``superseded`` is an explicit exclusion list, supplied only after checking
-    accepted continuation lineage. No inference from filenames is made here.
+    ``excluded_files`` lists omitted files after checking which restart outputs
+    belong to the saved run. Filenames alone do not determine the selected run.
     """
     source_root = Path(source_root).absolute()
     bundle_dir = Path(bundle_dir)
-    excluded = {_relative(p) for p in superseded}
+    excluded = {_relative(p) for p in excluded_files}
     selected = sorted({_relative(p) for p in files} - excluded)
-    if not selected or not scientific_status.strip() or not isinstance(provenance, dict):
-        raise ResultsError("Files, scientific status and provenance are required")
+    if not selected or not scientific_status.strip() or not isinstance(source_information, dict):
+        raise ResultsError("Result files, scientific status and source information are required")
     if any(len(PurePosixPath(p).parts) < 2 for p in selected):
         raise ResultsError("Result files must be inside case-relative directories")
     roots = _restore_roots(selected, restore_roots)
@@ -186,13 +186,13 @@ def pack_results(
                 ):
                     raise ResultsError(f"Input changed while packing: {source}")
                 records.append({"path": relative, "size": info.size, "sha256": digest.hexdigest()})
-        manifest = {
-            "schema_version": 1,
+        archive_info = {
+            "schema_version": 2,
             "archive": "data.tar.gz",
             "archive_sha256": _sha256(archive),
             "scientific_status": scientific_status,
-            "provenance": provenance,
-            "excluded_superseded": sorted(excluded),
+            "source_information": source_information,
+            "excluded_files": sorted(excluded),
             "files": records,
             "restore_roots": roots,
         }
@@ -217,21 +217,23 @@ def pack_results(
                     outputs.append(part)
                     parts.append({"name": part.name, "size": size, "sha256": digest.hexdigest()})
                     index += 1
-            manifest["archive_parts"] = parts
-        metadata = Path(temporary) / "manifest.json"
-        metadata.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            archive_info["archive_parts"] = parts
+        metadata = Path(temporary) / "archive_info.json"
+        metadata.write_text(
+            json.dumps(archive_info, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         for output in outputs:
             os.replace(output, bundle_dir / output.name)
         os.replace(metadata, bundle_dir / metadata.name)
         current = {output.name for output in outputs}
         for previous in bundle_dir.glob("data.tar.gz*"):
-            owned = previous.name == "data.tar.gz" or (
+            archive_file = previous.name == "data.tar.gz" or (
                 previous.name.startswith("data.tar.gz.part")
                 and previous.name.removeprefix("data.tar.gz.part").isdigit()
             )
-            if owned and previous.name not in current:
+            if archive_file and previous.name not in current:
                 previous.unlink()
-    return manifest
+    return archive_info
 
 
 def _verify_archive_file(path: Path, sha256: str, size: int | None = None) -> None:
@@ -252,7 +254,7 @@ def _verify_archive_file(path: Path, sha256: str, size: int | None = None) -> No
 def _ensure_archive_file(
     path: Path, sha256: str, size: int | None = None, url: str | None = None
 ) -> None:
-    """Fetch an absent published archive, then verify it before caching it."""
+    """Download a missing result archive and check its size and checksum."""
     pointer = False
     if path.is_file() and not path.is_symlink():
         with path.open("rb") as stream:
@@ -264,13 +266,13 @@ def _ensure_archive_file(
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
         raise ResultsError(f"Result archive requires an HTTPS download URL: {url!r}")
     if not isinstance(size, int) or size <= 0:
-        raise ResultsError(f"Published result archive requires a positive size: {path}")
+        raise ResultsError(f"Downloadable result archive requires a positive size: {path}")
     if (
         not isinstance(sha256, str)
         or len(sha256) != 64
         or any(c not in "0123456789abcdef" for c in sha256)
     ):
-        raise ResultsError(f"Published result archive requires a SHA-256 checksum: {path}")
+        raise ResultsError(f"Downloadable result archive requires a SHA-256 checksum: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading tutorial results: {path.name} ({size:,} bytes)", flush=True)
     with tempfile.TemporaryDirectory(prefix=".results-download-", dir=path.parent) as temporary:
@@ -305,20 +307,20 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
     """Verify a coherent bundle and restore it only when every root is absent.
 
     Any existing directory, file or symlink at a result root is preserved. A
-    corrupt bundle is rejected before any directory is installed. Publication
-    is atomic per directory; the group is reserved before publication.
+    corrupt bundle is rejected before any directory is restored. Each complete
+    directory is moved into place after creating the destination directories.
     """
     case_dir = Path(case_dir).absolute()
     bundle_dir = Path(bundle_dir) if bundle_dir is not None else find_bundle(case_dir)
-    metadata = bundle_dir / "manifest.json"
+    metadata = bundle_dir / "archive_info.json"
     if not metadata.is_file():
         return []
-    manifest = json.loads(metadata.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != 1 or manifest.get("archive") != "data.tar.gz":
-        raise ResultsError("Unsupported result manifest")
-    entries = manifest.get("files")
+    archive_info = json.loads(metadata.read_text(encoding="utf-8"))
+    if archive_info.get("schema_version") != 2 or archive_info.get("archive") != "data.tar.gz":
+        raise ResultsError("Unsupported result archive format")
+    entries = archive_info.get("files")
     if not isinstance(entries, list) or not entries:
-        raise ResultsError("Result manifest has no files")
+        raise ResultsError("Result archive information has no files")
     expected = {}
     for record in entries:
         relative = _relative(record["path"])
@@ -327,26 +329,26 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
         if not isinstance(record.get("size"), int) or record["size"] < 0:
             raise ResultsError(f"Invalid result size: {relative}")
         expected[relative] = record
-    roots = _restore_roots(expected, manifest.get("restore_roots"))
+    roots = _restore_roots(expected, archive_info.get("restore_roots"))
     if any(os.path.lexists(case_dir / root) for root in roots):
         return []
     for root in roots:
         _no_symlinks(case_dir, root)
-    archive = bundle_dir / manifest["archive"]
-    parts = manifest.get("archive_parts")
+    archive = bundle_dir / archive_info["archive"]
+    parts = archive_info.get("archive_parts")
     if parts is None:
         _ensure_archive_file(
             archive,
-            manifest.get("archive_sha256"),
-            manifest.get("archive_size"),
-            manifest.get("archive_url"),
+            archive_info.get("archive_sha256"),
+            archive_info.get("archive_size"),
+            archive_info.get("archive_url"),
         )
     else:
         if not isinstance(parts, list) or not parts:
             raise ResultsError("Archive parts must be a nonempty list")
         for index, record in enumerate(parts):
             if record.get("name") != f"data.tar.gz.part{index:03d}":
-                raise ResultsError("Archive parts must have consecutive canonical names")
+                raise ResultsError("Archive parts must be numbered consecutively")
             _ensure_archive_file(
                 bundle_dir / record["name"],
                 record.get("sha256"),
@@ -363,7 +365,7 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
                 for record in parts:
                     with (bundle_dir / record["name"]).open("rb") as source:
                         shutil.copyfileobj(source, destination, length=1024 * 1024)
-            if _sha256(archive) != manifest.get("archive_sha256"):
+            if _sha256(archive) != archive_info.get("archive_sha256"):
                 raise ResultsError("Combined result archive SHA-256 mismatch")
         seen = set()
         with tarfile.open(archive, "r:gz") as tar:
@@ -385,7 +387,7 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
                 if digest.hexdigest() != record["sha256"]:
                     raise ResultsError(f"Result SHA-256 mismatch: {relative}")
         if seen != set(expected):
-            raise ResultsError("Result archive is missing manifest files")
+            raise ResultsError("Result archive is missing listed files")
         for relative in expected:
             if PurePosixPath(relative).suffix.lower() in _VTK_COLLECTION_SUFFIXES:
                 _validate_vtk_references(relative, (stage / relative).read_bytes(), seen)
@@ -560,7 +562,7 @@ def history_window(table: dict, start: float, end: float, *, columns: tuple[str,
 
 
 def read_csv_frame(path: str | Path, time: float, *, coordinates: tuple[str, ...]) -> dict:
-    """Select one recorded clock and admit each finite sample coordinate once."""
+    """Select a saved time and validate finite, distinct sample coordinates."""
     from .saved_times import match_saved_times
 
     table = read_csv_table(path)
@@ -597,7 +599,7 @@ def read_npz_arrays(path: str | Path) -> dict[str, np.ndarray]:
 
 
 def write_text(path: str | Path, content: str, *, encoding: str = "utf-8") -> None:
-    """Publish a complete text artifact while owning its file lifetime."""
+    """Write complete text through a temporary file, then rename it into place."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
@@ -607,12 +609,12 @@ def write_text(path: str | Path, content: str, *, encoding: str = "utf-8") -> No
 
 
 def write_json(path: str | Path, data: dict) -> None:
-    """Publish complete recorded metadata atomically."""
+    """Write complete recorded metadata through a temporary file."""
     write_text(path, json.dumps(data, indent=2) + "\n")
 
 
 def write_csv_table(path: str | Path, rows, *, columns) -> None:
-    """Publish one complete named table while owning file lifetime."""
+    """Write one complete named table through a temporary file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
@@ -625,7 +627,7 @@ def write_csv_table(path: str | Path, rows, *, columns) -> None:
 
 
 def write_npz_arrays(path: str | Path, **arrays) -> None:
-    """Publish an array archive while owning its temporary-file lifetime."""
+    """Write a complete array archive through a temporary file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
@@ -833,10 +835,10 @@ class NativeVelocity:
         ordered[ids] = velocity[keep]
         if not np.all(np.isfinite(ordered)):
             raise ValueError(f"Non-finite archived velocity: {source}")
-        owned_grid = grid.extract_cells(keep)
+        local_grid = grid.extract_cells(keep)
         result = {}
         for name, points in queries.items():
-            inside = owned_grid.find_containing_cell(points) >= 0
+            inside = local_grid.find_containing_cell(points) >= 0
             if mask is not None:
                 inside &= mask(points)
             probe = _PointProbe(points, k=self.k, reconstruction="affine")

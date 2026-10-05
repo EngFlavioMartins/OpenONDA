@@ -19,7 +19,7 @@ def _solver(directory, *, end_time=0.03):
     return fvm.FVMSolver(setup, str(directory), mesh_data=structured_box(2, 2, 2))
 
 
-def test_latest_restores_bdf_history_and_reconciles_unsaved_diagnostics(tmp_path):
+def test_latest_restores_bdf_history_and_aligns_unsaved_diagnostics(tmp_path):
     reference = _solver(tmp_path / "reference")
     reference.run(start_from="latest")
     expected = reference.velocity.copy()
@@ -75,7 +75,7 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     solver = _solver(directory, end_time=0.01)
     solver.run(start_from="initial")
     assert solver.step == 1
-    assert list((directory / "solution/restart-branches").glob("initial-before-*/backup/backup"))
+    assert list((directory / "solution/restart_history").glob("initial-before-*/backup/backup"))
 
 
 def test_latest_without_backup_replaces_prior_output_history(tmp_path):
@@ -87,7 +87,7 @@ def test_latest_without_backup_replaces_prior_output_history(tmp_path):
     assert fresh.step == 1
     history = tmp_path / "solution/diagnostics.jsonl"
     assert [json.loads(row)["time"] for row in history.read_text().splitlines()] == [0.01]
-    assert list((tmp_path / "solution/restart-branches").glob("initial-before-*"))
+    assert list((tmp_path / "solution/restart_history").glob("initial-before-*"))
 
 
 def test_none_start_preserves_in_memory_state(tmp_path):

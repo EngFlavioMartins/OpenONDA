@@ -144,7 +144,7 @@ def test_neighbouring_times_are_never_substituted(modules):
     )
 
 
-def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
+def test_fvm_output_files_follow_the_saved_solution_layout(modules, tmp_path):
     _, prepare = modules
     current = tmp_path / "current"
     current.mkdir()
@@ -152,7 +152,7 @@ def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
     (current / "fvm").mkdir()
     (current / "fvm.pvd").touch()
     (current / "fvm/mesh.npz").touch()
-    assert prepare._fvm_artifacts(current) == (current / "fvm.pvd", current / "fvm/mesh.npz")
+    assert prepare._fvm_output_files(current) == (current / "fvm.pvd", current / "fvm/mesh.npz")
 
 
 def test_all_field_pairings_use_identical_sample_support(modules, monkeypatch):

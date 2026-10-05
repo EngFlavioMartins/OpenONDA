@@ -1,4 +1,4 @@
-"""Particle distributions and canonical VPM flow initializers."""
+"""Particle distributions and standard VPM flow initializers."""
 
 from .data import ParticleDistribution, VortexParticleSet
 from .distributions import (

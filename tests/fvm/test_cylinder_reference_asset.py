@@ -1,4 +1,4 @@
-"""Geometry contract for the tracked spanwise cylinder reference surface."""
+"""Geometry comparison_settings for the tracked spanwise cylinder reference surface."""
 
 from __future__ import annotations
 

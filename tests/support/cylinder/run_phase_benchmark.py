@@ -25,7 +25,7 @@ def parse_args(argv=None):
 
 
 def _publish_result(path, result, started):
-    """Publish once after either shared lifecycle has closed its solver."""
+    """Write once after either shared run_stages has closed its solver."""
     from openonda.runtime import detected_world_size
     from source.coupler.parallel import collective_phase
 
@@ -61,14 +61,14 @@ def main():
                 assert solver.run_status == "complete" and abs(solver.time - case.END) < 1e-8
                 result = {"status": "completed", "time": solver.time, "step": solver.step}
         else:
-            flow, particles, policy, mesh = case.coupled_case(end=case.END, device=args.device)
+            flow, particles, settings, mesh = case.coupled_case(end=case.END, device=args.device)
             initial = partial(
                 case.module.cylinder_initial_velocity,
                 freestream_velocity=case.module.STARTUP_FREESTREAM_VELOCITY,
                 **case.module.INITIAL_PERTURBATION,
             )
             with case.module.coupling.create_coupler(
-                flow, particles, policy, mesh=mesh, case_dir=out
+                flow, particles, settings, mesh=mesh, case_dir=out
             ) as solver:
                 last = solver.run(
                     start_from="latest" if args.resume else "initial",

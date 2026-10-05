@@ -1,4 +1,4 @@
-"""Minimal numerical-integrity gate for the native NACA 4412 workflow."""
+"""Minimal numerical-integrity check for the native NACA 4412 workflow."""
 
 from __future__ import annotations
 

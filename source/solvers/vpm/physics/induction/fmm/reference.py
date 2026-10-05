@@ -200,7 +200,7 @@ class HostFMMReference:
         include_freestream: bool,
         background_velocity,
     ) -> None:
-        """Evaluate arbitrary targets with the reference kernel contract."""
+        """Evaluate arbitrary targets with the reference kernel conditions."""
         if self.physics is None:
             raise RuntimeError("HostFMMReference must be bound before target evaluation")
         targets = self.physics._download_vector_field(target_position, int(target_count))

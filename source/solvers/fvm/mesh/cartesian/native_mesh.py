@@ -7,7 +7,7 @@ from typing import Any
 
 
 def require_native_mesh(mesh_data: dict[str, Any]) -> dict[str, Any]:
-    """Check the minimum face-based mesh contract and return the same object."""
+    """Check the minimum face-based mesh comparison_settings and return the same object."""
     required = {"vertex_position", "faces", "owners", "neighbours", "boundary"}
     missing = sorted(required - set(mesh_data))
     if missing:

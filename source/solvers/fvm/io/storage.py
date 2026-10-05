@@ -52,18 +52,18 @@ def configured_reserve_bytes() -> int:
 
 def require_free_space(
     path: str | Path,
-    payload_bytes: int,
+    archive_bytes: int,
     *,
     reserve_bytes: int | None = None,
 ) -> int:
-    """Verify an atomic temporary payload can fit and return current free bytes."""
+    """Verify an atomic temporary archive can fit and return current free bytes."""
     destination = Path(path).resolve()
     probe = destination if destination.exists() else destination.parent
     while not probe.exists() and probe != probe.parent:
         probe = probe.parent
     free = int(shutil.disk_usage(probe).free)
     reserve = configured_reserve_bytes() if reserve_bytes is None else int(reserve_bytes)
-    required = max(0, int(payload_bytes)) + max(0, reserve)
+    required = max(0, int(archive_bytes)) + max(0, reserve)
     if free < required:
         raise InsufficientStorageError(destination, required, free)
     return free

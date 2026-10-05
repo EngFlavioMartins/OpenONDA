@@ -36,7 +36,7 @@ def test_planar_renewal_is_continuous_at_particle_birth(plane_z, amplitude):
         (-0.3, 0.3, -0.3, 0.3, -0.5, 0.5),
         h,
         buffer_length=0.1,
-        authority_ramp_width=0.1,
+        blend_ramp_width=0.1,
         planar_span=1.0,
         plane_z=plane_z,
     )
@@ -44,7 +44,7 @@ def test_planar_renewal_is_continuous_at_particle_birth(plane_z, amplitude):
     n = len(lattice.positions)
     lattice = replace(
         lattice,
-        fvm_authority=np.ones(n),
+        fvm_blend_weight=np.ones(n),
         fluid_weight=np.ones(n),
         mesh_weight=np.ones(n),
         solid_interior=np.zeros(n, dtype=bool),
@@ -216,11 +216,11 @@ def test_planar_scatter_and_diffusion_preserve_circulation_and_heat_variance():
 def test_planar_renewal_uses_full_span_volume_without_end_taper():
     h, span = 0.1, 0.2
     lattice = build_stable_renewal_lattice(
-        (-1, 1, -1, 1, -0.1, 0.1), h, buffer_length=0.2, authority_ramp_width=0.3, planar_span=span
+        (-1, 1, -1, 1, -0.1, 0.1), h, buffer_length=0.2, blend_ramp_width=0.3, planar_span=span
     )
     assert lattice.shape[2] == 1
     middle = np.argmin(np.linalg.norm(lattice.positions[:, :2], axis=1))
-    assert lattice.fvm_authority[middle] == 1
+    assert lattice.fvm_blend_weight[middle] == 1
 
     def velocity(points):
         return np.column_stack((-points[:, 1], points[:, 0], np.zeros(len(points))))
@@ -304,7 +304,7 @@ def test_pruned_nonbinary_plane_renewal_keeps_exactly_axial_strength(particle_ca
         (-1, 1, -1, 1, -0.5, 0.5),
         0.1,
         buffer_length=0.2,
-        authority_ramp_width=0.3,
+        blend_ramp_width=0.3,
         planar_span=1,
         plane_z=0.137,
     )

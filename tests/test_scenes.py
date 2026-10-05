@@ -1,4 +1,4 @@
-"""Array scene services preserve explicit geometry and own rendering resources."""
+"""Scene rendering preserves configured geometry and removes temporary files."""
 
 from math import erf, exp, pi, sqrt
 import sys
@@ -58,7 +58,7 @@ def test_sphere_depth_and_streamline_depth_preserve_front_surface_and_light():
     np.testing.assert_array_equal(result, before)
 
 
-def test_scene_export_publishes_geometry_and_rewrites_state_before_removing_workspace(
+def test_scene_export_saves_geometry_and_updates_state_paths_before_removing_temporary_files(
     tmp_path, monkeypatch
 ):
     renderer = tmp_path / "renderer.py"
@@ -97,7 +97,7 @@ def test_scene_export_publishes_geometry_and_rewrites_state_before_removing_work
     assert not builds[0].exists()
 
 
-def test_scene_build_failure_still_removes_owned_workspace(tmp_path):
+def test_scene_build_failure_removes_temporary_files(tmp_path):
     builds = []
 
     def prepare(work):

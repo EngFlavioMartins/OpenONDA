@@ -47,7 +47,7 @@ def test_pressure_uses_accepted_intervals_and_raw_balance_retains_relaxation():
     assert fluid[-1, 0] > 2 * load[-1, 0]
 
 
-def test_manufactured_ledger_applies_density_once_to_per_density_impulse():
+def test_manufactured_force_integral_applies_density_once_to_per_density_impulse():
     """Native impulse [m^4/s] must be density-scaled before comparing [N s]."""
     clock = np.array([0.1, 0.2, 0.3])
     force = pd.DataFrame({"time": clock})
@@ -74,8 +74,8 @@ def test_manufactured_ledger_applies_density_once_to_per_density_impulse():
     np.testing.assert_allclose(relaxation, 0.0)
 
 
-def test_manufactured_ledger_separates_kj_trapezoid_and_backward_pressure():
-    """The accepted-clock ledger integrates KJ trapezoidally and pressure by interval."""
+def test_manufactured_force_integral_separates_kj_trapezoid_and_backward_pressure():
+    """The accepted-time force integral integrates KJ trapezoidally and pressure by interval."""
     clock = np.array([0.1, 0.2, 0.3])
     dt = 0.1
     kj = clock**2

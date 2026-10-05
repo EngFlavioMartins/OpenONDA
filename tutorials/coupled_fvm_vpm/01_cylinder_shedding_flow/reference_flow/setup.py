@@ -274,12 +274,12 @@ def create_solver(
     samples_dir: Path | None = None,
 ) -> fvm.FVMSolver:
     setup, mesh = build_case(name, h, end_time=end_time, cores=cores)
-    artifact_root = CASE_DIR if output_root is None else Path(output_root)
+    output_directory = CASE_DIR if output_root is None else Path(output_root)
     return fvm.create_fvm_solver(
         setup,
-        case_dir=artifact_root,
-        solution_dir=artifact_root / "solution" if solution_dir is None else solution_dir,
-        samples_dir=artifact_root / "samples" if samples_dir is None else samples_dir,
+        case_dir=output_directory,
+        solution_dir=output_directory / "solution" if solution_dir is None else solution_dir,
+        samples_dir=output_directory / "samples" if samples_dir is None else samples_dir,
         mesh=mesh,
     )
 

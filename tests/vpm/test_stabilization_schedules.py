@@ -97,7 +97,7 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
     assert calls == [625]
 
 
-def test_empty_refinement_records_birth_lineage_before_nonempty_moments():
+def test_empty_refinement_records_birth_refinement_reference_before_nonempty_moments():
     manager = object.__new__(StabilizationManager)
     manager.config = StabilizationConfig(
         filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1),
@@ -252,7 +252,7 @@ def test_regularization_schedule_continues_after_multiple_events(monkeypatch):
 
 
 def test_regularization_can_be_triggered_only_by_core_radius():
-    health = {
+    resolution_metrics = {
         "vorticity_divergence_error": 1.0,
         "vortex_strength_misalignment_degrees": 90.0,
     }
@@ -262,8 +262,8 @@ def test_regularization_can_be_triggered_only_by_core_radius():
         "core_radius_trigger": 0.2,
     }
 
-    assert not _regularization_triggered(health, np.array([0.1, 0.199]), **arguments)
-    assert _regularization_triggered(health, np.array([0.1, 0.2]), **arguments)
+    assert not _regularization_triggered(resolution_metrics, np.array([0.1, 0.199]), **arguments)
+    assert _regularization_triggered(resolution_metrics, np.array([0.1, 0.2]), **arguments)
 
 
 def test_filament_refinement_fails_before_partial_split_at_hard_capacity():
@@ -301,7 +301,7 @@ def test_filament_refinement_fails_before_partial_split_at_hard_capacity():
     assert len(result.position) == 7
 
 
-def test_hard_refinement_failure_leaves_manager_particles_and_lineage_unchanged():
+def test_hard_refinement_failure_leaves_manager_particles_and_refinement_reference_unchanged():
     position = np.zeros((4, 3))
     strength = np.array([[2.0, 0.0, 0.0], [5.0, 0.0, 0.0], [4.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
     references = np.ones(4)
@@ -393,7 +393,7 @@ def test_filament_refinement_catches_absolute_strength_after_reference_reset():
     assert np.linalg.norm(result.vortex_strength, axis=1).max() == pytest.approx(0.4)
 
 
-def test_absolute_only_refinement_ignores_lineage_growth():
+def test_absolute_only_refinement_ignores_refinement_reference_growth():
     result = split_stretched_filaments(
         np.zeros((2, 3)),
         np.array([[0.8, 0.0, 0.0], [0.4, 0.0, 0.0]]),

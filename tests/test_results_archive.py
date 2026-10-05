@@ -16,7 +16,7 @@ def test_repacking_removes_only_obsolete_archive_parts(tmp_path, monkeypatch):
     source, output = bundle(tmp_path)
     unrelated = output / "data.tar.gz.notes"
     unrelated.write_text("keep")
-    arguments = {"scientific_status": "partial", "provenance": {"revision": "test"}}
+    arguments = {"scientific_status": "partial", "source_information": {"revision": "test"}}
     files = ["samples/history.csv", "solution/state.bin"]
     monkeypatch.setattr(results, "_ARCHIVE_PART_BYTES", 100)
     pack_results(source, output, files, **arguments)
@@ -41,7 +41,7 @@ def bundle(tmp_path):
         output,
         ["samples/history.csv", "solution/state.bin"],
         scientific_status="partial",
-        provenance={"revision": "test"},
+        source_information={"revision": "test"},
     )
     return source, output
 
@@ -78,38 +78,38 @@ def test_release_download_restore_and_offline_cache(tmp_path, monkeypatch, shard
     if sharded:
         monkeypatch.setattr(results, "_ARCHIVE_PART_BYTES", 100)
     source, output = bundle(tmp_path)
-    manifest = json.loads((output / "manifest.json").read_text())
-    records = manifest.get("archive_parts") or [{"name": "data.tar.gz"}]
-    payloads = {}
+    archive_info = json.loads((output / "archive_info.json").read_text())
+    records = archive_info.get("archive_parts") or [{"name": "data.tar.gz"}]
+    file_contents = {}
     for record in records:
         path = output / record["name"]
         url = "https://example.org/" + path.name
-        payloads[url] = path.read_bytes()
+        file_contents[url] = path.read_bytes()
         if sharded:
             record["url"] = url
         else:
-            manifest.update(archive_url=url, archive_size=path.stat().st_size)
+            archive_info.update(archive_url=url, archive_size=path.stat().st_size)
         if pointer:
             path.write_text("version https://git-lfs.github.com/spec/v1\n")
         else:
             path.unlink()
-    (output / "manifest.json").write_text(json.dumps(manifest))
+    (output / "archive_info.json").write_text(json.dumps(archive_info))
     calls = []
 
     def fetch(request, timeout):
         calls.append(request.full_url)
-        stream = io.BytesIO(payloads[request.full_url])
+        stream = io.BytesIO(file_contents[request.full_url])
         stream.geturl = lambda: request.full_url
         return stream
 
     monkeypatch.setattr(results, "urlopen", fetch)
     target = tmp_path / "downloaded"
-    assert restore_results(target, output) == manifest["restore_roots"]
-    assert len(calls) == len(payloads)
+    assert restore_results(target, output) == archive_info["restore_roots"]
+    assert len(calls) == len(file_contents)
     for relative in ("samples/history.csv", "solution/state.bin"):
         assert (target / relative).read_bytes() == (source / relative).read_bytes()
     calls.clear()
-    assert restore_results(tmp_path / "offline", output) == manifest["restore_roots"]
+    assert restore_results(tmp_path / "offline", output) == archive_info["restore_roots"]
     assert not calls
 
 
@@ -118,23 +118,23 @@ def test_failed_download_leaves_no_cache_or_results(tmp_path, monkeypatch, damag
     from openonda import results
 
     _, output = bundle(tmp_path)
-    manifest = json.loads((output / "manifest.json").read_text())
+    archive_info = json.loads((output / "archive_info.json").read_text())
     archive = output / "data.tar.gz"
-    payload = archive.read_bytes()
-    manifest.update(archive_url="https://example.org/data.tar.gz", archive_size=len(payload))
-    (output / "manifest.json").write_text(json.dumps(manifest))
+    contents = archive.read_bytes()
+    archive_info.update(archive_url="https://example.org/data.tar.gz", archive_size=len(contents))
+    (output / "archive_info.json").write_text(json.dumps(archive_info))
     archive.unlink()
     if damage == "oversize":
-        payload += b"extra"
+        contents += b"extra"
     elif damage == "truncated":
-        payload = payload[:-1]
+        contents = contents[:-1]
     elif damage == "checksum":
-        payload = b"X" * len(payload)
+        contents = b"X" * len(contents)
 
     def fetch(request, timeout):
         if damage == "disconnect":
             raise OSError("connection interrupted")
-        stream = io.BytesIO(payload)
+        stream = io.BytesIO(contents)
         stream.geturl = lambda: (
             "http://example.org/file" if damage == "redirect" else request.full_url
         )
@@ -153,12 +153,12 @@ def test_download_preserves_existing_local_results_and_corrupt_cache(tmp_path, m
     from openonda import results
 
     _, output = bundle(tmp_path)
-    manifest = json.loads((output / "manifest.json").read_text())
+    archive_info = json.loads((output / "archive_info.json").read_text())
     archive = output / "data.tar.gz"
-    manifest.update(
+    archive_info.update(
         archive_url="https://example.org/data.tar.gz", archive_size=archive.stat().st_size
     )
-    (output / "manifest.json").write_text(json.dumps(manifest))
+    (output / "archive_info.json").write_text(json.dumps(archive_info))
     archive.write_bytes(b"corrupt local archive")
     monkeypatch.setattr(results, "urlopen", lambda *a, **kw: pytest.fail("Unexpected download"))
     target = tmp_path / "local"
@@ -169,7 +169,7 @@ def test_download_preserves_existing_local_results_and_corrupt_cache(tmp_path, m
     assert archive.read_bytes() == b"corrupt local archive"
 
 
-def test_deterministic_and_explicit_superseded(tmp_path):
+def test_repeatable_archives_and_explicit_file_exclusions(tmp_path):
     source, output = bundle(tmp_path)
     second = tmp_path / "second"
     pack_results(
@@ -177,7 +177,7 @@ def test_deterministic_and_explicit_superseded(tmp_path):
         second,
         ["solution/state.bin", "samples/history.csv"],
         scientific_status="partial",
-        provenance={"revision": "test"},
+        source_information={"revision": "test"},
     )
     assert (output / "data.tar.gz").read_bytes() == (second / "data.tar.gz").read_bytes()
     pack_results(
@@ -185,10 +185,10 @@ def test_deterministic_and_explicit_superseded(tmp_path):
         second,
         ["solution/state.bin", "samples/history.csv"],
         scientific_status="partial",
-        provenance={},
-        superseded=["solution/state.bin"],
+        source_information={},
+        excluded_files=["solution/state.bin"],
     )
-    assert [r["path"] for r in json.loads((second / "manifest.json").read_text())["files"]] == [
+    assert [r["path"] for r in json.loads((second / "archive_info.json").read_text())["files"]] == [
         "samples/history.csv"
     ]
     assert (source / "solution/state.bin").exists()
@@ -200,7 +200,11 @@ def test_deterministic_and_explicit_superseded(tmp_path):
 def test_pack_rejects_unsafe_path(tmp_path, relative):
     with pytest.raises(ResultsError, match="Unsafe"):
         pack_results(
-            tmp_path, tmp_path / "bundle", [relative], scientific_status="partial", provenance={}
+            tmp_path,
+            tmp_path / "bundle",
+            [relative],
+            scientific_status="partial",
+            source_information={},
         )
 
 
@@ -209,7 +213,11 @@ def test_symlink_input_and_destination(tmp_path):
     (source / "samples/link").symlink_to(source / "solution/state.bin")
     with pytest.raises(ResultsError, match="Symlink"):
         pack_results(
-            source, tmp_path / "bad", ["samples/link"], scientific_status="partial", provenance={}
+            source,
+            tmp_path / "bad",
+            ["samples/link"],
+            scientific_status="partial",
+            source_information={},
         )
     target = tmp_path / "target"
     target.mkdir()
@@ -240,13 +248,13 @@ def test_rejects_bad_members_before_installing(tmp_path, kind):
                 info.linkname = "../../escape"
                 tar.addfile(info)
             else:
-                payload = b"time,value\r\n0,2\r\n"
-                info.size = len(payload)
-                tar.addfile(info, io.BytesIO(payload))
-    metadata = output / "manifest.json"
-    manifest = json.loads(metadata.read_text())
-    manifest["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
-    metadata.write_text(json.dumps(manifest))
+                contents = b"time,value\r\n0,2\r\n"
+                info.size = len(contents)
+                tar.addfile(info, io.BytesIO(contents))
+    metadata = output / "archive_info.json"
+    archive_info = json.loads(metadata.read_text())
+    archive_info["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    metadata.write_text(json.dumps(archive_info))
     target = tmp_path / "target"
     with pytest.raises(ResultsError):
         restore_results(target, output)
@@ -278,18 +286,18 @@ def test_nested_reference_roots(tmp_path):
     relative = "reference_flow/samples/profiles.csv"
     (source / relative).parent.mkdir(parents=True)
     (source / relative).write_bytes(b"reference")
-    manifest = pack_results(
+    archive_info = pack_results(
         source,
         output,
         ["samples/history.csv", "solution/state.bin", relative],
         scientific_status="partial",
-        provenance={},
+        source_information={},
     )
-    assert manifest["restore_roots"] == ["reference_flow/samples", "samples", "solution"]
+    assert archive_info["restore_roots"] == ["reference_flow/samples", "samples", "solution"]
     target = tmp_path / "target"
     (target / "reference_flow").mkdir(parents=True)
     (target / "reference_flow/setup.py").write_text("source template")
-    assert restore_results(target, output) == manifest["restore_roots"]
+    assert restore_results(target, output) == archive_info["restore_roots"]
     assert (target / relative).read_bytes() == b"reference"
     assert (target / "reference_flow/setup.py").read_text() == "source template"
 
@@ -314,11 +322,11 @@ def test_same_length_rewrite_rejected(tmp_path, monkeypatch):
             tmp_path / "changed",
             ["samples/history.csv"],
             scientific_status="partial",
-            provenance={},
+            source_information={},
         )
 
 
-def test_publication_conflict_rolls_back_own_roots(tmp_path, monkeypatch):
+def test_restore_conflict_removes_only_newly_restored_directories(tmp_path, monkeypatch):
     from openonda import results
 
     _, output = bundle(tmp_path)
@@ -344,8 +352,8 @@ def test_sharded_bundle_roundtrip_and_rejection(tmp_path, monkeypatch, damage):
 
     monkeypatch.setattr(results, "_ARCHIVE_PART_BYTES", 64)
     source, output = bundle(tmp_path)
-    manifest = json.loads((output / "manifest.json").read_text())
-    parts = manifest["archive_parts"]
+    archive_info = json.loads((output / "archive_info.json").read_text())
+    parts = archive_info["archive_parts"]
     assert len(parts) > 1
     assert not (output / "data.tar.gz").exists()
     assert all(record["size"] <= 64 for record in parts)
@@ -358,8 +366,8 @@ def test_sharded_bundle_roundtrip_and_rejection(tmp_path, monkeypatch, damage):
     elif damage == "pointer":
         part.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 12\n")
     elif damage == "whole_hash":
-        manifest["archive_sha256"] = "0" * 64
-        (output / "manifest.json").write_text(json.dumps(manifest))
+        archive_info["archive_sha256"] = "0" * 64
+        (output / "archive_info.json").write_text(json.dumps(archive_info))
     target = tmp_path / "target"
     if damage:
         with pytest.raises(
@@ -381,13 +389,15 @@ def test_vtk_collection_nested_roundtrip(tmp_path, suffix, attribute):
     child = "samples/nested/frame.vtu"
     (source / child).parent.mkdir(parents=True)
     (source / child).write_bytes(b"original VTK bytes")
-    payload = f'<VTKFile><DataSet {attribute}="nested/frame.vtu"/></VTKFile>'.encode()
-    (source / collection).write_bytes(payload)
+    contents = f'<VTKFile><DataSet {attribute}="nested/frame.vtu"/></VTKFile>'.encode()
+    (source / collection).write_bytes(contents)
     output = tmp_path / "bundle"
-    pack_results(source, output, [collection, child], scientific_status="partial", provenance={})
+    pack_results(
+        source, output, [collection, child], scientific_status="partial", source_information={}
+    )
     target = tmp_path / "target"
     assert restore_results(target, output) == ["samples"]
-    assert (target / collection).read_bytes() == payload
+    assert (target / collection).read_bytes() == contents
     assert (target / child).read_bytes() == b"original VTK bytes"
 
 
@@ -404,37 +414,37 @@ def test_vtk_collection_nested_roundtrip(tmp_path, suffix, attribute):
 )
 def test_vtk_pack_rejects_incomplete_or_unsafe_collection(tmp_path, reference):
     source, output = bundle(tmp_path)
-    metadata_before = (output / "manifest.json").read_bytes()
+    metadata_before = (output / "archive_info.json").read_bytes()
     archive_before = (output / "data.tar.gz").read_bytes()
     (source / "samples/wake.pvd").write_text(f'<VTKFile><DataSet file="{reference}"/></VTKFile>')
     with pytest.raises(ResultsError, match="(Missing VTK|Unsafe)"):
         pack_results(
-            source, output, ["samples/wake.pvd"], scientific_status="partial", provenance={}
+            source, output, ["samples/wake.pvd"], scientific_status="partial", source_information={}
         )
-    assert (output / "manifest.json").read_bytes() == metadata_before
+    assert (output / "archive_info.json").read_bytes() == metadata_before
     assert (output / "data.tar.gz").read_bytes() == archive_before
 
 
 def test_vtk_restore_reference_corruption_installs_nothing(tmp_path):
     _, output = bundle(tmp_path)
     archive = output / "data.tar.gz"
-    payloads = {
+    file_contents = {
         "samples/wake.pvd": b'<VTKFile><DataSet file="missing.vts"/></VTKFile>',
         "solution/state.bin": b"genuine bytes",
     }
     with tarfile.open(archive, "w:gz") as tar:
-        for relative, payload in payloads.items():
+        for relative, contents in file_contents.items():
             info = tarfile.TarInfo(relative)
-            info.size = len(payload)
-            tar.addfile(info, io.BytesIO(payload))
-    metadata = output / "manifest.json"
-    manifest = json.loads(metadata.read_text())
-    manifest["files"] = [
+            info.size = len(contents)
+            tar.addfile(info, io.BytesIO(contents))
+    metadata = output / "archive_info.json"
+    archive_info = json.loads(metadata.read_text())
+    archive_info["files"] = [
         {"path": path, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-        for path, data in payloads.items()
+        for path, data in file_contents.items()
     ]
-    manifest["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
-    metadata.write_text(json.dumps(manifest))
+    archive_info["archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    metadata.write_text(json.dumps(archive_info))
     target = tmp_path / "target"
     with pytest.raises(ResultsError, match="Missing VTK"):
         restore_results(target, output)
@@ -451,5 +461,5 @@ def test_vtk_collection_rejects_xml_entity_expansion(tmp_path):
     )
     with pytest.raises(ResultsError, match="Invalid VTK collection"):
         pack_results(
-            source, output, ["samples/wake.pvd"], scientific_status="partial", provenance={}
+            source, output, ["samples/wake.pvd"], scientific_status="partial", source_information={}
         )

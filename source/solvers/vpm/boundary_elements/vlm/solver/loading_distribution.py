@@ -49,10 +49,10 @@ class VLMLoadingDistribution:
         case_dir: str,
         sample_directory: str | None = None,
     ) -> None:
-        """Export mandatory owner-clock loading distributions for each surface.
+        """Export mandatory solver-clock loading distributions for each surface.
 
         Coupled VLM output is dispatched by the owning VPM accepted-step
-        lifecycle. Output failures propagate so a run cannot claim success
+        run phases. Output failures propagate so a run cannot claim success
         while required scientific samples are missing.
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):

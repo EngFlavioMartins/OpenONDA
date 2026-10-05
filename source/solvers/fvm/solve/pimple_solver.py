@@ -290,8 +290,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ilu_reuse_tolerance=self.params.get("ilu_reuse_tolerance", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
-                    # The default shared policy bounds full-mesh RAM.  The
-                    # explicit separate policy retains equation-specific PETSc
+                    # The default shared settings bounds full-mesh RAM.  The
+                    # explicit separate settings retains equation-specific PETSc
                     # objects so pressure agglomeration can be cached.
                     partitioned_workspace=self._partitioned_workspace("momentum"),
                     failure_action=self.params.get("linear_failure_action", "raise"),
@@ -356,7 +356,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 for non_ortho in range(n_non_ortho + 1):
                     # Coupling can intentionally replace a patch type between
                     # calls.  Keep cached indexing only while that structural
-                    # contract is unchanged.
+                    # comparison_settings are unchanged.
                     if (
                         self._pressure_boundary_layout.signature
                         != simple_solver._pressure_boundary_signature(self.boundaries)

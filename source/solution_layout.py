@@ -1,9 +1,9 @@
-"""Canonical on-disk layout and discovery for solver output artifacts.
+"""Standard on-disk layout and discovery for solver output files.
 
 The solution root is intentionally small: a user opens one ParaView collection
 per physical representation there, while immutable frame files live in a
 component directory. Native VPM checkpoints accompany those frames; coupled
-restart bundles retain their own lifecycle.
+coupled restart files are saved separately.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ _COMPONENTS = frozenset(("fvm", "vpm", "vlm"))
 
 
 def component_directory(solution_directory: str | Path, component: str) -> Path:
-    """Return the canonical frame directory for one solution component.
+    """Return the standard frame directory for one solution component.
 
     Parameters
     ----------

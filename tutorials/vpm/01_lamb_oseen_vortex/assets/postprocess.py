@@ -128,7 +128,7 @@ def _flatten_solver_metadata(metadata: dict) -> dict:
     spacing = distribution["spacing"]
     gaussian_core = first["vortex_core_radius"]
     step_size, requested_steps = numerics["time_step_size"], configuration["run"]["steps"]
-    status = metadata["lifecycle"]["status"]
+    status = metadata["run_status"]["status"]
     return {
         "status": status,
         "completed": status == "completed",

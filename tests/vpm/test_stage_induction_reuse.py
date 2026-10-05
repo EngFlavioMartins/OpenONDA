@@ -1,4 +1,4 @@
-"""Production StageRHS dispatch and private-cache lifecycle qualification."""
+"""Production StageRHS dispatch and private-cache run phases qualification."""
 
 from types import SimpleNamespace
 
@@ -159,7 +159,7 @@ def test_solver_closes_cache_before_backend_reset_even_on_cleanup_failure(monkey
         if fail == label:
             raise RuntimeError(f"{label} cleanup failed")
 
-    owner = SimpleNamespace(
+    solver = SimpleNamespace(
         _closed=False,
         stage_rhs=SimpleNamespace(close=lambda: cleanup("cache")),
         _particle_snapshot_buffers={"a": SimpleNamespace(destroy=lambda: cleanup("snapshot"))},
@@ -170,12 +170,12 @@ def test_solver_closes_cache_before_backend_reset_even_on_cleanup_failure(monkey
     )
     monkeypatch.setattr(solver_module, "reset_taichi_backend", lambda **kwargs: cleanup("reset"))
     if fail is None:
-        solver_module.VPMSolver.close(owner)
-        solver_module.VPMSolver.close(owner)
-        assert owner._closed
+        solver_module.VPMSolver.close(solver)
+        solver_module.VPMSolver.close(solver)
+        assert solver._closed
     else:
         with pytest.raises(RuntimeError, match=f"{fail} cleanup failed"):
-            solver_module.VPMSolver.close(owner)
+            solver_module.VPMSolver.close(solver)
     assert events == ["cache", "snapshot", "streams", "reset"]
-    assert owner._particle_snapshot_buffers == {}
-    assert not owner._backend_claimed
+    assert solver._particle_snapshot_buffers == {}
+    assert not solver._backend_claimed

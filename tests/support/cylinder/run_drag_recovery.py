@@ -131,7 +131,7 @@ def build_experiment(options):
 
 
 def disable_trigger(solver):
-    """Change both solvers' accepted freestream policy at the segment boundary.
+    """Change both solvers' accepted freestream settings at the segment boundary.
 
     The initial lattice retains the slightly larger buffer built for the
     maximum startup speed. Reconstructing every run with that same lattice
@@ -151,7 +151,7 @@ def disable_trigger(solver):
 
 
 def experiment_settings(options):
-    """Physical identity checked before admitting a native resume."""
+    """Physical configuration checked before validating a native resume."""
     settings = {
         "schema": "openonda-cylinder-drag-recovery/1",
         "scope": "diagnostic planar reduction; not three-dimensional slab qualification",
@@ -181,10 +181,10 @@ def experiment_settings(options):
 
 
 def run(options):
-    identity = experiment_settings(options)
+    configuration = experiment_settings(options)
     metadata = options.output_dir / "drag_recovery_experiment.json"
     if options.resume:
-        if not metadata.is_file() or json.loads(metadata.read_text()) != identity:
+        if not metadata.is_file() or json.loads(metadata.read_text()) != configuration:
             raise ValueError("--resume requires an identical drag_recovery_experiment.json")
     elif metadata.exists():
         raise FileExistsError(
@@ -193,7 +193,11 @@ def run(options):
     checkpoint = select_backup("latest", directory=options.output_dir / "solution", kind="coupled")
     if options.resume and checkpoint is None:
         raise ValueError("--resume requires a committed native coupled checkpoint")
-    saved = None if checkpoint is None else json.loads((checkpoint / "manifest.json").read_text())
+    saved = (
+        None
+        if checkpoint is None
+        else json.loads((checkpoint / "checkpoint_info.json").read_text())
+    )
     start_step = 0 if saved is None else int(saved["coupling_step"])
     trigger_step = round(options.trigger_duration / EXCHANGE_DT)
     end_step = round(options.end_time / EXCHANGE_DT)
@@ -211,7 +215,7 @@ def run(options):
         require_empty_output=not options.resume,
     ) as solver:
         if solver._is_master:
-            metadata.write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+            metadata.write_text(json.dumps(configuration, indent=2, sort_keys=True) + "\n")
         solver.initialize()
         if not options.resume:
             count = solver.fvm_solver.mesh_data["n_cells"]
@@ -223,7 +227,7 @@ def run(options):
             )
         if options.resume:
             # A checkpoint exactly at the switch may still record the first
-            # segment's background. Admit it unchanged before changing policy.
+            # segment's background. Validate it unchanged before changing settings.
             saved_velocity = saved["config"]["coupler"]["freestream_velocity"]
             if np.allclose(saved_velocity, [1.0, 0.0, 0.0], rtol=0, atol=0):
                 disable_trigger(solver)
@@ -304,7 +308,7 @@ def main(argv=None):
         not np.isfinite(options.downstream_x)
         or options.downstream_x - options.transfer_gap <= 0.5 + 6 * H
     ):
-        parser.error("The downstream transfer authority must enclose the cylinder wall")
+        parser.error("The downstream transfer blending weight must enclose the cylinder wall")
     run(options)
     return 0
 

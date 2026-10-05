@@ -37,7 +37,7 @@ and modes |m|<=M retained, the following conservative bounds suffice:
 The derivation integrates the monotone single-mode envelopes over m>M.
 
 All bounds concern real-arithmetic truncation. scipy quadrature reports a
-numerical error estimate, not a rigorous interval certificate. The optional
+numerical error estimate, not a rigorous interval error bound. The optional
 xy-periodization bound controls spatial wrap of the continuous smoothed kernel;
 it does not control a finite FFT's omitted frequencies or spread/gather errors.
 No complete FFT or machine-roundoff guarantee is made.
@@ -51,7 +51,7 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.special import erfc, gamma, gammaincc, j0, j1, jv, k0, k1
 
-from tests.vpm._slip_periodic_gaussian_oracle import _checked_inputs
+from tests.vpm._slip_periodic_gaussian_reference import _checked_inputs
 
 
 def truncated_green_transform(s, mu, cutoff):
@@ -86,7 +86,7 @@ def compact_padding_is_alias_free(period_xy, pair_extent_xy, cutoff, gaussian_su
     P_i-D_i>R+B, where D_i bounds target-minus-source displacements. This can be
     wasteful for anisotropic boxes. A real Gaussian has infinite support, so a
     finite B additionally requires a proved omitted-Gaussian/alias budget.
-    Passing this function alone does NOT certify a free-space FFT solution.
+    Passing this function alone does NOT validate a free-space FFT solution.
     """
     period = np.asarray(period_xy, dtype=float)
     extent = np.asarray(pair_extent_xy, dtype=float)
@@ -139,7 +139,7 @@ def smooth_xy_periodization_bounds(period_xy, pair_extent_xy, mu, cutoff, tau):
 
     This gives a finite bound for the actual infinite Gaussian, unlike assuming
     compactness from padding alone. It is deliberately conservative; anisotropic
-    Vico kernel precomputation/cropping can admit smaller runtime grids but needs
+    Vico kernel precomputation/cropping can check_context smaller runtime grids but needs
     its own derivation. The discrete FFT's high-frequency tail is separate.
     """
     period = np.asarray(period_xy, dtype=float)

@@ -12,7 +12,7 @@ from tests.coupler.test_cylinder_planar_native import _advance
 def main(directory, mesh_path=None):
     first = _advance(directory, limit=1, start_from="initial", cores=4, mesh_path=mesh_path)
     assert first["accepted"] == 1
-    # The execution limit is outside numerical restart identity.
+    # The execution limit is outside numerical restart configuration.
     resumed = _advance(
         directory,
         limit=1,

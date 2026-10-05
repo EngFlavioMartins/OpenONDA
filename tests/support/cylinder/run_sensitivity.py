@@ -11,13 +11,13 @@ import sys
 
 from openonda.tutorial_runner import load_case_module
 
-from .campaign import (
+from .parameter_study import (
     collect_cost,
     compare_profiles,
     profile_statistics,
     run_trial,
 )
-from .provenance import new_run_directory
+from .run_records import new_run_directory
 
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
@@ -167,7 +167,7 @@ def main() -> int:
             "-m",
             "openonda.tutorial_runner",
             str(SUPPORT_DIR),
-            "run_campaign",
+            "run_parameter_study",
             "--kind",
             "coupled",
             "--run-dir",
@@ -263,7 +263,7 @@ def main() -> int:
         report = {
             "schema": "openonda-cylinder-sensitivity/4",
             "screen_only": args.screen,
-            "spacing_policy": "In-plane particle spacing varies independently of physical core radius, blend width and release width. Each run has one particle row and one periodic FVM cell in z; span and sigma/hp are recorded per run.",
+            "spacing_description": "In-plane particle spacing varies independently of physical core radius, blend width and release width. Each run has one particle row and one periodic FVM cell in z; span and sigma/hp are recorded per run.",
             "scope": "Matched initial inflow with a controlled planar perturbation; exchange_dt changes the exchange clock, not a standalone particle emission rate. Interface iteration limits and tolerances are fixed. Short screens do not qualify shedding accuracy.",
             "runs": records,
             "rejected_interactions": rejected_interactions,

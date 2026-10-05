@@ -63,7 +63,7 @@ FORCES_HEADER = [
 
 
 def _context_setup(context):
-    """Return the admitted setup used by live and offline sampling contexts."""
+    """Return the validated setup used by live and offline sampling contexts."""
     return getattr(context, "_resolved_setup", context.setup)
 
 

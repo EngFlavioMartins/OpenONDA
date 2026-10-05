@@ -26,7 +26,7 @@ QUALIFICATION_MODULES = frozenset(
 
 INTEGRATION_MODULES = frozenset(
     {
-        "test_arbitrary_wall_lifecycle.py",
+        "test_arbitrary_wall_run_stages.py",
         "test_coupled_backup.py",
         "test_cube_start_latest.py",
         "test_fvm_vpm_smoke.py",
@@ -37,7 +37,7 @@ INTEGRATION_MODULES = frozenset(
 
 SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
     {
-        "test_arbitrary_wall_lifecycle.py",
+        "test_arbitrary_wall_run_stages.py",
         "test_backup_storage.py",
         "test_cube_start_latest.py",
     }
@@ -99,7 +99,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    """Write a deterministic qualification artifact when explicitly requested."""
+    """Write a deterministic qualification report when explicitly requested."""
     destination = session.config.getoption("--numerical-report")
     if destination is None:
         return

@@ -12,8 +12,8 @@ from openonda.cli import main
 import openonda.tutorials as tutorial_api
 from openonda.tutorials import (
     TUTORIALS,
+    copy_tutorial,
     execute_tutorial,
-    materialize_tutorial,
     tutorial_case_path,
 )
 
@@ -38,14 +38,14 @@ def test_catalog_has_every_maintained_launcher() -> None:
     assert {tutorial.relative_path.as_posix() for tutorial in TUTORIALS} == maintained
 
 
-def test_materializer_never_overwrites_existing_case(tmp_path: Path) -> None:
+def test_tutorial_copy_preserves_an_existing_case(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    materialize_tutorial("fvm/taylor_green", workspace)
+    copy_tutorial("fvm/taylor_green", workspace)
     marker = tutorial_case_path(workspace, "fvm/taylor_green") / "user-change.txt"
     marker.write_text("keep", encoding="utf-8")
 
     with pytest.raises(FileExistsError):
-        materialize_tutorial("fvm/taylor_green", workspace)
+        copy_tutorial("fvm/taylor_green", workspace)
     assert marker.read_text(encoding="utf-8") == "keep"
 
 
@@ -53,10 +53,10 @@ def test_cli_lists_tutorials_and_renders_api_help(capsys: pytest.CaptureFixture[
     assert main(["tutorial", "list"]) == 0
     assert "vpm/lamb_oseen_vortex" in capsys.readouterr().out
 
-    assert main(["api", "tutorials.materialize_tutorial"]) == 0
+    assert main(["api", "tutorials.copy_tutorial"]) == 0
     output = capsys.readouterr().out
-    assert "materialize_tutorial" in output
-    assert "user-owned workspace" in output
+    assert "copy_tutorial" in output
+    assert "editable workspace" in output
 
 
 @pytest.mark.parametrize("custom_taichi_cache", [False, True])
@@ -69,7 +69,7 @@ def test_launcher_uses_the_console_scripts_python_environment(
     if custom_taichi_cache:
         expected_cache = tmp_path / "custom Taichi cache"
         monkeypatch.setenv("TI_OFFLINE_CACHE_FILE_PATH", str(expected_cache))
-    materialize_tutorial("fvm/taylor_green", workspace)
+    copy_tutorial("fvm/taylor_green", workspace)
     captured: dict[str, object] = {}
 
     class Result:
@@ -117,12 +117,12 @@ def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch,
             assert upper >= position[:, axis].max() + heat_margin
 
 
-def test_every_template_materializes_without_generated_results(tmp_path):
-    """One catalog-wide contract replaces case-specific file/string snapshots."""
+def test_every_template_is_copied_without_generated_results(tmp_path):
+    """Check copied inputs and launchers for every installed tutorial."""
     import subprocess
 
     for tutorial in TUTORIALS:
-        case = materialize_tutorial(tutorial.name, tmp_path / tutorial.slug)
+        case = copy_tutorial(tutorial.name, tmp_path / tutorial.slug)
         assert (case / "setup.py").is_file(), tutorial.name
         assert (case / "allrun.sh").is_file(), tutorial.name
         for script in case.rglob("*.sh"):
@@ -176,7 +176,7 @@ def test_local_module_runner_uses_edited_case_and_propagates_exit_code(tmp_path)
 def test_interaction_plotters_run_as_modules_from_a_copied_case(tmp_path, script):
     import subprocess
 
-    case = materialize_tutorial("vpm/vortex_interactions", tmp_path / "copied case")
+    case = copy_tutorial("vpm/vortex_interactions", tmp_path / "copied case")
     result = subprocess.run(
         [
             sys.executable,
@@ -264,11 +264,11 @@ def test_all_vpm_tutorials_construct_cases_with_the_installed_api(tmp_path, monk
         "vortex_interactions": lambda setup: setup.build_case("baseline", n_steps=1),
     }
     for name, build in builders.items():
-        case_dir = materialize_tutorial(f"vpm/{name}", tmp_path / name)
+        case_dir = copy_tutorial(f"vpm/{name}", tmp_path / name)
         setup = load_case_module(case_dir)
         with monkeypatch.context() as patch:
             # Exercise real case/geometry construction without starting a
-            # long GPU campaign or writing into installed tutorial resources.
+            # long GPU parameter study or writing into installed tutorial resources.
             patch.setattr(setup.vpm, "VPMSolver", capture)
             try:
                 case = build(setup)

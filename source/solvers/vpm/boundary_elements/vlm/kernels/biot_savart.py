@@ -174,7 +174,7 @@ def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, circulation: float,
     Compute velocity from horseshoe with semi-infinite trailing legs.
 
     This is the standard VLM formulation where trailing legs extend to
-    infinity in the freestream direction.  The canonical orientation is the
+    infinity in the freestream direction.  The standard orientation is the
     L → ∞ limit of the finite horseshoe (see horseshoe_velocity):
 
         left  leg:  infinity -> v2      (semi-infinite from v2 along +da, -circulation)
@@ -183,7 +183,7 @@ def horseshoe_semi_infinite_velocity(target, v2, v3, da, db, circulation: float,
 
     i.e. a filament that runs v1→v2 / v3→v4 with +circulation collapses onto
     semi_infinite(v2, da, -circulation) / semi_infinite(v3, db, +circulation) as the far
-    points v1 = v2 + da·∞, v4 = v3 + db·∞ go downstream.  This is certified
+    points v1 = v2 + da·∞, v4 = v3 + db·∞ go downstream.  This is validated
     numerically in tests/vpm/test_semi_infinite_horseshoe.py by comparing
     against the finite horseshoe at growing L/c.
 

@@ -17,13 +17,13 @@ Some figures additionally require ignored solution snapshots and metadata.
 This audit preserves the simulation data and sampling frequencies. The user
 requested a joint decision before changing retention. The code commit does
 not add 5 GB to Git, enable LFS, delete restart histories, or declare the
-fresh-clone plotting requirement complete. Unrelated cylinder campaign work
+fresh-clone plotting requirement complete. Unrelated cylinder parameter-study work
 and newly generated figures are outside this commit.
 
 ## Data requiring a retention decision
 
 The inventory includes superseded restart histories and covers the existing
-non-campaign tutorial sample trees. Files can continue to grow during runs.
+tutorial sample trees outside parameter studies. Files can continue to grow during runs.
 
 | Case | Files | Size | Main cost |
 | --- | ---: | ---: | --- |
@@ -39,7 +39,7 @@ non-campaign tutorial sample trees. Files can continue to grow during runs.
 
 Superseded histories account for **982 MB**, leaving about **4.06 GB** of
 current samples. Superseded files must be distinguished from any accepted
-continuation segments referenced by a run's lineage manifest before archival.
+continuation segments referenced by a run's restart history before archival.
 
 Read-only gzip trials on representative files gave:
 
@@ -100,7 +100,7 @@ particles or spatial field samples can be discarded.
 | VPM 02 vortex ring | Diagnostic CSVs and run metadata for four variants; final LES transposed particle checkpoint for scenes |
 | VPM 03 vortex interactions | Four core-section PVD/VTS series, diagnostic CSVs and run metadata; the literature CSV is already tracked |
 | VPM 04 flat plate | Force and loading CSVs and run metadata for 20 runs; selected impulse histories; final moving 12-degree particle checkpoint and VLM surface |
-| VPM 05 delta wing | Force/integral CSVs, three wake-plane series, metadata and any accepted lineage segments; coupled checkpoints for final animation |
+| VPM 05 delta wing | Force/integral CSVs, three wake-plane series, metadata and any saved restart segments; coupled checkpoints for final animation |
 | VPM 06 rotor | Force/loading/integral/profile CSVs, two wake-plane series, metadata and coupled checkpoints for impulse/animation |
 | VPM 07 quadcopter | Surface forces, integrals, two plane series and run metadata |
 | FVM airfoil | Force history, surface pressure CSV and velocity VTU |
@@ -109,13 +109,13 @@ particles or spatial field samples can be discarded.
 | FVM cylinder IBM | IBM forces and FVM snapshots |
 | FVM step profile | Field and reattachment-history CSVs |
 | FVM Taylor Green | Decay-history CSV |
-| Coupled cylinder | Completed production campaign reports |
+| Coupled cylinder | Completed production parameter-study reports |
 | Coupled NACA | IBM force history |
 | Coupled cube and reference | Matched fields/profiles, mesh/PVD/metadata/diagnostics for both runs |
 
-The coupled-cube comparison manifest includes absolute paths as cache
-fingerprints. Its preparation stage rebuilds that cache from raw solution
-inputs; copying the manifest alone is insufficient. A portable plotting
+The coupled-cube comparison information includes absolute paths as cache
+input-file hashes. Its preparation stage rebuilds that cache from raw solution
+inputs; copying the comparison information alone is insufficient. A portable plotting
 archive must include the consumed inputs or replace the cache with exported
 comparison data, with a relocation test. That remains outstanding.
 
@@ -129,10 +129,10 @@ machine-specific imports or fallback fonts were added to bypass them.
 - CPython 3.11 is the supported minor version, with patch updates allowed;
   package metadata, installation checks, Conda environments and CI agree.
 - The delta-wing README animation was recovered unchanged into its case assets
-  and included in the source distribution, wheel and tutorial materializer.
+  and included in the source distribution, wheel and tutorial copy command.
 - The benchmark no longer edits `sys.path`. Copied tutorial setups execute via
   the installed package, including edited local assets, outside the repository.
-- Lamb–Oseen's setup exposes case and diffusion scheme. Ensemble orchestration
+- Lamb–Oseen's setup exposes case and diffusion scheme. Independent ensemble runs
   lives in its existing dedicated asset script; launchers call that script.
 - Five FVM plot helpers, Taylor Green and coupled NACA use the thesis theme and
   validated canvas geometry. Export preserves the validated layout, including
@@ -162,7 +162,7 @@ Actual VPM rendering results:
 | Flat plate | Seven analytical figures rendered; corrected ParaView scene command succeeded with normal host permissions |
 | Delta wing | `allplot.sh` exited 0 with five partial figures; final animation remains unavailable until the run completes |
 | Rotor | `allplot.sh` failed: saved run time 6.48 s disagrees with loading CSV tails at 6.492 s; data were neither trimmed nor relabelled |
-| Quadcopter | `allplot.sh` exited 0 and rendered three figures from the available history; solver health stop remains unresolved |
+| Quadcopter | `allplot.sh` exited 0 and rendered three figures from the available history; particle state limit stop remains unresolved |
 
 A successful plot of an available partial history is not evidence that its
 simulation is complete or numerically converged. The FVM production plots,
@@ -172,7 +172,7 @@ the data archive required for fresh-clone plotting.
 ### Installation and regression checks
 
 The selected Git index was exported into a clean temporary source tree, without
-local results or unrelated untracked campaign scripts. Its source distribution
+local results or unrelated untracked parameter-study scripts. Its source distribution
 and wheel both built successfully. The wheel was installed into a separate
 CPython 3.11.15 virtual environment without system site-packages.
 

@@ -65,7 +65,7 @@ def main():
     final_step = state["initial_step"] + config["run"]["steps"]
     end = state["initial_time"] + config["run"]["steps"] * p.time_step_size
     failures = []
-    if p.metadata["lifecycle"]["status"] != "completed" or state["step"] != final_step:
+    if p.metadata["run_status"]["status"] != "completed" or state["step"] != final_step:
         print(
             f"[FAIL] Run incomplete; last recorded step {state['step']}/{final_step}; convergence is unqualified"
         )
@@ -79,7 +79,7 @@ def main():
     except (KeyError, TypeError):
         raw_force_interval = None
     if isinstance(raw_force_interval, bool) or raw_force_interval != 1:
-        failures.append("coupled rotor force/loading history is not on every accepted owner step")
+        failures.append("coupled rotor force/loading history is not on every accepted solver step")
     cadence = p.time_step_size
     if data.time.max() < end - cadence - 1e-9:
         failures.append("force samples do not cover the configured horizon")
@@ -259,7 +259,7 @@ def main():
                 )
         print(
             "[UNQUALIFIED] Finite-distance vortex-cylinder comparisons are diagnostic "
-            "only; the screens are not uncertainty-based acceptance gates."
+            "only; the screens are not uncertainty-based acceptance checks."
         )
     except (OSError, ValueError, KeyError, FloatingPointError) as error:
         failures.append(f"invalid finite-distance induction reference: {error}")
