@@ -1,7 +1,8 @@
 """Sample the airfoil pressure coefficient from the final FVM field."""
 
-import csv
-import os
+from pathlib import Path
+
+from openonda.results import write_csv_table
 
 
 def write_surface_cp(fields, sol_dir, chord: float, freestream_velocity: float) -> None:
@@ -13,8 +14,8 @@ def write_surface_cp(fields, sol_dir, chord: float, freestream_velocity: float) 
         rows.append((x / chord, y / chord, p_i / q))
     rows.sort()
 
-    path = os.path.join(sol_dir, "surface_cp.csv")
-    with open(path, "w", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["position_x_over_chord", "position_y_over_chord", "pressure_coefficient"])
-        writer.writerows(rows)
+    write_csv_table(
+        Path(sol_dir) / "surface_cp.csv",
+        rows,
+        columns=("position_x_over_chord", "position_y_over_chord", "pressure_coefficient"),
+    )

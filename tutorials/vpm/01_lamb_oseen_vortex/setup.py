@@ -3,11 +3,12 @@
 
 Examples (from this case directory)::
 
-    python setup.py vortex CS
-    python setup.py dipole DVH
-    python setup.py merging GBD
+    python -m openonda.tutorial_runner . setup vortex CS
+    python -m openonda.tutorial_runner . setup dipole DVH
+    python -m openonda.tutorial_runner . setup merging GBD
 
-Independent RWM ensembles use ``python assets/rwm_ensemble.py CASE --converge``.
+Independent RWM ensembles use
+``python -m openonda.tutorial_runner . assets.rwm_ensemble CASE``.
 """
 
 from __future__ import annotations

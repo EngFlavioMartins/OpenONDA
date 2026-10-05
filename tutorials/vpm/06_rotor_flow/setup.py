@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
 
 import openonda.vpm as vpm
+from openonda.results import read_json
 from openonda.vpm import Backup, Samplers
 
 CASE_NAME = "rotor"
@@ -53,7 +53,7 @@ def build_case(
     relative_sample_directory = sample_directory.relative_to("samples")
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
-    segments = json.loads(blade_file.read_text())["wings"][0]["segments"]
+    segments = read_json(blade_file)["wings"][0]["segments"]
     radial_panels = sum(segment["n_spanwise_panels"] for segment in segments)
     wake_spacing = (ROTOR_RADIUS - HUB_RADIUS) / radial_panels
     rotation_kinematics = vpm.RotatingVLM(

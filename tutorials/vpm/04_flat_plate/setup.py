@@ -17,7 +17,7 @@ The induction backend and stretching formulation are independent. Set
 `stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
 
 Usage:
-    python setup.py --mode moving --angle 8
+    python -m openonda.tutorial_runner . setup --mode moving --angle 8
 """
 
 from __future__ import annotations
@@ -28,11 +28,6 @@ from pathlib import Path
 
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.generate_surface import (
     create_flat_plate,
@@ -94,7 +89,6 @@ def run(mode: str, angle_of_attack: float) -> None:
         geometry_angle = 0.0
 
     surface_dir = TUTORIAL_DIR / "assets" / "surfaces"
-    surface_dir.mkdir(parents=True, exist_ok=True)
     surface_file = surface_dir / f"{name}.json"
     save_surface(
         create_flat_plate(

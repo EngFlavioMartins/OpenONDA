@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Self-induced velocity U_ring/U_ref,0 versus normalized time t Gamma/R0^2.
 
@@ -8,20 +7,14 @@ against the analytical Saffman model with Gaussian core diffusion.
 Saves: figures/vortex_ring_motion.png
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-
-if not __package__:
-    from openonda.tutorial_runner import case_package
-    from pathlib import Path as _CasePath
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+import numpy as np
 
 from ..assets.ring_metrics import (
     FIGURES_DIR,
-    SAMPLES_DIR,
     REFERENCE_TIME,
     REFERENCE_VELOCITY,
+    SAMPLES_DIR,
     VARIANT_LABEL,
     VARIANT_STYLE,
     build_arg_parser,
@@ -34,7 +27,6 @@ from ..assets.ring_metrics import (
     saffman_valid_time_limit,
     save_fig,
     with_sample_gaps,
-    validate_thesis_figure,
 )
 
 
@@ -43,22 +35,14 @@ def main() -> None:
         "Self-induced velocity U_ring/U_ref,0 versus normalized time t Gamma/R0^2."
     ).parse_args()
     figs = FIGURES_DIR
-    figs.mkdir(parents=True, exist_ok=True)
-    n_skip = 7  # plot every n-th marker
-
+    n_skip = 7
     load_theme()
-
     fig, (ax, comparison) = plt.subplots(
-        1,
-        2,
-        figsize=(125 / 25.4, 84 / 25.4),
-        gridspec_kw={"width_ratios": (1.0, 1.0)},
+        1, 2, figsize=(125 / 25.4, 84 / 25.4), gridspec_kw={"width_ratios": (1.0, 1.0)}
     )
-    centered_subplots_adjust(fig, outer=0.102, wspace=0.55, top=0.930, bottom=0.305)
+    centered_subplots_adjust(fig, outer=0.102, wspace=0.55, top=0.93, bottom=0.305)
     curves = []
     plotted_values = []
-
-    # -- Ring speed — all available variants ---------------------------------
     for variant in plot_variants():
         st = VARIANT_STYLE[variant]
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
@@ -84,8 +68,6 @@ def main() -> None:
         )
         curves.append((nondimensional_time, nondimensional_velocity, line_kwargs))
         plotted_values.append(nondimensional_velocity)
-
-    # -- Analytical Saffman solution in its thin-core range ------------------
     theory_end_physical = saffman_valid_time_limit()
     theory_end = theory_end_physical / REFERENCE_TIME
     t_phys = np.linspace(0.0, theory_end_physical, 300)
@@ -96,10 +78,9 @@ def main() -> None:
         saffman_nondimensional_velocity,
         **reference_style(),
         zorder=5,
-        label=r"Saffman--Archer",
+        label="Saffman--Archer",
     )
     plotted_values.append(saffman_nondimensional_velocity)
-
     relative_errors = []
     for nondimensional_time, nondimensional_velocity, line_kwargs in curves:
         valid = nondimensional_time <= theory_end
@@ -115,25 +96,24 @@ def main() -> None:
         )
     comparison.axhline(0.0, color="0.45", linewidth=0.8, linestyle=":")
     comparison.set_xlim(0.0, theory_end)
-    comparison.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
-    comparison.set_ylabel(r"$(U_{\rm ring}-U_{\rm S})/U_{\rm S}$ [\%]")
-    comparison.set_title(r"(b) Speed difference")
+    comparison.set_xlabel("$t\\,\\Gamma_0/R_0^2$")
+    comparison.set_ylabel("$(U_{\\rm ring}-U_{\\rm S})/U_{\\rm S}$ [\\%]")
+    comparison.set_title("(b) Speed difference")
     if relative_errors:
-        lower = min(0.0, 100.0 * min(float(np.min(error)) for error in relative_errors))
-        upper = max(0.0, 100.0 * max(float(np.max(error)) for error in relative_errors))
-        padding = max(0.5, 0.10 * (upper - lower))
+        lower = min(0.0, 100.0 * min((float(np.min(error)) for error in relative_errors)))
+        upper = max(0.0, 100.0 * max((float(np.max(error)) for error in relative_errors)))
+        padding = max(0.5, 0.1 * (upper - lower))
         comparison.set_ylim(lower - padding, upper + padding)
-
-    ax.set_title(r"(a) Self-induced speed")
-    ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
-    ax.set_ylabel(r" $U_{\rm ring}/U_{\rm ref,0}$")
+    ax.set_title("(a) Self-induced speed")
+    ax.set_xlabel("$t\\,\\Gamma_0/R_0^2$")
+    ax.set_ylabel(" $U_{\\rm ring}/U_{\\rm ref,0}$")
     if plotted_values:
-        lower = min(float(np.min(values)) for values in plotted_values)
-        upper = max(float(np.max(values)) for values in plotted_values)
+        lower = min((float(np.min(values)) for values in plotted_values))
+        upper = max((float(np.max(values)) for values in plotted_values))
         padding = 0.04 * (upper - lower)
         ax.set_ylim(lower - padding, upper + padding)
     if curves:
-        ax.set_xlim(0.0, 1.01 * max(float(time[-1]) for time, _, _ in curves))
+        ax.set_xlim(0.0, 1.01 * max((float(time[-1]) for time, _, _ in curves)))
     fig.legend(
         *ax.get_legend_handles_labels(),
         ncol=3,
@@ -141,9 +121,8 @@ def main() -> None:
         bbox_to_anchor=(0.5, 0.0),
         borderpad=0.25,
         handletextpad=0.45,
-        columnspacing=0.70,
+        columnspacing=0.7,
     )
-    validate_thesis_figure(fig, (ax, comparison))
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)
 
 

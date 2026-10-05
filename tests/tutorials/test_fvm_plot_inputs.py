@@ -30,9 +30,9 @@ def test_required_column_history_rejects_header_only_csv(tmp_path, monkeypatch, 
     path = tmp_path / "profiles.csv"
     path.write_text("time,velocity_x\n")
     with pytest.raises(ValueError, match="has no records"):
-        common.load_csv_columns(path)
+        common.read_csv_columns(path)
     path.write_text("time,velocity_x\n0,1\n0.1,0.5\n")
-    data = common.load_csv_columns(path)
+    data = common.read_csv_columns(path)
     assert data["time"].tolist() == [0, 0.1]
     assert data["velocity_x"].tolist() == [1, 0.5]
 

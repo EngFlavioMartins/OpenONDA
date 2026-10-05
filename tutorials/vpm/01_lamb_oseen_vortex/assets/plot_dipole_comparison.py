@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Counter-rotating vortex dipole — core trajectory and radius comparison.
 
 Reads the field-based vortex diagnostics (``field_diagnostics.csv``, from the
@@ -17,19 +16,10 @@ Saves: figures/dipole_comparison.png
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .postprocess import (
@@ -47,61 +37,26 @@ from .postprocess import (
     save_fig,
     scheme_zorder,
     theoretical_dipole_trajectory,
-    validate_thesis_figure,
 )
-
-# Plot
 
 
 def plot_dipole_case(args) -> int:
     samples_dir = Path(args.samples_dir)
-    fmt = getattr(args, "format", "png")
+    fmt = args.format
     out = Path(args.figures_dir) / f"dipole_comparison.{fmt}"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    runtime = resolve_runtime_physics(
-        samples_dir,
-        args.circulation,
-        args.kinematic_viscosity,
-        args.b0,
-        args.a0_over_b0,
-        prefix="dipole",
-    )
+    runtime = resolve_runtime_physics(samples_dir, prefix="dipole")
     run_kinematic_viscosity = runtime["kinematic_viscosity"]
     a0 = runtime["velocity_peak_radius0"]
     colors, theme = load_theme()
     style_map = build_style_map(colors)
-
-    frames = {
-        scheme: frame
-        for scheme in SCHEMES
-        if (frame := load_dipole_feature_frame(samples_dir, scheme)) is not None
-    }
-    if not frames:
-        out.unlink(missing_ok=True)
-        print("  [dipole] no sampled trajectories; figure not generated")
-        return 0
-
+    frames = {scheme: load_dipole_feature_frame(samples_dir, scheme) for scheme in SCHEMES}
     common_steps = sorted(set.intersection(*(set(frame.index) for frame in frames.values())))
-    common_steps = [
-        step
-        for step in common_steps
-        if all(
-            (samples_dir / f"dipole_{scheme}" / f"dipole_{scheme}_zq_{step:06d}.vts").is_file()
-            for scheme in frames
-        )
-    ]
-    if not common_steps:
-        out.unlink(missing_ok=True)
-        print("  [dipole] no common sampled fields; figure not generated")
-        return 0
-
     reference_scheme = next(iter(frames))
     time = frames[reference_scheme].loc[common_steps, "time"].to_numpy(float)
-    tau = run_kinematic_viscosity * time / (a0**2)
+    tau = run_kinematic_viscosity * time / a0**2
     aspects: dict[str, np.ndarray] = {}
     template = None
-    for scheme, frame in frames.items():
+    for scheme in frames:
         values = []
         for step in common_steps:
             field = read_surface_field(
@@ -111,9 +66,6 @@ def plot_dipole_case(args) -> int:
                 template = field
             values.append(connected_core_aspect(field))
         aspects[scheme] = np.asarray(values, dtype=float)
-    if template is None:
-        raise RuntimeError("no dipole surface field was readable")
-
     diffusion_separation, diffusion_aspect = diffusion_only_dipole_features(
         template,
         time,
@@ -122,11 +74,9 @@ def plot_dipole_case(args) -> int:
         run_kinematic_viscosity,
         runtime["vortex_separation"],
     )
-
     fig, axes_grid = plt.subplots(2, 2, figsize=(125 / 25.4, 95 / 25.4), sharex=True)
-    centered_subplots_adjust(fig, outer=0.100, bottom=0.25, top=0.939, wspace=0.42, hspace=0.40)
+    centered_subplots_adjust(fig, outer=0.1, bottom=0.25, top=0.939, wspace=0.42, hspace=0.4)
     axes = axes_grid.ravel()
-
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
         if scheme not in frames:
@@ -171,13 +121,9 @@ def plot_dipole_case(args) -> int:
         finite_aspect = np.isfinite(aspect)
         axes[3].plot(tau[finite_aspect], aspect[finite_aspect], **plot_kw)
         plotted_schemes.append(scheme)
-
     print(f"  [dipole] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
-
-    # The pair is initialized as two finite columns.  Evaluate the fixed-core
-    # reference at the sampled times and include the exact initial condition.
     time_ref = np.concatenate(([0.0], time))
-    tau_ref = run_kinematic_viscosity * time_ref / (a0**2)
+    tau_ref = run_kinematic_viscosity * time_ref / a0**2
     x_ref = theoretical_dipole_trajectory(
         time_ref,
         runtime["circulation"],
@@ -189,35 +135,28 @@ def plot_dipole_case(args) -> int:
     reference_options = dict(theme.REFERENCE_STYLE)
     reference_options.update(label="Fixed circular-core reference", zorder=100)
     axes[0].plot(tau_ref, x_ref / a0, **reference_options)
-
     surrogate_options = {
-        "color": colors.get("GREY_DARK", "0.35"),
+        "color": "0.35",
         "linestyle": ":",
         "linewidth": 1.0,
         "label": "Diffusion-only pair",
         "zorder": 90,
     }
-    axes[2].plot(
-        tau,
-        diffusion_separation / runtime["vortex_separation"],
-        **surrogate_options,
-    )
+    axes[2].plot(tau, diffusion_separation / runtime["vortex_separation"], **surrogate_options)
     axes[3].plot(tau, diffusion_aspect, **surrogate_options)
-
     labels = (
-        ("Core trajectory", r"$x_c/a_{c,0}$"),
-        ("Core radius", r"$a_c/a_{c,0}$"),
-        ("Core separation", r"$b/b_0$"),
-        ("Aspect ratio", r"$E_{50}$"),
+        ("Core trajectory", "$x_c/a_{c,0}$"),
+        ("Core radius", "$a_c/a_{c,0}$"),
+        ("Core separation", "$b/b_0$"),
+        ("Aspect ratio", "$E_{50}$"),
     )
     for axis, (title, ylabel) in zip(axes, labels, strict=True):
         axis.set_title(title)
         axis.set_ylabel(ylabel)
     for axis in axes[:2]:
         axis.tick_params(labelbottom=False)
-    fig.supxlabel(r"$\nu t/a_{c,0}^2$", y=0.160)
-
-    handles, legend_labels = [], []
+    fig.supxlabel("$\\nu t/a_{c,0}^2$", y=0.16)
+    handles, legend_labels = ([], [])
     for axis in axes:
         for handle, label in zip(*axis.get_legend_handles_labels(), strict=True):
             if label not in legend_labels:
@@ -231,11 +170,10 @@ def plot_dipole_case(args) -> int:
             ncol=3,
             bbox_to_anchor=(0.5, 0.004),
             borderpad=0.25,
-            labelspacing=0.30,
+            labelspacing=0.3,
             handletextpad=0.55,
-            columnspacing=1.20,
+            columnspacing=1.2,
         )
-    validate_thesis_figure(fig, axes)
     save_fig(fig, out, args.dpi)
     return 0
 
@@ -246,4 +184,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

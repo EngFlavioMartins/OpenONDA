@@ -3,15 +3,6 @@
 with reference bands from Okajima (1982), Sohankar et al. (1998), and
 Sen et al. (2011)."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
@@ -33,8 +24,6 @@ def main():
     args = build_arg_parser().parse_args()
     ref = REFERENCES.get(args.Re, {})
     data = load_forces_csv(SOLUTION_DIR)
-    if "cube" not in data:
-        raise SystemExit("  No force data on patch 'cube' to plot.")
     d = data["cube"]
     t = d["time"]
     drag_coefficient = d["drag_coefficient"]
@@ -76,7 +65,7 @@ def main():
     ax.set_xlabel("t [s]")
     ax.grid(False)
 
-    centered_subplots_adjust(fig, outer=.18, bottom=.12, top=.96, hspace=.30)
+    centered_subplots_adjust(fig, outer=0.18, bottom=0.12, top=0.96, hspace=0.30)
     save_fig(fig, "forces_cube.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(f"  cube: mean drag_coefficient = {drag_coefficient_mean:.4f}", end="")

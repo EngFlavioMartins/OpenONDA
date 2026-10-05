@@ -4,7 +4,7 @@ The airfoil is generated analytically, represented by the FVM immersed-
 boundary method, and coupled to VPM on a solver-native Cartesian mesh.  The
 case has no external solver, mesher, or repository-path dependency.
 
-Run with ``python setup.py``. Edit the physical and numerical constants below
+Run with ``python -m openonda.tutorial_runner . setup``. Edit the physical and numerical constants below
 to study a different NACA 4412 case.
 """
 
@@ -21,11 +21,6 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.airfoil_geometry import naca4_vertices
 

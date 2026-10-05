@@ -11,7 +11,9 @@ import pytest
 from tests._tutorial_helpers import load_tutorial_module
 
 setup = load_tutorial_module("vpm/rotor_flow")
-matched_pair = load_tutorial_module("vpm/rotor_flow", "assets.run_matched_stabilization_pair")
+matched_pair = __import__(
+    "tests.support.vpm.rotor_flow.run_matched_stabilization_pair", fromlist=["*"]
+)
 
 
 def test_ordinary_rotor_case_keeps_native_controls() -> None:
@@ -169,7 +171,11 @@ def test_allrun_cleans_then_runs_the_default_resumable_case() -> None:
     assert commands[0] in ("#!/bin/bash", "#!/bin/bash -e")
     if commands[0] == "#!/bin/bash":
         assert commands.pop(1) == "set -e"
-    assert commands[1:] == ['cd -- "$(dirname -- "$0")"', "./allclean.sh", 'python setup.py "$@"']
+    assert commands[1:] == [
+        'cd "$(dirname "$0")"',
+        "./allclean.sh",
+        'python -m openonda.tutorial_runner . setup "$@"',
+    ]
 
 
 def test_default_rotor_entrypoint_uses_native_continuation(monkeypatch) -> None:

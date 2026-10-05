@@ -82,6 +82,14 @@ For an immersed body, the mesh contains no body-wall patch. Markers prescribe th
 
 ## Time and discretisation
 
+For a time-dependent velocity boundary, declare `fvm.VelocityRamp` with initial
+and final vectors in m/s and transition endpoints in seconds. Bind it to patch
+names through `velocity_boundaries=(fvm.VelocityBoundary(...),)`. The native
+solver evaluates the smooth transition at each implicit endpoint and records
+it in the checkpoint configuration. `normal_only=True` prescribes normal
+velocity with zero tangential normal gradient; a slip patch returns to
+impermeable slip when that prescribed normal velocity reaches zero.
+
 `PimpleControl(algorithm="PISO")` advances transient flow with pressure corrections. `PIMPLE` adds nonlinear outer corrections; `n_outer_correctors` controls these and `n_correctors` controls pressure corrections. `SIMPLE` solves steady flow through `solve_steady()`.
 
 `euler_implicit` is first-order in time; `backward` uses second-order BDF after startup. Upwind convection is more dissipative; central convection preserves a smooth resolved vortex but can oscillate in under-resolved flows. `limitedLinear` is the default. Gradients use `lsq` or `gauss`.

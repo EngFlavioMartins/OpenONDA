@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
-cd -- "$(dirname -- "$0")"
+
+cd "$(dirname "$0")"
 
 ./allclean.sh
 
-python setup.py
+python -m openonda.tutorial_runner . setup

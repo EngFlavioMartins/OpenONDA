@@ -1,19 +1,10 @@
 #!/usr/bin/env python3
 """Plot coupled-run timing, particle population, and transfer diagnostics."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 import argparse
-import json
+from openonda.results import read_json_lines
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.ticker import MaxNLocator, ScalarFormatter  # noqa: E402
@@ -34,82 +25,24 @@ LAYOUT_HSPACE = 0.35
 LEGEND_FONT_SIZE = util.FONT_SIZE_PT
 
 
-def _records() -> list[dict]:
-    path = util.SOLUTION / "coupler_diagnostics.jsonl"
-    if not path.exists():
-        return []
-    records = []
-    lines = path.read_text().splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError:
-            # A live writer may leave one temporarily incomplete final line.
-            if index == len(lines) - 1 and not line.endswith("\n"):
-                break
-            raise
-    return records
+def _records():
+    return read_json_lines(util.SOLUTION / "coupler_diagnostics.jsonl")
 
 
 def _values(records: list[dict], section: str, key: str) -> np.ndarray:
     # Unevaluated diagnostics are null, not zero; NaN keeps them off the plot.
-    return np.asarray(
-        [
-            np.nan if row.get(section, {}).get(key) is None else row.get(section, {}).get(key)
-            for row in records
-        ],
-        dtype=float,
-    )
+    return np.asarray([row[section][key] for row in records], dtype=float)
 
 
-def _timing_per_fvm_step(records: list[dict], key: str) -> np.ndarray:
-    """Normalize one recorded coupling cost to one equivalent FVM step.
-
-    A coupling record contains one VPM step, one transfer, and all FVM
-    substeps needed to advance the same physical interval. Dividing each
-    component by the recorded number of FVM substeps gives a common cost unit:
-    wall seconds per FVM flow-field step. The normalization is performed per
-    record so a run may use a different valid subcycling ratio in another
-    configuration.
-
-    Parameters
-    ----------
-    records : list[dict]
-        Coupler diagnostic records containing ``timing_seconds`` and the
-        positive integer ``n_fvm_substeps``.
-    key : str
-        Timing component, for example ``"vpm"``, ``"fvm"`` or ``"transfer"``.
-
-    Returns
-    -------
-    numpy.ndarray
-        Component wall time divided by the number of FVM substeps, in seconds
-        per equivalent FVM step.
-
-    Raises
-    ------
-    ValueError
-        If a record has a missing, non-finite, or non-positive substep count.
-    """
+def _timing_per_fvm_step(records, key):
     timing = _values(records, "timing_seconds", key)
-    try:
-        substeps = np.asarray([row["n_fvm_substeps"] for row in records], dtype=float)
-    except (KeyError, TypeError, ValueError) as error:
-        raise ValueError("each record must contain n_fvm_substeps") from error
-    if (
-        np.any(~np.isfinite(substeps))
-        or np.any(substeps <= 0.0)
-        or np.any(substeps != np.floor(substeps))
-    ):
-        raise ValueError("n_fvm_substeps must be a positive integer")
+    substeps = np.asarray([row["n_fvm_substeps"] for row in records], dtype=float)
     return timing / substeps
 
 
 def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     util._THEME.set_thesis_style()
     records = _records()
-    if not records:
-        raise SystemExit("No coupling diagnostics found in solution/.")
 
     time = np.asarray([row["time"] for row in records], dtype=float)
     fig, axes = plt.subplots(3, 1, figsize=FIGURE_SIZE, dpi=dpi, sharex=True)

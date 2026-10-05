@@ -37,17 +37,11 @@ def test_wind_axis_uses_saved_freestream(degrees, tmp_path):
     np.testing.assert_allclose(lift, -body_drag * direction[1] + body_lift * direction[0])
 
 
-def test_csv_only_results_use_setup_freestream(tmp_path):
-    (tmp_path / "setup.py").write_text("FREESTREAM_VELOCITY = (0.0, 2.0, 0.0)\n")
-    np.testing.assert_allclose(plot_forces._wind_direction(tmp_path), [0.0, 1.0])
-
-
 def test_invalid_saved_freestream_does_not_fall_back(tmp_path):
     solution = tmp_path / "solution"
     solution.mkdir()
     (solution / "run_metadata.json").write_text(
         json.dumps({"physics": {"freestream_velocity": [0.0, 0.0, 0.0]}})
     )
-    (tmp_path / "setup.py").write_text("FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)\n")
-    with pytest.raises(ValueError, match="nonzero airfoil plane"):
+    with pytest.raises(ValueError, match="nonzero selected plane"):
         plot_forces._wind_direction(tmp_path)

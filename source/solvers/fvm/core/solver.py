@@ -2035,13 +2035,17 @@ class FVMSolver(CouplerInterfaceMixin):
             return True
         return False
 
-    def run(self, *, start_from=None) -> None:
+    def run(self, *, start_from=None, initial_velocity=None) -> None:
         """Run from the current clock to the configured end time.
 
         ``start_from="latest"`` restores the configured native backup when
         present and starts at zero otherwise. A path selects an explicit
         backup; ``"initial"`` starts a new history at the configured initial time. ``None``
         preserves the current in-memory state.
+
+        ``initial_velocity`` optionally maps local cell centres to the physical
+        initial field. It runs before initial output only for a fresh state;
+        native continuation restores the checkpoint field.
 
         The finite lifecycle writes initial output, executes steady SIMPLE or
         transient accepted steps, writes final output/backups, refreshes solver
@@ -2068,6 +2072,11 @@ class FVMSolver(CouplerInterfaceMixin):
                 self.start_from(start_from)
             self._ensure_evolution_usable()
             restored = getattr(self, "_restart_loaded", False)
+            from source.simulation.forcing import apply_initial_velocity, apply_velocity_boundaries
+
+            apply_velocity_boundaries(self, self.time)
+            if initial_velocity is not None and not restored and self.step == 0:
+                apply_initial_velocity(self, initial_velocity)
             if self.auto_write and self._initial_output_enabled and not restored:
                 self.write_vtk()
             if self._initial_output_enabled and not restored:
@@ -2164,6 +2173,9 @@ class FVMSolver(CouplerInterfaceMixin):
         if self._step_phase != "accepted":
             raise RuntimeError("A candidate FVM step is pending; call advance_time() to commit it")
         step_time_step_size = self._select_time_step_size()
+        from source.simulation.forcing import apply_velocity_boundaries
+
+        apply_velocity_boundaries(self, self.time + step_time_step_size)
         step_number = self.step + 1
         self.profiler.begin_step(
             step=step_number,

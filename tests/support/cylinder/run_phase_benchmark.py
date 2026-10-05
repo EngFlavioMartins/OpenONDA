@@ -2,14 +2,12 @@
 """Run one isolated reference or coupled phase-benchmark stage (no cleaning)."""
 
 import argparse
+from functools import partial
 import json
 from pathlib import Path
 import time
 
-if __package__:
-    from . import phase_benchmark as case
-else:
-    import phase_benchmark as case
+from . import phase_benchmark as case
 
 
 def parse_args(argv=None):
@@ -18,8 +16,7 @@ def parse_args(argv=None):
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--pilot", action="store_true")
-    # f32 FMM (including its SlipSlab wrapper) is now CUDA-qualified. Keep
-    # the portable default, but permit an explicit GPU execution request.
+    # Keep the portable planar backend default and allow explicit device selection.
     parser.add_argument("--device", choices=("CPU", "CUDA", "VULKAN", "METAL"), default="CPU")
     args = parser.parse_args(argv)
     if args.kind == "reference" and args.pilot:
@@ -53,8 +50,6 @@ def main():
         raise FileExistsError(result_path)
     if not args.resume and any((out / n).exists() for n in ("samples", "solution")):
         raise FileExistsError(f"Refusing to overwrite existing output: {out}")
-    startup = case.load_case_module(case.CASE, "assets.startup")
-
     started = time.monotonic()
     try:
         if args.kind == "reference":
@@ -66,21 +61,21 @@ def main():
                 assert solver.run_status == "complete" and abs(solver.time - case.END) < 1e-8
                 result = {"status": "completed", "time": solver.time, "step": solver.step}
         else:
-
-            def build_case(*, end_time, overrides):
-                return case.coupled_case(end=end_time, device=args.device)
-
-            last = startup.run_coupled_cylinder(
-                build_case,
-                output_root=out,
-                end_time=case.END,
-                start_from="latest" if args.resume else "initial",
-                max_coupling_steps=20 if args.pilot else None,
-                startup_duration=case.module.STARTUP_DURATION,
-                startup_transition_duration=case.module.STARTUP_TRANSITION_DURATION,
-                steady_freestream_velocity=case.module.FREESTREAM_VELOCITY,
-                perturbation=case.module.INITIAL_PERTURBATION,
+            flow, particles, policy, mesh = case.coupled_case(end=case.END, device=args.device)
+            initial = partial(
+                case.module.cylinder_initial_velocity,
+                freestream_velocity=case.module.STARTUP_FREESTREAM_VELOCITY,
+                **case.module.INITIAL_PERTURBATION,
             )
+            with case.module.coupling.create_coupler(
+                flow, particles, policy, mesh=mesh, case_dir=out
+            ) as solver:
+                last = solver.run(
+                    start_from="latest" if args.resume else "initial",
+                    max_coupling_steps=20 if args.pilot else None,
+                    backup_at_stop=True,
+                    initial_velocity=initial,
+                )
             expected = case.steps(case.END, case.EXCHANGE)
             if args.pilot:
                 assert 0 < last <= expected

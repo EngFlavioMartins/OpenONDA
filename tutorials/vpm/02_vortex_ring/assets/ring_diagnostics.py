@@ -22,7 +22,6 @@ CSV_COLUMNS = (
     "net_vortex_strength_z",
     "max_vortex_strength_magnitude",
 )
-
 MODE_CSV_COLUMNS = (
     "time",
     "step",
@@ -56,59 +55,14 @@ class RingDiagnosticsSampler:
         rows = []
         for group_id in np.unique(particle_group_id):
             selected = particle_group_id == group_id
-            row = self._sample_group(position[selected], vortex_strength[selected])
+            row = _sample_ring_group(position[selected], vortex_strength[selected])
             rows.append([int(group_id), *row])
         return {
             name: np.asarray(
-                [row[index] for row in rows],
-                dtype=np.int32 if name == "group_id" else np.float64,
+                [row[index] for row in rows], dtype=np.int32 if name == "group_id" else np.float64
             )
             for index, name in enumerate(self.csv_columns)
         }
-
-    @staticmethod
-    def _sample_group(
-        position: np.ndarray,
-        vortex_strength: np.ndarray,
-    ) -> tuple[float, ...]:
-        vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
-        vortex_strength_magnitude_sum = float(vortex_strength_magnitude.sum())
-        if vortex_strength_magnitude_sum <= np.finfo(float).tiny:
-            return (np.nan,) * (len(CSV_COLUMNS) - 3)
-
-        vortex_centroid = (
-            np.einsum("i,ij->j", vortex_strength_magnitude, position)
-            / vortex_strength_magnitude_sum
-        )
-        centred_position = position - vortex_centroid
-        covariance = (
-            (centred_position * vortex_strength_magnitude[:, None]).T
-            @ centred_position
-            / vortex_strength_magnitude_sum
-        )
-        eigenvalues = np.linalg.eigvalsh(covariance)
-        major_radius = float(np.sqrt(max(eigenvalues[-1] + eigenvalues[-2], 0.0)))
-        tube_circulation = (
-            vortex_strength_magnitude_sum / (2.0 * np.pi * major_radius)
-            if major_radius > np.finfo(float).eps
-            else np.nan
-        )
-
-        net_vortex_strength = vortex_strength.sum(axis=0)
-        impulse = 0.5 * np.sum(np.cross(position, vortex_strength), axis=0)
-        linear_impulse_magnitude = float(np.linalg.norm(impulse))
-        impulse_radius = 2.0 * linear_impulse_magnitude / vortex_strength_magnitude_sum
-        return (
-            *vortex_centroid,
-            major_radius,
-            tube_circulation,
-            float(impulse[0]),
-            linear_impulse_magnitude,
-            impulse_radius,
-            vortex_strength_magnitude_sum,
-            *net_vortex_strength,
-            float(vortex_strength_magnitude.max(initial=0.0)),
-        )
 
 
 class RingModeDiagnosticsSampler:
@@ -141,12 +95,6 @@ class RingModeDiagnosticsSampler:
         transverse_origin: tuple[float, float] | None = None,
         schedule=None,
     ) -> None:
-        if max_mode < 1:
-            raise ValueError("max_mode must be positive")
-        if azimuthal_bins < 2 * max_mode + 1:
-            raise ValueError("azimuthal_bins must exceed twice max_mode")
-        if reference_radius <= 0.0:
-            raise ValueError("reference_radius must be positive")
         self.schedule = schedule
         self.max_mode = max_mode
         self.azimuthal_bins = azimuthal_bins
@@ -162,7 +110,7 @@ class RingModeDiagnosticsSampler:
         for group_id in np.unique(particle_group_id):
             selected = particle_group_id == group_id
             sampled_rows = self._sample_group(position[selected], vortex_strength[selected])
-            rows.extend([int(group_id), *row] for row in sampled_rows)
+            rows.extend(([int(group_id), *row] for row in sampled_rows))
         return {
             name: np.asarray(
                 [row[index] for row in rows],
@@ -172,15 +120,12 @@ class RingModeDiagnosticsSampler:
         }
 
     def _sample_group(
-        self,
-        position: np.ndarray,
-        vortex_strength: np.ndarray,
+        self, position: np.ndarray, vortex_strength: np.ndarray
     ) -> list[tuple[float, ...]]:
         vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
         vortex_strength_magnitude_sum = float(vortex_strength_magnitude.sum())
         if vortex_strength_magnitude_sum <= np.finfo(float).tiny:
             return []
-
         approximate_vortex_centroid = (
             np.einsum("i,ij->j", vortex_strength_magnitude, position)
             / vortex_strength_magnitude_sum
@@ -193,50 +138,31 @@ class RingModeDiagnosticsSampler:
         centred_position[:, 1:] -= transverse_origin
         theta = np.mod(np.arctan2(centred_position[:, 2], centred_position[:, 1]), 2.0 * np.pi)
         radial_position = np.hypot(centred_position[:, 1], centred_position[:, 2])
-        tangent = np.column_stack(
-            (
-                np.zeros_like(theta),
-                -np.sin(theta),
-                np.cos(theta),
-            )
-        )
-        # circulation_theta contains the cylindrical particle_volume Jacobian rho. Dividing
-        # by rho recovers the cross-sectional vorticity measure needed for a
-        # centreline moment and avoids a false bias toward the outer side of
-        # the torus. The radial vortex_strength added by the solenoidal Widnall
-        # initialization is intentionally excluded from this weight.
+        tangent = np.column_stack((np.zeros_like(theta), -np.sin(theta), np.cos(theta)))
         tangential_vortex_strength_magnitude = np.abs(
             np.einsum("ij,ij->i", vortex_strength, tangent)
         )
         cross_section_weight = tangential_vortex_strength_magnitude / np.maximum(
-            radial_position,
-            np.finfo(float).eps,
+            radial_position, np.finfo(float).eps
         )
         axial_vortex_centroid = float(
             np.sum(cross_section_weight * centred_position[:, 0]) / np.sum(cross_section_weight)
         )
         axial_position = centred_position[:, 0] - axial_vortex_centroid
-
         bin_index = np.floor(theta * self.azimuthal_bins / (2.0 * np.pi)).astype(int)
         bin_index = np.minimum(bin_index, self.azimuthal_bins - 1)
         bin_weight = np.bincount(
-            bin_index,
-            weights=cross_section_weight,
-            minlength=self.azimuthal_bins,
+            bin_index, weights=cross_section_weight, minlength=self.azimuthal_bins
         )
         radial_sum = np.bincount(
-            bin_index,
-            weights=cross_section_weight * radial_position,
-            minlength=self.azimuthal_bins,
+            bin_index, weights=cross_section_weight * radial_position, minlength=self.azimuthal_bins
         )
         occupied = bin_weight > np.finfo(float).tiny
         coverage = float(np.mean(occupied))
         if np.count_nonzero(occupied) < 2 * self.max_mode + 1:
             return []
-
         major_radius = float(np.sum(radial_sum) / np.sum(bin_weight))
         radial_displacement = radial_position - major_radius
-
         rows: list[tuple[float, ...]] = []
         for mode in range(1, self.max_mode + 1):
             phase_factor = np.exp(-1j * mode * theta)
@@ -261,3 +187,41 @@ class RingModeDiagnosticsSampler:
                 )
             )
         return rows
+
+
+def _sample_ring_group(position: np.ndarray, vortex_strength: np.ndarray) -> tuple[float, ...]:
+    vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
+    vortex_strength_magnitude_sum = float(vortex_strength_magnitude.sum())
+    if vortex_strength_magnitude_sum <= np.finfo(float).tiny:
+        return (np.nan,) * (len(CSV_COLUMNS) - 3)
+    vortex_centroid = (
+        np.einsum("i,ij->j", vortex_strength_magnitude, position) / vortex_strength_magnitude_sum
+    )
+    centred_position = position - vortex_centroid
+    covariance = (
+        (centred_position * vortex_strength_magnitude[:, None]).T
+        @ centred_position
+        / vortex_strength_magnitude_sum
+    )
+    eigenvalues = np.linalg.eigvalsh(covariance)
+    major_radius = float(np.sqrt(max(eigenvalues[-1] + eigenvalues[-2], 0.0)))
+    tube_circulation = (
+        vortex_strength_magnitude_sum / (2.0 * np.pi * major_radius)
+        if major_radius > np.finfo(float).eps
+        else np.nan
+    )
+    net_vortex_strength = vortex_strength.sum(axis=0)
+    impulse = 0.5 * np.sum(np.cross(position, vortex_strength), axis=0)
+    linear_impulse_magnitude = float(np.linalg.norm(impulse))
+    impulse_radius = 2.0 * linear_impulse_magnitude / vortex_strength_magnitude_sum
+    return (
+        *vortex_centroid,
+        major_radius,
+        tube_circulation,
+        float(impulse[0]),
+        linear_impulse_magnitude,
+        impulse_radius,
+        vortex_strength_magnitude_sum,
+        *net_vortex_strength,
+        float(vortex_strength_magnitude.max(initial=0.0)),
+    )

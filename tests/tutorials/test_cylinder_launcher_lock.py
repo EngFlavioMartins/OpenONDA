@@ -25,7 +25,7 @@ def fake_case(tmp_path, reference):
     case = tmp_path / "case with spaces"
     case.mkdir()
     source = CASE / "reference_flow" if reference else CASE
-    for name in ("allrun.sh", "allcontinue.sh"):
+    for name in ("allrun.sh", "allcontinue.sh", "allclean.sh"):
         shutil.copy2(source / name, case / name)
     for name in OUTPUT_FILES:
         path = case / name
@@ -59,9 +59,13 @@ def fake_case(tmp_path, reference):
 
 
 @pytest.mark.parametrize("reference", [False, True], ids=["coupled", "reference"])
-@pytest.mark.parametrize("duplicate_arguments", [[], ["--fresh"]], ids=["continue", "fresh"])
+@pytest.mark.parametrize(
+    "duplicate_script,duplicate_arguments",
+    [("allcontinue.sh", []), ("allcontinue.sh", ["--fresh"]), ("allclean.sh", [])],
+    ids=["continue", "fresh", "clean"],
+)
 def test_duplicate_launch_rejected_after_child_closes_fds_and_execs(
-    tmp_path, reference, duplicate_arguments
+    tmp_path, reference, duplicate_script, duplicate_arguments
 ):
     case, environment = fake_case(tmp_path, reference)
     first = subprocess.Popen(
@@ -79,7 +83,7 @@ def test_duplicate_launch_rejected_after_child_closes_fds_and_execs(
             time.sleep(0.01)
         assert Path(environment["READY"]).exists()
         duplicate = subprocess.run(
-            ["bash", str(case / "allcontinue.sh"), *duplicate_arguments],
+            ["bash", str(case / duplicate_script), *duplicate_arguments],
             cwd="/tmp",
             env=environment,
             capture_output=True,

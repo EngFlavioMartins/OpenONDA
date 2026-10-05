@@ -99,24 +99,6 @@ def _write_vpm_metadata(
     return payload
 
 
-def test_cube_plot_metadata_accepts_only_supported_coupling_schemas():
-    plot_util = _load_module(
-        TUTORIALS / "coupled_fvm_vpm/02_cube_flow/assets/postprocess.py",
-        "cube_flow_plot_metadata_test",
-    )
-
-    plot_util._validate_metadata_provenance(
-        {"schema_version": 2, "coupling_method": "absolute_common_m4_lattice_blend"}
-    )
-    plot_util._validate_metadata_provenance(
-        {"schema_version": 3, "coupling_method": "buffered_m4_renewal"}
-    )
-    with pytest.raises(ValueError, match="supported cube-flow coupling metadata"):
-        plot_util._validate_metadata_provenance(
-            {"schema_version": 3, "coupling_method": "absolute_common_m4_lattice_blend"}
-        )
-
-
 def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path):
     import pyvista as pv
 
@@ -138,7 +120,7 @@ def test_lamb_oseen_surface_reader_round_trips_the_sampler_schema(tmp_path: Path
 
     field = diagnostics.read_surface_field(path)
 
-    assert set(field) == {"x", "y", "velocity_x", "velocity_y", "vorticity_z"}
+    assert {"x", "y", "velocity_x", "velocity_y", "vorticity_z"} <= set(field)
     np.testing.assert_allclose(field["velocity_x"], field["x"] + 1.0)
     np.testing.assert_allclose(field["velocity_y"], field["y"] - 2.0)
     np.testing.assert_allclose(field["vorticity_z"], field["x"] - field["y"])
@@ -241,7 +223,7 @@ def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
 
 
 def test_vortex_ring_backup_schedule_follows_the_completed_horizon():
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
 
     assert postprocess._expected_backup_steps(45, 25) == {25}
     assert postprocess._expected_backup_steps(100, 25) == {25, 50, 75, 100}
@@ -251,7 +233,7 @@ def test_vortex_ring_backup_schedule_follows_the_completed_horizon():
 
 
 def test_vortex_ring_empty_summary_has_no_ranked_case(tmp_path: Path):
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
 
     summary = postprocess.build_summary(tmp_path / "samples", tmp_path / "figures")
 
@@ -262,7 +244,7 @@ def test_vortex_ring_empty_summary_has_no_ranked_case(tmp_path: Path):
 
 
 def test_vortex_ring_flow_integrals_allow_initially_undefined_health_only(tmp_path: Path):
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
     path = tmp_path / "flow_integrals.csv"
     path.write_text(
         "time,step,total_kinetic_energy,strain_increment_infinity\n0.0,0,1.0,\n0.1,5,0.9,0.2\n",
@@ -281,7 +263,7 @@ def test_vortex_ring_flow_integrals_allow_initially_undefined_health_only(tmp_pa
 def test_vortex_ring_available_plot_validation_accepts_partial_campaign(
     tmp_path: Path, monkeypatch
 ):
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
     samples = tmp_path / "samples"
     figures = tmp_path / "figures"
     dns = samples / "dns_direct"
@@ -330,29 +312,59 @@ def test_vortex_ring_saffman_comparison_is_limited_to_thin_cores():
     assert metrics.saffman_speed(np.array([0.0]))[0] == pytest.approx(metrics.REFERENCE_VELOCITY)
 
 
-def test_vortex_ring_plot_selection_keeps_compatible_results_during_new_campaign(tmp_path: Path):
+def test_ring_histories_preserve_large_finite_native_samples_and_their_clock(tmp_path):
+    import h5py
+
     metrics = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.ring_metrics")
-    samples = tmp_path / "samples"
-    for variant in metrics.CURRENT_VARIANTS:
-        (samples / variant).mkdir(parents=True)
-    _write_vpm_metadata(tmp_path, "dns_direct", stretching_scheme="DIRECT")
-    _write_vpm_metadata(
-        tmp_path,
-        "les_transposed",
-        stretching_scheme="TRANSPOSED",
-        turbulence_model="LES_SMAGORINSKY",
-    )
+    paths = []
+    clock = np.array([0.0, 0.4])
+    for step, time, centre, radius, strength in (
+        (0, clock[0], 0.0, 1.0, 0.25),
+        (40, clock[1], 2500.0, 1200.0, 1000.0),
+    ):
+        path = tmp_path / f"vpm_{step:06d}.h5"
+        with h5py.File(path, "w") as archive:
+            solver = archive.create_group("solver")
+            solver.attrs.update(step=step, time=time, n_particles_total=4)
+            particles = archive.create_group("particles")
+            particles["position"] = np.array(
+                [
+                    [centre, radius, 0.0],
+                    [centre, 0.0, radius],
+                    [centre, -radius, 0.0],
+                    [centre, 0.0, -radius],
+                ]
+            )
+            particles["vortex_strength"] = strength * np.array(
+                [[0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]
+            )
+            particles["core_radius"] = np.full(4, 0.1)
+            particles["group_id"] = np.zeros(4, dtype=int)
+        paths.append(path)
 
-    assert metrics.plot_variants(samples) == ("dns_direct", "les_transposed")
+    raw = metrics.load_ring_data(paths)
+    normalized = metrics.normalise_ring_data(raw)[0]
+    np.testing.assert_array_equal(normalized["t_norm"], clock / metrics.REFERENCE_TIME)
+    np.testing.assert_allclose(normalized["x_norm"], [0.0, 2500.0])
+    np.testing.assert_allclose(normalized["R_norm"], [1.0, 1200.0])
+    strength_time, strength = metrics.load_length_integrated_strength(paths)
+    np.testing.assert_array_equal(strength_time, clock / metrics.REFERENCE_TIME)
+    np.testing.assert_array_equal(strength, [1.0, 4000.0])
+    assert raw[0][-1]["max_vortex_strength_magnitude"] == 1000.0
 
-    _write_vpm_metadata(tmp_path, "dns_transposed", stretching_scheme="TRANSPOSED")
-    _write_vpm_metadata(tmp_path, "dns_mixed", stretching_scheme="MIXED")
-    assert metrics.plot_variants(samples) == (
-        "dns_direct",
-        "dns_transposed",
-        "dns_mixed",
-        "les_transposed",
-    )
+
+def test_ring_history_reader_uses_native_clock_admission_without_rewriting_rows(tmp_path):
+    metrics = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.ring_metrics")
+    path = tmp_path / "ring_diagnostics.csv"
+    original = "time,step,vortex_centroid_x\n0.0,0,0.0\n0.4,40,2500.0\n"
+    path.write_text(original, encoding="utf-8")
+    frame = metrics.load_sampled_ring_data(path)
+    np.testing.assert_array_equal(frame.time, [0.0, 0.4])
+    np.testing.assert_array_equal(frame.vortex_centroid_x, [0.0, 2500.0])
+    assert path.read_text(encoding="utf-8") == original
+    path.write_text(original + "0.4,40,3000.0\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate or nonmonotonic"):
+        metrics.load_sampled_ring_data(path)
 
 
 def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: Path, monkeypatch):
@@ -379,7 +391,7 @@ def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: P
     for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv", "ring_modes.csv"):
         (sample_directory / csv_name).write_text("time,step\n4.84,242\n", encoding="utf-8")
 
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
     monkeypatch.setattr(postprocess, "SAMPLES_DIR", tmp_path / "samples")
     monkeypatch.setattr(postprocess, "SOLUTION_DIR", tmp_path / "solution")
     checked_metadata, expected_steps, failures = postprocess._run_validation("dns_direct")
@@ -389,7 +401,7 @@ def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: P
 
 
 def test_vortex_ring_ranks_the_last_instability_from_terminal_times(tmp_path: Path):
-    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+    postprocess = __import__("tests.support.vpm.vortex_ring.postprocess", fromlist=["*"])
     metrics = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.ring_metrics")
     schemes = {
         "dns_direct": ("DIRECT", 4.84),

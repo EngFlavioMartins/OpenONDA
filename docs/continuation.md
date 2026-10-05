@@ -3,7 +3,7 @@
 From a tutorial directory:
 
 ```bash
-python setup.py       # Run or resume the default case.
+python -m openonda.tutorial_runner . setup  # Run or resume the default case.
 ./allcontinue.sh      # Run or resume the tutorial's case set.
 ./allrun.sh           # Run the case launcher; most clean previous output.
 ```

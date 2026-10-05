@@ -9,10 +9,7 @@ import math
 from pathlib import Path
 import sys
 
-from openonda.tutorial_runner import case_package, load_case_module
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
+from openonda.tutorial_runner import load_case_module
 
 from .campaign import (
     collect_cost,
@@ -25,7 +22,7 @@ from .provenance import new_run_directory
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 )
-LAUNCHER = Path(__file__).with_name("run_campaign.py")
+SUPPORT_DIR = Path(__file__).resolve().parent
 _DOMAIN_KEYS = ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
 
 
@@ -66,7 +63,7 @@ def coupled_grid_domain_check(grids: list[dict]) -> dict:
 
 
 def plot_results(report: dict, directory: Path, output_format: str = "both") -> None:
-    """Save grid metrics with sampling uncertainty and matched span profiles."""
+    """Save planar grid metrics with sampling uncertainty and a matched midspan profile."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -117,7 +114,8 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
     validate_thesis_figure(figure, axes)
     export_figure(figure, directory / "grid_comparison", figure_format=output_format)
     plt.close(figure)
-    figure, axes = plt.subplots(3, 1, figsize=figure_size("stacked"))
+    figure, axis = plt.subplots(figsize=figure_size("single"))
+    axes = [axis]
     for axis, (name, row) in zip(axes, report["span_profiles"].items(), strict=True):
         for label, color in (("reference", COLORS["reference"]), ("coupled", COLORS["hybrid"])):
             profile = row[label]
@@ -131,8 +129,8 @@ def plot_results(report: dict, directory: Path, output_format: str = "both") -> 
         axis.set(xlabel="Mean u/U", ylabel="y/D", title=name.replace("_", " "))
         axis.grid(False)
     axes[0].legend()
-    print("Mean velocity at x/D=1; tU/D=40–100")
-    centered_subplots_adjust(figure, outer=0.15, bottom=0.12, top=0.94, hspace=0.85)
+    print("Planar mean velocity at x/D=1; tU/D=40–100")
+    centered_subplots_adjust(figure, outer=0.15, bottom=0.24, top=0.86)
     prepare_figure(figure)
     fit_thesis_y_label_margins(figure, axes)
     validate_thesis_figure(figure, axes)
@@ -190,7 +188,17 @@ def main() -> int:
         for spacing in grids:
             name = "grid_h" + format(spacing, ".8g").replace(".", "p")
             run_dir = root / kind if kind == "reference" else root / kind / name
-            command = [sys.executable, str(LAUNCHER), "--kind", kind, "--run-dir", str(run_dir)]
+            command = [
+                sys.executable,
+                "-m",
+                "openonda.tutorial_runner",
+                str(SUPPORT_DIR),
+                "run_campaign",
+                "--kind",
+                kind,
+                "--run-dir",
+                str(run_dir),
+            ]
             if run_dir.exists():
                 command.append("--resume")
             if kind == "reference":
@@ -282,7 +290,7 @@ def main() -> int:
         fine_coupled = root / "coupled" / force_grids[-1]["name"] / "samples"
         fine_reference_directory = root / "reference" / "samples" / fine_reference["name"]
         report["span_profiles"] = {}
-        for name in ("span_lower", "span_middle", "span_upper"):
+        for name in ("span_middle",):
             matches = list(fine_coupled.rglob(name + ".csv"))
             if len(matches) != 1:
                 raise ValueError(f"expected one {name} profile in {fine_coupled}")
@@ -318,14 +326,17 @@ def main() -> int:
             )
         )
         report["qualification_scope"] = (
-            "These force/profile targets do not establish temporal, domain or span independence; inspect their separate sensitivity results."
+            "These planar force/profile targets do not establish temporal or domain independence; inspect their separate sensitivity results. A single periodic spanwise cell cannot qualify three-dimensional wake dynamics."
         )
         plot_results(report, root / "figures")
     (root / "pipeline_manifest.json").write_text(json.dumps(report, indent=2) + "\n")
     if not args.pilot and not args.reference_only and args.sensitivity != "none":
         command = [
             sys.executable,
-            str(Path(__file__).with_name("run_sensitivity.py")),
+            "-m",
+            "openonda.tutorial_runner",
+            str(SUPPORT_DIR),
+            "run_sensitivity",
             "--run-dir",
             str(root / "sensitivity"),
             "--timeout",

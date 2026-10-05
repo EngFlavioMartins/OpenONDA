@@ -432,34 +432,43 @@ def _verify_distribution_resources() -> dict[str, object]:
     }
 
 
-def _verify_direct_tutorial_scripts() -> int:
-    """Exercise normal Python file commands in copied cases outside the checkout."""
-    scripts = {
+def _verify_tutorial_commands() -> int:
+    """Exercise installed module commands in copied user-owned cases."""
+    modules = {
         "vpm/lamb_oseen_vortex": (
-            "setup.py",
-            "assets/rwm_ensemble.py",
-            "assets/postprocess.py",
-            "assets/plot_merging_snapshots.py",
+            "setup",
+            "assets.rwm_ensemble",
+            "assets.postprocess",
+            "assets.plot_merging_snapshots",
         ),
-        "vpm/vortex_ring": ("setup.py", "assets/postprocess.py"),
+        "vpm/vortex_ring": ("setup",),
         "vpm/vortex_interactions": (
-            "setup.py",
-            "assets/plot_core_sections.py",
-            "assets/plot_core_trajectories.py",
+            "setup",
+            "assets.plot_core_sections",
+            "assets.plot_core_trajectories",
         ),
-        "coupled_fvm_vpm/cube_flow": ("assets/validate_results.py",),
+        "coupled_fvm_vpm/cube_flow": ("assets.plot_velocity_profiles",),
     }
     checked = 0
-    with tempfile.TemporaryDirectory(prefix="openonda-direct-scripts-") as directory:
+    with tempfile.TemporaryDirectory(prefix="openonda-tutorial-commands-") as directory:
         workspace = Path(directory) / "case with spaces"
         environment = os.environ.copy()
         environment.pop("PYTHONPATH", None)
         environment["MPLCONFIGDIR"] = str(Path(directory) / "matplotlib")
-        for tutorial, filenames in scripts.items():
+        for tutorial, commands in modules.items():
             case = materialize_tutorial(tutorial, workspace)
-            for filename in filenames:
+            for module in commands:
                 result = subprocess.run(
-                    [sys.executable, "-I", str(case / filename), "--help"],
+                    [
+                        sys.executable,
+                        "-I",
+                        "-B",
+                        "-m",
+                        "openonda.tutorial_runner",
+                        str(case),
+                        module,
+                        "--help",
+                    ],
                     cwd=directory,
                     env=environment,
                     capture_output=True,
@@ -469,7 +478,7 @@ def _verify_direct_tutorial_scripts() -> int:
                 )
                 if result.returncode or "usage:" not in result.stdout:
                     raise RuntimeError(
-                        f"Direct tutorial command failed: {tutorial}/{filename} --help\n"
+                        f"Tutorial module command failed: {tutorial}/{module} --help\n"
                         f"{result.stdout}\n{result.stderr}"
                     )
                 checked += 1
@@ -622,7 +631,7 @@ def main() -> int:
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
         "distribution": _verify_distribution_resources(),
-        "direct_tutorial_scripts": _verify_direct_tutorial_scripts(),
+        "tutorial_commands": _verify_tutorial_commands(),
         "cartesian_mesher": _verify_cartesian_mesher(),
     }
     if args.with_meshing:

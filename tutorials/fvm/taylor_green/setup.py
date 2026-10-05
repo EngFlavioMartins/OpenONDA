@@ -3,7 +3,7 @@
 
 The velocity decays as exp(-2 nu t), providing exact total_kinetic_energy and error checks.
 
-Run with ``python setup.py``.
+Run with ``python -m openonda.tutorial_runner . setup``.
 """
 
 from __future__ import annotations
@@ -15,11 +15,6 @@ import numpy as np
 
 import openonda.fvm as fvm
 from openonda.fvm.mesher import periodic_square_mesh
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.decay_errors import flow_integrals, history_row
 

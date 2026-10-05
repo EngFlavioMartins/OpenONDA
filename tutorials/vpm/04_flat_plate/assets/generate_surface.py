@@ -11,14 +11,16 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 
-from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
+    Aircraft,
+    Wing,
+    WingSegment,
+)
 from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
 
 
 def create_flat_plate_vertices(
-    chord: float,
-    half_span: float,
-    angle_of_attack_degrees: float,
+    chord: float, half_span: float, angle_of_attack_degrees: float
 ) -> dict:
     """
     Create vertex_position for a flat rectangular plate at angle of attack.
@@ -48,18 +50,10 @@ def create_flat_plate_vertices(
         Dictionary with vertex_position 'a', 'b', 'c', 'd' as numpy arrays
     """
     alpha = np.radians(angle_of_attack_degrees)
-
-    # Define base vertex_position (before alpha rotation)
-    # a: LE root
     a_base = np.array([0.0, 0.0, 0.0])
-    # b: LE tip
     b_base = np.array([0.0, half_span, 0.0])
-    # c: TE tip
     c_base = np.array([chord, half_span, 0.0])
-    # d: TE root
     d_base = np.array([chord, 0.0, 0.0])
-
-    # Rotation matrix about Y axis (positive alpha = nose up)
     cos_a = np.cos(alpha)
     sin_a = np.sin(alpha)
 
@@ -75,7 +69,6 @@ def create_flat_plate_vertices(
         "c": rotate_point(c_base),
         "d": rotate_point(d_base),
     }
-
     return vertex_position
 
 
@@ -100,18 +93,8 @@ def create_flat_plate(
         Aircraft: Configured aircraft object
     """
     aircraft = Aircraft(uid="flat_plate")
-
-    # Create wing with Y-symmetry (XZ plane mirror)
     wing = Wing(uid="main_wing", symmetry=2)
-
-    # Create vertex_position for flat plate (use half-span)
-    vertex_position = create_flat_plate_vertices(
-        chord,
-        span / 2.0,
-        angle_of_attack_degrees,
-    )
-
-    # Wing segment: flat plate
+    vertex_position = create_flat_plate_vertices(chord, span / 2.0, angle_of_attack_degrees)
     segment = WingSegment(
         uid="segment_0",
         vertex_position=vertex_position,
@@ -119,11 +102,9 @@ def create_flat_plate(
         n_spanwise_panels=n_spanwise_panels,
         airfoils={"inner": "flat", "outer": "flat"},
     )
-
     wing.add_segment(segment)
     aircraft.add_wing(wing)
     aircraft.compute_default_refs()
-
     return aircraft
 
 

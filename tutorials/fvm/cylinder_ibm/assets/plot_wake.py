@@ -6,19 +6,12 @@ the point where centreline u_x changes sign back to positive) is the second
 quality monitor for the steady Re = 30 case: reference L/D = 1.55-1.70
 (Constant et al. 2017, Table 2)."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
 import pyvista as pv
 
-from openonda.plotting import latest_fvm_snapshot
+from openonda.results import latest_fvm_frame, snapshot_cell_field
 
 from ._common import (  # noqa: E402
     COLORS,
@@ -61,18 +54,11 @@ def main():
     args = build_arg_parser().parse_args()
     ref = REFERENCES.get(args.Re, {})
 
-    final = latest_fvm_snapshot(SOLUTION_DIR)
-    if final is None:
-        raise SystemExit(f"  No field snapshots in {SOLUTION_DIR}")
+    final = latest_fvm_frame(SOLUTION_DIR)
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
     cell_centre = mesh.cell_centers().points
-    u = mesh.cell_data.get("velocity")
-    if u is None:
-        mesh = mesh.point_data_to_cell_data()
-        u = mesh.cell_data.get("velocity")
-    if u is None:
-        raise SystemExit("  WARNING: no velocity field 'velocity' in VTU.")
+    u = snapshot_cell_field(mesh, "velocity")
 
     # Centreline: cells nearest to y = 0 (one row on this rectilinear mesh).
     y_vals = np.unique(np.round(cell_centre[:, 1], 10))

@@ -239,10 +239,15 @@ def evaluate_vpm_boundary(
                     face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
                 )
             )
-            _record_boundary_induction(coupler, "initial", boundary_induction_summary(
-                coupler.vpm_solver, target_count=len(face_centre),
-                wall_seconds=time.perf_counter() - query_started,
-            ))
+            _record_boundary_induction(
+                coupler,
+                "initial",
+                boundary_induction_summary(
+                    coupler.vpm_solver,
+                    target_count=len(face_centre),
+                    wall_seconds=time.perf_counter() - query_started,
+                ),
+            )
             vpm_boundary_condition_velocity = np.asarray(
                 vpm_boundary_condition_velocity, dtype=np.float64
             ).reshape(-1, 3)
@@ -401,10 +406,15 @@ def update_boundary_history_after_replacement(
                 face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
             )
         )
-        _record_boundary_induction(coupler, "refresh", boundary_induction_summary(
-            coupler.vpm_solver, target_count=len(face_centre),
-            wall_seconds=time.perf_counter() - query_started,
-        ))
+        _record_boundary_induction(
+            coupler,
+            "refresh",
+            boundary_induction_summary(
+                coupler.vpm_solver,
+                target_count=len(face_centre),
+                wall_seconds=time.perf_counter() - query_started,
+            ),
+        )
         corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
         if corrected_boundary.shape != face_centre.shape or not np.all(
             np.isfinite(corrected_boundary)
@@ -527,7 +537,7 @@ def apply_fvm_boundary(
 ) -> None:
     """Apply the configured VPM boundary condition trace and advance one FVM step."""
     assert coupler.fvm_solver is not None
-    freestream_velocity = np.asarray(coupler.setup.freestream_velocity, dtype=np.float64)
+    freestream_velocity = np.asarray(coupler.freestream_velocity, dtype=np.float64)
     freestream_speed = float(np.linalg.norm(freestream_velocity)) + 1e-30
     prescribed_velocity = np.ascontiguousarray(prescribed_velocity, dtype=np.float64)
     if normal_velocity is None or tangential_gradient is None:

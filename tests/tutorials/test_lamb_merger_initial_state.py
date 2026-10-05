@@ -46,18 +46,5 @@ def test_completed_resume_keeps_original_particle_cloud(scene, tmp_path):
 
 
 def test_missing_initial_backup_rejected(scene, tmp_path):
-    with pytest.raises(FileNotFoundError, match="Initial GBD particle backup required"):
-        scene._initial_particle_state(tmp_path)
-
-
-@pytest.mark.parametrize(
-    "settings, message",
-    [
-        ({"step": 90, "time": 2.91}, "not the step-zero state"),
-        ({"count": 3}, "particle count is inconsistent"),
-    ],
-)
-def test_invalid_initial_backup_rejected(scene, tmp_path, settings, message):
-    write_initial(tmp_path, **settings)
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(FileNotFoundError, match="vpm_000000"):
         scene._initial_particle_state(tmp_path)

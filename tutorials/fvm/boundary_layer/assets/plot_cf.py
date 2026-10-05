@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
 """Skin-friction distribution along the plate vs Cf = 0.664 / sqrt(Re_x)."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
@@ -23,16 +14,14 @@ from ._common import (  # noqa: E402
     SOLUTION_DIR,
     build_arg_parser,
     figure_size,
-    load_csv_columns,
+    read_csv_columns,
     save_fig,
 )
 
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_csv_columns(Path(SOLUTION_DIR) / "cf.csv")
-    if not data:
-        return
+    data = read_csv_columns(Path(SOLUTION_DIR) / "cf.csv")
 
     x = data["position_x"]
     cf = data["skin_friction_coefficient"]
@@ -54,7 +43,7 @@ def main():
     ax.grid(False)
     ax.legend()
 
-    centered_subplots_adjust(fig, outer=.117, bottom=.20, top=.968)
+    centered_subplots_adjust(fig, outer=0.117, bottom=0.20, top=0.968)
     save_fig(fig, "skin_friction.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     # Deviation away from the leading edge (the LE cell itself is singular).

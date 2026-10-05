@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
 
-cd -- "$(dirname -- "$0")"
-rm -rf solution samples figures
-rm -f assets/*.msh assets/*.vtk
+cd "$(dirname "$0")"
+
+python -m openonda.tutorial_runner . clean

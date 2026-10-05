@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous results and runs `baseline`, `selective_eddy_viscosity`, `pedrizzetti_relaxation` and `particle_splitting`. For one case, use `python setup.py baseline`. `./allcontinue.sh` resumes compatible checkpoints; `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous results and runs `baseline`, `selective_eddy_viscosity`, `pedrizzetti_relaxation` and `particle_splitting`. For one case, use `python -m openonda.tutorial_runner . setup baseline`. `./allcontinue.sh` resumes saved native checkpoints; `./allplot.sh pdf` exports PDF.
 
 ## Inputs and model comparisons
 

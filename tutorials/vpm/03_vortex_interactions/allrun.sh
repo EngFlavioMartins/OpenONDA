@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
-cd -- "$(dirname -- "$0")"
+
+cd "$(dirname "$0")"
 
 ./allclean.sh
-python setup.py baseline
-python setup.py selective_eddy_viscosity
-python setup.py pedrizzetti_relaxation
-python setup.py particle_splitting
+python -m openonda.tutorial_runner . setup baseline
+python -m openonda.tutorial_runner . setup selective_eddy_viscosity
+python -m openonda.tutorial_runner . setup pedrizzetti_relaxation
+python -m openonda.tutorial_runner . setup particle_splitting

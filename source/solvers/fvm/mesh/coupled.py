@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from .validation import MeshValidationError
 
@@ -71,14 +72,14 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
 
         face_centres = geo_data["face_centre"]
         shift = np.mean(face_centres[faces], axis=0) - np.mean(face_centres[other_faces], axis=0)
-        delta = face_centres[faces, None, :] - (face_centres[other_faces][None, :, :] + shift)
-        distance = np.linalg.norm(delta, axis=2)
-        match = np.argmin(distance, axis=1)
+        translated_centres = face_centres[other_faces] + shift
+        # Exact nearest matches avoid a quadratic face-pair distance array.
+        # The bijection check below also rejects duplicate/ambiguous matches.
+        _, match = cKDTree(translated_centres).query(face_centres[faces], k=1, eps=0)
+        distance = np.linalg.norm(face_centres[faces] - translated_centres[match], axis=1)
         scale = max(float(np.ptp(mesh_data["vertex_position"], axis=0).max()), 1.0)
         tolerance = max(1e-10, 1e-8 * scale)
-        if len(np.unique(match)) != len(match) or np.any(
-            distance[np.arange(len(faces)), match] > tolerance
-        ):
+        if len(np.unique(match)) != len(match) or np.any(distance > tolerance):
             raise MeshValidationError(
                 f"Cyclic faces on {name!r} and {neighbour_name!r} do not match by translation"
             )

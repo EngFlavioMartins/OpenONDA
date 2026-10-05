@@ -103,6 +103,40 @@ def test_existing_wrong_mpi_world_is_rejected(monkeypatch):
         runtime.RunConfig(cpu_cores=4, parallel_mode="mpi").ensure_runtime("case.py")
 
 
+def test_mpi_relaunch_preserves_module_execution_and_case_arguments(tmp_path, monkeypatch):
+    import openonda.runtime as runtime
+
+    script = tmp_path / "setup.py"
+    invocation = [
+        sys.executable,
+        "-B",
+        "-m",
+        "openonda.tutorial_runner",
+        "--execute",
+        str(tmp_path),
+        "setup",
+        "--name",
+        "fine",
+    ]
+    captured = {}
+    monkeypatch.setattr(runtime, "_world_size", lambda: 1)
+    monkeypatch.setattr(runtime, "_mpi_executable", lambda: "/mpi/mpiexec")
+    monkeypatch.delenv(runtime._MPI_CHILD, raising=False)
+    monkeypatch.setattr(runtime.RunConfig, "_set_thread_count", lambda *args: None)
+    monkeypatch.setitem(
+        sys.modules, "__main__", SimpleNamespace(__file__=str(script), __spec__=object())
+    )
+    monkeypatch.setattr(sys, "argv", [str(script), "--name", "fine"])
+    monkeypatch.setattr(sys, "orig_argv", invocation)
+    monkeypatch.setattr(
+        runtime.os,
+        "execvpe",
+        lambda executable, command, environment: captured.update(command=command),
+    )
+    runtime.RunConfig(cpu_cores=4, parallel_mode="mpi").ensure_runtime(script)
+    assert captured["command"] == ["/mpi/mpiexec", "-n", "4", *invocation]
+
+
 @pytest.mark.parametrize(("rank", "suppressed"), [(0, False), (1, True)])
 def test_mpi_worker_suppresses_only_uncaught_exception_rendering(monkeypatch, rank, suppressed):
     import openonda.runtime as runtime

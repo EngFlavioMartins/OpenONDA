@@ -7,6 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from openonda.results import read_csv_table, read_json
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = CASE_DIR / "samples" / "quadcopter"
@@ -25,23 +26,18 @@ _COLORS = _theme.COLORS
 
 def load_integrals(samples_dir: Path) -> pd.DataFrame:
     csv_path = samples_dir / "flow_integrals.csv"
-    if not csv_path.exists():
-        raise SystemExit(f"No sampled flow integrals found in {samples_dir}")
-    return pd.read_csv(csv_path)
+    return pd.DataFrame(read_csv_table(csv_path))
 
 
 def plot_vorticity_history(
-    samples_dir: Path,
-    figures_dir: Path,
-    figure_format: str = "png",
+    samples_dir: Path, figures_dir: Path, figure_format: str = "png"
 ) -> None:
     _theme.set_thesis_style()
     data = load_integrals(samples_dir)
     fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
     ax.plot(data["time"], data["total_enstrophy"], "-o", color=_COLORS["vpm"])
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel(r"Enstrophy [m$^3$/s$^2$]")
-    figures_dir.mkdir(parents=True, exist_ok=True)
+    ax.set_ylabel("Enstrophy [m$^3$/s$^2$]")
     _theme.centered_subplots_adjust(fig, outer=0.104, bottom=0.22, top=0.923)
     _theme.save_fig(
         fig,
@@ -53,12 +49,12 @@ def plot_vorticity_history(
 
 def rotor_inputs(metadata_path: Path | None = None):
     """Read geometry, motion and reference scales from this run's native records."""
-    import json
     from types import SimpleNamespace
+
     import numpy as np
 
     metadata_path = metadata_path or CASE_DIR / "solution/vpm_metadata.json"
-    metadata = json.loads(metadata_path.read_text())
+    metadata = read_json(metadata_path)
     config = metadata["configuration"]
     vlm = config["numerics"]["vlm"]
     first = vlm["surfaces"][0]
@@ -117,7 +113,7 @@ def performance(samples_dir, p):
     """Positive propeller thrust and input power; torques are never summed first."""
     import numpy as np
 
-    data = pd.read_csv(samples_dir / "vlm_surface_forces.csv")
+    data = pd.DataFrame(read_csv_table(samples_dir / "vlm_surface_forces.csv"))
     data["rotor"] = data.surface.str.rsplit("_blade_", n=1).str[0]
     grouped = (
         data.groupby(["rotor", "step"], sort=True)
@@ -150,18 +146,18 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     _theme.centered_subplots_adjust(fig, outer=0.21, bottom=0.09, top=0.955, hspace=0.55)
     axes = np.array([[rows[0], rows[2]], [rows[1], rows[3]]])
     for index, (rotor, rows) in enumerate(data.groupby("rotor")):
-        style = dict(
-            color=_theme.COLOR_CYCLE[index],
-            marker=("o", "s", "D", "^")[index],
-            markevery=60,
-            ms=2.5,
-        )
+        style = {
+            "color": _theme.COLOR_CYCLE[index],
+            "marker": ("o", "s", "D", "^")[index],
+            "markevery": 60,
+            "ms": 2.5,
+        }
         axes[0, 0].plot(rows.revolutions, rows.CT, label=rotor.replace("_", " "), **style)
         axes[1, 0].plot(rows.revolutions, rows.CP, **style)
     axes[0, 0].axhline(ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
     axes[1, 0].axhline(cp_bem, color=_COLORS["reference"], ls="--")
-    axes[0, 0].set(ylabel=r"$C_T$")
-    axes[1, 0].set(xlabel="Nominal revolutions", ylabel=r"$C_P$")
+    axes[0, 0].set(ylabel="$C_T$")
+    axes[1, 0].set(xlabel="Nominal revolutions", ylabel="$C_P$")
     axes[0, 0].legend(ncol=2, loc="upper right", handlelength=1.2, columnspacing=0.7)
     tail = data[data.time > data.time.max() - 6 * p.period]
     start, end = tail.revolutions.agg(["min", "max"])
@@ -171,13 +167,10 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     advance = p.climb / (p.omega * p.radius)
     ideal = ct * 0.5 * (advance + np.sqrt(advance**2 + 2 * ct))
     axes[0, 1].plot(ct, ideal, color=_COLORS["reference"], ls=":", label="Axial momentum")
-    for rotor, rows in tail.groupby("rotor"):
+    for _rotor, rows in tail.groupby("rotor"):
         axes[0, 1].plot(rows.CT.mean(), rows.CP.mean(), "o", ms=4)
     axes[0, 1].plot(ct_bem, cp_bem, "x", color=_COLORS["reference"], label="BEM")
-    axes[0, 1].set(
-        xlabel=r"$C_T$",
-        ylabel=r"$C_P$",
-    )
+    axes[0, 1].set(xlabel="$C_T$", ylabel="$C_P$")
     axes[0, 1].legend()
     total = data.groupby("step").agg(
         time=("time", "first"), thrust=("thrust", "sum"), power=("input_power", "sum")
@@ -187,46 +180,32 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     )
     power_axis = axes[1, 1].twinx()
     power_axis.plot(
-        total.time / p.period,
-        total.power,
-        color=_COLORS["vpm"],
-        ls="-",
-        label="Total shaft input",
+        total.time / p.period, total.power, color=_COLORS["vpm"], ls="-", label="Total shaft input"
     )
     axes[1, 1].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
     power_axis.set_ylabel("Power [W]", color=_COLORS["vpm"])
     _theme.centered_subplots_adjust(fig, outer=0.092, top=0.966)
-    _theme.validate_thesis_figure(fig, fig.axes)
     _theme.export_figure(
-        fig,
-        figures_dir / "quadcopter_performance.png",
-        figure_format=figure_format,
+        fig, figures_dir / "quadcopter_performance.png", figure_format=figure_format
     )
 
 
 def wake_windows(samples_dir, period, revolutions=6):
     """Read the final window of each published native velocity plane."""
-    from defusedxml import ElementTree
-    import numpy as np
-    import pyvista as pv
+    from source.solvers.vpm.io.postprocess import surface_series
 
     records = []
     for pvd in sorted(samples_dir.glob("sampled_zplane*.pvd")):
-        frames = ElementTree.parse(pvd).findall(".//DataSet")
-        times = np.array([float(frame.attrib["timestep"]) for frame in frames])
-        if len(times) < 2 or not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
-            raise ValueError(f"{pvd.name}: missing, duplicate or unordered frame times")
-        selected = np.flatnonzero(times > times[-1] - revolutions * period)
-        grids = [pv.read(pvd.parent / frames[index].attrib["file"]) for index in selected]
-        points = np.asarray(grids[0].points)
-        if not np.isfinite(points).all() or any(
-            not np.array_equal(grid.points, points) for grid in grids
-        ):
-            raise ValueError(f"{pvd.name}: velocity plane grid changes within the window")
-        velocity = np.array([np.asarray(grid["velocity"]) for grid in grids])
-        if velocity.shape != (len(selected), len(points), 3) or not np.isfinite(velocity).all():
-            raise ValueError(f"{pvd.name}: missing or non-finite velocity vectors")
-        records.append(dict(name=pvd.stem, times=times[selected], points=points, velocity=velocity))
+        times, points, velocity = surface_series(pvd)
+        selected = times > times[-1] - revolutions * period
+        records.append(
+            {
+                "name": pvd.stem,
+                "times": times[selected],
+                "points": points,
+                "velocity": velocity[selected],
+            }
+        )
     return records
 
 
@@ -237,14 +216,8 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
     _theme.set_thesis_style()
     p = rotor_inputs()
     planes = wake_windows(samples_dir, p.period)
-    if not planes:
-        raise FileNotFoundError(f"No published quadcopter wake planes in {samples_dir}")
     fig, axes = plt.subplots(
-        1,
-        len(planes),
-        figsize=(12.5 * _theme.CM, 7.4 * _theme.CM),
-        sharey=True,
-        squeeze=False,
+        1, len(planes), figsize=(12.5 * _theme.CM, 7.4 * _theme.CM), sharey=True, squeeze=False
     )
     _theme.centered_subplots_adjust(fig, outer=0.135, bottom=0.375, top=0.922, wspace=0.33)
     records = []
@@ -252,8 +225,8 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
         start, end = plane["times"][[0, -1]]
         mean = -plane["velocity"][:, :, 2].mean(axis=0)
         records.append((ax, plane["points"], mean))
-    low = min(record[2].min() for record in records)
-    high = max(record[2].max() for record in records)
+    low = min((record[2].min() for record in records))
+    high = max((record[2].max() for record in records))
     centers = {
         tuple(surface["translation"])
         for surface in p.metadata["configuration"]["numerics"]["vlm"]["surfaces"]
@@ -268,7 +241,7 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
         )
         for x, y, _ in centers:
             ax.add_patch(Circle((x, y), p.radius, fill=False, color="white", lw=0.6, ls="--"))
-        ax.set(xlabel="$x$ [m]", aspect="equal", title=rf"$z={points[0, 2]:.2g}$ m")
+        ax.set(xlabel="$x$ [m]", aspect="equal", title=f"$z={points[0, 2]:.2g}$ m")
         ax.locator_params(axis="both", nbins=3)
     axes[0, 0].set_ylabel("y [m]")
     outer = 0.135
@@ -277,9 +250,8 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
         artist,
         cax=cax,
         orientation="horizontal",
-        label=r"$-\overline{u_z}$ [m/s]",
+        label="$-\\overline{u_z}$ [m/s]",
         format="%.2g",
         ticks=np.linspace(low, high, 3),
     )
-    _theme.validate_thesis_figure(fig, (*axes.flat, cax))
     _theme.export_figure(fig, figures_dir / "quadcopter_wake.png", figure_format=figure_format)

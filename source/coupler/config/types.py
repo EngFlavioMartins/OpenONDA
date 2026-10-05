@@ -1,8 +1,10 @@
 """Controls for buffered M4-prime renewal with mixed vorticity boundaries."""
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
+
+from source.simulation.forcing import VelocityRamp
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,8 @@ class CouplerSetup:
 
     freestream_velocity: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     """Cartesian background velocity in m/s; must match the VPM."""
+    freestream: VelocityRamp | None = None
+    """Optional accepted-endpoint background history, included in restart identity."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-authoritative bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m."""
     eta_blend_width: float = 0.0
@@ -49,6 +53,8 @@ class CouplerSetup:
         velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
         if velocity.shape != (3,) or not np.all(np.isfinite(velocity)):
             raise ValueError("freestream_velocity must be a finite three-component vector")
+        if self.freestream is not None and not isinstance(self.freestream, VelocityRamp):
+            raise TypeError("freestream must be a VelocityRamp or None")
         if self.transfer_region_bounds is not None:
             bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
             if bounds.shape != (6,) or not np.all(np.isfinite(bounds)):
@@ -104,6 +110,7 @@ class CouplerSetup:
     def to_dict(self) -> dict[str, object]:
         """Return numerical and physical controls for restart identity checks."""
         values = dict(vars(self))
+        values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:
             values["transfer_region_bounds"] = dict(
                 zip(

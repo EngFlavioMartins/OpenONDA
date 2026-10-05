@@ -164,28 +164,6 @@ def test_local_module_runner_uses_edited_case_and_propagates_exit_code(tmp_path)
     assert (case / "assets/check.txt").read_text() == "73"
 
 
-def test_direct_asset_script_reads_the_edited_local_setup(tmp_path):
-    import subprocess
-
-    case = materialize_tutorial("vpm/lamb_oseen_vortex", tmp_path / "case with spaces")
-    # The ensemble imports this setting from the local setup. Its --help output
-    # exposes the default without launching a GPU simulation.
-    setup = case / "setup.py"
-    setup.write_text(setup.read_text().replace("RWM_ENSEMBLE_SIZE = 10", "RWM_ENSEMBLE_SIZE = 37"))
-    environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    result = subprocess.run(
-        [sys.executable, "-I", str(case / "assets/rwm_ensemble.py"), "--help"],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "default: 37" in result.stdout
-
-
 @pytest.mark.parametrize(
     "script",
     [
@@ -195,12 +173,21 @@ def test_direct_asset_script_reads_the_edited_local_setup(tmp_path):
         "plot_group_history.py",
     ],
 )
-def test_interaction_plotters_run_directly_from_a_copied_case(tmp_path, script):
+def test_interaction_plotters_run_as_modules_from_a_copied_case(tmp_path, script):
     import subprocess
 
     case = materialize_tutorial("vpm/vortex_interactions", tmp_path / "copied case")
     result = subprocess.run(
-        [sys.executable, "-I", str(case / "assets" / script), "--help"],
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-m",
+            "openonda.tutorial_runner",
+            str(case),
+            "assets." + Path(script).stem,
+            "--help",
+        ],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -221,7 +208,11 @@ def test_cleaners_only_remove_their_own_outputs_from_an_unrelated_directory(tmp_
     for name in ("solution", "samples", "figures", "study_results", "constant", "assets"):
         (caller / name).mkdir()
         (caller / name / "keep.txt").write_text("keep")
-    for index, original in enumerate(root.rglob("allclean.sh")):
+    for index, original in enumerate(
+        path
+        for path in root.rglob("allclean.sh")
+        if tutorial_api._include_resource(path.relative_to(root))
+    ):
         case = tmp_path / f"case {index}"
         case.mkdir()
         script = case / "allclean.sh"
@@ -291,7 +282,7 @@ def test_all_vpm_tutorials_construct_cases_with_the_installed_api(tmp_path, monk
 
 
 @pytest.mark.parametrize("fail_first", [False, True])
-def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_first):
+def test_every_launcher_uses_the_module_runner_and_stops_on_failure(tmp_path, fail_first):
     """Execute copied launchers with an interpreter probe, never repository cleanup."""
     from importlib.resources import files
     import json
@@ -319,7 +310,7 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         sorted(
             path
             for path in root.rglob("allrun.sh")
-            if "study_results" not in path.relative_to(root).parts
+            if tutorial_api._include_resource(path.relative_to(root))
         )
     ):
         case = tmp_path / f"case {index} with spaces"
@@ -344,26 +335,9 @@ def test_every_launcher_runs_direct_python_and_stops_on_failure(tmp_path, fail_f
         calls = [json.loads(line) for line in calls_file.read_text().splitlines()]
         expected_count = sum(
             line.startswith("python ") for line in original.read_text().splitlines()
-        )
+        ) + int(cleans_output)
         assert len(calls) == (1 if fail_first else expected_count), original
-        if cleans_output:
-            assert not output.exists(), original
-        else:
-            assert (output / "existing.txt").read_text() == "keep"
-        if original.parent.name == "01_lamb_oseen_vortex" and not fail_first:
-            assert calls == [
-                arguments
-                for physics in ("vortex", "dipole", "merging")
-                for arguments in (
-                    ["setup.py", physics, "CS"],
-                    [
-                        "assets/rwm_ensemble.py",
-                        physics,
-                        "--number-of-realizations",
-                        "10",
-                        "--converge",
-                    ],
-                    ["setup.py", physics, "DVH"],
-                    ["setup.py", physics, "GBD"],
-                )
-            ]
+        assert all(
+            len(arguments) >= 4 and arguments[:3] == ["-m", "openonda.tutorial_runner", "."]
+            for arguments in calls
+        )

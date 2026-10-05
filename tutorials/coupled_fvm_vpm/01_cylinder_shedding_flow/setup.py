@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Coupled FVM–VPM flow past a spanwise cylinder section at Re = 150.
+"""Two-dimensional coupled FVM–VPM cylinder flow at Re = 150.
 
-The body-fitted FVM resolves the cylinder and a compact near-body box. The
-VPM carries vorticity through the outer domain. The FVM force is normalized
-by the resolved span.
+The FVM has one periodic cell across a unit span. A single plane of VPM
+filaments carries the two-dimensional outer wake. Forces use unit-span area.
 
 Usage:
     ./allrun.sh
 """
 
 import argparse
-import hashlib
-import json
+from functools import partial
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -22,19 +21,8 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-from openonda.tutorial_runner import case_package
 
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
-
-from .assets.startup import run_coupled_cylinder
-from .assets.configuration import (
-    align_cylinder_sampling,
-    positive_coupling_steps,
-    steps,
-    validate_inputs,
-    validate_authority,
-)
+from .assets.initial_conditions import cylinder_initial_velocity
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
@@ -53,7 +41,7 @@ KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_
 # FVM domain and mesh
 FVM_CORES = 4
 CELL_SIZE = 0.04
-FVM_RESOLVED_SPAN = 0.96
+FVM_RESOLVED_SPAN = 1.0
 FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
 FVM_BOX = (
     -1.60,
@@ -81,7 +69,7 @@ CORE_RADIUS_RATIO = 1.0
 BLEND_WIDTH_RATIO = 6.0
 RELEASE_WIDTH_RATIO = 2.0
 COMPUTE_DEVICE = "AUTO"
-INTERFACE_ITERATIONS = 3
+INTERFACE_ITERATIONS = 6
 INTERFACE_TOLERANCE = 1.0e-5
 
 # Time and output
@@ -123,32 +111,29 @@ def phase_lines(outer=False):
     ]
 
 
-def field_lines(reference, *, span):
+def field_lines(reference):
     lines = [("centreline", [0.6, 0.0, 0.0], [1.4, 0.0, 0.0], 11)]
-    for label, z in (("lower", -span / 4), ("middle", 0.0), ("upper", span / 4)):
-        lines.append((f"span_{label}", [1.0, -1.2, z], [1.0, 1.2, z], 31))
+    lines.append(("span_middle", [1.0, -1.2, 0.0], [1.0, 1.2, 0.0], 31))
     if reference:
         for x in (2, 4):
             lines.append((f"transverse_x{x}", [x, -2.0, 0.0], [x, 2.0, 0.0], 51))
     return lines
 
 
-def sampling_plan(period, *, end, exchange_dt, fvm_time_step):
-    """Resolve physical periods onto the actual accepted exchange clock."""
-    steps(exchange_dt, fvm_time_step)
-    steps(end, exchange_dt)
-    return align_cylinder_sampling(
-        end_time=end,
-        exchange_dt=exchange_dt,
-        fvm_time_step=fvm_time_step,
-        sample_period=period,
-        slice_period=SLICES,
-        output_period=VOLUMES,
+def sampling_plan(period, *, exchange_dt, fvm_time_step):
+    """Sampling periods expressed on the FVM and particle clocks."""
+    substeps = round(exchange_dt / fvm_time_step)
+    sample_steps = max(1, round(period / exchange_dt))
+    return SimpleNamespace(
+        sample_steps=sample_steps,
+        fvm_sample_steps=sample_steps * substeps,
+        fvm_slice_steps=max(1, round(SLICES / exchange_dt)) * substeps,
+        fvm_output_steps=max(1, round(VOLUMES / exchange_dt)) * substeps,
     )
 
 
-def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_dt, fvm_time_step):
-    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+def fvm_samplers(reference, *, span, freestream_speed, diameter, exchange_dt, fvm_time_step):
+    clocks = {"exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
     force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
     fast = fvm.RunSchedule(every_n_steps=force.fvm_sample_steps)
     slow = fvm.RunSchedule(every_n_steps=profile.fvm_sample_steps)
@@ -174,7 +159,7 @@ def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_d
                 schedule=fast,
             )
         )
-    for name, start, end, count in field_lines(reference, span=span):
+    for name, start, end, count in field_lines(reference):
         samplers.append(
             fvm.LineSampler(
                 start=start,
@@ -206,11 +191,11 @@ def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_d
     return tuple(samplers)
 
 
-def vpm_samplers(*, end, exchange_dt, fvm_time_step):
+def vpm_samplers(*, exchange_dt, fvm_time_step):
     """Particle-side observations shared by the ordinary tutorial entry point."""
-    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+    clocks = {"exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
     force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
-    substeps = steps(exchange_dt, fvm_time_step)
+    substeps = round(exchange_dt / fvm_time_step)
     samples = []
     for name, start, finish, count in phase_lines() + phase_lines(True):
         samples.append(
@@ -255,7 +240,6 @@ def build_case(
     values = dict(overrides or {})
     hxy = float(values.pop("hxy", CELL_SIZE))
     span = float(values.pop("span", FVM_RESOLVED_SPAN))
-    dz_target = float(values.pop("dz", hxy))
     hp_ratio = float(values.pop("particle_spacing_ratio", PARTICLE_SPACING_RATIO))
     core_ratio = float(values.pop("core_radius_ratio", CORE_RADIUS_RATIO))
     blend_ratio = float(values.pop("blend_width_ratio", BLEND_WIDTH_RATIO))
@@ -265,29 +249,10 @@ def build_case(
     compute_device = str(values.pop("compute_device", COMPUTE_DEVICE))
     particle_limit = int(values.pop("particle_limit", PARTICLE_LIMIT))
     physical_end = END_TIME if end_time is None else float(end_time)
-    validate_inputs(
-        hxy,
-        span,
-        dz_target,
-        hp_ratio,
-        core_ratio,
-        exchange_dt,
-        physical_end,
-        release_ratio,
-        blend_ratio,
-        cores,
-        particle_limit,
-    )
-    steps(exchange_dt, FVM_TIME_STEP_SIZE)
-    steps(physical_end, exchange_dt)
     half_span = span / 2.0
     fvm_box = (*FVM_BOX[:4], -half_span, half_span)
     transfer_box = (*TRANSFER_REGION_BOX[:4], -half_span, half_span)
-    particle_spacing = span / max(6, math.ceil(span / (hxy * hp_ratio)))
-    authority_edge = min(-transfer_box[0], transfer_box[1], -transfer_box[2], transfer_box[3])
-    validate_authority(authority_edge, blend_ratio * particle_spacing, DIAMETER / 2, 1e-6)
-    axial_layers = max(4, math.ceil(span / dz_target))
-    realized_dz = span / axial_layers
+    particle_spacing = hxy * hp_ratio
     vpm_domain = (*VPM_DOMAIN[:4], -half_span, half_span)
 
     source_half_span = 16.0 * hxy
@@ -308,10 +273,10 @@ def build_case(
             bounds=(*source_mesh.domain.bounds[:4], -half_span, half_span),
             patches=FVM_PATCHES,
         ),
-        levels=tuple(-half_span + layer * realized_dz for layer in range(axial_layers + 1)),
+        levels=(-half_span, half_span),
     )
 
-    clocks = dict(end=physical_end, exchange_dt=exchange_dt, fvm_time_step=FVM_TIME_STEP_SIZE)
+    clocks = dict(exchange_dt=exchange_dt, fvm_time_step=FVM_TIME_STEP_SIZE)
     sampling = sampling_plan(PROFILES, **clocks)
     fvm_setup = fvm.FVMSetup(
         case_name=CASE_NAME,
@@ -353,8 +318,8 @@ def build_case(
                 velocity_value=list(STARTUP_FREESTREAM_VELOCITY),
                 pressure_type="fixedFluxPressure",
             ),
-            fvm.BoundaryConfig.slip("zmin"),
-            fvm.BoundaryConfig.slip("zmax"),
+            fvm.BoundaryConfig.cyclic("zmin", "zmax"),
+            fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
         initial_velocity=list(STARTUP_FREESTREAM_VELOCITY),
@@ -370,18 +335,12 @@ def build_case(
                 padding=5.0,
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 threshold_mode="absolute",
-                threshold=GBD_VORTICITY_FLOOR * particle_spacing**3,
+                threshold=GBD_VORTICITY_FLOOR * particle_spacing**2 * span,
                 core_radius_ratio=core_ratio,
             ),
             integrator=vpm.RK2(),
             turbulence=vpm.TurbulenceConfig.inviscid(),
-            induction=vpm.SlipSlabInduction(
-                vpm.FMMInduction(),
-                z_min=-half_span,
-                z_max=half_span,
-                tail_tolerance=1.0e-4,
-                max_shells=129,
-            ),
+            induction=vpm.PlanarInduction(span=span, plane_z=0.0),
             stabilization=vpm.StabilizationConfig.bounded_domain(vpm_domain),
             max_n_particles=particle_limit,
             domain_bounds=vpm_domain,
@@ -396,6 +355,12 @@ def build_case(
         transfer_box = tuple(value * scale for value in transfer_box)
     coupling_values = dict(
         freestream_velocity=list(STARTUP_FREESTREAM_VELOCITY),
+        freestream=coupling.VelocityRamp(
+            initial=STARTUP_FREESTREAM_VELOCITY,
+            final=FREESTREAM_VELOCITY,
+            start_time=STARTUP_DURATION - STARTUP_TRANSITION_DURATION,
+            end_time=STARTUP_DURATION,
+        ),
         transfer_region_bounds=transfer_box,
         eta_blend_width=blend_ratio * particle_spacing,
         vpm_only_width=release_ratio * particle_spacing,
@@ -419,26 +384,32 @@ def create_solver(
 ) -> int:
     """Run the coupled case in an optional isolated campaign directory."""
 
-    return run_coupled_cylinder(
-        build_case,
-        start_from=START_FROM,
-        output_root=output_root,
-        end_time=end_time,
-        restart_from=restart_from,
-        max_coupling_steps=max_coupling_steps,
-        overrides=overrides,
-        startup_duration=STARTUP_DURATION,
-        startup_transition_duration=STARTUP_TRANSITION_DURATION,
-        steady_freestream_velocity=FREESTREAM_VELOCITY,
-        perturbation=INITIAL_PERTURBATION,
+    flow, particles, exchange, mesh = build_case(end_time=end_time, overrides=overrides)
+    velocity = partial(
+        cylinder_initial_velocity,
+        freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
+        **INITIAL_PERTURBATION,
     )
+    with coupling.create_coupler(
+        flow,
+        particles,
+        exchange,
+        mesh=mesh,
+        case_dir=CASE_DIR if output_root is None else output_root,
+    ) as solver:
+        return solver.run(
+            start_from=START_FROM if restart_from is None else restart_from,
+            max_coupling_steps=max_coupling_steps,
+            backup_at_stop=True,
+            initial_velocity=velocity,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--max-coupling-steps",
-        type=positive_coupling_steps,
+        type=int,
         help="Stop after this many accepted exchanges and save a native checkpoint; "
         "the configured 100 s physical horizon is unchanged.",
     )

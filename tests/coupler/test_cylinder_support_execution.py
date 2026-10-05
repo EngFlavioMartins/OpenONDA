@@ -1,7 +1,11 @@
 """Tutorial-owned configuration preserves its physical factory and lifecycle."""
 
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 
 from openonda.tutorial_runner import load_case_module
 
@@ -16,7 +20,10 @@ def test_native_configuration_matches_selected_reference_physics_and_schedules()
     control, control_mesh = reference.build_case("phase_h004", 0.04)
     for field in ("schemes", "pimple", "linear", "transport", "turbulence", "time"):
         assert asdict(getattr(flow, field)) == asdict(getattr(control, field))
-    assert len(mesh.levels) == len(control_mesh.levels) == 25
+    assert mesh.levels == control_mesh.levels == (-0.5, 0.5)
+    assert particles.numerics.induction.planar_span == 1.0
+    assert particles.numerics.induction.plane_z == 0.0
+    assert policy.interface_iterations == 6
     assert flow.time.time_step_size == 0.008
     assert particles.numerics.time_step_size == 0.04
     assert particles.numerics.viscous.particle_spacing == 0.04
@@ -26,15 +33,19 @@ def test_native_configuration_matches_selected_reference_physics_and_schedules()
     assert particles.samplers.samples[0].schedule.interval == 1
 
 
-def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path, monkeypatch):
+def test_public_execution_uses_native_lifecycle_with_physical_initial_field(tmp_path, monkeypatch):
     setup = load_case_module(CASE)
     captured = {}
 
-    def execute(factory, **kwargs):
-        captured.update(factory=factory, **kwargs)
+    def execute(**kwargs):
+        captured.update(kwargs)
         return 3
 
-    monkeypatch.setattr(setup, "run_coupled_cylinder", execute)
+    def factory(flow, particles, policy, **kwargs):
+        captured.update(flow=flow, particles=particles, policy=policy, **kwargs)
+        return nullcontext(SimpleNamespace(run=execute))
+
+    monkeypatch.setattr(setup.coupling, "create_coupler", factory)
     restart = tmp_path / "backup"
     overrides = {"hxy": 0.08}
     assert (
@@ -47,17 +58,13 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         )
         == 3
     )
-    factory = captured.pop("factory")
-    assert factory is setup.build_case
-    assert captured == {
-        "start_from": setup.START_FROM,
-        "output_root": tmp_path,
-        "end_time": 0.8,
-        "restart_from": restart,
-        "max_coupling_steps": 3,
-        "overrides": overrides,
-        "startup_duration": setup.STARTUP_DURATION,
-        "startup_transition_duration": setup.STARTUP_TRANSITION_DURATION,
-        "steady_freestream_velocity": setup.FREESTREAM_VELOCITY,
-        "perturbation": setup.INITIAL_PERTURBATION,
-    }
+    assert captured["start_from"] == restart
+    assert captured["case_dir"] == tmp_path
+    assert captured["max_coupling_steps"] == 3
+    assert captured["backup_at_stop"]
+    assert captured["flow"].time.end_time == 0.8
+    assert captured["policy"].freestream.end_time == setup.STARTUP_DURATION
+    np.testing.assert_allclose(
+        captured["initial_velocity"](np.array([[3.0, 0.0, 0.0]])),
+        [setup.STARTUP_FREESTREAM_VELOCITY],
+    )

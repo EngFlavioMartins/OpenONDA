@@ -5,12 +5,9 @@ import argparse
 import json
 from pathlib import Path
 
-if __name__ == "__main__":
-    if __package__:
-        from .audit_saved_samples import audit_normal
-    else:
-        from audit_saved_samples import audit_normal
+from .audit_saved_samples import audit_normal
 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=("reference", "coupled"))
     parser.add_argument(

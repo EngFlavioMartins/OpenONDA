@@ -132,7 +132,7 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     stub.write_text(
         f"#!{sys.executable}\nimport json,os,sys\n"
         "with open(os.environ['COMMAND_LOG'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
-        "sys.exit(1 if sys.argv[1:3] == ['setup.py', os.environ.get('FAIL_VARIANT')] else 0)\n"
+        "sys.exit(1 if sys.argv[4:6] == ['setup', os.environ.get('FAIL_VARIANT')] else 0)\n"
     )
     stub.chmod(0o755)
     for script in ("allrun.sh", "allplot.sh"):
@@ -143,7 +143,7 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
     env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ['PATH']}", COMMAND_LOG=str(log))
     subprocess.run([str(tmp_path / "allrun.sh")], cwd=tmp_path, env=env, check=True)
     subprocess.run([str(tmp_path / "allplot.sh")], cwd=tmp_path, env=env, check=True)
-    commands = [json.loads(line) for line in log.read_text().splitlines()]
+    commands = [json.loads(line)[3:] for line in log.read_text().splitlines()]
     assert [c[1] for c in commands[: len(setup.CASES)]] == list(setup.CASES)
     assert all(len(c) == 2 for c in commands[: len(setup.CASES)])
     sections, trajectories, diagnostics, groups = commands[-4:]
@@ -156,13 +156,14 @@ def test_run_and_plot_launchers_use_the_same_cases(tmp_path):
         assert command[command.index("--output") + 1] == "figures"
     for command in (sections, trajectories):
         assert command[command.index("--auxiliary-output") + 1] == "figures/auxiliary"
-    assert "--clean-output" in sections
     log.write_text("")
     result = subprocess.run(
         [str(tmp_path / "allrun.sh")], cwd=tmp_path, env=dict(env, FAIL_VARIANT="baseline")
     )
     assert result.returncode == 1
-    assert [json.loads(line) for line in log.read_text().splitlines()] == [["setup.py", "baseline"]]
+    assert [json.loads(line)[3:] for line in log.read_text().splitlines()] == [
+        ["setup", "baseline"]
+    ]
 
 
 def test_each_figure_has_one_matching_plot_script_and_one_shared_postprocessor():

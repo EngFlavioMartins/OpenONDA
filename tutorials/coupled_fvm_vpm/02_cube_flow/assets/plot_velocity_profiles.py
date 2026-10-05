@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 """Common-reconstruction velocity profiles and unfiltered wall drag."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
 import argparse
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
@@ -19,8 +11,6 @@ from . import postprocess as util
 
 def _force_series(source: str, end_time: float):
     data = util.load_forces(source)
-    if data is None:
-        raise ValueError(f"Missing {source} forces")
     selected = data["time"] <= end_time + util.TIME_ATOL
     # Raw accepted samples: no smoothing, outlier removal, or time interpolation.
     return data["time"][selected], data["drag_coefficient"][selected]
@@ -33,8 +23,6 @@ def _profile(ax, name, time, consts, title):
         ax.axvspan(-0.5, 0.5, color=util.COLORS["background_strong"])
     for source, style in (("reference", "--"), ("fvm", "-"), ("vpm", "-")):
         frame = util.load_line(source, name, time)
-        if frame is None:
-            raise ValueError(f"No exact {source} {name} sample at t={time:g}")
         values = np.array(frame["velocity_x"], dtype=float, copy=True) / speed
         if name == "centreline":
             values[np.abs(frame["position_x"]) <= 0.5 + 1e-12] = np.nan
@@ -116,7 +104,6 @@ def main():
     parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="both")
     parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
-    util.validate_plot_inputs()
     times = util.common_times(
         *(
             util.line_times(source, name)
@@ -124,12 +111,9 @@ def main():
             for name in ("centreline", "offaxis_y075")
         )
     )
-    if not len(times):
-        raise SystemExit("No exactly coincident profile states")
     consts = util.run_constants()
     for time in times:
         plot_frame(float(time), consts, args.format, args.dpi)
-    util.remove_obsolete_frames("velocity_profiles", times, args.format)
 
 
 if __name__ == "__main__":

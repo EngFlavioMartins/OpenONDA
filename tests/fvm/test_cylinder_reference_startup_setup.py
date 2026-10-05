@@ -3,7 +3,9 @@
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from openonda.tutorial_runner import load_case_module
@@ -14,7 +16,9 @@ CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylin
 def test_reference_and_coupled_share_startup_and_nominal_force_scales():
     reference = load_case_module(CASE / "reference_flow")
     coupled = load_case_module(CASE)
-    setup, _mesh = reference.build_case("phase_h004", 0.04)
+    setup, mesh = reference.build_case("phase_h004", 0.04)
+    assert reference.SPAN == coupled.FVM_RESOLVED_SPAN == 1.0
+    assert mesh.levels == (-0.5, 0.5)
     assert reference.STARTUP_DURATION == coupled.STARTUP_DURATION == 2.0
     assert reference.STARTUP_TRANSITION_DURATION == coupled.STARTUP_TRANSITION_DURATION == 1.0
     assert reference.STARTUP_FREESTREAM_VELOCITY == coupled.STARTUP_FREESTREAM_VELOCITY
@@ -25,37 +29,32 @@ def test_reference_and_coupled_share_startup_and_nominal_force_scales():
     assert setup.transport.kinematic_viscosity == pytest.approx(1 / 150)
     force = next(sample for sample in setup.samplers if sample.file_name == "forces_history")
     assert force.reference_velocity == pytest.approx(1.0)
-    assert force.reference_area == pytest.approx(0.96)
+    assert force.reference_area == pytest.approx(1.0)
     assert {patch.name for patch in setup.boundaries if patch.velocity_type == "slip"} == {
         "ymin",
         "ymax",
-        "zmin",
-        "zmax",
     }
+    periodic = {patch.name: patch for patch in setup.boundaries if patch.velocity_type == "cyclic"}
+    assert set(periodic) == {"zmin", "zmax"}
+    assert periodic["zmin"].neighbour_patch == "zmax"
+    assert periodic["zmax"].neighbour_patch == "zmin"
+    assert all(patch.pressure_type == "cyclic" for patch in periodic.values())
+    assert {
+        sample.file_name for sample in setup.samplers if sample.file_name.startswith("span_")
+    } == {"span_middle"}
 
 
 def test_reference_runner_passes_the_same_schedule(monkeypatch):
     reference = load_case_module(CASE / "reference_flow")
     calls = []
-    solver = object()
-    monkeypatch.setattr(
-        reference, "run_reference_cylinder", lambda *args, **kwargs: calls.append((args, kwargs))
-    )
+    solver = SimpleNamespace(run=lambda **kwargs: calls.append(kwargs))
     reference.run_solver(solver, start_from="initial")
-    assert calls == [
-        (
-            (solver,),
-            {
-                "span": reference.SPAN,
-                "start_from": "initial",
-                "startup_duration": 2.0,
-                "startup_transition_duration": 1.0,
-                "startup_freestream_velocity": (1.0, 0.1, 0.0),
-                "steady_freestream_velocity": (1.0, 0.0, 0.0),
-                "perturbation": reference.INITIAL_PERTURBATION,
-            },
-        )
-    ]
+    assert len(calls) == 1
+    assert calls[0]["start_from"] == "initial"
+    np.testing.assert_allclose(
+        calls[0]["initial_velocity"](np.array([[3.0, 0.0, 0.0]])),
+        [reference.STARTUP_FREESTREAM_VELOCITY],
+    )
 
 
 def test_reference_campaign_factory_accepts_independent_grid_paths(tmp_path, monkeypatch):

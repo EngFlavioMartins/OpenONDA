@@ -1,6 +1,5 @@
 """Grid-family contract for the cylinder reference flow."""
 
-import importlib.util
 import os
 from pathlib import Path
 import shlex
@@ -11,15 +10,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from openonda.tutorial_runner import load_case_module
+
 ROOT = Path(__file__).resolve().parents[2]
 CASE = ROOT / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow"
 
 
 def load_setup():
-    spec = importlib.util.spec_from_file_location("cylinder_reference_setup", CASE / "setup.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_case_module(CASE)
 
 
 def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
@@ -46,9 +44,8 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
         source.effective_cell_size(refinement.cell_size) for refinement in source.refinements
     ] == pytest.approx([0.04, 0.08, 0.16])
     assert mesh.domain.bounds == module.DOMAIN
-    assert len(mesh.levels) - 1 == 24
-    assert np.diff(mesh.levels) == pytest.approx(0.96 / 24.0)
-    assert np.diff(mesh.levels).max() <= 0.04 + 1.0e-12
+    assert mesh.levels == (-0.5, 0.5)
+    assert np.diff(mesh.levels) == pytest.approx(1.0)
     assert captured["solution_dir"] == CASE / "solution"
     assert captured["samples_dir"] == CASE / "samples"
 
@@ -63,9 +60,7 @@ def test_setup_uses_h_as_the_realized_wall_spacing(monkeypatch):
     assert set(samplers) == {
         "forces_history",
         "centreline",
-        "span_lower",
         "span_middle",
-        "span_upper",
         "phase_near_upper",
         "phase_near_lower",
         "phase_wake_upper",

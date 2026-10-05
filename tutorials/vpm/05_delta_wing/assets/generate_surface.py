@@ -11,7 +11,11 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 
-from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
+    Aircraft,
+    Wing,
+    WingSegment,
+)
 from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
 
 
@@ -53,21 +57,11 @@ def create_delta_wing_vertices(
     """
     alpha = np.radians(angle_of_attack_degrees)
     sweep = np.radians(sweep_angle_degrees)
-
-    # Leading edge sweep offset at the tip
     le_offset = half_span * np.tan(sweep)
-
-    # Define base vertex_position (before alpha rotation)
-    # a: LE root
     a_base = np.array([0.0, 0.0, 0.0])
-    # b: LE tip (swept)
     b_base = np.array([le_offset, half_span, 0.0])
-    # c: TE tip
     c_base = np.array([le_offset + tip_chord, half_span, 0.0])
-    # d: TE root
     d_base = np.array([root_chord, 0.0, 0.0])
-
-    # Rotation matrix about Y axis (positive alpha = nose up)
     cos_a = np.cos(alpha)
     sin_a = np.sin(alpha)
 
@@ -83,7 +77,6 @@ def create_delta_wing_vertices(
         "c": rotate_point(c_base),
         "d": rotate_point(d_base),
     }
-
     return vertex_position
 
 
@@ -112,20 +105,10 @@ def create_delta_wing(
         Aircraft: Configured aircraft object
     """
     aircraft = Aircraft(uid="delta_wing")
-
-    # Create wing with Y-symmetry (XZ plane mirror)
     wing = Wing(uid="main_wing", symmetry=2)
-
-    # Create vertex_position for delta wing
     vertex_position = create_delta_wing_vertices(
-        root_chord,
-        tip_chord,
-        half_span,
-        sweep_angle_degrees,
-        angle_of_attack_degrees,
+        root_chord, tip_chord, half_span, sweep_angle_degrees, angle_of_attack_degrees
     )
-
-    # Wing segment: delta wing
     segment = WingSegment(
         uid="segment_0",
         vertex_position=vertex_position,
@@ -133,11 +116,9 @@ def create_delta_wing(
         n_spanwise_panels=n_spanwise_panels,
         airfoils={"inner": "flat", "outer": "flat"},
     )
-
     wing.add_segment(segment)
     aircraft.add_wing(wing)
     aircraft.compute_default_refs()
-
     return aircraft
 
 

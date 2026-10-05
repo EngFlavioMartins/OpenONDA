@@ -6,7 +6,7 @@ Start with a case matching your physical problem:
 
 | Case | Physics and setup |
 | --- | --- |
-| [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$; no-slip cylinder and free-slip span. |
+| [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$; one periodic FVM layer and planar VPM filaments. |
 | [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$; body-fitted wall and equilibrium Smagorinsky LES. |
 | [NACA 4412](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite-span airfoil at $10^\circ$, $Re=1000$; immersed boundary and Smagorinsky LES. |
 
@@ -39,11 +39,15 @@ Static, consistently oriented wall triangles and geometrically represented immer
 
 ### Free-slip span
 
-The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses FVM slip planes and `vpm.SlipSlabInduction` at the same two physical $z$ coordinates. Match the FVM slip faces, VPM domain limits and transfer-region span exactly. Free-space induction describes a different boundary condition and is appropriate for the cube and finite-span airfoil cases.
+For a resolved free-slip span, match the FVM slip faces, `vpm.SlipSlabInduction` planes, VPM domain limits and transfer-region span exactly. Free-space induction describes a different boundary condition and is appropriate for the cube and finite-span airfoil cases.
 
 The slab model retains all three velocity and vorticity components. Coupled runs use laminar GBD diffusion in the slab, without LES. Use M4-prime remeshing, at least three grid cells of padding, and a spacing placing the slip planes on grid nodes or half nodes. The coupler anchors its slab lattice half a particle spacing above the lower plane.
 
 `tail_tolerance` and `max_shells` control image-sum convergence. Check sensitivity to these settings on a developed wake. Images enforce slip conditions; they are not physical particles or part of the force reference area.
+
+### Planar flow
+
+The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses one periodic FVM layer across a unit span and `vpm.PlanarInduction` with one particle layer. This model assumes span-invariant flow and excludes spanwise velocity and vortex stretching.
 
 ## Boundary conditions
 
@@ -67,7 +71,7 @@ The planar identity $\mathbf{P}\,\partial_n\mathbf{U}=\nabla_t(\mathbf{U}\cdot\m
 
 The [face reconstruction](../source/solvers/fvm/fields/mixed_velocity_boundary.py) accounts for tangential owner-to-face displacement on skew faces. Velocity, normal diffusion and pressure face values each receive their corresponding geometric correction; the prescribed VPM derivative is unchanged. The boundary-gradient correction also subtracts the tangential displacement before computing the normal derivative, keeping viscous stress consistent with the face values.
 
-Boundary-only least-squares stencils reuse static mesh geometry and include real processor-neighbour cells, avoiding an additional whole-domain gradient calculation. For a pressure face on a one-cell-thick mesh, real neighbours can leave one derivative undetermined. Only that unresolved direction uses the lagged native boundary data, frozen with the momentum predictor; resolved directions retain their real-cell reconstruction. This compatibility fallback does not establish higher-order accuracy in a direction without enough real-cell support. Unresolved directions without usable boundary support raise an error.
+Boundary-only least-squares stencils reuse static mesh geometry and include real processor-neighbour cells, avoiding an additional whole-domain gradient calculation. For a pressure face on a one-cell-thick mesh, real neighbours can leave one derivative undetermined. Only that unresolved direction uses the lagged native boundary data, frozen with the momentum predictor; resolved directions retain their real-cell reconstruction. This selective lagged closure does not establish higher-order accuracy in a direction without enough real-cell support. Unresolved directions without usable boundary support raise an error.
 
 ## Vorticity transfer
 
@@ -89,9 +93,17 @@ GBD pruning also preserves angular impulse and keeps moment recovery within conn
 
 ## Time stepping and configuration
 
+An optional `CouplerSetup.freestream` declares a `coupler.VelocityRamp` in m/s
+and seconds. The native driver applies the background velocity at each
+accepted exchange endpoint and restores it on continuation. The declared
+history belongs to the checkpoint configuration. To initialize a spatial
+velocity disturbance, pass a physical cell-centre function as
+`solver.run(initial_velocity=...)`; native continuation restores its saved
+field without repeating the disturbance.
+
 Coupled runs require fixed steps with an integer ratio $n=\Delta t_\mathrm{VPM}/\Delta t_\mathrm{FVM}$. Each exchange advances VPM, applies its boundary trace during $n$ FVM substeps, then renews the inner particles while retaining the outer wake.
 
-`interface_iterations` limits repeated FVM solves and renewal at the same physical endpoint. Cylinder allows four sweeps and cube allows three. The initial interface estimate uses accepted trace history; a rejected estimate is retried from the unpredicted trace. Output times must align with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
+`interface_iterations` limits repeated FVM solves and renewal at the same physical endpoint. Cylinder allows six sweeps and cube allows three. The initial interface estimate uses accepted trace history; a rejected estimate is retried from the unpredicted trace. Output times must align with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
 
 Edit the physical constants, mesh and solver configurations in a tutorial's `setup.py`. `FVMSetup`, `VPMCase` and the mesh define the flow problem; `CouplerSetup` supplies the overlap, convergence tolerances and output schedule. The cylinder constructs these objects in `build_case()`. For example, the cube configuration uses:
 

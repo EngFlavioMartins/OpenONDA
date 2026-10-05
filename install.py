@@ -43,7 +43,9 @@ def main(arguments=None) -> int:
             if result.returncode:
                 return result.returncode
     print(f"OpenONDA is installed and verified for {sys.executable}.")
-    print("Use this environment's python to run your case: python setup.py")
+    print(
+        "Run your case with this environment's python: python -m openonda.tutorial_runner . setup"
+    )
     return 0
 
 

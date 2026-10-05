@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-r"""Energy dissipation — normalised power across all three test cases.
+"""Energy dissipation — normalised power across all three test cases.
 
 Reads flow-integral CSV files (``samples/flow_integrals.csv``) exported by
 the VPM solver when logging is active.
@@ -9,7 +8,7 @@ co-rotating merger. The upper row shows total kinetic energy and the lower row
 shows its rate.
 
 Continuous lines show the enstrophy-based sink -2νZ. Sparse filled circles
-show \mathrm{d}E/\mathrm{d}t from direct/Fourier energy differences, including the explicitly
+show \\mathrm{d}E/\\mathrm{d}t from direct/Fourier energy differences, including the explicitly
 labelled finite transition estimate when the scalable diagnostic first takes
 over. Colours are consistent per scheme across all three panels.
 
@@ -18,19 +17,10 @@ Saves: figures/lamboseen_energy.png
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
@@ -43,15 +33,11 @@ from .postprocess import (
     centered_subplots_adjust,
     figure_size,
     load_theme,
-    prepend_initial_point,
     read_flow_integrals,
     resolve_runtime_physics,
     save_fig,
     scheme_zorder,
-    validate_thesis_figure,
 )
-
-# Plot
 
 
 def plot_case_panel(
@@ -74,22 +60,18 @@ def plot_case_panel(
     for scheme in SCHEME_DRAW_ORDER:
         csv_path = samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
         data = read_flow_integrals(csv_path)
-        if data is None or "total_kinetic_energy" not in data:
-            continue
-        data = prepend_initial_point(data, circulation, t0, n_vortices, column_length)
         st = style_map[scheme]
         tau = data["time"] * tau_scale
         energy = data["total_kinetic_energy"] / (n_vortices * energy_ref)
         energy_rate = data["kinetic_energy_rate"] / p_ref
         enstrophy_rate = data["viscous_kinetic_energy_rate"] / p_ref
-
         energy_ax.plot(
             tau,
             energy,
             color=st["color"],
             linestyle="-",
             linewidth=1.0,
-            alpha=0.90,
+            alpha=0.9,
             zorder=scheme_zorder(scheme),
         )
         rate_ax.plot(
@@ -111,7 +93,7 @@ def plot_case_panel(
                     lower[finite_interval],
                     upper[finite_interval],
                     color=st["color"],
-                    alpha=0.10,
+                    alpha=0.1,
                     linewidth=0,
                     zorder=scheme_zorder(scheme) - 1,
                 )
@@ -128,11 +110,10 @@ def plot_case_panel(
                     lower[finite_interval],
                     upper[finite_interval],
                     color=st["color"],
-                    alpha=0.10,
+                    alpha=0.1,
                     linewidth=0,
                     zorder=scheme_zorder(scheme) - 1,
                 )
-
         finite_energy = np.flatnonzero(np.isfinite(energy_rate))
         marker_stride = max(1, len(finite_energy) // 12)
         marker_indices = finite_energy[::marker_stride]
@@ -145,7 +126,7 @@ def plot_case_panel(
             marker="o",
             markersize=2.6,
             linestyle="None",
-            alpha=0.90,
+            alpha=0.9,
             zorder=scheme_zorder(scheme, offset=1),
         )
         latest_tau = max(latest_tau, float(tau.max()))
@@ -154,41 +135,26 @@ def plot_case_panel(
 
 def plot_energy_enstrophy(args) -> int:
     samples_dir = Path(args.samples_dir)
-    fmt = getattr(args, "format", "png")
+    fmt = args.format
     out = Path(args.figures_dir) / f"lamboseen_energy.{fmt}"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    colors, theme = load_theme()
-    if theme is not None and hasattr(theme, "set_style"):
-        theme.set_thesis_style()
+    colors, _theme = load_theme()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(
-        samples_dir, args.circulation, args.kinematic_viscosity, args.b0, args.a0_over_b0
-    )
+    runtime = resolve_runtime_physics(samples_dir)
     run_kinematic_viscosity = runtime["kinematic_viscosity"]
     a0 = runtime["velocity_peak_radius0"]
     run_t0 = runtime["t0"]
     run_circulation = runtime["circulation"]
     column_length = runtime["column_length"]
-
-    tau_scale = run_kinematic_viscosity / (a0**2)
-    # flow_integrals.csv contains 3-D totals.  The Lamb-Oseen dissipation
-    # formula and its natural scale are per unit length, so both must carry L.
-    p_ref = run_kinematic_viscosity * run_circulation**2 * column_length / (a0**2)
+    tau_scale = run_kinematic_viscosity / a0**2
+    p_ref = run_kinematic_viscosity * run_circulation**2 * column_length / a0**2
     energy_ref = run_circulation**2 * column_length
     base_width, base_height = figure_size("trajectory")
     fig, axes = plt.subplots(
-        2,
-        3,
-        figsize=(base_width, 1.75 * base_height),
-        sharex="col",
-        sharey="row",
+        2, 3, figsize=(base_width, 1.75 * base_height), sharex="col", sharey="row"
     )
     centered_subplots_adjust(fig, outer=0.1485, wspace=0.09, hspace=0.12, top=0.955, bottom=0.225)
-
-    plotted = False
     for column, (case_prefix, title, n_vortices) in enumerate(ENERGY_CASES):
-        latest_tau = plot_case_panel(
+        plot_case_panel(
             axes[0, column],
             axes[1, column],
             samples_dir,
@@ -203,37 +169,15 @@ def plot_energy_enstrophy(args) -> int:
             run_t0,
             column_length,
         )
-        plotted |= latest_tau > 0.0
-
-        axes[1, column].set_xlabel(r"$\nu t / a_{c,0}^2$")
-
-    if not plotted:
-        plt.close(fig)
-        out.unlink(missing_ok=True)
-        print("  [energy] no sampled flow integrals; figure not generated")
-        return 0
-
-    axes[0, 0].set_ylabel(r"$E / (N_v\Gamma_{c,0}^2 L)$")
-    axes[1, 0].set_ylabel(r"$(\mathrm{d}E/\mathrm{d}t) / (\nu\Gamma_{c,0}^2 L / a_{c,0}^2)$")
-    # Include zero: a sampled RWM rate interval crosses it in the merger.
-    axes[1, 0].set_ylim([-5e-1, 2e-3])
-
-    # sharey="row" links the three rate panels.
+        axes[1, column].set_xlabel("$\\nu t / a_{c,0}^2$")
+    axes[0, 0].set_ylabel("$E / (N_v\\Gamma_{c,0}^2 L)$")
+    axes[1, 0].set_ylabel("$(\\mathrm{d}E/\\mathrm{d}t) / (\\nu\\Gamma_{c,0}^2 L / a_{c,0}^2)$")
+    axes[1, 0].set_ylim([-0.5, 0.002])
     for ax in axes[1, :]:
         ax.set_yscale("symlog", linthresh=0.01)
         ax.axhline(0.0, color=colors["reference"], linestyle=":", linewidth=0.6)
-
-    available_schemes = [
-        scheme
-        for scheme in SCHEMES
-        if any(
-            read_flow_integrals(samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv")
-            is not None
-            for case_prefix, _, _ in ENERGY_CASES
-        )
-    ]
     handles: list = []
-    for scheme in available_schemes:
+    for scheme in SCHEMES:
         st = style_map[scheme]
         handles.append(
             Line2D(
@@ -255,7 +199,7 @@ def plot_energy_enstrophy(args) -> int:
             marker="o",
             markersize=4,
             mfc=colors["reference"],
-            label=r"$\mathrm{d}E/\mathrm{d}t$",
+            label="$\\mathrm{d}E/\\mathrm{d}t$",
         )
     )
     handles.append(
@@ -266,7 +210,7 @@ def plot_energy_enstrophy(args) -> int:
             linestyle="-",
             marker="None",
             linewidth=1.0,
-            label=r"$-2\nu Z_s$",
+            label="$-2\\nu Z_s$",
         )
     )
     fig.legend(
@@ -276,16 +220,14 @@ def plot_energy_enstrophy(args) -> int:
         ncol=3,
         bbox_to_anchor=(0.5, 0.015),
     )
-
-    validate_thesis_figure(fig, axes.ravel())
     save_fig(fig, out, args.dpi)
     return 0
 
 
 def main() -> int:
-    p = build_arg_parser(r"Energy balance: \mathrm{d}E/\mathrm{d}t")
+    p = build_arg_parser("Energy balance: \\mathrm{d}E/\\mathrm{d}t")
     return plot_energy_enstrophy(p.parse_args())
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

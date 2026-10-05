@@ -78,7 +78,7 @@ def test_verifier_gpu_execution_is_explicit_opt_in(monkeypatch, capsys, enabled)
     monkeypatch.setattr(verifier, "_verify_package_location", lambda flag: "/installed/openonda")
     for name in (
         "_verify_distribution_resources",
-        "_verify_direct_tutorial_scripts",
+        "_verify_tutorial_commands",
         "_verify_cartesian_mesher",
         "_verify_native_fvm",
         "_verify_native_vpm",

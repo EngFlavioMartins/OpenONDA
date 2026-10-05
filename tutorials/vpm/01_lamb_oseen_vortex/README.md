@@ -11,7 +11,7 @@ From this directory with OpenONDA installed:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes compatible backups. For one case, use `python setup.py vortex CS`; physical choices are `vortex`, `dipole`, `merging`, and methods are `CS`, `RWM`, `DVH`, `GBD`. A single RWM run is one realization; use `python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes saved native backups. For one case, use `python -m openonda.tutorial_runner . setup vortex CS`; physical choices are `vortex`, `dipole`, `merging`, and methods are `CS`, `RWM`, `DVH`, `GBD`. A single RWM run is one realization; use `python -m openonda.tutorial_runner . assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
 
 ## Physical and numerical inputs
 
@@ -38,6 +38,6 @@ $$
 
 The dipole tests mutual translation; the co-rotating pair tests separation, orientation and merger against [Cerretelli–Williamson data](assets/references/README.md). Figures use $\nu t/a_{c,0}^2$; this radius differs from the Gaussian radius above.
 
-RWM starts with ten independent seeds and adds batches until velocity and vorticity relative standard errors are at most 7.5%, with a default cap of 80 seeds. Features are extracted from the ensemble-mean field; shaded intervals describe Monte Carlo uncertainty. See the short [RWM methodology](assets/references/rwm_statistical_methodology.md).
+RWM uses ten independent seeds. Features are extracted from the ensemble-mean field; shaded intervals describe Monte Carlo uncertainty. See the short [RWM methodology](assets/references/rwm_statistical_methodology.md).
 
-Fields and integrals are in `samples/<case>/`; checkpoints are in `solution/<case>/`. Figures compare profiles, kinetic-energy decay, dipole motion and merger. Run `python assets/postprocess.py` to check completeness, finite energy histories and ensemble coverage. Diffusion domains include the physical spread; if you change duration or viscosity, enlarge them accordingly.
+Fields and integrals are in `samples/<case>/`; checkpoints are in `solution/<case>/`. Figures compare profiles, kinetic-energy decay, dipole motion and merger. Diffusion domains include the physical spread; if you change duration or viscosity, enlarge them accordingly.

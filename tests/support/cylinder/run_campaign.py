@@ -10,10 +10,7 @@ import os
 from pathlib import Path
 import sys
 
-from openonda.tutorial_runner import case_package, load_case_module
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
+from openonda.tutorial_runner import load_case_module
 
 from .provenance import (
     file_hash,
@@ -240,13 +237,13 @@ def _grid_record_path(run_dir: Path, name: str) -> Path:
 def _grid_config(
     module, name: str, spacing: float, end_time: float, cores: int | None = None
 ) -> dict[str, object]:
-    layers = max(4, math.ceil(module.SPAN / spacing))
     return {
         "name": name,
         "h": float(spacing),
         "hp": float(spacing),
         "span": float(module.SPAN),
-        "dz": float(module.SPAN / layers),
+        "span_layers": 1,
+        "dz": float(module.SPAN),
         "end_time": float(end_time),
         "cores": getattr(module, "CORES", 6) if cores is None else cores,
         "fvm_time_step": float(module.TIME_STEP_SIZE),
@@ -305,7 +302,7 @@ def _resolved_coupled_config(
     viscous = numerics.viscous
     induction = numerics.induction
     hxy = float(mesh.source.max_cell_size)
-    span = float(induction.z_max - induction.z_min)
+    span = float(induction.planar_span)
     axial_layers = len(mesh.levels) - 1
     return {
         "kind": "coupled",
@@ -316,6 +313,9 @@ def _resolved_coupled_config(
         "vpm_bounds": list(map(float, numerics.domain_bounds)),
         "transfer_bounds": list(map(float, coupler_setup.transfer_region_bounds)),
         "span": span,
+        "span_layers": axial_layers,
+        "particle_span_layers": 1,
+        "plane_z": float(induction.plane_z),
         "dz": float(span / axial_layers),
         "hp": float(viscous.particle_spacing),
         "exchange_dt": float(numerics.time_step_size),

@@ -1,22 +1,17 @@
-#!/usr/bin/env python3
 """Settled flat-plate lift, drag and quarter-chord moment coefficients."""
 
-if not __package__:
-    from pathlib import Path
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
-
 import argparse
+
 import numpy as np
+
 from ._plot_theme import (
     FIG_DIR,
     SAMPLES_DIR,
+    centered_subplots_adjust,
     color,
     save_fig,
-    validation_subplots,
     validation_legend,
-    centered_subplots_adjust,
+    validation_subplots,
 )
 from .results import parameters, settled_coefficients
 from .theoretical_model import lifting_line_polar
@@ -33,7 +28,7 @@ for mode in ("moving", "static"):
     curves[mode] = np.array(
         [
             settled_coefficients(
-                SAMPLES_DIR.parent, f"exp_{mode}_aoa{'n' if angle < 0 else ''}{abs(angle):02d}"
+                SAMPLES_DIR.parent, f"exp_{mode}_aoa{('n' if angle < 0 else '')}{abs(angle):02d}"
             )
             for angle in angles
         ]
@@ -58,13 +53,13 @@ for mode, marker, ink in [("moving", "o", color("teal")), ("static", "s", color(
             mfc="none" if mode == "moving" else ink,
             label=mode.capitalize(),
         )
-for axis, label in zip(axes, [r"$C_L$", r"$C_D$", r"$C_{m,c/4}$"], strict=True):
+for axis, label in zip(axes, ["$C_L$", "$C_D$", "$C_{m,c/4}$"], strict=True):
     axis.set_ylabel(label)
     axis.axhline(0, color="0.6", lw=0.6)
     axis.set_xlim(-11, 16)
 for axis, letter in zip(axes, "abc", strict=True):
     axis.text(0.035, 0.93, f"({letter})", transform=axis.transAxes, va="top")
-axes[-1].set_xlabel(r"Angle of attack, $\alpha$ [degrees]")
+axes[-1].set_xlabel("Angle of attack, $\\alpha$ [degrees]")
 centered_subplots_adjust(fig, outer=0.129, bottom=2.25 / 12.8, top=1 - 0.11 / 12.8, hspace=0.24)
 validation_legend(fig, axes[0], ncol=3, outside=True)
 print("Final five chord lengths; lift, drag and quarter-chord moment")

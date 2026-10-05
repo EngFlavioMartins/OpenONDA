@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Render coupled VPM+VLM backups alongside recorded wake-plane fields.
 
 The rotor surface in each animation frame is read from the VPM-owned HDF5
@@ -10,102 +9,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
-import h5py
-from defusedxml import ElementTree
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, Normalize
-from matplotlib.collections import PolyCollection
-from matplotlib.cm import ScalarMappable
 import numpy as np
-
-from source.solution_layout import vpm_backup_files
-from PIL import Image
 import pyvista as pv
+from matplotlib.cm import ScalarMappable
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import Normalize
 
 from openonda import plotting as theme
+from openonda.results import read_pvd_frames, write_text
+from openonda.scenes import export_animation, figure_frame
+from source.solvers.vpm.io.postprocess import coupled_frames, vlm_surface
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = CASE_DIR / "assets" / "animation" / "rotor_30fps.gif"
-
-
-def _run_directories() -> tuple[Path, Path]:
-    tag = os.environ.get("ROTOR_OUTPUT_TAG", "")
-    solution = CASE_DIR / "solution" / tag if tag else CASE_DIR / "solution"
-    samples = CASE_DIR / "samples" / "rotor" / tag if tag else CASE_DIR / "samples" / "rotor"
-    return solution, samples
-
-
-def _backup_step(path: Path) -> int:
-    try:
-        return int(path.stem.rsplit("_", 1)[1])
-    except (IndexError, ValueError) as error:
-        raise ValueError(f"invalid coupled backup name: {path.name}") from error
-
-
-def _read_backup_clock(path: Path) -> tuple[int, float]:
-    with h5py.File(path, "r") as archive:
-        if "solver" not in archive or "vlm" not in archive["solver"]:
-            raise ValueError(f"{path.name}: missing coupled solver/vlm state")
-        solver = archive["solver"]
-        try:
-            step = int(solver.attrs["step"])
-            time = float(solver.attrs["time"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise ValueError(f"{path.name}: missing coupled solver clock") from error
-        vlm = solver["vlm"]
-        required = {"panel_corner_position", "circulation"}
-        missing = required - set(vlm)
-        if missing:
-            raise ValueError(f"{path.name}: missing coupled VLM arrays {sorted(missing)}")
-    if step < 0 or not np.isfinite(time):
-        raise ValueError(f"{path.name}: non-finite or invalid coupled solver clock")
-    return step, time
-
-
-def _coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
-    """Return strictly ordered VPM-owned backups containing attached VLM state."""
-    paths = vpm_backup_files(solution_dir)
-    if not paths:
-        raise FileNotFoundError(f"no coupled VPM backups found under {solution_dir}")
-    records = [(time, path) for path in paths for _, time in [_read_backup_clock(path)]]
-    metadata_path = solution_dir / "vpm_metadata.json"
-    if metadata_path.is_file():
-        state = json.loads(metadata_path.read_text())["state"]
-        records = [
-            (time, path)
-            for time, path in records
-            if time <= state["time"] + 1e-10 and _backup_step(path) <= state["step"]
-        ]
-    if not records:
-        raise ValueError("no coupled backups within the recorded accepted horizon")
-    steps = np.asarray([_backup_step(path) for _, path in records])
-    times = np.asarray([time for time, _ in records])
-    if np.any(np.diff(steps) <= 0) or np.any(np.diff(times) <= 0):
-        raise ValueError("coupled VPM backup steps or timestamps are unordered")
-    return records
-
-
-def _pvd_frames(path: Path, *, end_time=None) -> list[tuple[float, Path]]:
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    root = ElementTree.parse(path)
-    frames = [
-        (float(item.attrib["timestep"]), path.parent / item.attrib["file"])
-        for item in root.findall(".//DataSet")
-    ]
-    if not frames or not np.isfinite([time for time, _ in frames]).all():
-        raise ValueError(f"{path}: no finite native frames")
-    times = np.asarray([time for time, _ in frames])
-    if np.any(np.diff(times) <= 0):
-        raise ValueError(f"{path}: frame times are not strictly increasing")
-    if end_time is not None:
-        frames = [(time, frame) for time, frame in frames if time <= end_time + 1e-10]
-        if not frames:
-            raise ValueError(f"{path}: no native frames within the accepted horizon")
-    return frames
+DEFAULT_OUTPUT = CASE_DIR / "figures" / "rotor_30fps.gif"
 
 
 def _nearest_frame(frames, time: float) -> tuple[float, Path]:
@@ -113,74 +32,48 @@ def _nearest_frame(frames, time: float) -> tuple[float, Path]:
     return frames[index]
 
 
-def _panel_centres(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    with h5py.File(path, "r") as archive:
-        vlm = archive["solver/vlm"]
-        corners = np.asarray(vlm["panel_corner_position"], dtype=float)
-        circulation = np.asarray(vlm["circulation"], dtype=float)
-    if corners.ndim != 3 or corners.shape[1:] != (4, 3):
-        raise ValueError(f"{path.name}: invalid coupled VLM panel corners")
-    centres = corners.mean(axis=1)
-    if circulation.shape != (len(centres),):
-        raise ValueError(f"{path.name}: inconsistent coupled VLM panel arrays")
-    if not np.isfinite(centres).all() or not np.isfinite(circulation).all():
-        raise ValueError(f"{path.name}: non-finite coupled VLM geometry or circulation")
-    return centres, circulation
-
-
-def _display_path(path: Path) -> str:
-    try:
-        return str(path.relative_to(CASE_DIR))
-    except ValueError:
-        return str(path)
-
-
 def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) -> Path:
-    if not np.isfinite(fps) or fps <= 0.0:
-        raise ValueError("fps must be finite and positive")
-    if fps > 100.0:
-        raise ValueError("GIF playback cannot represent more than 100 fps")
-    solution_dir, samples_dir = _run_directories()
-    vlm_frames = _coupled_frames(solution_dir)
-    plane_frames = _pvd_frames(samples_dir / "wake_1D.pvd", end_time=vlm_frames[-1][0])
+    solution_dir, samples_dir = (CASE_DIR / "solution", CASE_DIR / "samples/rotor")
+    vlm_frames = coupled_frames(solution_dir)
+    plane_frames = [
+        (time, path)
+        for time, path in read_pvd_frames(samples_dir / "wake_1D.pvd")
+        if time <= vlm_frames[-1][0]
+    ]
     if max_frames is not None:
-        if max_frames < 2:
-            raise ValueError("max_frames must be at least 2")
         vlm_frames = vlm_frames[:max_frames]
     physical_span = vlm_frames[-1][0] - vlm_frames[0][0]
     gif_span = len(vlm_frames) / fps
     playback = physical_span / gif_span if gif_span > 0 else np.nan
-    output.parent.mkdir(parents=True, exist_ok=True)
-    images: list[Image.Image] = []
+    images = []
     theme.set_thesis_style()
-    # Keep animation raster size independent of the publication export DPI.
     figure, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=100, constrained_layout=True)
     circulation_cmap = plt.get_cmap(theme.COLORMAPS["vorticity"])
     vorticity_cmap = plt.get_cmap(theme.COLORMAPS["vorticity_magnitude"])
     native_frames = []
     for time, backup_path in vlm_frames:
-        centres, circulation = _panel_centres(backup_path)
+        corners, circulation = vlm_surface(backup_path)
+        centres = corners.mean(axis=1)
         native_frames.append((time, backup_path, centres, circulation))
     circulation_all = np.concatenate([circulation for _, _, _, circulation in native_frames])
     circulation_scale = max(float(np.abs(circulation_all).max()), 1e-12)
     circulation_norm = Normalize(vmin=-circulation_scale, vmax=circulation_scale)
-    plane_cache = {}
+    plane_fields = []
     for time, _ in vlm_frames:
         plane_time, plane_path = _nearest_frame(plane_frames, time)
-        if plane_path not in plane_cache:
-            plane = pv.read(plane_path)
-            values = np.linalg.norm(np.asarray(plane["vorticity"]), axis=1)
-            plane_cache[plane_path] = (plane_time, np.asarray(plane.points), values)
-    wake_points = next(iter(plane_cache.values()))[1]
-    vorticity_max = max(values.max() for _, _, values in plane_cache.values())
-    vorticity_norm = Normalize(vmin=0.0, vmax=max(float(vorticity_max), 1.0e-12))
+        plane = pv.read(plane_path)
+        values = np.linalg.norm(np.asarray(plane["vorticity"]), axis=1)
+        plane_fields.append((plane_time, np.asarray(plane.points), values))
+    wake_points = plane_fields[0][1]
+    vorticity_max = max((values.max() for _, _, values in plane_fields))
+    vorticity_norm = Normalize(vmin=0.0, vmax=max(float(vorticity_max), 1e-12))
     figure.colorbar(
         ScalarMappable(norm=circulation_norm, cmap=circulation_cmap),
         ax=axes[0],
         location="bottom",
         shrink=0.8,
         pad=0.13,
-        label=r"Signed panel circulation, $\Gamma$ [m$^2$/s]",
+        label="Signed panel circulation, $\\Gamma$ [m$^2$/s]",
     )
     figure.colorbar(
         ScalarMappable(norm=vorticity_norm, cmap=vorticity_cmap),
@@ -188,7 +81,7 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         location="bottom",
         shrink=0.8,
         pad=0.13,
-        label=r"Vorticity magnitude, $|\omega|$ [1/s]",
+        label="Vorticity magnitude, $|\\omega|$ [1/s]",
     )
     panel_limits = (
         float(np.min([centres[:, 1].min() for _, _, centres, _ in native_frames])),
@@ -204,17 +97,13 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         float(wake_points[:, 2].max()),
     )
     selected_plane_paths = []
-    for time, backup_path, centres, circulation in native_frames:
+    for frame_index, (time, backup_path, _centres, circulation) in enumerate(native_frames):
         plane_time, plane_path = _nearest_frame(plane_frames, time)
         selected_plane_paths.append(plane_path)
-        _, points, vorticity = plane_cache[plane_path]
-        if len(points) != len(vorticity) or not np.isfinite(vorticity).all():
-            raise ValueError(f"{plane_path}: invalid native vorticity field")
-
+        _, points, vorticity = plane_fields[frame_index]
         for axis in axes:
             axis.clear()
-        with h5py.File(backup_path, "r") as archive:
-            corners = np.asarray(archive["solver/vlm/panel_corner_position"])
+        corners, _ = vlm_surface(backup_path)
         panels = PolyCollection(
             corners[:, :, 1:],
             array=circulation,
@@ -227,8 +116,6 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
         axes[0].set_aspect("equal", adjustable="box")
         axes[0].set_xlim(panel_limits[0] - panel_margin, panel_limits[1] + panel_margin)
         axes[0].set_ylim(panel_limits[2] - panel_margin, panel_limits[3] + panel_margin)
-        # Display every native point on its structured grid. Striding flattened
-        # points creates diagonal aliasing unrelated to the wake physics.
         dimensions = pv.read(plane_path).dimensions[:2]
         axes[1].pcolormesh(
             points[:, 1].reshape(dimensions, order="F"),
@@ -238,49 +125,30 @@ def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) ->
             cmap=vorticity_cmap,
             norm=vorticity_norm,
         )
-        axes[1].set(
-            xlabel="y [m]",
-            ylabel="z [m]",
-            title=f"1D wake plane, t={plane_time:.2g} s",
-        )
+        axes[1].set(xlabel="y [m]", ylabel="z [m]", title=f"1D wake plane, t={plane_time:.2g} s")
         axes[1].set_aspect("equal", adjustable="box")
         axes[1].set_xlim(wake_limits[0], wake_limits[1])
         axes[1].set_ylim(wake_limits[2], wake_limits[3])
         figure.suptitle(f"$t={time:.2g}$ s; {playback:.2g}x playback")
-        figure.canvas.draw()
-        rgba = np.asarray(figure.canvas.buffer_rgba())
-        # Retain one byte per pixel, the native GIF representation, rather
-        # than every frame's RGB canvas. All native frames remain included.
-        images.append(Image.fromarray(rgba[:, :, :3]).quantize(colors=256))
+        images.append(figure_frame(figure))
     plt.close(figure)
-    # GIF stores frame delays in 10 ms units. Round cumulative timestamps so
-    # 40 ms frames are distributed throughout the sequence instead of
-    # creating a front-loaded playback-speed jump.
-    timestamps = np.rint(np.arange(len(images) + 1) * 100.0 / fps).astype(int)
-    durations = (10 * np.diff(timestamps)).tolist()
-    images[0].save(
-        output,
-        save_all=True,
-        append_images=images[1:],
-        duration=durations,
-        loop=0,
-        optimize=False,
-    )
+    export_animation(images, output, fps=fps)
     output_manifest = output.with_suffix(".json")
-    output_manifest.write_text(
+    write_text(
+        output_manifest,
         json.dumps(
             {
-                "gif": _display_path(output),
+                "gif": str(output),
                 "fps": fps,
                 "source_format": "coupled_vpm_hdf5",
-                "source_backups": [_display_path(path) for _, path in vlm_frames],
+                "source_backups": [str(path) for _, path in vlm_frames],
                 "source_backup_timestamps": [float(time) for time, _ in vlm_frames],
-                "wake_plane_source": _display_path(samples_dir / "wake_1D.pvd"),
-                "wake_plane_frames": [_display_path(path) for path in selected_plane_paths],
+                "wake_plane_source": str(samples_dir / "wake_1D.pvd"),
+                "wake_plane_frames": [str(path) for path in selected_plane_paths],
             },
             indent=2,
         )
-        + "\n"
+        + "\n",
     )
     return output
 
@@ -296,4 +164,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

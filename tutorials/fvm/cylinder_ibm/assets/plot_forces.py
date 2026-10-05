@@ -3,12 +3,6 @@
 from samples/ibm_forces_history.csv, with reference bands from
 Constant et al. 2017."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
@@ -47,8 +41,6 @@ def main():
     args = build_arg_parser().parse_args()
     ref = REFERENCES.get(args.Re, {})
     data = load_ibm_forces_csv(SOLUTION_DIR)
-    if not data:
-        raise SystemExit("  No IBM force data to plot.")
 
     for name, d in data.items():
         t = d["time"]
@@ -94,7 +86,7 @@ def main():
         ax.set_xlabel("t [s]")
         ax.grid(False)
 
-        centered_subplots_adjust(fig, outer=.119, bottom=.12, top=.991, hspace=.30)
+        centered_subplots_adjust(fig, outer=0.119, bottom=0.12, top=0.991, hspace=0.30)
         save_fig(fig, f"forces_{name}.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
         print(

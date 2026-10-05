@@ -1,14 +1,11 @@
 """Export the sample-based numerical evidence used in the thesis subsection."""
 
 import json
+
 import numpy as np
 import pandas as pd
 
-if not __package__:
-    from openonda.tutorial_runner import case_package
-    from pathlib import Path as _CasePath
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+from openonda.results import read_history_table, write_text
 
 from ..assets import ring_metrics as rm
 
@@ -18,16 +15,8 @@ def summarize():
     for name in rm.CURRENT_VARIANTS:
         root = rm.SAMPLES_DIR / name
         metadata = rm.load_metadata(name)
-        if not metadata or not (root / "flow_integrals.csv").is_file():
-            continue
         d = rm.load_sampled_ring_data(root / "ring_diagnostics.csv")
-        if d is None:
-            continue
-        f = (
-            pd.read_csv(root / "flow_integrals.csv")
-            .sort_values("step")
-            .drop_duplicates("step", keep="last")
-        )
+        f = pd.DataFrame(read_history_table(root / "flow_integrals.csv"))
         numerics = metadata["configuration"]["numerics"]
         vector = d[
             ["net_vortex_strength_x", "net_vortex_strength_y", "net_vortex_strength_z"]
@@ -90,7 +79,7 @@ def summarize():
 def main():
     output = rm.FIGURES_DIR / "vortex_ring_metrics.json"
     data = summarize()
-    output.write_text(json.dumps(data, indent=2) + "\n")
+    write_text(output, json.dumps(data, indent=2) + "\n")
     for name, values in data.items():
         print(
             f"{name}: tube change {values['final_tube_change_percent']:.2g}%, vector drift {values['final_vector_drift']:.2g}"

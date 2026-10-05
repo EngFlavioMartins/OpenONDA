@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""Body-fitted cylinder flow at Re = 150."""
+"""Two-dimensional body-fitted cylinder flow at Re = 150 and unit span."""
 
 import argparse
-import math
+from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 
 import openonda.fvm as fvm
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
-
-from .assets.startup import run_reference_cylinder
-from .assets.configuration import align_cylinder_sampling, steps
 import openonda.fvm.mesher as msh
+
+from .assets.initial_conditions import cylinder_initial_velocity
 
 # Physical problem
 START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
@@ -29,7 +25,7 @@ REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
 
 # Domain and mesh refinement
-SPAN = 0.96
+SPAN = 1.0
 DOMAIN = (-8.0, 24.0, -10.0, 10.0, -0.5 * SPAN, 0.5 * SPAN)
 BACKGROUND_CELL_SIZE_RATIO = 16.0
 NEAR_WAKE_CELL_SIZE_RATIO = 2.0
@@ -68,32 +64,29 @@ def phase_lines(outer=False):
     ]
 
 
-def field_lines(reference, *, span):
+def field_lines(reference):
     lines = [("centreline", [0.6, 0.0, 0.0], [1.4, 0.0, 0.0], 11)]
-    for label, z in (("lower", -span / 4), ("middle", 0.0), ("upper", span / 4)):
-        lines.append((f"span_{label}", [1.0, -1.2, z], [1.0, 1.2, z], 31))
+    lines.append(("span_middle", [1.0, -1.2, 0.0], [1.0, 1.2, 0.0], 31))
     if reference:
         for x in (2, 4):
             lines.append((f"transverse_x{x}", [x, -2.0, 0.0], [x, 2.0, 0.0], 51))
     return lines
 
 
-def sampling_plan(period, *, end, exchange_dt, fvm_time_step):
-    """Resolve physical periods onto the actual accepted exchange clock."""
-    steps(exchange_dt, fvm_time_step)
-    steps(end, exchange_dt)
-    return align_cylinder_sampling(
-        end_time=end,
-        exchange_dt=exchange_dt,
-        fvm_time_step=fvm_time_step,
-        sample_period=period,
-        slice_period=SLICES,
-        output_period=VOLUMES,
+def sampling_plan(period, *, exchange_dt, fvm_time_step):
+    """Sampling periods expressed on the FVM and particle clocks."""
+    substeps = round(exchange_dt / fvm_time_step)
+    sample_steps = max(1, round(period / exchange_dt))
+    return SimpleNamespace(
+        sample_steps=sample_steps,
+        fvm_sample_steps=sample_steps * substeps,
+        fvm_slice_steps=max(1, round(SLICES / exchange_dt)) * substeps,
+        fvm_output_steps=max(1, round(VOLUMES / exchange_dt)) * substeps,
     )
 
 
-def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_dt, fvm_time_step):
-    clocks = {"end": end, "exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
+def fvm_samplers(reference, *, span, freestream_speed, diameter, exchange_dt, fvm_time_step):
+    clocks = {"exchange_dt": exchange_dt, "fvm_time_step": fvm_time_step}
     force, profile = sampling_plan(FORCES, **clocks), sampling_plan(PROFILES, **clocks)
     fast = fvm.RunSchedule(every_n_steps=force.fvm_sample_steps)
     slow = fvm.RunSchedule(every_n_steps=profile.fvm_sample_steps)
@@ -119,7 +112,7 @@ def fvm_samplers(reference, *, span, freestream_speed, diameter, end, exchange_d
                 schedule=fast,
             )
         )
-    for name, start, end, count in field_lines(reference, span=span):
+    for name, start, end, count in field_lines(reference):
         samplers.append(
             fvm.LineSampler(
                 start=start,
@@ -161,7 +154,6 @@ def build_case(
     """Return the reference configuration and mesh without allocating a solver."""
     refinement_request = 4.0 * h / 3.0
     source_half_span = 16.0 * refinement_request
-    span_layers = max(4, math.ceil(SPAN / h))
     source_domain = (*DOMAIN[:4], -source_half_span, source_half_span)
     patches = msh.BoxPatches(
         xmin="inlet",
@@ -197,13 +189,11 @@ def build_case(
             surface_may_cross_domain_boundary=True,
         ),
         domain=msh.BoxDomain(bounds=DOMAIN, patches=patches),
-        levels=tuple(DOMAIN[4] + layer * SPAN / span_layers for layer in range(span_layers + 1)),
+        levels=(DOMAIN[4], DOMAIN[5]),
     )
 
     physical_end = END_TIME if end_time is None else end_time
-    clocks = dict(
-        end=physical_end, exchange_dt=EXCHANGE_TIME_STEP_SIZE, fvm_time_step=TIME_STEP_SIZE
-    )
+    clocks = dict(exchange_dt=EXCHANGE_TIME_STEP_SIZE, fvm_time_step=TIME_STEP_SIZE)
     sampling = sampling_plan(PROFILES, **clocks)
     backups = sampling_plan(BACKUPS, **clocks)
     setup = fvm.FVMSetup(
@@ -243,10 +233,31 @@ def build_case(
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
-            fvm.BoundaryConfig.slip("zmin"),
-            fvm.BoundaryConfig.slip("zmax"),
+            fvm.BoundaryConfig.cyclic("zmin", "zmax"),
+            fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
+        velocity_boundaries=(
+            fvm.VelocityBoundary(
+                patches=("inlet",),
+                velocity=fvm.VelocityRamp(
+                    initial=STARTUP_FREESTREAM_VELOCITY,
+                    final=tuple(VELOCITY),
+                    start_time=STARTUP_DURATION - STARTUP_TRANSITION_DURATION,
+                    end_time=STARTUP_DURATION,
+                ),
+            ),
+            fvm.VelocityBoundary(
+                patches=("ymin", "ymax"),
+                velocity=fvm.VelocityRamp(
+                    initial=STARTUP_FREESTREAM_VELOCITY,
+                    final=tuple(VELOCITY),
+                    start_time=STARTUP_DURATION - STARTUP_TRANSITION_DURATION,
+                    end_time=STARTUP_DURATION,
+                ),
+                normal_only=True,
+            ),
+        ),
         initial_velocity=list(STARTUP_FREESTREAM_VELOCITY),
     )
     return setup, mesh
@@ -275,15 +286,13 @@ def create_solver(
 
 def run_solver(solver: fvm.FVMSolver, *, start_from=START_FROM) -> None:
     """Apply the coupled case's startup schedule through native FVM evolution."""
-    run_reference_cylinder(
-        solver,
-        span=SPAN,
+    solver.run(
         start_from=start_from,
-        startup_duration=STARTUP_DURATION,
-        startup_transition_duration=STARTUP_TRANSITION_DURATION,
-        startup_freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
-        steady_freestream_velocity=tuple(VELOCITY),
-        perturbation=INITIAL_PERTURBATION,
+        initial_velocity=partial(
+            cylinder_initial_velocity,
+            freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
+            **INITIAL_PERTURBATION,
+        ),
     )
 
 

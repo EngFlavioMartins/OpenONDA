@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
 """Plot the surface pressure distribution saved by setup.py."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 
@@ -23,16 +14,14 @@ from ._common import (  # noqa: E402
     SOLUTION_DIR,
     build_arg_parser,
     figure_size,
-    load_csv_columns,
+    read_csv_columns,
     save_fig,
 )
 
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_csv_columns(Path(SOLUTION_DIR) / "surface_cp.csv")
-    if not data:
-        return
+    data = read_csv_columns(Path(SOLUTION_DIR) / "surface_cp.csv")
     x = data["position_x_over_chord"]
     y = data["position_y_over_chord"]
     cp = data["pressure_coefficient"]
@@ -63,7 +52,7 @@ def main():
     ax.grid(False)
     ax.legend()
 
-    centered_subplots_adjust(fig, outer=.1215, bottom=.20, top=.985)
+    centered_subplots_adjust(fig, outer=0.1215, bottom=0.20, top=0.985)
     save_fig(fig, "airfoil_surface_cp.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     if abs(args.angle) < 1e-9:
         gap = float(abs(cp[upper].mean() - cp[lower].mean()))

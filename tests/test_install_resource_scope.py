@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import pytest
 
 from openonda.tutorials import _include_resource
-from openonda.verify_install import _verify_tutorial_source_paths
+from openonda.verify_install import _verify_tutorial_commands, _verify_tutorial_source_paths
 
 
 @pytest.mark.parametrize(
@@ -57,3 +57,8 @@ def test_portable_nested_sources_remain_admitted(tmp_path):
     source.parent.mkdir(parents=True)
     source.write_text("from pathlib import Path\nROOT = Path(__file__).parent\n")
     _verify_tutorial_source_paths(tmp_path)
+
+
+def test_installed_tutorial_commands_resolve_from_copied_cases_without_python_path(monkeypatch):
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    assert _verify_tutorial_commands() > 0

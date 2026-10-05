@@ -4,6 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
+from openonda.results import write_text
+
 
 def create_airfoil_surface(
     path: Path, chord: float, depth: float, chord_count: int, thickness_ratio: float
@@ -60,7 +62,6 @@ def create_airfoil_surface(
             )
         )
 
-    path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["solid openonda_naca0012"]
     for face in faces:
         triangle = vertices[np.asarray(face)]
@@ -74,5 +75,5 @@ def create_airfoil_surface(
             lines.append(f"      vertex {vertex[0]:.9e} {vertex[1]:.9e} {vertex[2]:.9e}")
         lines.extend(("    endloop", "  endfacet"))
     lines.append("endsolid openonda_naca0012")
-    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+    write_text(path, "\n".join(lines) + "\n", encoding="ascii")
     return path

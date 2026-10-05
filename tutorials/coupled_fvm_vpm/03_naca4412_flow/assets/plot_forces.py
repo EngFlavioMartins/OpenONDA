@@ -3,35 +3,21 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import json
-import runpy
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
 from openonda import plotting as theme
+from openonda.results import planar_direction, read_csv_columns, read_json
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 
 
-def _wind_direction(case_dir: Path) -> np.ndarray:
-    metadata_path = case_dir / "solution" / "run_metadata.json"
-    if metadata_path.is_file():
-        velocity = json.loads(metadata_path.read_text())["physics"]["freestream_velocity"]
-    else:
-        velocity = runpy.run_path(str(case_dir / "setup.py"))["FREESTREAM_VELOCITY"]
-    vector = np.asarray(velocity, dtype=float)
-    if vector.shape != (3,) or not np.all(np.isfinite(vector)):
-        raise ValueError("freestream velocity must be a finite three-component vector")
-    speed = float(np.linalg.norm(vector[:2]))
-    if speed <= 0.0 or not np.isclose(vector[2], 0.0):
-        raise ValueError("freestream velocity must lie in the nonzero airfoil plane")
-    return vector[:2] / speed
+def _wind_direction(case_dir):
+    velocity = read_json(case_dir / "solution/run_metadata.json")["physics"]["freestream_velocity"]
+    return planar_direction(velocity, axes=(0, 1))
 
 
 def _wind_axis_coefficients(
@@ -49,31 +35,16 @@ def main() -> None:
 
     theme.set_thesis_style()
     source = CASE_DIR / "samples" / "ibm_forces_history.csv"
-    with source.open(newline="") as stream:
-        rows = list(csv.DictReader(stream))
-    if not rows:
-        raise SystemExit(f"No force samples found in {source}")
-    data = np.array(
-        [
-            [
-                float(row[key])
-                for key in (
-                    "time",
-                    "drag_coefficient",
-                    "lift_coefficient",
-                    "slip_error",
-                )
-            ]
-            for row in rows
-        ]
-    )
-    time, body_axis_drag_coefficient, body_axis_lift_coefficient, slip_error = data.T
+    data = read_csv_columns(source)
+    time = data["time"]
+    body_axis_drag_coefficient = data["drag_coefficient"]
+    body_axis_lift_coefficient = data["lift_coefficient"]
+    slip_error = data["slip_error"]
     drag, lift = _wind_axis_coefficients(
         body_axis_drag_coefficient, body_axis_lift_coefficient, _wind_direction(CASE_DIR)
     )
 
     figures = CASE_DIR / "figures"
-    figures.mkdir(exist_ok=True)
     figure, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), sharex=True)
     axes[0].plot(time, drag, label=r"$C_D$")
     axes[0].plot(time, lift, label=r"$C_L$")
@@ -83,9 +54,8 @@ def main() -> None:
     axes[1].semilogy(time, np.maximum(slip_error, 1e-16))
     axes[1].set(xlabel="time", ylabel="IBM no-slip error")
     axes[1].grid(False)
-    theme.centered_subplots_adjust(figure, outer=.20, bottom=.14, top=.94, hspace=.32)
+    theme.centered_subplots_adjust(figure, outer=0.20, bottom=0.14, top=0.94, hspace=0.32)
     output = figures / f"force_history.{args.format}"
-    theme.validate_thesis_figure(figure, axes)
     theme.export_figure(figure, output, figure_format=args.format)
     plt.close(figure)
 

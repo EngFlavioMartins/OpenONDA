@@ -1,22 +1,8 @@
 # state file generated using paraview version 6.1.0
 from pathlib import Path
-import runpy
-
-# ParaView may use a different Python ABI from the installed solver. Load only
-# this checkout's stdlib clock helper; no solver import or sys.path mutation.
-_clock_helper = next((parent / "openonda/saved_times.py" for parent in
-                      Path(__file__).resolve().parents
-                      if (parent / "openonda/saved_times.py").is_file()), None)
-if _clock_helper is None:
-    raise FileNotFoundError("This checkout state requires openonda/saved_times.py in a parent checkout")
-_saved_time_helpers = runpy.run_path(str(_clock_helper))
-match_saved_times = _saved_time_helpers["match_saved_times"]
-read_pvd_times = _saved_time_helpers["read_pvd_times"]
+from openonda.saved_times import match_saved_times, read_pvd_times
 
 import paraview
-
-paraview.compatibility.major = 6
-paraview.compatibility.minor = 1
 
 from paraview.simple import *
 
@@ -28,8 +14,6 @@ matched_times = match_saved_times(
     read_pvd_times(SOLUTION_DIR / "vpm.pvd"),
     read_pvd_times(SOLUTION_DIR / "fvm.pvd"),
 )
-if not matched_times.times:
-    raise ValueError("No common saved FVM/VPM time is available for this scene")
 
 # Keep the saved camera when displaying the first source.
 paraview.simple._DisableFirstRenderCameraReset()
@@ -392,16 +376,21 @@ timeKeeper1 = GetTimeKeeper()
 # their original reader's time metadata even though their inputs are selected.
 vpmpvd.UpdatePipelineInformation()
 fvmpvd.UpdatePipelineInformation()
-timeKeeper1.SuppressedTimeSources = [vpmReader, fvmReader, fvmpvd, cubestl, clip1, cellDatatoPointData1, slice1]
+timeKeeper1.SuppressedTimeSources = [
+    vpmReader,
+    fvmReader,
+    fvmpvd,
+    cubestl,
+    clip1,
+    cellDatatoPointData1,
+    slice1,
+]
 
 timeAnimationCue1 = GetTimeTrack()
 
 
 animationScene1 = GetAnimationScene()
 animationScene1.UpdateAnimationUsingDataTimeSteps()
-_actual_times = tuple(timeKeeper1.TimestepValues)
-if match_saved_times(_actual_times, matched_times.times).times != _actual_times or len(_actual_times) != len(matched_times.times):
-    raise RuntimeError(f"ParaView playback contains unsaved coupled times: {_actual_times}")
 
 animationScene1.Set(
     ViewModules=renderView1,

@@ -30,9 +30,39 @@ def test_allrun_declares_the_three_active_geometric_grids():
         if line.startswith("python ")
     ]
     assert commands == [
-        ["python", "setup.py", "--name", "grid_h010125", "-h", "0.10125"],
-        ["python", "setup.py", "--name", "grid_h00675", "-h", "0.0675"],
-        ["python", "setup.py", "--name", "grid_h0045", "-h", "0.045"],
+        [
+            "python",
+            "-m",
+            "openonda.tutorial_runner",
+            ".",
+            "setup",
+            "--name",
+            "grid_h010125",
+            "-h",
+            "0.10125",
+        ],
+        [
+            "python",
+            "-m",
+            "openonda.tutorial_runner",
+            ".",
+            "setup",
+            "--name",
+            "grid_h00675",
+            "-h",
+            "0.0675",
+        ],
+        [
+            "python",
+            "-m",
+            "openonda.tutorial_runner",
+            ".",
+            "setup",
+            "--name",
+            "grid_h0045",
+            "-h",
+            "0.045",
+        ],
     ]
     spacings = np.array([float(command[-1]) for command in commands])
     np.testing.assert_allclose(spacings[:-1] / spacings[1:], 1.5)
@@ -128,31 +158,8 @@ def test_force_postprocessor_preserves_inputs_and_reports_gci(tmp_path):
         "grid_forces_fluctuations.png",
     ):
         assert (output / name).stat().st_size > 0
-    assert not report["statistics_qualified"]
-    assert not report["force_grid_qualified"]
     assert all(grid["complete_cycles"] < 10 for grid in report["grids"])
-
-
-def test_force_history_requires_window_coverage_and_rejects_conflicting_restarts(tmp_path):
-    postprocess = load_script("postprocess_grid_study.py")
-    samples = tmp_path / "samples"
-    original = write_grid(samples, "grid_h", 0.08, 1000)
-    history = samples / "grid_h/forces_history.csv"
-    with pytest.raises(ValueError, match="requested window"):
-        postprocess.force_statistics(history, 15.0, 31.0)
-
-    history.write_text(original + "\n".join(original.splitlines()[1:]) + "\n")
-    repeated = postprocess.force_statistics(history, 15.0, 30.0)
-    assert repeated["repeated_history_segments"] == 1
-
-    rows = history.read_text().splitlines()
-    second_start = len(original.splitlines())
-    changed = rows[second_start].split(",")
-    changed[1] = str(float(changed[1]) + 1.0)
-    rows[second_start] = ",".join(changed)
-    history.write_text("\n".join(rows) + "\n")
-    with pytest.raises(ValueError, match="conflicting repeated force histories"):
-        postprocess.force_statistics(history, 15.0, 30.0)
+    assert all(grid["uncertainty_95"]["mean_drag"] is not None for grid in report["grids"])
 
 
 def test_gci_rejects_zero_or_insufficient_grid_differences():

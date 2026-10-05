@@ -1,20 +1,17 @@
-"""Shared data loading and analysis for the cylinder figures."""
+"""Physical histories and common saved states for cylinder figures."""
 
-from __future__ import annotations
-
-import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.integrate import trapezoid
 import pandas as pd
+from scipy.integrate import trapezoid
 
-from openonda.plotting import (
-    DEFAULT_DPI,
-    fit_thesis_y_label_margins,
-    prepare_figure,
-    validate_thesis_figure,
+from openonda.plotting import export_figure, fit_thesis_y_label_margins, prepare_figure
+from openonda.results import (
+    read_csv_frame,
+    read_csv_table,
+    read_history_table,
+    write_json as write_record,
 )
 from openonda.saved_times import match_saved_times
 
@@ -26,144 +23,65 @@ VELOCITY_COLUMNS = tuple(f"velocity_{axis}" for axis in "xyz")
 
 
 def reference_directory(root: Path = REFERENCE_ROOT) -> Path:
-    """Use the local reference or an explicitly qualified grid-study selection.
-
-    The ordinary single-mesh comparison is not a grid-independence claim.
-    """
-    if (root / "samples/forces_history.csv").is_file():
-        return root / "samples"
-    selection_path = root / "reference_selection.json"
-    if not selection_path.is_file():
-        raise FileNotFoundError(
-            f"reference samples are missing: run reference_flow/./allrun.sh ({root / 'samples'})"
-        )
-    selection = json.loads(selection_path.read_text(encoding="utf-8"))
-    if selection.get("force_grid_qualified") is not True:
-        raise ValueError("selected reference has not passed its force-grid qualification")
-    relative = Path(str(selection["samples_relative"]))
-    candidate = (root / relative).resolve()
-    if candidate.parent != (root / "samples").resolve() or not candidate.is_dir():
-        raise ValueError(
-            f"reference selection escapes the reference samples directory: {candidate}"
-        )
-    metadata = candidate / "grid_run.json"
-    if (
-        not metadata.is_file()
-        or json.loads(metadata.read_text(encoding="utf-8")).get("case") != candidate.name
-    ):
-        raise ValueError(f"reference selection does not identify a valid grid run: {candidate}")
-    return candidate
+    return root / "samples"
 
 
 def history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
-    """Load a finite, strictly increasing sampled history."""
-    frame = pd.read_csv(path)
-    missing = {"time", *columns} - set(frame.columns)
-    if missing:
-        raise ValueError(f"{path} is missing columns {sorted(missing)}")
-    values = frame[["time", *columns]].to_numpy(dtype=float)
-    if len(values) < 2 or not np.all(np.isfinite(values)):
-        raise ValueError(f"{path} must contain at least two finite samples")
-    if np.any(np.diff(values[:, 0]) <= 0.0):
-        raise ValueError(f"{path} times must be strictly increasing")
-    return frame
+    return pd.DataFrame(read_history_table(path))[["time", *columns]]
 
 
-def common_history(
-    candidate: pd.DataFrame,
-    reference: pd.DataFrame,
-    columns: tuple[str, ...],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, dict[str, float]]]:
-    """Interpolate histories only over their common physical time interval."""
+def common_history(candidate, reference, columns):
+    """Compare forces by interpolation within their common physical interval."""
     start = max(float(candidate.time.iloc[0]), float(reference.time.iloc[0]))
     end = min(float(candidate.time.iloc[-1]), float(reference.time.iloc[-1]))
-    if end <= start:
-        raise ValueError("Force histories have no common physical time interval")
     times = np.unique(np.r_[start, end, candidate.time, reference.time])
     times = times[(times >= start) & (times <= end)]
-    left = np.column_stack(
-        [np.interp(times, candidate.time, candidate[column]) for column in columns]
-    )
-    right = np.column_stack(
-        [np.interp(times, reference.time, reference[column]) for column in columns]
-    )
+    left = np.column_stack([np.interp(times, candidate.time, candidate[name]) for name in columns])
+    right = np.column_stack([np.interp(times, reference.time, reference[name]) for name in columns])
     errors = {}
-    for index, column in enumerate(columns):
+    for index, name in enumerate(columns):
         difference = left[:, index] - right[:, index]
-        errors[column] = {
+        errors[name] = {
             "rms": float(np.sqrt(trapezoid(difference**2, times) / (end - start))),
             "maximum": float(np.abs(difference).max()),
         }
     return times, left, right, errors
 
 
-def history_coverage(candidate: pd.DataFrame, reference: pd.DataFrame) -> dict:
-    """Describe the observed interval, without asserting either run is complete."""
+def history_coverage(candidate, reference):
     intervals = {
         name: [float(frame.time.iloc[0]), float(frame.time.iloc[-1])]
         for name, frame in (("coupled", candidate), ("reference", reference))
     }
-    start = max(interval[0] for interval in intervals.values())
-    end = min(interval[1] for interval in intervals.values())
     return {
         "available_time_intervals": intervals,
-        "comparison_time_interval": [start, end],
+        "comparison_time_interval": [
+            max(interval[0] for interval in intervals.values()),
+            min(interval[1] for interval in intervals.values()),
+        ],
         "time_alignment": "piecewise-linear interpolation on the common interval; no time shift",
-        "scope": "available samples only; not a completion, periodicity or phase-convergence claim",
     }
 
 
-def profile_history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
-    """Load finite line profiles whose time repeats once per spatial point."""
-    frame = pd.read_csv(path)
-    missing = {"time", *columns} - set(frame.columns)
-    if missing:
-        raise ValueError(f"{path} is missing columns {sorted(missing)}")
-    values = frame[["time", *columns]].to_numpy(dtype=float)
-    if len(values) < 2 or not np.all(np.isfinite(values)):
-        raise ValueError(f"{path} must contain finite profile samples")
-    if np.any(np.diff(values[:, 0]) < 0.0):
-        raise ValueError(f"{path} profile times must be ordered")
-    match_saved_times(np.unique(values[:, 0]))
-    return frame
-
-
-def coincident_profiles(paths: tuple[Path, ...]):
-    """Load each history once and yield its native profiles at every common clock."""
-    columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
-    groups = {
-        path: tuple(profile_history(path, columns).groupby("time", sort=True))
-        for path in dict.fromkeys(paths)
-    }
-    common = match_saved_times(*([time for time, _ in states] for states in groups.values()))
-    if not common.times:
-        raise ValueError("Velocity profiles have no common physical sample time")
+def coincident_profiles(paths):
+    """Select each transverse profile at the same native physical clock."""
+    times = {path: np.unique(read_csv_table(path)["time"]) for path in dict.fromkeys(paths)}
+    common = match_saved_times(*times.values())
     for index, time in enumerate(common.times):
-        profiles = {}
-        for (path, states), native_indices in zip(groups.items(), common.indices, strict=True):
-            native_time, selected = states[native_indices[index]]
-            if selected.position_y.duplicated().any():
-                raise ValueError(
-                    f"{path} has duplicate transverse positions at t={native_time:g} s"
-                )
-            profiles[path] = selected.sort_values("position_y")
-        yield time, profiles
+        samples = {
+            path: pd.DataFrame(
+                read_csv_frame(path, native_times[indices[index]], coordinates=("position_y",))
+            )
+            for (path, native_times), indices in zip(times.items(), common.indices, strict=True)
+        }
+        yield time, samples
 
 
 def write_json(name: str, payload: dict) -> None:
-    """Write non-figure results below the figure auxiliary directory."""
-    AUXILIARY.mkdir(parents=True, exist_ok=True)
-    (AUXILIARY / name).write_text(
-        json.dumps(payload, indent=2, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    write_record(AUXILIARY / name, payload)
 
 
 def save_figure(fig, axes, name: str, figure_format: str) -> None:
-    axes = tuple(axes)
     prepare_figure(fig)
-    fit_thesis_y_label_margins(fig, axes)
-    from openonda.plotting import export_figure
-
-    validate_thesis_figure(fig, axes)
+    fit_thesis_y_label_margins(fig, tuple(axes))
     export_figure(fig, FIGURES / name, figure_format=figure_format)

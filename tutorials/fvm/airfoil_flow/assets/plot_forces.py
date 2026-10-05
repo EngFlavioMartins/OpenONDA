@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 """Plot drag and lift histories for the airfoil patch."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
@@ -29,8 +20,6 @@ from ._common import (  # noqa: E402
 def main():
     args = build_arg_parser().parse_args()
     data = load_forces_csv(SOLUTION_DIR)
-    if "airfoil" not in data:
-        raise SystemExit("  No force data on patch 'airfoil' to plot.")
     d = data["airfoil"]
     t = d["time"]
     drag_coefficient = d["drag_coefficient"]
@@ -67,7 +56,7 @@ def main():
     ax.set_xlabel("t [s]")
     ax.grid(False)
 
-    centered_subplots_adjust(fig, outer=.135, bottom=.12, top=.991, hspace=.23)
+    centered_subplots_adjust(fig, outer=0.135, bottom=0.12, top=0.991, hspace=0.23)
     save_fig(fig, "airfoil_forces.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(

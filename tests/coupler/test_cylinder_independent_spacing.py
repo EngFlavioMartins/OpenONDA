@@ -1,6 +1,5 @@
 """Independent physical cylinder factors agree with the native case builder."""
 
-import importlib.util
 import itertools
 from pathlib import Path
 
@@ -13,10 +12,7 @@ CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylin
 
 def _study():
     path = Path(__file__).resolve().parents[2] / "tests/support/cylinder/run_sensitivity.py"
-    spec = importlib.util.spec_from_file_location("independent_cylinder_sensitivity", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_case_module(path.parent, path.stem)
 
 
 @pytest.mark.parametrize(
@@ -47,8 +43,14 @@ def test_native_builder_preserves_independent_physical_lengths(requested):
     assert policy.eta_blend_width == pytest.approx(resolved["blend_width"])
     assert policy.vpm_only_width == pytest.approx(resolved["release_width"])
     assert viscous.core_radius_ratio == pytest.approx(resolved["sigma_over_hp"])
-    assert round(resolved["span"] / hp) == resolved["particle_span_layers"]
-    assert resolved["particle_span_layers"] >= 6
+    assert resolved["particle_span_layers"] == 1
+    assert hp == pytest.approx(0.08 * requested.get("particle_spacing_ratio", 1.0))
+    assert particles.numerics.induction.planar_span == pytest.approx(resolved["span"])
+    assert len(mesh.levels) == 2
+    assert mesh.levels == pytest.approx((-resolved["span"] / 2, resolved["span"] / 2))
+    assert viscous.gbd_threshold == pytest.approx(
+        module.GBD_VORTICITY_FLOOR * hp**2 * resolved["span"]
+    )
     assert flow.time.time_step_size == base_fvm.time.time_step_size
     assert particles.numerics.max_n_particles == base_vpm.numerics.max_n_particles
     assert particles.numerics.time_step_size == pytest.approx(requested.get("exchange_dt", 0.04))
@@ -73,6 +75,7 @@ def test_native_builder_preserves_independent_physical_lengths(requested):
 
 def test_every_single_factor_and_interaction_resolves_native_geometry():
     study = _study()
+    assert "dz" not in study.FACTORS
     module = load_case_module(CASE)
     factors = [(name, value) for name, values in study.FACTORS.items() for value in values]
     requests = [{name: value} for name, value in factors]
@@ -91,3 +94,4 @@ def test_every_single_factor_and_interaction_resolves_native_geometry():
         )
         assert policy.eta_blend_width == pytest.approx(resolved["blend_width"])
         assert policy.vpm_only_width == pytest.approx(resolved["release_width"])
+        assert resolved["particle_span_layers"] == 1

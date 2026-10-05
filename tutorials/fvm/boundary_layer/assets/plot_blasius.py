@@ -3,18 +3,9 @@
 solution.  Profiles from every station must collapse onto the single curve
 u/U = f'(eta) if the solver reproduces the laminar boundary layer."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
@@ -27,7 +18,7 @@ from ._common import (  # noqa: E402
     blasius_solution,
     build_arg_parser,
     figure_size,
-    load_csv_columns,
+    read_csv_columns,
     save_fig,
 )
 
@@ -37,9 +28,7 @@ STATION_MARKERS = {0.25: "o", 0.5: "s", 0.75: "^"}
 def main():
     args = build_arg_parser().parse_args()
     kinematic_viscosity = FREESTREAM_SPEED * 1.0 / args.Re
-    data = load_csv_columns(Path(SOLUTION_DIR) / "profiles.csv")
-    if not data:
-        return
+    data = read_csv_columns(Path(SOLUTION_DIR) / "profiles.csv")
 
     eta_ref, fprime_ref = blasius_solution()
 
@@ -84,7 +73,7 @@ def main():
     ax.grid(False)
     ax.legend()
 
-    centered_subplots_adjust(fig, outer=.100, bottom=.20, top=.984)
+    centered_subplots_adjust(fig, outer=0.100, bottom=0.20, top=0.984)
     save_fig(fig, "blasius_profiles.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     print(
         f"  overall max profile error: {max_err:.4f}"

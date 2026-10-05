@@ -264,8 +264,7 @@ def test_synthetic_campaign_plots_pass_thesis_contract(tmp_path, format):
         "reference": {"grids": rows},
         "coupled_grids": rows,
         "span_profiles": {
-            name: {"reference": profile, "coupled": profile}
-            for name in ("span_lower", "span_middle", "span_upper")
+            name: {"reference": profile, "coupled": profile} for name in ("span_middle",)
         },
     }
     pipeline.plot_results(report, tmp_path, format)

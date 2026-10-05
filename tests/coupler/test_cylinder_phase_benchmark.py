@@ -1,21 +1,17 @@
 """The inexpensive phase benchmark must have matched clocks and complete data."""
 
-import importlib.util
 from pathlib import Path
-import sys
 
 import numpy as np
 import pytest
+
+from openonda.tutorial_runner import load_case_module
 
 ASSETS = Path(__file__).resolve().parents[2] / "tests/support/cylinder"
 
 
 def load(name):
-    spec = importlib.util.spec_from_file_location(name, ASSETS / (name + ".py"))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_case_module(ASSETS, name)
 
 
 case = load("phase_benchmark")
@@ -40,7 +36,10 @@ def test_phase_driver_accepts_qualified_cuda_without_starting_solver(tmp_path):
 
 def test_reference_and_coupled_phase_contract():
     data = case.contract()
-    assert data["h"] == 0.04 and data["span_layers"] == 24
+    assert data["h"] == 0.04 and data["span"] == 1.0
+    assert data["span_layers"] == data["particle_span_layers"] == 1
+    assert data["spanwise_boundary"] == "periodic"
+    assert data["interface"]["coupler"]["interface_iterations"] == 6
     assert data["fvm_dt"] == 0.008 and data["exchange_dt"] == 0.04
     assert data["schemes"]["time_scheme"] == "backward"
     assert data["force_phase_interval"] == 0.04

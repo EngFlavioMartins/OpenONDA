@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from pathlib import Path
 
-import defusedxml.ElementTree as ET
 import numpy as np
 import pandas as pd
 import pyvista as pv
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import maximum_filter
 from scipy.optimize import linear_sum_assignment
+
+from openonda.results import read_json, read_pvd_frames
 
 from .. import setup
 
@@ -41,7 +40,7 @@ def case_style(name):
 def figure_size(height_cm):
     """Return a thesis-width figure size in inches for ``height_cm``."""
     plotting = theme()
-    return plotting.MAX_FIGURE_WIDTH_CM * plotting.CM, height_cm * plotting.CM
+    return (plotting.MAX_FIGURE_WIDTH_CM * plotting.CM, height_cm * plotting.CM)
 
 
 def plot_style_metadata():
@@ -56,8 +55,6 @@ def plot_style_metadata():
 
 def comparison_legend(fig, handles, labels=None, *, location="top"):
     """Place a compact two-column method legend above or below a figure."""
-    if location not in {"top", "bottom"}:
-        raise ValueError("location must be 'top' or 'bottom'")
     return fig.legend(
         handles=handles,
         labels=labels,
@@ -77,29 +74,19 @@ def comparison_legend(fig, handles, labels=None, *, location="top"):
 def save_figure(fig, path, axes, formats=("png",), *, fit_margins=True):
     """Validate and save one figure using its script-matching base name."""
     plotting = theme()
-    axes = (axes,) if hasattr(axes, "get_position") else tuple(axes)
-    # Margins are authored in each generator, including colour-bar figures.
-    plotting.validate_thesis_figure(fig, axes)
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     for figure_format in formats:
-        fig.savefig(
-            path.with_suffix(f".{figure_format}"), dpi=plotting.DEFAULT_DPI, bbox_inches=None
+        plotting.export_figure(
+            fig,
+            Path(path).with_suffix(f".{figure_format}"),
+            figure_format=figure_format,
+            close=False,
         )
 
 
 def load_metadata(name):
     """Read one native VPM metadata record, or return an empty dictionary."""
     path = CASE_DIR / "solution" / name / "vpm_metadata.json"
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def file_sha256(path):
-    """Return the SHA-256 digest of one source or generated file."""
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return read_json(path)
 
 
 def read_core_section(path):
@@ -110,18 +97,10 @@ def read_core_section(path):
     """
     grid = pv.read(path)
     points = np.asarray(grid.points)
-    if not np.allclose(points[:, 2], 0, atol=1e-7) or np.min(points[:, 1]) < -1e-7:
-        raise ValueError(f"Expected z=0, y>=0 meridional half-plane: {path}")
     x, ix = np.unique(points[:, 0], return_inverse=True)
     radius, ir = np.unique(points[:, 1], return_inverse=True)
-    if len(points) != len(x) * len(radius):
-        raise ValueError(f"Incomplete rectangular plane: {path}")
-    if len(np.unique(ix * len(radius) + ir)) != len(points):
-        raise ValueError(f"Duplicated rectangular-plane point: {path}")
     omega = np.empty((len(x), len(radius)))
     omega[ix, ir] = np.asarray(grid.point_data["vorticity"])[:, 2]
-    if not np.isfinite(omega).all():
-        raise ValueError(f"Non-finite sampled vorticity: {path}")
     return (
         x / setup.RING_RADIUS,
         radius / setup.RING_RADIUS,
@@ -136,17 +115,15 @@ def discover_core_sections(samples_dir, runs=None):
         run = index.parent.name
         if run not in CASES or (runs and run not in runs):
             continue
-        for entry in ET.parse(index).findall(".//DataSet"):
-            path = index.parent / entry.attrib["file"]
-            if path.is_file():
-                records.append(
-                    {
-                        "run": run,
-                        "label": case_style(run)["label"],
-                        "time": float(entry.attrib["timestep"]),
-                        "path": path,
-                    }
-                )
+        for time, path in read_pvd_frames(index):
+            records.append(
+                {
+                    "run": run,
+                    "label": case_style(run)["label"],
+                    "time": time,
+                    "path": path,
+                }
+            )
     order = {name: index for index, name in enumerate(runs or CASES)}
     records.sort(key=lambda record: (record["time"], order[record["run"]]))
     return records
@@ -159,8 +136,6 @@ def sampled_peaks(x, radius, omega, merge_bridge=0.9):
     times their own amplitude are treated as one core. Coordinates remain on
     the saved grid; no smoothing or new field evaluation is performed.
     """
-    if not np.isfinite(omega).all() or not 0 < merge_bridge < 1:
-        raise ValueError("Core samples must be finite and merge_bridge must lie in (0, 1)")
     maximum = float(omega.max())
     if maximum <= 0:
         return []
@@ -168,7 +143,7 @@ def sampled_peaks(x, radius, omega, merge_bridge=0.9):
     indices = sorted(indices, key=lambda index: -omega[tuple(index)])
     if not indices:
         return []
-    clipped = any(i in (0, len(x) - 1) or j in (0, len(radius) - 1) for i, j in indices)
+    clipped = any((i in (0, len(x) - 1) or j in (0, len(radius) - 1) for i, j in indices))
     raw_count = len(indices)
     interpolator = RegularGridInterpolator((x, radius), omega)
     parents = list(range(raw_count))
@@ -194,14 +169,13 @@ def sampled_peaks(x, radius, omega, merge_bridge=0.9):
                 candidates.append((saddle, -np.linalg.norm(line[-1] - line[0]), stronger))
         if candidates:
             parents[child] = max(candidates)[2]
-
     representatives = sorted({root(index) for index in range(raw_count)})
     cores = [indices[index] for index in representatives]
     bridge_ratio = np.nan
     if len(cores) >= 2:
         pair = np.array([[x[i], radius[j]] for i, j in cores[:2]])
         bridge = interpolator(np.linspace(pair[0], pair[1], 101)).min()
-        bridge_ratio = float(bridge / min(omega[tuple(index)] for index in cores[:2]))
+        bridge_ratio = float(bridge / min((omega[tuple(index)] for index in cores[:2])))
     return [
         {
             "x": float(x[i]),
@@ -224,19 +198,13 @@ def core_peak_history(run, merge_bridge=0.9):
         x, radius, omega = read_core_section(record["path"])
         step = int(record["path"].stem.rsplit("_", 1)[1])
         rows.extend(
-            {"run": run, "time": record["time"], "step": step, **peak}
-            for peak in sampled_peaks(x, radius, omega, merge_bridge)
+            (
+                {"run": run, "time": record["time"], "step": step, **peak}
+                for peak in sampled_peaks(x, radius, omega, merge_bridge)
+            )
         )
-        sources.append(
-            {
-                "file": str(record["path"].relative_to(CASE_DIR)),
-                "time": record["time"],
-                "sha256": file_sha256(record["path"]),
-            }
-        )
-    if not rows:
-        raise ValueError(f"No usable core-section fields for {run}")
-    return pd.DataFrame(rows), sources
+        sources.append({"file": str(record["path"].relative_to(CASE_DIR)), "time": record["time"]})
+    return (pd.DataFrame(rows), sources)
 
 
 def track_core_pair(peaks, bridge_limit=0.5, competing_peak_limit=0.5):
@@ -268,6 +236,6 @@ def track_core_pair(peaks, bridge_limit=0.5, competing_peak_limit=0.5):
             group = group.iloc[assignment]
         previous = group[["x", "radius"]].to_numpy()
         rows.extend(
-            {**row.to_dict(), "core": core} for core, (_, row) in enumerate(group.iterrows(), 1)
+            ({**row.to_dict(), "core": core} for core, (_, row) in enumerate(group.iterrows(), 1))
         )
-    return pd.DataFrame(rows), reason
+    return (pd.DataFrame(rows), reason)

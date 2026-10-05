@@ -3,8 +3,8 @@
 
 Examples (from this case directory)::
 
-    python setup.py --variant dns_direct
-    python setup.py --variant les_transposed
+    python -m openonda.tutorial_runner . setup --variant dns_direct
+    python -m openonda.tutorial_runner . setup --variant les_transposed
 """
 
 from __future__ import annotations
@@ -15,11 +15,6 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.ring_diagnostics import (
     RingDiagnosticsSampler,

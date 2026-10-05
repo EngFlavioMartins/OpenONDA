@@ -9,10 +9,7 @@ import math
 from pathlib import Path
 import sys
 
-from openonda.tutorial_runner import case_package, load_case_module
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
+from openonda.tutorial_runner import load_case_module
 
 from .campaign import (
     collect_cost,
@@ -25,7 +22,7 @@ from .provenance import new_run_directory
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 )
-LAUNCHER = Path(__file__).with_name("run_campaign.py")
+SUPPORT_DIR = Path(__file__).resolve().parent
 FACTORS = {
     "particle_spacing_ratio": (1.25, 1.5),
     "core_radius_ratio": (0.8, 1.2),
@@ -34,7 +31,6 @@ FACTORS = {
     "transfer_amplification_cap": (1.4, 2.2),
     "exchange_dt": (0.016, 0.08),
     "span": (0.48, 1.92),
-    "dz": (0.04, 0.16),
 }
 
 
@@ -71,7 +67,7 @@ def _study_overrides(requested, *, cores=4, compute_device="CPU"):
         "requested_particle_spacing": hxy * hp_ratio,
         "particle_spacing_ratio": hp / hxy,
         "span": span,
-        "particle_span_layers": round(span / hp),
+        "particle_span_layers": 1,
         "sigma_over_hp": physical["core_radius"] / hp,
         "exchange_dt": float(requested.get("exchange_dt", 0.04)),
     }
@@ -145,10 +141,10 @@ def main() -> int:
     prior_report = root / "sensitivity.json"
     if (
         prior_report.is_file()
-        and json.loads(prior_report.read_text()).get("schema") != "openonda-cylinder-sensitivity/3"
+        and json.loads(prior_report.read_text()).get("schema") != "openonda-cylinder-sensitivity/4"
     ):
         raise ValueError(
-            "Existing report must use the current openonda-cylinder-sensitivity/3 schema"
+            "Existing report must use the current openonda-cylinder-sensitivity/4 schema"
         )
     post = load_case_module(Path(__file__).resolve().parent, "postprocess_grid_study")
     coupled_module = load_case_module(CASE_DIR)
@@ -166,7 +162,17 @@ def main() -> int:
         values, resolved_factors = _study_overrides(
             override, cores=args.coupled_cores, compute_device=args.compute_device
         )
-        command = [sys.executable, str(LAUNCHER), "--kind", "coupled", "--run-dir", str(run_dir)]
+        command = [
+            sys.executable,
+            "-m",
+            "openonda.tutorial_runner",
+            str(SUPPORT_DIR),
+            "run_campaign",
+            "--kind",
+            "coupled",
+            "--run-dir",
+            str(run_dir),
+        ]
         if args.resume and run_dir.exists():
             command.append("--resume")
         if args.screen:
@@ -196,7 +202,7 @@ def main() -> int:
                     raise ValueError("expected one coupled force history")
                 record["forces"] = post.force_statistics(forces[0], 40, 100)
                 record["profiles"] = {}
-                for name in ("span_lower", "span_middle", "span_upper"):
+                for name in ("span_middle",):
                     paths = list((run_dir / "samples").rglob(name + ".csv"))
                     if len(paths) != 1:
                         raise ValueError(f"expected one {name} profile")
@@ -237,7 +243,7 @@ def main() -> int:
             and changes.get("rms_lift", float("inf")) <= 0.05
             and changes.get("strouhal", float("inf")) <= 0.02
             and not record["cost"]["unconverged_stationary_intervals"]
-            and len(record.get("profile_errors_from_baseline", {})) == 3
+            and len(record.get("profile_errors_from_baseline", {})) == 1
             and all(
                 row["mean_velocity_l2"] <= 0.03
                 for row in record.get("profile_errors_from_baseline", {}).values()
@@ -255,10 +261,10 @@ def main() -> int:
             if interaction is not None:
                 variants.append(interaction)
         report = {
-            "schema": "openonda-cylinder-sensitivity/3",
+            "schema": "openonda-cylinder-sensitivity/4",
             "screen_only": args.screen,
-            "spacing_policy": "Particle spacing varies independently of physical core radius, blend width and release width; span quantization and sigma/hp are recorded per run.",
-            "scope": "Matched initial inflow with a controlled 3D perturbation; exchange_dt changes the exchange clock, not a standalone particle emission rate. Interface iteration limits and tolerances are fixed. Short screens do not qualify shedding accuracy.",
+            "spacing_policy": "In-plane particle spacing varies independently of physical core radius, blend width and release width. Each run has one particle row and one periodic FVM cell in z; span and sigma/hp are recorded per run.",
+            "scope": "Matched initial inflow with a controlled planar perturbation; exchange_dt changes the exchange clock, not a standalone particle emission rate. Interface iteration limits and tolerances are fixed. Short screens do not qualify shedding accuracy.",
             "runs": records,
             "rejected_interactions": rejected_interactions,
             "shortlist": [
@@ -266,7 +272,7 @@ def main() -> int:
                 for row in sorted(records, key=lambda row: row["wall_seconds"])
                 if row["within_sensitivity_targets"]
             ],
-            "recommendation_scope": "Sensitivity shortlist at fixed h=.08 only; final recommendations also require the independent reference/grid/temporal/span qualifications.",
+            "recommendation_scope": "Planar sensitivity shortlist at fixed h=.08 only; final recommendations also require independent reference/grid/temporal qualifications. Varying span tests integrated-strength and force normalization, not three-dimensional wake dynamics.",
         }
         (root / "sensitivity.json").write_text(json.dumps(report, indent=2) + "\n")
     print(root, flush=True)

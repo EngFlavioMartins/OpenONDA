@@ -12,6 +12,7 @@ configuration and mesh-generation intent remain separate namespaces::
     )
 """
 
+from source.simulation.forcing import VelocityBoundary, VelocityRamp
 from source.solvers.fvm import (
     AnalysisSnapshot,
     Backup,
@@ -61,6 +62,8 @@ from source.solvers.fvm.immersed_boundary import ImmersedBody
 from . import mesher
 
 __all__ = [
+    "VelocityBoundary",
+    "VelocityRamp",
     "AnalysisSnapshot",
     "BoundarySnapshot",
     "BackupConfig",

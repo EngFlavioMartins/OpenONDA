@@ -159,8 +159,8 @@ The saved validator outputs are
 [rotor](vlm_vpm_rotor_validation_2026-10-01.txt). Reproduce them with:
 
 ```sh
-python tutorials/vpm/04_flat_plate/assets/validate_results.py
-python tutorials/vpm/06_rotor_flow/assets/validate_results.py
+python -m tests.support.vpm.flat_plate.validate_results
+python -m tests.support.vpm.rotor_flow.validate_results
 ```
 
 The rotor command is expected to exit 1 for the recorded qualification failures.

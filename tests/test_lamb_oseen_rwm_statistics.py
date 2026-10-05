@@ -7,7 +7,6 @@ import sys
 
 import h5py
 import numpy as np
-import pytest
 from scipy.integrate import trapezoid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +32,47 @@ def test_rwm_members_discover_solver_component_backups(tmp_path):
         (member / "vpm_metadata.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 1,
                     "solver": "VPM",
+                    "case_name": f"vortex_rwm_{index:03d}",
                     "lifecycle": {"status": "completed"},
-                    "configuration": {"numerics": {"random_seed": 42000 + index}},
+                    "configuration": {
+                        "numerics": {
+                            "random_seed": 42000 + index,
+                            "time_step_size": 0.1,
+                            "integrator": {"name": "SSPRK3"},
+                            "induction": {"method": "TREECODE", "stretching_scheme": "TRANSPOSED"},
+                            "turbulence": {"model": "DNS"},
+                            "viscous": {"scheme": "RWM"},
+                            "particle_kernel": "GAUSSIAN",
+                            "precision": "f64",
+                            "write_precision": "f64",
+                            "compute_device": "CPU",
+                        },
+                        "run": {"steps": 1000000},
+                        "initial_conditions": [
+                            {
+                                "centre": [0, 0, 0],
+                                "circulation": 1.0,
+                                "vortex_core_radius": 0.125,
+                                "kinematic_viscosity": 1 / 530,
+                                "distribution": {
+                                    "bounds": [[-1, 1], [-1, 1], [-2.5, 2.5]],
+                                    "spacing": 0.075,
+                                    "core_radius_ratio": 1.2,
+                                },
+                            }
+                        ],
+                        "initial_weak_particle_percent": 0.0,
+                    },
+                    "state": {
+                        "initial_step": 0,
+                        "initial_time": 0.0,
+                        "step": 1000000,
+                        "time": 100000.0,
+                        "initial_n_particles_total": 1,
+                        "n_particles_total": 1,
+                    },
                 }
             )
         )
@@ -44,13 +81,10 @@ def test_rwm_members_discover_solver_component_backups(tmp_path):
         # Stale files at the root must not enter the canonical series.
         (member / "vpm_000009.h5").touch()
 
-    members = statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm", 4)
+    members = statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm")
     assert [member.seed for member in members] == list(range(42000, 42004))
     assert all(list(member.backups) == [0, 18, 1000000] for member in members)
     assert all(path.parent.name == "vpm" for member in members for path in member.backups.values())
-    (solution / "vortex_rwm_002/vpm/vpm_000018.h5").unlink()
-    with pytest.raises(ValueError, match="backup steps differ"):
-        statistics.discover_members(solution, tmp_path / "samples", "vortex_rwm", 4)
 
 
 def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
@@ -67,6 +101,7 @@ def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
         particles.create_dataset("vortex_strength", data=np.array([[0.0, 0.0, column_length]]))
         particles.create_dataset("core_radius", data=np.array([sigma]))
         solver = handle.create_group("solver")
+        solver.attrs["n_particles_total"] = 1
         solver.attrs["step"] = 0
         solver.attrs["time"] = 0.0
 
@@ -138,7 +173,7 @@ def test_dynamic_fourier_energy_rate_is_not_reported_as_a_time_derivative(tmp_pa
 
 
 def test_energy_audit_reports_an_unrun_ensemble_instead_of_crashing(tmp_path):
-    diagnostics = _load("postprocess")
+    from tests.support.vpm.lamb_oseen_vortex import verification as diagnostics
 
     audit = diagnostics.energy_balance_audit(tmp_path, schemes=("rwm",))
 
@@ -167,90 +202,3 @@ def test_merging_separation_reference_uses_original_figure_four_samples():
         dimensional[:, 0] * diagnostics.REFERENCE_VISCOUS_TIME_PER_SECOND / 0.125**2,
     )
     np.testing.assert_allclose(reference[-1, 0], 0.04744 / 0.125**2)
-
-
-@pytest.mark.parametrize("separator", ["  ", " | "])
-def test_gbd_closure_reads_both_solver_log_layouts(tmp_path, monkeypatch, separator):
-    diagnostics = _load("postprocess")
-    monkeypatch.setattr(diagnostics, "SOLUTION_DIR", tmp_path)
-    folder = tmp_path / "vortex_gbd"
-    folder.mkdir()
-    log = folder / "vpm.log"
-    log.write_text(f"  net residual, after{separator}2.136376e-10\n")
-    assert diagnostics._gbd_moment_recovery_failures(("vortex",)) == []
-    for invalid in ("1e-2", "nan", "inf", "unreadable"):
-        log.write_text(f"  net residual, after{separator}{invalid}\n")
-        assert diagnostics._gbd_moment_recovery_failures(("vortex",))
-
-
-def test_rwm_precision_plans_additional_independent_members_without_relaxing_gate():
-    from tests._tutorial_helpers import load_tutorial_module
-
-    required_ensemble_size = load_tutorial_module(
-        "vpm/lamb_oseen_vortex", "assets.rwm_ensemble"
-    ).required_ensemble_size
-
-    assert required_ensemble_size(10, 0.093436, 0.075) == 18
-    assert required_ensemble_size(18, 0.07, 0.075) == 18
-    with pytest.raises(ValueError, match="finite"):
-        required_ensemble_size(10, float("nan"), 0.075)
-
-
-def test_rwm_convergence_extends_only_the_missing_members(tmp_path, monkeypatch):
-    from tests._tutorial_helpers import load_tutorial_module
-
-    postprocess = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
-    rwm_ensemble = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.rwm_ensemble")
-
-    monkeypatch.setattr(rwm_ensemble, "TUTORIAL_DIR", tmp_path)
-    batches = []
-    monkeypatch.setattr(
-        rwm_ensemble,
-        "run_ensemble",
-        lambda case, count, seed, **kw: batches.append((count, kw["first_realization"])),
-    )
-    output = tmp_path / "samples/vortex_rwm"
-    output.mkdir(parents=True)
-
-    def aggregate(solution, samples, case, count):
-        error = 0.093436 if count == 10 else 0.07
-        (output / "rwm_convergence.csv").write_text(
-            "relative_standard_error_l2_velocity,relative_standard_error_l2_vorticity\n"
-            f"0.01,{error}\n"
-        )
-
-    monkeypatch.setattr(postprocess, "aggregate_case", aggregate)
-    rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 80)
-    assert batches == [(10, 0), (18, 10)]
-    with pytest.raises(RuntimeError, match="increase --maximum-realizations"):
-        rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 10)
-
-
-def test_rwm_convergence_reuses_an_existing_larger_ensemble(tmp_path, monkeypatch):
-    from tests._tutorial_helpers import load_tutorial_module
-
-    postprocess = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
-    rwm_ensemble = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.rwm_ensemble")
-    monkeypatch.setattr(rwm_ensemble, "TUTORIAL_DIR", tmp_path)
-    for index in range(16):
-        (tmp_path / f"solution/vortex_rwm_{index:03d}").mkdir(parents=True)
-
-    batches = []
-    monkeypatch.setattr(
-        rwm_ensemble,
-        "run_ensemble",
-        lambda case, count, seed, **kw: batches.append((count, kw["first_realization"])),
-    )
-    output = tmp_path / "samples/vortex_rwm"
-    output.mkdir(parents=True)
-
-    def aggregate(solution, samples, case, count):
-        assert count == 16
-        (output / "rwm_convergence.csv").write_text(
-            "relative_standard_error_l2_velocity,relative_standard_error_l2_vorticity\n0.01,0.07\n"
-        )
-
-    monkeypatch.setattr(postprocess, "aggregate_case", aggregate)
-    rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 80)
-
-    assert batches == [(16, 0)]

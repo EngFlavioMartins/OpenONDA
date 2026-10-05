@@ -4,14 +4,13 @@
 import argparse
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from openonda import plotting as theme
+from openonda.results import read_history_table
 
 
 def main() -> None:
@@ -22,8 +21,7 @@ def main() -> None:
     args = parser.parse_args()
 
     theme.set_thesis_style()
-    data = np.genfromtxt(args.history, delimiter=",", names=True)
-    data = np.atleast_1d(data)
+    data = read_history_table(args.history)
     time = data["time"]
 
     fig, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), sharex=True)
@@ -58,9 +56,7 @@ def main() -> None:
     axes[1].legend()
     axes[1].grid(False)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    centered_subplots_adjust(fig, outer=.135, bottom=.14, top=.95, hspace=.28)
-    theme.validate_thesis_figure(fig, axes)
+    centered_subplots_adjust(fig, outer=0.135, bottom=0.14, top=0.95, hspace=0.28)
     theme.export_figure(fig, args.output, dpi=args.dpi)
     plt.close(fig)
 

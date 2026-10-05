@@ -3,7 +3,7 @@
 
 The body-fitted expansion targets a reattachment length x/h of about 4--5.
 
-Run with ``python setup.py``.
+Run with ``python -m openonda.tutorial_runner . setup``.
 """
 
 from __future__ import annotations
@@ -14,11 +14,6 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.mesh_step import backward_facing_step_mesh
 from .assets.reattachment import (
@@ -153,7 +148,7 @@ def main() -> None:
             fvm_solver.advance()
             record_history()
 
-        fvm_solver.evaluate(write_solution_tables, solution_dir, None, STEP_HEIGHT)
+        fvm_solver.evaluate(write_solution_tables, solution_dir, STEP_HEIGHT)
 
 
 if __name__ == "__main__":

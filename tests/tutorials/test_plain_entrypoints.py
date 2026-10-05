@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -86,9 +85,10 @@ def test_default_setup_reaches_solver_without_environment_knobs(tmp_path, tutori
     case = materialize_tutorial(tutorial.name, tmp_path / "workspace with spaces")
     probe = tmp_path / "probe.py"
     probe.write_text("""
-import runpy
 import sys
 from openonda import coupler, fvm, vpm
+from openonda.tutorial_runner import run_case
+from pathlib import Path
 
 class Constructed(Exception):
     pass
@@ -101,7 +101,7 @@ vpm.VPMSolver = capture
 coupler.create_coupler = capture
 sys.argv = [sys.argv[1]]
 try:
-    runpy.run_path(sys.argv[0], run_name="__main__")
+    run_case(Path(sys.argv[0]).parent, "setup")
 except Constructed:
     pass
 else:
@@ -110,7 +110,7 @@ else:
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     result = subprocess.run(
-        [sys.executable, "-I", str(probe), str(case / "setup.py")],
+        [sys.executable, "-I", "-B", str(probe), str(case / "setup.py")],
         cwd=tmp_path,
         env=environment,
         text=True,
@@ -130,7 +130,7 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
         "from pathlib import Path\n"
-        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or sys.argv[1:3] == ['-m', 'openonda.tutorial_runner'] or Path(sys.argv[1]).is_file(), sys.argv[1]\n"
+        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or sys.argv[1:3] == ['-m', 'openonda.tutorial_runner'], sys.argv[1:]\n"
         "with open(os.environ['CALLS'], 'a') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "raise SystemExit(int(os.environ['FAIL']))\n"
@@ -156,14 +156,6 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
             dest = case / source.relative_to(original.parent)
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.touch()
-        # Reference launchers may share a plotter in the parent case's assets.
-        for line in original.read_text().splitlines():
-            tokens = shlex.split(line, comments=True)
-            if len(tokens) > 1 and tokens[0] == "python" and tokens[1].endswith(".py"):
-                assert (original.parent / tokens[1]).is_file(), (original, tokens[1])
-                dest = case / tokens[1]
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.touch()
         formats = (None, "png", "pdf", "both") if original.name == "allplot.sh" else (None,)
         for figure_format in formats:
             for fail in (0, 23):

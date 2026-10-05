@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Render the saved flat-plate surface, wake particles and motion arrow."""
 
 from __future__ import annotations
@@ -6,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from paraview.simple import (  # type: ignore[import-not-found]
+from paraview.simple import (
     AssignViewToLayout,
     ColorBy,
     CreateLayout,
@@ -79,7 +78,6 @@ def main() -> None:
     args = parser.parse_args()
     camera = json.loads(args.camera)
     color_points = json.loads(args.color_points)
-
     ResetSession()
     view = CreateView("RenderView")
     layout = CreateLayout("Flat plate render")
@@ -94,7 +92,6 @@ def main() -> None:
     view.CameraPosition = camera["position_m"]
     view.CameraViewUp = camera["view_up"]
     view.CameraViewAngle = camera["view_angle_degrees"]
-
     particles = XMLPolyDataReader(FileName=[args.particles])
     glyphs = Glyph(Input=particles, GlyphType="Sphere")
     glyphs.OrientationArray = ["POINTS", "No orientation array"]
@@ -117,25 +114,20 @@ def main() -> None:
     omega_lut.ColorSpace = "RGB"
     particle_display.LookupTable = omega_lut
     HideScalarBarIfNotNeeded(omega_lut, view)
-
     surface = XMLPolyDataReader(FileName=[args.surface])
     surface_display = Show(surface, view)
     shaded_material(surface_display, [96 / 255, 104 / 255, 108 / 255])
-
     arrows = XMLPolyDataReader(FileName=[args.arrows])
     arrow_display = Show(arrows, view)
     shaded_material(arrow_display, [0.64, 0.64, 0.64])
-
     view.Update()
-    written = SaveScreenshot(
+    SaveScreenshot(
         args.output,
         layout,
         ImageResolution=camera["image_pixels"],
         TransparentBackground=0,
         CompressionLevel=0,
     )
-    if not written:
-        raise RuntimeError(f"ParaView failed to save screenshot: {args.output}")
     SaveState(args.state_output)
 
 

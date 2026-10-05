@@ -1,29 +1,38 @@
 """Phase runners share the startup lifecycle and preserve bounded output."""
 
 from contextlib import nullcontext
-import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from openonda.tutorial_runner import load_case_module
 
 SUPPORT = Path(__file__).resolve().parents[1] / "support/cylinder"
 CASE = Path(__file__).resolve().parents[2] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
-startup = load_case_module(CASE, "assets.startup")
+setup = load_case_module(CASE)
 
 
 @pytest.fixture
-def driver(monkeypatch):
-    for name in ("phase_benchmark", "run_phase_benchmark"):
-        spec = importlib.util.spec_from_file_location(name, SUPPORT / (name + ".py"))
-        module = importlib.util.module_from_spec(spec)
-        monkeypatch.setitem(sys.modules, name, module)
-        spec.loader.exec_module(module)
-    return module
+def driver():
+    return load_case_module(SUPPORT, "run_phase_benchmark")
+
+
+@pytest.mark.parametrize("module", ["run_phase_benchmark", "check_phase_samples"])
+def test_support_entrypoints_use_module_runner_without_starting_solver(tmp_path, module):
+    result = subprocess.run(
+        [sys.executable, "-m", "openonda.tutorial_runner", str(SUPPORT), module, "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "{reference,coupled}" in result.stdout
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize("resume", [False, True])
@@ -65,29 +74,37 @@ def test_phase_coupled_uses_shared_schedule_and_total_pilot_cap(
     captured = {}
     factory_calls = []
     monkeypatch.setattr(
-        driver.case, "coupled_case", lambda **kwargs: factory_calls.append(kwargs) or "case"
+        driver.case,
+        "coupled_case",
+        lambda **kwargs: factory_calls.append(kwargs) or ("flow", "particles", "policy", "mesh"),
     )
 
-    def run(build, **kwargs):
+    def run(**kwargs):
         captured.update(kwargs)
-        assert build(end_time=kwargs["end_time"], overrides=None) == "case"
         return last
 
-    monkeypatch.setattr(startup, "run_coupled_cylinder", run)
+    def create(flow, particles, policy, **kwargs):
+        assert (flow, particles, policy) == ("flow", "particles", "policy")
+        assert kwargs == {"mesh": "mesh", "case_dir": tmp_path / "coupled"}
+        return nullcontext(SimpleNamespace(run=run))
+
+    monkeypatch.setattr(setup.coupling, "create_coupler", create)
     args = ["phase", "coupled", "--root", str(tmp_path), "--device", "CUDA"]
     args += ["--pilot"] if pilot else []
     args += ["--resume"] if resume else []
     monkeypatch.setattr(sys, "argv", args)
     driver.main()
+    initial = captured.pop("initial_velocity")
+    assert initial.func is driver.case.module.cylinder_initial_velocity
+    assert "span" not in initial.keywords
+    np.testing.assert_allclose(
+        initial(np.array([[3.0, 0.0, -0.5], [3.0, 0.0, 0.5]])),
+        [driver.case.module.STARTUP_FREESTREAM_VELOCITY] * 2,
+    )
     assert captured == {
-        "output_root": tmp_path / "coupled",
-        "end_time": 100.0,
         "start_from": "latest" if resume else "initial",
         "max_coupling_steps": 20 if pilot else None,
-        "startup_duration": 2.0,
-        "startup_transition_duration": 1.0,
-        "steady_freestream_velocity": (1.0, 0.0, 0.0),
-        "perturbation": driver.case.module.INITIAL_PERTURBATION,
+        "backup_at_stop": True,
     }
     assert factory_calls == [{"end": 100.0, "device": "CUDA"}]
     label = "pilot" if pilot else "continuation"
@@ -100,7 +117,7 @@ def test_phase_failure_is_recorded_and_propagated(driver, tmp_path, monkeypatch)
     def fail(*args, **kwargs):
         raise RuntimeError("native admission failed")
 
-    monkeypatch.setattr(startup, "run_coupled_cylinder", fail)
+    monkeypatch.setattr(setup.coupling, "create_coupler", fail)
     monkeypatch.setattr(sys, "argv", ["phase", "coupled", "--root", str(tmp_path)])
     with pytest.raises(RuntimeError, match="native admission failed"):
         driver.main()

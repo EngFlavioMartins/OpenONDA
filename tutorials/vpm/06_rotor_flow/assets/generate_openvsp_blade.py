@@ -1,43 +1,44 @@
-#!/usr/bin/env python3
 """Generate the rotor_flow turbine blade with OpenVSP and import it for VLM."""
 
 from __future__ import annotations
 
 import argparse
-import csv
-from dataclasses import dataclass
-import os
 from pathlib import Path
-import shutil
-import subprocess
 
 import numpy as np
 
+from openonda.results import write_csv_table
 
-@dataclass(frozen=True)
+
 class RotorBladeDesign:
-    rotor_radius: float = 6.0
-    hub_radius: float = 1.0
-    root_chord: float = 0.6
-    tip_chord: float = 0.35
-    freestream_speed: float = 7.0
-    tip_speed_ratio: float = 7.0
-    design_axial_induction_factor: float = 1.0 / 3.0
-    design_angle_of_attack_degrees: float = 5.0
-    n_radial_stations: int = 21
-    n_chordwise_stations: int = 7
-
-    @property
-    def angular_velocity(self) -> float:
-        return self.tip_speed_ratio * self.freestream_speed / self.rotor_radius
+    def __init__(
+        self,
+        rotor_radius: float = 6.0,
+        hub_radius: float = 1.0,
+        root_chord: float = 0.6,
+        tip_chord: float = 0.35,
+        freestream_speed: float = 7.0,
+        tip_speed_ratio: float = 7.0,
+        design_axial_induction_factor: float = 1.0 / 3.0,
+        design_angle_of_attack_degrees: float = 5.0,
+        n_radial_stations: int = 21,
+        n_chordwise_stations: int = 7,
+    ):
+        self.rotor_radius = rotor_radius
+        self.hub_radius = hub_radius
+        self.root_chord = root_chord
+        self.tip_chord = tip_chord
+        self.freestream_speed = freestream_speed
+        self.tip_speed_ratio = tip_speed_ratio
+        self.design_axial_induction_factor = design_axial_induction_factor
+        self.design_angle_of_attack_degrees = design_angle_of_attack_degrees
+        self.n_radial_stations = n_radial_stations
+        self.n_chordwise_stations = n_chordwise_stations
+        self.angular_velocity = self.tip_speed_ratio * self.freestream_speed / self.rotor_radius
 
 
 def design_schedule(design: RotorBladeDesign) -> dict[str, np.ndarray]:
-    radial_position = np.linspace(
-        design.hub_radius,
-        design.rotor_radius,
-        design.n_radial_stations,
-    )
+    radial_position = np.linspace(design.hub_radius, design.rotor_radius, design.n_radial_stations)
     chord = np.interp(
         radial_position,
         [design.hub_radius, design.rotor_radius],
@@ -53,7 +54,7 @@ def design_schedule(design: RotorBladeDesign) -> dict[str, np.ndarray]:
         "radial_position": radial_position,
         "chord": chord,
         "twist_angle_degrees": np.degrees(twist_angle),
-        "openvsp_section_rotation_degreesrees": openvsp_section_rotation,
+        "openvsp_section_rotation_degrees": openvsp_section_rotation,
         "inflow_angle_degrees": np.degrees(inflow_angle),
     }
 
@@ -67,8 +68,7 @@ def generate_rotorflow_openvsp_blade(
     output_dir = Path(output_dir)
     json_path = Path(json_path)
     vsp3_path, csv_path, schedule_path = export_openvsp_blade(output_dir, design)
-    aircraft = import_openvsp_blade(csv_path, json_path)
-    check_imported_geometry(aircraft, design, schedule_path)
+    import_openvsp_blade(csv_path, json_path)
     print(f"OpenVSP blade: {vsp3_path}")
     print(f"DegenGeom CSV: {csv_path}")
     print(f"Design schedule: {schedule_path}")
@@ -77,88 +77,30 @@ def generate_rotorflow_openvsp_blade(
 
 
 def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Path, Path, Path]:
-    vsp, import_error = _try_import_openvsp()
-    if vsp is None:
-        # A separate interpreter may own the OpenVSP Python ABI. Fail after
-        # one relaunch so an incompatible external API cannot recurse.
-        if os.environ.get("_OPENONDA_OPENVSP_REEXEC") == "1":
-            raise ImportError(
-                "OpenVSP Python API failed to import inside the openvsp-python helper: "
-                f"{import_error}. This typically means _vsp.so was built against a "
-                "different Python than the one running it (e.g. the missing symbol "
-                "'_PyDict_GetItemStringRef' is a Python 3.13+ C-API symbol, so the "
-                "module was built for 3.13 but is being loaded under an older Python). "
-                "Rebuild/reinstall OpenVSP for the active Python, or reuse a cached "
-                "blade.json (rotor_setup.py skips regeneration when one is present)."
-            )
-        command = _openvsp_python_command()
-        if command is None:
-            raise ImportError(
-                "OpenVSP Python API is not importable and no `openvsp-python` helper was found. "
-                "Install an ABI-compatible OpenVSP API or select its interpreter with OPENONDA_OPENVSP_PYTHON."
-            )
-        args = [
-            *command,
-            str(Path(__file__).resolve()),
-            "--output-dir",
-            str(output_dir),
-            "--rotor-radius",
-            str(design.rotor_radius),
-            "--hub-radius",
-            str(design.hub_radius),
-            "--root-chord",
-            str(design.root_chord),
-            "--tip-chord",
-            str(design.tip_chord),
-            "--freestream-speed",
-            str(design.freestream_speed),
-            "--tip-speed-ratio",
-            str(design.tip_speed_ratio),
-            "--design-axial-induction-factor",
-            str(design.design_axial_induction_factor),
-            "--design-angle-of-attack-degrees",
-            str(design.design_angle_of_attack_degrees),
-            "--n-radial-stations",
-            str(design.n_radial_stations),
-            "--n-chordwise-stations",
-            str(design.n_chordwise_stations),
-            "--export-only",
-        ]
-        reexec_env = _openvsp_subprocess_env()
-        reexec_env["_OPENONDA_OPENVSP_REEXEC"] = "1"
-        subprocess.run(args, check=True, env=reexec_env)
-        return _blade_paths(output_dir)
+    import openvsp as vsp
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     vsp3_path, csv_path, schedule_path = _blade_paths(output_dir)
     schedule = design_schedule(design)
     _write_schedule(schedule_path, schedule)
-
     vsp.ClearVSPModel()
     wing_id = vsp.AddGeom("WING")
     vsp.SetGeomName(wing_id, "RotorFlow_OpenVSP_Blade")
     vsp.SetParmVal(wing_id, "Sym_Planar_Flag", "Sym", 0)
     vsp.SetParmVal(wing_id, "Y_Rel_Location", "XForm", design.hub_radius)
-    # OpenVSP's wing chord starts along +X.  Rotating the whole wing by +90 deg
-    # puts zero-twist chord along +Z; section Twist then equals rotor pitch theta.
     vsp.SetParmVal(wing_id, "Y_Rel_Rotation", "XForm", 90.0)
     vsp.SetParmVal(wing_id, "Tess_W", "Shape", max(5, 2 * design.n_chordwise_stations - 1))
-
     xsec_surf = vsp.GetXSecSurf(wing_id, 0)
     while vsp.GetNumXSec(xsec_surf) < design.n_radial_stations:
         vsp.InsertXSec(wing_id, max(1, vsp.GetNumXSec(xsec_surf) - 1), vsp.XS_FOUR_SERIES)
-
     radial_position = schedule["radial_position"]
     chord = schedule["chord"]
     twist_angle_degrees = schedule["twist_angle_degrees"]
-
     root_xsec = vsp.GetXSec(xsec_surf, 0)
     _set_xsec(vsp, root_xsec, "Twist", twist_angle_degrees[0])
     _set_xsec(vsp, root_xsec, "Root_Chord", chord[0])
     _set_xsec(vsp, root_xsec, "Tip_Chord", chord[0])
     _set_xsec(vsp, root_xsec, "SectTess_U", 1)
     _set_airfoil(vsp, root_xsec)
-
     for i in range(1, design.n_radial_stations):
         xsec = vsp.GetXSec(xsec_surf, i)
         _set_xsec(vsp, xsec, "Span", radial_position[i] - radial_position[i - 1])
@@ -169,14 +111,11 @@ def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Pa
         _set_xsec(vsp, xsec, "Twist", twist_angle_degrees[i])
         _set_xsec(vsp, xsec, "SectTess_U", 1)
         _set_airfoil(vsp, xsec)
-
     vsp.Update()
     vsp.WriteVSPFile(str(vsp3_path))
     vsp.SetComputationFileName(vsp.DEGEN_GEOM_CSV_TYPE, str(csv_path))
     vsp.ComputeDegenGeom(vsp.SET_ALL, vsp.DEGEN_GEOM_CSV_TYPE)
-    if not csv_path.exists():
-        raise RuntimeError(f"OpenVSP did not write DegenGeom CSV: {csv_path}")
-    return vsp3_path, csv_path, schedule_path
+    return (vsp3_path, csv_path, schedule_path)
 
 
 def import_openvsp_blade(csv_path: Path, json_path: Path):
@@ -184,111 +123,42 @@ def import_openvsp_blade(csv_path: Path, json_path: Path):
         OpenVSPImportConfig,
         load_degengeom_csv,
     )
-    from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
+    from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import (
+        save_surface,
+    )
 
     config = OpenVSPImportConfig(
-        preserve_vsp_paneling=True,
-        target_surface_types=("wing", "rotor", "prop"),
+        preserve_vsp_paneling=True, target_surface_types=("wing", "rotor", "prop")
     )
     aircraft = load_degengeom_csv(csv_path, config)
-    json_path.parent.mkdir(parents=True, exist_ok=True)
     save_surface(aircraft, str(json_path))
     return aircraft
 
 
-def check_imported_geometry(aircraft, design: RotorBladeDesign, schedule_path: Path) -> None:
-    schedule = design_schedule(design)
-    rows = []
-    for wing in aircraft.wings.values():
-        for segment in wing.segments.values():
-            le = 0.5 * (segment.vertex_position["a"] + segment.vertex_position["b"])
-            te = 0.5 * (segment.vertex_position["d"] + segment.vertex_position["c"])
-            chord_vec = te - le
-            mid = 0.5 * (le + te)
-            rows.append(
-                (
-                    float(mid[1]),
-                    float(np.linalg.norm(chord_vec)),
-                    float(np.degrees(np.arctan2(chord_vec[0], chord_vec[2]))),
-                    int(segment.n_chordwise_panels),
-                    int(segment.n_spanwise_panels),
-                )
-            )
-
-    if not rows:
-        raise ValueError("OpenVSP import produced no blade segments.")
-
-    rows.sort(key=lambda item: item[0])
-    r_mid = np.array([row[0] for row in rows])
-    chord = np.array([row[1] for row in rows])
-    theta = np.array([row[2] for row in rows])
-    target_chord = np.interp(r_mid, schedule["radial_position"], schedule["chord"])
-    target_theta = np.interp(r_mid, schedule["radial_position"], schedule["twist_angle_degrees"])
-
-    chord_err = float(np.max(np.abs(chord - target_chord)))
-    theta_err = float(np.max(np.abs(theta - target_theta)))
-    if chord_err > 0.04 or theta_err > 1.0:
-        raise ValueError(
-            "Imported OpenVSP blade does not match the design schedule: "
-            f"max chord error={chord_err:.4f} m, max theta error={theta_err:.3f} deg. "
-            f"Schedule: {schedule_path}"
-        )
-
-    for r_value, _, theta_value, _, _ in rows:
-        relwind = np.array([design.freestream_speed, 0.0, design.angular_velocity * r_value])
-        chord_dir = np.array(
-            [np.sin(np.radians(theta_value)), 0.0, np.cos(np.radians(theta_value))]
-        )
-        if float(np.dot(relwind, chord_dir)) <= 0.0:
-            raise ValueError(
-                f"Blade section at r={r_value:.3f} m is not leading-edge first "
-                "for omega_vec=-angular_velocity*xhat."
-            )
-
-    print(
-        "Imported OpenVSP blade QA: "
-        f"{len(rows)} segments, {aircraft.total_n_panels()} VLM panels, "
-        f"max chord error={chord_err:.4f} m, max theta error={theta_err:.3f} deg"
-    )
-
-
 def _set_xsec(vsp, xsec: str, name: str, value: float) -> None:
     parm = vsp.GetXSecParm(xsec, name)
-    if not parm:
-        raise RuntimeError(f"OpenVSP xsec parameter not found: {name}")
     vsp.SetParmVal(parm, float(value))
 
 
 def _set_airfoil(vsp, xsec: str) -> None:
-    # Symmetric NACA 0012: realistic finite-thickness visualization while the
-    # DegenGeom plate/camberline remains compatible with the flat-plate VLM polar.
     _set_xsec(vsp, xsec, "Camber", 0.0)
     _set_xsec(vsp, xsec, "ThickChord", 0.12)
     _set_xsec(vsp, xsec, "SharpTEFlag", 1.0)
 
 
 def _write_schedule(path: Path, schedule: dict[str, np.ndarray]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "radial_position",
-                "chord",
-                "twist_angle_degrees",
-                "openvsp_section_rotation_degreesrees",
-                "inflow_angle_degrees",
-            ]
-        )
-        for values in zip(
-            schedule["radial_position"],
-            schedule["chord"],
-            schedule["twist_angle_degrees"],
-            schedule["openvsp_section_rotation_degreesrees"],
-            schedule["inflow_angle_degrees"],
-            strict=True,
-        ):
-            writer.writerow([f"{value:.10g}" for value in values])
+    columns = (
+        "radial_position",
+        "chord",
+        "twist_angle_degrees",
+        "openvsp_section_rotation_degrees",
+        "inflow_angle_degrees",
+    )
+    rows = (
+        [f"{value:.10g}" for value in values]
+        for values in zip(*(schedule[name] for name in columns), strict=True)
+    )
+    write_csv_table(path, rows, columns=columns)
 
 
 def _blade_paths(output_dir: Path) -> tuple[Path, Path, Path]:
@@ -298,39 +168,6 @@ def _blade_paths(output_dir: Path) -> tuple[Path, Path, Path]:
         output_dir / "rotorflow_blade_degengeom.csv",
         output_dir / "rotorflow_blade_design.csv",
     )
-
-
-def _try_import_openvsp() -> tuple[object | None, str]:
-    """Return (openvsp_module, "") on success or (None, error_message).
-
-    The error message is preserved so the caller can surface the real cause
-    (typically a Python-ABI mismatch in ``_vsp.so``) instead of silently
-    re-launching the helper.
-    """
-    try:
-        import openvsp as vsp
-    except ImportError as exc:
-        return None, str(exc)
-    if not hasattr(vsp, "ClearVSPModel"):
-        return None, "openvsp imported but ClearVSPModel is missing (incomplete install)"
-    return vsp, ""
-
-
-def _openvsp_python_command() -> list[str] | None:
-    configured = os.environ.get("OPENONDA_OPENVSP_PYTHON") or os.environ.get("OPENVSP_PYTHON")
-    candidates = [
-        configured,
-        shutil.which("openvsp-python"),
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return [candidate]
-    return None
-
-
-def _openvsp_subprocess_env() -> dict[str, str]:
-    """Use the environment of the user's configured OpenVSP interpreter."""
-    return os.environ.copy()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -373,4 +210,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

@@ -1,9 +1,10 @@
 """Boundary-layer velocity and skin-friction comparisons."""
 
-import csv
-import os
+from pathlib import Path
 
 import numpy as np
+
+from openonda.results import write_csv_table
 
 
 def write_profiles(
@@ -18,17 +19,18 @@ def write_profiles(
     plate_x = np.unique(np.round(xc[xc > 0], 12))
     dx = np.min(np.diff(plate_x))
 
-    with open(os.path.join(sol_dir, "profiles.csv"), "w", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["station", "position_x", "position_y", "velocity_x", "velocity_y"])
-        for station in stations:
-            x_col = plate_x[np.argmin(np.abs(plate_x - station))]
-            sel = np.abs(xc - x_col) < 0.5 * dx
-            order = np.argsort(yc[sel])
-            for y_i, u_i, v_i in zip(
-                yc[sel][order], u[sel, 0][order], u[sel, 1][order], strict=True
-            ):
-                writer.writerow([station, x_col, y_i, u_i, v_i])
+    rows = []
+    for station in stations:
+        x_col = plate_x[np.argmin(np.abs(plate_x - station))]
+        sel = np.abs(xc - x_col) < 0.5 * dx
+        order = np.argsort(yc[sel])
+        for y_i, u_i, v_i in zip(yc[sel][order], u[sel, 0][order], u[sel, 1][order], strict=True):
+            rows.append([station, x_col, y_i, u_i, v_i])
+    write_csv_table(
+        Path(sol_dir) / "profiles.csv",
+        rows,
+        columns=("station", "position_x", "position_y", "velocity_x", "velocity_y"),
+    )
 
     # Skin friction from the wall-adjacent cell row: tau_w ~ mu * u1 / y1.
     kinematic_pressure = fields.kinematic_pressure
@@ -44,25 +46,15 @@ def write_profiles(
     cf = 2.0 * kinematic_viscosity * u_w / (y1 * freestream_velocity**2)
     rex = freestream_velocity * x_w / kinematic_viscosity
 
-    with open(os.path.join(sol_dir, "cf.csv"), "w", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(
-            [
-                "position_x",
-                "reynolds_number",
-                "skin_friction_coefficient",
-                "skin_friction_coefficient_blasius",
-                "kinematic_pressure_wall",
-                "velocity_x_top",
-            ]
-        )
-        for row in zip(
-            x_w,
-            rex,
-            cf,
-            0.664 / np.sqrt(rex),
-            kinematic_pressure_wall,
-            u_e,
-            strict=True,
-        ):
-            writer.writerow(row)
+    write_csv_table(
+        Path(sol_dir) / "cf.csv",
+        zip(x_w, rex, cf, 0.664 / np.sqrt(rex), kinematic_pressure_wall, u_e, strict=True),
+        columns=(
+            "position_x",
+            "reynolds_number",
+            "skin_friction_coefficient",
+            "skin_friction_coefficient_blasius",
+            "kinematic_pressure_wall",
+            "velocity_x_top",
+        ),
+    )

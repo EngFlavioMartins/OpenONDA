@@ -8,15 +8,22 @@ import numpy as np
 import pytest
 import pyvista as pv
 
+from openonda.validation import time_mean
 from tests._tutorial_helpers import load_tutorial_module
 
 rotor_common = load_tutorial_module("vpm/rotor_flow", "assets._common")
 wake_planes = load_tutorial_module("vpm/rotor_flow", "assets.plot_rotor_wake_planes")
-assess_wake_signal_onset = wake_planes.assess_wake_signal_onset
-checkpoint_particle_front_brackets = wake_planes.checkpoint_particle_front_brackets
+assess_wake_signal_onset = __import__(
+    "tests.support.vpm.rotor_flow.wake_verification", fromlist=["*"]
+).assess_wake_signal_onset
+checkpoint_particle_front_brackets = __import__(
+    "tests.support.vpm.rotor_flow.wake_verification", fromlist=["*"]
+).checkpoint_particle_front_brackets
 finite_distance_profiles = wake_planes.finite_distance_profiles
 induced_field_drift = wake_planes.induced_field_drift
-native_plane_windows = wake_planes.native_plane_windows
+native_plane_windows = __import__(
+    "tests.support.vpm.rotor_flow.wake_verification", fromlist=["*"]
+).native_plane_windows
 plane_profiles = wake_planes.plane_profiles
 
 
@@ -222,7 +229,7 @@ def test_phase_aware_drift_never_extrapolates_missing_window_boundaries():
     velocity = np.zeros((len(times), 2, 3))
     velocity[:, :, 0] = 7.0
 
-    with pytest.raises(ValueError, match="does not bracket boundary"):
+    with pytest.raises(ValueError, match="does not bracket"):
         induced_field_drift(
             times,
             velocity,
@@ -319,6 +326,9 @@ def test_profiles_time_weight_irregular_frames_and_exclude_partial_annuli(monkey
         "points": points,
         "times": times,
         "velocity": velocity,
+        "window_mean_velocity": time_mean(times, velocity, times[0], times[-1]),
+        "window_start": float(times[0]),
+        "window_end": float(times[-1]),
         "complete": True,
         "induced_field_drift": 0.0,
         "compared_rotations": 4,
@@ -345,6 +355,9 @@ def test_downstream_diagnostic_excludes_disk_and_preserves_induction_components(
         "points": points,
         "times": times,
         "velocity": velocity,
+        "window_mean_velocity": time_mean(times, velocity, times[0], times[-1]),
+        "window_start": float(times[0]),
+        "window_end": float(times[-1]),
         "complete": True,
         "induced_field_drift": 0.0,
         "compared_rotations": 4,

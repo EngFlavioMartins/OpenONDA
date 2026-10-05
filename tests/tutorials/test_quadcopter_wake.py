@@ -8,9 +8,7 @@ import pandas as pd
 import pytest
 import pyvista as pv
 
-from tests._tutorial_helpers import load_tutorial_module
-
-_validate_results = load_tutorial_module("vpm/quadcopter", "assets.validate_results")
+_validate_results = __import__("tests.support.vpm.quadcopter.validate_results", fromlist=["*"])
 validate_impulse = _validate_results.validate_impulse
 validate_wake = _validate_results.validate_wake
 

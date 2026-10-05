@@ -1,6 +1,7 @@
 import argparse
-import csv
 from pathlib import Path
+
+from openonda.results import read_csv_columns
 
 import numpy as np
 
@@ -28,20 +29,6 @@ def build_arg_parser():
     parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="both")
     parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     return parser
-
-
-def load_csv_columns(path):
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Required plotting input missing: {path} not found")
-    data = {}
-    with open(path) as stream:
-        for row in csv.DictReader(stream):
-            for key, value in row.items():
-                data.setdefault(key, []).append(float(value))
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {path}")
-    return {key: np.asarray(values) for key, values in data.items()}
 
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):

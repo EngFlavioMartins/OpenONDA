@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated output. `./allcontinue.sh` resumes compatible backups; `python setup.py` also continues automatically. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated output. `./allcontinue.sh` resumes saved native backups; `python -m openonda.tutorial_runner . setup` also continues automatically. `./allplot.sh pdf` exports PDF.
 
 ## Geometry and resolution
 
@@ -36,4 +36,4 @@ Positive $P$ is shaft input, the negative of fluid-on-blade rotational power. Th
 
 Force/loading records and planes at $z=-0.35$ and −0.70 m are in `samples/quadcopter/`. Open `solution/vpm.pvd` and `vlm.pvd` for the coupled geometry. Wake figures average the final six revolutions.
 
-Run `python assets/validate_results.py --pre-plot` to check completion, load/wake stationarity, rotor symmetry, BEM comparison and thrust/impulse balance. The impulse check requires the wake to remain inside the retained domain. A complete run still needs panel, time-step and particle-core convergence. This case demonstrates interacting attached-flow rotor wakes; VLM does not resolve low-Reynolds-number blade boundary layers or stall.
+The impulse check requires the wake to remain inside the retained domain. A complete run still needs panel, time-step and particle-core convergence. This case demonstrates interacting attached-flow rotor wakes; VLM does not resolve low-Reynolds-number blade boundary layers or stall.

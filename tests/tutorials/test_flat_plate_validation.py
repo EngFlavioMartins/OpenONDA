@@ -4,9 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests._tutorial_helpers import load_tutorial_module
-
-_validate = load_tutorial_module("vpm/flat_plate", "assets.validate_results")
+_validate = __import__("tests.support.vpm.flat_plate.validate_results", fromlist=["*"])
 check_polar = _validate.check_polar
 vector_strength_closure = _validate.vector_strength_closure
 

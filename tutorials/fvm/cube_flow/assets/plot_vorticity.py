@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 """Signed z-vorticity snapshot of the von Karman street from the final VTU."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
@@ -22,7 +13,7 @@ from ._common import (
     SOLUTION_DIR,
     build_arg_parser,
     figure_size,
-    latest_vtu,
+    latest_fvm_frame,
     save_fig,
     snapshot_vector_field,
 )
@@ -31,9 +22,7 @@ from ._common import (
 def main():
     args = build_arg_parser().parse_args()
 
-    final = latest_vtu(SOLUTION_DIR)
-    if final is None:
-        raise SystemExit(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
+    final = latest_fvm_frame(SOLUTION_DIR)
     print(f"  Reading: {final}")
     mesh = pv.read(final)
 
@@ -63,7 +52,7 @@ def main():
     ax.set_ylabel("y / D")
     ax.set_aspect("equal")
 
-    centered_subplots_adjust(plt.gcf(), outer=.16, bottom=.22, top=.96)
+    centered_subplots_adjust(plt.gcf(), outer=0.16, bottom=0.22, top=0.96)
     save_fig(fig, "cube_vorticity_street.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

@@ -4,20 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from openonda import plotting as _theme
+
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 SAMPLES_DIR = CASE_DIR / "samples"
 FIG_DIR = CASE_DIR / "figures"
 
-_theme = None
-
 
 def _load():
-    global _theme
-    if _theme is None:
-        from openonda import plotting as _theme
-
-        _theme.set_thesis_style()
+    _theme.set_thesis_style()
     return _theme
 
 

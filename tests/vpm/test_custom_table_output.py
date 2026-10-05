@@ -122,7 +122,7 @@ def test_ring_tables_preserve_physical_moments_and_widnall_amplitudes(tmp_path):
     solver.particle_vortex_strength = strength
     solver.particle_group_id = np.full(len(theta), 7, dtype=np.int32)
     data = ring.sample(solver)
-    expected = ring._sample_group(position, strength)
+    expected = diagnostics._sample_ring_group(position, strength)
     np.testing.assert_allclose([data[name][0] for name in ring.csv_columns[1:]], expected)
     assert data["group_id"].tolist() == [7]
     OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)

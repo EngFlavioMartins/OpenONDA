@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from contextlib import ExitStack
+from dataclasses import replace
 import logging
 from numbers import Integral
 from pathlib import Path
@@ -699,6 +700,7 @@ class FVMVPMCoupler:
         restart_expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
         max_coupling_steps: int | None = None,
         backup_at_stop: bool = False,
+        initial_velocity=None,
     ) -> int:
         """Initialize and run a complete or explicitly bounded coupling segment.
 
@@ -729,6 +731,10 @@ class FVMVPMCoupler:
         backup_at_stop : bool, default=False
             Write an atomic coupled backup if a bounded segment stops at a step
             not already covered by scheduled backup cadence.
+        initial_velocity : callable or None, default=None
+            Physical velocity field evaluated at local FVM cell centres before
+            initial output. It is applied only to a fresh state; continuation
+            restores the native checkpoint field.
 
         Returns
         -------
@@ -802,6 +808,15 @@ class FVMVPMCoupler:
             )
         elif restart_allowed_config_differences or restart_expected_config_differences:
             raise ValueError("restart configuration permissions require restart_from")
+        from source.simulation.forcing import apply_velocity_boundaries
+
+        apply_velocity_boundaries(self.fvm_solver, self.fvm_solver.time)
+        with collective_phase(self._comm, "initial freestream history"):
+            self._update_freestream(self.fvm_solver.time)
+        if initial_velocity is not None and start_step == 0 and restart_from is None:
+            from source.simulation.forcing import apply_initial_velocity
+
+            apply_initial_velocity(self.fvm_solver, initial_velocity)
         if (
             start_step == 0
             and restart_from is None
@@ -901,6 +916,7 @@ class FVMVPMCoupler:
         face_geometry, n_steps = self._prepare_run()
         with collective_phase(self._comm, "coupled start state"):
             start_step = self._validate_start_step(start_step, n_steps)
+            self._update_freestream(self.fvm_solver.time)
         step_limit = self._validate_step_limit(max_coupling_steps)
         stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
         self._n_steps = stop_step
@@ -932,6 +948,8 @@ class FVMVPMCoupler:
         for step in range(1 + start_step, stop_step + 1):
             exchange_started = time.perf_counter()
             time_end = step * self.vpm_time_step_size
+            with collective_phase(self._comm, "accepted-endpoint freestream"):
+                self._update_freestream(time_end)
             vpm_time = self._advance_vpm(step, time_end)
             velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
                 self, *face_geometry
@@ -1030,6 +1048,15 @@ class FVMVPMCoupler:
         self._n_steps = n_steps
         return (face_centre, face_normal, face_area), n_steps
 
+    def _update_freestream(self, time: float) -> None:
+        if self.setup.freestream is not None:
+            self.freestream_velocity = self.setup.freestream.at(time)
+            self.vorticity_transfer.config = replace(
+                self.setup, freestream_velocity=self.freestream_velocity.tolist()
+            )
+            if self._is_master:
+                self.vpm_solver._set_freestream_velocity(self.freestream_velocity)
+
     def _advance_vpm(self, step: int, time_end: float) -> float:
         t0 = time.perf_counter()
         with collective_phase(self._comm, "VPM advance"):
@@ -1044,7 +1071,7 @@ class FVMVPMCoupler:
                     "accepted_impulse_change": np.zeros(3),
                 }
                 with self.vpm_redirector:
-                    self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
+                    self.vpm_solver._set_freestream_velocity(self.freestream_velocity)
                 begin_coupling_step(logger, step, self._n_steps, time_end)
 
                 with self.vpm_redirector:

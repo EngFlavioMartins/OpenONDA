@@ -35,6 +35,7 @@ def test_travel_uses_recorded_motion_and_geometry_without_rewriting_samples(tmp_
         "configuration": {
             "numerics": {
                 "vlm": {
+                    "density": 1.225,
                     "freestream_velocity": [4, 0, 0],
                     "surfaces": [
                         {

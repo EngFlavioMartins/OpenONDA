@@ -1,7 +1,7 @@
 import argparse
-import csv
-import os
 from pathlib import Path
+
+from openonda.results import latest_fvm_frame, read_grouped_csv, snapshot_vector_field
 
 import numpy as np
 
@@ -47,46 +47,7 @@ def build_arg_parser():
 
 
 def load_forces_csv(solution_dir):
-    """Load samples/forces_history.csv -> {patch: {column: array}}.
-
-    Sampled output lives in samples/ at the case root, alongside solution/.
-    """
-    csv_path = os.path.join(os.path.dirname(solution_dir), "samples", "forces_history.csv")
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(
-            f"Required plotting input missing: forces_history.csv not found at {csv_path}"
-        )
-    data = {}
-    with open(csv_path) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            pname = row["patch"]
-            if pname not in data:
-                data[pname] = {k: [] for k in row.keys() if k != "patch"}
-            for k, v in row.items():
-                if k != "patch":
-                    try:
-                        data[pname][k].append(float(v) if v else 0.0)
-                    except ValueError:
-                        data[pname][k].append(0.0)
-    for pname in data:
-        for k in data[pname]:
-            data[pname][k] = np.array(data[pname][k])
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {csv_path}")
-    return data
-
-
-latest_vtu = THEME.latest_fvm_snapshot
-
-
-def snapshot_vector_field(mesh, name):
-    """Return native vector values and their matching spatial coordinates."""
-    if name in mesh.cell_data:
-        return mesh.cell_data[name], mesh.cell_centers().points
-    if name in mesh.point_data:
-        return mesh.point_data[name], mesh.points
-    raise ValueError(f"Snapshot has no {name!r} field in cell or point data")
+    return read_grouped_csv(Path(solution_dir).parent / "samples/forces_history.csv", "patch")
 
 
 def strouhal_from_lift(t, cl):

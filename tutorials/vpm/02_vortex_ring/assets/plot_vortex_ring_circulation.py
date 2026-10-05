@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Vortex-ring tube circulation and vector-sum conservation versus t Gamma/R0^2.
 
@@ -6,12 +5,6 @@ Saves: figures/vortex_ring_circulation.png
 """
 
 import matplotlib.pyplot as plt
-
-if not __package__:
-    from openonda.tutorial_runner import case_package
-    from pathlib import Path as _CasePath
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 from ..assets.ring_metrics import (
     FIGURES_DIR,
@@ -26,7 +19,6 @@ from ..assets.ring_metrics import (
     plot_variants,
     save_fig,
     with_sample_gaps,
-    validate_thesis_figure,
 )
 
 
@@ -48,34 +40,28 @@ def main() -> None:
         "Tube-circulation estimate and vector-strength drift for all vortex-ring variants."
     ).parse_args()
     figs = FIGURES_DIR
-    figs.mkdir(parents=True, exist_ok=True)
-
     load_theme()
-
     fig = plt.figure(figsize=(125 / 25.4, 125 / 25.4))
     grid = fig.add_gridspec(2, 2, height_ratios=(1.25, 1.0))
     ax_tube = fig.add_subplot(grid[0, 0])
     ax_sum = fig.add_subplot(grid[0, 1])
-    centered_subplots_adjust(fig, outer=0.100, wspace=0.55, hspace=0.64, top=0.953, bottom=0.22)
+    centered_subplots_adjust(fig, outer=0.1, wspace=0.55, hspace=0.64, top=0.953, bottom=0.22)
     legend_handles = []
     legend_labels = []
-
     zoom = fig.add_subplot(grid[1, :])
-    zoom.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
-    zoom.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
+    zoom.set_xlabel("$t\\,\\Gamma_0/R_0^2$")
+    zoom.set_ylabel("$\\Gamma_{\\rm tube}/\\Gamma_{\\rm tube,0}$")
     zoom.set_xlim(0, 190)
     zoom.set_ylim(0.995, 1.0005)
     zoom.set_xticks([0, 190])
-    zoom.set_yticks([0.996, 1.000])
+    zoom.set_yticks([0.996, 1.0])
     zoom.tick_params(pad=3)
     zoom.set_title("(a) Detail: transposed runs", pad=6)
-    n_skip = 14  # plot every n-th marker
-
+    n_skip = 14
     ax_sum.set_yscale("log")
     circulation_values = []
     drift_values = []
     maximum_time = 0.0
-
     for variant in plot_variants():
         st = VARIANT_STYLE[variant]
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
@@ -97,40 +83,24 @@ def main() -> None:
             maximum_time = max(maximum_time, float(t_sum[-1]))
         legend_handles.append(line)
         legend_labels.append(label)
-
     for ax in (ax_tube, ax_sum):
-        ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+        ax.set_xlabel("$t\\,\\Gamma_0/R_0^2$")
         ax.set_xlim(0.0, 1.01 * maximum_time)
-
     if circulation_values:
-        lower = min(float(values.min()) for values in circulation_values)
-        upper = max(float(values.max()) for values in circulation_values)
+        lower = min((float(values.min()) for values in circulation_values))
+        upper = max((float(values.max()) for values in circulation_values))
         padding = max(0.001, 0.15 * (upper - lower))
         ax_tube.set_ylim(lower - padding, upper + padding)
     if drift_values:
-        lower = min(float(values.min()) for values in drift_values)
-        upper = max(float(values.max()) for values in drift_values)
+        lower = min((float(values.min()) for values in drift_values))
+        upper = max((float(values.max()) for values in drift_values))
         ax_sum.set_ylim(0.7 * lower, 1.4 * upper)
-
-    ax_tube.set_title(r"(a) Tube circulation")
-    ax_tube.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
-    ax_sum.set_title(r"(b) Vector drift")
-    ax_sum.set_ylabel(r"$e_{\Gamma}$")
-
-    fig.legend(
-        legend_handles,
-        legend_labels,
-        ncol=2,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.0),
-    )
-    validate_thesis_figure(fig, (ax_tube, ax_sum, zoom))
-    save_fig(
-        fig,
-        figs / "vortex_ring_circulation.png",
-        dpi=args.dpi,
-        figure_format=args.format,
-    )
+    ax_tube.set_title("(a) Tube circulation")
+    ax_tube.set_ylabel("$\\Gamma_{\\rm tube}/\\Gamma_{\\rm tube,0}$")
+    ax_sum.set_title("(b) Vector drift")
+    ax_sum.set_ylabel("$e_{\\Gamma}$")
+    fig.legend(legend_handles, legend_labels, ncol=2, loc="lower center", bbox_to_anchor=(0.5, 0.0))
+    save_fig(fig, figs / "vortex_ring_circulation.png", dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

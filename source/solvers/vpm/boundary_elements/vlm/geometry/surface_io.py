@@ -8,6 +8,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -64,6 +65,7 @@ def save_surface(aircraft: "Aircraft", filepath: str) -> str:
     data = surface_to_dict(aircraft)
 
     output_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 

@@ -471,6 +471,10 @@ def _solve_petsc(
             method_name = f"{requested}+bjacobi"
     else:
         raise ValueError(f"Unknown PETSc iterative solver {method!r}")
+    # The target below is scaled by the algebraic ||b||, not ||PC^-1 b||.
+    # CG/GAMG's default preconditioned norm can declare convergence while
+    # leaving a much larger true residual, especially on pressure systems.
+    ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
     initial_residual, residual_target, norm_factor = normalized_residual_target(
         A_csr, b_array, x0, tol, rel_tol
     )
@@ -545,7 +549,10 @@ def _solve_petsc(
 
     if not info.converged:
         raise LinearSolveError(
-            f"PETSc {method_name} failed after {iterations} iterations: {reason}"
+            f"PETSc {method_name} failed after {iterations} iterations: {reason}; "
+            f"algebraic residual {final_residual:.6e}, target {residual_target:.6e}, "
+            "verification limit "
+            f"{max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR):.6e}"
         )
     if not np.isfinite(final_residual):
         raise LinearSolveError("PETSc returned a non-finite algebraic residual")

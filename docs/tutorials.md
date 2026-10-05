@@ -24,9 +24,8 @@ Edit `setup.py`: geometry and lengths in m, velocities in m/s, kinematic viscosi
 From the case directory:
 
 ```bash
-python setup.py       # Start or resume the default case.
+./allrun.sh           # Run the case's launcher.
 ./allcontinue.sh      # Start or resume the listed cases.
-./allrun.sh           # Run the case's launcher; see cleanup behavior below.
 ./allplot.sh          # Plot PNG and PDF, where this launcher is provided.
 ```
 
@@ -60,7 +59,7 @@ python setup.py       # Start or resume the default case.
 
 | Tutorial identifier | Physical setup and reference |
 | --- | --- |
-| [`coupled_fvm_vpm/cylinder_shedding_flow`](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Cylinder wake at $Re=150$; free-slip span and particle renewal. |
+| [`coupled_fvm_vpm/cylinder_shedding_flow`](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Cylinder wake at $Re=150$; one periodic FVM layer and planar particle renewal. |
 | [`coupled_fvm_vpm/cube_flow`](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Square-cylinder wake; FVM–VPM transfer comparison. |
 | [`coupled_fvm_vpm/naca4412_flow`](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite-span NACA 4412 at $Re=1000$ and $10^\circ$ incidence. |
 | [`coupled_fvm_vpm/cylinder_shedding_flow/reference_flow`](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/README.md) | Larger FVM cylinder domain; force and profile reference. |

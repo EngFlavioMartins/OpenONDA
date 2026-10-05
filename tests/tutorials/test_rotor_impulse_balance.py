@@ -1,16 +1,10 @@
 """Native-clock rotor momentum accounting must not hide numerical sources."""
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-from openonda.tutorial_runner import load_case_module
-
-rotor = load_case_module(
-    Path(__file__).parents[2] / "tutorials/vpm/06_rotor_flow", "assets._common"
-)
+from source.solvers.vpm.io import postprocess as rotor
 
 
 def histories():

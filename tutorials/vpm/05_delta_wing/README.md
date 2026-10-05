@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes compatible checkpoints. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes saved native checkpoints. `./allplot.sh pdf` exports PDF.
 
 ## Physical inputs
 
@@ -34,8 +34,8 @@ The Gaussian wake uses CPU/FMM induction, transposed stretching and core spreadi
 
 Force/loading/motion tables are in `samples/delta_wing/`, with wake planes and integrals every 0.025 s. Coupled backups use the same interval; open `solution/vlm.pvd` or `solution/vpm.pvd` in ParaView.
 
-Figures show vertical forces, motion power, the last three heave cycles, particle strength and three downstream wake planes. The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation. Completed-run wake fields average one full measured cycle. Interrupted runs produce labelled partial figures in `figures/partial/`.
+Figures show vertical forces, motion power, the last three heave cycles, particle strength and three downstream wake planes. The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation. Wake fields average one full measured heave cycle.
 
-After completion, run `python assets/postprocess.py finalize`, then `python assets/postprocess.py validate --pre-plot` to check complete time coverage and matching native data. Compare successive cycles and refine time step, panels and wake cores before interpreting interaction loads.
+Compare successive heave cycles and refine the time step, wing panels and wake cores before interpreting interaction loads. `python -m openonda.tutorial_runner . assets.postprocess render-gif` exports an animation from the saved native frames.
 
-This attached-flow VLM does not model separated leading-edge vortices, stall or viscous particle–wall interaction. The initial 15° incidence is a prescribed demonstration, not validation of separated delta-wing aerodynamics. The archived animation in `assets/` illustrates the geometry; it does not establish completion of the current run.
+This attached-flow VLM does not model separated leading-edge vortices, stall or viscous particle–wall interaction. The initial 15° incidence is a prescribed demonstration, not validation of separated delta-wing aerodynamics. The animation reads the saved native wing panels and their bound circulation.

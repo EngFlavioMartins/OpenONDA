@@ -9,11 +9,13 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable
 from contextlib import suppress
+import csv
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import tarfile
 import tempfile
@@ -22,6 +24,7 @@ from urllib.request import Request, urlopen
 
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
+import numpy as np
 
 _ARCHIVE_PART_BYTES = 1024**3
 _VTK_COLLECTION_SUFFIXES = {".pvd", ".pvtu", ".pvtp", ".pvts", ".pvtr", ".pvti", ".vtm"}
@@ -428,6 +431,467 @@ def restore_results(case_dir: Path, bundle_dir: Path | None = None) -> list[str]
                     (case_dir / root).rmdir()
             raise
         return restored
+
+
+def read_json(path: str | Path) -> dict:
+    """Read one recorded JSON object."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected a JSON object: {path}")
+    return data
+
+
+def read_json_lines(path: str | Path) -> list[dict]:
+    """Read diagnostic records, allowing an unfinished final live-write line."""
+    lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
+    records = []
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            if index == len(lines) - 1 and not line.endswith("\n"):
+                break
+            raise
+    return records
+
+
+def read_csv_columns(path: str | Path) -> dict[str, np.ndarray]:
+    """Read a numeric CSV table without replacing invalid measured values."""
+    with Path(path).open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    if not rows:
+        raise ValueError(f"Numeric CSV has no records: {path}")
+    return {name: np.asarray([float(row[name]) for row in rows]) for name in rows[0]}
+
+
+def read_numeric_table(path: str | Path, *, delimiter: str = ",") -> np.ndarray:
+    """Read a finite headerless numeric table."""
+    values = np.loadtxt(path, delimiter=delimiter)
+    if not values.size or not np.isfinite(values).all():
+        raise ValueError(f"Numeric table must contain finite measured values: {path}")
+    return values
+
+
+def read_grouped_csv(path: str | Path, group_columns) -> dict:
+    """Read numeric history columns grouped by their recorded entity."""
+    columns = (group_columns,) if isinstance(group_columns, str) else tuple(group_columns)
+    groups = {}
+    with Path(path).open(newline="", encoding="utf-8") as stream:
+        for row in csv.DictReader(stream):
+            values = tuple(row[name] for name in columns)
+            key = values[0] if len(values) == 1 else values
+            group = groups.setdefault(key, {})
+            for name, value in row.items():
+                if name not in columns:
+                    group.setdefault(name, []).append(float(value))
+    if not groups:
+        raise ValueError(f"Grouped CSV has no records: {path}")
+    return {
+        key: {name: np.asarray(values) for name, values in group.items()}
+        for key, group in groups.items()
+    }
+
+
+def read_csv_table(path: str | Path) -> dict[str, np.ndarray]:
+    """Read native named CSV fields, including a recorded single-frame clock."""
+    path = Path(path)
+    with path.open(encoding="utf-8") as stream:
+        time_comment = re.fullmatch(r"#\s*time\s*=\s*([^\s]+)\s*", stream.readline())
+    rows = np.atleast_1d(
+        np.genfromtxt(
+            path,
+            delimiter=",",
+            names=True,
+            dtype=None,
+            encoding="utf-8",
+            skip_header=1 if time_comment else 0,
+        )
+    )
+    if rows.dtype.names is None or not rows.size:
+        raise ValueError(f"Expected a nonempty named CSV table: {path}")
+    table = {name: np.asarray(rows[name]) for name in rows.dtype.names}
+    if "step" in table:
+        steps = table["step"]
+        if (
+            not (np.issubdtype(steps.dtype, np.integer) or np.issubdtype(steps.dtype, np.floating))
+            or not np.isfinite(steps).all()
+            or np.any(steps < 0)
+            or np.any(steps != np.floor(steps))
+            or np.any(steps[1:] < steps[:-1])
+        ):
+            raise ValueError(
+                f"CSV steps must be finite nonnegative integers in increasing order: {path}"
+            )
+    if "time" not in table and time_comment is not None:
+        table["time"] = np.full(rows.size, float(time_comment.group(1)))
+    return table
+
+
+def read_history_table(path: str | Path) -> dict[str, np.ndarray]:
+    """Read a single-entity accepted history with one row per physical time."""
+    table = read_csv_table(path)
+    times = table["time"]
+    if np.any(~np.isfinite(times)) or np.any(np.diff(times) <= 0):
+        raise ValueError(f"History times are duplicate or nonmonotonic: {path}")
+    if "step" in table and np.any(table["step"][1:] <= table["step"][:-1]):
+        raise ValueError(f"History steps are duplicate or nonmonotonic: {path}")
+    return table
+
+
+def history_window(table: dict, start: float, end: float, *, columns: tuple[str, ...]) -> dict:
+    """Interpolate a fully covered physical interval from an accepted history."""
+    time = np.asarray(table["time"], dtype=float)
+    if not np.isfinite([start, end]).all() or start >= end:
+        raise ValueError("History window requires finite increasing endpoints")
+    if time.ndim != 1 or len(time) < 2 or np.any(~np.isfinite(time)) or np.any(np.diff(time) <= 0):
+        raise ValueError("History window requires finite increasing recorded times")
+    if time[0] > start or time[-1] < end:
+        raise ValueError(f"History does not cover the requested window [{start}, {end}]")
+    interior = (time > start) & (time < end)
+    result = {"time": np.r_[start, time[interior], end]}
+    for name in columns:
+        values = np.asarray(table[name], dtype=float)
+        if values.shape != time.shape or not np.isfinite(values).all():
+            raise ValueError(f"History column {name!r} must match finite recorded times")
+        result[name] = np.interp(result["time"], time, values)
+    return result
+
+
+def read_csv_frame(path: str | Path, time: float, *, coordinates: tuple[str, ...]) -> dict:
+    """Select one recorded clock and admit each finite sample coordinate once."""
+    from .saved_times import match_saved_times
+
+    table = read_csv_table(path)
+    times = np.unique(table["time"])
+    match = match_saved_times([time], times)
+    if not match.times:
+        raise ValueError(f"No recorded CSV frame at t={time:g}: {path}")
+    picked = times[match.indices[1][0]]
+    frame = {name: values[table["time"] == picked] for name, values in table.items()}
+    positions = np.column_stack([frame[name] for name in coordinates])
+    if np.any(~np.isfinite(positions)) or len(np.unique(positions, axis=0)) != len(positions):
+        raise ValueError(f"Frame has non-finite or duplicate sample coordinates: {path}")
+    order = np.lexsort(positions[:, ::-1].T)
+    return {name: values[order] for name, values in frame.items()}
+
+
+def read_pvd_frames(path: str | Path) -> list[tuple[float, Path]]:
+    """Read a current VTK collection's saved physical times and frame paths."""
+    from .saved_times import match_saved_times
+
+    path = Path(path)
+    frames = sorted(
+        (float(item.attrib["timestep"]), path.parent / item.attrib["file"])
+        for item in ElementTree.parse(path).iter("DataSet")
+    )
+    match_saved_times([time for time, _ in frames])
+    return frames
+
+
+def read_npz_arrays(path: str | Path) -> dict[str, np.ndarray]:
+    """Copy array data while owning the archive lifetime."""
+    with np.load(path, allow_pickle=False) as archive:
+        return {name: np.array(archive[name], copy=True) for name in archive.files}
+
+
+def write_text(path: str | Path, content: str, *, encoding: str = "utf-8") -> None:
+    """Publish a complete text artifact while owning its file lifetime."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
+        staged = Path(temporary) / path.name
+        staged.write_text(content, encoding=encoding)
+        os.replace(staged, path)
+
+
+def write_json(path: str | Path, data: dict) -> None:
+    """Publish complete recorded metadata atomically."""
+    write_text(path, json.dumps(data, indent=2) + "\n")
+
+
+def write_csv_table(path: str | Path, rows, *, columns) -> None:
+    """Publish one complete named table while owning file lifetime."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
+        staged = Path(temporary) / path.name
+        with staged.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(columns)
+            writer.writerows(rows)
+        os.replace(staged, path)
+
+
+def write_npz_arrays(path: str | Path, **arrays) -> None:
+    """Publish an array archive while owning its temporary-file lifetime."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".results-write-", dir=path.parent) as temporary:
+        staged = Path(temporary) / path.name
+        np.savez_compressed(staged, **arrays)
+        os.replace(staged, path)
+
+
+def snapshot_vector_field(mesh, name: str):
+    """Return a native field and the coordinates at its recorded association."""
+    if name in mesh.cell_data:
+        return mesh.cell_data[name], mesh.cell_centers().points
+    if name in mesh.point_data:
+        return mesh.point_data[name], mesh.points
+    raise ValueError(f"Snapshot has no {name!r} field in cell or point data")
+
+
+def snapshot_cell_field(mesh, name: str) -> np.ndarray:
+    """Read one field at native cells, converting recorded point association."""
+    if name in mesh.cell_data:
+        return mesh.cell_data[name]
+    if name in mesh.point_data:
+        return mesh.point_data_to_cell_data().cell_data[name]
+    raise ValueError(f"Snapshot has no {name!r} field in cell or point data")
+
+
+def latest_fvm_frame(solution_directory: str | Path) -> Path:
+    """Locate a saved native FVM frame or report the missing input."""
+    from .plotting import latest_fvm_snapshot
+
+    path = latest_fvm_snapshot(solution_directory)
+    if path is None:
+        raise FileNotFoundError(f"No saved FVM frames in {solution_directory}")
+    return path
+
+
+def matched_surface_vectors(source: dict, target: dict) -> np.ndarray:
+    """Require the same recorded grid before comparing vector samples."""
+    for name in ("x", "y"):
+        left, right = source[name], target[name]
+        tolerance = 8 * np.finfo(np.float32).eps * max(1, float(np.max(np.abs(right))))
+        if left.shape != right.shape or not np.allclose(left, right, rtol=0, atol=tolerance):
+            raise ValueError("Slice coordinates differ; sample fields on one common grid")
+    values = np.array(source["velocity"], dtype=float, copy=True)
+    values[~source["valid"]] = np.nan
+    return values
+
+
+def section_polygons(mesh, *, normal, origin, field: str):
+    """Cut native cells and return each polygon with its unaveraged cell field."""
+    if field not in mesh.cell_data:
+        if field not in mesh.point_data:
+            raise ValueError(f"Snapshot has no {field} field")
+        mesh = mesh.point_data_to_cell_data()
+    section = mesh.slice(normal=normal, origin=origin)
+    values = section.cell_data[field]
+    polygons = []
+    cursor = 0
+    while cursor < len(section.faces):
+        count = int(section.faces[cursor])
+        if count < 3:
+            raise ValueError("Section contains a non-polygon cell")
+        ids = section.faces[cursor + 1 : cursor + 1 + count]
+        polygons.append(section.points[ids, :2])
+        cursor += count + 1
+    if len(polygons) != len(values):
+        raise ValueError("Section polygon and field counts differ")
+    return polygons, values
+
+
+def planar_direction(velocity, *, axes: tuple[int, int]) -> np.ndarray:
+    """Resolve a finite nonzero recorded direction in the selected plane."""
+    vector = np.asarray(velocity, dtype=float)
+    if vector.shape != (3,) or np.any(~np.isfinite(vector)):
+        raise ValueError("Recorded velocity must be a finite three-component vector")
+    normal = ({0, 1, 2} - set(axes)).pop()
+    plane = vector[list(axes)]
+    speed = np.linalg.norm(plane)
+    if speed <= 0 or not np.isclose(vector[normal], 0):
+        raise ValueError("Recorded velocity must lie in a nonzero selected plane")
+    return plane / speed
+
+
+def hexahedron_footprints(mesh):
+    """Return the ordered lower-face x-y footprints of native hexahedra."""
+    import pyvista as pv
+
+    if mesh.n_cells == 0 or not np.all(mesh.celltypes == pv.CellType.HEXAHEDRON):
+        raise ValueError("Snapshot must contain hexahedral cells")
+    points = mesh.points[mesh.cells.reshape(-1, 9)[:, 1:]]
+    lower = np.argsort(points[:, :, 2], axis=1)[:, :4]
+    face = points[np.arange(mesh.n_cells)[:, None], lower, :2]
+    centre = face.mean(axis=1, keepdims=True)
+    angles = np.arctan2(face[:, :, 1] - centre[:, :, 1], face[:, :, 0] - centre[:, :, 0])
+    return face[np.arange(mesh.n_cells)[:, None], np.argsort(angles, axis=1)]
+
+
+def load_vpm_particles(path: str | Path) -> dict[str, np.ndarray]:
+    """Load active particle arrays from a native VPM backup."""
+    import h5py
+
+    with h5py.File(path, "r") as handle:
+        count = int(handle["solver"].attrs["n_particles_total"])
+        particles = handle["particles"]
+        return {
+            name: np.asarray(particles[name][:count])
+            for name in ("position", "vortex_strength", "core_radius")
+        }
+
+
+def read_surface_frame(path: str | Path) -> dict:
+    """Read a structured native sampler frame with its coordinate ordering."""
+    import pyvista as pv
+
+    grid = pv.read(path)
+    if not isinstance(grid, pv.StructuredGrid):
+        raise ValueError("Surface frame must be a native structured grid")
+    ni, nj, nk = grid.dimensions
+    if ni < 2 or nj < 2 or nk != 1 or grid.n_points != ni * nj:
+        raise ValueError("Surface frame must contain a two-dimensional sample grid")
+    shape = (nj, ni)
+    points = np.asarray(grid.points, dtype=float)
+    if not np.all(np.isfinite(points)) or len(np.unique(points, axis=0)) != len(points):
+        raise ValueError("Surface sample coordinates must be finite and distinct")
+    if "vtkValidPointMask" in grid.cell_data and "vtkValidPointMask" not in grid.point_data:
+        raise ValueError("Surface validity mask must be associated with sample points")
+    valid = np.asarray(grid.point_data.get("vtkValidPointMask", np.ones(grid.n_points)))
+    if valid.shape != (grid.n_points,) or not np.all(np.isin(valid, (0, 1))):
+        raise ValueError("Surface validity mask must contain one binary value per point")
+    valid = valid.astype(bool)
+
+    def point_field(name, components):
+        if name not in grid.point_data:
+            raise ValueError(f"Surface field {name} must be associated with sample points")
+        values = np.asarray(grid.point_data[name], dtype=float)
+        expected = (grid.n_points, components) if components > 1 else (grid.n_points,)
+        if values.shape != expected or not np.all(np.isfinite(values[valid])):
+            raise ValueError(f"Surface field {name} must contain finite values on valid points")
+        if name.endswith("_standard_error") and np.any(values[valid] < 0):
+            raise ValueError(f"Surface field {name} must contain nonnegative standard errors")
+        return values.reshape(*shape, components) if components > 1 else values.reshape(shape)
+
+    velocity = point_field("velocity", 3)
+    data = {
+        "x": points[:, 0].reshape(shape),
+        "y": points[:, 1].reshape(shape),
+        "z": points[:, 2].reshape(shape),
+        "velocity": velocity,
+        "valid": valid.reshape(shape),
+        **{f"velocity_{axis}": velocity[..., index] for index, axis in enumerate("xyz")},
+    }
+    for name in ("vorticity", "velocity_standard_error", "vorticity_standard_error"):
+        if name in grid.point_data or name in grid.cell_data:
+            vector = point_field(name, 3)
+            data[name] = vector
+            data.update({f"{name}_{axis}": vector[..., index] for index, axis in enumerate("xyz")})
+    for name in ("velocity_gradient_yx", "velocity_gradient_yx_standard_error"):
+        if name in grid.point_data or name in grid.cell_data:
+            data[name] = point_field(name, 1)
+    statistical = [name for name in data if name.endswith("_standard_error")]
+    for name in statistical:
+        if name.removesuffix("_standard_error") not in data:
+            raise ValueError(f"Surface uncertainty {name} requires its measured field")
+    metadata = ("ensemble_size", "confidence_multiplier")
+    if statistical or any(name in grid.field_data for name in metadata):
+        for name in metadata:
+            if name not in grid.field_data or np.asarray(grid.field_data[name]).shape != (1,):
+                raise ValueError("Surface ensemble metadata must record size and confidence")
+            value = np.asarray(grid.field_data[name])[0]
+            if not isinstance(value, (np.integer, np.floating)) or not np.isfinite(value):
+                raise ValueError("Surface ensemble metadata must contain finite numeric values")
+            data[name] = value.item()
+        size, confidence = data["ensemble_size"], data["confidence_multiplier"]
+        if size < 2 or size != int(size) or confidence <= 0:
+            raise ValueError("Surface ensemble size and confidence must be valid positive values")
+    return data
+
+
+class NativeVelocity:
+    """Sample archived velocity using its native centroids and affine probes."""
+
+    def __init__(self, mesh_path: str | Path, *, k: int):
+        from source.solvers.fvm.io.mesh_storage import load_native_mesh
+        from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+
+        mesh = load_native_mesh(mesh_path)
+        self.centres = compute_mesh_geometry(mesh, compute_lsq=False)["cell_centre"]
+        self.k = k
+
+    def sample(self, source: str | Path, queries: dict[str, np.ndarray], *, mask=None):
+        import pyvista as pv
+
+        from source.solvers.fvm.sampling.fields import _PointProbe
+
+        grid = pv.read(source)
+        data = grid.cell_data
+        velocity = np.asarray(data["velocity"], dtype=float)
+        keep = np.asarray(data.get("vtkGhostType", np.zeros(len(velocity)))) == 0
+        ids = np.asarray(data.get("global_cell_id", np.arange(len(velocity))), dtype=int)[keep]
+        if len(ids) != len(self.centres) or not np.array_equal(
+            np.sort(ids), np.arange(len(self.centres))
+        ):
+            raise ValueError(f"Snapshot does not cover its native mesh exactly once: {source}")
+        ordered = np.empty_like(velocity[keep])
+        ordered[ids] = velocity[keep]
+        if not np.all(np.isfinite(ordered)):
+            raise ValueError(f"Non-finite archived velocity: {source}")
+        owned_grid = grid.extract_cells(keep)
+        result = {}
+        for name, points in queries.items():
+            inside = owned_grid.find_containing_cell(points) >= 0
+            if mask is not None:
+                inside &= mask(points)
+            probe = _PointProbe(points, k=self.k, reconstruction="affine")
+            values = probe._interpolate(ordered, self.centres)
+            values[~inside] = np.nan
+            result[name] = values
+        return result
+
+
+def read_velocity_profile_frames(
+    path: str | Path,
+    *,
+    query_path: str | Path,
+    collection: str | Path,
+    mesh: str | Path,
+    k: int,
+    bounds: dict,
+):
+    """Read sampled velocity profiles or reconstruct their coincident native fields."""
+    from .saved_times import match_saved_times
+
+    path = Path(path)
+    coordinates = tuple(f"position_{axis}" for axis in "xyz")
+    if path.is_file():
+        for time in np.unique(read_csv_table(path)["time"]):
+            yield float(time), read_csv_frame(path, time, coordinates=coordinates), None
+        return
+    query_times = np.unique(read_csv_table(query_path)["time"])
+    fields = read_pvd_frames(collection)
+    matches = match_saved_times(query_times, [time for time, _ in fields])
+    native = NativeVelocity(mesh, k=k)
+    for query_index, field_index in zip(*matches.indices, strict=True):
+        time = query_times[query_index]
+        native_time, field = fields[field_index]
+        queries = read_csv_frame(query_path, time, coordinates=coordinates)
+        positions = np.column_stack([queries[name] for name in coordinates])
+        keep = np.ones(len(positions), dtype=bool)
+        for axis, name in enumerate("xyz"):
+            keep &= positions[:, axis] >= bounds[f"{name}min"] - 1e-12
+            keep &= positions[:, axis] <= bounds[f"{name}max"] + 1e-12
+        positions = positions[keep]
+        velocity = native.sample(field, {"profile": positions})["profile"]
+        frame = {name: positions[:, index] for index, name in enumerate(coordinates)}
+        frame["time"] = np.full(len(positions), native_time)
+        frame.update({f"velocity_{axis}": velocity[:, index] for index, axis in enumerate("xyz")})
+        yield (
+            float(time),
+            frame,
+            {
+                "method": f"native-centres-affine-k{k}",
+                "native_time": native_time,
+                "native_field": field,
+                "point_count": len(positions),
+            },
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

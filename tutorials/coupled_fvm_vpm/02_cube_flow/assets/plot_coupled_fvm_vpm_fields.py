@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 """Compare Coupled FVM and VPM velocity fields on the saved z=0 slice."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
 import argparse
-import csv
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from openonda.results import matched_surface_vectors, write_csv_table
+
 from . import postprocess as util
 
 
@@ -37,18 +30,8 @@ FIELD_WIDTH = 4.0 / 12.5
 FIELD_RIGHT_LEFT = 1.0 - FIELD_OUTER - FIELD_WIDTH
 
 
-def _on_grid(source: dict, target: dict) -> np.ndarray:
-    """Match equivalent saved coordinates; never fill gaps or extrapolate."""
-    for key in ("x", "y"):
-        a, b = source[key], target[key]
-        tolerance = 8 * np.finfo(np.float32).eps * max(1, float(np.max(np.abs(b))))
-        if a.shape != b.shape or not np.allclose(a, b, rtol=0, atol=tolerance):
-            raise ValueError(
-                "Slice coordinates differ: resample the saved fields on one common grid"
-            )
-    result = np.array(source["velocity"], dtype=float, copy=True)
-    result[~source["valid"]] = np.nan
-    return result
+def _on_grid(source, target):
+    return matched_surface_vectors(source, target)
 
 
 def area_weights(x: np.ndarray, y: np.ndarray, valid: np.ndarray) -> np.ndarray:
@@ -57,11 +40,7 @@ def area_weights(x: np.ndarray, y: np.ndarray, valid: np.ndarray) -> np.ndarray:
     This matches the support used by the contour display. Report the covered
     area, because an unsampled wall strip must not count as zero error.
     """
-    if not np.allclose(x, x[:1, :]) or not np.allclose(y, y[:, :1]):
-        raise ValueError("Expected a rectilinear slice")
     dx, dy = np.diff(x[0]), np.diff(y[:, 0])
-    if np.any(dx <= 0) or np.any(dy <= 0):
-        raise ValueError("Slice axes must increase")
     cells = valid[:-1, :-1] & valid[1:, :-1] & valid[:-1, 1:] & valid[1:, 1:]
     area = dy[:, None] * dx[None, :] * cells
     weights = np.zeros_like(x)
@@ -73,13 +52,9 @@ def area_weights(x: np.ndarray, y: np.ndarray, valid: np.ndarray) -> np.ndarray:
 
 
 def differences(x, y, left, right):
-    if left.shape != (*x.shape, 3) or right.shape != left.shape:
-        raise ValueError("A velocity comparison requires all three components")
     valid = np.all(np.isfinite(left), axis=-1) & np.all(np.isfinite(right), axis=-1)
     valid &= ~((np.abs(x) <= 0.5 + 1e-12) & (np.abs(y) <= 0.5 + 1e-12))
     weights = area_weights(x, y, valid)
-    if not np.any(weights > 0):
-        raise ValueError("No common sampled fluid area")
     delta = np.where(valid[..., None], right - left, np.nan)
     error = 100 * np.linalg.norm(delta, axis=-1)
     # Discrete area-weighted RMS; maximum is over valid sample nodes, not pixels.
@@ -218,10 +193,6 @@ def plot_frame(
     dpi=util.FIGURE_DPI,
 ):
     fvm, vpm, reference = (util.load_slice(source, time) for source in ("fvm", "vpm", "reference"))
-    if any(item is None for item in (fvm, vpm, reference)):
-        raise ValueError(f"No exactly coincident fields at t={time:g}")
-    if consts["reference_length"] != 1:
-        raise ValueError("Cube geometry uses D=1")
     speed = consts["freestream_speed"]
     x, y = fvm["x"], fvm["y"]
     fv = _on_grid(fvm, fvm) / speed
@@ -257,20 +228,17 @@ def main(comparison="coupled_fvm_vpm_fields"):
     parser.add_argument("--format", choices=util.EXPORT_FORMATS, default="both")
     parser.add_argument("--dpi", type=int, default=util.FIGURE_DPI)
     args = parser.parse_args()
-    util.validate_plot_inputs()
     times = util.common_times(*(util.slice_times(s) for s in ("fvm", "vpm", "reference")))
-    if not len(times):
-        raise SystemExit("No coincident field samples")
     rows = []
     consts = util.run_constants()
     for time in times:
         rows.append(plot_frame(float(time), consts, comparison, args.format, args.dpi))
-    util.remove_obsolete_frames(comparison, times, args.format)
-    util.AUXILIARY.mkdir(parents=True, exist_ok=True)
-    with (util.AUXILIARY / f"{comparison}.csv").open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(rows)
+    columns = tuple(rows[0])
+    write_csv_table(
+        util.AUXILIARY / f"{comparison}.csv",
+        ([row[name] for name in columns] for row in rows),
+        columns=columns,
+    )
 
 
 if __name__ == "__main__":

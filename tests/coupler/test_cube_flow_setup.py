@@ -174,7 +174,7 @@ def test_buffered_cube_transfer_explicitly_requires_gbd(scheme):
 def test_cube_acceptance_rejects_an_excessive_renewal_closure(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "validate_results.py",
+        Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",
         "cube_flow_check_renewal_closure_test",
     )
     transfer = {
@@ -237,7 +237,7 @@ def test_cube_acceptance_rejects_an_excessive_renewal_closure(monkeypatch):
 def test_cube_acceptance_requires_contiguous_coupler_diagnostics(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "validate_results.py",
+        Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",
         "cube_flow_check_coupling_coverage_test",
     )
     metadata = {
@@ -263,7 +263,7 @@ def test_cube_acceptance_requires_contiguous_coupler_diagnostics(monkeypatch):
 def test_cube_acceptance_horizon_supports_short_runs_and_defaults_to_two_seconds(monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "validate_results.py",
+        Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",
         "cube_flow_check_acceptance_horizon_test",
     )
 
@@ -281,7 +281,7 @@ def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
 ):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "validate_results.py",
+        Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",
         "cube_flow_check_reference_coverage_test",
     )
     candidate = tmp_path / "candidate" / "samples"
@@ -323,7 +323,7 @@ def test_cube_reference_gate_requires_every_profile_at_the_acceptance_horizon(
 def test_cube_reference_gate_uses_spatial_mean_profile_error(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(CASE_DIR / "assets"))
     check = _load_setup(
-        CASE_DIR / "assets" / "validate_results.py",
+        Path(__file__).resolve().parents[1] / "support/cube/validate_results.py",
         "cube_flow_check_profile_mean_test",
     )
     candidate = tmp_path / "candidate" / "samples"

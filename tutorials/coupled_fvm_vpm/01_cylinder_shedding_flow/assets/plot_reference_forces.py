@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """Compare cylinder forces over the actually available common interval."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
 import argparse
 
 import matplotlib.pyplot as plt
@@ -39,7 +33,6 @@ def main() -> None:
         "reference_force_errors.json",
         {
             "reference": str(data.reference_directory().relative_to(data.CASE_DIR)),
-            "reference_scope": "single-mesh comparison; not a grid-independence claim",
             "time_interval": [float(time[0]), float(time[-1])],
             "errors": errors,
             **data.history_coverage(coupled, reference),

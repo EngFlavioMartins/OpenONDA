@@ -27,11 +27,7 @@ def _variants():
     for case in CASES:
         for line in (ROOT / case / "allcontinue.sh").read_text().splitlines():
             command = shlex.split(line)
-            if command[:1] == ["exec"]:
-                command = command[1:]
-            if command[:2] == ["python", "setup.py"]:
-                yield case, [arg for arg in command[2:] if arg != "$@"]
-            elif command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]:
+            if command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]:
                 yield case, [arg for arg in command[5:] if arg != "$@"]
 
 
@@ -45,13 +41,13 @@ def test_every_launcher_variant_reaches_the_latest_start_policy(tmp_path, relati
     case = materialize_tutorial(public.name, tmp_path)
     probe = tmp_path / "probe.py"
     probe.write_text("""
-import runpy
 import sys
 import numpy as np
 from openonda import fvm, vpm, coupler
 from pathlib import Path
 from types import SimpleNamespace
 import source.restart
+from openonda.tutorial_runner import run_case
 class Done(Exception):
     pass
 def selected(value):
@@ -84,7 +80,7 @@ coupler.create_coupler = lambda *args, **kwargs: Driver()
 source.restart.select_backup = lambda selection, **kwargs: selected(selection)
 sys.argv = sys.argv[1:]
 try:
-    runpy.run_path(sys.argv[0], run_name="__main__")
+    run_case(Path(sys.argv[0]).parent, "setup", sys.argv[1:])
 except Done:
     pass
 else:
@@ -113,7 +109,7 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
 
     fresh = commands(directory / "allrun.sh")
     continuing = commands(directory / "allcontinue.sh")
-    assert fresh[:2] == continuing[:2] == ["set -e", 'cd -- "$(dirname -- "$0")"']
+    assert fresh[:2] == continuing[:2] == ["set -e", 'cd "$(dirname "$0")"']
     if relative.as_posix() in PRESERVING_RUNS:
         assert "./allclean.sh" not in fresh
         fresh_runs = [shlex.split(command) for command in fresh[2:]]
@@ -123,17 +119,9 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
     continuing_runs = [shlex.split(command) for command in continuing[2:]]
     assert len(fresh_runs) == len(continuing_runs) > 0
     for fresh_run, continuing_run in zip(fresh_runs, continuing_runs, strict=True):
-        if fresh_run[:2] == ["python", "assets/run_pipeline.py"]:
-            # The multi-stage campaign resumes its stage ledger as well as
-            # the native checkpoints selected by its setup invocations.
-            assert continuing_run == fresh_run + ["--resume"]
-        else:
-            assert fresh_run == continuing_run
-            command = continuing_run[1:] if continuing_run[:1] == ["exec"] else continuing_run
-            assert command[:2] in (
-                ["python", "setup.py"],
-                ["python", "assets/rwm_ensemble.py"],
-            ) or command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]
+        assert fresh_run == continuing_run
+        assert continuing_run[:4] == ["python", "-m", "openonda.tutorial_runner", "."]
+        assert continuing_run[4] in {"setup", "assets.rwm_ensemble", "assets.postprocess"}
     assert os.access(directory / "allcontinue.sh", os.X_OK)
     tree = ast.parse((directory / "setup.py").read_text())
     assert any(

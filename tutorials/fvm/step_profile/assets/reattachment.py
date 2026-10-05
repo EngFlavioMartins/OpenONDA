@@ -1,9 +1,10 @@
 """Measure the step-flow reattachment length and export comparison tables."""
 
-import csv
-import os
+from pathlib import Path
 
 import numpy as np
+
+from openonda.results import write_csv_table
 
 
 def reattachment_location(fields, step_height):
@@ -34,51 +35,19 @@ def history_row(fields, step_height):
     return [fields.time, position, velocity, fields.max_continuity_error, fields.max_courant_number]
 
 
-def write_solution_tables(fields, solution_dir, history, step_height):
-    """Write the cell fields and the reattachment/health history."""
-    os.makedirs(solution_dir, exist_ok=True)
+def write_solution_tables(fields, solution_dir, step_height):
+    """Write the final velocity and pressure comparison fields."""
     centres = fields.cell_centre
-
-    fields_path = os.path.join(solution_dir, "fields.csv")
-    with open(fields_path, "w", newline="") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "position_x_over_height",
-                "position_y_over_height",
-                "velocity_x",
-                "velocity_y",
-                "kinematic_pressure",
-            ]
-        )
-        for centre, velocity, pressure in zip(
-            centres,
-            fields.velocity,
-            fields.kinematic_pressure,
-            strict=True,
-        ):
-            writer.writerow(
-                [
-                    centre[0] / step_height,
-                    centre[1] / step_height,
-                    velocity[0],
-                    velocity[1],
-                    pressure,
-                ]
-            )
-
-    if history is None:
-        return
-    history_path = os.path.join(solution_dir, "reattachment_history.csv")
-    with open(history_path, "w", newline="") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "time",
-                "reattachment_position_over_height",
-                "min_near_wall_velocity",
-                "max_continuity_error",
-                "max_courant_number",
-            ]
-        )
-        writer.writerows(history)
+    write_csv_table(
+        Path(solution_dir) / "fields.csv",
+        np.column_stack(
+            (centres[:, :2] / step_height, fields.velocity[:, :2], fields.kinematic_pressure)
+        ),
+        columns=(
+            "position_x_over_height",
+            "position_y_over_height",
+            "velocity_x",
+            "velocity_y",
+            "kinematic_pressure",
+        ),
+    )

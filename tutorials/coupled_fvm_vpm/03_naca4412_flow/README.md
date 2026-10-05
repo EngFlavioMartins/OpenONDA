@@ -29,10 +29,10 @@ GBD replaces the former core-spreading discretization of the same viscous term. 
 From this directory in an [installed environment](../../../docs/installation.md):
 
 ```bash
-python setup.py
+python -m openonda.tutorial_runner . setup
 ./allplot.sh
 ```
 
-`python setup.py` and `./allcontinue.sh` preserve outputs and resume compatible backups. **`./allrun.sh` cleans generated results before running a fresh case.**
+`python -m openonda.tutorial_runner . setup` and `./allcontinue.sh` preserve outputs and resume compatible backups. **`./allrun.sh` cleans generated results before running a fresh case.**
 
 IBM forces are sampled every FVM step (0.01 s); profiles, fields and coupled backups every 0.8 s. Read `samples/ibm_forces_history.csv` and the wind-axis lift/drag plots under `figures/`. Coefficients use area $cb=5$ m². ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`. Check force and no-slip-error histories, then refine grid and marker spacing before interpreting aerodynamic coefficients.

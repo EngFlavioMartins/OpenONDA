@@ -1,7 +1,7 @@
 import argparse
-import csv
-import os
 from pathlib import Path
+
+from openonda.results import latest_fvm_frame, read_csv_columns, read_grouped_csv
 
 import numpy as np
 
@@ -37,53 +37,7 @@ def build_arg_parser():
 
 
 def load_forces_csv(solution_dir):
-    """Load samples/forces_history.csv -> {patch: {column: array}}.
-
-    Sampled output lives in samples/ at the case root, alongside solution/.
-    """
-    csv_path = os.path.join(os.path.dirname(solution_dir), "samples", "forces_history.csv")
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(
-            f"Required plotting input missing: forces_history.csv not found at {csv_path}"
-        )
-    data = {}
-    with open(csv_path) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            pname = row["patch"]
-            if pname not in data:
-                data[pname] = {k: [] for k in row.keys() if k != "patch"}
-            for k, v in row.items():
-                if k != "patch":
-                    try:
-                        data[pname][k].append(float(v) if v else 0.0)
-                    except ValueError:
-                        data[pname][k].append(0.0)
-    for pname in data:
-        for k in data[pname]:
-            data[pname][k] = np.array(data[pname][k])
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {csv_path}")
-    return data
-
-
-def load_csv_columns(path):
-    """Read a CSV with a header row into {column: float array}."""
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Required plotting input missing: {path} not found")
-    data = {}
-    with open(path) as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            for key, value in row.items():
-                data.setdefault(key, []).append(float(value))
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {path}")
-    return {key: np.asarray(vals) for key, vals in data.items()}
-
-
-latest_vtu = THEME.latest_fvm_snapshot
+    return read_grouped_csv(Path(solution_dir).parent / "samples/forces_history.csv", "patch")
 
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):

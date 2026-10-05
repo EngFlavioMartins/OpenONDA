@@ -7,11 +7,11 @@ Compare a stationary plate in inclined flow with the same plate moving through s
 From this directory:
 
 ```bash
-python setup.py --mode static --angle 5
-python setup.py --mode moving --angle 5
+python -m openonda.tutorial_runner . setup --mode static --angle 5
+python -m openonda.tutorial_runner . setup --mode moving --angle 5
 ```
 
-`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes compatible backups. `./allplot.sh` produces figures; add `pdf` for PDF exports.
+`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes saved native backups. `./allplot.sh` produces figures; add `pdf` for PDF exports.
 
 ## Geometry, flow and resolution
 
@@ -27,4 +27,4 @@ Force, spanwise/chordwise loading and flow-integral CSVs are in `samples/exp_<mo
 
 Figures show settled lift, induced drag and pitching moment, spanwise loading and induced velocity, moving/static load histories, and the saved particle wake. The steady polar averages the final five chord lengths. The reference is rectangular-wing lifting-line theory, an attached-flow, small-incidence, high-aspect-ratio approximation. The wake uses a higher perspective view with the projected motion horizontal, the saved plate surface shaded in neutral grey, blue particle glyphs and one light-grey motion arrow. Editable geometry and its ParaView state are saved under `figures/auxiliary/flat_plate_wake/`.
 
-Run `python assets/validate_results.py --pre-plot` to check native samples, completion, symmetry, frame agreement and bound/wake closure. Coupled mesh/time/core refinement is still needed to establish physical accuracy. VLM does not resolve skin friction, boundary layers, stall or separation; the 15° case does not validate those effects.
+Coupled mesh/time/core refinement is still needed to establish physical accuracy. VLM does not resolve skin friction, boundary layers, stall or separation; the 15° case does not validate those effects.

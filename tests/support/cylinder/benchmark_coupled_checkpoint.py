@@ -409,17 +409,19 @@ def main():
             if args.ordinary_initialization:
                 from openonda.tutorial_runner import load_case_module
 
-                initialize_cylinder_perturbation = load_case_module(
-                    case, "assets.startup"
-                ).initialize_cylinder_perturbation
+                initial_velocity = load_case_module(
+                    case, "assets.initial_conditions"
+                ).cylinder_initial_velocity
 
                 solver.initialize()
-                induction = particles.numerics.induction
-                initialize_cylinder_perturbation(
-                    solver.fvm_solver,
-                    induction.z_max - induction.z_min,
-                    perturbation=module.INITIAL_PERTURBATION,
-                    freestream_velocity=module.STARTUP_FREESTREAM_VELOCITY,
+                flow = solver.fvm_solver
+                count = flow.mesh_data["n_cells"]
+                flow.set_initial_velocity(
+                    initial_velocity(
+                        flow.geo_data["cell_centre"][:count],
+                        freestream_velocity=module.STARTUP_FREESTREAM_VELOCITY,
+                        **module.INITIAL_PERTURBATION,
+                    )
                 )
             if args.profile_components or args.trace_induction_reuse:
                 solver.initialize()

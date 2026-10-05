@@ -30,13 +30,13 @@ Two cores are resolved only while their 80% contour regions are distinct, their 
 
 Times use $\nu t/a_{c,0}^2$. The [experimental data](README.md) use $\tau=\nu t/b_0^2$, converted with the actual initialized velocity-peak radius. The Gaussian vorticity radius differs: $a_{c,0}\approx1.12a_0$.
 
-## Uncertainty and stopping
+## Uncertainty
 
 Field and linear-integral intervals are two-sided 95% Student-$t$ intervals across independent seeds. Nonlinear centres, radii, separation and orientation use a delete-one-seed jackknife of the complete mean-field/feature extraction. Shading measures finite-ensemble uncertainty, not physical fluctuations or discretization error.
 
-The campaign starts with ten seeds and adds batches until velocity and vorticity relative standard errors are at most 7.5%, with a default cap of 80. Checks require unique seeds, distinct nonzero-time trajectories and at least 99.5% projected absolute circulation. Results also compare the first half of the ensemble with the full ensemble and report isolated-vortex analytical errors.
+The tutorial uses ten independent seeds. Results compare the first half with the full ensemble and report the projected absolute-circulation capture fraction.
 
-The intervals are nominal fixed-ensemble intervals. Adaptive stopping does not provide an optional-stopping confidence guarantee; confirmatory conclusions require a predeclared fixed ensemble or independent validation. Bias from spacing, time step, finite-column geometry and sampling must be assessed separately.
+The intervals describe this fixed ensemble. Assess bias from spacing, time step, finite-column geometry and sampling separately.
 
 ## Output
 

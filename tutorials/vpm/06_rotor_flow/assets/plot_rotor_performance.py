@@ -1,38 +1,30 @@
-#!/usr/bin/env python3
 """Rotor performance after the first impulsive sample and steady references."""
 
-if not __package__:
-    from pathlib import Path
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
-
 import numpy as np
+
 from ._common import (
+    FIGURES_DIR,
+    OPERATING_WINDOW_REVOLUTIONS,
+    bem_reference,
     build_arg_parser,
     load_theme,
-    FIGURES_DIR,
     performance,
-    bem_reference,
-    rotor_inputs,
     read_operating_point,
+    rotor_inputs,
     rotor_subplots,
     save_rotor_figure,
-    OPERATING_WINDOW_REVOLUTIONS,
 )
 
 
 def main():
     args = build_arg_parser(__doc__).parse_args()
     colors, _ = load_theme()
-    data, bem, p = performance(), bem_reference(), rotor_inputs()
+    data, bem, p = (performance(), bem_reference(), rotor_inputs())
     end = float(data.time.max())
     start = end - OPERATING_WINDOW_REVOLUTIONS * p.rotation_period
     mean = read_operating_point(window_start=start, window_end=end)
     tail = data[data.time >= start]
     fig, axes = rotor_subplots(2, height_cm=11)
-    # Presentation request: omit exactly the initial impulsive load sample.
-    # Keep the native history and operating-window calculations unchanged.
     displayed = data.iloc[1:]
     for key, ink, reference_key, reference_style in [
         ("CT", colors["vpm"], "thrust_coefficient", "--"),
@@ -40,16 +32,13 @@ def main():
     ]:
         reference = bem.attrs[reference_key]
         axes[0].plot(
-            displayed.nominal_revolutions, displayed[key], color=ink, label=rf"VLM+VPM $C_{key[1]}$"
+            displayed.nominal_revolutions, displayed[key], color=ink, label=f"VLM+VPM $C_{key[1]}$"
         )
         axes[0].axhline(
-            reference,
-            color=colors["reference"],
-            ls=reference_style,
-            label=rf"BEM $C_{key[1]}$",
+            reference, color=colors["reference"], ls=reference_style, label=f"BEM $C_{key[1]}$"
         )
     axes[0].set(
-        ylabel=r"$C_T,\ C_P$", xlabel="Nominal revolutions", xlim=(0, end / p.rotation_period)
+        ylabel="$C_T,\\ C_P$", xlabel="Nominal revolutions", xlim=(0, end / p.rotation_period)
     )
     axes[0].legend(
         loc="lower right",
@@ -75,7 +64,7 @@ def main():
     axes[1].plot(*mean, "o", color=colors["vpm"], zorder=5, label="VLM+VPM")
     reference = (bem.attrs["thrust_coefficient"], bem.attrs["power_coefficient"])
     axes[1].plot(*reference, "x", color=colors["reference"], zorder=5, label="BEM", linestyle="--")
-    axes[1].set(xlabel=r"$C_T$", ylabel=r"$C_P$")
+    axes[1].set(xlabel="$C_T$", ylabel="$C_P$")
     axes[1].legend(
         loc="lower right",
         frameon=True,

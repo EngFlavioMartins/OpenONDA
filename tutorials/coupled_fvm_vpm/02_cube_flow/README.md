@@ -26,11 +26,14 @@ From this directory in an [installed environment](../../../docs/installation.md)
 
 ```bash
 ./allrun.sh
+python -m openonda.tutorial_runner . assets.postprocess
 ./allplot.sh
 ```
 
-`./allrun.sh`, `./allcontinue.sh` and `python setup.py` preserve outputs and resume compatible coupled backups. `./allclean.sh` deletes generated results and the mesh cache. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
+`./allrun.sh`, `./allcontinue.sh` and `python -m openonda.tutorial_runner . setup` preserve outputs and resume compatible coupled backups. `./allclean.sh` deletes generated results and the mesh cache. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
 
 Forces and profiles are sampled every 0.05 s; retained fields and coupled backups every 0.25 s. Read histories under `samples/`, plots under `figures/` and convergence in `solution/coupler_diagnostics.jsonl`. ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`.
 
 Run the [three-grid FVM reference](reference_flow/README.md) for comparison. `./allplot.sh` uses a completed reference and common saved physical times. Compare force statistics and wake profiles while refining FVM spacing, particle spacing and exchange step; matching LES coefficients alone does not establish coupled accuracy.
+
+`assets.postprocess` samples raw saved FVM volumes on the common comparison lattice. Run it explicitly after new solver output is ready. `./allplot.sh` reads the recorded comparison arrays, including those restored with the scientific result bundle.

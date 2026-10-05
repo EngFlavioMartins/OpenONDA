@@ -5,13 +5,10 @@ The lifting-line sine series and integrated loads follow MIT 16.100,
 odd harmonics with independent collocation points on ONE half-span.
 """
 
-from functools import lru_cache
-
 import numpy as np
 import pandas as pd
 
 
-@lru_cache(maxsize=16)
 def _unit_lifting_line_coefficients(aspect_ratio, lift_curve_slope=2.0 * np.pi, terms=80):
     """Fourier coefficients for one radian of incidence on a rectangular wing."""
     harmonics = 2 * np.arange(1, terms + 1) - 1
@@ -20,16 +17,17 @@ def _unit_lifting_line_coefficients(aspect_ratio, lift_curve_slope=2.0 * np.pi, 
     matrix = np.sin(theta[:, None] * harmonics) * (np.sin(theta[:, None]) + mu * harmonics)
     coefficients = np.linalg.solve(matrix, mu * np.sin(theta))
     coefficients.setflags(write=False)
-    return harmonics, coefficients
+    return (harmonics, coefficients)
 
 
 def lifting_line_polar(angle_of_attack_degrees, aspect_ratio, n_fourier_terms=80):
     """Signed CL and induced CD from the same converged lifting-line solution."""
     n, unit = _unit_lifting_line_coefficients(aspect_ratio, terms=n_fourier_terms)
     alpha = np.radians(angle_of_attack_degrees)
-    return np.pi * aspect_ratio * unit[0] * alpha, np.pi * aspect_ratio * np.sum(
-        n * unit**2
-    ) * alpha**2
+    return (
+        np.pi * aspect_ratio * unit[0] * alpha,
+        np.pi * aspect_ratio * np.sum(n * unit**2) * alpha**2,
+    )
 
 
 def lifting_line_circulation(
@@ -48,9 +46,7 @@ def lifting_line_circulation(
     """
     y = np.asarray(span_position, dtype=float)
     n, unit = _unit_lifting_line_coefficients(
-        reference_span / reference_chord,
-        two_dimensional_lift_curve_slope,
-        n_fourier_terms,
+        reference_span / reference_chord, two_dimensional_lift_curve_slope, n_fourier_terms
     )
     coefficients = unit * angle_of_attack_radians
     theta = np.arccos(np.clip(-2.0 * y / reference_span, -1.0, 1.0))

@@ -1,6 +1,7 @@
 import argparse
-import csv
 from pathlib import Path
+
+from openonda.results import read_csv_columns
 
 import numpy as np
 
@@ -60,22 +61,6 @@ def blasius_solution(eta_max=10.0, n_steps=2000):
         state = state + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
         fprime[i + 1] = state[1]
     return eta, fprime
-
-
-def load_csv_columns(path):
-    """Read a CSV with a header row into {column: float array}."""
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Required plotting input missing: {path} not found")
-    data = {}
-    with open(path) as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            for key, value in row.items():
-                data.setdefault(key, []).append(float(value))
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {path}")
-    return {key: np.asarray(vals) for key, vals in data.items()}
 
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):

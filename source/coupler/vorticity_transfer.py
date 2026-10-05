@@ -65,6 +65,35 @@ def required_renewal_buffer_length(
     return safety * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
+def _planar_cell_stack_groups(
+    cell_centre: np.ndarray, cell_volume: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Identify complete straight extrusions, including a single FVM layer.
+
+    Every XY column must contain the same unique z levels. Its normalized
+    layer volumes must also agree with the other columns, allowing unequal
+    layer heights and unequal in-plane cell areas. Coordinates and positive
+    volumes have already been validated by transfer setup. The source-plane
+    coordinate and represented filament span are independent of layer count.
+    """
+    coordinates = np.round(cell_centre, 11)
+    _, groups, counts = np.unique(
+        coordinates[:, :2], axis=0, return_inverse=True, return_counts=True
+    )
+    _, layers = np.unique(coordinates[:, 2], return_inverse=True)
+    layer_count = int(layers.max()) + 1
+    if np.any(counts != layer_count) or len(np.unique(coordinates, axis=0)) != len(coordinates):
+        raise ValueError("Planar coupling requires complete extruded FVM cell stacks")
+
+    column_volume = np.bincount(groups, weights=cell_volume)
+    fractions = cell_volume / column_volume[groups]
+    first_column = np.flatnonzero(groups == 0)
+    profile = fractions[first_column[np.argsort(layers[first_column])]]
+    if not np.allclose(fractions, profile[layers], rtol=1e-8, atol=1e-12):
+        raise ValueError("Planar FVM cell stacks must share one extruded layer-volume profile")
+    return groups, counts
+
+
 @dataclass(frozen=True)
 class TransferResult:
     """Particle population, represented-state and conservation budgets for renewal.
@@ -1101,14 +1130,9 @@ class VorticityTransfer:
                 return self._points_in_solid(points, include_boundary=False)
 
             if self._planar_induction is not None:
-                _, self._planar_groups, self._planar_group_counts = np.unique(
-                    np.round(self._cell_centre[:, :2], 11),
-                    axis=0,
-                    return_inverse=True,
-                    return_counts=True,
+                self._planar_groups, self._planar_group_counts = _planar_cell_stack_groups(
+                    self._cell_centre, self._cell_volume
                 )
-                if np.any(self._planar_group_counts < 2):
-                    raise ValueError("Planar coupling requires complete extruded FVM cell stacks")
                 self.last_spanwise_metrics = {}
                 self._planar_induction.lattice_anchor = self._lattice_anchor.copy()
                 self._planar_induction.solid_at = interior_at_node if has_solid else None

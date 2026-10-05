@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Co-rotating vortex merger: angle, core radius, and vortex_separation histories.
 
 Reads the field-based vortex diagnostics (``field_diagnostics.csv``, from the
@@ -7,19 +6,10 @@ z=L/4 velocity/vorticity plane) for each viscous scheme.
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
-
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .postprocess import (
@@ -35,45 +25,26 @@ from .postprocess import (
     resolve_runtime_physics,
     save_fig,
     scheme_zorder,
-    validate_thesis_figure,
 )
 
 
 def plot_merging_case(args) -> int:
     samples_dir = Path(args.samples_dir)
-    fmt = getattr(args, "format", "png")
+    fmt = args.format
     out = Path(args.figures_dir) / f"merging_comparison.{fmt}"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
     colors, _ = load_theme()
     style_map = build_style_map(colors)
-    runtime = resolve_runtime_physics(
-        samples_dir,
-        args.circulation,
-        args.kinematic_viscosity,
-        args.b0,
-        args.a0_over_b0,
-        prefix="merging",
-    )
+    runtime = resolve_runtime_physics(samples_dir, prefix="merging")
     run_kinematic_viscosity = runtime["kinematic_viscosity"]
     a0 = runtime["velocity_peak_radius0"]
     b0 = runtime["vortex_separation"]
-
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     centered_subplots_adjust(fig, outer=0.1215, hspace=0.09, top=0.953, bottom=0.22)
-
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
         timeseries = extract_merging_timeseries(
-            samples_dir,
-            scheme,
-            run_kinematic_viscosity,
-            b0,
-            a0,
+            samples_dir, scheme, run_kinematic_viscosity, b0, a0
         )
-        if timeseries is None:
-            print(f"  [merging] skipping {scheme!r} — no data")
-            continue
         style = style_map[scheme]
         plot_options = {
             "color": style["color"],
@@ -114,37 +85,26 @@ def plot_merging_case(args) -> int:
                     zorder=scheme_zorder(scheme) - 1,
                 )
         plotted_schemes.append(scheme)
-
     reference_options = {
         "color": colors["reference"],
         "linestyle": "--",
         "linewidth": 1.0,
         "zorder": 100,
-        "label": r"Experiment",
+        "label": "Experiment",
     }
     references = load_merging_references(a0, b0)
-    for axis, name in (
-        (axes[0], "theta"),
-        (axes[1], "core"),
-        (axes[2], "separation"),
-    ):
+    for axis, name in ((axes[0], "theta"), (axes[1], "core"), (axes[2], "separation")):
         if name in references:
             reference = references[name]
             axis.plot(reference[:, 0], reference[:, 1], **reference_options)
-
-    axes[0].set_ylabel(r"$\theta$ [deg]")
-    axes[0].set_title(r"Merging vortex characteristics")
-
-    axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
-
-    axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
-    axes[2].set_ylabel(r"$b / b_0$")
+    axes[0].set_ylabel("$\\theta$ [deg]")
+    axes[0].set_title("Merging vortex characteristics")
+    axes[1].set_ylabel("$a_c^2 / b_0^2$")
+    axes[2].set_xlabel("$\\nu t / a_{c,0}^2$")
+    axes[2].set_ylabel("$b / b_0$")
     axes[2].set_xlim([0, MERGING_NORMALIZED_END_TIME + 0.1])
-
     handles, labels = axes[0].get_legend_handles_labels()
-
     fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0))
-    validate_thesis_figure(fig, axes)
     save_fig(fig, out, args.dpi)
     return 0
 
@@ -155,4 +115,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

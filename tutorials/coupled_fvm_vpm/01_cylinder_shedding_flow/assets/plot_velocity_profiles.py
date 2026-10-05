@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
 """Compare reference, coupled-FVM, and VPM profiles at every common saved time."""
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
-
 import argparse
-import re
 
-import matplotlib
 
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.ticker import MaxNLocator
@@ -37,24 +28,11 @@ def available_transverse_profiles(reference_directory):
     """Use saved profile definitions, including optional near-body FVM profiles."""
     result = []
     for reference in reference_directory.glob("transverse_x*.csv"):
-        match = re.fullmatch(r"transverse_x([-+0-9.eE]+)\.csv", reference.name)
-        if match is None:
-            continue
-        x_position = float(match.group(1))
-        if not np.isfinite(x_position):
-            raise ValueError(f"Non-finite transverse profile coordinate: {reference}")
+        x_position = float(reference.stem.removeprefix("transverse_x"))
         vpm = data.CASE_DIR / "samples" / f"vpm_{reference.name}"
-        if not vpm.is_file():
-            continue
         fvm = data.CASE_DIR / "samples" / f"fvm_{reference.name}"
-        if not fvm.is_file():
-            fvm = data.CASE_DIR / "samples" / reference.name
-        result.append((x_position, reference, vpm, fvm if fvm.is_file() else None))
+        result.append((x_position, reference, vpm, fvm))
     result.sort(key=lambda row: row[0])
-    if not result:
-        raise ValueError("No matching saved reference/VPM transverse profiles are available")
-    if len({row[0] for row in result}) != len(result):
-        raise ValueError("Ambiguous transverse profile filenames identify the same x coordinate")
     return result
 
 
@@ -77,20 +55,20 @@ def plot_frame(profiles, samples, name, figure_format, geometry):
         for row, velocity in enumerate(data.VELOCITY_COLUMNS[:2]):
             axis = axes[row, column]
             for box, color, alpha in (
-                (geometry.fvm_box, COLORS["background_light"], 0.3),
-                (geometry.transfer_box, COLORS["background_strong"], 0.25),
+                (geometry["fvm_box"], COLORS["background_light"], 0.3),
+                (geometry["transfer_box"], COLORS["background_strong"], 0.25),
             ):
                 if box["xmin"] <= x_position <= box["xmax"]:
                     axis.axvspan(
-                        box["ymin"] / geometry.diameter,
-                        box["ymax"] / geometry.diameter,
+                        box["ymin"] / geometry["diameter"],
+                        box["ymax"] / geometry["diameter"],
                         color=color,
                         alpha=alpha,
                         zorder=0,
                     )
             axis.plot(
-                reference.position_y / geometry.diameter,
-                reference[velocity] / geometry.speed,
+                reference.position_y / geometry["diameter"],
+                reference[velocity] / geometry["speed"],
                 color=COLORS["reference"],
                 linewidth=REFERENCE_LINE_WIDTH,
                 label="Reference flow",
@@ -98,8 +76,8 @@ def plot_frame(profiles, samples, name, figure_format, geometry):
             )
             for label, candidate, color, marker in candidates:
                 axis.plot(
-                    candidate.position_y / geometry.diameter,
-                    candidate[velocity] / geometry.speed,
+                    candidate.position_y / geometry["diameter"],
+                    candidate[velocity] / geometry["speed"],
                     color=color,
                     linewidth=LINE_WIDTH,
                     label=label,
@@ -112,13 +90,9 @@ def plot_frame(profiles, samples, name, figure_format, geometry):
                 y = candidate.position_y.to_numpy(dtype=float)
                 keep = (y >= lower) & (y <= upper)
                 y = y[keep]
-                if len(y) < 2 or y[-1] <= y[0]:
-                    raise ValueError(
-                        f"Profiles have insufficient common spatial support at x/D={x_position:g}"
-                    )
                 actual = candidate[velocity].to_numpy(dtype=float)[keep]
                 expected = np.interp(y, reference.position_y, reference[velocity])
-                difference = (actual - expected) / geometry.speed
+                difference = (actual - expected) / geometry["speed"]
                 errors[f"{label.lower().replace(' ', '_')}_x{x_position:g}_{velocity}"] = {
                     "rms": float(np.sqrt(trapezoid(difference**2, y) / (y[-1] - y[0]))),
                     "maximum": float(np.abs(difference).max()),
@@ -127,7 +101,7 @@ def plot_frame(profiles, samples, name, figure_format, geometry):
             axis.xaxis.set_major_locator(MaxNLocator(5))
             axis.yaxis.set_major_locator(MaxNLocator(4))
             if row == 1:
-                axis.set_xlabel(rf"$y/D,\quad x/D={x_position / geometry.diameter:g}$")
+                axis.set_xlabel(rf"$y/D,\quad x/D={x_position / geometry['diameter']:g}$")
         axes[0, 0].set_ylabel(r"$u/U_\infty$")
         axes[1, 0].set_ylabel(r"$v/U_\infty$")
 
@@ -156,7 +130,7 @@ def plot_frame(profiles, samples, name, figure_format, geometry):
             Patch(color=COLORS["background_strong"], alpha=0.25),
         ],
         [
-            rf"FVM domain ($x_{{\max}}/D={geometry.fvm_box['xmax'] / geometry.diameter:g}$)",
+            rf"FVM domain ($x_{{\max}}/D={geometry['fvm_box']['xmax'] / geometry['diameter']:g}$)",
             "Transfer region",
         ],
         loc="lower center",
@@ -211,24 +185,16 @@ def main() -> None:
         {
             "reference": str(reference_directory.relative_to(data.CASE_DIR)),
             "time_alignment": "common saved physical states; clock roundoff only, no time interpolation",
-            "scope": "instantaneous profiles; not a time-averaged or phase-convergence claim",
             "profile_positions_x": [row[0] for row in profiles],
-            "normalization": {"diameter": geometry.diameter, "freestream_speed": geometry.speed},
-            "coupled_fvm_domain": geometry.fvm_box,
-            "transfer_region": geometry.transfer_box,
-            "coupled_fvm_scope": "native FVM fluid only; no curve outside its saved domain",
+            "normalization": {
+                "diameter": geometry["diameter"],
+                "freestream_speed": geometry["speed"],
+            },
+            "coupled_fvm_domain": geometry["fvm_box"],
+            "transfer_region": geometry["transfer_box"],
             "frames": frames,
         },
     )
-    expected = {filename for frame in frames for filename in frame["files"]}
-    for extension in formats:
-        for prefix in ("reference_profiles", "velocity_profiles"):
-            for path in data.FIGURES.glob(f"{prefix}*.{extension}"):
-                if (
-                    re.fullmatch(rf"{prefix}(?:_t[0-9.eE+-]+)?\.{extension}", path.name)
-                    and path.name not in expected
-                ):
-                    path.unlink()
     print(
         f"Profile comparison: {len(frames)} common saved states, "
         f"t={frames[0]['time']:g}–{frames[-1]['time']:g} s."

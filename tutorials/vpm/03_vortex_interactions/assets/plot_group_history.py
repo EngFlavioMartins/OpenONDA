@@ -5,17 +5,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
+from openonda.results import read_csv_table
+
 import matplotlib.pyplot as plt
 import pandas as pd
-
-if not __package__:
-    from openonda.tutorial_runner import case_package
-    from pathlib import Path as _CasePath
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 from .. import setup
 from .postprocess import case_style, comparison_legend, figure_size, save_figure, theme
@@ -28,13 +22,9 @@ def plot(runs, output, formats):
     plotting = theme()
     plotting.set_thesis_style()
     fig, axes = plt.subplots(2, 1, figsize=figure_size(8.3), sharex=True)
-    plotted = 0
     for run in runs:
         path = setup.TUTORIAL_DIR / "samples" / run / "ring_diagnostics.csv"
-        if not path.is_file():
-            print(f"Skipping {run}: no ring_diagnostics.csv", flush=True)
-            continue
-        frame = pd.read_csv(path)
+        frame = pd.DataFrame(read_csv_table(path))
         style = case_style(run)
         for group in (1, 0):
             values = frame[frame.group_id == group].sort_values("time")
@@ -55,14 +45,9 @@ def plot(runs, output, formats):
                 **line,
             )
             axes[1].plot(time, values.major_radius / setup.RING_RADIUS, **line)
-        plotted += 1
-    if not plotted:
-        plt.close(fig)
-        print("No native group histories are available.", flush=True)
-        return
-    axes[0].set_ylabel(r"$\bar{x}_g/R_0$")
-    axes[1].set_ylabel(r"$R_g/R_0$")
-    axes[1].set_xlabel(r"$t\Gamma_0/R_0^2$")
+    axes[0].set_ylabel("$\\bar{x}_g/R_0$")
+    axes[1].set_ylabel("$R_g/R_0$")
+    axes[1].set_xlabel("$t\\Gamma_0/R_0^2$")
     handles, labels = axes[0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
     plotting.centered_subplots_adjust(fig, outer=0.118, bottom=0.33, top=0.96, hspace=0.18)

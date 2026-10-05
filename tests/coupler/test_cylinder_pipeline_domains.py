@@ -37,7 +37,7 @@ def test_pipeline_preserves_metrics_but_gates_gci_on_actual_domains(
             run_dir = Path(command[command.index("--run-dir") + 1])
             samples = run_dir / "samples"
             samples.mkdir(parents=True)
-            for name in ("forces_history", "span_lower", "span_middle", "span_upper"):
+            for name in ("forces_history", "span_middle"):
                 (samples / (name + ".csv")).touch()
             xmax = fine_xmax if run_dir.name == "grid_h0p064" else 2.4
             if xmax is not None:
@@ -49,7 +49,7 @@ def test_pipeline_preserves_metrics_but_gates_gci_on_actual_domains(
                                 "fvm_domain": dict(
                                     zip(
                                         ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
-                                        (-1.6, xmax, -1.6, 1.6, -0.48, 0.48),
+                                        (-1.6, xmax, -1.6, 1.6, -0.5, 0.5),
                                         strict=True,
                                     )
                                 )

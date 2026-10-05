@@ -11,7 +11,6 @@ def distance_travelled(
     """Return plate travel in chord lengths at sampled physical times."""
     if kinematics != "ramp":
         return times * freestream_speed / chord
-
     ramp_distance = (
         0.5 * freestream_speed * (times - ramp_time / math.pi * np.sin(math.pi * times / ramp_time))
     )

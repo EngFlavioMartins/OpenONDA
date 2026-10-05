@@ -1,6 +1,5 @@
 """Lightweight contracts for bounded cylinder campaign orchestration."""
 
-import importlib.util
 import json
 from pathlib import Path
 import shutil
@@ -8,6 +7,7 @@ import sys
 
 import pytest
 
+from openonda.tutorial_runner import load_case_module
 from tests.support.cylinder import campaign, provenance
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,12 +15,7 @@ ASSETS = ROOT / "tests/support/cylinder"
 
 
 def load_asset(name: str):
-    path = ASSETS / name
-    spec = importlib.util.spec_from_file_location(f"test_{name.replace('.', '_')}", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_case_module(ASSETS, Path(name).stem)
 
 
 def test_run_trial_terminates_a_timed_out_process_group(tmp_path):
@@ -136,7 +131,7 @@ def test_pipeline_uses_one_wall_limit_per_case_and_resume_without_overwrite(tmp_
     assert pipeline.main() == 0
     assert len(calls) == 2
     assert all(call[3] == 43200 for call in calls)
-    assert [call[0][3] for call in calls] == ["reference", "coupled"]
+    assert [call[0][call[0].index("--kind") + 1] for call in calls] == ["reference", "coupled"]
     assert (tmp_path / "pipeline" / "pipeline_manifest.json").is_file()
 
     (tmp_path / "pipeline" / "reference").mkdir()
@@ -175,10 +170,12 @@ def test_coupled_campaign_identity_uses_the_actual_mesh(monkeypatch):
     module = campaign.load_case_module(campaign.CASE_DIR)
     monkeypatch.setattr(campaign, "file_hash", lambda _: "test-input")
     monkeypatch.setattr(campaign, "software_fingerprint", lambda: {"digest": "test-source"})
-    config = campaign._resolved_coupled_config(module, 0.8, {"hxy": 0.048, "dz": 0.08})
+    config = campaign._resolved_coupled_config(module, 0.8, {"hxy": 0.048})
     assert config["hxy"] == pytest.approx(0.048)
-    assert config["dz"] == pytest.approx(0.08)
-    assert config["span"] == pytest.approx(0.96)
+    assert config["dz"] == config["span"] == pytest.approx(1.0)
+    assert config["span_layers"] == config["particle_span_layers"] == 1
+    assert config["plane_z"] == 0.0
+    assert config["interface_iterations"] == module.INTERFACE_ITERATIONS == 6
     assert config["exchange_dt"] == pytest.approx(0.04)
 
 
@@ -338,10 +335,12 @@ def test_reference_grid_completion_requires_matching_resolved_record(tmp_path):
     campaign = load_asset("run_campaign.py")
 
     class ReferenceModule:
-        SPAN = 0.96
+        SPAN = 1.0
         TIME_STEP_SIZE = 0.001
 
     config = campaign._grid_config(ReferenceModule, "grid_h008", 0.08, 4.0)
+    assert config["span"] == config["dz"] == 1.0
+    assert config["span_layers"] == 1
     campaign._write_grid_record(tmp_path, config)
     samples = tmp_path / "samples" / "grid_h008"
     solution = tmp_path / "solution" / "grid_h008"
@@ -362,7 +361,7 @@ def test_incomplete_reference_output_requires_resume(tmp_path, monkeypatch):
     campaign = load_asset("run_campaign.py")
 
     class ReferenceModule:
-        SPAN = 0.96
+        SPAN = 1.0
         TIME_STEP_SIZE = 0.001
 
     monkeypatch.setattr(campaign, "load_case_module", lambda *args: ReferenceModule)

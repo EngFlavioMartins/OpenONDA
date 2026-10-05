@@ -1,7 +1,7 @@
 import argparse
-import csv
-import os
 from pathlib import Path
+
+from openonda.results import read_csv_columns, read_grouped_csv
 
 import numpy as np
 
@@ -51,41 +51,12 @@ def build_arg_parser():
 
 
 def load_ibm_forces_csv(solution_dir):
-    """Load samples/ibm_forces_history.csv -> {body_id: {column: array}}.
-
-    Sampled output lives in samples/ at the case root, alongside solution/.
-    """
-    csv_path = os.path.join(os.path.dirname(solution_dir), "samples", "ibm_forces_history.csv")
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(
-            f"Required plotting input missing: ibm_forces_history.csv not found at {csv_path}"
-        )
-    data = {}
-    with open(csv_path) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = row["body_id"]
-            if name not in data:
-                data[name] = {k: [] for k in row.keys() if k != "body_id"}
-            for k, v in row.items():
-                if k != "body_id":
-                    try:
-                        data[name][k].append(float(v) if v else 0.0)
-                    except ValueError:
-                        data[name][k].append(0.0)
-    for name in data:
-        for k in data[name]:
-            data[name][k] = np.array(data[name][k])
-    if not data:
-        raise ValueError(f"Required plotting input has no records: {csv_path}")
-    return data
+    return read_grouped_csv(Path(solution_dir).parent / "samples/ibm_forces_history.csv", "body_id")
 
 
 def load_markers(solution_dir):
-    path = os.path.join(solution_dir, "ibm_markers.csv")
-    if not os.path.exists(path):
-        return None
-    return np.loadtxt(path, delimiter=",", skiprows=1)
+    data = read_csv_columns(Path(solution_dir) / "ibm_markers.csv")
+    return np.column_stack([data[f"position_{axis}"] for axis in "xyz"])
 
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):

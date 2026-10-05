@@ -18,6 +18,8 @@ from typing import Protocol, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
+from source.simulation.forcing import VelocityBoundary
+
 from .scheduling import RunSchedule
 from .types import (
     BackupConfig,
@@ -259,6 +261,7 @@ class FVMCase:
     mesh_quality: MeshQualityConfig = field(default_factory=MeshQualityConfig)
     numerics: Numerics = field(default_factory=Numerics)
     boundaries: tuple[BoundaryConfig, ...] = ()
+    velocity_boundaries: tuple[VelocityBoundary, ...] = ()
     initial_conditions: InitialFields = field(default_factory=InitialFields)
     run: RunPlan = field(default_factory=RunPlan)
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -289,6 +292,9 @@ class FVMCase:
             raise ValueError("FVMCase.cores must be a positive integer")
         object.__setattr__(self, "directory", Path(self.directory))
         object.__setattr__(self, "boundaries", tuple(self.boundaries))
+        object.__setattr__(self, "velocity_boundaries", tuple(self.velocity_boundaries))
+        if any(not isinstance(item, VelocityBoundary) for item in self.velocity_boundaries):
+            raise TypeError("FVMCase.velocity_boundaries must contain VelocityBoundary objects")
 
     def to_setup(self) -> FVMSetup:
         """Materialize a mutable low-level setup for the numerical core.
@@ -323,6 +329,7 @@ class FVMCase:
             pimple=self.numerics.coupling,
             transport=self.numerics.transport,
             boundaries=list(self.boundaries),
+            velocity_boundaries=self.velocity_boundaries,
             samplers=self.samplers.samples,
             turbulence=self.numerics.turbulence,
             initial_velocity=fields.velocity,

@@ -50,8 +50,6 @@ def graded_coords(lo, core_lo, core_hi, hi, grid_spacing, ratio):
 def _index_of(coords, value):
     """Index of ``value`` in a node-coordinate array (must be a grid line)."""
     i = int(np.argmin(np.abs(coords - value)))
-    if abs(coords[i] - value) > 1e-9:
-        raise ValueError(f"{value} is not a grid line (closest: {coords[i]})")
     return i
 
 

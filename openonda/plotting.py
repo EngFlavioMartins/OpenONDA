@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import RendererAgg
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
@@ -373,6 +374,13 @@ def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
     fig.subplots_adjust(left=outer, right=1.0 - outer, **kwargs)
 
 
+def figure_renderer(fig) -> RendererAgg:
+    """Render the authored canvas without changing its selected backend."""
+    renderer = RendererAgg(fig.bbox.width, fig.bbox.height, fig.dpi)
+    fig.draw(renderer)
+    return renderer
+
+
 def thesis_y_label_margin(fig, axes: Iterable[Axes] | Axes) -> float:
     """Measure a symmetric plot margin with outer y text just inside the canvas.
 
@@ -380,8 +388,7 @@ def thesis_y_label_margin(fig, axes: Iterable[Axes] | Axes) -> float:
     is used for both left and right margins, not for asymmetric tight cropping.
     """
     axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = figure_renderer(fig)
     left = min(axis.get_position().x0 for axis in axes)
     text_left = float("inf")
     for axis in axes:
@@ -414,8 +421,7 @@ def fit_thesis_y_label_margins(fig, axes: Iterable[Axes] | Axes) -> None:
 
 def _separate_corner_tick_labels(fig, axes: tuple[Axes, ...]) -> None:
     """Give intersecting x/y tick labels enough horizontal room to clear."""
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = figure_renderer(fig)
     gap = fig.dpi / 72.0
     for axis in axes:
         xlow, xhigh = sorted(axis.get_xlim())
@@ -452,8 +458,7 @@ def _separate_corner_tick_labels(fig, axes: tuple[Axes, ...]) -> None:
 
 def _separate_title_from_y_ticks(fig, axes: tuple[Axes, ...]) -> None:
     """Raise a title only when its rendered bounds touch a y tick."""
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = figure_renderer(fig)
     gap = fig.dpi / 72.0
     for axis in axes:
         title = axis.title
@@ -565,8 +570,7 @@ def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
             f"plotting area is not centred: left margin={left:.6f}, right margin={right:.6f}"
         )
 
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = figure_renderer(fig)
     canvas = fig.bbox
     minimum_padding = MIN_TEXT_CANVAS_PADDING_PT * fig.dpi / 72.0
     in_range_tick_label: dict[Text, bool] = {}
@@ -724,10 +728,10 @@ def requested_formats(figure_format="both"):
 def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
     """Export an already laid-out canvas at native size, without cropping.
 
-    Validate before calling this function when using a custom panel layout.
     PDF is saved first so both formats use identical physical geometry.
     """
     prepare_figure(fig)
+    validate_thesis_figure(fig, fig.axes)
     path = Path(path)
     suffix_format = path.suffix.lstrip(".")
     formats = requested_formats(

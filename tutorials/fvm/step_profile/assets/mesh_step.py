@@ -22,10 +22,6 @@ def backward_facing_step_mesh(
     fluid fills ``0 <= y <= 2h``.  The vertical face at ``x = 0, y < h`` is
     therefore a real geometric step.
     """
-    if min(step_height, upstream_length, downstream_length) <= 0.0:
-        raise ValueError("Step dimensions must be positive")
-    if min(n_upstream, n_downstream) < 1 or n_height < 2 or n_height % 2:
-        raise ValueError("Cell counts must be positive and n_height must be an even integer >= 2")
 
     h = float(step_height)
     x_up = np.linspace(-upstream_length * h, 0.0, n_upstream + 1)

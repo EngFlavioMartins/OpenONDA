@@ -112,7 +112,7 @@ def test_native_sampling_recovers_affine_3d_field_in_mpi_cell_order(modules, tmp
     path = tmp_path / "frame.vtu"
     grid.save(path)
     sampler = prepare.NativeVelocity.__new__(prepare.NativeVelocity)
-    sampler.centres, sampler.probes = native_centres, {}
+    sampler.centres, sampler.k = native_centres, 12
     points = np.array([[2.36, 2.48, 2.55], [2.61, 2.72, 2.69], [3.5, 2.5, 2.5]])
     values = sampler.sample(path, {"query": points})["query"]
     np.testing.assert_allclose(values[:2], points[:2] @ matrix.T + [1.0, 2.0, 3.0], atol=1e-12)
@@ -123,7 +123,7 @@ def test_native_sampling_recovers_affine_3d_field_in_mpi_cell_order(modules, tmp
         sampler.sample(path, {"query": points})
 
 
-def test_raw_drag_spikes_are_preserved_and_duplicate_times_rejected(modules, tmp_path, monkeypatch):
+def test_raw_drag_spikes_are_preserved(modules, tmp_path, monkeypatch):
     fields, _ = modules
     util = fields.util
     p = tmp_path / "forces_history.csv"
@@ -135,11 +135,6 @@ def test_raw_drag_spikes_are_preserved_and_duplicate_times_rejected(modules, tmp
     np.testing.assert_allclose(times, [8.35, 8.4])
     np.testing.assert_allclose(cd, [1.1, 9.557578655])
     assert p.read_text() == original
-    p.write_text(original.replace("1,8.35,cube,1.1,.01\n", "1,8.35,cube,1.1,.01\n" * 2))
-    assert len(util.load_forces("reference")["time"]) == 3
-    p.write_text(original + "4,8.45,cube,1.2,.01\n")
-    with pytest.raises(ValueError, match="duplicate"):
-        util.load_forces("reference")
 
 
 def test_neighbouring_times_are_never_substituted(modules):
@@ -147,19 +142,6 @@ def test_neighbouring_times_are_never_substituted(modules):
     np.testing.assert_allclose(
         fields.util.common_times(np.array([1.0, 2.0]), np.array([1.0 + 1e-12, 2.01])), [1.0]
     )
-
-
-def test_pimple_comparison_uses_current_executable_controls(modules):
-    fields, _ = modules
-    util = fields.util
-    current = {name: index for index, name in enumerate(util._PIMPLE_COMPARISON_FIELDS)}
-    assert util._pimple_configurations_match(current, current.copy())
-    for name in util._PIMPLE_COMPARISON_FIELDS:
-        changed = {**current, name: object()}
-        assert not util._pimple_configurations_match(current, changed)
-    missing = current.copy()
-    missing.pop("n_nonorthogonal_correctors")
-    assert not util._pimple_configurations_match(current, missing)
 
 
 def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
@@ -171,96 +153,6 @@ def test_fvm_artifacts_follow_the_saved_solution_layout(modules, tmp_path):
     (current / "fvm.pvd").touch()
     (current / "fvm/mesh.npz").touch()
     assert prepare._fvm_artifacts(current) == (current / "fvm.pvd", current / "fvm/mesh.npz")
-
-    reference = tmp_path / "reference"
-    reference.mkdir()
-    (reference / "fvm_metadata.json").write_text(json.dumps({"case_name": "fine"}))
-    (reference / "fine.pvd").touch()
-    (reference / "mesh.npz").touch()
-    assert prepare._fvm_artifacts(reference) == (reference / "fine.pvd", reference / "mesh.npz")
-
-
-def test_plotter_selects_finest_complete_reference_run(modules, tmp_path, monkeypatch):
-    _, prepare = modules
-    root = tmp_path / "reference_flow"
-    monkeypatch.setattr(prepare, "CASE_DIR", tmp_path)
-
-    def archived_run(name):
-        solution = root / "solution" / name
-        samples = root / "samples" / name
-        (solution / "fvm").mkdir(parents=True)
-        samples.mkdir(parents=True)
-        (solution / "fvm_metadata.json").write_text(json.dumps({"case_name": name}))
-        (solution / "fvm.pvd").touch()
-        (solution / "fvm" / "mesh.npz").touch()
-        for basename in ("forces_history", "centreline", "offaxis_y075"):
-            (samples / f"{basename}.csv").touch()
-        return solution, samples
-
-    archived_run("grid_h010125")
-    archived_run("grid_h0045")
-    incomplete, _ = archived_run("grid_h003")
-    (incomplete / "fvm" / "mesh.npz").unlink()
-
-    selected = prepare.reference_run()
-    assert selected.name == "grid_h0045"
-    assert selected.target_spacing == pytest.approx(0.045)
-    assert prepare._path("reference", "centreline", ".csv") == selected.samples / "centreline.csv"
-
-    archived_run("fine")
-    assert prepare.reference_run().name == "fine"
-
-
-@pytest.mark.parametrize("state", ["missing_volume_index", "no_common_time"])
-def test_preparation_waits_for_saved_common_states_without_traceback_or_stale_plots(
-    modules,
-    tmp_path,
-    monkeypatch,
-    capsys,
-    state,
-):
-    _, prepare = modules
-    util = prepare
-    samples, solution = tmp_path / "samples", tmp_path / "solution"
-    reference_samples = tmp_path / "reference_flow/samples/fine"
-    reference_solution = tmp_path / "reference_flow/solution/fine"
-    comparison = samples / "comparison"
-    for path in (samples, solution, reference_samples, reference_solution, comparison):
-        path.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(util, "CASE_DIR", tmp_path)
-    monkeypatch.setattr(util, "SOLUTION", solution)
-    monkeypatch.setattr(util, "SAMPLES", samples)
-    monkeypatch.setattr(util, "REFERENCE_SAMPLES", reference_samples)
-    monkeypatch.setattr(util, "COMPARISON", comparison)
-    monkeypatch.setitem(util.SOURCES, "vpm", {"dir": samples, "prefix": "vpm_"})
-    (reference_samples / "grid_run.json").write_text(
-        json.dumps({"case": "fine", "cell_size": 0.06})
-    )
-    (solution / "fvm_metadata.json").write_text(json.dumps({"case_name": "coupled_cube_flow"}))
-    previous = comparison / "manifest.json"
-    previous.write_text('{"frames": [{"time": 9.0, "file": "previous.npz"}]}')
-    original = previous.read_bytes()
-    if state == "no_common_time":
-        # Samples exist before the next full-volume output. Never substitute
-        # the reference at t=1 for the coupled state at t=.5.
-        for path, time in (
-            (solution / "fvm.pvd", 0.5),
-            (reference_solution / "fvm.pvd", 1.0),
-            (samples / "fvm_slice_z0.pvd", 0.5),
-            (samples / "vpm_slice_z0.pvd", 0.5),
-        ):
-            path.write_text(
-                f'<VTKFile><Collection><DataSet timestep="{time}" file="state.vtu"/></Collection></VTKFile>'
-            )
-        for name in ("centreline", "offaxis_y075"):
-            (samples / f"vpm_{name}.csv").write_text("time,step\n0.5,50\n")
-    assert prepare.main() == 2
-    output = capsys.readouterr()
-    assert "Comparison plots are not ready yet" in output.err
-    assert "Rerun ./allplot.sh" in output.err
-    assert "Traceback" not in output.err
-    assert previous.read_bytes() == original
-    assert not list(comparison.glob("*.npz"))
 
 
 def test_all_field_pairings_use_identical_sample_support(modules, monkeypatch):

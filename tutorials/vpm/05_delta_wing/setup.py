@@ -9,7 +9,7 @@ The induction backend and stretching formulation are independent. Set
 `stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
 
 Usage:
-    python setup.py
+    python -m openonda.tutorial_runner . setup
 """
 
 from __future__ import annotations
@@ -20,11 +20,6 @@ import numpy as np
 
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-
-from openonda.tutorial_runner import case_package
-
-if not __package__:
-    __package__ = case_package(Path(__file__).resolve().parent)
 
 from .assets.generate_surface import (
     create_delta_wing,

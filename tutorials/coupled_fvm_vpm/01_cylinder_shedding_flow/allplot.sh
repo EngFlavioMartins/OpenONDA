@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
-cd -- "$(dirname -- "$0")"
 
-python assets/plot_coupling_diagnostics.py --format "${1:-both}"
-python assets/plot_reference_forces.py --format "${1:-both}"
-python assets/plot_velocity_profiles.py --format "${1:-both}"
+cd "$(dirname "$0")"
+
+python -m openonda.tutorial_runner . assets.plot_coupling_diagnostics --format "${1:-both}"
+python -m openonda.tutorial_runner . assets.plot_reference_forces --format "${1:-both}"
+python -m openonda.tutorial_runner . assets.plot_velocity_profiles --format "${1:-both}"

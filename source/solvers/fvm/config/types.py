@@ -8,6 +8,7 @@ import math
 from numbers import Real
 from typing import Any, Literal
 
+from source.simulation.forcing import VelocityBoundary, VelocityRamp
 from source.write_precision import (
     DEFAULT_WRITE_PRECISION,
     WritePrecision,
@@ -1302,6 +1303,7 @@ class FVMSetup:
     transport: TransportConfig = field(default_factory=TransportConfig)
 
     boundaries: list[BoundaryConfig] = field(default_factory=list)
+    velocity_boundaries: tuple[VelocityBoundary, ...] = ()
     samplers: tuple = ()
     turbulence: TurbulenceConfig | None = None
 
@@ -1339,6 +1341,16 @@ class FVMSetup:
         boundary_names = [boundary.name for boundary in self.boundaries]
         if len(boundary_names) != len(set(boundary_names)):
             raise ValueError("FVMSetup.boundaries must not contain duplicate patch names")
+        self.velocity_boundaries = tuple(self.velocity_boundaries)
+        bound_patches = []
+        for condition in self.velocity_boundaries:
+            if not isinstance(condition, VelocityBoundary):
+                raise TypeError("velocity_boundaries must contain VelocityBoundary objects")
+            if set(condition.patches) - set(boundary_names):
+                raise ValueError("velocity_boundaries refers to an unknown boundary patch")
+            bound_patches.extend(condition.patches)
+        if len(set(bound_patches)) != len(bound_patches):
+            raise ValueError("Each patch may have only one velocity history")
         if self.initial_velocity is not None:
             _validate_vector(
                 "FVMSetup.initial_velocity", self.initial_velocity, allow_per_face=True
@@ -1456,6 +1468,14 @@ class FVMSetup:
             samplers=tuple(samplers),
             transport=TransportConfig(**transport_data),
             boundaries=boundaries,
+            velocity_boundaries=tuple(
+                VelocityBoundary(
+                    patches=tuple(item["patches"]),
+                    velocity=VelocityRamp(**item["velocity"]),
+                    normal_only=item["normal_only"],
+                )
+                for item in data.get("velocity_boundaries", ())
+            ),
             turbulence=turbulence,
             initial_velocity=data.get(
                 "initial_velocity",

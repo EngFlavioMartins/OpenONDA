@@ -217,13 +217,21 @@ class RunConfig:
         environment = os.environ.copy()
         environment[_MPI_CHILD] = "1"
         environment.setdefault(_PMIX_RETAIN_LOOPBACK, "1")
+        main = sys.modules["__main__"]
+        # A module runner owns its package context across MPI relaunches.
+        if (
+            getattr(main, "__spec__", None) is not None
+            and Path(main.__file__).resolve() == Path(script).resolve()
+        ):
+            entry_point = sys.orig_argv[1:]
+        else:
+            entry_point = [str(Path(script).resolve()), *sys.argv[1:]]
         command = [
             _mpi_executable(),
             "-n",
             str(self.cpu_cores),
             sys.executable,
-            str(Path(script).resolve()),
-            *sys.argv[1:],
+            *entry_point,
         ]
         os.execvpe(command[0], command, environment)
 

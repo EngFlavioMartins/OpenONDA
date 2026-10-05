@@ -85,21 +85,19 @@ def test_discovery_uses_only_the_requested_current_run(tmp_path):
     assert records[0]["run"] == "selective_eddy_viscosity"
     assert records[0]["path"].parent == tmp_path / "selective_eddy_viscosity"
     (tmp_path / "selective_eddy_viscosity" / "core_section_000000.vts").unlink()
-    assert discover(tmp_path, ["selective_eddy_viscosity"]) == []
-
-
-def test_grid_preserves_missing_run_time_combinations():
-    records = [
-        {"run": "baseline", "time": 1.5},
-        {"run": "selective_eddy_viscosity", "time": 1.5},
-        {"run": "selective_eddy_viscosity", "time": 3.0},
-    ]
-    grid = arrange_records(
-        records,
-        ["baseline", "selective_eddy_viscosity"],
-        [1.5, 3.0],
+    assert (
+        discover(tmp_path, ["selective_eddy_viscosity"])[0]["path"].name
+        == "core_section_000000.vts"
     )
-    assert [[record is not None for record in row] for row in grid] == [
-        [True, True],
-        [False, True],
+
+
+def test_grid_uses_only_matching_saved_physical_states():
+    records = [
+        {"run": run, "time": time}
+        for run in ("baseline", "selective_eddy_viscosity")
+        for time in (1.5, 3.0)
     ]
+    grid = arrange_records(records, ["baseline", "selective_eddy_viscosity"], [1.5, 3.0])
+    assert [[record["time"] for record in row] for row in grid] == [[1.5, 1.5], [3.0, 3.0]]
+    with pytest.raises(ValueError, match="absent"):
+        arrange_records(records, ["baseline"], [2.0])

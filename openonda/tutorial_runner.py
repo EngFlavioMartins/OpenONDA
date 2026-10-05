@@ -11,8 +11,10 @@ import argparse
 from datetime import UTC, datetime
 import importlib
 from importlib.machinery import ModuleSpec
+import os
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,9 +39,45 @@ def load_case_module(directory: str | Path, module: str = "setup") -> ModuleType
     return importlib.import_module(f"{name}.{module}" if module else name)
 
 
-def case_package(directory: str | Path) -> str:
-    """Register a local package for a directly executed tutorial script."""
-    return load_case_module(directory, "").__name__
+def run_case(directory: str | Path, module: str, arguments: list[str] | None = None) -> None:
+    """Execute a local case module with ordinary relative imports and paths."""
+    directory = Path(directory).resolve()
+    previous_directory, previous_arguments = Path.cwd(), sys.argv
+    previous_backend = os.environ.get("MPLBACKEND")
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    try:
+        os.chdir(directory)
+        parent, _, _ = module.rpartition(".")
+        package = load_case_module(directory, parent)
+        module_name = package.__name__ + "." + module.rsplit(".", 1)[-1]
+        sys.argv = [str(directory / (module.replace(".", "/") + ".py")), *(arguments or [])]
+        runpy.run_module(module_name, run_name="__main__", alter_sys=True)
+    finally:
+        os.chdir(previous_directory)
+        sys.argv = previous_arguments
+        if previous_backend is None:
+            os.environ.pop("MPLBACKEND", None)
+        else:
+            os.environ["MPLBACKEND"] = previous_backend
+
+
+def _clean_outputs(directory: Path) -> None:
+    """Remove generated files owned by this case, preserving physical assets."""
+    names = (
+        "solution",
+        "solutions",
+        "samples",
+        "figures",
+        "study_results",
+        ".matplotlib",
+        "__pycache__",
+        "assets/__pycache__",
+    )
+    for path in [*(directory / name for name in names), *directory.glob("*.log")]:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
 
 
 def _archive_outputs(directory: Path) -> None:
@@ -70,7 +108,7 @@ def _archive_outputs(directory: Path) -> None:
     print(f"Previous outputs archived in {archive}", flush=True)
 
 
-def _run_setup(directory: Path, arguments: list[str]) -> int:
+def _run_locked(directory: Path, module: str, arguments: list[str]) -> int:
     """Keep a portable case lock while the setup launches and waits for MPI."""
     import fcntl
 
@@ -80,11 +118,23 @@ def _run_setup(directory: Path, arguments: list[str]) -> int:
         except BlockingIOError:
             print(f"OpenONDA case is already running: {directory}", file=sys.stderr)
             return 75
+        if module == "clean":
+            _clean_outputs(directory)
+            return 0
         if "--fresh" in arguments:
             _archive_outputs(directory)
             arguments = [argument for argument in arguments if argument != "--fresh"]
         with subprocess.Popen(
-            [sys.executable, str(directory / "setup.py"), *arguments], cwd=directory
+            [
+                sys.executable,
+                "-m",
+                "openonda.tutorial_runner",
+                "--execute",
+                str(directory),
+                module,
+                *arguments,
+            ],
+            cwd=directory,
         ) as child:
             while True:
                 try:
@@ -98,18 +148,14 @@ def _run_setup(directory: Path, arguments: list[str]) -> int:
 def main(arguments: list[str] | None = None) -> int:
     """Execute a case module with the remaining command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--execute", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("directory", type=Path)
     parser.add_argument("module")
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(arguments)
-    if args.module == "setup":
-        return _run_setup(args.directory.resolve(), args.arguments)
-    # Register the package without importing the executable module twice.
-    parent, _, _ = args.module.rpartition(".")
-    package = load_case_module(args.directory, parent)
-    module_name = package.__name__ + "." + args.module.rsplit(".", 1)[-1]
-    sys.argv = [str(args.directory / (args.module.replace(".", "/") + ".py")), *args.arguments]
-    runpy.run_module(module_name, run_name="__main__", alter_sys=True)
+    if args.module in {"setup", "clean"} and not args.execute:
+        return _run_locked(args.directory.resolve(), args.module, args.arguments)
+    run_case(args.directory, args.module, args.arguments)
     return 0
 
 

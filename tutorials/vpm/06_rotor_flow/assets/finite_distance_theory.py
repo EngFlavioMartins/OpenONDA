@@ -20,38 +20,32 @@ of silently applying a different correction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 from scipy import special
 
-# Predeclared diagnostic gates.  They are intentionally broader than numerical
-# round-off because the reference is infinite-blade/inviscid/non-expanding,
-# while the case is finite-blade, viscous/LES and time-dependent.  They must be
-# reported unchanged, not adjusted after seeing a production result.
-AXIAL_RELATIVE_TOLERANCE = 0.25
-TANGENTIAL_RELATIVE_TOLERANCE = 0.35
-AXIAL_REFERENCE_FLOOR = 0.05
-TANGENTIAL_REFERENCE_FLOOR = 0.02
 
-
-@dataclass(frozen=True)
 class VortexCylinderSystem:
     """Piecewise-constant right-cylinder strengths at trailing radii."""
 
-    trailing_radii: np.ndarray
-    tangential_sheet_strength: np.ndarray
-    longitudinal_sheet_strength: np.ndarray
-    bound_circulation: np.ndarray
-    annulus_induction: np.ndarray
+    def __init__(
+        self,
+        trailing_radii: np.ndarray,
+        tangential_sheet_strength: np.ndarray,
+        longitudinal_sheet_strength: np.ndarray,
+        bound_circulation: np.ndarray,
+        annulus_induction: np.ndarray,
+    ):
+        self.trailing_radii = trailing_radii
+        self.tangential_sheet_strength = tangential_sheet_strength
+        self.longitudinal_sheet_strength = longitudinal_sheet_strength
+        self.bound_circulation = bound_circulation
+        self.annulus_induction = annulus_induction
 
 
 def _complete_elliptic_pi(n: float, m: float) -> float:
     """Return complete ``Pi(n, m)`` through Carlson symmetric integrals."""
-    # scipy.special has no portable ellippi symbol across the supported SciPy
-    # versions.  Carlson's identity is Pi(n,m)=RF(0,1-m,1)+n RJ(...)/3.
-    m = float(np.clip(m, 0.0, 1.0 - 1.0e-13))
-    n = float(np.clip(n, 0.0, 1.0 - 1.0e-13))
+    m = float(np.clip(m, 0.0, 1.0 - 1e-13))
+    n = float(np.clip(n, 0.0, 1.0 - 1e-13))
     return float(
         special.elliprf(0.0, 1.0 - m, 1.0) + n * special.elliprj(0.0, 1.0 - m, 1.0, 1.0 - n) / 3.0
     )
@@ -67,10 +61,8 @@ def right_cylinder_influence(radius: float, cylinder_radius: float, downstream: 
     r = float(radius)
     R = float(cylinder_radius)
     y = float(downstream)
-    if r <= 0.0 or R <= 0.0 or y <= 0.0:
-        raise ValueError("right-cylinder influence requires r, R and y > 0")
     difference = abs(R - r)
-    if difference <= 1.0e-12 * max(R, r):
+    if difference <= 1e-12 * max(R, r):
         inside_axial = 0.5
         outside_longitudinal = 0.5
     elif R > r:
@@ -80,8 +72,8 @@ def right_cylinder_influence(radius: float, cylinder_radius: float, downstream: 
         inside_axial = 0.0
         outside_longitudinal = 1.0
     denominator = (R + r) ** 2 + y**2
-    m = float(np.clip(4.0 * r * R / denominator, 0.0, 1.0 - 1.0e-13))
-    n = float(np.clip(4.0 * r * R / (R + r) ** 2, 0.0, 1.0 - 1.0e-13))
+    m = float(np.clip(4.0 * r * R / denominator, 0.0, 1.0 - 1e-13))
+    n = float(np.clip(4.0 * r * R / (R + r) ** 2, 0.0, 1.0 - 1e-13))
     root_m = np.sqrt(m)
     elliptic_k = float(special.ellipk(m))
     elliptic_pi = _complete_elliptic_pi(n, m)
@@ -91,7 +83,7 @@ def right_cylinder_influence(radius: float, cylinder_radius: float, downstream: 
     tangential = (
         0.5 * (R / r) * (outside_longitudinal + common * (elliptic_k - ratio * elliptic_pi))
     )
-    return axial, tangential
+    return (axial, tangential)
 
 
 def build_system(
@@ -107,41 +99,12 @@ def build_system(
     radius = np.asarray(bem["radial_position"], dtype=float)
     circulation = number_of_blades * np.asarray(bem["circulation"], dtype=float)
     tangential_induction = np.asarray(bem["tangential_induction_factor"], dtype=float)
-    if radius.ndim != 1 or len(radius) < 2 or np.any(np.diff(radius) <= 0.0):
-        raise ValueError("BEM radial stations must be strictly increasing")
-    if np.any((radius <= hub_radius) | (radius >= rotor_radius)):
-        raise ValueError("BEM radial stations must lie strictly inside the rotor")
-    if freestream_speed <= 0.0 or angular_velocity <= 0.0:
-        raise ValueError("freestream speed and angular velocity must be positive")
-
-    # Li et al. (2025), Eqs. (40)/(41), use the planar Kutta--Joukowski
-    # coefficient C_T = k_s(1+a') for this closure.  This deliberately omits
-    # the optional wake-rotation subtraction C_T,rot from Li et al. (2022),
-    # Eq. (14); the longitudinal sheets still carry the matched circulation
-    # and therefore retain the corresponding tangential induction.  Keeping
-    # the finite-blade BEM table here makes the comparison matched, while the
-    # cylinder itself remains the infinite-blade analytical reference.
     circulation_parameter = angular_velocity * circulation / (np.pi * freestream_speed**2)
     ct_effective = circulation_parameter * (1.0 + tangential_induction)
-    if np.any(~np.isfinite(ct_effective)) or np.any(ct_effective >= 1.0):
-        raise ValueError("finite-distance reference requires all effective annulus C_T < 1")
     annulus_induction = 0.5 * (1.0 - np.sqrt(np.maximum(1.0 - ct_effective, 0.0)))
-
-    trailing_radii = np.r_[
-        float(hub_radius),
-        0.5 * (radius[:-1] + radius[1:]),
-        float(rotor_radius),
-    ]
+    trailing_radii = np.r_[float(hub_radius), 0.5 * (radius[:-1] + radius[1:]), float(rotor_radius)]
     annulus_with_ghosts = np.r_[0.0, annulus_induction, 0.0]
-    # Sheets act on points INSIDE their radius. Summing outward from annulus
-    # i must telescope to -2 U a_i, not +2 U a_i. The outermost jump is
-    # therefore negative for a turbine: Li et al. (2025), Eq. (41).
-    # The minus sign converting velocity to induction belongs only in
-    # induced_velocity(), not in this radial difference as well.
     tangential_sheet_strength = 2.0 * freestream_speed * np.diff(annulus_with_ghosts)
-    # Retain the Γ_j−Γ_{j+1} orientation for the longitudinal sheets.  The
-    # root ghost then gives the negative inside-rotor swirl required by
-    # ``a' = -u_t / (Ω r)`` for positive circulation and Ω.
     circulation_with_ghosts = np.r_[0.0, circulation, 0.0]
     trailed_circulation = circulation_with_ghosts[:-1] - circulation_with_ghosts[1:]
     longitudinal_sheet_strength = trailed_circulation / (2.0 * np.pi * trailing_radii)

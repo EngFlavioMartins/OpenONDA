@@ -1,4 +1,4 @@
-"""Historical matched cylinder phase comparison; not a grid qualification."""
+"""Matched planar cylinder phase comparison; not a grid qualification."""
 
 from dataclasses import asdict
 from pathlib import Path
@@ -19,9 +19,15 @@ SLICES = sampling.SLICES
 BACKUPS = sampling.BACKUPS
 VOLUMES = sampling.VOLUMES
 
-steps = sampling.steps
 phase_lines = sampling.phase_lines
 field_lines = sampling.field_lines
+
+
+def steps(period, time_step):
+    count = round(period / time_step)
+    if count < 1 or abs(count * time_step - period) > 1e-10:
+        raise ValueError("Verification period must resolve on the accepted clock")
+    return count
 
 
 def reference_case(end=END, cores=6):
@@ -34,7 +40,6 @@ def coupled_case(end=END, cores=4, device="CUDA"):
         end_time=end,
         overrides={
             "hxy": H,
-            "dz": H,
             "span": SPAN,
             "particle_spacing_ratio": 1.0,
             "cores": cores,
@@ -57,8 +62,20 @@ def contract():
     assert asdict(a.turbulence) == asdict(b.turbulence)
     assert a.time.time_step_size == b.time.time_step_size == DT
     assert a.time.adjustment is b.time.adjustment is None
-    assert len(am.levels) == len(bm.levels) == 25
+    assert SPAN == reference.SPAN == 1.0
+    assert am.levels == bm.levels == (-0.5 * SPAN, 0.5 * SPAN)
+    assert particles.numerics.induction.planar_span == SPAN
+    assert particles.numerics.induction.plane_z == 0.0
     assert particles.numerics.viscous.particle_spacing == H
+    for flow in (a, b):
+        boundaries = {patch.name: patch for patch in flow.boundaries}
+        for name, other in (("zmin", "zmax"), ("zmax", "zmin")):
+            patch = boundaries[name]
+            assert patch.velocity_type == patch.pressure_type == "cyclic"
+            assert patch.neighbour_patch == other
+        force = next(sample for sample in flow.samplers if sample.file_name == "forces_history")
+        assert force.reference_area == SPAN * module.DIAMETER
+        assert force.reference_velocity == 1.0
     assert (
         tuple(a.initial_velocity)
         == tuple(b.initial_velocity)
@@ -75,7 +92,9 @@ def contract():
     return {
         "h": H,
         "span": SPAN,
-        "span_layers": 24,
+        "span_layers": 1,
+        "particle_span_layers": 1,
+        "spanwise_boundary": "periodic",
         "fvm_dt": DT,
         "exchange_dt": EXCHANGE,
         "end_time": END,
@@ -92,8 +111,8 @@ def contract():
         "interface": coupling.to_dict(),
         "reference_samplers": [sampler_to_dict(s) for s in a.samplers],
         "coupled_fvm_samplers": [sampler_to_dict(s) for s in b.samplers],
-        "status": "provisional working mesh; no grid-independence claim",
-        "initial_condition": "same compact divergence-free curl on the startup background",
+        "status": "provisional planar working mesh; no grid-independence claim",
+        "initial_condition": "same compact divergence-free XY curl on the startup background; w=0",
         "startup": {
             "duration": module.STARTUP_DURATION,
             "transition_duration": module.STARTUP_TRANSITION_DURATION,
