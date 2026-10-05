@@ -153,6 +153,9 @@ def test_public_execution_wrapper_preserves_local_factory_and_arguments(tmp_path
         "restart_from": restart,
         "max_coupling_steps": 3,
         "overrides": overrides,
+        "startup_duration": setup.STARTUP_DURATION,
+        "startup_transition_duration": setup.STARTUP_TRANSITION_DURATION,
+        "steady_freestream_velocity": setup.FREESTREAM_VELOCITY,
     }
     resolved = tuple(object() for _ in range(4))
     monkeypatch.setattr(setup, "build_case", lambda **kwargs: resolved)

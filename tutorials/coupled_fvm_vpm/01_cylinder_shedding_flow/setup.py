@@ -10,6 +10,8 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
 import math
 from pathlib import Path
 
@@ -35,6 +37,11 @@ START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
 CASE_NAME = "coupled_cylinder_flow"
 DIAMETER = DEFAULT_CYLINDER_CASE.diameter
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
+# Break transverse symmetry early, then smoothly remove forcing by t=2 s.
+# The nominal speed above still defines Re and the reported force coefficients.
+STARTUP_FREESTREAM_VELOCITY = (1.0, 0.1, 0.0)
+STARTUP_DURATION = 2.0
+STARTUP_TRANSITION_DURATION = 1.0
 DENSITY = 1.0
 REYNOLDS_NUMBER = DEFAULT_CYLINDER_CASE.reynolds_number
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
@@ -46,7 +53,7 @@ FVM_RESOLVED_SPAN = DEFAULT_CYLINDER_CASE.resolved_span
 FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
 FVM_BOX = (
     -1.60,
-    1.60,
+    2.40,
     -1.60,
     1.60,
     -FVM_HALF_SPAN,
@@ -54,7 +61,7 @@ FVM_BOX = (
 )
 TRANSFER_REGION_BOX = (
     -1.25,
-    1.25,
+    2.05,
     -1.25,
     1.25,
     -FVM_HALF_SPAN,
@@ -67,7 +74,9 @@ TRANSFER_REGION_BOX = (
 VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
 # Keep renewal and grid-based diffusion on one VPM lattice.
 PARTICLE_LIMIT = 1_000_000
-INTERFACE_ITERATIONS = 3
+# Converged exchanges can seed the safeguarded predictor. Three sweeps often
+# stopped just above tolerance at startup, preventing this performance reuse.
+INTERFACE_ITERATIONS = 4
 INTERFACE_TOLERANCE = 1.0e-5
 
 # Time and output
@@ -126,7 +135,8 @@ def build_case(
     transfer_box = (*TRANSFER_REGION_BOX[:4], -half_span, half_span)
     particle_spacing = resolve_cylinder_particle_spacing(span=span, hxy=hxy, ratio=hp_ratio)
     validate_cylinder_authority(
-        transfer_edge_x=transfer_box[1],
+        # The wake box is asymmetric; every side must retain wall authority.
+        transfer_edge_x=min(-transfer_box[0], transfer_box[1], -transfer_box[2], transfer_box[3]),
         radius=DIAMETER / 2.0,
         blend_width=blend_ratio * particle_spacing,
     )
@@ -194,21 +204,21 @@ def build_case(
             fvm.BoundaryConfig(
                 name="numericalBoundary",
                 velocity_type="fixedValue",
-                velocity_value=list(FREESTREAM_VELOCITY),
+                velocity_value=list(STARTUP_FREESTREAM_VELOCITY),
                 pressure_type="fixedFluxPressure",
             ),
             fvm.BoundaryConfig.slip("zmin"),
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
-        initial_velocity=list(FREESTREAM_VELOCITY),
+        initial_velocity=list(STARTUP_FREESTREAM_VELOCITY),
     )
     vpm_case = vpm.VPMCase(
         name=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=exchange_dt,
             compute_device=compute_device,
-            freestream_velocity=FREESTREAM_VELOCITY,
+            freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
             viscous=vpm.ViscousConfig.gbd(
                 particle_spacing=particle_spacing,
                 padding=5.0,
@@ -239,7 +249,7 @@ def build_case(
         scale = values.pop("transfer_region_scale")
         transfer_box = tuple(value * scale for value in transfer_box)
     coupling_values = dict(
-        freestream_velocity=list(FREESTREAM_VELOCITY),
+        freestream_velocity=list(STARTUP_FREESTREAM_VELOCITY),
         transfer_region_bounds=transfer_box,
         eta_blend_width=blend_ratio * particle_spacing,
         vpm_only_width=release_ratio * particle_spacing,
@@ -251,6 +261,42 @@ def build_case(
     )
     coupler_setup = coupling.CouplerSetup(**{**coupling_values, **values})
     return fvm_setup, vpm_case, coupler_setup, mesh
+
+
+def mesh_cache_identity(mesh: msh.ExtrudedCartesianMesher) -> str:
+    """Include surface contents, mesher controls/code and extrusion geometry."""
+    from source.solvers.fvm.mesh.cache import CachedMesh
+
+    specification = {
+        "source": CachedMesh(mesh.source, CASE_DIR / "unused.npz").identity(),
+        "bounds": mesh.domain.bounds,
+        "levels": mesh.levels,
+    }
+    return hashlib.sha256(json.dumps(specification, sort_keys=True).encode()).hexdigest()
+
+
+def cached_mesh_matches_case(
+    path: Path, mesh: msh.ExtrudedCartesianMesher, *, require_identity: bool = False
+) -> bool:
+    """Admit a cached mesh only for the current resolved box and resolution."""
+    try:
+        with np.load(path, allow_pickle=False) as saved:
+            metadata = json.loads(str(saved["metadata"]))
+        identity = metadata.get("cylinder_mesh_cache_identity")
+        if (require_identity or identity is not None) and identity != mesh_cache_identity(mesh):
+            return False
+        generation = metadata.get("mesh_generation", {})
+        bounds = generation.get("domain", ())
+        levels = generation.get("extrusion_levels", ())
+        return bool(
+            len(bounds) == 6
+            and np.allclose(bounds, mesh.domain.bounds, rtol=0, atol=1e-12)
+            and len(levels) == len(mesh.levels)
+            and np.allclose(levels, mesh.levels, rtol=0, atol=1e-12)
+            and generation.get("resolved_background_cell_size") == mesh.max_cell_size
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def create_solver(
@@ -270,7 +316,21 @@ def create_solver(
             CASE_DIR if output_root is None else Path(output_root)
         ) / "solution/fvm/mesh.npz"
         if cached_mesh.is_file() and not kwargs.get("overrides"):
+            if not cached_mesh_matches_case(cached_mesh, mesh):
+                raise ValueError(
+                    "Cached cylinder mesh differs from this setup. Run ./allrun.sh --fresh "
+                    "to archive the previous results and start from zero."
+                )
             mesh = cached_mesh
+        elif not kwargs.get("overrides"):
+            builder = mesh
+
+            def generate_with_identity():
+                result = builder.build()
+                result["cylinder_mesh_cache_identity"] = mesh_cache_identity(builder)
+                return result
+
+            mesh = generate_with_identity
         return setup, particles, coupling_setup, mesh
 
     return run_coupled_cylinder(
@@ -281,6 +341,9 @@ def create_solver(
         restart_from=restart_from,
         max_coupling_steps=max_coupling_steps,
         overrides=overrides,
+        startup_duration=STARTUP_DURATION,
+        startup_transition_duration=STARTUP_TRANSITION_DURATION,
+        steady_freestream_velocity=FREESTREAM_VELOCITY,
     )
 
 

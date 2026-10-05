@@ -13,14 +13,14 @@ import threading
 from time import perf_counter
 from types import SimpleNamespace
 
+from numba import njit
 import numpy as np
 import psutil
 from scipy.fft import irfftn, next_fast_len, rfftn
 from scipy.spatial import cKDTree
-from scipy.special import erf
 
 from .coordinates import finite_images, slab_coordinates
-from .correction import _possibly_near, correction_factors_host
+from .correction import _correction_factors, _possibly_near
 from .runtime import positive_integer
 
 _COMPONENTS = ((0, -1), (1, -1), (2, -1), (0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
@@ -92,30 +92,35 @@ def _payload(shape, source_count, target_count, order, itemsize):
 
 def _scatter(first, weights, strength, shape, fft_shape, dtype, component):
     grid = np.zeros(fft_shape, dtype=dtype)
-    order = weights.shape[-1]
-    values = strength[:, component].astype(dtype)
-    for a in range(order):
-        for b in range(order):
-            for c in range(order):
-                factor = weights[:, 0, a] * weights[:, 1, b] * weights[:, 2, c]
-                np.add.at(
-                    grid, (first[:, 0] + a, first[:, 1] + b, first[:, 2] + c), factor * values
-                )
+    _scatter_into(grid, first, weights, strength[:, component].astype(dtype))
     return grid
 
 
+@njit(cache=True, boundscheck=True)
+def _scatter_into(grid, first, weights, values):
+    order = weights.shape[-1]
+    for a in range(order):
+        for b in range(order):
+            for c in range(order):
+                for i in range(len(first)):
+                    factor = weights[i, 0, a] * weights[i, 1, b] * weights[i, 2, c]
+                    grid[first[i, 0] + a, first[i, 1] + b, first[i, 2] + c] += factor * values[i]
+
+
+@njit(cache=True, boundscheck=True)
 def _gather(field, first, weights):
     values = np.zeros(len(first), dtype=np.float64)
     order = weights.shape[-1]
     for a in range(order):
         for b in range(order):
             for c in range(order):
-                factor = (
-                    weights[:, 0, a].astype(np.float64)
-                    * weights[:, 1, b].astype(np.float64)
-                    * weights[:, 2, c].astype(np.float64)
-                )
-                values += factor * field[first[:, 0] + a, first[:, 1] + b, first[:, 2] + c]
+                for i in range(len(first)):
+                    factor = (
+                        np.float64(weights[i, 0, a])
+                        * np.float64(weights[i, 1, b])
+                        * np.float64(weights[i, 2, c])
+                    )
+                    values[i] += factor * field[first[i, 0] + a, first[i, 1] + b, first[i, 2] + c]
     return values
 
 
@@ -131,47 +136,117 @@ def _kernels(shape, fft_shape, offset, steps, shifts, tau, dtype):
         axes.append(np.where(index < size, index, index - padded))
         valid.append((index < size) | (index >= padded - size + 1))
     result = np.zeros((9, *fft_shape), dtype=dtype)
+    _kernel_channels(
+        result, tuple(axes), tuple(valid), offset, steps, np.asarray(shifts, dtype=np.int64), tau
+    )
+    if not np.isfinite(result).all():
+        raise FloatingPointError("nonfinite Gaussian radial grid")
+    return result
+
+
+@njit(cache=True, boundscheck=True)
+def _kernel_channels(result, axes, valid, offset, steps, shifts, tau):
     pi15 = math.pi**-1.5
-    yz_mask = valid[1][:, None] & valid[2][None, :]
     for ix, lag_x in enumerate(axes[0]):
         if not valid[0][ix]:
             continue
         rx = float(lag_x + int(offset[0])) * steps[0]
-        ry = (axes[1] + int(offset[1]))[:, None] * steps[1]
-        plane = np.zeros((9, *fft_shape[1:]), dtype=np.float64)
-        for shift in shifts:
-            rz = (axes[2] + int(offset[2]) - int(shift))[None, :] * steps[2]
-            r2 = rx * rx + ry * ry + rz * rz
-            rho2 = r2 / (tau * tau)
-            near = rho2 < 1.0
-            a, b = np.zeros_like(r2), np.zeros_like(r2)
-            term = np.ones(np.count_nonzero(near))
-            sa, sb = np.zeros_like(term), np.zeros_like(term)
-            for n in range(24):
-                sa += term / (2 * n + 3)
-                sb += 2 * term / (2 * n + 5)
-                term *= -rho2[near] / (n + 1)
-            a[near], b[near] = pi15 * sa / tau**3, pi15 * sb / tau**5
-            far = ~near
-            radius = np.sqrt(r2[far])
-            rho = radius / tau
-            e = np.exp(-rho * rho)
-            q = (erf(rho) - 2 * rho * e / math.sqrt(math.pi)) / (4 * math.pi)
-            a[far] = q / (r2[far] * radius)
-            b[far] = 3 * q / (r2[far] * r2[far] * radius) - pi15 * e / (tau**3 * r2[far])
-            coordinates = (rx, ry, rz)
-            for channel, (axis, derivative) in enumerate(_COMPONENTS):
-                value = (
-                    -a * coordinates[axis]
-                    if derivative < 0
-                    else b * coordinates[axis] * coordinates[derivative]
-                    - (a if axis == derivative else 0.0)
-                )
-                plane[channel] += np.where(yz_mask, value, 0.0)
-        result[:, ix] = plane
-    if not np.isfinite(result).all():
-        raise FloatingPointError("nonfinite Gaussian radial grid")
-    return result
+        for iy, lag_y in enumerate(axes[1]):
+            if not valid[1][iy]:
+                continue
+            ry = float(lag_y + int(offset[1])) * steps[1]
+            for iz, lag_z in enumerate(axes[2]):
+                if not valid[2][iz]:
+                    continue
+                values = np.zeros(9, dtype=np.float64)
+                for shift in shifts:
+                    rz = float(lag_z + int(offset[2]) - int(shift)) * steps[2]
+                    r2 = rx * rx + ry * ry + rz * rz
+                    rho2 = r2 / (tau * tau)
+                    if rho2 < 1.0:
+                        term, sa, sb = 1.0, 0.0, 0.0
+                        for n in range(24):
+                            sa += term / (2 * n + 3)
+                            sb += 2 * term / (2 * n + 5)
+                            term *= -rho2 / (n + 1)
+                        a, b = pi15 * sa / tau**3, pi15 * sb / tau**5
+                    else:
+                        radius = math.sqrt(r2)
+                        rho = radius / tau
+                        e = math.exp(-rho * rho)
+                        q = (math.erf(rho) - 2 * rho * e / math.sqrt(math.pi)) / (4 * math.pi)
+                        a = q / (r2 * radius)
+                        b = 3 * q / (r2 * r2 * radius) - pi15 * e / (tau**3 * r2)
+                    coordinates = (rx, ry, rz)
+                    for channel, (axis, derivative) in enumerate(_COMPONENTS):
+                        value = (
+                            -a * coordinates[axis]
+                            if derivative < 0
+                            else b * coordinates[axis] * coordinates[derivative]
+                            - (a if axis == derivative else 0.0)
+                        )
+                        values[channel] += value
+                for channel in range(9):
+                    result[channel, ix, iy, iz] = values[channel]
+
+
+@njit(cache=True, boundscheck=True)
+def _accumulate_correction(
+    output,
+    target,
+    candidates,
+    source_start,
+    position,
+    strength,
+    core,
+    query,
+    shift,
+    odd,
+    tau,
+    cutoff,
+    single_precision,
+):
+    displacement = np.empty(3, dtype=np.float64)
+    cross = np.zeros((3, 3), dtype=np.float64)
+    accepted = 0
+    for local in candidates:
+        index = source_start + local
+        displacement[0] = query[0] - position[index, 0]
+        displacement[1] = query[1] - position[index, 1]
+        image_z = shift - position[index, 2] if odd else position[index, 2] + shift
+        displacement[2] = query[2] - image_z
+        radius = math.sqrt(np.dot(displacement, displacement))
+        if radius >= cutoff:
+            continue
+        gx = -strength[index, 0] if odd else strength[index, 0]
+        gy = -strength[index, 1] if odd else strength[index, 1]
+        gz = strength[index, 2]
+        cross[0, 1], cross[0, 2] = -gz, gy
+        cross[1, 0], cross[1, 2] = gz, -gx
+        cross[2, 0], cross[2, 1] = -gy, gx
+        a, b = _correction_factors(radius, core[index], tau)
+        for row in range(3):
+            value = 0.0
+            for k in range(3):
+                value += cross[row, k] * displacement[k]
+            value *= a
+            if single_precision:
+                output[target, row] += np.float32(value)
+            else:
+                output[target, row] += value
+            for column in range(3):
+                value = 0.0
+                for k in range(3):
+                    entry = (a if k == column else 0.0) - b * (
+                        displacement[k] * displacement[column]
+                    )
+                    value += cross[row, k] * entry
+                if single_precision:
+                    output[target, 3 + 3 * row + column] += np.float32(value)
+                else:
+                    output[target, 3 + 3 * row + column] += value
+        accepted += 1
+    return accepted
 
 
 class GaussianHostImageFields:
@@ -465,39 +540,21 @@ class GaussianHostImageFields:
                         for lane, candidates in enumerate(lists, start=first):
                             target = qstart + lane
                             report["correction_candidates"] += len(candidates)
-                            for local in candidates:
-                                index = start + local
-                                image = self.host_x[index].copy()
-                                image[2] = shift - image[2] if odd else image[2] + shift
-                                displacement = query[target] - image
-                                radius = float(np.linalg.norm(displacement))
-                                if radius >= self.cutoff:
-                                    continue
-                                vector = self.host_gamma[index].copy()
-                                if odd:
-                                    vector[:2] *= -1
-                                a, b = correction_factors_host(
-                                    radius, self._host_sigma[index], self.tau
-                                )
-                                cross = np.array(
-                                    [
-                                        [0.0, -vector[2], vector[1]],
-                                        [vector[2], 0.0, -vector[0]],
-                                        [-vector[1], vector[0], 0.0],
-                                    ]
-                                )
-                                output[target, :3] += (a * (cross @ displacement)).astype(
-                                    self.correction_dtype
-                                )
-                                output[target, 3:] += (
-                                    (
-                                        cross
-                                        @ (a * np.eye(3) - b * np.outer(displacement, displacement))
-                                    )
-                                    .reshape(9)
-                                    .astype(self.correction_dtype)
-                                )
-                                report["correction_pairs"] += 1
+                            report["correction_pairs"] += _accumulate_correction(
+                                output,
+                                target,
+                                np.asarray(candidates, dtype=np.int64),
+                                start,
+                                self.host_x,
+                                self.host_gamma,
+                                self._host_sigma,
+                                query[target],
+                                shift,
+                                odd,
+                                self.tau,
+                                self.cutoff,
+                                self.correction_dtype == np.dtype("float32"),
+                            )
                         first = last
             del tree
         return output

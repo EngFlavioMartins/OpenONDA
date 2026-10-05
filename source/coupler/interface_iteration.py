@@ -282,8 +282,9 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         result, _ = coupler._transfer_vorticity_to_vpm(*geometry)
         boundary_started = perf_counter()
         update_boundary_history_after_replacement(coupler, *geometry)
-        phase_seconds["boundary_refresh"] += perf_counter() - boundary_started
-        transfer_seconds += perf_counter() - started
+        refresh_seconds = perf_counter() - boundary_started
+        phase_seconds["boundary_refresh"] += refresh_seconds
+        transfer_seconds += perf_counter() - started - refresh_seconds
         row: IterationRow | None = None
         if coupler._is_master:
             post = _read_trace(coupler, old=True)

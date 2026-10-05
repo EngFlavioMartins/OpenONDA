@@ -14,6 +14,7 @@ import numpy as np
 
 from source._numba import cacheable_njit as njit
 
+from ..fields.mixed_velocity_boundary import boundary_skew_velocity_increment
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
 
@@ -460,7 +461,7 @@ def assemble_diffusion_term(
                 boundary["tangential_gradient_field"], dtype=np.float64
             )[:, component]
 
-            # F_i = D n_i (n·velocity_owner - velocity_normal)
+            # F_i = D n_i (n·velocity_owner + n·J_owner r_t - velocity_normal)
             #       - kinematic_viscosity A g_t,i. The owner-component
             # part is implicit; cross-components remain explicit and converge
             # through the existing PIMPLE outer iterations on non-axis-aligned
@@ -471,6 +472,12 @@ def assemble_diffusion_term(
                 coefficient * n_i * (cross_normal - prescribed_normal)
                 - diffusivity_area * prescribed_gradient
             )
+            skew_increment = boundary_skew_velocity_increment(
+                vector_field, mesh_data, geo_data, indices, normals, owner_to_face
+            )
+            if skew_increment is not None:
+                normal_increment = np.einsum("ij,ij->i", skew_increment, normals)
+                flux_vf[indices] += coefficient * n_i * normal_increment
             if flux_tf is not None:
                 flux_tf[indices] = flux_cf[indices] * scalar_field[owners_b] + flux_vf[indices]
 

@@ -58,6 +58,14 @@ _GBD_MOMENT_CORRECTION_FRACTION_LIMIT = 0.5
 _REGEN_RADIUS_RATIO = 2.5
 
 
+class _GBDMomentCorrectionError(RuntimeError):
+    """A retained support cannot safely represent its discarded moments."""
+
+    def __init__(self, message: str, *, recovery_label: int | None):
+        super().__init__(message)
+        self.recovery_label = recovery_label
+
+
 def _nearest_visible_nodes(survivors, removed, blocks_segments=None):
     """Return nearest retained nodes, querying occluded alternatives in batches."""
     from scipy.spatial import cKDTree
@@ -1875,6 +1883,49 @@ class _GridDiffusionMixin:
         )
 
     @staticmethod
+    def _retain_unsafe_moment_scope(
+        magnitude: np.ndarray,
+        ix: np.ndarray,
+        iy: np.ndarray,
+        iz: np.ndarray,
+        cap: int,
+        labels: np.ndarray | None,
+        recovery_label: int | None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+        """Keep the original donor field of an unsafe pruning scope exactly.
+
+        A rank-complete retained basis can still need excessive amplification
+        when a small disconnected component loses much of its local strength.
+        Retaining that component's post-diffusion donors preserves its field
+        and all moments without moving any strength across component boundaries.
+        Capacity remains a hard limit; no retained winner is replaced.
+        """
+        donor_mask = magnitude > 0.0
+        if recovery_label is not None:
+            if labels is None:
+                raise RuntimeError("GBD safety support requires the failed recovery labels")
+            donor_mask &= labels == recovery_label
+        donor_mask[ix, iy, iz] = False
+        added_ix, added_iy, added_iz = np.where(donor_mask)
+        added_count = len(added_ix)
+        if added_count == 0:
+            raise RuntimeError("GBD unsafe moment recovery has no additional donor support")
+        required = len(ix) + added_count
+        if required > cap:
+            scope = "the complete cloud" if recovery_label is None else f"group {recovery_label}"
+            raise RuntimeError(
+                "GBD conservative safety support for "
+                f"{scope} needs {required:,} particles, exceeding max_n_particles={cap:,}; "
+                "increase the declared particle capacity"
+            )
+        return (
+            np.concatenate((ix, added_ix)),
+            np.concatenate((iy, added_iy)),
+            np.concatenate((iz, added_iz)),
+            added_count,
+        )
+
+    @staticmethod
     def _redistribute_pruned_moments(
         grid_np: np.ndarray,
         vortex_strength_magnitude: np.ndarray,
@@ -1965,6 +2016,7 @@ class _GridDiffusionMixin:
             *,
             scope: str,
             record_diagnostics: bool = False,
+            recovery_label: int | None = None,
         ) -> np.ndarray:
             stored = corrected.astype(grid_np.dtype, copy=False)
             stored_float64 = stored.astype(np.float64, copy=False)
@@ -2050,10 +2102,11 @@ class _GridDiffusionMixin:
                 not np.isfinite(correction_fraction)
                 or correction_fraction > _GBD_MOMENT_CORRECTION_FRACTION_LIMIT
             ):
-                raise RuntimeError(
+                raise _GBDMomentCorrectionError(
                     "GBD moment recovery requires an excessive strength correction for "
                     f"{scope}: fraction={correction_fraction:.6e}, "
-                    f"limit={_GBD_MOMENT_CORRECTION_FRACTION_LIMIT:.6e}"
+                    f"limit={_GBD_MOMENT_CORRECTION_FRACTION_LIMIT:.6e}",
+                    recovery_label=recovery_label,
                 )
             if record_diagnostics and diagnostics is not None:
                 diagnostics.update(
@@ -2072,6 +2125,7 @@ class _GridDiffusionMixin:
             *,
             scope: str,
             record_diagnostics: bool = False,
+            recovery_label: int | None = None,
         ) -> np.ndarray:
             weight_magnitude = np.linalg.norm(survivor_vortex_strength, axis=1)
             weight_sum = float(weight_magnitude.sum())
@@ -2116,6 +2170,7 @@ class _GridDiffusionMixin:
                     corrected,
                     scope=scope,
                     record_diagnostics=record_diagnostics,
+                    recovery_label=recovery_label,
                 )
             if len(survivor_position) < 4:
                 raise RuntimeError(
@@ -2188,6 +2243,7 @@ class _GridDiffusionMixin:
                     recovered,
                     scope=scope,
                     record_diagnostics=record_diagnostics,
+                    recovery_label=recovery_label,
                 )
 
             multipliers, _residual, rank, singular_values = np.linalg.lstsq(
@@ -2229,6 +2285,7 @@ class _GridDiffusionMixin:
                 recovered,
                 scope=scope,
                 record_diagnostics=record_diagnostics,
+                recovery_label=recovery_label,
             )
 
         if labels is None:
@@ -2252,6 +2309,7 @@ class _GridDiffusionMixin:
                 discarded_vortex_strength,
                 scope=f"group {unique_labels[0]!r}",
                 record_diagnostics=True,
+                recovery_label=int(unique_labels[0]),
             )
         corrected = np.zeros_like(retained_vortex_strength)
         for label in unique_labels:
@@ -2280,6 +2338,7 @@ class _GridDiffusionMixin:
                 discarded_position[discarded_selection],
                 discarded_vortex_strength[discarded_selection],
                 scope=f"group {label!r}",
+                recovery_label=int(label),
             )
         return validate(
             retained_position,
@@ -2913,21 +2972,52 @@ class _GridDiffusionMixin:
         )
         self._last_gbd_moment_recovery = recovery_diagnostics
         if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
-            raw_retained = grid_np[ix, iy, iz].astype(np.float64)
             closure_diagnostics: dict[str, bool | int | float] = {}
-            corrected_retained = self._redistribute_pruned_moments(
-                grid_np,
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                grid_min_np,
-                particle_spacing,
-                labels=(recovery_labels if preserve_group_recovery else None),
-                diagnostics=closure_diagnostics,
-                strict_labels=wall_recovery,
-                blocks_segments=self._body_blocked_segments if wall_recovery else None,
-            )
+            active_recovery_labels = recovery_labels if preserve_group_recovery else None
+            while True:
+                try:
+                    corrected_retained = self._redistribute_pruned_moments(
+                        grid_np,
+                        vortex_strength_magnitude,
+                        ix,
+                        iy,
+                        iz,
+                        grid_min_np,
+                        particle_spacing,
+                        labels=active_recovery_labels,
+                        diagnostics=closure_diagnostics,
+                        strict_labels=wall_recovery,
+                        blocks_segments=self._body_blocked_segments if wall_recovery else None,
+                    )
+                    break
+                except _GBDMomentCorrectionError as error:
+                    # A geometrically complete basis can nevertheless be an
+                    # unsafe representation of a heavily pruned small fluid
+                    # component. Keep that component's original donor field;
+                    # never relax the closure or amplification guards.
+                    ix, iy, iz, added = self._retain_unsafe_moment_scope(
+                        vortex_strength_magnitude,
+                        ix,
+                        iy,
+                        iz,
+                        cap,
+                        active_recovery_labels,
+                        error.recovery_label,
+                    )
+                    support_augmented_node_count += added
+                    recovery_diagnostics.update(
+                        retained_node_count=int(len(ix)),
+                        pruned_node_count=int(nonzero_node_count - len(ix)),
+                        support_augmented_node_count=int(support_augmented_node_count),
+                    )
+                    self._event_observer.record(
+                        "gaussian blob diffusion conservative safety support",
+                        ("component", str(error.recovery_label)),
+                        ("donor nodes retained", f"{added:,}"),
+                        ("nodes, final retained", f"{len(ix):,}"),
+                        ("regeneration cap", f"{cap:,}"),
+                    )
+            raw_retained = grid_np[ix, iy, iz].astype(np.float64)
             correction_l1 = float(
                 np.linalg.norm(corrected_retained.astype(np.float64) - raw_retained, axis=1).sum(
                     dtype=np.float64

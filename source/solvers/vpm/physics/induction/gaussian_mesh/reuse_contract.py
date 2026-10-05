@@ -21,11 +21,13 @@ import inspect
 import taichi as ti
 
 from ....numerics import ieee
+from ... import base as physics_base
 from .. import gaussian_tail, slip_slab
 from ..gaussian_tail import _interval, certificate
 from ..reuse import InductionReuseContract, _primitive_key
 from ..reuse_backends import StandardFMMReuseContract, _field_layout, _standard_methods
 from . import (
+    blocked_fields,
     coordinates,
     correction,
     correction_admission,
@@ -44,6 +46,7 @@ _MODULES = (
     session,
     policy,
     fields,
+    blocked_fields,
     runtime,
     correction,
     stencil,
@@ -62,6 +65,7 @@ _CLASSES = (
     session.GaussianSlabPolicy,
     policy.GaussianMeshParameters,
     fields.GaussianImageFields,
+    blocked_fields.GaussianBlockedCUDAFields,
     runtime.DeviceOwner,
     runtime.FFTPlanPair,
     correction.GaussianCoreCorrectionGPU,
@@ -106,6 +110,29 @@ _MATHEMATICAL_MESH = (
     "omitted_distance_lower",
     "certificate_scope",
 )
+_TRANSFER_METHODS = {
+    name: inspect.getattr_static(physics_base.PhysicsBase, name)
+    for name in (
+        "_download_vector_field",
+        "_download_scalar_field",
+        "_extract_vec3_field_prefix",
+        "_extract_scalar_field_prefix",
+        "_host_transfer_buffer",
+    )
+}
+_TRANSFER_CHUNK_SIZE = physics_base._HOST_TRANSFER_CHUNK_SIZE
+
+
+def _standard_transfers(physics):
+    return (
+        physics is not None
+        and physics_base._HOST_TRANSFER_CHUNK_SIZE is _TRANSFER_CHUNK_SIZE
+        and all(
+            name not in vars(physics)
+            and inspect.getattr_static(type(physics), name, None) is standard
+            for name, standard in _TRANSFER_METHODS.items()
+        )
+    )
 
 
 def _standard_classes():
@@ -192,6 +219,10 @@ def _admit_session(slab):
             raise RuntimeError("Gaussian slab reusable CUDA owner is unavailable")
         owner = owner._owner
     owner._admit()
+    if type(owner) is blocked_fields.GaussianBlockedCUDAFields:
+        if owner._leaf is not None or owner._prepared_images is None:
+            raise RuntimeError("Gaussian slab blocked resources are active or incomplete")
+        return
     plans, local = owner._plans, owner._correction
     if plans is None or plans.closed or local is None or local.closed:
         raise RuntimeError("Gaussian slab private field resources are closed")
@@ -214,6 +245,7 @@ class StandardGaussianSlabReuseContract:
         if (
             not _standard_modules()
             or not _standard_methods(slab, slip_slab.SlipSlabInduction)
+            or not _standard_transfers(getattr(slab, "physics", None))
             or slab.base is not self._base_backend
             or type(slab.gaussian_mesh_policy) is not session.GaussianSlabPolicy
             or type(slab.gaussian_mesh_policy.mesh) is not policy.GaussianMeshParameters
@@ -233,19 +265,27 @@ class StandardGaussianSlabReuseContract:
                     ):
                         return False
                     owner = owner._owner
-                if not _standard_instance(owner, fields.GaussianImageFields):
-                    return False
-                for item, cls in (
-                    (owner._owner, runtime.DeviceOwner),
-                    (owner._plans, runtime.FFTPlanPair),
-                    (owner._correction, correction.GaussianCoreCorrectionGPU),
-                ):
-                    if item is not None and not _standard_instance(item, cls):
+                if type(owner) is blocked_fields.GaussianBlockedCUDAFields:
+                    if not _standard_instance(owner, blocked_fields.GaussianBlockedCUDAFields):
                         return False
-                if owner._correction is not None and not _standard_instance(
-                    owner._correction._owner, runtime.DeviceOwner
-                ):
+                    if owner._leaf is not None and not _standard_instance(
+                        owner._leaf, fields.GaussianImageFields
+                    ):
+                        return False
+                elif not _standard_instance(owner, fields.GaussianImageFields):
                     return False
+                else:
+                    for item, cls in (
+                        (owner._owner, runtime.DeviceOwner),
+                        (owner._plans, runtime.FFTPlanPair),
+                        (owner._correction, correction.GaussianCoreCorrectionGPU),
+                    ):
+                        if item is not None and not _standard_instance(item, cls):
+                            return False
+                    if owner._correction is not None and not _standard_instance(
+                        owner._correction._owner, runtime.DeviceOwner
+                    ):
+                        return False
         return True
 
     def _admit_request(self, **args):

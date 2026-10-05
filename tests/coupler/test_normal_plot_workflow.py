@@ -23,6 +23,8 @@ PACKAGE = "tutorials.coupled_fvm_vpm.01_cylinder_shedding_flow.assets."
 @pytest.mark.parametrize("launcher", ["allrun.sh", "allcontinue.sh"])
 def test_launchers_preserve_outputs_and_propagate_failure(tmp_path, case, launcher):
     shutil.copy2(CASES / case / launcher, tmp_path / launcher)
+    if launcher == "allcontinue.sh":
+        shutil.copy2(CASES / case / "allrun.sh", tmp_path / "allrun.sh")
     cleanup = tmp_path / "allclean.sh"
     cleanup.write_text('#!/bin/sh\necho "cleanup must not run" >&2\nexit 99\n')
     cleanup.chmod(0o755)
@@ -44,14 +46,33 @@ def test_launchers_preserve_outputs_and_propagate_failure(tmp_path, case, launch
     assert result.returncode == 17
 
 
-def _profile(path, times):
+def _profile(path, times, velocity_deficit=.1, x_position=1):
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     for time in times:
         for y in (-1.0, 0.0, 1.0):
-            rows.append([time, 1, y, 0, 1 - .1 * (1 - abs(y)), .01 * y, 0])
+            rows.append([time, x_position, y, 0, 1 - velocity_deficit * (1 - abs(y)), .01 * y, 0])
     pd.DataFrame(rows, columns=["time", "position_x", "position_y", "position_z",
                                "velocity_x", "velocity_y", "velocity_z"]).to_csv(path, index=False)
+
+
+def _profile_metadata(case):
+    solution = case / "solution"
+    solution.mkdir(exist_ok=True)
+    fvm_box = {"xmin": -1.6, "xmax": 2.4, "ymin": -1.6, "ymax": 1.6,
+               "zmin": -.48, "zmax": .48}
+    transfer_box = {"xmin": -1.25, "xmax": 2.05, "ymin": -1.25, "ymax": 1.25,
+                    "zmin": -.48, "zmax": .48}
+    (solution / "run_metadata.json").write_text(json.dumps({
+        "fvm_solver": {"fvm_domain": fvm_box},
+        "coupler": {"transfer_region_bounds": transfer_box},
+    }))
+    (solution / "fvm_metadata.json").write_text(json.dumps({
+        "configuration": {"samplers": [{
+            "type": "ForceSampler", "patch_names": ["cylinder"],
+            "reference_length": 1., "reference_velocity": 1.,
+        }]},
+    }))
 
 
 def test_profile_clocks_reject_old_rounding_and_allow_accumulation(tmp_path):
@@ -59,12 +80,15 @@ def test_profile_clocks_reject_old_rounding_and_allow_accumulation(tmp_path):
     left, right = tmp_path / "left.csv", tmp_path / "right.csv"
     _profile(left, [1, 11])
     _profile(right, [1, 10.999999999999])
-    assert data.latest_common_profile_time((left, right)) == 11
-    assert len(data.profile(right, 11)) == 3
+    frames = list(data.coincident_profiles((left, right)))
+    assert [time for time, _ in frames] == [1, 11]
+    assert len(frames[-1][1][right]) == 3
+    assert frames[-1][1][right].time.iloc[0] == 10.999999999999
     _profile(right, [1, 11.00000004])
-    assert data.latest_common_profile_time((left, right)) == 1
-    with pytest.raises(ValueError, match="no profile"):
-        data.profile(right, 11)
+    assert [time for time, _ in data.coincident_profiles((left, right))] == [1]
+    _profile(right, [2])
+    with pytest.raises(ValueError, match="no common physical sample time"):
+        list(data.coincident_profiles((left, right)))
 
 
 def test_profile_history_rejects_rewound_or_duplicate_spatial_rows(tmp_path):
@@ -72,12 +96,12 @@ def test_profile_history_rejects_rewound_or_duplicate_spatial_rows(tmp_path):
     path = tmp_path / "profile.csv"
     _profile(path, [2, 1])
     with pytest.raises(ValueError, match="ordered"):
-        data.profile(path, 1)
+        list(data.coincident_profiles((path,)))
     _profile(path, [1])
     frame = pd.read_csv(path)
     pd.concat([frame, frame.iloc[[0]]]).to_csv(path, index=False)
     with pytest.raises(ValueError, match="duplicate transverse"):
-        data.profile(path, 1)
+        list(data.coincident_profiles((path,)))
 
 
 def test_force_coverage_is_limited_and_explicitly_interpolated():
@@ -94,25 +118,51 @@ def test_force_coverage_is_limited_and_explicitly_interpolated():
     assert "no time shift" in report["time_alignment"]
 
 
-def test_synthetic_profile_plot_reports_reference_path_not_dataframe_name(tmp_path, monkeypatch):
-    plot = importlib.import_module(PACKAGE + "plot_reference_profiles")
+def test_profile_sequence_uses_all_coincident_states_without_time_annotations(tmp_path, monkeypatch):
+    plot = importlib.import_module(PACKAGE + "plot_velocity_profiles")
     data = plot.data
     reference = tmp_path / "reference_flow/samples"
-    for x in (1, 2, 4):
-        _profile(reference / f"transverse_x{x}.csv", [0, 2, 100])
-        _profile(tmp_path / "samples" / f"vpm_transverse_x{x}.csv", [0, 2])
-    _profile(tmp_path / "samples/fvm_transverse_x1.csv", [0, 2])
+    for x in (2, 4):
+        _profile(reference / f"transverse_x{x}.csv", [0, 1, 2, 100],
+                 velocity_deficit=.0001, x_position=x)
+        _profile(tmp_path / "samples" / f"vpm_transverse_x{x}.csv", [0, 1, 2],
+                 velocity_deficit=.0001, x_position=x)
+    _profile(tmp_path / "samples/fvm_transverse_x2.csv", [0, 2],
+             velocity_deficit=.0001, x_position=2)
+    _profile_metadata(tmp_path)
     monkeypatch.setattr(data, "CASE_DIR", tmp_path)
     monkeypatch.setattr(data, "FIGURES", tmp_path / "figures")
     monkeypatch.setattr(data, "AUXILIARY", tmp_path / "figures/auxiliary")
     monkeypatch.setattr(data, "reference_directory", lambda: reference)
-    monkeypatch.setattr(sys, "argv", ["plot_reference_profiles.py"])
+    monkeypatch.setattr(sys, "argv", ["plot_velocity_profiles.py"])
+    figures = data.FIGURES
+    figures.mkdir()
+    for name in ("reference_profiles.png", "reference_profiles_t100.png",
+                 "reference_profiles_notes.png"):
+        (figures / name).write_bytes(b"old")
+    save_figure = data.save_figure
+
+    def check_figure(figure, axes, name, figure_format):
+        assert not figure.texts
+        assert all(not axis.get_title() for axis in figure.axes)
+        assert [text.get_text() for text in figure.legends[0].get_texts()] == [
+            "Reference flow", "Coupled FVM", "Coupled VPM"]
+        assert all(len(axis.patches) == 2 for axis in (figure.axes[0], figure.axes[2]))
+        assert all(not axis.patches for axis in (figure.axes[1], figure.axes[3]))
+        save_figure(figure, axes, name, figure_format)
+
+    monkeypatch.setattr(data, "save_figure", check_figure)
     plot.main()
-    report = json.loads((tmp_path / "figures/auxiliary/reference_profile_errors.json").read_text())
+    report = json.loads((tmp_path / "figures/auxiliary/velocity_profile_errors.json").read_text())
     assert report["reference"] == "reference_flow/samples"
-    assert report["time"] == 2
+    assert [frame["time"] for frame in report["frames"]] == [0, 2]
     assert "no time interpolation" in report["time_alignment"]
-    assert (tmp_path / "figures/reference_profiles.png").stat().st_size > 1000
+    for frame in report["frames"]:
+        for name in frame["files"]:
+            assert (figures / name).stat().st_size > 1000
+    assert not (figures / "reference_profiles.png").exists()
+    assert not (figures / "reference_profiles_t100.png").exists()
+    assert (figures / "reference_profiles_notes.png").read_bytes() == b"old"
 
 
 def test_cube_pvd_reader_handles_attribute_order_and_rejects_ambiguous_clocks(tmp_path):
@@ -126,14 +176,109 @@ def test_cube_pvd_reader_handles_attribute_order_and_rejects_ambiguous_clocks(tm
         data._pvd_frames(path)
 
 
+def _coupling_records():
+    records = []
+    for time, substeps in ((1, 5), (2, 4)):
+        timings = {"vpm": 10, "fvm": 5, "vpm_boundary_condition": 2, "transfer": 3,
+                   "health_and_samplers": 20, "reporting": 1, "backup": 7,
+                   "orchestration_and_wait": 2, "total": 50,
+                   "evolution_total": 20, "last_sweep_donor_gather": 1}
+        records.append({"time": time, "n_fvm_substeps": substeps,
+                        "timing_seconds": timings,
+                        "transfer": {"n_particles_after": 100000 * time,
+                                     "renewal_conservation_error": 1e-9 * time,
+                                     "renewal_vortex_strength_tolerance": 1e-5,
+                                     "renewal_linear_impulse_error": 2e-9 * time,
+                                     "renewal_linear_impulse_tolerance": 1e-4}})
+    return records
+
+
+def test_cylinder_costs_include_all_exclusive_phases_and_normalize_each_record():
+    plot = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    records = _coupling_records()
+    costs = plot._timing_per_fvm_step(records)
+    np.testing.assert_allclose(costs.sum(axis=0), [10, 12.5])
+    np.testing.assert_allclose(costs, [[2, 2.5], [1, 1.25], [1, 1.25], [6, 7.5]])
+    records[0]["n_fvm_substeps"] = 1.5
+    with pytest.raises(ValueError, match="positive integer"):
+        plot._timing_per_fvm_step(records)
+    records = _coupling_records()
+    del records[0]["timing_seconds"]["health_and_samplers"]
+    with pytest.raises(ValueError, match="finite, nonnegative"):
+        plot._timing_per_fvm_step(records)
+    records = _coupling_records()
+    records[0]["timing_seconds"]["total"] += 1
+    with pytest.raises(ValueError, match="do not sum"):
+        plot._timing_per_fvm_step(records)
+    records = _coupling_records()
+    records[0]["timing_seconds"].update(backup=-1, health_and_samplers=28)
+    with pytest.raises(ValueError, match="finite, nonnegative"):
+        plot._timing_per_fvm_step(records)
+
+
+def test_cylinder_diagnostics_read_only_complete_live_records(tmp_path, monkeypatch):
+    plot = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    monkeypatch.setattr(plot.data, "CASE_DIR", tmp_path)
+    path = tmp_path / "solution/coupler_diagnostics.jsonl"
+    path.parent.mkdir()
+    record = json.dumps(_coupling_records()[0]) + "\n"
+    path.write_text(record + '{"time":')
+    assert plot._records() == _coupling_records()[:1]
+    path.write_text(record + '{"time":\n')
+    with pytest.raises(json.JSONDecodeError):
+        plot._records()
+    path.write_text('{"time":\n' + record)
+    with pytest.raises(json.JSONDecodeError):
+        plot._records()
+
+
+def test_cylinder_conservation_uses_recorded_tolerances_and_preserves_unavailable_checks():
+    plot = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    records = _coupling_records()
+    error, tolerance = "renewal_conservation_error", "renewal_vortex_strength_tolerance"
+    np.testing.assert_allclose(plot._conservation_fraction(records, error, tolerance), [1e-4, 2e-4])
+    records[0]["transfer"][error] = 0
+    assert plot._conservation_fraction(records, error, tolerance)[0] == 0
+    records[0]["transfer"][tolerance] = 0
+    assert np.isnan(plot._conservation_fraction(records, error, tolerance)[0])
+    del records[1]["transfer"][tolerance]
+    assert np.isnan(plot._conservation_fraction(records, error, tolerance)[1])
+    records[0]["transfer"][error] = 1
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        plot._conservation_fraction(records, error, tolerance)
+
+
+def test_cylinder_diagnostics_plot_costs_and_population_without_conservation_panel(monkeypatch):
+    plot = importlib.import_module(PACKAGE + "plot_coupling_diagnostics")
+    monkeypatch.setattr(plot, "_records", _coupling_records)
+
+    def check_figure(figure, axes, name, figure_format):
+        assert name == "coupling_diagnostics"
+        assert len(axes) == 2
+        assert len(axes[0].collections) == 4
+        assert axes[0].get_yscale() == "log"
+        assert len(axes[1].lines) == 1
+        np.testing.assert_allclose(axes[1].lines[0].get_ydata(), [.1, .2])
+        assert [text.get_text() for text in figure.legends[0].get_texts()] == [
+            "VPM", "FVM", "coupling", "sampling and output"]
+        assert len(figure.legends) == 1
+        plot.plt.close(figure)
+
+    monkeypatch.setattr(plot.data, "save_figure", check_figure)
+    plot.plot("both")
+
+
 def test_normal_cylinder_allplot_on_incomplete_synthetic_data(tmp_path):
     case = tmp_path / "case"
     assets = case / "assets"
     assets.mkdir(parents=True)
     shutil.copy2(CASES / CYLINDER / "allplot.sh", case / "allplot.sh")
-    for filename in ("plot_cylinder_forces.py", "plot_reference_forces.py",
-                     "plot_reference_profiles.py", "postprocess.py"):
+    for filename in ("plot_reference_forces.py", "plot_velocity_profiles.py",
+                     "velocity_profile_data.py", "plot_coupling_diagnostics.py", "postprocess.py"):
         shutil.copy2(CASES / CYLINDER / "assets" / filename, assets / filename)
+    (case / "solution").mkdir()
+    (case / "solution/coupler_diagnostics.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in _coupling_records()))
     for relative, times in (("samples", [0, 1, 2]), ("reference_flow/samples", [0, 1, 2, 100])):
         directory = case / relative
         directory.mkdir(parents=True)
@@ -141,13 +286,20 @@ def test_normal_cylinder_allplot_on_incomplete_synthetic_data(tmp_path):
                       "lift_coefficient": np.asarray(times) * .005}).to_csv(
             directory / "forces_history.csv", index=False)
     for x in (2, 4):
-        _profile(case / "reference_flow/samples" / f"transverse_x{x}.csv", [0, 2, 100])
-        _profile(case / "samples" / f"vpm_transverse_x{x}.csv", [0, 2])
+        _profile(case / "reference_flow/samples" / f"transverse_x{x}.csv", [0, 2, 100],
+                 x_position=x)
+        _profile(case / "samples" / f"vpm_transverse_x{x}.csv", [0, 2], x_position=x)
+    _profile(case / "samples/fvm_transverse_x2.csv", [0, 2], x_position=2)
+    _profile_metadata(case)
     environment = {**os.environ, "MPLBACKEND": "Agg", "PYTHONPATH": str(ROOT),
                    "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"]}
-    result = subprocess.run(["bash", str(case / "allplot.sh")], cwd="/tmp", env=environment,
+    result = subprocess.run(["bash", str(case / "allplot.sh"), "both"], cwd="/tmp", env=environment,
                             capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "common saved coverage 0–2 s" in result.stdout
-    for name in ("cylinder_forces", "reference_forces", "reference_profiles"):
+    assert "2 common saved states, t=0–2 s" in result.stdout
+    assert "full recorded cost per FVM step" in result.stdout
+    for name in ("coupling_diagnostics", "reference_forces", "velocity_profiles_t0",
+                 "velocity_profiles_t2"):
         assert (case / "figures" / f"{name}.png").stat().st_size > 1000
+        assert (case / "figures" / f"{name}.pdf").stat().st_size > 1000

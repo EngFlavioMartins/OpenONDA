@@ -91,21 +91,23 @@ def test_real_cuda_memory_admission_recovers_same_host_operator_without_touching
     normal_before = normal_pool.used_bytes(), normal_pool.total_bytes(), normal_pool.get_limit()
     allocator_before = cp.cuda.get_allocator()
     _, total = cp.cuda.runtime.memGetInfo()
-    # This leaves exactly the reserved FFT capacity and no field payload.
+    # Leave only minimum correction-query scratch and no field payload.
     # Only the admission result is constrained; real CUDA produced the
     # baseline and remains available while the same request executes on CPU.
-    constrained_free = options["max_correction_bytes"] + options["max_plan_bytes"]
+    from source.solvers.vpm.physics.induction.gaussian_mesh.planning import correction_query_reserve
+
+    constrained_free = correction_query_reserve(1, np.dtype(options["correction_dtype"]).itemsize)
     monkeypatch.setattr(cp.cuda.runtime, "memGetInfo", lambda: (constrained_free, total))
     owner = PortableGaussianImageFields(
         x, gamma, sigma, q, execution_backend="cupy_cuda", **options
     )
     try:
+        owner.prepare(images)
+        u, j, report = owner.evaluate_prepared(q)
         assert owner.execution_backend == "cpu"
         assert isinstance(owner._owner, GaussianHostImageFields)
         assert owner._failed_owner is None
-        assert "insufficient free device memory" in owner.fallback_reason
-        owner.prepare(images)
-        u, j, report = owner.evaluate_prepared(q)
+        assert "unchanged cardinal source/query block" in owner.fallback_reason
         assert isinstance(u, np.ndarray) and isinstance(j, np.ndarray)
         assert report["execution_backend"] == "cpu"
         assert report["memory_fallback"] == owner.fallback_reason

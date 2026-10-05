@@ -7,11 +7,29 @@ import time
 
 import numpy as np
 
-from source.coupler.reporting import format_coupler_log
+from source.coupler.reporting import boundary_induction_summary, format_coupler_log
 
 logger = logging.getLogger("coupler")
 
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
+
+
+def _record_boundary_induction(coupler, phase: str, summary: dict) -> None:
+    if phase == "initial":
+        coupler._last_boundary_induction_diagnostics = {"initial": summary}
+        return
+    diagnostics = getattr(coupler, "_last_boundary_induction_diagnostics", None)
+    if diagnostics is None:
+        diagnostics = coupler._last_boundary_induction_diagnostics = {}
+    refresh = diagnostics.setdefault("refresh", {"calls": 0, "execution_backends": {}})
+    refresh["calls"] += 1
+    backend = summary["execution_backend"] or "unspecified"
+    counts = refresh["execution_backends"]
+    counts[backend] = counts.get(backend, 0) + 1
+    for name, value in summary.items():
+        if name.endswith("_seconds"):
+            refresh[name] = refresh.get(name, 0.0) + value
+    refresh["last"] = summary
 
 
 def outflow_axis_sign(freestream_velocity: np.ndarray) -> tuple[int, float]:
@@ -215,11 +233,16 @@ def evaluate_vpm_boundary(
     with collective_phase(comm, "VPM boundary evaluation"):
         if coupler._is_master:
             assert coupler.vpm_solver is not None
+            query_started = time.perf_counter()
             vpm_boundary_condition_velocity, tangential_normal_gradient = (
                 coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
                     face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
                 )
             )
+            _record_boundary_induction(coupler, "initial", boundary_induction_summary(
+                coupler.vpm_solver, target_count=len(face_centre),
+                wall_seconds=time.perf_counter() - query_started,
+            ))
             vpm_boundary_condition_velocity = np.asarray(
                 vpm_boundary_condition_velocity, dtype=np.float64
             ).reshape(-1, 3)
@@ -372,11 +395,16 @@ def update_boundary_history_after_replacement(
     if coupler._is_master:
         assert coupler.vpm_solver is not None
         tangential_normal_gradient: np.ndarray | None = None
+        query_started = time.perf_counter()
         corrected_boundary, tangential_normal_gradient = (
             coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
                 face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
             )
         )
+        _record_boundary_induction(coupler, "refresh", boundary_induction_summary(
+            coupler.vpm_solver, target_count=len(face_centre),
+            wall_seconds=time.perf_counter() - query_started,
+        ))
         corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
         if corrected_boundary.shape != face_centre.shape or not np.all(
             np.isfinite(corrected_boundary)

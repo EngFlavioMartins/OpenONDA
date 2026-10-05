@@ -329,11 +329,12 @@ def test_resolved_weak_wake_survives_pruning_across_the_release_belt():
     )
 
     def represented_strength(result) -> np.ndarray:
-        rows = slice(0, result.renewed_output_count)
-        index = np.rint((result.position[rows] - lattice.origin) / spacing).astype(int)
+        # Pruning can change which persistent seam nodes are coalesced into
+        # the renewed block. Compare the complete physical wake in both cases.
+        index = np.rint((result.position - lattice.origin) / spacing).astype(int)
         flat_index = np.ravel_multi_index(index.T, lattice.shape)
         lattice_strength = np.zeros_like(lattice.positions)
-        lattice_strength[flat_index] = result.vortex_strength[rows]
+        np.add.at(lattice_strength, flat_index, result.vortex_strength)
         return gaussian_represented_vortex_strength(
             lattice_strength,
             lattice.shape,
@@ -357,6 +358,8 @@ def test_resolved_weak_wake_survives_pruning_across_the_release_belt():
 
 
 def test_whole_belt_remesh_preserves_outer_wake_and_does_not_accumulate():
+    from dataclasses import replace
+
     spacing = 0.1
     lattice = build_stable_renewal_lattice(
         BOX,
@@ -366,6 +369,9 @@ def test_whole_belt_remesh_preserves_outer_wake_and_does_not_accumulate():
         vpm_dead_zone=0.05,
         lattice_anchor=np.zeros(3),
     )
+    # Isolate cardinal remeshing: a zero physical FVM target is not a match
+    # for the nonzero Gaussian tails of the exterior test particles.
+    lattice = replace(lattice, fvm_authority=np.zeros(len(lattice.positions)))
     position = np.array([[0.65, 0.13, -0.07], [0.95, 0.22, 0.11]])
     strength = np.array([[0.2, -0.1, 0.3], [-0.05, 0.07, 0.02]])
 

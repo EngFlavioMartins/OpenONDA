@@ -38,9 +38,10 @@ def _correct_boundary_gradient(field_gradient, field_values, mesh_data, geo_data
     dominant part of the tensor, so anything consuming a boundary-face gradient
     (the viscous stress, wall traction, Rhie-Chow) starts from the wrong number.
 
-    ``snGrad`` is taken from the ghost value the boundary conditions already
-    wrote, ``(field_values_ghost - field_values_owner) * deltaCoeffs``, with the
-    ``deltaCoeffs = 1 / (n . (Cf - CP))``.  Coupled (cyclic) and empty patches
+    ``snGrad`` is taken from the face value the boundary conditions already
+    wrote, subtracting the owner gradient's tangential-displacement increment
+    before dividing by ``n . (Cf - CP)``. Without that skew correction, even
+    exact affine face values introduce a false normal derivative. Coupled (cyclic) and empty patches
     are skipped, exactly as the ``!coupled()`` guard does upstream.
     """
     n_cells = mesh_data["n_cells"]
@@ -88,6 +89,15 @@ def _correct_boundary_gradient(field_gradient, field_values, mesh_data, geo_data
 
         # sn_grad[face, component]; field_gradient is (n_total, 3, n_components).
         sn_grad = (field_values[ghosts] - field_values[owner_cells]) * delta_coeffs[:, np.newaxis]
+        tangent_displacement = owner_to_face - normal_distance[:, np.newaxis] * normals
+        skew = np.linalg.norm(tangent_displacement, axis=1) > (
+            1.0e-12 * np.linalg.norm(owner_to_face, axis=1)
+        )
+        if np.any(skew):
+            skew_increment = np.einsum(
+                "fd,fdc->fc", tangent_displacement[skew], field_gradient[owner_cells[skew]]
+            )
+            sn_grad[skew] -= skew_increment * delta_coeffs[skew, np.newaxis]
         patch_grad = field_gradient[ghosts]
         normal_part = np.einsum("fd,fdc->fc", normals, patch_grad)
         field_gradient[ghosts] += (

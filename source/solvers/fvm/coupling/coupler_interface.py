@@ -852,13 +852,23 @@ class CouplerInterfaceMixin:
         self._publish_state()
 
     def set_flux_consistent_pressure_boundary_condition(self, patch_name):
-        """Pair a prescribed velocity flux with native ``fixedFluxPressure``."""
+        """Pair a prescribed velocity flux with native ``fixedFluxPressure``.
+
+        Reapplying the native condition retains its accepted pressure increment
+        for the next momentum predictor. The pressure correction recomputes it
+        from the new flux. An external replay increment or a different boundary
+        condition does not supply compatible native history.
+        """
         b = self._optional_patch(patch_name)
         if b is None:
             return
+        retain_native_history = b.get("pressure_type") == "fixedFluxPressure" and not b.get(
+            "fixed_flux_pressure_external", False
+        )
         b["pressure_type"] = "fixedFluxPressure"
         b.pop("fixed_flux_pressure_external", None)
-        b.pop("fixed_flux_pressure_delta", None)
+        if not retain_native_history:
+            b.pop("fixed_flux_pressure_delta", None)
         b.pop("fixed_gradient_delta", None)
         invalidate = getattr(self, "_invalidate_derived_fields", None)
         if invalidate is not None:

@@ -86,6 +86,7 @@ class FFTPlanPair:
         self.max_plan_bytes = positive_integer(max_plan_bytes, "max_plan_bytes")
         self.work_bytes = 0
         self.single_workspace = bool(single_workspace)
+        self._release_idle_workspaces = False
         self.plan_builds = 0
         self.peak_work_bytes = 0
         self.plan_build_seconds = 0.
@@ -124,6 +125,8 @@ class FFTPlanPair:
             self.owner.stream.synchronize()
             self.forward = self.inverse = None
             self.work_bytes = 0
+            if self._release_idle_workspaces:
+                self.owner.pool.free_all_blocks()
         started = time.perf_counter()
         try:
             if forward:
@@ -141,6 +144,29 @@ class FFTPlanPair:
             raise
         finally:
             self.plan_build_seconds += time.perf_counter()-started
+
+    def measure_directional_work(self):
+        """Measure one owned direction at a time for low-memory admission.
+
+        Configured plan bytes remain an upper bound. Retired idle workspaces
+        are released only from this owner's pool; unrelated caches are never
+        touched. The inverse plan remains live for the selected execution.
+        """
+        if not self.single_workspace:
+            raise ValueError("directional measurement requires a single workspace")
+        self._release_idle_workspaces = True
+        with self.owner.allocation_scope():
+            self._ensure_direction(True)
+            forward_bytes = self.work_bytes
+            self._ensure_direction(False)
+            inverse_bytes = self.work_bytes
+        return forward_bytes, inverse_bytes
+
+    def retain_both_directions(self):
+        """Retain both already-measured directions after sum-based admission."""
+        self.single_workspace = False
+        with self.owner.allocation_scope():
+            self._ensure_direction(True)
 
     def _array(self, array, shape, dtype, *, require_complex_alignment=True):
         self.owner.admit()

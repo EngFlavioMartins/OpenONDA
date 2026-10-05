@@ -42,40 +42,24 @@ def _admit_host_mesh_installation():
     return require_gaussian_host_runtime()
 
 
-@ti.kernel
-def _download_vector_prefix(source: ti.template(), result: ti.types.ndarray(ndim=2), count: ti.i32):
-    for i in range(count):
-        for axis in ti.static(range(3)):
-            result[i, axis] = source[i][axis]
-
-
-@ti.kernel
-def _download_scalar_prefix(source: ti.template(), result: ti.types.ndarray(ndim=1), count: ti.i32):
-    for i in range(count):
-        result[i] = source[i]
-
-
-def _active_snapshots(requests):
+def _active_snapshots(physics, requests):
     """Copy each distinct input field once, preserving its active values/dtype."""
     sizes = {}
     for source, count in requests:
         sizes[source] = max(count, sizes.get(source, 0))
     snapshots = {}
     for source, count in sizes.items():
-        vector = hasattr(source, "n")
-        dtype = np.float32 if source.dtype == ti.f32 else np.float64
-        result = np.empty((count, 3) if vector else (count,), dtype=dtype)
-        if count:
-            if vector:
-                _download_vector_prefix(source, result, count)
-            else:
-                _download_scalar_prefix(source, result, count)
-        snapshots[source] = result
+        download = (
+            physics._download_vector_field
+            if hasattr(source, "n")
+            else physics._download_scalar_field
+        )
+        snapshots[source] = download(source, count)
     return tuple(snapshots[source][:count] for source, count in requests)
 
 
 @ti.kernel
-def _publish_mesh_results(
+def _publish_mesh_chunk(
     host_velocity: ti.types.ndarray(ndim=2),
     host_gradient: ti.types.ndarray(ndim=3),
     velocity: ti.template(),
@@ -83,6 +67,7 @@ def _publish_mesh_results(
     strength: ti.template(),
     rate: ti.template(),
     background: ti.template(),
+    start: ti.i32,
     count: ti.i32,
     mode: ti.i32,
     rate_enabled: ti.i32,
@@ -91,8 +76,9 @@ def _publish_mesh_results(
     has_gradient: ti.template(),
     include_freestream: ti.template(),
 ):
-    """Publish a complete admitted host result; no partial mesh is exposed."""
+    """Publish one admitted field chunk at its original active indices."""
     for i in range(count):
+        target = start + i
         v = ti.Vector.zero(velocity.dtype, 3)
         j = ti.Matrix.zero(gradient.dtype, 3, 3)
         for a in ti.static(range(3)):
@@ -101,21 +87,66 @@ def _publish_mesh_results(
                 j[a, b] = host_gradient[i, a, b]
         if ti.static(has_velocity):
             if ti.static(is_stage):
-                velocity[i] += v
+                velocity[target] += v
             else:
                 if ti.static(include_freestream):
                     v += background[None]
-                velocity[i] = v
+                velocity[target] = v
         if ti.static(has_gradient):
             if ti.static(is_stage):
-                gradient[i] += j
+                gradient[target] += j
             else:
-                gradient[i] = j
+                gradient[target] = j
         if ti.static(is_stage):
             if rate_enabled == 1:
-                rate[i] += stretching_rate(j, strength[i], mode)
+                rate[target] += stretching_rate(j, strength[target], mode)
             else:
-                rate[i] = ti.Vector.zero(rate.dtype, 3)
+                rate[target] = ti.Vector.zero(rate.dtype, 3)
+
+
+def _publish_mesh_results(
+    physics,
+    host_velocity,
+    host_gradient,
+    velocity,
+    gradient,
+    strength,
+    rate,
+    background,
+    count,
+    mode,
+    rate_enabled,
+    is_stage,
+    has_velocity,
+    has_gradient,
+    include_freestream,
+):
+    """Transfer admitted fields through the shared fixed-size staging buffers."""
+    vector = physics._host_transfer_buffer("vector", velocity, "upload")
+    matrix = physics._host_transfer_buffer("matrix", gradient, "upload")
+    capacity = len(vector)
+    for start in range(0, count, capacity):
+        active = min(capacity, count - start)
+        vector[:active] = host_velocity[start : start + active]
+        matrix[:active] = host_gradient[start : start + active]
+        _publish_mesh_chunk(
+            vector,
+            matrix,
+            velocity,
+            gradient,
+            strength,
+            rate,
+            background,
+            start,
+            active,
+            mode,
+            rate_enabled,
+            is_stage,
+            has_velocity,
+            has_gradient,
+            include_freestream,
+        )
+        ti.sync()
 
 
 @ti.kernel
@@ -524,6 +555,7 @@ class SlipSlabInduction:
             )
         u, j, diagnostics = self._mesh_session.evaluate(
             *_active_snapshots(
+                self.physics,
                 (
                     (position, source_count),
                     (strength, source_count),
@@ -879,31 +911,38 @@ class SlipSlabInduction:
         _span_violation(position, self._span_excess, count, self._z_min_field, self._z_max_field)
         if float(self._span_excess[None]) > 1e-6 * (self.z_max - self.z_min):
             raise RuntimeError("RK stage particle escaped the physical slip slab")
-        if mesh:
-            # Complete all image/correction/tail work before the primary call
-            # can publish anything. The physical pair-mean primary is unchanged.
-            host_u, host_j, diagnostics = self._mesh_evaluate(
-                position,
-                vortex_strength,
-                core_radius,
-                position,
-                count,
-                count,
-                source_only=False,
+        reserve = getattr(self.base, "stage_workspace", None) if mesh else None
+        with (
+            reserve(count, reclaim=self.close_mesh_session)
+            if reserve is not None
+            else nullcontext()
+        ):
+            if mesh:
+                # Admit images before primary publication. Completed host
+                # results survive cache reclamation if FMM lists must grow.
+                host_u, host_j, diagnostics = self._mesh_evaluate(
+                    position,
+                    vortex_strength,
+                    core_radius,
+                    position,
+                    count,
+                    count,
+                    source_only=False,
+                )
+            self.base.evaluate_stage(
+                position=position,
+                vortex_strength=vortex_strength,
+                core_radius=core_radius,
+                count=count,
+                velocity_out=velocity_out,
+                vortex_strength_rate_out=vortex_strength_rate_out,
+                velocity_gradient_out=velocity_gradient_out,
+                strength_rate_enabled=strength_rate_enabled,
+                stage_time=stage_time,
             )
-        self.base.evaluate_stage(
-            position=position,
-            vortex_strength=vortex_strength,
-            core_radius=core_radius,
-            count=count,
-            velocity_out=velocity_out,
-            vortex_strength_rate_out=vortex_strength_rate_out,
-            velocity_gradient_out=velocity_gradient_out,
-            strength_rate_enabled=strength_rate_enabled,
-            stage_time=stage_time,
-        )
         if mesh:
             _publish_mesh_results(
+                self.physics,
                 host_u,
                 host_j,
                 velocity_out,
@@ -983,6 +1022,7 @@ class SlipSlabInduction:
             # Coherent SOURCE-ONLY primary+images: deliberately no base target
             # call, which would double count primary and spoil wall cancellation.
             _publish_mesh_results(
+                self.physics,
                 host_u,
                 host_j,
                 self._block_velocity if target_velocity is None else target_velocity,

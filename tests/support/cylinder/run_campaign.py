@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import sys
 
-from openonda.cylinder_campaign import initialize_cylinder_perturbation
 from openonda.cylinder_case import (
     DEFAULT_CYLINDER_CASE,
     as_config,
@@ -385,11 +384,16 @@ def run_reference(options: argparse.Namespace, run_dir: Path) -> None:
         sys.argv.extend(("--run-dir", str(run_dir)))
     for name, spacing in pending:
         solver = module.create_solver(
-            name, spacing, output_root=run_dir, end_time=end_time, cores=cores
+            name,
+            spacing,
+            output_root=run_dir,
+            end_time=end_time,
+            cores=cores,
+            solution_dir=run_dir / "solution" / name,
+            samples_dir=run_dir / "samples" / name,
         )
         with solver:
-            initialize_cylinder_perturbation(solver, module.SPAN)
-            solver.run(start_from="latest")
+            module.run_solver(solver, start_from="latest")
             module.fvm.update_grid_study(solver, spacing, profiles=("centreline",))
         _collective_root_action(
             lambda name=name, spacing=spacing: _write_grid_record(

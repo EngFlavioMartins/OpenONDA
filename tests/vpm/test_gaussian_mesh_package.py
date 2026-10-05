@@ -115,6 +115,8 @@ def test_failed_gpu_drain_cannot_be_reclassified_as_completed_cleanup():
 def test_kernel_coordinate_guard_includes_all_signed_lags(dtype, bits):
     owner = GaussianImageFields.__new__(GaussianImageFields)
     owner.dtype, owner.shape = np.dtype(dtype), (17, 18, 19)
+    owner.source_shape = owner.compact_shape = owner.shape
+    owner.lag_offset = (0, 0, 0)
     limit = 2**bits - owner.shape[2] + 1
     for sign in (-1, 1):
         owner._admit_integer_images([(sign * limit, False)])
@@ -188,15 +190,7 @@ def test_native_channel_subsets_preserve_scalar_radial_fields(dtype):
         # and padding. Test a reordered subset as well as all channels.
         shifts = cp.asarray([0, -1, 7, -1200, 1200], dtype=cp.int64)
         full = cp.empty((9, *owner.fft_shape), dtype=owner.dtype)
-        arguments = (
-            np.int64(owner.volume),
-            *(np.int32(n) for n in owner.shape),
-            *(np.int32(n) for n in owner.fft_shape),
-            *(owner.real_type(h) for h in owner.steps),
-            shifts,
-            np.int32(len(shifts)),
-            owner.real_type(owner.tau),
-        )
+        arguments = owner._kernel_arguments(shifts)
         owner._launch("gaussian_kernel_fused", owner.volume, (*arguments, full))
         for selected in (tuple(range(9)), (8, 0, 4)):
             channels = cp.asarray(selected, dtype=cp.int32)

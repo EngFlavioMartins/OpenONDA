@@ -26,6 +26,23 @@ def parse_args(argv=None):
     return args
 
 
+def _publish_result(path, result, started):
+    """Publish once after either shared lifecycle has closed its solver."""
+    from openonda.runtime import detected_world_size
+    from source.coupler.parallel import collective_phase
+
+    comm = None
+    if detected_world_size() > 1:
+        from mpi4py import MPI
+
+        comm = MPI.COMM_WORLD
+    with collective_phase(comm, "publish phase stage result"):
+        if comm is None or comm.Get_rank() == 0:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            result.update(wall_seconds=time.monotonic() - started)
+            path.write_text(json.dumps(result, indent=2) + "\n")
+
+
 def main():
     args = parse_args()
     out = args.root.resolve() / args.kind
@@ -35,51 +52,49 @@ def main():
         raise FileExistsError(result_path)
     if not args.resume and any((out / n).exists() for n in ("samples", "solution")):
         raise FileExistsError(f"Refusing to overwrite existing output: {out}")
-    from openonda.cylinder_campaign import initialize_cylinder_perturbation
+    from openonda.cylinder_campaign import run_coupled_cylinder
+
     started = time.monotonic()
-    if args.kind == "reference":
-        setup, mesh = case.reference_case()
-        with case.fvm.create_fvm_solver(setup, case_dir=out, mesh=mesh) as solver:
-            if not args.resume:
-                initialize_cylinder_perturbation(solver, case.SPAN)
-            try:
-                solver.run(start_from="latest" if args.resume else None)
+    try:
+        if args.kind == "reference":
+            reference = case.load_case_module(case.CASE / "reference_flow")
+            with reference.create_solver(
+                "phase_h004", case.H, output_root=out, end_time=case.END
+            ) as solver:
+                reference.run_solver(solver, start_from="latest" if args.resume else "initial")
                 assert solver.run_status == "complete" and abs(solver.time-case.END) < 1e-8
-                result = dict(status="completed", time=solver.time, step=solver.step)
-            except BaseException as error:
-                result = dict(status="failed", error=repr(error))
-                raise
-            finally:
-                if solver.parallel.is_root:
-                    result.update(wall_seconds=time.monotonic()-started)
-                    result_path.write_text(json.dumps(result, indent=2)+"\n")
-    else:
-        import openonda.coupler as coupling
-        from source.coupler.parallel import collective_phase
-        setup, particles, coupled, mesh = case.coupled_case(device=args.device)
-        with coupling.create_coupler(setup, particles, coupled, mesh=mesh, case_dir=out) as solver:
-            solver.initialize()
-            if not args.resume:
-                initialize_cylinder_perturbation(solver.fvm_solver, case.SPAN)
-            try:
-                # solve() performs initial FVM->VPM synchronization AFTER seeding.
-                if args.resume:
-                    last = solver.run(start_from="latest")
-                else:
-                    last = solver.solve(max_coupling_steps=20 if args.pilot else None,
-                                        backup_at_start=True, backup_at_stop=True)
-                expected = 20 if args.pilot else case.steps(case.END, case.EXCHANGE)
+                result = {"status": "completed", "time": solver.time, "step": solver.step}
+        else:
+            def build_case(*, end_time, overrides):
+                return case.coupled_case(end=end_time, device=args.device)
+
+            last = run_coupled_cylinder(
+                build_case,
+                output_root=out,
+                end_time=case.END,
+                start_from="latest" if args.resume else "initial",
+                max_coupling_steps=20 if args.pilot else None,
+                startup_duration=case.module.STARTUP_DURATION,
+                startup_transition_duration=case.module.STARTUP_TRANSITION_DURATION,
+                steady_freestream_velocity=case.module.FREESTREAM_VELOCITY,
+            )
+            expected = case.steps(case.END, case.EXCHANGE)
+            if args.pilot:
+                assert 0 < last <= expected
+                if not args.resume:
+                    assert last == min(20, expected)
+            else:
                 assert last == expected
-                result = dict(status="pilot-completed" if args.pilot else "completed",
-                              time=last*case.EXCHANGE, step=last)
-            except BaseException as error:
-                result = dict(status="failed", error=repr(error))
-                raise
-            finally:
-                with collective_phase(solver._comm, "publish phase stage result"):
-                    if solver._is_master:
-                        result.update(wall_seconds=time.monotonic()-started)
-                        result_path.write_text(json.dumps(result, indent=2)+"\n")
+            result = {
+                "status": "pilot-completed" if args.pilot else "completed",
+                "time": last * case.EXCHANGE,
+                "step": last,
+            }
+    except BaseException as error:
+        result = {"status": "failed", "error": repr(error)}
+        raise
+    finally:
+        _publish_result(result_path, result, started)
 
 
 if __name__ == "__main__":

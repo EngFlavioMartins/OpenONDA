@@ -643,7 +643,10 @@ class PhysicsBase:
         else:
             raise ValueError(f"Unknown host transfer buffer family {family!r}")
         if key not in buffers:
-            buffers[key] = np.empty(shape, dtype=self.np_dtype)
+            dtype = self.np_dtype
+            if direction == "download":
+                dtype = np.float32 if field.dtype == ti.f32 else np.float64
+            buffers[key] = np.empty(shape, dtype=dtype)
         return buffers[key]
 
     def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
@@ -690,9 +693,10 @@ class PhysicsBase:
 
     def _download_vector_field(self, src, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
+        dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
-            return np.empty((0, 3), dtype=self.np_dtype)
-        out = np.empty((n, 3), dtype=self.np_dtype)
+            return np.empty((0, 3), dtype=dtype)
+        out = np.empty((n, 3), dtype=dtype)
         buf = self._host_transfer_buffer("vector", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
@@ -703,9 +707,10 @@ class PhysicsBase:
 
     def _download_matrix_field(self, src, n: int) -> np.ndarray:
         """Download the active mat3 prefix without exposing variable ndarray shapes."""
+        dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
-            return np.empty((0, 3, 3), dtype=self.np_dtype)
-        out = np.empty((n, 3, 3), dtype=self.np_dtype)
+            return np.empty((0, 3, 3), dtype=dtype)
+        out = np.empty((n, 3, 3), dtype=dtype)
         buf = self._host_transfer_buffer("matrix", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
@@ -716,9 +721,10 @@ class PhysicsBase:
 
     def _download_scalar_field(self, src, n: int) -> np.ndarray:
         """Download the active scalar prefix without transferring capacity padding."""
+        dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
-            return np.empty((0,), dtype=self.np_dtype)
-        out = np.empty((n,), dtype=self.np_dtype)
+            return np.empty((0,), dtype=dtype)
+        out = np.empty((n,), dtype=dtype)
         buf = self._host_transfer_buffer("scalar", src, "download")
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
@@ -1572,20 +1578,19 @@ class PhysicsBase:
 
     def _compute_gaussian_vorticities(self, particles):
         """Reuse induction hierarchy storage, or allocate bounded diagnostic scratch."""
-        from .induction.fmm.device import FMMInduction
         from .induction.treecode.lbvh import TaichiTreecode
 
         count = len(particles)
         backend = getattr(self, "induction", None)
-        if isinstance(backend, FMMInduction):
-            # Stage fields can have the same identity with different contents.
-            # Always rebuild at the accepted state, without another FMM solve.
-            with backend.fixed_source_targets(
-                particles.position, particles.vortex_strength, particles.core_radius, count
-            ):
-                backend.workspace.tree.compute_gaussian_particle_vorticity(
-                    particles.vorticity, count
-                )
+        evaluate = getattr(backend, "evaluate_gaussian_source_vorticity", None)
+        if callable(evaluate):
+            evaluate(
+                position=particles.position,
+                vortex_strength=particles.vortex_strength,
+                core_radius=particles.core_radius,
+                count=count,
+                vorticity_out=particles.vorticity,
+            )
             return
         if self.velocity_method == "TREECODE":
             tree = self._ensure_target_tree_current(particles, self.velocity_theta)

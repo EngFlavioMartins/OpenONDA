@@ -10,6 +10,7 @@ from source._numba import cacheable_njit as njit
 from ..assemble import matrix_assembly, momentum
 from ..fields import diagnostics as field_diagnostics
 from ..fields import gradients
+from ..fields.boundary_reconstruction import boundary_owner_gradient, boundary_resolved_displacement
 from ..fields.mixed_velocity_boundary import (
     update_normal_velocity_tangential_gradient_boundary,
 )
@@ -55,15 +56,19 @@ class PressureCorrectionWorkspace:
         for every pressure/non-orthogonal correction belonging to the same
         momentum predictor because ``momentum_diagonal`` is unchanged within that loop.
     velocity_h_over_a : np.ndarray or None
-        Pressure-free velocity reconstructed for the current PISO corrector.
-        A non-orthogonal pressure sweep must keep this field frozen while its
+        Pressure-free velocity reconstructed for this momentum predictor.
+        All PISO/non-orthogonal corrections keep this field frozen while its
         explicit pressure-gradient contribution is iterated.
+    pressure_free_boundary_flux : np.ndarray or None
+        Boundary face flux extrapolated from the same frozen predictor. It is
+        refreshed only when a new momentum predictor replaces ``H/A``.
     """
 
     pressure_velocity_coefficient: np.ndarray
     face_conductance: np.ndarray
     matrix: Any | None = None
     velocity_h_over_a: np.ndarray | None = None
+    pressure_free_boundary_flux: np.ndarray | None = None
 
 
 def _resolve_pressure_constraint(params) -> str:
@@ -428,12 +433,11 @@ def _update_fixed_flux_pressure_boundaries(
             kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
     assert kinematic_pressure_gradient is not None
 
-    velocity_h_over_a = None
     if pressure_free_face_flux is not None:
         pressure_free_face_flux = np.asarray(pressure_free_face_flux, dtype=float)
         if pressure_free_face_flux.shape != (mesh_data["n_faces"],):
             raise ValueError("pressure_free_face_flux must have one value per face")
-    else:
+    elif fixed_flux_patches:
         pressure_velocity_coefficient_vector = (
             pressure_velocity_coefficient[:, np.newaxis]
             if np.asarray(pressure_velocity_coefficient).ndim == 1
@@ -442,6 +446,15 @@ def _update_fixed_flux_pressure_boundaries(
         velocity_h_over_a = (
             velocity_star[:n_cells]
             + pressure_velocity_coefficient_vector * kinematic_pressure_gradient[:n_cells]
+        )
+        pressure_free_face_flux = _fixed_flux_pressure_face_drive(
+            velocity_h_over_a,
+            mesh_data,
+            geo_data,
+            boundaries,
+            velocity_star=velocity_star,
+            pressure_velocity_coefficient=pressure_velocity_coefficient,
+            predictor_pressure_gradient=kinematic_pressure_gradient,
         )
 
     changed = False
@@ -462,21 +475,29 @@ def _update_fixed_flux_pressure_boundaries(
         normal = sf / mag_sf[:, np.newaxis]
         dr = face_cf[start : start + nf]
         normal_distance = np.einsum("ij,ij->i", dr, normal)
+        grad_owner = kinematic_pressure_gradient[own]
+        grad_tangent = grad_owner - np.einsum("ij,ij->i", grad_owner, normal)[:, None] * normal
         if np.asarray(pressure_velocity_coefficient).ndim == 1:
             D_normal = pressure_velocity_coefficient[own]
+            tangential_pressure_flux = np.zeros(nf)
         else:
             D_normal = np.einsum("ij,ij->i", pressure_velocity_coefficient[own], normal * normal)
+            tangential_pressure_flux = np.einsum(
+                "ij,ij->i", normal * pressure_velocity_coefficient[own], grad_tangent
+            )
+        if np.any(~np.isfinite(D_normal)) or np.any(D_normal <= 0):
+            raise ValueError("fixedFluxPressure requires a finite positive normal momentum inverse")
         phi_target = np.einsum("ij,ij->i", velocity_star[ghost], sf)
-        if pressure_free_face_flux is None:
-            assert velocity_h_over_a is not None
-            volumetric_face_flux_h_over_a = np.einsum("ij,ij->i", velocity_h_over_a[own], sf)
-        else:
-            volumetric_face_flux_h_over_a = pressure_free_face_flux[start : start + nf]
+        assert pressure_free_face_flux is not None
+        volumetric_face_flux_h_over_a = pressure_free_face_flux[start : start + nf]
         pressure_flux_coefficient = mag_sf * D_normal
-        dpdn = (volumetric_face_flux_h_over_a - phi_target) / np.maximum(
-            pressure_flux_coefficient, 1.0e-30
+        dpdn = (
+            volumetric_face_flux_h_over_a - phi_target
+        ) / pressure_flux_coefficient - tangential_pressure_flux / D_normal
+        tangential_displacement = dr - normal_distance[:, None] * normal
+        delta = dpdn * normal_distance + np.einsum(
+            "ij,ij->i", grad_tangent, tangential_displacement
         )
-        delta = dpdn * normal_distance
         boundary["fixed_flux_pressure_delta"] = delta
         if boundary.get("_directional_fixed_flux_pressure", False):
             outflow = np.asarray(boundary["_fixed_freestream_outflow"], dtype=bool)
@@ -498,6 +519,90 @@ def _update_fixed_flux_pressure_boundaries(
         if kinematic_pressure_gradient.ndim == 3:
             kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
     return kinematic_pressure_gradient
+
+
+def _fixed_flux_pressure_face_drive(
+    velocity_h_over_a,
+    mesh_data,
+    geo_data,
+    boundaries,
+    *,
+    velocity_star=None,
+    pressure_velocity_coefficient=None,
+    predictor_pressure_gradient=None,
+):
+    """Extrapolate one frozen pressure-free predictor to its boundary faces.
+
+    Real-cell/processor-halo values supply the face location independently of
+    physical ghosts or patch update order. This supplies the missing face
+    location without imposing a second pressure condition or rebuilding a
+    full-domain gradient. The momentum solve and collective pressure-gradient
+    reconstruction have already refreshed the required halo values.
+    """
+    faces = []
+    for boundary in boundaries:
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "kinematic_pressure", "ghost")
+        if boundary.get("fixed_flux_pressure_external", False):
+            continue
+        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE or (
+            strategy is BoundaryStrategy.FREESTREAM
+            and boundary.get("_directional_fixed_flux_pressure", False)
+        ):
+            start = int(boundary["start_face"])
+            faces.append(np.arange(start, start + int(boundary["n_faces"])))
+    if not faces:
+        return None
+    result = np.zeros(mesh_data["n_faces"])
+    faces = np.concatenate(faces)
+    owners = mesh_data["owners"]
+    owner_gradient = boundary_owner_gradient(
+        velocity_h_over_a,
+        mesh_data,
+        geo_data,
+        faces,
+        include_physical_ghosts=False,
+    )
+    dr = geo_data["cell_connection_vector"][faces]
+    face_velocity = velocity_h_over_a[owners[faces]] + np.einsum("fji,fj->fi", owner_gradient, dr)
+    unresolved = dr - boundary_resolved_displacement(mesh_data, geo_data, faces, dr)
+    missing = np.linalg.norm(unresolved, axis=1) > 1e-8 * np.linalg.norm(dr, axis=1) + 1e-13
+    if np.any(missing):
+        # A one-cell-thick fluid layer cannot determine every derivative from
+        # real neighbours. Preserve ALL identifiable components and close only
+        # the missing directions with the already accepted/lagged native faces.
+        # These inputs are captured before pressure ghosts are refreshed, and
+        # the completed drive stays frozen for the whole momentum predictor.
+        if (
+            velocity_star is None
+            or pressure_velocity_coefficient is None
+            or predictor_pressure_gradient is None
+        ):
+            raise ValueError(
+                "Unresolved pressure-face direction requires lagged native predictor faces"
+            )
+        n_cells, n_interior = mesh_data["n_cells"], mesh_data["n_interior_faces"]
+        D_vector = (
+            pressure_velocity_coefficient[:, None]
+            if np.asarray(pressure_velocity_coefficient).ndim == 1
+            else pressure_velocity_coefficient
+        )
+        native_predictor = np.empty_like(velocity_star)
+        native_predictor[:n_cells] = velocity_h_over_a
+        native_predictor[n_cells:] = (
+            velocity_star[n_cells:]
+            + D_vector[owners[n_interior:]] * predictor_pressure_gradient[n_cells:]
+        )
+        missing_gradient = boundary_owner_gradient(
+            native_predictor,
+            mesh_data,
+            geo_data,
+            faces[missing],
+            include_physical_ghosts=True,
+            displacements=unresolved[missing],
+        )
+        face_velocity[missing] += np.einsum("fji,fj->fi", missing_gradient, unresolved[missing])
+    result[faces] = np.einsum("ij,ij->i", face_velocity, geo_data["face_area_vector"][faces])
+    return result
 
 
 @njit(cache=True)
@@ -1159,6 +1264,42 @@ def assemble_pressure_correction_equation_rhie_chow(
     kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
     if kinematic_pressure_gradient.ndim == 3:
         kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
+    scalar_diagonal = np.asarray(pressure_velocity_coefficient).ndim == 1
+    pressure_velocity_coefficient_vector = (
+        pressure_velocity_coefficient[:, np.newaxis]
+        if scalar_diagonal
+        else pressure_velocity_coefficient
+    )
+    if frozen_velocity_h_over_a is None:
+        # Freeze the predictor before updating its pressure ghosts. Rebuilding
+        # H/A from the refreshed gradient would change the momentum source.
+        velocity_h_over_a = (
+            velocity_star[:n_cells]
+            + pressure_velocity_coefficient_vector * kinematic_pressure_gradient[:n_cells]
+        )
+    else:
+        velocity_h_over_a = np.asarray(frozen_velocity_h_over_a, dtype=np.float64)
+        if velocity_h_over_a.shape != (n_cells, 3):
+            raise ValueError(
+                "frozen_velocity_h_over_a must have shape "
+                f"({n_cells}, 3), got {velocity_h_over_a.shape}"
+            )
+    if (
+        correction_workspace is not None
+        and correction_workspace.velocity_h_over_a is velocity_h_over_a
+        and correction_workspace.pressure_free_boundary_flux is not None
+    ):
+        pressure_free_boundary_flux = correction_workspace.pressure_free_boundary_flux
+    else:
+        pressure_free_boundary_flux = _fixed_flux_pressure_face_drive(
+            velocity_h_over_a,
+            mesh_data,
+            geo_data,
+            boundaries,
+            velocity_star=velocity_star,
+            pressure_velocity_coefficient=pressure_velocity_coefficient,
+            predictor_pressure_gradient=kinematic_pressure_gradient,
+        )
     kinematic_pressure_gradient = _update_fixed_flux_pressure_boundaries(
         kinematic_pressure,
         velocity_star,
@@ -1167,6 +1308,7 @@ def assemble_pressure_correction_equation_rhie_chow(
         geo_data,
         boundaries,
         kinematic_pressure_gradient=kinematic_pressure_gradient,
+        pressure_free_face_flux=pressure_free_boundary_flux,
     )
     assert kinematic_pressure_gradient is not None
 
@@ -1184,25 +1326,6 @@ def assemble_pressure_correction_equation_rhie_chow(
     # U_centre = H/A - kinematic_pressure_gradient * pressure_velocity_coefficient
     # So H/A = U_centre + kinematic_pressure_gradient * pressure_velocity_coefficient
     # We use velocity_star as U_centre (it includes -kinematic_pressure_gradient * pressure_velocity_coefficient approx).
-    scalar_diagonal = np.asarray(pressure_velocity_coefficient).ndim == 1
-    pressure_velocity_coefficient_vector = (
-        pressure_velocity_coefficient[:, np.newaxis]
-        if scalar_diagonal
-        else pressure_velocity_coefficient
-    )
-    if frozen_velocity_h_over_a is None:
-        velocity_h_over_a = (
-            velocity_star[:n_cells]
-            + pressure_velocity_coefficient_vector * kinematic_pressure_gradient[:n_cells]
-        )
-    else:
-        velocity_h_over_a = np.asarray(frozen_velocity_h_over_a, dtype=np.float64)
-        if velocity_h_over_a.shape != (n_cells, 3):
-            raise ValueError(
-                "frozen_velocity_h_over_a must have shape "
-                f"({n_cells}, 3), got {velocity_h_over_a.shape}"
-            )
-
     # Fuse the interior-face interpolation and non-orthogonal correction in a
     # compiled loop. Besides being faster than eight chains of NumPy advanced
     # indexing per PIMPLE step, this avoids retaining pressure_velocity_coefficient, velocity_h_over_a, edge,
@@ -1406,6 +1529,7 @@ def assemble_pressure_correction_equation_rhie_chow(
                 face_conductance,
                 pressure_matrix,
                 velocity_h_over_a,
+                pressure_free_boundary_flux,
             )
         return pressure_matrix, pressure_right_hand_side, flux_vf, correction_workspace
     return pressure_matrix, pressure_right_hand_side, flux_vf

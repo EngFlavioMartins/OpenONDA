@@ -18,6 +18,7 @@ from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction import slip_slab as module
 from source.solvers.vpm.physics.induction.direct import DirectInduction
+from source.solvers.vpm.physics.induction.fmm import FMMInduction
 from source.solvers.vpm.physics.induction.gaussian_mesh.session import GaussianSlabPolicy
 from source.solvers.vpm.physics.induction.reuse_backends import StandardFMMReuseContract
 
@@ -269,23 +270,26 @@ def test_gaussian_operator_cannot_be_disabled_or_called_as_reflected_kernel(monk
 @pytest.mark.parametrize("dtype", [ti.f32, ti.f64])
 def test_active_snapshots_skip_padding_and_download_each_distinct_field_once(monkeypatch, dtype):
     scalar_type = np.float32 if dtype == ti.f32 else np.float64
+    physics = PhysicsBase("GAUSSIAN", 1, dtype, max_evaluation_points=1)
     position = ti.Vector.field(3, dtype, shape=17)
     radius = ti.field(dtype, shape=17)
     position.fill(float("nan"))
     radius.fill(float("nan"))
     position[0], position[1], position[2] = [1, 2, 3], [4, 5, 6], [7, 8, 9]
     radius[0], radius[1] = 0.1, 0.2
-    original = module._download_vector_prefix
+    original = physics._download_vector_field
     calls = []
 
-    def download(source, result, count):
+    def download(source, count):
         calls.append((source, count))
-        original(source, result, count)
+        return original(source, count)
 
-    monkeypatch.setattr(module, "_download_vector_prefix", download)
+    monkeypatch.setattr(physics, "_download_vector_field", download)
     monkeypatch.setattr(position, "to_numpy", lambda: pytest.fail("capacity download"))
     monkeypatch.setattr(radius, "to_numpy", lambda: pytest.fail("capacity download"))
-    sources, cores, targets = module._active_snapshots(((position, 2), (radius, 2), (position, 3)))
+    sources, cores, targets = module._active_snapshots(
+        physics, ((position, 2), (radius, 2), (position, 3))
+    )
     assert calls == [(position, 3)]
     assert sources.dtype == cores.dtype == targets.dtype == scalar_type
     np.testing.assert_array_equal(sources, [[1, 2, 3], [4, 5, 6]])
@@ -338,3 +342,107 @@ def test_unknown_induction_close_is_not_called(monkeypatch):
     monkeypatch.setattr(solver_module, "reset_taichi_backend", lambda **_: None)
     solver_module.VPMSolver.close(owner)
     assert owner._closed
+
+
+def _stage_reservation(monkeypatch, harness, ensure):
+    state = SimpleNamespace(_reclaim_stage_cache=None, _ensure_workspace=ensure)
+    monkeypatch.setattr(
+        harness.slab.base,
+        "stage_workspace",
+        lambda count, *, reclaim: FMMInduction.stage_workspace(state, count, reclaim=reclaim),
+        raising=False,
+    )
+    return state
+
+
+def test_source_scratch_precedes_mesh_admission_and_warm_cache_is_retained(monkeypatch):
+    h = Harness(monkeypatch)
+    old = h.slab._mesh_session = FakeSession(dtype="float64")
+    capacity, events = 1, []
+
+    def ensure(count):
+        nonlocal capacity
+        events.append("reserve")
+        if count > capacity:
+            state._reclaim_stage_cache()
+            capacity = count
+
+    state = _stage_reservation(monkeypatch, h, ensure)
+
+    def new_session(**kwargs):
+        assert capacity >= 2 and old.closes == 1
+        events.append("mesh")
+        return FakeSession(**kwargs)
+
+    monkeypatch.setattr(module, "_new_mesh_session", new_session)
+    h.stage()
+    session = h.slab._mesh_session
+    assert events == ["reserve", "mesh"]
+    assert state._reclaim_stage_cache is None and session.closes == 0
+    h.stage()
+    assert events == ["reserve", "mesh", "reserve"]
+    assert h.slab._mesh_session is session and len(session.calls) == 2
+    assert session.closes == 0 and old.closes == 1
+    assert state._reclaim_stage_cache is None
+
+
+def test_interaction_growth_reclaims_mesh_but_preserves_completed_host_results(monkeypatch):
+    h = Harness(monkeypatch)
+    h.stage(base=True)
+    primary = h.u.to_numpy(), h.j.to_numpy(), h.rate.to_numpy()
+    h.u.fill(19)
+    h.j.fill(23)
+    h.rate.fill(29)
+    state = _stage_reservation(monkeypatch, h, lambda count: None)
+    original = h.slab.base.evaluate_stage
+    reclaimed = []
+
+    def grow_then_compute(**kwargs):
+        session = h.slab._mesh_session
+        assert len(session.calls) == 1  # Image admission has completed.
+        state._reclaim_stage_cache()
+        reclaimed.append(session)
+        assert session.closes == 1 and h.slab._mesh_session is None
+        np.testing.assert_array_equal(h.u.to_numpy(), 19)
+        np.testing.assert_array_equal(h.j.to_numpy(), 23)
+        np.testing.assert_array_equal(h.rate.to_numpy(), 29)
+        original(**kwargs)
+
+    monkeypatch.setattr(h.slab.base, "evaluate_stage", grow_then_compute)
+    h.stage()
+    image_u = np.broadcast_to([.5, -.25, .75], (2, 3))
+    image_j = np.broadcast_to(np.arange(9).reshape(3, 3) / 100, (2, 3, 3))
+    np.testing.assert_allclose(h.u.to_numpy()[:2], primary[0][:2] + image_u, rtol=1e-13)
+    np.testing.assert_allclose(h.j.to_numpy()[:2], primary[1][:2] + image_j, rtol=1e-13)
+    expected_rate = primary[2] + np.einsum("nji,nj->ni", image_j, h.g.to_numpy())
+    np.testing.assert_allclose(h.rate.to_numpy(), expected_rate, rtol=1e-13)
+    np.testing.assert_array_equal(h.u.to_numpy()[2:], 19)
+    np.testing.assert_array_equal(h.j.to_numpy()[2:], 23)
+    assert len(reclaimed) == 1 and state._reclaim_stage_cache is None
+    assert h.slab.last_tail["contract"] == "gaussian_interval_remainder_v1"
+
+
+def test_interaction_growth_cleanup_failure_precedes_all_output_publication(monkeypatch):
+    h = Harness(monkeypatch)
+    state = _stage_reservation(monkeypatch, h, lambda count: None)
+    failed = []
+
+    def fail_growth(**kwargs):
+        session = h.slab._mesh_session
+        assert len(session.calls) == 1
+        session.cleanup_uncertain = True
+        failed.append(session)
+        state._reclaim_stage_cache()
+        pytest.fail("primary computation survived uncertain cache cleanup")
+
+    monkeypatch.setattr(h.slab.base, "evaluate_stage", fail_growth)
+    with pytest.raises(RuntimeError, match="injected uncertain cleanup"):
+        h.stage()
+    with pytest.raises(RuntimeError, match="cleanup remains uncertain"):
+        h.stage()
+    assert len(failed) == 1 and failed[0].closes == 1
+    assert h.slab._mesh_session is failed[0]
+    assert state._reclaim_stage_cache is None
+    np.testing.assert_array_equal(h.u.to_numpy(), 19)
+    np.testing.assert_array_equal(h.j.to_numpy(), 23)
+    np.testing.assert_array_equal(h.rate.to_numpy(), 29)

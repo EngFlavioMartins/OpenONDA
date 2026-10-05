@@ -3,6 +3,7 @@
 from dataclasses import replace
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import taichi as ti
 
@@ -171,3 +172,80 @@ def test_python_replacement_cannot_certify_host_rounding(monkeypatch):
     monkeypatch.setattr(module.ieee, "_bridge", lambda: bridge)
     with pytest.raises(RuntimeError, match="standard compiled"):
         module._admit_rounding()
+
+
+@pytest.mark.parametrize("name", tuple(module._TRANSFER_METHODS))
+@pytest.mark.parametrize("scope", ["instance", "class"])
+def test_custom_transfer_methods_decline_exact_stage_reuse(monkeypatch, name, scope):
+    cls = module.physics_base.PhysicsBase
+    physics = cls.__new__(cls)
+    assert module._standard_transfers(physics)
+    monkeypatch.setattr(physics if scope == "instance" else cls, name, lambda *args: None)
+    assert not module._standard_transfers(physics)
+
+
+def test_changed_transfer_chunk_size_declines_exact_stage_reuse(monkeypatch):
+    cls = module.physics_base.PhysicsBase
+    physics = cls.__new__(cls)
+    assert module._standard_transfers(physics)
+    monkeypatch.setattr(module.physics_base, "_HOST_TRANSFER_CHUNK_SIZE", 32768)
+    assert not module._standard_transfers(physics)
+
+
+def _blocked_session(slab):
+    current = module.session.GaussianSlabFieldSession(
+        z_min=slab.z_min, z_max=slab.z_max, tail_tolerance=slab.tail_tolerance,
+        max_shells=slab.max_shells, velocity_scale=slab.velocity_scale,
+        gradient_scale=slab.gradient_scale, dtype="float32",
+        policy=slab.gaussian_mesh_policy, execution_backend="cupy_cuda",
+    )
+    owner = module.blocked_fields.GaussianBlockedCUDAFields(
+        np.array([[0.1, -0.2, 0.17]]), np.array([[0.2, -0.3, 0.7]]),
+        np.array([0.04]), np.array([[0.15, -0.1, 0.19]]),
+        zmin=slab.z_min, zmax=slab.z_max, tau=0.12, spacing=0.025, cutoff=0.6,
+    )
+    owner.prepare(((0, True),))
+    wrapper = module.execution.PortableGaussianImageFields.__new__(
+        module.execution.PortableGaussianImageFields
+    )
+    wrapper.closed, wrapper.execution_backend, wrapper._owner = False, "cupy_cuda", owner
+    current._owner = wrapper
+    slab._mesh_session = current
+    return owner
+
+
+def test_standard_blocked_owner_preserves_exact_stage_reuse_admission(host_contract, monkeypatch):
+    provider, slab, _ = host_contract
+    slab.base = provider._base_backend = object()
+    slab.physics = module.physics_base.PhysicsBase.__new__(module.physics_base.PhysicsBase)
+    owner = _blocked_session(slab)
+    monkeypatch.setattr(module, "_standard_methods", lambda *args: True)
+    assert module.StandardGaussianSlabReuseContract._supported(provider)
+    module._admit_session(slab)
+    monkeypatch.setattr(owner, "_split", lambda *args: None)
+    assert not module.StandardGaussianSlabReuseContract._supported(provider)
+
+
+@pytest.mark.parametrize("fault", ["closed", "failed", "leaf", "thread", "images"])
+def test_blocked_owner_lifecycle_fault_is_not_hidden_by_stage_hit(host_contract, fault):
+    _, slab, _ = host_contract
+    owner = _blocked_session(slab)
+    if fault == "closed":
+        owner.closed = True
+    elif fault == "failed":
+        owner._failed_owner = object()
+    elif fault == "leaf":
+        owner._leaf = object()
+    elif fault == "thread":
+        owner._thread = -1
+    else:
+        owner._prepared_images = None
+    with pytest.raises(RuntimeError):
+        module._admit_session(slab)
+
+
+@pytest.mark.parametrize("name", ["_split", "_evaluate_leaf", "evaluate_prepared"])
+def test_blocked_kernel_delegation_overrides_decline_reuse(monkeypatch, name):
+    assert module._standard_modules()
+    monkeypatch.setattr(module.blocked_fields.GaussianBlockedCUDAFields, name, lambda *args: None)
+    assert not module._standard_modules()

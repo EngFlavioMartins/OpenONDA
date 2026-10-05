@@ -44,6 +44,12 @@ def test_reference_and_coupled_phase_contract():
     assert data["fvm_dt"] == 0.008 and data["exchange_dt"] == 0.04
     assert data["schemes"]["time_scheme"] == "backward"
     assert data["force_phase_interval"] == 0.04
+    assert data["startup"] == {
+        "duration": 2.0,
+        "transition_duration": 1.0,
+        "freestream_velocity": [1.0, 0.1, 0.0],
+        "steady_freestream_velocity": [1.0, 0.0, 0.0],
+    }
 
 
 def test_corresponding_probe_points_and_cadences():

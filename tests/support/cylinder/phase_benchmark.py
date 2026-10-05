@@ -45,6 +45,7 @@ def coupled_case(end=END, cores=4, device="CUDA"):
 
 
 def contract():
+    reference = load_case_module(CASE / "reference_flow")
     a, am = reference_case()
     b, particles, coupling, bm = coupled_case()
     from source.solvers.fvm.sampling.base import sampler_to_dict
@@ -58,6 +59,15 @@ def contract():
     assert a.time.adjustment is b.time.adjustment is None
     assert len(am.levels) == len(bm.levels) == 25
     assert particles.numerics.viscous.particle_spacing == H
+    assert tuple(a.initial_velocity) == tuple(b.initial_velocity) == tuple(
+        module.STARTUP_FREESTREAM_VELOCITY
+    )
+    assert reference.STARTUP_DURATION == module.STARTUP_DURATION
+    assert reference.STARTUP_TRANSITION_DURATION == module.STARTUP_TRANSITION_DURATION
+    assert tuple(reference.STARTUP_FREESTREAM_VELOCITY) == tuple(
+        module.STARTUP_FREESTREAM_VELOCITY
+    )
+    assert tuple(reference.VELOCITY) == tuple(module.FREESTREAM_VELOCITY)
     common = {s.name: sampler_to_dict(s) for s in a.samplers if s.name != "midspan"}
     for sampler in b.samplers:
         if sampler.name != "midspan":
@@ -83,6 +93,12 @@ def contract():
         "reference_samplers": [sampler_to_dict(s) for s in a.samplers],
         "coupled_fvm_samplers": [sampler_to_dict(s) for s in b.samplers],
         "status": "provisional working mesh; no grid-independence claim",
-        "initial_condition": "same openonda.cylinder_campaign.cylinder_initial_velocity",
+        "initial_condition": "same compact divergence-free curl on the startup background",
+        "startup": {
+            "duration": module.STARTUP_DURATION,
+            "transition_duration": module.STARTUP_TRANSITION_DURATION,
+            "freestream_velocity": list(module.STARTUP_FREESTREAM_VELOCITY),
+            "steady_freestream_velocity": list(module.FREESTREAM_VELOCITY),
+        },
         "phase_analysis": "Separate startup phase offset, period error and accumulating phase drift; never shift simulation clocks.",
     }

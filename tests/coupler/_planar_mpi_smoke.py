@@ -67,7 +67,9 @@ def main(directory):
         transfer_region_bounds=(-0.375, 0.375, -0.375, 0.375, -0.875, 0.875),
         eta_blend_width=0.25,
         vpm_only_width=0,
-        transfer_vorticity_cutoff=0.001,
+        # Match the serial weak-dipole resolution without relaxing the
+        # default 8% invariant-recovery acceptance limit.
+        transfer_vorticity_cutoff=0.0001,
         interface_iterations=1,
         backup_interval_steps=0,
     )

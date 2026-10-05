@@ -876,12 +876,20 @@ def blend_represented_state(
     slip_slab_bounds: tuple[float, float] | None = None,
     lattice_origin_z: float | None = None,
 ) -> RepresentedStateBlend:
-    """Blend the Gaussian represented VPM state and apply one local correction.
+    """Correct the represented-field mismatch while preserving VPM coefficients.
 
     The strength arrays contain volume-integrated Gamma in m³/s. Select
     dimensions=2 only for an XY lattice with nz=1 and span-integrated
     strength; dimensions=3 uses cubic Gaussian convolution. This option
     changes the represented kernel, not the stored strength units.
+    With a binary output support mask, matching FVM/represented-VPM fields on
+    active nodes are a fixed point, including through a spatially varying
+    authority ramp. Fractional output weights additionally scale coefficients.
+    The approximate inverse acts only on the active physical mismatch.
+    Each correction is limited along its update direction so
+    no node grows beyond the larger of its previous magnitude and ``cap``
+    times the maximum physical target. This prevents repeated inversion of
+    unresolved wall structure from accumulating unbounded coefficients.
     """
     cap = float(amplification_cap)
     if not np.isfinite(cap) or cap < 1.0:
@@ -897,6 +905,8 @@ def blend_represented_state(
         if weight.shape != (len(vpm_strength),):
             raise ValueError("output_weight must share the transfer lattice shape")
     physical = np.ones(len(vpm_strength), dtype=bool)
+    if weight is not None:
+        physical &= weight > 0.0
     if slip_slab_bounds is not None:
         if lattice_origin_z is None:
             raise ValueError("slip-slab representation requires a z lattice origin")
@@ -905,9 +915,7 @@ def blend_represented_state(
         physical_z = (z_nodes >= z_min - 1e-8 * particle_spacing) & (
             z_nodes <= z_max + 1e-8 * particle_spacing
         )
-        physical = np.broadcast_to(physical_z, shape).reshape(-1).copy()
-        if weight is not None:
-            physical &= weight > 0.0
+        physical &= np.broadcast_to(physical_z, shape).reshape(-1)
 
     represented_vpm = gaussian_represented_vortex_strength(
         vpm_strength,
@@ -919,12 +927,17 @@ def blend_represented_state(
         lattice_origin_z=lattice_origin_z,
     )
     physical_target = represented_vpm + authority[:, None] * (fvm_strength - represented_vpm)
-    if slip_slab_bounds is not None:
-        physical_target[~physical] = 0.0
+    physical_target[~physical] = 0.0
 
-    blended_strength = vpm_strength + authority[:, None] * (fvm_strength - vpm_strength)
-    represented_blend = gaussian_represented_vortex_strength(
-        blended_strength,
+    # FVM values are physical vorticity; VPM values are Gaussian coefficients.
+    # Blending those two representations directly would damp even F = G(v).
+    # Instead invert only r = eta * (F - G(v)), with eta inside the operator:
+    # v_new = v + [I + beta * (I - G)] r. This also retains the authority-ramp
+    # commutator; multiplying a deconvolved difference by eta is not equivalent.
+    mismatch = authority[:, None] * (fvm_strength - represented_vpm)
+    mismatch[~physical] = 0.0
+    represented_mismatch = gaussian_represented_vortex_strength(
+        mismatch,
         shape,
         particle_spacing,
         core_radius=core_radius,
@@ -932,19 +945,39 @@ def blend_represented_state(
         slip_slab_bounds=slip_slab_bounds,
         lattice_origin_z=lattice_origin_z,
     )
-    residual = physical_target - represented_blend
+    residual = mismatch - represented_mismatch
     denominator = float(np.linalg.norm(physical_target[physical])) + 1.0e-30
     residual_before = float(np.linalg.norm(residual[physical])) / denominator
 
     correction_gain = min(cap - 1.0, 1.0)
-    corrected_strength = blended_strength + correction_gain * residual
+    correction = mismatch + correction_gain * residual
+    baseline = vpm_strength.copy()
     if weight is not None:
-        corrected_strength = corrected_strength * weight[:, None]
-    if slip_slab_bounds is not None:
-        corrected_strength[~physical] = 0.0
+        baseline *= weight[:, None]
+        correction *= weight[:, None]
+    baseline[~physical] = 0.0
+    correction[~physical] = 0.0
     target_maximum = (
         float(np.linalg.norm(physical_target[physical], axis=1).max(initial=0.0)) + 1.0e-30
     )
+    bound_squared = np.maximum(
+        np.einsum("ij,ij->i", baseline, baseline), (cap * target_maximum) ** 2
+    )
+    corrected_strength = baseline + correction
+    limited = np.einsum("ij,ij->i", corrected_strength, corrected_strength) > bound_squared
+    if np.any(limited):
+        previous = baseline[limited]
+        delta = correction[limited]
+        a = np.einsum("ij,ij->i", delta, delta)
+        b = np.einsum("ij,ij->i", previous, delta)
+        c = np.minimum(np.einsum("ij,ij->i", previous, previous) - bound_squared[limited], 0.0)
+        root = np.sqrt(np.maximum(b * b - a * c, 0.0))
+        # Stable positive quadratic root, including an already saturated node.
+        fraction = np.zeros_like(a)
+        outward = b >= 0.0
+        np.divide(-c, root + b, out=fraction, where=outward & (root + b > 0.0))
+        np.divide(root - b, a, out=fraction, where=~outward & (a > 0.0))
+        corrected_strength[limited] = previous + np.clip(fraction, 0.0, 1.0)[:, None] * delta
     maximum_amplification = (
         float(np.linalg.norm(corrected_strength, axis=1).max(initial=0.0)) / target_maximum
     )
@@ -1228,6 +1261,10 @@ def renew_stable_overlap(
     fvm_target = raw_target * (lattice.fluid_weight * lattice.mesh_weight)[:, None]
 
     base_core_radius = ratio * spacing
+    # The taper can be positive just inside the wall, but those nodes cannot
+    # store particles. Exclude their mismatch before the approximate inverse
+    # can spread an impossible solid-interior target into fluid coefficients.
+    output_weight = lattice.fluid_weight * ~lattice.solid_interior
     blend = blend_represented_state(
         vpm_lattice_strength,
         fvm_target,
@@ -1236,13 +1273,13 @@ def renew_stable_overlap(
         spacing,
         core_radius=base_core_radius,
         amplification_cap=amplification_cap,
-        output_weight=lattice.fluid_weight,
+        output_weight=output_weight,
         compute_final_representation=compute_diagnostics,
         dimensions=2 if lattice.planar_span is not None else 3,
         slip_slab_bounds=tuple(lattice.transfer_box[4:6]) if lattice.slip_slab else None,
         lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
     )
-    comparison_weight = lattice.fluid_weight * lattice.mesh_weight
+    comparison_weight = output_weight * lattice.mesh_weight
     residual_before_prune: float | None = None
     if compute_diagnostics:
         if blend.represented_vortex_strength is None:

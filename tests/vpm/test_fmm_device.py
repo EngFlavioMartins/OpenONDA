@@ -553,12 +553,11 @@ def test_device_fmm_recovers_overflow_without_changing_stage_results():
     radius = np.full(64, 0.02, dtype=np.float32)
 
     reference = _DeviceFMMHarness(capacity=64).evaluate(position, strength, radius)
-    # Restrict the logical list before its kernels compile. The evaluator must
-    # discard truncated scratch, not consume it or advance a partial stage.
+    # Allocate genuinely undersized lists. The evaluator must discard their
+    # truncated contents, not advance a partial stage.
     assert harness.induction.workspace is not None
-    harness.induction._ensure_workspace(64)
+    harness.induction._replace_workspace(64, 1)
     old = harness.induction.workspace
-    old.max_pairs = 1
     old.profile_passes = True
     with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
         result = harness.evaluate(position, strength, radius)
@@ -571,7 +570,7 @@ def test_device_fmm_recovers_overflow_without_changing_stage_results():
     assert harness.induction.workspace.max_n_particles == 64
     assert harness.induction.workspace.max_pairs > 1
     assert harness.induction.workspace.profile_passes
-    assert harness.induction.diagnostics.interaction_list_resizes == 1
+    assert 1 <= harness.induction.diagnostics.interaction_list_resizes <= 4
     assert harness.induction.diagnostics.stage_evaluations == 1
     assert harness.induction.diagnostics.host_particle_transfers == 0
 

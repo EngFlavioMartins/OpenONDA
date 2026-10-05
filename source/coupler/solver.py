@@ -942,12 +942,17 @@ class FVMVPMCoupler:
                 transfer_result, fvm_time, transfer_time = advance_iterated_interface(
                     self, face_geometry, next_velocity
                 )
+                boundary_time += self._last_interface_iteration_diagnostics["phase_seconds"][
+                    "boundary_refresh"
+                ]
             else:
                 fvm_time = advance_fvm(
                     self, *face_geometry, velocity_boundary_condition_old, next_velocity
                 )
                 transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
+                refresh_started = time.perf_counter()
                 update_boundary_history_after_replacement(self, *face_geometry)
+                boundary_time += time.perf_counter() - refresh_started
             health_output_started = time.perf_counter()
             with collective_phase(self._comm, "VPM health check and output"):
                 if self._is_master:

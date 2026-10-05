@@ -344,11 +344,15 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             # arrays for the entire pressure loop.
             velocity_iter = velocity_star
             pressure_geometry = None
+            # This loop applies pressure projections to one solved momentum
+            # predictor. No off-diagonal momentum solve occurs between PISO
+            # correctors, so refreshing H/A from changed pressure ghosts would
+            # silently change that predictor rather than improve its pressure.
+            frozen_velocity_h_over_a = None
 
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params["n_nonorthogonal_correctors"])
                 pressure_before_nonorthogonal_sweeps = kinematic_pressure[:n_elem].copy()
-                frozen_velocity_h_over_a = None
                 for non_ortho in range(n_non_ortho + 1):
                     # Coupling can intentionally replace a patch type between
                     # calls.  Keep cached indexing only while that structural
@@ -393,8 +397,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         frozen_velocity_h_over_a=frozen_velocity_h_over_a,
                         return_workspace=True,
                     )
-                    if pressure_geometry is None:
-                        pressure_geometry = pressure_workspace
+                    pressure_geometry = pressure_workspace
                     if frozen_velocity_h_over_a is None:
                         frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
                     self._timer.log(

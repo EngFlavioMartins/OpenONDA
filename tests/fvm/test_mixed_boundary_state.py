@@ -47,7 +47,8 @@ def test_initial_field_setters_refresh_mixed_faces_and_histories(solver, setter)
     normal, un, gt = data(solver)
     solver.set_normal_velocity_tangential_gradient_boundary_condition(un, gt, "inlet")
     x = solver.get_cell_centre_coordinates()
-    velocity = x @ np.array([[0.2, -0.7, 1.3], [0.6, -0.1, -0.4], [-0.8, 1.2, -0.1]])
+    gradient = np.array([[0.2, -0.7, 1.3], [0.6, -0.1, -0.4], [-0.8, 1.2, -0.1]])
+    velocity = x @ gradient
     if setter == "set_initial_state":
         solver.set_initial_state(velocity, x @ [0.1, 0.3, -0.2])
     else:
@@ -59,6 +60,11 @@ def test_initial_field_setters_refresh_mixed_faces_and_histories(solver, setter)
     distance = np.sum(solver.geo_data["cell_connection_vector"][faces] * normal, axis=1)
     expected = velocity[owners] + (un - np.sum(velocity[owners] * normal, axis=1))[:, None] * normal
     expected += distance[:, None] * gt
+    tangent_displacement = (
+        solver.geo_data["cell_connection_vector"][faces] - distance[:, None] * normal
+    )
+    skew_increment = tangent_displacement @ gradient
+    expected += skew_increment - np.sum(skew_increment * normal, axis=1)[:, None] * normal
     np.testing.assert_allclose(solver.velocity[ghosts], expected, rtol=0, atol=2e-14)
     np.testing.assert_array_equal(solver.velocity_old, solver.velocity)
     np.testing.assert_array_equal(solver.velocity_older, solver.velocity)

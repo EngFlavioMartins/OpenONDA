@@ -162,6 +162,9 @@ def test_exact_operator_dependencies_and_unknown_bindings_decline(monkeypatch):
             (h.base, "_stretching_mode", 0),
             (h.base, "stretching_scheme", "MIXED"),
             (h.base.workspace, "gradient_tail_cutoff", 123.0),
+            (h.base.workspace, "max_m2l_pairs", 1),
+            (h.base.workspace, "max_near_pairs", 1),
+            (h.base.workspace, "max_queue_pairs", 1),
             (h.base.workspace.tree, "theta_sq", 0.005),
             (h.physics, "max_evaluation_points", 7),
         ]

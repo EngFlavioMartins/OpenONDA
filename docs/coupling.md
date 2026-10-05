@@ -49,13 +49,33 @@ The slab model retains all three velocity and vorticity components. Coupled runs
 
 `coupling_patch` selects the outer FVM patch. Keep the [solid and slip boundary conditions](fvm.md#boundary-conditions) separate from this patch.
 
-VPM supplies normal velocity and the tangential normal velocity derivative. The FVM pressure condition is `fixedFluxPressure`. This mixed trace is used by every coupled case.
+VPM supplies normal velocity and the tangential normal velocity derivative. The FVM pressure condition is `fixedFluxPressure`. This mixed trace is used by every coupled case. Reapplying it retains the previously computed pressure gradient for the next momentum predictor; the pressure correction updates that gradient to enforce the new flux.
+
+The continuous velocity condition follows Billuart, Duponcheel, Winckelmans and Chatelain, [*A weak coupling between a near-wall Eulerian solver and a Vortex Particle-Mesh method for the efficient simulation of 2D external flows*](https://doi.org/10.1016/j.jcp.2022.111726), *Journal of Computational Physics* **473** (2023), 111726, Section 3.1, Eqs. (11)–(14). The original paper treats two-dimensional flow. For a locally planar boundary, define the outward unit normal $\mathbf{n}$, tangential projector $\mathbf{P}=\mathbf{I}-\mathbf{n}\mathbf{n}^T$, and velocity Jacobian $J_{ij}=\partial U_i/\partial x_j$. OpenONDA prescribes
+
+$$
+\mathbf{U}_\mathrm{FVM}\cdot\mathbf{n}
+=\mathbf{U}_\mathrm{VPM}\cdot\mathbf{n},
+\qquad
+\mathbf{P}\,\partial_n\mathbf{U}_\mathrm{FVM}
+=\mathbf{P}\,\mathbf{J}_\mathrm{VPM}\mathbf{n}.
+$$
+
+The planar identity $\mathbf{P}\,\partial_n\mathbf{U}=\nabla_t(\mathbf{U}\cdot\mathbf{n})-\mathbf{n}\times\boldsymbol{\omega}$ connects this derivative to the paper's vorticity condition when $\boldsymbol{\omega}=\nabla\times\mathbf{U}$. OpenONDA evaluates the derivative from the induced VPM velocity; equivalence to a separately reconstructed particle-vorticity trace requires consistency with that curl. Tangential velocity values remain part of the FVM solution, so a tangential velocity difference alone does not indicate a violated boundary condition.
+
+`fixedFluxPressure` is OpenONDA's flux-compatible FVM realization, rather than a pressure value independently supplied by the paper or VPM. It reconstructs the pressure-free momentum field at the boundary face before comparing it with the prescribed normal flux. The same predictor is retained through the pressure corrections belonging to one momentum solve, and refreshed by the next momentum predictor. Comparing a cell-centred momentum field directly with a face-centred velocity would introduce a pressure error even on an orthogonal mesh.
+
+The [face reconstruction](../source/solvers/fvm/fields/mixed_velocity_boundary.py) accounts for tangential owner-to-face displacement on skew faces. Velocity, normal diffusion and pressure face values each receive their corresponding geometric correction; the prescribed VPM derivative is unchanged. The boundary-gradient correction also subtracts the tangential displacement before computing the normal derivative, keeping viscous stress consistent with the face values.
+
+Boundary-only least-squares stencils reuse static mesh geometry and include real processor-neighbour cells, avoiding an additional whole-domain gradient calculation. For a pressure face on a one-cell-thick mesh, real neighbours can leave one derivative undetermined. Only that unresolved direction uses the lagged native boundary data, frozen with the momentum predictor; resolved directions retain their real-cell reconstruction. This compatibility fallback does not establish higher-order accuracy in a direction without enough real-cell support. Unresolved directions without usable boundary support raise an error.
 
 ## Vorticity transfer
 
 Every coupled case uses M4-prime particle renewal with an advective release buffer and GBD diffusion. Set the particle and GBD grid spacings equal, use M4-prime remeshing and choose an absolute vorticity pruning threshold. FVM replaces the inner particle representation while VPM retains the released wake.
 
 `eta_blend_width` is the inward width, in metres, over which FVM authority increases from zero to one. Zero gives a sharp transition. `vpm_only_width` reserves a band just inside the transfer faces entirely for VPM and must be smaller than the blend width. The tutorials use widths $6h$ and $2h$, respectively.
+
+Renewal compares FVM vorticity with the Gaussian field represented by the particles, then corrects the existing particle strengths using that difference. An already matching pair of fields is unchanged by this representation correction. Directly blending FVM vorticity with particle coefficients would apply an extra smoothing at each exchange. `transfer_amplification_cap` limits the local correction to avoid accumulating large coefficients when a near-wall target cannot be resolved by the particle cores. Remeshing and pruning have their own errors, so this consistency property does not replace resolution checks.
 
 Buffered renewal provides a release buffer of length
 
@@ -65,11 +85,13 @@ $$
 
 `transfer_vorticity_cutoff` sets the interior pruning threshold in 1/s; it tapers to the configured GBD floor at release. Check wake sensitivity to pruning when choosing spacing and thresholds. Renewal corrects total vector strength and linear impulse $\mathbf{I}=\tfrac12\sum_i\mathbf{x}_i\times\boldsymbol{\Gamma}_i$; this does not guarantee pointwise vorticity accuracy.
 
+GBD pruning also preserves angular impulse and keeps moment recovery within connected, wall-visible fluid components. A weak component can have adequate matrix rank yet require excessive strength correction after pruning. In that case GBD retains its original post-diffusion donor nodes within the declared particle capacity and repeats the unchanged moment checks. The stronger components and successful recovery path retain their existing treatment. `support_augmented_node_count` records the added support; insufficient capacity raises before the diffusion grid is changed.
+
 ## Time stepping and configuration
 
 Coupled runs require fixed steps with an integer ratio $n=\Delta t_\mathrm{VPM}/\Delta t_\mathrm{FVM}$. Each exchange advances VPM, applies its boundary trace during $n$ FVM substeps, then renews the inner particles while retaining the outer wake.
 
-`interface_iterations` limits repeated FVM solves and renewal at the same physical endpoint. Cylinder and cube allow three sweeps. The initial interface estimate uses accepted trace history; a rejected estimate is retried from the unpredicted trace. Output times must align with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
+`interface_iterations` limits repeated FVM solves and renewal at the same physical endpoint. Cylinder allows four sweeps and cube allows three. The initial interface estimate uses accepted trace history; a rejected estimate is retried from the unpredicted trace. Output times must align with exchanges. `interface_normal_tolerance` has units m/s; `interface_gradient_tolerance` has units 1/s. Inspect convergence when changing the exchange interval or overlap width.
 
 Edit the physical constants, mesh and solver configurations in a tutorial's `setup.py`. `FVMSetup`, `VPMCase` and the mesh define the flow problem; `CouplerSetup` supplies the overlap, convergence tolerances and output schedule. The cylinder constructs these objects in `build_case()`. For example, the cube configuration uses:
 

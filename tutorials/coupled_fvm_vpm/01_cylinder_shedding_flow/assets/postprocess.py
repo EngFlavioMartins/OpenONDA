@@ -113,21 +113,6 @@ def history_coverage(candidate: pd.DataFrame, reference: pd.DataFrame) -> dict:
     }
 
 
-def profile(path: Path, time: float) -> pd.DataFrame:
-    """Load one native line-sampler state at an exact saved time."""
-    columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
-    frame = profile_history(path, columns)
-    available = np.unique(frame.time.to_numpy(dtype=float))
-    match = match_saved_times([time], available)
-    if not match.times:
-        raise ValueError(f"{path} has no profile at t={time:g} s")
-    native_time = available[match.indices[1][0]]
-    selected = frame[frame.time == native_time].copy()
-    if selected.position_y.duplicated().any():
-        raise ValueError(f"{path} has duplicate transverse positions at t={native_time:g} s")
-    return selected.sort_values("position_y")
-
-
 def profile_history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
     """Load finite line profiles whose time repeats once per spatial point."""
     frame = pd.read_csv(path)
@@ -143,17 +128,26 @@ def profile_history(path: Path, columns: tuple[str, ...]) -> pd.DataFrame:
     return frame
 
 
-def latest_common_profile_time(paths: tuple[Path, ...]) -> float:
-    """Return the latest physical time stored by every requested profile."""
+def coincident_profiles(paths: tuple[Path, ...]):
+    """Load each history once and yield its native profiles at every common clock."""
     columns = ("position_x", "position_y", "position_z", *VELOCITY_COLUMNS)
-    series = []
-    for path in paths:
-        frame = profile_history(path, columns)
-        series.append(np.unique(frame.time.to_numpy(dtype=float)))
-    common = match_saved_times(*series)
+    groups = {
+        path: tuple(profile_history(path, columns).groupby("time", sort=True))
+        for path in dict.fromkeys(paths)
+    }
+    common = match_saved_times(*([time for time, _ in states] for states in groups.values()))
     if not common.times:
         raise ValueError("Velocity profiles have no common physical sample time")
-    return common.times[-1]
+    for index, time in enumerate(common.times):
+        profiles = {}
+        for (path, states), native_indices in zip(groups.items(), common.indices, strict=True):
+            native_time, selected = states[native_indices[index]]
+            if selected.position_y.duplicated().any():
+                raise ValueError(
+                    f"{path} has duplicate transverse positions at t={native_time:g} s"
+                )
+            profiles[path] = selected.sort_values("position_y")
+        yield time, profiles
 
 
 def write_json(name: str, payload: dict) -> None:

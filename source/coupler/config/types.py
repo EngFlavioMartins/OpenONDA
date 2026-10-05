@@ -26,7 +26,10 @@ class CouplerSetup:
     transfer_vorticity_cutoff: float = 0.05
     """Interior soft-pruning threshold in 1/s, at least the VPM GBD floor."""
     transfer_amplification_cap: float = 1.8
-    """Maximum gain in the represented-state correction; at least one."""
+    """Correction gain and coefficient bound relative to the target peak; at least one.
+
+    Existing larger coefficients are retained when the fields already agree.
+    """
     transfer_diagnostic_interval_steps: int = 1
     """Accepted transfers between expensive diagnostics; positive."""
     transfer_discretization_error_limit: float = 0.08

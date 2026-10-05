@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,13 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     module = _setup_module()
     fvm, vpm, coupler, mesh = module.build_case()
     assert fvm.samplers[0].reference_area == pytest.approx(0.96)
-    assert coupler.interface_iterations == 3
+    assert coupler.interface_iterations == 4
+    assert coupler.interface_normal_tolerance == pytest.approx(1e-5)
+    assert coupler.interface_gradient_tolerance == pytest.approx(1e-5)
+    assert coupler.freestream_velocity == [1.0, 0.1, 0.0]
+    assert fvm.samplers[0].reference_velocity == pytest.approx(1.0)
+    assert fvm.transport.kinematic_viscosity == pytest.approx(1 / 150)
+    assert coupler.transfer_region_bounds[:4] == pytest.approx((-1.25, 2.05, -1.25, 1.25))
     assert vpm.numerics.induction.z_min == pytest.approx(-0.48)
     assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.04)
     assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
@@ -76,7 +83,7 @@ def test_builder_resolves_independent_span_dz_and_particle_spacing():
     assert (vpm.numerics.induction.z_min, vpm.numerics.induction.z_max) == (-0.24, 0.24)
     assert coupler.eta_blend_width == pytest.approx(0.64)
     assert coupler.vpm_only_width == pytest.approx(0.16)
-    assert coupler.interface_iterations == 3
+    assert coupler.interface_iterations == 4
 
 
 def test_builder_rejects_exchange_clock_and_release_width_errors():
@@ -94,16 +101,42 @@ def test_overridden_mesh_keeps_exact_slip_planes_when_dz_equals_hxy():
     _fvm, vpm, _coupler, mesh = module.build_case(overrides={"hxy": 0.064, "span": 0.96})
     assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
     assert mesh.domain.bounds[:4] == pytest.approx(mesh.source.domain.bounds[:4])
-    assert mesh.domain.bounds[:4] == pytest.approx((-1.6, 1.6, -1.6, 1.6))
+    # Anchored Cartesian boxes expand to cell planes: 2.4 / .064 = 37.5.
+    assert mesh.source.requested_domain.bounds[:4] == pytest.approx((-1.6, 2.4, -1.6, 1.6))
+    assert mesh.domain.bounds[:4] == pytest.approx((-1.6, 2.432, -1.6, 1.6))
     assert mesh.levels[0] == pytest.approx(-0.48)
     assert mesh.levels[-1] == pytest.approx(0.48)
     assert vpm.numerics.induction.z_min == pytest.approx(-0.48)
     assert vpm.numerics.induction.z_max == pytest.approx(0.48)
 
 
-@pytest.mark.parametrize("hxy", [0.1, 0.08, 0.064])
-def test_grid_family_has_one_resolved_outer_xy_box(hxy):
+@pytest.mark.parametrize("hxy, downstream", [(0.1, 2.4), (0.08, 2.4), (0.064, 2.432), (0.04, 2.4)])
+def test_grid_family_reports_anchored_outer_xy_box(hxy, downstream):
     module = _setup_module()
     _fvm, _vpm, _coupler, mesh = module.build_case(overrides={"hxy": hxy})
-    assert mesh.source.domain.bounds[:4] == pytest.approx((-1.6, 1.6, -1.6, 1.6))
-    assert mesh.domain.bounds[:4] == pytest.approx((-1.6, 1.6, -1.6, 1.6))
+    assert mesh.source.requested_domain.bounds[:4] == pytest.approx((-1.6, 2.4, -1.6, 1.6))
+    assert mesh.source.domain.bounds[:4] == pytest.approx((-1.6, downstream, -1.6, 1.6))
+    assert mesh.domain.bounds[:4] == pytest.approx((-1.6, downstream, -1.6, 1.6))
+
+
+def test_fresh_mesh_reuse_requires_matching_surface_and_mesher_identity(tmp_path):
+    module = _setup_module()
+    *_, mesh = module.build_case()
+    metadata = {
+        "mesh_generation": {
+            "domain": mesh.domain.bounds,
+            "extrusion_levels": mesh.levels,
+            "resolved_background_cell_size": mesh.max_cell_size,
+        },
+    }
+    path = tmp_path / "mesh.npz"
+    np.savez(path, metadata=json.dumps(metadata))
+    assert module.cached_mesh_matches_case(path, mesh)
+    assert not module.cached_mesh_matches_case(path, mesh, require_identity=True)
+    metadata["cylinder_mesh_cache_identity"] = module.mesh_cache_identity(mesh)
+    np.savez(path, metadata=json.dumps(metadata))
+    assert module.cached_mesh_matches_case(path, mesh, require_identity=True)
+    changed_surface = tmp_path / "cylinder.stl"
+    changed_surface.write_bytes(module.CYLINDER_STL.read_bytes() + b"\n")
+    mesh.source.surfaces = (module.msh.STLSurface(changed_surface, patch="cylinder"),)
+    assert not module.cached_mesh_matches_case(path, mesh)

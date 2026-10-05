@@ -4,6 +4,47 @@ from __future__ import annotations
 
 import numpy as np
 
+from .boundary_reconstruction import boundary_owner_gradient
+
+
+def boundary_skew_velocity_increment(
+    velocity: np.ndarray,
+    mesh_data: dict,
+    geo_data: dict,
+    face_indices: np.ndarray,
+    normal: np.ndarray,
+    owner_to_face: np.ndarray,
+) -> np.ndarray | None:
+    """Return ``J_P r_t`` from real-cell stencils, or None on orthogonal faces.
+
+    This local reconstruction consumes the field's existing processor halos;
+    it performs no collectives, including when called by a patch setter. Only
+    geometric stencil weights are cached. Physical face ghosts are excluded,
+    so the correction does not depend on patch update order or a previous
+    mixed reconstruction.
+    """
+    normal_distance = np.einsum("ij,ij->i", owner_to_face, normal)
+    tangent_displacement = owner_to_face - normal_distance[:, np.newaxis] * normal
+    # Ignore floating-point projection noise, retaining the previous
+    # reconstruction and its arithmetic on orthogonal meshes.
+    skew = np.linalg.norm(tangent_displacement, axis=1) > (
+        1.0e-12 * np.linalg.norm(owner_to_face, axis=1)
+    )
+    if not np.any(skew):
+        return None
+    gradient = boundary_owner_gradient(
+        velocity,
+        mesh_data,
+        geo_data,
+        face_indices[skew],
+        include_physical_ghosts=False,
+        displacements=tangent_displacement[skew],
+    )
+    increment = np.zeros((len(face_indices), 3), dtype=np.float64)
+    # Native gradients are indexed by derivative direction, then component.
+    increment[skew] = np.einsum("fd,fdc->fc", tangent_displacement[skew], gradient)
+    return increment
+
 
 def reconstruct_normal_velocity_tangential_gradient(
     owner_velocity: np.ndarray,
@@ -11,13 +52,32 @@ def reconstruct_normal_velocity_tangential_gradient(
     normal_distance: np.ndarray,
     normal_velocity: np.ndarray,
     tangential_gradient: np.ndarray,
+    *,
+    skew_velocity_increment: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Return face velocities satisfying the directional mixed condition.
 
-    The boundary data prescribe ``U_f . n`` and
-    ``(I - nn^T) (U_f - U_P) / d_n``.  Boundary ghost slots in the native FVM
+    The boundary data prescribe ``U_f . n`` and the tangential part of
+    ``dU/dn``. With ``r_t = C_f - C_P - d_n n``, the optional increment
+    ``J_P r_t`` supplies the tangential owner-to-face displacement separately
+    from the prescribed normal derivative. Boundary ghost slots in the native FVM
     store face-centred values, so the reconstructed value can be consumed
     directly by convection, gradients, and face-flux evaluation.
+
+    The continuous coupling condition follows Billuart, Duponcheel,
+    Winckelmans and Chatelain, "A weak coupling between a near-wall Eulerian
+    solver and a Vortex Particle-Mesh method for the efficient simulation of
+    2D external flows", Journal of Computational Physics 473 (2023), 111726,
+    https://doi.org/10.1016/j.jcp.2022.111726, Section 3.1, Eqs. (11)-(12).
+    On a planar boundary, with P = I - nn^T and omega = curl(U),
+    P dU/dn = grad_t(U . n) - n x omega. The coupler supplies P J_VPM n
+    from the induced-velocity Jacobian; equivalence to a separately sampled
+    vorticity trace requires that trace to equal curl(U_VPM).
+
+    The skew increment is projected tangentially, preserving the prescribed
+    normal velocity and physical normal derivative. The solver's
+    fixedFluxPressure condition separately enforces the prescribed normal
+    flux; it is not an independent pressure trace prescribed by the paper.
     """
     owner = np.asarray(owner_velocity, dtype=np.float64)
     unit_normals = np.asarray(normal, dtype=np.float64)
@@ -50,11 +110,20 @@ def reconstruct_normal_velocity_tangential_gradient(
         raise ValueError("mixed velocity boundary requires positive owner-to-face distance")
 
     owner_normal = np.einsum("ij,ij->i", owner, unit_normals)
-    return (
+    reconstructed = (
         owner
         + (prescribed_normal - owner_normal)[:, np.newaxis] * unit_normals
         + distance[:, np.newaxis] * prescribed_tangent_gradient
     )
+    if skew_velocity_increment is not None:
+        increment = np.asarray(skew_velocity_increment, dtype=np.float64)
+        if increment.shape != expected_vector_shape or not np.all(np.isfinite(increment)):
+            raise ValueError(
+                f"skew_velocity_increment must be finite with shape {expected_vector_shape}"
+            )
+        normal_increment = np.einsum("ij,ij->i", increment, unit_normals)
+        reconstructed += increment - normal_increment[:, np.newaxis] * unit_normals
+    return reconstructed
 
 
 def update_normal_velocity_tangential_gradient_boundary(
@@ -92,4 +161,7 @@ def update_normal_velocity_tangential_gradient_boundary(
         normal_distance,
         normal_velocity,
         tangential_gradient,
+        skew_velocity_increment=boundary_skew_velocity_increment(
+            velocity, mesh_data, geo_data, faces, normal, owner_to_face
+        ),
     )

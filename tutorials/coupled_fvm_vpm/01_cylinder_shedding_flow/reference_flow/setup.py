@@ -7,8 +7,8 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
-from openonda.cylinder_campaign import initialize_cylinder_perturbation
 from openonda.cylinder_case import DEFAULT_CYLINDER_CASE
+from openonda.cylinder_reference_startup import run_reference_cylinder
 from openonda.tutorial_support import cylinder_sampling as observations
 
 # Physical problem
@@ -16,6 +16,9 @@ START_FROM = "latest"  # allrun.sh preserves outputs; allclean.sh is explicit.
 
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = 1.0
+STARTUP_FREESTREAM_VELOCITY = (1.0, 0.1, 0.0)
+STARTUP_DURATION = 2.0
+STARTUP_TRANSITION_DURATION = 1.0
 DENSITY = 1.0
 REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
@@ -128,7 +131,7 @@ def build_case(
         ),
         turbulence=fvm.TurbulenceConfig.none(),
         boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", VELOCITY),
+            fvm.BoundaryConfig.inlet("inlet", list(STARTUP_FREESTREAM_VELOCITY)),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
@@ -136,7 +139,7 @@ def build_case(
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
-        initial_velocity=VELOCITY,
+        initial_velocity=list(STARTUP_FREESTREAM_VELOCITY),
     )
     return setup, mesh
 
@@ -148,15 +151,30 @@ def create_solver(
     output_root: Path | None = None,
     end_time: float | None = None,
     cores: int | None = None,
+    solution_dir: Path | None = None,
+    samples_dir: Path | None = None,
 ) -> fvm.FVMSolver:
     setup, mesh = build_case(name, h, end_time=end_time, cores=cores)
     artifact_root = CASE_DIR if output_root is None else Path(output_root)
     return fvm.create_fvm_solver(
         setup,
         case_dir=artifact_root,
-        solution_dir=artifact_root / "solution",
-        samples_dir=artifact_root / "samples",
+        solution_dir=artifact_root / "solution" if solution_dir is None else solution_dir,
+        samples_dir=artifact_root / "samples" if samples_dir is None else samples_dir,
         mesh=mesh,
+    )
+
+
+def run_solver(solver: fvm.FVMSolver, *, start_from=START_FROM) -> None:
+    """Apply the coupled case's startup schedule through native FVM evolution."""
+    run_reference_cylinder(
+        solver,
+        span=SPAN,
+        start_from=start_from,
+        startup_duration=STARTUP_DURATION,
+        startup_transition_duration=STARTUP_TRANSITION_DURATION,
+        startup_freestream_velocity=STARTUP_FREESTREAM_VELOCITY,
+        steady_freestream_velocity=tuple(VELOCITY),
     )
 
 
@@ -168,8 +186,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     with create_solver(arguments.name, arguments.h) as solver:
-        initialize_cylinder_perturbation(solver, SPAN)
-        solver.run(start_from=START_FROM)
+        run_solver(solver)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from source.solvers.vpm.physics.induction.gaussian_mesh.planning import (
+    correction_query_reserve,
     device_field_execution_plan,
     field_execution_plan,
     required_channels,
@@ -41,6 +42,33 @@ def test_device_budget_reserves_entire_correction_and_separate_fft_cap():
     assert selected.payload_bytes + plan_cap <= effective <= cap
 
 
+def test_checkpoint_275_query_window_avoids_observed_device_admission_cliff():
+    # Checkpoint source count and widened midspan sampler envelope. Only the
+    # retained inverse-output shape changes; the logical/FFT grids stay fixed.
+    shape, fft, retained = (411, 155, 53), (825, 315, 105), (147, 143, 11)
+    options = (shape, fft, 293086, 2665, 10, 4)
+    cap, plan_cap, correction = 2*1024**3, 128*1024**2, 256*1024**2
+    for free in (1540947968, 1603862528):
+        with pytest.raises(MemoryError, match="insufficient free device memory"):
+            device_field_execution_plan(*options, cap, plan_cap, correction, free)
+        plan, effective = device_field_execution_plan(
+            *options, cap, plan_cap, correction, free, retained_shape=retained
+        )
+        assert plan.mode == "streamed"
+        assert plan.payload_bytes + plan_cap + correction <= free
+        assert effective <= cap
+    full = field_execution_plan(*options, 8*1024**3, plan_cap)
+    cropped = field_execution_plan(*options, 8*1024**3, plan_cap, retained_shape=retained)
+    assert full.mode == cropped.mode == "all_channels"
+    assert full.payload_bytes - cropped.payload_bytes == 12*(math.prod(shape)-math.prod(retained))*4
+    assert full.metadata_bytes == cropped.metadata_bytes
+    assert full.radial_grid_passes == cropped.radial_grid_passes
+    assert full.inverse_transforms == cropped.inverse_transforms
+    for invalid in ((9, 20, 20), (412, 20, 20), (20, 20), (20.0, 20, 20)):
+        with pytest.raises(ValueError, match="retained query window"):
+            field_execution_plan(*options, cap, plan_cap, retained_shape=invalid)
+
+
 def test_runtime_low_memory_plan_matches_unconstrained_cuda_fields(monkeypatch):
     cp = pytest.importorskip("cupy")
     from source.solvers.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
@@ -56,11 +84,12 @@ def test_runtime_low_memory_plan_matches_unconstrained_cuda_fields(monkeypatch):
     # Simulate only the admission value, not CUDA allocation success or field
     # arithmetic. Actual transforms and gathering still execute on the GPU.
     plan_cap = 8 * 1024**2
-    free = original_plan.payload_bytes + plan_cap + 256 * 1024**2 - 1
+    query_reserve = correction_query_reserve(1, np.dtype("float32").itemsize)
+    free = original_plan.payload_bytes + plan_cap + query_reserve - 1
     monkeypatch.setattr(cp.cuda.runtime, "memGetInfo", lambda: (free, 6 * 1024**3))
     with GaussianImageFields(x, gamma, sigma, q, **options, max_plan_bytes=plan_cap) as constrained:
         assert constrained.execution_plan.mode == "streamed"
-        assert constrained.pool.get_limit() == free - constrained.max_correction_bytes
+        assert constrained.pool.get_limit() == free - query_reserve
         u, j, report = constrained.evaluate(images)
         for got, baseline in zip((cp.asnumpy(u), cp.asnumpy(j)), expected, strict=True):
             np.testing.assert_allclose(
@@ -151,6 +180,7 @@ def test_streamed_fields_match_fast_and_direct_with_coherent_walls(dtype, famili
         u, j, _ = fast.evaluate(images)
         baseline = cp.asnumpy(u), cp.asnumpy(j)
         shape, fft = fast.shape, fast.fft_shape
+        retained = fast.compact_shape
         _, world, _ = finite_images(images, 0.0, 0.193, fast.cells, 513, include_primary=True)
         truth = direct_finite_images(x, gamma, sigma, q, world)[:2]
         del u, j
@@ -158,13 +188,14 @@ def test_streamed_fields_match_fast_and_direct_with_coherent_walls(dtype, famili
     volume = math.prod(fft)
     spectrum = fft[0] * fft[1] * (fft[2] // 2 + 1)
     meta = (2 * count + queries) * (12 + 30 * size) + (count + queries) * 24 + queries * 12 * size
-    low = (14 * spectrum + 2 * volume + 12 * math.prod(shape)) * size + meta
-    high = (40 * spectrum + 10 * volume + 12 * math.prod(shape)) * size + meta - 1
+    low = (14 * spectrum + 2 * volume + 12 * math.prod(retained)) * size + meta
+    high = (40 * spectrum + 10 * volume + 12 * math.prod(retained)) * size + meta - 1
     plan_cap = 8 * 1024**2
     choices = []
     for cap in np.linspace(low, high, 64, dtype=np.int64):
         plan = field_execution_plan(
-            shape, fft, count, queries, 10, size, int(cap) + plan_cap, plan_cap
+            shape, fft, count, queries, 10, size, int(cap) + plan_cap, plan_cap,
+            retained_shape=retained,
         )
         if (
             plan.mode == "streamed"

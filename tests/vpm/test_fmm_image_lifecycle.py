@@ -39,11 +39,15 @@ def rig(monkeypatch):
     )
 
     class Source:
-        def __init__(self, count, *_args, max_pairs=None, **_kwargs):
+        def __init__(self, count, *_args, max_pairs=None, _list_capacities=None, **_kwargs):
             if state.source_alloc_failure:
                 raise MemoryError("source allocation failed")
             self.max_n_particles = count
-            self.max_pairs = 32 * count if max_pairs is None else max_pairs
+            capacities = 32 * count if max_pairs is None else max_pairs
+            self.list_capacities = device._normalize_list_capacities(
+                capacities if _list_capacities is None else _list_capacities
+            )
+            self.max_pairs = max(self.list_capacities)
             self.target_batch_capacity = 16
             self.profile_passes = False
             self.destroyed = False
@@ -346,6 +350,152 @@ def test_failed_source_replacement_does_not_retain_destroyed_workspace(rig, oper
     assert source.destroyed and target.destroyed
     assert rig.backend.workspace is None
     assert rig.backend._target_workspace is None
+
+
+def _grow_stage_lists(rig):
+    capacity = rig.backend.workspace.max_pairs
+    error = device._InteractionListCapacityError(
+        capacity, m2l=capacity + 1, near=0, queue_a=0, queue_b=0
+    )
+    with pytest.warns(RuntimeWarning, match="FMM interaction-list storage"):
+        rig.backend._grow_interaction_lists(error)
+
+
+def test_warm_stage_workspace_keeps_sources_targets_and_cache(rig):
+    _query(rig)
+    source, target = rig.backend.workspace, rig.backend._target_workspace
+    events = list(rig.events)
+
+    def forbidden_reclaim():
+        raise AssertionError("warm scratch must not discard the mesh cache")
+
+    with rig.backend.stage_workspace(4, reclaim=forbidden_reclaim):
+        assert rig.backend._reclaim_stage_cache is forbidden_reclaim
+        assert rig.backend.workspace is source
+        assert rig.backend._target_workspace is target
+    assert getattr(rig.backend, "_reclaim_stage_cache", None) is None
+    assert rig.events == events
+
+
+@pytest.mark.parametrize("growth", ["sources", "lists"])
+def test_stage_workspace_reclaims_before_replacing_dependent_fields(rig, growth):
+    _query(rig)
+    source, target = rig.backend.workspace, rig.backend._target_workspace
+    calls = []
+
+    def reclaim():
+        assert rig.backend.workspace is source and not source.destroyed
+        assert rig.backend._target_workspace is target and not target.destroyed
+        calls.append("reclaim")
+        rig.events.append(("reclaim", source))
+
+    with rig.backend.stage_workspace(9 if growth == "sources" else 4, reclaim=reclaim):
+        if growth == "lists":
+            _grow_stage_lists(rig)
+        replacement = rig.backend.workspace
+        assert replacement is not source
+        assert replacement.max_n_particles == (9 if growth == "sources" else 4)
+        assert rig.backend._reclaim_stage_cache is reclaim
+    assert calls == ["reclaim"]
+    assert rig.events.index(("reclaim", source)) < rig.events.index(
+        ("target_destroyed", target)
+    ) < rig.events.index(("source_destroyed", source)) < rig.events.index(
+        ("source_created", replacement)
+    )
+    assert getattr(rig.backend, "_reclaim_stage_cache", None) is None
+
+
+@pytest.mark.parametrize("growth", ["sources", "lists"])
+def test_failed_cache_reclaim_preserves_fmm_and_target_state(rig, growth):
+    _query(rig)
+    source, target = rig.backend.workspace, rig.backend._target_workspace
+    events = list(rig.events)
+
+    def previous():
+        return None
+
+    rig.backend._reclaim_stage_cache = previous
+    last_tree_key = rig.backend._last_tree_key
+    prepared_key = getattr(rig.backend, "_prepared_target_key", None)
+    moments_ready = rig.backend._source_moments_ready
+
+    def reclaim():
+        raise ValueError("cache reclaim failed")
+
+    with (
+        pytest.raises(ValueError, match="cache reclaim failed"),
+        rig.backend.stage_workspace(9 if growth == "sources" else 4, reclaim=reclaim),
+    ):
+        _grow_stage_lists(rig)
+    assert rig.backend._reclaim_stage_cache is previous
+    assert rig.backend.workspace is source and not source.destroyed
+    assert rig.backend._target_workspace is target and not target.destroyed
+    assert rig.backend._last_tree_key == last_tree_key
+    assert getattr(rig.backend, "_prepared_target_key", None) == prepared_key
+    assert rig.backend._source_moments_ready is moments_ready
+    assert rig.events == events
+
+
+def test_stage_workspace_restores_callback_after_body_failure(rig):
+    _query(rig)
+
+    def previous():
+        return None
+
+    def reclaim():
+        return None
+
+    rig.backend._reclaim_stage_cache = previous
+    with (
+        pytest.raises(ValueError, match="caller failed"),
+        rig.backend.stage_workspace(4, reclaim=reclaim),
+    ):
+        assert rig.backend._reclaim_stage_cache is reclaim
+        raise ValueError("caller failed")
+    assert rig.backend._reclaim_stage_cache is previous
+
+
+def test_stage_workspace_restores_callback_after_allocation_failure(rig):
+    _query(rig)
+
+    def previous():
+        return None
+
+    rig.backend._reclaim_stage_cache = previous
+    calls = []
+    rig.source_alloc_failure = True
+    with (
+        pytest.raises(MemoryError, match="source allocation"),
+        rig.backend.stage_workspace(9, reclaim=lambda: calls.append("reclaim")),
+    ):
+        pytest.fail("failed scope entry must not execute its body")
+    assert calls == ["reclaim"]
+    assert rig.backend._reclaim_stage_cache is previous
+    assert rig.backend.workspace is None and rig.backend._target_workspace is None
+
+
+def test_nested_stage_workspaces_restore_the_enclosing_reclaim(rig):
+    _query(rig)
+    calls = []
+
+    def previous():
+        calls.append("previous")
+
+    def outer():
+        calls.append("outer")
+
+    def inner():
+        calls.append("inner")
+
+    rig.backend._reclaim_stage_cache = previous
+    with rig.backend.stage_workspace(4, reclaim=outer):
+        with rig.backend.stage_workspace(4, reclaim=inner):
+            _grow_stage_lists(rig)
+            assert rig.backend._reclaim_stage_cache is inner
+        assert rig.backend._reclaim_stage_cache is outer
+        _grow_stage_lists(rig)
+    assert calls == ["inner", "outer"]
+    assert rig.backend._reclaim_stage_cache is previous
 
 
 def test_empty_sources_publish_zero_without_target_allocation(rig):

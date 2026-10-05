@@ -50,6 +50,7 @@ tmp/
 *.tmp
 *.bak
 **/.openonda_run.lock
+**/.openonda-run.lock
 **/.cylinder_comparison.lock
 **/.running/
 
@@ -163,6 +164,8 @@ tests/**/reference_flow/**
 # See docs/verification/tutorial_results_archive.md.
 **/samples/
 **/study_results/
+**/previous_runs/
+tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/drag_recovery/
 **/assets/results/data.tar.gz
 **/assets/results/data.tar.gz.part[0-9]*
 **/assets/results/.results-pack-*/

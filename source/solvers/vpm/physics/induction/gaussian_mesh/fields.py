@@ -15,6 +15,7 @@ from scipy.fft import next_fast_len
 from .coordinates import finite_images, slab_coordinates
 from .correction import GaussianCoreCorrectionGPU
 from .planning import (
+    correction_query_reserve,
     device_field_execution_plan,
     field_execution_plan,
     query_batch_size,
@@ -48,9 +49,12 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
         type(order) is not int
         or order not in (4, 6, 8, 10)
         or len(shape) != 3
-        or len(fft_shape) != 3
         or any(type(n) is not int or not order <= n <= 2**30 for n in shape)
-        or any(type(f) is not int or f < 2 * n - 1 for n, f in zip(shape, fft_shape, strict=True))
+        or (fft_shape is not None and (
+            len(fft_shape) != 3
+            or any(type(f) is not int or f < 2 * n - 1
+                   for n, f in zip(shape, fft_shape, strict=True))
+        ))
     ):
         raise RuntimeError("invalid logical/linear-convolution domain metadata")
     with np.errstate(over="ignore", invalid="ignore"):
@@ -60,6 +64,49 @@ def _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
     first_lower = np.floor(np.nextafter(coordinate, -np.inf)) - order // 2 + 1
     first_upper = np.floor(np.nextafter(coordinate, np.inf)) - order // 2 + 1
     return bool(np.all(first_lower >= 0) and np.all(first_upper + order <= np.asarray(shape)))
+
+
+def _target_stencil_window(lattice, origin, order, shape):
+    """Integer output crop enclosing every admitted initial query stencil.
+
+    Keep the original logical origin for coordinate subtraction and cardinal
+    weights. The crop changes only which inverse-FFT cells are retained.
+    One-ULP bounds cover the same device subtraction as logical admission.
+    """
+    if len(lattice) == 0 or not _logical_stencils_fit(
+        lattice, origin, order, shape, None
+    ):
+        raise ValueError("initial query stencils must fit the logical field")
+    coordinate = np.asarray(lattice, dtype=np.float64) - np.asarray(origin, dtype=np.float64)
+    lower = np.floor(np.nextafter(coordinate, -np.inf)).min(axis=0) - order // 2 + 1
+    upper = np.floor(np.nextafter(coordinate, np.inf)).max(axis=0) - order // 2 + 1 + order
+    start = tuple(lower.astype(np.int64).tolist())
+    retained = tuple((upper - lower).astype(np.int64).tolist())
+    return start, retained
+
+
+def _retained_stencils_fit(lattice, origin, order, shape, fft_shape, start, retained_shape,
+                          *, source_shape=None):
+    """Admit only complete original stencils inside the retained output crop."""
+    if (len(start) != 3 or len(retained_shape) != 3
+            or any(type(s) is not int or type(n) is not int
+                   or s < 0 or n < order or s + n > full
+                   for s, n, full in zip(start, retained_shape, shape, strict=True))):
+        raise RuntimeError("invalid retained query-window metadata")
+    if source_shape is not None:
+        if (len(source_shape) != 3 or len(fft_shape) != 3
+                or any(type(s) is not int or not order <= s <= full
+                       or type(f) is not int or f < s + q - 1
+                       for s, q, full, f in zip(source_shape, retained_shape, shape, fft_shape, strict=True))):
+            raise RuntimeError("invalid source/query linear-convolution metadata")
+        fft_shape = None
+    if not _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
+        return False
+    coordinate = np.asarray(lattice, dtype=np.float64) - np.asarray(origin, dtype=np.float64)
+    lower = np.floor(np.nextafter(coordinate, -np.inf)) - order // 2 + 1
+    upper = np.floor(np.nextafter(coordinate, np.inf)) - order // 2 + 1 + order
+    return bool(np.all(lower >= np.asarray(start))
+                and np.all(upper <= np.asarray(start) + np.asarray(retained_shape)))
 
 
 _GAUSSIAN_RADIAL_CUDA = r"""    if(rho2<(real)1) {
@@ -82,7 +129,8 @@ _CUDA = (
 typedef REAL real;
 extern "C" __global__ void scatter(
     const long long total, const int order, const int *first, const real *weights,
-    const real *gamma, const int fy, const int fz, const long long volume, real *grid) {
+    const real *gamma,const int ox,const int oy,const int oz,
+    const int fy, const int fz, const long long volume, real *grid) {
   long long lane=(long long)blockIdx.x*blockDim.x+threadIdx.x;
   const int stencil=order*order*order;
   if(lane>=total) return;
@@ -93,27 +141,30 @@ extern "C" __global__ void scatter(
   const int *base=first+3*particle;
   const real *w=weights+3*order*particle;
   real factor=w[a]*w[order+b]*w[2*order+c];
-  long long index=((long long)(base[0]+a)*fy+base[1]+b)*fz+base[2]+c;
+  long long index=((long long)(base[0]+a-ox)*fy+base[1]+b-oy)*fz+base[2]+c-oz;
   for(int component=0;component<3;++component)
     atomicAdd(grid+component*volume+index, factor*gamma[3*particle+component]);
 }
 extern "C" __global__ void gaussian_kernel(
-    const long long volume, const int nx,const int ny,const int nz,
-    const int fx,const int fy,const int fz, const real hx,const real hy,const real hz,
+    const long long volume, const int sx,const int sy,const int sz,
+    const int tx,const int ty,const int tz,const int fx,const int fy,const int fz,
+    const long long ox,const long long oy,const long long oz,
+    const real hx,const real hy,const real hz,
     const long long *shifts,const int images,const real tau,
     const int axis,const int derivative,real *kernel) {
   long long lane=(long long)blockIdx.x*blockDim.x+threadIdx.x;
   if(lane>=volume) return;
   int iz=lane%fz, iy=(lane/fz)%fy, ix=lane/((long long)fy*fz);
-  if((ix>=nx && ix<fx-nx+1)||(iy>=ny && iy<fy-ny+1)||(iz>=nz && iz<fz-nz+1)) {
+  if((ix>=tx && ix<fx-sx+1)||(iy>=ty && iy<fy-sy+1)||(iz>=tz && iz<fz-sz+1)) {
     kernel[lane]=0; return;
   }
-  int lx=ix<nx?ix:ix-fx, ly=iy<ny?iy:iy-fy, lz=iz<nz?iz:iz-fz;
+  int lx=ix<tx?ix:ix-fx, ly=iy<ty?iy:iy-fy, lz=iz<tz?iz:iz-fz;
   real value=0;
   const real pi=(real)3.141592653589793238462643383279502884;
   const real pi15=(real)0.17958712212516656168908198362769276;
   for(int image=0;image<images;++image) {
-    real r[3]={(real)lx*hx,(real)ly*hy,(real)((long long)lz-shifts[image])*hz};
+    real r[3]={(real)((long long)lx+ox)*hx,(real)((long long)ly+oy)*hy,
+               (real)((long long)lz+oz-shifts[image])*hz};
     real r2=r[0]*r[0]+r[1]*r[1]+r[2]*r[2], rho2=r2/(tau*tau), a,b;
 """
     + _GAUSSIAN_RADIAL_CUDA
@@ -132,17 +183,18 @@ extern "C" __global__ void product_add(
 }
 extern "C" __global__ void gather(
     const int count,const int order,const int *first,const real *weights,
-    const int fy,const int fz,const real *field, const int component,real *output) {
+    const int ox,const int oy,const int oz,const int fy,const int fz,
+    const real *field, const int component,const int components,real *output) {
   int target=blockIdx.x*blockDim.x+threadIdx.x;
   if(target>=count) return;
   const int *base=first+3*target;
   const real *w=weights+3*order*target;
   double value=0;
   for(int a=0;a<order;++a) for(int b=0;b<order;++b) for(int c=0;c<order;++c) {
-    long long index=((long long)(base[0]+a)*fy+base[1]+b)*fz+base[2]+c;
+    long long index=((long long)(base[0]+a-ox)*fy+base[1]+b-oy)*fz+base[2]+c-oz;
     value+=(double)w[a]*(double)w[order+b]*(double)w[2*order+c]*(double)field[index];
   }
-  output[12*(long long)target+component]=(real)value;
+  output[components*(long long)target+component]=(real)value;
 }
 """
 )
@@ -153,12 +205,13 @@ _GAUSSIAN_CHANNEL_BODY = (
   if(lane>=volume) return;
   int iz=lane%fz, iy=(lane/fz)%fy, ix=lane/((long long)fy*fz);
   real values[9]={0,0,0,0,0,0,0,0,0};
-  if(!((ix>=nx && ix<fx-nx+1)||(iy>=ny && iy<fy-ny+1)||(iz>=nz && iz<fz-nz+1))) {
-    int lx=ix<nx?ix:ix-fx, ly=iy<ny?iy:iy-fy, lz=iz<nz?iz:iz-fz;
+  if(!((ix>=tx && ix<fx-sx+1)||(iy>=ty && iy<fy-sy+1)||(iz>=tz && iz<fz-sz+1))) {
+    int lx=ix<tx?ix:ix-fx, ly=iy<ty?iy:iy-fy, lz=iz<tz?iz:iz-fz;
     const real pi=(real)3.141592653589793238462643383279502884;
     const real pi15=(real)0.17958712212516656168908198362769276;
     for(int image=0;image<images;++image) {
-      real r[3]={(real)lx*hx,(real)ly*hy,(real)((long long)lz-shifts[image])*hz};
+      real r[3]={(real)((long long)lx+ox)*hx,(real)((long long)ly+oy)*hy,
+                 (real)((long long)lz+oz-shifts[image])*hz};
       real r2=r[0]*r[0]+r[1]*r[1]+r[2]*r[2], rho2=r2/(tau*tau), a,b;
 """
     + _GAUSSIAN_RADIAL_CUDA
@@ -182,8 +235,10 @@ def _gaussian_channel_kernel(name, *, batch):
     )
     return (
         f'extern "C" __global__ void {name}(\n'
-        "    const long long volume, const int nx,const int ny,const int nz,\n"
-        "    const int fx,const int fy,const int fz, const real hx,const real hy,const real hz,\n"
+        "    const long long volume,const int sx,const int sy,const int sz,\n"
+        "    const int tx,const int ty,const int tz,const int fx,const int fy,const int fz,\n"
+        "    const long long ox,const long long oy,const long long oz,\n"
+        "    const real hx,const real hy,const real hz,\n"
         f"    const long long *shifts,const int images,const real tau,{arguments}real *kernel) {{\n"
         + _GAUSSIAN_CHANNEL_BODY
         + publication
@@ -197,7 +252,8 @@ _FUSED_CUDA = _gaussian_channel_kernel("gaussian_kernel_fused", batch=False)
 _STREAM_CUDA = r"""
 extern "C" __global__ void scatter_component(
     const long long total, const int order, const int *first, const real *weights,
-    const real *gamma, const int fy, const int fz, const int component, real *grid) {
+    const real *gamma,const int ox,const int oy,const int oz,
+    const int fy, const int fz, const int component, real *grid) {
   long long lane=(long long)blockIdx.x*blockDim.x+threadIdx.x;
   const int stencil=order*order*order;
   if(lane>=total) return;
@@ -208,7 +264,7 @@ extern "C" __global__ void scatter_component(
   const int *base=first+3*particle;
   const real *w=weights+3*order*particle;
   real factor=w[a]*w[order+b]*w[2*order+c];
-  long long index=((long long)(base[0]+a)*fy+base[1]+b)*fz+base[2]+c;
+  long long index=((long long)(base[0]+a-ox)*fy+base[1]+b-oy)*fz+base[2]+c-oz;
   atomicAdd(grid+index, factor*gamma[3*particle+component]);
 }
 """
@@ -264,7 +320,8 @@ class GaussianImageFields:
     field; it NEVER implements particle pair-averaged-core self induction.
     All evaluate outputs INCLUDE local narrow-minus-broad core correction.
     Sources are immutable private host snapshots with no replacement API.
-    Queries must fit the original logical grid; there is no extrapolation.
+    Queries must fit the retained initial-query stencil window inside the
+    original logical grid; there is no extrapolation.
     Dimensional tau, spacing and cutoff are deliberately explicit here.
     """
 
@@ -291,6 +348,7 @@ class GaussianImageFields:
         max_query_points=1_000_000,
         source_only_primary=False,
         profile=False,
+        _lattice_origin=None,
     ):
         self._owner = self._plans = self._correction = None
         self._compact_fields = self._kernel_scratch = self._inverse = None
@@ -354,19 +412,42 @@ class GaussianImageFields:
         reflected[:, 2] *= -1
         points = np.concatenate((x, reflected, q))
         self.origin = np.floor(points.min(axis=0)) - order
+        if _lattice_origin is not None:
+            supplied_origin = np.array(_lattice_origin, dtype=np.float64, copy=True)
+            if (supplied_origin.shape != (3,) or not np.isfinite(supplied_origin).all()
+                    or np.any(supplied_origin != np.floor(supplied_origin))):
+                raise ValueError("shared lattice origin must contain three finite integers")
+            self.origin = supplied_origin
         dimensions = np.ceil(points.max(axis=0) - self.origin) + order + 1
         if (
             not np.isfinite(dimensions).all()
             or np.any(dimensions < 1)
-            or np.any(dimensions > 2**20)
+            or np.any(dimensions > 2**30)
         ):
             raise ValueError("auxiliary logical shape exceeds bounds")
         self.shape = tuple(dimensions.astype(np.int64).tolist())
-        self.fft_shape = tuple(next_fast_len(2 * n - 1) for n in self.shape)
+        self.source_start, self.source_shape = _target_stencil_window(
+            np.concatenate((x, reflected)), self.origin, order, self.shape
+        )
+        self.compact_start, self.compact_shape = _target_stencil_window(
+            q, self.origin, order, self.shape
+        )
+        self.lag_offset = tuple(
+            target - source for target, source in zip(self.compact_start, self.source_start, strict=True)
+        )
+        # Only target stencil cells are observed. Every queried source lag
+        # lies in [-(source_size-1), target_size-1], so this shorter padding
+        # represents the same linear convolution without filling the empty
+        # distance between source and query windows.
+        self.fft_shape = tuple(
+            next_fast_len(source + target - 1)
+            for source, target in zip(self.source_shape, self.compact_shape, strict=True)
+        )
         self.volume = math.prod(self.fft_shape)
         self.spectrum_shape = (*self.fft_shape[:2], self.fft_shape[2] // 2 + 1)
         self.spectrum_count = math.prod(self.spectrum_shape)
-        self.compact_bytes = 12 * math.prod(self.shape) * self.dtype.itemsize
+        self._compact_slices = tuple(slice(0, n) for n in self.compact_shape)
+        self.compact_bytes = 12 * math.prod(self.compact_shape) * self.dtype.itemsize
         self.execution_plan = field_execution_plan(
             self.shape,
             self.fft_shape,
@@ -375,7 +456,8 @@ class GaussianImageFields:
             order,
             self.dtype.itemsize,
             self.max_scratch_bytes,
-            self.max_plan_bytes,
+            0,
+            retained_shape=self.compact_shape,
         )
         self.estimated_payload_bytes = self.execution_plan.payload_bytes
         started = time.perf_counter()
@@ -383,19 +465,62 @@ class GaussianImageFields:
             self._owner = DeviceOwner(self.max_scratch_bytes)
             self.cp, self.pool = self._owner.cp, self._owner.pool
             self.stream = self._owner.stream
-            free, total = self.cp.cuda.runtime.memGetInfo()
-            self.execution_plan, self.effective_smooth_pool_cap = device_field_execution_plan(
-                self.shape,
-                self.fft_shape,
-                count,
-                len(q),
-                order,
-                self.dtype.itemsize,
-                self.max_scratch_bytes,
-                self.max_plan_bytes,
-                self.max_correction_bytes,
-                int(free),
+            # Build the exact source index before measuring live free memory.
+            # Its configured cap is an upper bound, not an allocation required
+            # by every source/query block. Keep the handle through failures.
+            self._correction = GaussianCoreCorrectionGPU.__new__(GaussianCoreCorrectionGPU)
+            self._correction.__init__(
+                self.host_x, self.host_gamma, self._host_sigma,
+                tau=tau, cutoff=cutoff, accumulation_dtype=correction_dtype,
+                max_scratch_bytes=self.max_correction_bytes, max_images=self.max_images,
             )
+            self._correction.release_build_scratch()
+            free, total = self.cp.cuda.runtime.memGetInfo()
+            query_reserve = correction_query_reserve(1, self._correction.dtype.itemsize)
+            measured_work = None
+            try:
+                self.execution_plan, self.effective_smooth_pool_cap = device_field_execution_plan(
+                    self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
+                    self.max_scratch_bytes, self.max_plan_bytes, query_reserve, int(free),
+                    retained_shape=self.compact_shape,
+                )
+            except MemoryError:
+                # Reject impossible array payloads before constructing plans.
+                # Driver free was captured before probing, so measured plan
+                # storage is counted once against this complete live budget.
+                _, self.effective_smooth_pool_cap = device_field_execution_plan(
+                    self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
+                    self.max_scratch_bytes, 0, query_reserve, int(free),
+                    retained_shape=self.compact_shape,
+                )
+                self.pool.set_limit(size=self.effective_smooth_pool_cap)
+                self._plans = FFTPlanPair.__new__(FFTPlanPair)
+                self._plans.__init__(
+                    self._owner, self.fft_shape, self.dtype, self.max_plan_bytes,
+                    single_workspace=True,
+                )
+                measured_work = self._plans.measure_directional_work()
+                combined_work = sum(measured_work)
+                if combined_work <= self.max_plan_bytes:
+                    try:
+                        candidate = field_execution_plan(
+                            self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
+                            self.effective_smooth_pool_cap, combined_work,
+                            retained_shape=self.compact_shape,
+                        )
+                    except MemoryError:
+                        candidate = None
+                else:
+                    candidate = None
+                if candidate is not None and candidate.mode == "all_channels":
+                    self.execution_plan = candidate
+                    self._plans.retain_both_directions()
+                else:
+                    self.execution_plan = field_execution_plan(
+                        self.shape, self.fft_shape, count, len(q), order, self.dtype.itemsize,
+                        self.effective_smooth_pool_cap, max(measured_work),
+                        retained_shape=self.compact_shape, allow_all_channels=False,
+                    )
             self.estimated_payload_bytes = self.execution_plan.payload_bytes
             self.pool.set_limit(size=self.effective_smooth_pool_cap)
             self.device_admission = {
@@ -403,8 +528,17 @@ class GaussianImageFields:
                 "total_device_bytes": int(total),
                 "configured_smooth_pool_cap": self.max_scratch_bytes,
                 "effective_smooth_pool_cap": self.effective_smooth_pool_cap,
-                "correction_reserve_bytes": self.max_correction_bytes,
+                "configured_correction_pool_cap": self.max_correction_bytes,
+                "correction_owned_bytes": self._correction.pool.total_bytes(),
+                "correction_reserve_bytes": query_reserve,
             }
+            if measured_work is not None:
+                self.device_admission["measured_forward_workspace_bytes"] = measured_work[0]
+                self.device_admission["measured_inverse_workspace_bytes"] = measured_work[1]
+                self.device_admission["workspace_reserve_bytes"] = (
+                    sum(measured_work) if self.execution_plan.mode == "all_channels"
+                    else max(measured_work)
+                )
             code = _cuda_source(dtype)
             self._program = self.cp.RawModule(code=code, options=("--std=c++11",), backend="nvrtc")
             for odd, points in ((False, x), (True, reflected)):
@@ -419,16 +553,6 @@ class GaussianImageFields:
                     max_new_bytes=self.max_scratch_bytes,
                 )
                 self._source_stencils[odd] = first, weights
-            self._correction = GaussianCoreCorrectionGPU(
-                self.host_x,
-                self.host_gamma,
-                self._host_sigma,
-                tau=tau,
-                cutoff=cutoff,
-                accumulation_dtype=correction_dtype,
-                max_scratch_bytes=self.max_correction_bytes,
-                max_images=self.max_images,
-            )
         except BaseException as error:
             try:
                 self.close()
@@ -462,10 +586,18 @@ class GaussianImageFields:
 
     def _admit_integer_images(self, integer):
         # The CUDA kernel casts the DIFFERENCE lz-shift, not shift alone.
-        # Signed logical convolution lags span [-(nz-1), nz-1]. Check its
-        # entire range before the cast so every integer remains representable.
+        # Shifted lags span [offset-(source_size-1), offset+target_size-1].
+        # Check every endpoint before the cast; FFT indices alone are smaller
+        # than physical lags for remote queries and cannot admit precision.
         exact_limit = 2 ** (24 if self.dtype == np.dtype("float32") else 53)
-        if any(abs(shift) + self.shape[2] - 1 > exact_limit for shift, _ in integer):
+        bounds = [
+            (self.lag_offset[a] - self.source_shape[a] + 1,
+             self.lag_offset[a] + self.compact_shape[a] - 1)
+            for a in range(3)
+        ]
+        if (any(max(abs(low), abs(high)) > exact_limit for low, high in bounds[:2])
+                or any(max(abs(bounds[2][0] - shift), abs(bounds[2][1] - shift)) > exact_limit
+                       for shift, _ in integer)):
             raise ValueError("image lags exceed exact kernel-coordinate qualification")
 
     def _admit(self):
@@ -474,13 +606,13 @@ class GaussianImageFields:
         self._owner.admit()
 
     def can_evaluate_targets(self, targets):
-        """Whether complete target stencils fit this prepared logical field.
+        """Whether complete target stencils fit this retained output window.
 
         This read-only geometry check allocates no GPU storage, performs no
         extrapolation and certifies no tail/correction or finite-mesh error.
         Session callers must still validate exact sources/role and the new
-        query's mathematical bounds. A different initial-query AABB is not
-        itself a reason to discard an otherwise valid source-wide field.
+        query's mathematical bounds. Queries can differ from the initial
+        points if their complete stencils fit the retained integer window.
         True is geometry admission only, not a promise of query scratch
         capacity; evaluation retains its capped allocation and device guards.
         """
@@ -510,7 +642,11 @@ class GaussianImageFields:
         ):
             raise ValueError("bounded finite targets (N,3) required")
         lattice, _, _ = slab_coordinates(query, self.zmin, self.zmax, float(self.steps[0]))
-        return _logical_stencils_fit(lattice, self.origin, self.order, self.shape, self.fft_shape)
+        return _retained_stencils_fit(
+            lattice, self.origin, self.order, self.shape, self.fft_shape,
+            self.compact_start, self.compact_shape,
+            source_shape=self.source_shape,
+        )
 
     @contextmanager
     def _phase(self, diagnostics, name):
@@ -528,6 +664,18 @@ class GaussianImageFields:
 
     def _launch(self, name, count, arguments):
         self._program.get_function(name)(((count + 255) // 256,), (256,), arguments)
+
+    def _kernel_arguments(self, shifts):
+        """Shared signed-lag geometry for scalar, fused and batched channels."""
+        return (
+            np.int64(self.volume),
+            *(np.int32(n) for n in self.source_shape),
+            *(np.int32(n) for n in self.compact_shape),
+            *(np.int32(n) for n in self.fft_shape),
+            *(np.int64(n) for n in self.lag_offset),
+            *(self.real_type(h) for h in self.steps),
+            shifts, np.int32(len(shifts)), self.real_type(self.tau),
+        )
 
     def _prepare_family(self, odd, diagnostics):
         if odd in self.spectra:
@@ -573,6 +721,7 @@ class GaussianImageFields:
                         first,
                         weights,
                         gamma,
+                        *(np.int32(n) for n in self.source_start),
                         np.int32(self.fft_shape[1]),
                         np.int32(self.fft_shape[2]),
                         np.int64(self.volume),
@@ -600,6 +749,7 @@ class GaussianImageFields:
                             first,
                             weights,
                             gamma,
+                            *(np.int32(n) for n in self.source_start),
                             np.int32(self.fft_shape[1]),
                             np.int32(self.fft_shape[2]),
                             np.int32(component),
@@ -645,13 +795,7 @@ class GaussianImageFields:
                                 "gaussian_kernel_batch",
                                 self.volume,
                                 (
-                                    np.int64(self.volume),
-                                    *(np.int32(n) for n in self.shape),
-                                    *(np.int32(n) for n in self.fft_shape),
-                                    *(self.real_type(h) for h in self.steps),
-                                    shifts,
-                                    np.int32(len(shifts)),
-                                    self.real_type(self.tau),
+                                    *self._kernel_arguments(shifts),
                                     device_channels,
                                     np.int32(len(selected)),
                                     self._kernel_scratch,
@@ -684,7 +828,7 @@ class GaussianImageFields:
                 for index, column in enumerate(columns):
                     with self._phase(diagnostics, "inverse_fft_and_gather"):
                         self._plans.irfft(self._result_spectra[index], self._inverse)
-                        crop = self._inverse[tuple(slice(0, n) for n in self.shape)]
+                        crop = self._inverse[self._compact_slices]
                         if one_family:
                             self._compact_fields[column] += crop
                         else:
@@ -703,13 +847,7 @@ class GaussianImageFields:
                     "gaussian_kernel_fused",
                     self.volume,
                     (
-                        np.int64(self.volume),
-                        *(np.int32(n) for n in self.shape),
-                        *(np.int32(n) for n in self.fft_shape),
-                        *(self.real_type(h) for h in self.steps),
-                        shifts,
-                        np.int32(len(shifts)),
-                        self.real_type(self.tau),
+                        *self._kernel_arguments(shifts),
                         kernels,
                     ),
                 )
@@ -735,8 +873,7 @@ class GaussianImageFields:
         for column in range(12):
             with self._phase(diagnostics, "inverse_fft_and_gather"):
                 self._plans.irfft(result_hat[column], self._inverse)
-                crop = tuple(slice(0, n) for n in self.shape)
-                self.cp.copyto(self._compact_fields[column], self._inverse[crop])
+                self.cp.copyto(self._compact_fields[column], self._inverse[self._compact_slices])
                 diagnostics["inverse_transforms"] += 1
 
     def prepare(self, images):
@@ -762,6 +899,11 @@ class GaussianImageFields:
             "integer_images": integer,
             "shape": self.shape,
             "fft_shape": self.fft_shape,
+            "compact_start": self.compact_start,
+            "compact_shape": self.compact_shape,
+            "source_start": self.source_start,
+            "source_shape": self.source_shape,
+            "lag_offset": self.lag_offset,
             "spacing": self.steps.tolist(),
             "estimated_payload_bytes": self.estimated_payload_bytes,
             "passes": {},
@@ -811,7 +953,7 @@ class GaussianImageFields:
                     for _ in range(self.execution_plan.output_batch)
                 )
             if self._compact_fields is None:
-                self._compact_fields = cp.empty((12, *self.shape), dtype=self.dtype)
+                self._compact_fields = cp.empty((12, *self.compact_shape), dtype=self.dtype)
             if self.execution_plan.mode == "all_channels":
                 self._all_channel_fields(families, diagnostics)
             else:
@@ -855,6 +997,12 @@ class GaussianImageFields:
         if q.ndim != 2 or q.shape[1:] != (3,) or len(q) > self.max_query_points:
             raise ValueError("bounded targets (N,3) required")
         lattice, _, _ = slab_coordinates(q, self.zmin, self.zmax, float(self.steps[0]))
+        if not _retained_stencils_fit(
+            lattice, self.origin, self.order, self.shape, self.fft_shape,
+            self.compact_start, self.compact_shape,
+            source_shape=self.source_shape,
+        ):
+            raise ValueError("query stencil lies outside the retained Gaussian field window")
         started = time.perf_counter()
         free, _ = self.cp.cuda.runtime.memGetInfo()
         batch = query_batch_size(
@@ -871,7 +1019,12 @@ class GaussianImageFields:
             + self._correction.pool.free_bytes(),
         )
         with self._owner.allocation_scope():
-            output = self.cp.empty((len(q), 12), dtype=self.dtype)
+            # One allocation preserves the admitted 12*N-element footprint.
+            # Both public views are contiguous, so host copies need no
+            # contiguous-device temporary in CuPy's unrelated default pool.
+            output = self.cp.empty(12 * len(q), dtype=self.dtype)
+            velocity = output[:3 * len(q)].reshape(-1, 3)
+            gradient = output[3 * len(q):].reshape(-1, 3, 3)
             gather_seconds, batches, retries, first_target = 0.0, 0, 0, 0
             stencil, correction = None, None
             evaluated_images = set()
@@ -879,7 +1032,8 @@ class GaussianImageFields:
                 while first_target < len(q):
                     count = min(batch, len(q) - first_target)
                     last_target = first_target + count
-                    chunk = output[first_target:last_target]
+                    chunk_velocity = velocity[first_target:last_target]
+                    chunk_gradient = gradient[first_target:last_target]
                     first = weight = correction_u = correction_j = None
                     retry = False
                     try:
@@ -903,11 +1057,13 @@ class GaussianImageFields:
                                     np.int32(self.order),
                                     first,
                                     weight,
-                                    np.int32(self.shape[1]),
-                                    np.int32(self.shape[2]),
+                                    *(np.int32(n) for n in self.compact_start),
+                                    np.int32(self.compact_shape[1]),
+                                    np.int32(self.compact_shape[2]),
                                     self._compact_fields[column],
-                                    np.int32(column),
-                                    chunk,
+                                    np.int32(column if column < 3 else column - 3),
+                                    np.int32(3 if column < 3 else 9),
+                                    chunk_velocity if column < 3 else chunk_gradient,
                                 ),
                             )
                         self.stream.synchronize()
@@ -917,11 +1073,14 @@ class GaussianImageFields:
                         correction_u, correction_j, current_correction = self._correction.evaluate(
                             q[first_target:last_target], self._prepared_world_images
                         )
-                        chunk[:, :3] += correction_u
-                        chunk[:, 3:] += correction_j.reshape(-1, 9)
+                        chunk_velocity += correction_u
+                        chunk_gradient += correction_j
                         correction_u = correction_j = None
                         self.stream.synchronize()
-                        if not bool(self.cp.isfinite(chunk).all()):
+                        if not (
+                            bool(self.cp.isfinite(chunk_velocity).all())
+                            and bool(self.cp.isfinite(chunk_gradient).all())
+                        ):
                             raise FloatingPointError("nonfinite compact query; nothing published")
                     except MemoryError:
                         if count == 1:
@@ -999,8 +1158,8 @@ class GaussianImageFields:
             ]
             correction["query_batches"] = batches
             return (
-                output[:, :3],
-                output[:, 3:].reshape(-1, 3, 3),
+                velocity,
+                gradient,
                 {
                     "runtime_admissible": False,
                     "tail_certified": False,
@@ -1009,6 +1168,8 @@ class GaussianImageFields:
                     "target_count": len(q),
                     "finite_image_count": len(self._prepared_images),
                     "compact_bytes": self.compact_bytes,
+                    "compact_start": self.compact_start,
+                    "compact_shape": self.compact_shape,
                     "stencil": stencil,
                     "gather_seconds": gather_seconds,
                     "correction": correction,
@@ -1049,13 +1210,15 @@ class GaussianImageFields:
         self._prepared_images = self._prepared_world_images = None
         self.closed = True
         failure = None
-        for resource in (self._plans, self._correction):
+        for name in ("_plans", "_correction"):
+            resource = getattr(self, name)
             if resource is not None:
                 try:
                     resource.close()
                 except BaseException as error:
                     failure = failure or error
-        self._plans = self._correction = None
+                else:
+                    setattr(self, name, None)
         self._compact_fields = self._kernel_scratch = self._inverse = None
         self._result_spectra = ()
         self.spectra.clear()

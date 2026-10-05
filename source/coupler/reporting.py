@@ -330,6 +330,39 @@ def write_run_metadata(
     )
 
 
+def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: float) -> dict:
+    """Capture scalar query evidence before another operation replaces it.
+
+    Backend timings are nested parts of the measured query wall time. Image
+    descriptors, source arrays and allocator histories are deliberately omitted.
+    """
+    induction = getattr(getattr(vpm_solver, "physics", None), "induction", None)
+    tail = getattr(induction, "last_tail", None) or {}
+    mesh = tail.get("mesh") or {}
+    finite = mesh.get("finite_evaluation") or {}
+    summary = {
+        "target_count": int(target_count),
+        "wall_seconds": float(wall_seconds),
+        "operator": type(induction).__name__ if induction is not None else None,
+        "execution_backend": finite.get("execution_backend"),
+        "memory_fallback": finite.get("memory_fallback"),
+    }
+    if isinstance(summary["memory_fallback"], str):
+        summary["memory_fallback"] = summary["memory_fallback"][:512]
+    if "seconds" in tail:
+        summary["induction_seconds"] = tail["seconds"]
+    for name in (
+        "source_snapshot_seconds", "query_certificate_seconds", "owner_build_seconds",
+        "owner_prepare_seconds", "owner_close_seconds", "field_owner_hit", "finite_images",
+    ):
+        if name in mesh:
+            summary[name] = mesh[name]
+    for name in ("query_seconds", "gather_seconds", "query_batches", "source_count"):
+        if name in finite:
+            summary[name] = finite[name]
+    return _diagnostic_json_value(summary, "boundary induction")
+
+
 def compute_diagnostics(coupler, transfer_result=None) -> dict:
     """Flatten the latest coupling state into JSON-safe diagnostic values.
 
@@ -667,6 +700,11 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             diagnostics["last_induction_image_call"] = _diagnostic_json_value(
                 tail, "slip-slab image diagnostic"
             )
+        boundary_induction = getattr(coupler, "_last_boundary_induction_diagnostics", None)
+        if boundary_induction is not None:
+            diagnostics["boundary_induction"] = _diagnostic_json_value(
+                boundary_induction, "boundary induction diagnostic"
+            )
     spanwise = getattr(coupler.vorticity_transfer, "last_spanwise_metrics", None)
     if spanwise:
         values = {str(name): float(value) for name, value in spanwise.items()}
@@ -690,7 +728,9 @@ def record_step(
 ) -> None:
     """Report one accepted exchange through its scheduled checkpoint attempt.
 
-    The four evolution timers exclude health/output and backup. The end-to-end
+    Boundary time includes the initial trace and all post-renewal refreshes.
+    Transfer includes renewal and interface state capture/restoration. The four
+    evolution timers exclude health/output and backup. The end-to-end
     clock includes those phases, reporting preparation, logging and collective
     waits. Publishing this final timing record itself is outside its scope.
     Nested breakdowns (for example donor gather) are descriptive, not additive.

@@ -399,9 +399,8 @@ class GaussianSlabFieldSession:
                 phase_started = perf_counter()
                 self._owner.prepare(images)
                 owner_prepare_seconds = perf_counter() - phase_started
-                # Descriptive initial query bounds only, NOT cache admission.
-                # The owner's complete cardinal-stencil domain is wider when
-                # physical/reflected source support already fills the grid.
+                # The owner's retained stencil domain decides reuse; these
+                # initial query bounds are descriptive only.
                 self._role, self._bounds = source_only, (lower.copy(), upper.copy())
             # FTZ/DAZ may change subnormal host shifts even under RN. Match
             # the actual immutable list used by correction, not a hash or an

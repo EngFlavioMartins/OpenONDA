@@ -1,5 +1,4 @@
 # state file generated using paraview version 6.1.1
-from pathlib import Path
 import paraview
 paraview.compatibility.major = 6
 paraview.compatibility.minor = 1
@@ -9,7 +8,6 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-SOLUTION_DIR = Path(__file__).resolve().parents[1] / "solution"
 # ----------------------------------------------------------------
 # setup views used in the visualization
 # ----------------------------------------------------------------
@@ -17,11 +15,12 @@ SOLUTION_DIR = Path(__file__).resolve().parents[1] / "solution"
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
 renderView1.Set(
-    ViewSize=[1922, 542],
-    InteractionMode='2D',
-    CenterOfRotation=[1.109284200668335, 0.0, 0.0],
-    CameraPosition=[1.109284200668335, 0.0, 14.034733410555077],
-    CameraFocalPoint=[1.109284200668335, 0.0, 0.0],
+    ViewSize=[2114, 700],
+    CenterOfRotation=[6.689284026622772, 0.09856688976287842, 0.0],
+    CameraPosition=[22.9749152749447, 14.519996912743792, 38.756079931653986],
+    CameraFocalPoint=[10.477682328184754, 3.266512867938319, 7.208746490881597],
+    CameraViewUp=[-0.061596409003043404, 0.9475527078411198, -0.3136076342516099],
+    CameraViewAngle=8.520584936750893,
 )
 
 SetActiveView(None)
@@ -33,7 +32,7 @@ SetActiveView(None)
 # create new layout object 'Layout #1'
 layout1 = CreateLayout(name='Layout #1')
 layout1.AssignView(0, renderView1)
-layout1.SetSize(1922, 542)
+layout1.SetSize(2114, 700)
 
 # ----------------------------------------------------------------
 # restore active view
@@ -45,12 +44,11 @@ SetActiveView(renderView1)
 # ----------------------------------------------------------------
 
 # create a new 'PVD Reader'
-vpmpvd = PVDReader(registrationName='vpm.pvd', FileName=str(SOLUTION_DIR / 'vpm.pvd'))
+vpmpvd = PVDReader(registrationName='vpm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm.pvd')
 vpmpvd.PointArrays = ['velocity', 'vortex_strength', 'vorticity', 'core_radius', 'particle_volume', 'kinematic_viscosity', 'eddy_viscosity', 'effective_viscosity', 'group_id', 'zone_id']
 
-# create a new 'PVD Reader'
-fvmpvd = PVDReader(registrationName='fvm.pvd', FileName=str(SOLUTION_DIR / 'fvm.pvd'))
-fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
+# create a new 'STL Reader'
+cylinder_longstl = STLReader(registrationName='cylinder_long.stl', FileNames=['/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_long.stl'])
 
 # create a new 'Clip'
 clip1 = Clip(registrationName='Clip1', Input=vpmpvd)
@@ -63,6 +61,10 @@ clip1.ClipType.Set(
 
 # init the 'Plane' selected for 'HyperTreeGridClipper'
 clip1.HyperTreeGridClipper.Origin = [0.07856833934783936, -0.001432955265045166, 0.0]
+
+# create a new 'PVD Reader'
+fvmpvd = PVDReader(registrationName='fvm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/fvm.pvd')
+fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
 
 # create a new 'Slice'
 slice1 = Slice(registrationName='Slice1', Input=fvmpvd)
@@ -80,8 +82,8 @@ fvmpvdDisplay = Show(fvmpvd, renderView1, 'UnstructuredGridRepresentation')
 
 # trace defaults for the display properties.
 fvmpvdDisplay.Set(
-    Representation='Surface',
-    ColorArrayName=[None, ''],
+    Representation='Outline',
+    ColorArrayName=['POINTS', ''],
 )
 
 # show data from slice1
@@ -91,8 +93,8 @@ slice1Display = Show(slice1, renderView1, 'GeometryRepresentation')
 vorticityLUT = GetColorTransferFunction('vorticity')
 vorticityLUT.Set(
     RGBPoints=GenerateRGBPoints(
-        range_min=0.002230218640926978,
-        range_max=18.30860138250205,
+        range_min=0.0026500159892106313,
+        range_max=21.850916122469133,
     ),
     ScalarRangeInitialized=1.0,
 )
@@ -110,12 +112,17 @@ vpmpvdDisplay = Show(vpmpvd, renderView1, 'UnstructuredGridRepresentation')
 # trace defaults for the display properties.
 vpmpvdDisplay.Set(
     Representation='Point Gaussian',
-    ColorArrayName=[None, ''],
-    GaussianRadius=0.006600000262260437,
+    ColorArrayName=['POINTS', 'vorticity'],
+    LookupTable=vorticityLUT,
+    GaussianRadius=0.008,
+    ShaderPreset='Plain circle',
+    ScaleByArray=1,
+    SetScaleArray=['POINTS', 'vorticity'],
+    ScaleArrayComponent='Magnitude',
 )
 
 # init the 'Piecewise Function' selected for 'ScaleTransferFunction'
-vpmpvdDisplay.ScaleTransferFunction.Points = [0.03999999910593033, 0.0, 0.5, 0.0, 0.04000762850046158, 1.0, 0.5, 0.0]
+vpmpvdDisplay.ScaleTransferFunction.Points = [0.0, 0.0, 0.5, 0.0, 0.3, 1.0, 0.5, 0.0]
 
 # init the 'Piecewise Function' selected for 'OpacityTransferFunction'
 vpmpvdDisplay.OpacityTransferFunction.Points = [0.03999999910593033, 0.0, 0.5, 0.0, 0.04000762850046158, 1.0, 0.5, 0.0]
@@ -138,6 +145,26 @@ clip1Display.ScaleTransferFunction.Points = [0.03999999910593033, 0.0, 0.5, 0.0,
 # init the 'Piecewise Function' selected for 'OpacityTransferFunction'
 clip1Display.OpacityTransferFunction.Points = [0.03999999910593033, 0.0, 0.5, 0.0, 0.04000762850046158, 1.0, 0.5, 0.0]
 
+# show data from cylinder_longstl
+cylinder_longstlDisplay = Show(cylinder_longstl, renderView1, 'GeometryRepresentation')
+
+# get color transfer function/color map for 'STLSolidLabeling'
+sTLSolidLabelingLUT = GetColorTransferFunction('STLSolidLabeling')
+sTLSolidLabelingLUT.Set(
+    RGBPoints=GenerateRGBPoints(
+        range_min=0.0,
+        range_max=1.1757813367477812e-38,
+    ),
+    ScalarRangeInitialized=1.0,
+)
+
+# trace defaults for the display properties.
+cylinder_longstlDisplay.Set(
+    Representation='Surface',
+    ColorArrayName=['POINTS', ''],
+    LookupTable=sTLSolidLabelingLUT,
+)
+
 # setup the color legend parameters for each legend in this view
 
 # get color legend/bar for vorticityLUT in view renderView1
@@ -145,7 +172,7 @@ vorticityLUTColorBar = GetScalarBar(vorticityLUT, renderView1)
 vorticityLUTColorBar.Set(
     AutoOrient=0,
     WindowLocation='Any Location',
-    Position=[0.14, 0.70],
+    Position=[0.8490823084200568, 0.6063444108761329],
     Title='vorticity',
     ComponentTitle='Magnitude',
     HorizontalTitle=1,
@@ -164,27 +191,58 @@ vorticityLUTColorBar.Set(
 # set color bar visibility
 vorticityLUTColorBar.Visibility = 1
 
-# hide data in view
-Hide(fvmpvd, renderView1)
+# get color legend/bar for sTLSolidLabelingLUT in view renderView1
+sTLSolidLabelingLUTColorBar = GetScalarBar(sTLSolidLabelingLUT, renderView1)
+sTLSolidLabelingLUTColorBar.Set(
+    AutoOrient=0,
+    WindowLocation='Any Location',
+    Position=[0.047211837361586295, 0.7238772627695146],
+    Title='STLSolidLabeling',
+    ComponentTitle='',
+    HorizontalTitle=1,
+    TitleFontFamily='Times',
+    TitleFontSize=41,
+    LabelFontFamily='Times',
+    LabelFontSize=41,
+    ScalarBarThickness=25,
+    ScalarBarLength=0.19999999999999984,
+    DrawScalarBarOutline=1,
+    ScalarBarOutlineColor=[0.0, 0.0, 0.0],
+    ScalarBarOutlineThickness=2,
+    AddRangeLabels=0,
+)
+
+# set color bar visibility
+sTLSolidLabelingLUTColorBar.Visibility = 0
 
 # show color legend
 slice1Display.SetScalarBarVisibility(renderView1, True)
 
-# hide data in view
-Hide(vpmpvd, renderView1)
+# show color legend
+vpmpvdDisplay.SetScalarBarVisibility(renderView1, True)
 
 # show color legend
 clip1Display.SetScalarBarVisibility(renderView1, True)
+
+# hide data in view
+Hide(clip1, renderView1)
 
 # ----------------------------------------------------------------
 # setup color maps and opacity maps used in the visualization
 # note: the Get..() functions create a new object, if needed
 # ----------------------------------------------------------------
 
+# get opacity transfer function/opacity map for 'STLSolidLabeling'
+sTLSolidLabelingPWF = GetOpacityTransferFunction('STLSolidLabeling')
+sTLSolidLabelingPWF.Set(
+    Points=[0.0, 0.0, 0.5, 0.0, 1.1757813367477812e-38, 1.0, 0.5, 0.0],
+    ScalarRangeInitialized=1,
+)
+
 # get opacity transfer function/opacity map for 'vorticity'
 vorticityPWF = GetOpacityTransferFunction('vorticity')
 vorticityPWF.Set(
-    Points=[0.002230218640926978, 0.0, 0.5, 0.0, 18.30860138250205, 1.0, 0.5, 0.0],
+    Points=[0.0026500159892106313, 0.0, 0.5, 0.0, 2.3135495421724763, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
@@ -193,31 +251,33 @@ vorticityPWF.Set(
 # note: the Get..() functions create a new object, if needed
 # ----------------------------------------------------------------
 
-# get time animation track
-timeAnimationCue1 = GetTimeTrack()
-
-# initialize the animation scene
-
 # get the time-keeper
 timeKeeper1 = GetTimeKeeper()
 
 # initialize the timekeeper
+
+# get time animation track
+timeAnimationCue1 = GetTimeTrack()
+
 # initialize the animation track
 
 # get animation scene
 animationScene1 = GetAnimationScene()
-animationScene1.UpdateAnimationUsingDataTimeSteps()
+
 # initialize the animation scene
 animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
-    AnimationTime=animationScene1.StartTime,
+    AnimationTime=0.0,
+    EndTime=33.0,
     PlayMode='Snap To TimeSteps',
 )
 
+# initialize the animation scene
+
 # ----------------------------------------------------------------
 # restore active source
-SetActiveSource(clip1)
+SetActiveSource(fvmpvd)
 # ----------------------------------------------------------------
 
 
@@ -231,7 +291,7 @@ SetActiveSource(clip1)
 # Interact()
 #
 ## Save a screenshot of the active view
-# SaveScreenshot("path/to/screenshot.png", layout1)
+# SaveScreenshot("path/to/screenshot.png")
 #
 ## Save a screenshot of a layout (multiple splitted view)
 # SaveScreenshot("path/to/screenshot.png", GetLayout())

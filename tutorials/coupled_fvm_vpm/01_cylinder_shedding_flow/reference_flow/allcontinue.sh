@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 cd -- "$(dirname -- "$0")"
 
-python setup.py -h 0.04 "$@"
+exec ./allrun.sh "$@"

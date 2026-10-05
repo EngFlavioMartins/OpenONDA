@@ -506,6 +506,64 @@ def test_excessive_recovery_fraction_fails_before_returning_a_cloud():
         )
 
 
+def test_rank_complete_but_unsafe_component_retains_only_its_own_donors():
+    tail, grid_min, spacing = _make_grid(seed=5)
+    grid = np.zeros((49, 24, 24, 3), dtype=np.float32)
+    grid[:24] = tail
+    # A distant component is unaffected by the unsafe small component's closure.
+    grid[25:] = 100.0 * tail
+    magnitude = np.linalg.norm(grid, axis=-1)
+    labels = np.where(np.indices(magnitude.shape)[0] < 24, 1, 0).astype(np.int32)
+    tail_threshold = np.sort(np.linalg.norm(tail, axis=-1).ravel())[-30]
+    tail_ix, tail_iy, tail_iz = np.where(np.linalg.norm(tail, axis=-1) >= tail_threshold)
+    core_ix, core_iy, core_iz = np.where(magnitude[25:] > 0.0)
+    ix = np.concatenate((tail_ix, core_ix + 25))
+    iy = np.concatenate((tail_iy, core_iy))
+    iz = np.concatenate((tail_iz, core_iz))
+    capacity = int(np.count_nonzero(magnitude > 0))
+    ax, ay, az, added, preserve_groups = _GridDiffusionMixin._augment_moment_recovery_support(
+        grid, magnitude, ix, iy, iz, grid_min, spacing, capacity,
+        labels=labels, strict_labels=True,
+    )
+    assert preserve_groups and added == 0  # Rank alone does not establish safety.
+    original = grid.copy()
+    with pytest.raises(grid_module._GBDMomentCorrectionError) as caught:
+        _GridDiffusionMixin._redistribute_pruned_moments(
+            grid, magnitude, ax, ay, az, grid_min, spacing,
+            labels=labels, strict_labels=True,
+        )
+    assert caught.value.recovery_label == 1
+    np.testing.assert_array_equal(grid, original)
+    rx, ry, rz, added = _GridDiffusionMixin._retain_unsafe_moment_scope(
+        magnitude, ax, ay, az, capacity, labels, caught.value.recovery_label,
+    )
+    assert added == int(np.count_nonzero(magnitude[:24] > 0)) - 30
+    np.testing.assert_array_equal(rx[:len(ax)], ax)
+    assert np.all(labels[rx[len(ax):], ry[len(ax):], rz[len(ax):]] == 1)
+    corrected = _GridDiffusionMixin._redistribute_pruned_moments(
+        grid, magnitude, rx, ry, rz, grid_min, spacing,
+        labels=labels, strict_labels=True,
+    )
+    np.testing.assert_array_equal(corrected, grid[rx, ry, rz])
+    for label in (0, 1):
+        selected = labels[rx, ry, rz] == label
+        _assert_moments_close(
+            _moments(grid, grid_min, spacing, mask=labels == label),
+            _retained_moments(corrected[selected], rx[selected], ry[selected], rz[selected], grid_min, spacing),
+        )
+    np.testing.assert_array_equal(grid, original)
+
+
+def test_unsafe_component_retention_does_not_exceed_capacity():
+    magnitude = np.ones((2, 2, 2))
+    ix = iy = iz = np.array([0])
+    labels = np.zeros(magnitude.shape, dtype=np.int32)
+    with pytest.raises(RuntimeError, match="needs 8 particles, exceeding max_n_particles=7"):
+        _GridDiffusionMixin._retain_unsafe_moment_scope(magnitude, ix, iy, iz, 7, labels, 0)
+    np.testing.assert_array_equal(magnitude, np.ones((2, 2, 2)))
+    np.testing.assert_array_equal(ix, [0])
+
+
 def test_post_cast_residual_gate_rejects_a_failed_storage_precision_closure(monkeypatch):
     monkeypatch.setattr(grid_module, "_GBD_MOMENT_RESIDUAL_LIMIT", 1.0e-12)
     grid, grid_min, particle_spacing = _make_grid(seed=0)
@@ -648,7 +706,8 @@ def test_sparse_group_falls_back_to_global_moment_recovery():
     )
 
 
-def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypatch):
+@pytest.mark.parametrize("safety_retry", [False, True])
+def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypatch, safety_retry):
     events: list[str] = []
     grid = np.zeros((5, 5, 5, 3), dtype=np.float32)
     for index in ((1, 1, 1), (1, 1, 2), (1, 2, 1), (2, 1, 1), (2, 2, 2)):
@@ -751,6 +810,11 @@ def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypa
         ):
             del labels
             events.append("recover")
+            if safety_retry and events.count("recover") == 1:
+                raise grid_module._GBDMomentCorrectionError(
+                    "GBD moment recovery requires an excessive strength correction",
+                    recovery_label=None,
+                )
             if diagnostics is not None:
                 diagnostics.update(
                     correction_fraction=0.25,
@@ -788,19 +852,20 @@ def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypa
         regen_threshold_mode="absolute",
     )
 
-    assert events == ["recover", "build"]
+    assert events == (["recover", "recover", "build"] if safety_retry else ["recover", "build"])
     assert result is not None
+    expected_nodes = 6 if safety_retry else 5
     np.testing.assert_array_equal(
         result["vortex_strength"],
-        np.broadcast_to(sentinel, (5, 3)),
+        np.broadcast_to(sentinel, (expected_nodes, 3)),
     )
     diagnostic = harness.last_gbd_moment_recovery
     assert diagnostic == {
         "applied": True,
         "nonzero_node_count": 6,
-        "retained_node_count": 5,
-        "pruned_node_count": 1,
-        "support_augmented_node_count": 0,
+        "retained_node_count": expected_nodes,
+        "pruned_node_count": 6 - expected_nodes,
+        "support_augmented_node_count": 1 if safety_retry else 0,
         "correction_fraction": 0.25,
         "normalized_vortex_strength_residual": 1.0e-8,
         "normalized_linear_impulse_residual": 2.0e-8,

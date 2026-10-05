@@ -10,6 +10,7 @@ import math
 from numbers import Integral
 import time
 
+from numba import njit
 import numpy as np
 
 from .runtime import DeviceOwner
@@ -23,6 +24,12 @@ def correction_factors_host(radius, sigma, tau):
     radius, sigma, tau = map(float, (radius, sigma, tau))
     if not all(math.isfinite(v) for v in (radius, sigma, tau)) or radius < 0 or not 0 < sigma <= tau:
         raise ValueError("finite r>=0 and 0<sigma<=tau required")
+    return _correction_factors(radius, sigma, tau)
+
+
+@njit(cache=True)
+def _correction_factors(radius, sigma, tau):
+    """Shared scalar arithmetic after source/radius admission; no fast math."""
     if sigma == tau:
         return 0., 0.
     rho = radius / sigma
@@ -235,6 +242,7 @@ class GaussianCoreCorrectionGPU:
 
     def __init__(self, source_x, source_gamma, source_sigma, *, tau, cutoff,
                  max_scratch_bytes=256*1024**2, accumulation_dtype="float64", max_images=513):
+        self._cleanup_failure = None
         self._owner = DeviceOwner(max_scratch_bytes)
         self.cp = cp = self._owner.cp
         self.device_id = self._owner.device_id
@@ -319,6 +327,14 @@ class GaussianCoreCorrectionGPU:
         with self.cp.cuda.using_allocator(self.pool.malloc):
             yield
 
+    def release_build_scratch(self):
+        """Drop this index's idle construction blocks after local arrays retire."""
+        if self.closed:
+            raise RuntimeError("correction owner is closed")
+        self._owner.admit()
+        self.stream.synchronize()
+        self.pool.free_all_blocks()
+
     def evaluate(self, target_x, images):
         """Complete finite-image correction; strict cutoff, private publication."""
         cp = self.cp
@@ -363,18 +379,28 @@ class GaussianCoreCorrectionGPU:
             return u, j, report
 
     def close(self):
+        if getattr(self, "_cleanup_failure", None) is not None:
+            raise RuntimeError("Gaussian correction GPU cleanup remains uncertain") from self._cleanup_failure
         if getattr(self, "closed", True):
             return
-        self._owner.admit()
-        self.closed = True
         # No implicit cross-stream ownership protocol: drain the recorded
         # stream before releasing our allocation references on every path.
-        if hasattr(self, "stream"):
+        try:
+            self._owner.admit()
             self.stream.synchronize()
+        except BaseException as error:
+            self._cleanup_failure = error
+            self.closed = True
+            raise
+        self.closed = True
         self._owned = []
         for name in ("x", "gamma", "sigma", "begin", "end"):
             setattr(self, name, None)
-        self._owner.close()
+        try:
+            self._owner.close()
+        except BaseException as error:
+            self._cleanup_failure = error
+            raise
 
     def __enter__(self):
         if self.closed:

@@ -148,9 +148,9 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
     from tests.vpm._direct_gaussian_reference import direct_finite_images
     from tests.vpm.test_gaussian_mesh_package import _case
 
-    # Minimal legal zero padding is odd in all axes. This deliberately tests
-    # a generic supported transform, not a changed physical interpolation grid.
-    monkeypatch.setattr(fields, "next_fast_len", lambda n: n)
+    # Use the smallest odd legal padding in all axes. Source/query windows
+    # can have unequal parity; FFT padding changes no interpolation grid.
+    monkeypatch.setattr(fields, "next_fast_len", lambda n: n if n % 2 else n + 1)
     x, gamma, sigma, interior, images = _case()
     query = np.concatenate((interior, [[0.03, 0.02, 0.0], [0.03, 0.02, 0.193]]))
     images = [(0, False), *images]
@@ -166,12 +166,14 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
     }
     with fields.GaussianImageFields(x, gamma, sigma, query, **options) as probe:
         shape, fft = probe.shape, probe.fft_shape
+        retained = probe.compact_shape
     assert math.prod(fft) % 2 == 1
     kwargs = {}
     if families:
         size = np.dtype(dtype).itemsize
         full = field_execution_plan(
-            shape, fft, len(x), len(query), 10, size, 2 * 1024**3, 8 * 1024**2
+            shape, fft, len(x), len(query), 10, size, 2 * 1024**3, 8 * 1024**2,
+            retained_shape=retained,
         )
         candidates = []
         for available in np.linspace(
@@ -187,6 +189,7 @@ def test_odd_volume_fields_all_paths_match_direct_and_repeat_without_new_scratch
                     size,
                     int(available) + 8 * 1024**2,
                     8 * 1024**2,
+                    retained_shape=retained,
                 )
             except MemoryError:
                 continue

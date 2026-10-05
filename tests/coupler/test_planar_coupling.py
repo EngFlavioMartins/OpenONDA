@@ -75,7 +75,9 @@ def test_planar_coupler_carries_an_exterior_dipole(tmp_path, monkeypatch, device
             transfer_region_bounds=(-0.375, 0.375, -0.375, 0.375, -0.375, 0.375),
             eta_blend_width=0.25,
             vpm_only_width=0,
-            transfer_vorticity_cutoff=0.001,
+            # Resolve this deliberately weak dipole: a 1e-3 cutoff discards
+            # about 30% of its startup strength before invariant recovery.
+            transfer_vorticity_cutoff=0.0001,
             interface_iterations=1,
             backup_interval_steps=0,
         ),

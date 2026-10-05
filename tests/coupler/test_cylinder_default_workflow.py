@@ -76,13 +76,13 @@ def campaign(monkeypatch):
     monkeypatch.setattr(module, "_collective_root_action", lambda action: action())
     monkeypatch.setattr(module, "_collective_barrier", lambda: None)
     monkeypatch.setattr(module, "write_manifest", lambda *args, **kwargs: None)
-    monkeypatch.setattr(module, "initialize_cylinder_perturbation", lambda *args: None)
     return module
 
 
 def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path, monkeypatch):
     launcher = campaign(monkeypatch)
     calls = []
+    created = []
 
     class Solver:
         def __enter__(self):
@@ -100,13 +100,18 @@ def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path
                 is None
             )
 
+    def create_solver(*args, **kwargs):
+        created.append((args, kwargs))
+        return Solver()
+
     setup = SimpleNamespace(
         SPAN=1,
-        create_solver=lambda *args, **kwargs: Solver(),
+        create_solver=create_solver,
+        run_solver=lambda solver, **kwargs: solver.run(**kwargs),
         fvm=SimpleNamespace(update_grid_study=lambda *args, **kwargs: None),
     )
     monkeypatch.setattr(launcher, "load_case_module", lambda *args: setup)
-    monkeypatch.setattr(launcher, "selected_grids", lambda *args: [("grid", 0.1)])
+    monkeypatch.setattr(launcher, "selected_grids", lambda *args: [("grid", 0.1), ("fine", 0.08)])
     monkeypatch.setattr(launcher, "_grid_complete", lambda *args: False)
     monkeypatch.setattr(launcher, "_grid_has_output", lambda *args: True)
     monkeypatch.setattr(launcher, "_grid_config", lambda *args: {"name": "grid"})
@@ -115,7 +120,13 @@ def test_reference_campaign_resumes_incomplete_grid_using_native_latest(tmp_path
         override=None, reference_cores=1, end_time=0.2, pilot=True, resume=True, no_analysis=True
     )
     launcher.run_reference(options, tmp_path)
-    assert calls == [{"start_from": "latest"}]
+    assert calls == [{"start_from": "latest"}, {"start_from": "latest"}]
+    assert [kwargs["solution_dir"] for _, kwargs in created] == [
+        tmp_path / "solution/grid", tmp_path / "solution/fine"
+    ]
+    assert [kwargs["samples_dir"] for _, kwargs in created] == [
+        tmp_path / "samples/grid", tmp_path / "samples/fine"
+    ]
 
 
 def test_coupled_campaign_uses_native_latest_without_special_backup_manifest(tmp_path, monkeypatch):
@@ -173,7 +184,11 @@ def test_campaign_does_not_hide_corrupt_native_backup(tmp_path, monkeypatch, kin
                 )
                 load_backup(SimpleNamespace(), path)
 
-        setup = SimpleNamespace(SPAN=1, create_solver=lambda *args, **kwargs: Solver())
+        setup = SimpleNamespace(
+            SPAN=1,
+            create_solver=lambda *args, **kwargs: Solver(),
+            run_solver=lambda solver, **kwargs: solver.run(**kwargs),
+        )
         monkeypatch.setattr(launcher, "selected_grids", lambda *args: [("grid", 0.1)])
         monkeypatch.setattr(launcher, "_grid_complete", lambda *args: False)
         monkeypatch.setattr(launcher, "_grid_config", lambda *args: {"name": "grid"})

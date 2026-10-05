@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -16,6 +17,43 @@ CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 )
 LAUNCHER = Path(__file__).with_name("run_campaign.py")
+_DOMAIN_KEYS = ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
+
+
+def recorded_fvm_domain(run_dir: Path) -> dict | None:
+    """Read realized mesh bounds, never the requested mesher domain."""
+    try:
+        metadata = json.loads((run_dir / "solution/run_metadata.json").read_text())
+        domain = metadata["fvm_solver"]["fvm_domain"]
+        bounds = [float(domain[key]) for key in _DOMAIN_KEYS]
+        if not all(math.isfinite(value) for value in bounds) or any(
+            bounds[index] >= bounds[index + 1] for index in (0, 2, 4)
+        ):
+            return None
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    return dict(zip(_DOMAIN_KEYS, bounds, strict=True))
+
+
+def coupled_grid_domain_check(grids: list[dict]) -> dict:
+    """Require one recorded physical domain for grid-only GCI qualification."""
+    missing = [grid["name"] for grid in grids if grid["resolved_fvm_domain"] is None]
+    if missing:
+        return {
+            "valid": False,
+            "reason": "missing or invalid recorded FVM domain: " + ", ".join(missing),
+        }
+    reference = grids[0]["resolved_fvm_domain"]
+    if any(
+        not math.isclose(grid["resolved_fvm_domain"][key], reference[key], rel_tol=0, abs_tol=1e-10)
+        for grid in grids[1:]
+        for key in _DOMAIN_KEYS
+    ):
+        return {
+            "valid": False,
+            "reason": "resolved FVM domains differ; comparison includes domain sensitivity",
+        }
+    return {"valid": True, "reason": "recorded resolved FVM domains match"}
 
 
 def plot_results(report: dict, directory: Path, output_format: str = "both") -> None:
@@ -186,7 +224,12 @@ def main() -> int:
                 if len(histories) != 1:
                     raise ValueError(f"expected one coupled force record in {run_dir}")
                 force_grids.append(
-                    {"name": name, "h": spacing, **post.force_statistics(histories[0], 40, 100)}
+                    {
+                        "name": name,
+                        "h": spacing,
+                        "resolved_fvm_domain": recorded_fvm_domain(run_dir),
+                        **post.force_statistics(histories[0], 40, 100),
+                    }
                 )
         if kind == "reference" and not args.pilot:
             report["reference"] = post.analyse_forces(
@@ -197,8 +240,19 @@ def main() -> int:
             report["reference_qualified"] = report["reference"]["force_grid_qualified"]
     if force_grids:
         report["coupled_grids"] = force_grids
+        domain_check = coupled_grid_domain_check(force_grids)
+        report["coupled_grid_domain_check"] = domain_check
         report["coupled_convergence"] = {
-            metric: post.richardson_gci(force_grids, metric) for metric in post.METRICS
+            metric: post.richardson_gci(force_grids, metric)
+            if domain_check["valid"]
+            else {
+                "valid": False,
+                "order": None,
+                "extrapolated": None,
+                "fine_gci": None,
+                "reason": domain_check["reason"],
+            }
+            for metric in post.METRICS
         }
         drag_convergence = report["coupled_convergence"]["mean_drag"]
         report["coupled_force_grid_qualified"] = bool(
