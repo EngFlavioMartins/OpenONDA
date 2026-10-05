@@ -1,0 +1,312 @@
+{
+  "generated_utc": "2026-10-05T18:35:42.550162+00:00",
+  "validation_source": "72fe1f60 plus the memory repair, before 0c48f4c0 terminology integration; source_SHA256 records those validated bytes.",
+  "scope": "Memory repair and conservative planar case defaults, validated privately; no production restart or drag_recovery output.",
+  "cause": "The periodic case selects replicated PETSc MPI. Temporary getPC wrappers retained references and entered deferred MPI garbage collection, keeping preconditioners and associated matrices alive across interface solves. Four/six replicated ranks and the one-million-particle allocation magnified the load.",
+  "host_evidence": {
+    "RAM": "14 GiB usable",
+    "GPU": "RTX 3060 Laptop, 6 GiB dedicated",
+    "OOM_at": "2026-10-05T19:48:12+02:00",
+    "four_rank_RSS_MiB": [
+      1787.7,
+      1437.2,
+      1401.8,
+      1396.9
+    ],
+    "four_rank_swap_MiB": [
+      227.8,
+      236.6,
+      236.0,
+      233.3
+    ],
+    "swap_exhausted": true,
+    "desktop_pressure_kill_at": "2026-10-05T20:10:19+02:00"
+  },
+  "native_repair": {
+    "replicated": "ExitStack deterministically releases PETSc vectors, matrices, scatter, KSP and the PC reference on success and failure; telemetry reuses the owned PC.",
+    "partitioned": "Retain one owned PC reference with the persistent workspace, release it on rebuild/close; preserve preconditioner reuse.",
+    "algebra_and_tolerances_changed": false
+  },
+  "new_defaults": {
+    "FVM_processes_coupled": 1,
+    "FVM_processes_reference": 1,
+    "particle_capacity": 200000,
+    "approximate_full_XY_lattice_nodes": 125000,
+    "physics_mesh_or_tolerances_changed": false,
+    "GPU": "AUTO"
+  },
+  "matched_pressure_probe": {
+    "matrix": "2048-row Neumann graph Laplacian with constant pressure nullspace",
+    "ranks": 2,
+    "calls_per_rank": 300,
+    "results": {
+      "petsc-baseline": [
+        {
+          "rank": 0,
+          "calls": 300,
+          "first_RSS_bytes": 205783040,
+          "last_RSS_bytes": 574398464,
+          "RSS_growth_bytes": 368615424,
+          "first_residual": 0.0012105407597749194,
+          "last_residual": 0.0012105407597749194,
+          "iterations": 7
+        },
+        {
+          "rank": 1,
+          "calls": 300,
+          "first_RSS_bytes": 205533184,
+          "last_RSS_bytes": 572252160,
+          "RSS_growth_bytes": 366718976,
+          "first_residual": 0.0012105407597749194,
+          "last_residual": 0.0012105407597749194,
+          "iterations": 7
+        }
+      ],
+      "petsc-fixed": [
+        {
+          "rank": 0,
+          "calls": 300,
+          "first_RSS_bytes": 204972032,
+          "last_RSS_bytes": 205570048,
+          "RSS_growth_bytes": 598016,
+          "first_residual": 0.0012105407597749194,
+          "last_residual": 0.0012105407597749194,
+          "iterations": 7
+        },
+        {
+          "rank": 1,
+          "calls": 300,
+          "first_RSS_bytes": 204574720,
+          "last_RSS_bytes": 205164544,
+          "RSS_growth_bytes": 589824,
+          "first_residual": 0.0012105407597749194,
+          "last_residual": 0.0012105407597749194,
+          "iterations": 7
+        }
+      ]
+    },
+    "postfix_deferred_PETSc_objects": 0,
+    "residuals_and_iteration_counts_exactly_equal": true
+  },
+  "old_actual_case_reproduction": {
+    "MPI_ranks": 4,
+    "capacity": 1000000,
+    "CUDA": true,
+    "cells": 7741,
+    "memory_limit_bytes": 4718592000,
+    "swap_limit_bytes": 0,
+    "result": "oom-kill of private test at memory cap",
+    "last_accepted_time": 0.08,
+    "last_accepted_step": 2,
+    "peak_cgroup_bytes": 4718592000
+  },
+  "new_default_case": {
+    "report": {
+      "rank": 0,
+      "cores": 1,
+      "capacity": 200000,
+      "accepted_step": 50,
+      "accepted_time": 2.0000000000000013,
+      "cells": 7741,
+      "peak_rank_rss_bytes": 855236608,
+      "wall_seconds": 331.21830741400004,
+      "vpm": {
+        "backend": "CUDA",
+        "particles": 1816,
+        "time": 2.0,
+        "step": 50,
+        "position_finite": true,
+        "strength_finite": true,
+        "one_plane": true
+      }
+    },
+    "native_audit": {
+      "checkpoint_time": 2.0,
+      "passed_checks": 28,
+      "checks": {
+        "fvm_sha256": true,
+        "vpm_sha256": true,
+        "vpm_vtu_sha256": true,
+        "vpm_boundary_condition_sha256": true,
+        "fvm_velocity_finite": true,
+        "fvm_kinematic_pressure_finite": true,
+        "fvm_volumetric_face_flux_finite": true,
+        "fvm_volumetric_face_flux_old_finite": true,
+        "fvm_volumetric_face_flux_older_finite": true,
+        "fvm_velocity_old_finite": true,
+        "fvm_velocity_older_finite": true,
+        "fvm_eddy_viscosity_finite": true,
+        "fvm_time_finite": true,
+        "fvm_time_step_size_finite": true,
+        "fvm_accepted_time_step_size_finite": true,
+        "fvm_previous_time_step_size_finite": true,
+        "fvm_max_courant_number_finite": true,
+        "FVM_clock": true,
+        "vpm_boundary_condition_velocity_finite": true,
+        "vpm_boundary_condition_normal_velocity_finite": true,
+        "vpm_boundary_condition_tangential_gradient_finite": true,
+        "VPM_clock": true,
+        "VPM_finite": true,
+        "VPM_one_plane": true,
+        "VPM_accepted_velocity": true,
+        "50_converged_exchanges": true,
+        "50_force_records": true,
+        "force_times_ordered": true
+      }
+    },
+    "memory_limit_bytes": 2621440000,
+    "swap_limit_bytes": 0,
+    "systemd_reported_cgroup_peak": "491.8 MiB (rounded journal value; mapped/shared RSS differs)",
+    "accepted_exchanges": 50,
+    "all_converged": true,
+    "warm_mean_exchange_seconds_through_1s": 7.015373609818183,
+    "warm_mean_exchange_seconds_through_2s": 6.261935341425532,
+    "checkpoint_cadence": "Scheduled at 25 and 50 exchanges (1 and 2 s); final complete 2 s generation audited.",
+    "taper_end_velocity": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  "matched_four_rank_native_case": {
+    "rank_reports": [
+      {
+        "rank": 0,
+        "cores": 4,
+        "capacity": 1000000,
+        "accepted_step": 25,
+        "accepted_time": 1.0000000000000007,
+        "cells": 7741,
+        "peak_rank_rss_bytes": 875114496,
+        "wall_seconds": 223.27921761800008,
+        "vpm": {
+          "backend": "CUDA",
+          "particles": 1089,
+          "time": 1.0,
+          "step": 25,
+          "position_finite": true,
+          "strength_finite": true,
+          "one_plane": true
+        }
+      },
+      {
+        "rank": 1,
+        "cores": 4,
+        "capacity": 1000000,
+        "accepted_step": 25,
+        "accepted_time": 1.0000000000000007,
+        "cells": 7741,
+        "peak_rank_rss_bytes": 578621440,
+        "wall_seconds": 223.296287979,
+        "vpm": {
+          "backend": "CUDA",
+          "particles": 1089,
+          "time": 1.0,
+          "step": 25,
+          "position_finite": true,
+          "strength_finite": true,
+          "one_plane": true
+        }
+      },
+      {
+        "rank": 2,
+        "cores": 4,
+        "capacity": 1000000,
+        "accepted_step": 25,
+        "accepted_time": 1.0000000000000007,
+        "cells": 7741,
+        "peak_rank_rss_bytes": 578535424,
+        "wall_seconds": 223.29510948000006,
+        "vpm": {
+          "backend": "CUDA",
+          "particles": 1089,
+          "time": 1.0,
+          "step": 25,
+          "position_finite": true,
+          "strength_finite": true,
+          "one_plane": true
+        }
+      },
+      {
+        "rank": 3,
+        "cores": 4,
+        "capacity": 1000000,
+        "accepted_step": 25,
+        "accepted_time": 1.0000000000000007,
+        "cells": 7741,
+        "peak_rank_rss_bytes": 579522560,
+        "wall_seconds": 223.29520211,
+        "vpm": {
+          "backend": "CUDA",
+          "particles": 1089,
+          "time": 1.0,
+          "step": 25,
+          "position_finite": true,
+          "strength_finite": true,
+          "one_plane": true
+        }
+      }
+    ],
+    "native_audit": {
+      "checkpoint_time": 1.0,
+      "passed_checks": 12,
+      "checks": {
+        "fvm_sha256": true,
+        "vpm_sha256": true,
+        "vpm_vtu_sha256": true,
+        "vpm_boundary_condition_sha256": true,
+        "fvm_all_decoded_fields_finite": true,
+        "FVM_clock": true,
+        "vpm_boundary_condition_all_decoded_fields_finite": true,
+        "VPM_clock": true,
+        "VPM_finite": true,
+        "VPM_one_plane": true,
+        "25_converged_exchanges": true,
+        "all_four_rank_clocks": true
+      }
+    },
+    "memory_limit_bytes": 3670016000,
+    "swap_limit_bytes": 0,
+    "systemd_reported_cgroup_peak": "1.1 GiB (rounded journal value)",
+    "sum_of_rank_peak_RSS_bytes": 2611793920,
+    "peak_RSS_sum_caveat": "Shared libraries and noncoincident per-rank peaks must not be treated as unique physical memory.",
+    "warm_mean_exchange_seconds": 8.919801685000039,
+    "matched_first_two_exchange_seconds_before": [
+      8.815637353000056,
+      8.09336263800003
+    ],
+    "matched_first_two_exchange_seconds_after": [
+      6.884523389999913,
+      7.960318182000037
+    ],
+    "matched_force_differences": [
+      {
+        "drag_coefficient": 6.150635556423367e-14,
+        "lift_coefficient": 9.144074386568946e-14
+      },
+      {
+        "drag_coefficient": -6.483702463810914e-14,
+        "lift_coefficient": 1.1726730697603216e-13
+      }
+    ]
+  },
+  "correctness_checks": {
+    "existing_PETSc_residual_and_reuse_tests": 17,
+    "case_launch_tests": 9,
+    "new_two_rank_resource_lifetime_tests": "Success and unsupported-method failure, all ranks: zero deferred PETSc objects; collective report verified on root."
+  },
+  "source_SHA256": {
+    "source/solvers/fvm/solve/linear_interface.py": "2f6d0c08fad8c692e6a1b1dd58bbd4040709c9fa7927bdf037440ca99a73c641",
+    "source/solvers/fvm/solve/petsc_partitioned.py": "bce0fabb0eb5120b6adc4a841b736be9d4c90d9932ef6dd10b0d8a820f7ca92a",
+    "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "6c15df4009a33d30d6ae555fb3ec4ba2db28aadea9bcf45c5fe80815313654f1",
+    "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/setup.py": "f9e425b86c61af41a2dd907f29e49249f2c69e676eaccffe028ed5883833310b",
+    "tests/fvm/test_petsc_replicated_residual.py": "54433d01311193b7f9c511d88504fb6eecf2943ea402a590064d7df707868196"
+  },
+  "limits": [
+    "Developed Cd/Cl amplitudes are outside this memory qualification.",
+    "Default-resolution flow tests load the existing 7741-cell geometry; they do not benchmark fresh meshing.",
+    "The 2 s default CUDA run is a startup memory check, not a 100 s maximum-wake memory claim.",
+    "Capacity changes require a fresh run under the current restart validation."
+  ],
+  "output_handling": "All flow and checkpoint files were private /tmp test outputs. Main results preserved. Automation remains disabled; manual fresh launch belongs to the user."
+}

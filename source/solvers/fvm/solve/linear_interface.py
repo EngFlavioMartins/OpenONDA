@@ -8,6 +8,7 @@ and PETSc can stop on slightly different internal norms; the reported
 ``final_residual`` remains the common algebraic quantity.
 """
 
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 import time
 from typing import Protocol, runtime_checkable
@@ -385,178 +386,182 @@ def _solve_petsc(
     if A_csr.shape != (n, n) or b_array.shape != (n,):
         raise ValueError("PETSc solve requires a square matrix and matching RHS")
 
-    setup_start = time.perf_counter()
-    max_row_nnz = max(int(np.max(np.diff(A_csr.indptr))), 1)
-    mat = PETSc.Mat().createAIJ(
-        size=A_csr.shape,
-        nnz=max_row_nnz,
-        comm=PETSc.COMM_WORLD,
-    )
-    mat.setOption(  # type: ignore[bad-argument-type]
-        PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR,  # type: ignore[bad-argument-type]
-        False,
-    )
-    row_start, row_end = mat.getOwnershipRange()
-    for row in range(row_start, row_end):
-        start, end = A_csr.indptr[row], A_csr.indptr[row + 1]
-        if end > start:
-            mat.setValues(  # type: ignore[bad-argument-type]
-                row,  # type: ignore[bad-argument-type]
-                A_csr.indices[start:end],
-                A_csr.data[start:end],
+    with ExitStack() as resources:
+        setup_start = time.perf_counter()
+        max_row_nnz = max(int(np.max(np.diff(A_csr.indptr))), 1)
+        mat = PETSc.Mat().createAIJ(
+            size=A_csr.shape,
+            nnz=max_row_nnz,
+            comm=PETSc.COMM_WORLD,
+        )
+        resources.callback(mat.destroy)
+        mat.setOption(  # type: ignore[bad-argument-type]
+            PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR,  # type: ignore[bad-argument-type]
+            False,
+        )
+        row_start, row_end = mat.getOwnershipRange()
+        for row in range(row_start, row_end):
+            start, end = A_csr.indptr[row], A_csr.indptr[row + 1]
+            if end > start:
+                mat.setValues(  # type: ignore[bad-argument-type]
+                    row,  # type: ignore[bad-argument-type]
+                    A_csr.indices[start:end],
+                    A_csr.data[start:end],
+                )
+        mat.assemblyBegin()
+        mat.assemblyEnd()
+
+        petsc_nullspace = None
+        if nullspace is not None:
+            if nullspace != "constant" or equation_type != "kinematic_pressure":
+                raise ValueError("PETSc currently supports only a constant pressure null space")
+            petsc_nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
+            resources.callback(petsc_nullspace.destroy)
+            mat.setNullSpace(petsc_nullspace)
+
+        rhs = PETSc.Vec().createMPI(n, comm=PETSc.COMM_WORLD)
+        resources.callback(rhs.destroy)
+        rhs_start, rhs_end = rhs.getOwnershipRange()
+        if rhs_end > rhs_start:
+            rows = np.arange(rhs_start, rhs_end, dtype=PETSc.IntType)
+            rhs.setValues(  # type: ignore[bad-argument-type]
+                rows,  # type: ignore[bad-argument-type]
+                b_array[rhs_start:rhs_end],  # type: ignore[bad-argument-type]
             )
-    mat.assemblyBegin()
-    mat.assemblyEnd()
+        rhs.assemblyBegin()
+        rhs.assemblyEnd()
+        if petsc_nullspace is not None:
+            petsc_nullspace.remove(rhs)
+        solution = rhs.duplicate()
+        resources.callback(solution.destroy)
 
-    petsc_nullspace = None
-    if nullspace is not None:
-        if nullspace != "constant" or equation_type != "kinematic_pressure":
-            raise ValueError("PETSc currently supports only a constant pressure null space")
-        petsc_nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
-        mat.setNullSpace(petsc_nullspace)
+        initial = np.zeros(n, dtype=np.float64) if x0 is None else np.asarray(x0, dtype=np.float64)
+        if initial.shape != (n,):
+            raise ValueError(f"PETSc initial guess must have shape ({n},)")
+        sol_start, sol_end = solution.getOwnershipRange()
+        if sol_end > sol_start:
+            rows = np.arange(sol_start, sol_end, dtype=PETSc.IntType)
+            solution.setValues(  # type: ignore[bad-argument-type]
+                rows,  # type: ignore[bad-argument-type]
+                initial[sol_start:sol_end],  # type: ignore[bad-argument-type]
+            )
+        solution.assemblyBegin()
+        solution.assemblyEnd()
 
-    rhs = PETSc.Vec().createMPI(n, comm=PETSc.COMM_WORLD)
-    rhs_start, rhs_end = rhs.getOwnershipRange()
-    if rhs_end > rhs_start:
-        rows = np.arange(rhs_start, rhs_end, dtype=PETSc.IntType)
-        rhs.setValues(  # type: ignore[bad-argument-type]
-            rows,  # type: ignore[bad-argument-type]
-            b_array[rhs_start:rhs_end],  # type: ignore[bad-argument-type]
-        )
-    rhs.assemblyBegin()
-    rhs.assemblyEnd()
-    if petsc_nullspace is not None:
-        petsc_nullspace.remove(rhs)
-    solution = rhs.duplicate()
-
-    initial = np.zeros(n, dtype=np.float64) if x0 is None else np.asarray(x0, dtype=np.float64)
-    if initial.shape != (n,):
-        raise ValueError(f"PETSc initial guess must have shape ({n},)")
-    sol_start, sol_end = solution.getOwnershipRange()
-    if sol_end > sol_start:
-        rows = np.arange(sol_start, sol_end, dtype=PETSc.IntType)
-        solution.setValues(  # type: ignore[bad-argument-type]
-            rows,  # type: ignore[bad-argument-type]
-            initial[sol_start:sol_end],  # type: ignore[bad-argument-type]
-        )
-    solution.assemblyBegin()
-    solution.assemblyEnd()
-
-    ksp = PETSc.KSP().create(comm=PETSc.COMM_WORLD)
-    ksp.setOperators(mat)
-    pc = ksp.getPC()
-    requested = str(method).lower()
-    ksp_types = {
-        "bicgstab": PETSc.KSP.Type.BCGS,
-        "gmres": PETSc.KSP.Type.GMRES,
-        "cg": PETSc.KSP.Type.CG,
-    }
-    if requested == "amg":
-        if equation_type != "kinematic_pressure":
-            raise ValueError("PETSc AMG is supported only for pressure equations")
-        ksp.setType(PETSc.KSP.Type.CG)
-        pc.setType(PETSc.PC.Type.GAMG)
-        method_name = "cg+gamg"
-    elif requested in ksp_types:
-        ksp.setType(ksp_types[requested])
-        if nullspace == "constant":
-            # A one-rank block-Jacobi block is the complete singular
-            # Neumann matrix, so its local factorization fails. Point
-            # Jacobi is null-space safe and behaves consistently across
-            # communicator sizes.
-            pc.setType(PETSc.PC.Type.JACOBI)
-            method_name = f"{requested}+jacobi"
+        ksp = PETSc.KSP().create(comm=PETSc.COMM_WORLD)
+        resources.callback(ksp.destroy)
+        ksp.setOperators(mat)
+        pc = ksp.getPC()
+        # getPC() owns an extra reference. MPI Python finalizers defer its release,
+        # keeping each solved preconditioner alive until collective garbage cleanup.
+        resources.callback(pc.destroy)
+        requested = str(method).lower()
+        ksp_types = {
+            "bicgstab": PETSc.KSP.Type.BCGS,
+            "gmres": PETSc.KSP.Type.GMRES,
+            "cg": PETSc.KSP.Type.CG,
+        }
+        if requested == "amg":
+            if equation_type != "kinematic_pressure":
+                raise ValueError("PETSc AMG is supported only for pressure equations")
+            ksp.setType(PETSc.KSP.Type.CG)
+            pc.setType(PETSc.PC.Type.GAMG)
+            method_name = "cg+gamg"
+        elif requested in ksp_types:
+            ksp.setType(ksp_types[requested])
+            if nullspace == "constant":
+                # A one-rank block-Jacobi block is the complete singular
+                # Neumann matrix, so its local factorization fails. Point
+                # Jacobi is null-space safe and behaves consistently across
+                # communicator sizes.
+                pc.setType(PETSc.PC.Type.JACOBI)
+                method_name = f"{requested}+jacobi"
+            else:
+                pc.setType(PETSc.PC.Type.BJACOBI)
+                method_name = f"{requested}+bjacobi"
         else:
-            pc.setType(PETSc.PC.Type.BJACOBI)
-            method_name = f"{requested}+bjacobi"
-    else:
-        raise ValueError(f"Unknown PETSc iterative solver {method!r}")
-    # The target below is scaled by the algebraic ||b||, not ||PC^-1 b||.
-    # CG/GAMG's default preconditioned norm can declare convergence while
-    # leaving a much larger true residual, especially on pressure systems.
-    ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
-    initial_residual, residual_target, norm_factor = normalized_residual_target(
-        A_csr, b_array, x0, tol, rel_tol
-    )
-    # PETSc's default test is relative to ||b||; rescale so the
-    # absolute-or-relative target is measured against the deviation norm.
-    # deviation-based normFactor and a warm guess cannot satisfy the tolerance
-    # on the strength of the mean flow alone (see deviation_norm_factor).
-    b_norm = max(float(np.linalg.norm(b_array)), 1e-30)
-    rtol_eff = float(np.clip(residual_target * norm_factor / b_norm, 1e-14, 0.99))
-    ksp.setTolerances(rtol=rtol_eff, max_it=int(maxiter))
-    ksp.setInitialGuessNonzero(x0 is not None)
-    # Allow command-line PETSc options such as ``-fvm_kinematic_pressure_pc_type hypre``.
-    prefix = "fvm_kinematic_pressure_" if equation_type == "kinematic_pressure" else "fvm_momentum_"
-    ksp.setOptionsPrefix(prefix)
-    ksp.setFromOptions()
-    setup_seconds = time.perf_counter() - setup_start
-
-    solve_start = time.perf_counter()
-    ksp.solve(rhs, solution)
-    solve_seconds = time.perf_counter() - solve_start
-    reason_code = int(ksp.getConvergedReason())  # type: ignore[bad-argument-type]
-    iterations = int(ksp.getIterationNumber())
-
-    scatter, solution_all = PETSc.Scatter.toAll(solution)
-    scatter.begin(
-        solution,
-        solution_all,
-        addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
-        mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
-    )
-    scatter.end(
-        solution,
-        solution_all,
-        addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
-        mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
-    )
-    x = solution_all.getArray(readonly=True).copy()
-    if nullspace == "constant":
-        x -= np.mean(x)
-    final_residual = float(np.linalg.norm(b_array - A_csr @ x) / norm_factor)
-    reason = str(ksp.getConvergedReason())
-    converged = (
-        reason_code > 0
-        and np.isfinite(final_residual)
-        and final_residual
-        <= max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR)
-    )
-    info = LinearSolveResult(
-        backend="petsc",
-        method=method_name,
-        preconditioner=str(ksp.getPC().getType()),
-        nullspace=nullspace,
-        converged=converged,
-        reason=reason,
-        iterations=iterations,
-        initial_residual=initial_residual,
-        final_residual=final_residual,
-        setup_seconds=setup_seconds,
-        solve_seconds=solve_seconds,
-        used_fallback=False,
-        preconditioner_rebuilt=True,
-    )
-
-    scatter.destroy()
-    solution_all.destroy()
-    ksp.destroy()
-    solution.destroy()
-    rhs.destroy()
-    mat.destroy()
-    if petsc_nullspace is not None:
-        petsc_nullspace.destroy()
-
-    if not info.converged:
-        raise LinearSolveError(
-            f"PETSc {method_name} failed after {iterations} iterations: {reason}; "
-            f"algebraic residual {final_residual:.6e}, target {residual_target:.6e}, "
-            "verification limit "
-            f"{max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR):.6e}"
+            raise ValueError(f"Unknown PETSc iterative solver {method!r}")
+        # The target below is scaled by the algebraic ||b||, not ||PC^-1 b||.
+        # CG/GAMG's default preconditioned norm can declare convergence while
+        # leaving a much larger true residual, especially on pressure systems.
+        ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
+        initial_residual, residual_target, norm_factor = normalized_residual_target(
+            A_csr, b_array, x0, tol, rel_tol
         )
-    if not np.isfinite(final_residual):
-        raise LinearSolveError("PETSc returned a non-finite algebraic residual")
-    return x, info
+        # PETSc's default test is relative to ||b||; rescale so the
+        # absolute-or-relative target is measured against the deviation norm.
+        # deviation-based normFactor and a warm guess cannot satisfy the tolerance
+        # on the strength of the mean flow alone (see deviation_norm_factor).
+        b_norm = max(float(np.linalg.norm(b_array)), 1e-30)
+        rtol_eff = float(np.clip(residual_target * norm_factor / b_norm, 1e-14, 0.99))
+        ksp.setTolerances(rtol=rtol_eff, max_it=int(maxiter))
+        ksp.setInitialGuessNonzero(x0 is not None)
+        # Allow command-line PETSc options such as ``-fvm_kinematic_pressure_pc_type hypre``.
+        prefix = (
+            "fvm_kinematic_pressure_" if equation_type == "kinematic_pressure" else "fvm_momentum_"
+        )
+        ksp.setOptionsPrefix(prefix)
+        ksp.setFromOptions()
+        setup_seconds = time.perf_counter() - setup_start
+
+        solve_start = time.perf_counter()
+        ksp.solve(rhs, solution)
+        solve_seconds = time.perf_counter() - solve_start
+        reason_code = int(ksp.getConvergedReason())  # type: ignore[bad-argument-type]
+        iterations = int(ksp.getIterationNumber())
+
+        scatter, solution_all = PETSc.Scatter.toAll(solution)
+        resources.callback(solution_all.destroy)
+        resources.callback(scatter.destroy)
+        scatter.begin(
+            solution,
+            solution_all,
+            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
+            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
+        )
+        scatter.end(
+            solution,
+            solution_all,
+            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
+            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
+        )
+        x = solution_all.getArray(readonly=True).copy()
+        if nullspace == "constant":
+            x -= np.mean(x)
+        final_residual = float(np.linalg.norm(b_array - A_csr @ x) / norm_factor)
+        reason = str(ksp.getConvergedReason())
+        converged = (
+            reason_code > 0
+            and np.isfinite(final_residual)
+            and final_residual
+            <= max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR)
+        )
+        info = LinearSolveResult(
+            backend="petsc",
+            method=method_name,
+            preconditioner=str(pc.getType()),
+            nullspace=nullspace,
+            converged=converged,
+            reason=reason,
+            iterations=iterations,
+            initial_residual=initial_residual,
+            final_residual=final_residual,
+            setup_seconds=setup_seconds,
+            solve_seconds=solve_seconds,
+            used_fallback=False,
+            preconditioner_rebuilt=True,
+        )
+
+        if not info.converged:
+            raise LinearSolveError(
+                f"PETSc {method_name} failed after {iterations} iterations: {reason}; "
+                f"algebraic residual {final_residual:.6e}, target {residual_target:.6e}, "
+                "verification limit "
+                f"{max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR):.6e}"
+            )
+        if not np.isfinite(final_residual):
+            raise LinearSolveError("PETSc returned a non-finite algebraic residual")
+        return x, info
 
 
 def _cache_key_from_matrix(A_csc, ilu_key=None):

@@ -37,7 +37,7 @@ WAKE = (-2.5, 12.0, -2.5, 2.5)
 # Time, output and sampling
 DEFAULT_NAME = "phase_h004"
 DEFAULT_H = 0.04
-CORES = 6
+CORES = 1
 END_TIME = 100.0
 STATISTICS_START = 40.0
 TIME_STEP_SIZE = 0.008

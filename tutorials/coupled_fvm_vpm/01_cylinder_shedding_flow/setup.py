@@ -39,7 +39,7 @@ REYNOLDS_NUMBER = 150.0
 KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * DIAMETER / REYNOLDS_NUMBER
 
 # FVM domain and mesh
-FVM_CORES = 4
+FVM_CORES = 1
 CELL_SIZE = 0.04
 FVM_RESOLVED_SPAN = 1.0
 FVM_HALF_SPAN = 0.5 * FVM_RESOLVED_SPAN
@@ -63,7 +63,8 @@ TRANSFER_REGION_BOX = (
 # VPM domain and resolution.
 VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
 # Keep renewal and grid-based diffusion on one VPM lattice.
-PARTICLE_LIMIT = 1_000_000
+# The full bounded XY lattice has about 125,000 nodes; retain halo headroom.
+PARTICLE_LIMIT = 200_000
 PARTICLE_SPACING_RATIO = 1.0
 CORE_RADIUS_RATIO = 1.0
 BLEND_WIDTH_RATIO = 6.0

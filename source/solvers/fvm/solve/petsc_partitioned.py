@@ -192,12 +192,14 @@ class PartitionedLinearWorkspace:
         self._reference = None
         self._uniform = None
         self.ksp = None
+        self.pc = None
         self.nullspace = None
         self._signature = None
         self._preconditioner_data = None
 
     def _destroy_objects(self) -> None:
         for name in (
+            "pc",
             "ksp",
             "residual",
             "_operator_guess",
@@ -282,7 +284,9 @@ class PartitionedLinearWorkspace:
             matrix.setNullSpace(self.nullspace)
             matrix.setNearNullSpace(self.nullspace)
         ksp = PETSc.KSP().create(comm=PETSc.COMM_WORLD)
+        self.ksp = ksp
         ksp.setOperators(matrix)
+        self.pc = ksp.getPC()
         methods = {
             "cg": PETSc.KSP.Type.CG,
             "gmres": PETSc.KSP.Type.GMRES,
@@ -290,16 +294,14 @@ class PartitionedLinearWorkspace:
         }
         if method == "amg":
             ksp.setType(PETSc.KSP.Type.CG)
-            ksp.getPC().setType(PETSc.PC.Type.GAMG)
+            self.pc.setType(PETSc.PC.Type.GAMG)
         else:
             try:
                 ksp.setType(methods[method])
             except KeyError as error:
                 self._destroy_objects()
                 raise ValueError(f"Unsupported partitioned PETSc method {method!r}") from error
-            ksp.getPC().setType(
-                PETSc.PC.Type.JACOBI if constant_nullspace else PETSc.PC.Type.BJACOBI
-            )
+            self.pc.setType(PETSc.PC.Type.JACOBI if constant_nullspace else PETSc.PC.Type.BJACOBI)
         ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
         # Equation-specific prefixes prevent pressure-PC experiments from
         # silently replacing the momentum preconditioner (and vice versa).
@@ -372,7 +374,7 @@ class PartitionedLinearWorkspace:
         self.solution.assemblyBegin()
         self.solution.assemblyEnd()
         self.ksp.setOperators(self.matrix)
-        self.ksp.getPC().setReusePreconditioner(reuse_preconditioner)
+        self.pc.setReusePreconditioner(reuse_preconditioner)
         # PETSc's convergence test is relative to ||b||, which carries the
         # transport of the solution's mean (for x-momentum in a free stream it
         # dwarfs the near-wall dynamics).  Rescale so ``tolerance`` targets the
@@ -433,7 +435,7 @@ class PartitionedLinearWorkspace:
         result = LinearSolveResult(
             backend="petsc-partitioned",
             method=method,
-            preconditioner=str(self.ksp.getPC().getType()),
+            preconditioner=str(self.pc.getType()),
             nullspace="constant" if constant_nullspace else None,
             converged=(
                 reason_code > 0

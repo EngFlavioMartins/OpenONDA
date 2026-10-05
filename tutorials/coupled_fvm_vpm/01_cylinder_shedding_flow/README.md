@@ -31,6 +31,8 @@ The reference case uses the same single periodic FVM layer, unit-span force norm
 
 One layer replaces the previous 24 FVM layers at the same in-plane mesh resolution. VPM also retains one particle layer. This reduces cell and particle counts; the wall-time saving still depends on induction, pressure solving and output costs. The planar induction backend evaluates source/target pairs directly, so a 24-fold runtime gain is not assumed.
 
+Both cases default to one FVM process because periodic MPI currently replicates the full mesh and solver workspace on every rank. The coupled particle capacity is 200,000, with room beyond the roughly 125,000-node bounded XY lattice for renewal and diffusion halos. This is an allocation ceiling; it does not discard active particles or change mesh spacing, physical models or convergence tolerances. After changing the allocation from the former million-particle setting, use `--fresh` to preserve the earlier output and start with the new defaults.
+
 ## Run and compare
 
 From this directory in an [installed environment](../../../docs/installation.md):
